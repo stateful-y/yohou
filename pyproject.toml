@@ -1,0 +1,129 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [
+  "hatch-vcs>=0.4",
+  "hatchling>=1.25",
+]
+
+[project]
+name = "yohou"
+dynamic = ["version"]
+authors = [
+    { name="Guillaume Tauzin", email="gtauzin.github@pm.me"},
+]
+description = "A time series forecasting package based on scikit-learn and narwhals"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
+dependencies = [
+    "scikit-learn>=1.7",
+    "scipy>=1.13",
+    "numpy>=1.26",
+    "polars>=0.20",
+    "narwhals",
+    "optuna>=3.5,<4.0",
+    "plotly>=5.19",
+    "pydantic>=2.6",
+    "tables>=3.9",
+]
+
+[project.urls]
+Homepage = "https://github.com/gtauzin/yohou"
+Issues = "https://github.com/gtauzin/yohou/issues"
+
+[dependency-groups]
+dev = [
+  { include-group = "docs" },
+  { include-group = "tests" },
+  { include-group = "fix" },
+]
+docs = [
+  "mkdocs-material==9.7",
+  "mkdocs-git-revision-date-localized-plugin==1.5",
+  "mkdocstrings==1.0",
+  "mkdocstrings-python==2.0",
+  "mkdocs-glightbox==0.5",
+  "pymdown-extensions==10.17",
+  "black==25.11",
+]
+fix = [
+  "pre-commit",
+  "ruff==0.4.2",
+]
+tests = [
+  "pytest",
+  "pytest-cov",
+]
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.metadata.hooks.vcs.urls]
+source_archive = "https://github.com/gtauzin/yohou/archive/{commit_hash}.zip"
+
+[tool.ruff]
+# max line length for black
+line-length = 100
+target-version = "py312"
+exclude=[
+    ".git",
+    "__pycache__",
+    "dist",
+    "build",
+]
+
+[tool.ruff.lint]
+# all rules can be found here: https://beta.ruff.rs/docs/rules/
+select = ["E", "F", "W", "I"]
+ignore=[
+    # space before : (needed for how black formats slicing)
+    "E203",
+    # do not assign a lambda expression, use a def
+    "E731",
+    # do not use variables named 'l', 'O', or 'I'
+    "E741",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# It's fine not to put the import at the top of the file in the examples
+# folder.
+"examples/*"=["E402"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sklearn.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules --color=yes"
+testpaths = ["src", "tests"]
+doctest_optionflags = "NORMALIZE_WHITESPACE"
+
+[tool.coverage]
+paths.source = ["src/yohou"]
+report.fail_under = 1
+report.include_namespace_packages = true
+report.skip_covered = false
+html.show_contexts = true
+run.omit = [
+    "tests/*",
+]
+run.parallel = true
+run.branch = true
+run.sigterm = true
+run.concurrency = ["multiprocessing"]
+run.plugins = [
+  "covdefaults",
+]

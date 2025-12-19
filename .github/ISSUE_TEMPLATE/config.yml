@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://yohou.readthedocs.io/en/latest/
+    about: To learn more about how Yohou works

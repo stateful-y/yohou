@@ -1,0 +1,56 @@
+site_name: Yohou documentation
+site_url: https://yohou.readthedocs.io/en/latest/
+repo_name: gtauzin/yohou
+repo_url: https://github.com/gtauzin/yohou
+
+edit_uri: edit/main/docs/
+
+nav:
+  - Home: index.md
+  - Getting started: pages/getting-started.md
+  - User guide: pages/guide.md
+  - Reference: pages/reference.md
+
+theme:
+  name: material
+  # custom_dir: docs/material/overrides
+
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.code.annotate
+    - content.code.copy
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/link
+        name: Switch to light mode
+
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: amber
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            show_source: true
+            show_root_heading: true
