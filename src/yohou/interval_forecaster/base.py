@@ -1,3 +1,5 @@
+"""Base classes for interval forecasters and similarity measures."""
+
 import abc
 from typing import Optional
 
@@ -11,8 +13,17 @@ from yohou.utils import select_struct
 
 
 class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
+    """Base class for similarity measures used in interval forecasting."""
+
     @property
     def discarded_time_stamps(self) -> None:
+        """Get discarded timestamps (placeholder property).
+
+        Returns
+        -------
+        None
+
+        """
         return None
 
     @abc.abstractmethod
@@ -23,6 +34,27 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         X_ante: Optional[pl.DataFrame] = None,
         X_post: Optional[pl.DataFrame] = None,
     ) -> "BaseSimilarity":
+        """Fit the similarity measure.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series.
+
+        y_pred : pl.DataFrame
+            Point predictions.
+
+        X_ante : pl.DataFrame or None, default=None
+            Ex-ante features.
+
+        X_post : pl.DataFrame or None, default=None
+            Ex-post features.
+
+        Returns
+        -------
+        self
+
+        """
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -33,6 +65,27 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         X_ante: Optional[pl.DataFrame] = None,
         X_post: Optional[pl.DataFrame] = None,
     ) -> "BaseSimilarity":
+        """Update the similarity measure with new observations.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations.
+
+        y_pred : pl.DataFrame
+            New predictions.
+
+        X_ante : pl.DataFrame or None, default=None
+            New ex-ante features.
+
+        X_post : pl.DataFrame or None, default=None
+            New ex-post features.
+
+        Returns
+        -------
+        self
+
+        """
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -42,6 +95,25 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         X_ante: Optional[pl.DataFrame] = None,
         X_post: Optional[pl.DataFrame] = None,
     ) -> pl.DataFrame:
+        """Compute similarity weights for predictions.
+
+        Parameters
+        ----------
+        y_pred : pl.DataFrame
+            Predictions to compute similarities for.
+
+        X_ante : pl.DataFrame or None, default=None
+            Ex-ante features.
+
+        X_post : pl.DataFrame or None, default=None
+            Ex-post features.
+
+        Returns
+        -------
+        pl.DataFrame
+            Similarity weights.
+
+        """
         raise NotImplementedError()
 
 

@@ -1,3 +1,5 @@
+"""Distance-based similarity measures for interval forecasting."""
+
 from typing import Optional
 
 import numpy as np
@@ -8,6 +10,65 @@ from .base import BaseSimilarity
 
 
 class DistanceSimilarity(BaseSimilarity):
+    """Distance-based similarity using scipy metrics for weighting observations.
+
+    Parameters
+    ----------
+    metric : str, default="euclidean"
+        Distance metric to use (e.g., "euclidean", "manhattan", "cosine").
+        See scipy.spatial.distance.cdist for all options.
+
+    metric_params : dict or None, default=None
+        Additional parameters for the distance metric.
+
+    Examples
+    --------
+    >>> from datetime import datetime
+    >>> import polars as pl
+    >>> import numpy as np
+    >>> from yohou.interval_forecaster.similarity import DistanceSimilarity
+    >>>
+    >>> # Create training data
+    >>> time_train = pl.datetime_range(
+    ...     start=datetime(2021, 12, 16),
+    ...     end=datetime(2021, 12, 16, 0, 0, 7),
+    ...     interval="1s",
+    ...     eager=True
+    ... )
+    >>> y_train = pl.DataFrame({
+    ...     "time": time_train,
+    ...     "value": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    ... })
+    >>> y_pred_train = pl.DataFrame({
+    ...     "time": time_train,
+    ...     "value": [1.1, 2.1, 2.9, 4.2, 4.8, 6.1, 7.0, 8.1]
+    ... })
+    >>>
+    >>> # Fit similarity model
+    >>> similarity = DistanceSimilarity(metric="euclidean")
+    >>> _ = similarity.fit(y_train, y_pred_train)
+    >>>
+    >>> # Create new predictions to compute similarities for
+    >>> time_test = pl.datetime_range(
+    ...     start=datetime(2021, 12, 16, 0, 0, 8),
+    ...     end=datetime(2021, 12, 16, 0, 0, 9),
+    ...     interval="1s",
+    ...     eager=True
+    ... )
+    >>> y_pred_test = pl.DataFrame({
+    ...     "time": time_test,
+    ...     "value": [8.5, 9.2]
+    ... })
+    >>>
+    >>> # Compute similarity weights
+    >>> weights = similarity.predict(y_pred_test)
+    >>> weights.shape
+    (2, 8)
+    >>> isinstance(weights, np.ndarray)
+    True
+
+    """
+
     def __init__(
         self,
         metric: str = "euclidean",
@@ -18,6 +79,14 @@ class DistanceSimilarity(BaseSimilarity):
 
     @property
     def n_discarded_indices_(self) -> int:
+        """Get number of discarded indices due to NaN values.
+
+        Returns
+        -------
+        int
+            Number of discarded observations.
+
+        """
         return self._n_discarded_indices
 
     def _get_X(
@@ -26,6 +95,25 @@ class DistanceSimilarity(BaseSimilarity):
         X_ante: pl.DataFrame | None,
         X_post: pl.DataFrame | None,
     ) -> pl.DataFrame:
+        """Combine predictions and features into single feature matrix.
+
+        Parameters
+        ----------
+        y_pred : pl.DataFrame
+            Predictions.
+
+        X_ante : pl.DataFrame or None
+            Ex-ante features.
+
+        X_post : pl.DataFrame or None
+            Ex-post features.
+
+        Returns
+        -------
+        pl.DataFrame
+            Combined feature matrix.
+
+        """
         X = y_pred
         if X_ante is not None:
             X = pl.concat([X, X_ante], how="horizontal")
@@ -60,7 +148,7 @@ class DistanceSimilarity(BaseSimilarity):
 
         """
         X = self._get_X(y_pred, X_ante, X_post)
-        self._X_observed = X.dropna()
+        self._X_observed = X.drop_nulls()
 
         self._n_discarded_indices = len(y_pred) - len(X)
 
@@ -73,6 +161,27 @@ class DistanceSimilarity(BaseSimilarity):
         X_ante: Optional[pl.DataFrame] = None,
         X_post: Optional[pl.DataFrame] = None,
     ) -> "DistanceSimilarity":
+        """Update similarity model with new observations.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target values.
+
+        y_pred : pl.DataFrame
+            New predictions.
+
+        X_ante : pl.DataFrame or None, default=None
+            New ex-ante features.
+
+        X_post : pl.DataFrame or None, default=None
+            New ex-post features.
+
+        Returns
+        -------
+        self
+
+        """
         X = self._get_X(y_pred, X_ante, X_post)
 
         self._X_observed = pl.concat([self._X_observed, X])
@@ -85,9 +194,28 @@ class DistanceSimilarity(BaseSimilarity):
         X_ante: Optional[pl.DataFrame] = None,
         X_post: Optional[pl.DataFrame] = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[object]]]:
+        """Compute similarity weights for new predictions.
+
+        Parameters
+        ----------
+        y_pred : pl.DataFrame
+            New predictions to compute similarities for.
+
+        X_ante : pl.DataFrame or None, default=None
+            Ex-ante features.
+
+        X_post : pl.DataFrame or None, default=None
+            Ex-post features.
+
+        Returns
+        -------
+        np.ndarray
+            Similarity weight matrix.
+
+        """
         X = self._get_X(y_pred, X_ante, X_post)
 
-        distances = cdist(X, self._X_observed, self.metric, **self.metrics_params)
+        distances = cdist(X, self._X_observed, self.metric, **self.metric_params)
         weights = np.reciprocal(np.exp(distances))
 
         weights = weights / np.sum(weights, axis=1)[:, np.newaxis] * self._X_observed.shape[1]

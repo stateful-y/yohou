@@ -1,4 +1,4 @@
-"""The module :mod:`model_selection`"""
+"""Model selection tools including cross-validation and hyperparameter search."""
 
 from .base import Sampler, Storage
 from .search import SearchCV

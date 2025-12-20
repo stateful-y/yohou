@@ -12,7 +12,7 @@ from yohou.base import BaseTransformer
 
 
 class LogTransform(BaseTransformer):
-    """Logatithmic time series transformer.
+    """Logarithmic time series transformer.
 
     Parameters
     ----------
@@ -21,7 +21,7 @@ class LogTransform(BaseTransformer):
 
     """
 
-    _memory_size: int = 0
+    _observation_horizon: int = 0
 
     def __init__(self, offset: StrictFloat = 0.0):
         self.offset = offset
@@ -47,13 +47,17 @@ class LogTransform(BaseTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame) -> pl.DataFrame:
+    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
         """Inverts the input transformed time series.
 
         Parameters
         ----------
         X_t : pl.DataFrame
             Transformed time series.
+
+        X_p : pl.DataFrame or None
+            Untransformed time series corresponding to at least `observation_horizon` immediately
+            previous time stamps. Can be None if `observation_horizon == 0`.
 
         Returns
         -------
@@ -119,7 +123,7 @@ class SeasonalDifferencing(BaseTransformer):
         self
 
         """
-        self._memory_size = self.seasonality
+        self._observation_horizon = self.seasonality
 
         BaseTransformer.fit(self, X, y)
 
@@ -148,13 +152,17 @@ class SeasonalDifferencing(BaseTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame) -> pl.DataFrame:
+    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
         """Inverts the input transformed time series.
 
         Parameters
         ----------
         X_t : pl.DataFrame
             Transformed time series.
+
+        X_p : pl.DataFrame or None
+            Untransformed time series corresponding to at least `observation_horizon` immediately
+            previous time stamps. Can be None if `observation_horizon == 0`.
 
         Returns
         -------
@@ -171,6 +179,7 @@ class SeasonalDifferencing(BaseTransformer):
         cols_and_dtypes = list(zip(X_no_time.columns, X_no_time.dtypes))
 
         def inverse_diff_col(series: pl.Series) -> pl.Series:
+            """Reverse seasonal differencing for a single series."""
             # Convert to numpy for in-place mutation
             arr = series.to_numpy().copy()
             for i in range(len(X_p), len(arr)):
@@ -245,7 +254,7 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame) -> pl.DataFrame:
+    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
         """Inverts the input transformed time series.
 
         Parameters
@@ -253,11 +262,14 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
         X_t : pl.DataFrame
             Transformed time series.
 
+        X_p : pl.DataFrame or None
+            Untransformed time series corresponding to at least `observation_horizon` immediately
+            previous time stamps. Can be None if `observation_horizon == 0`.
+
         Returns
         -------
         pl.DataFrame
             Inverted transformed time series.
-
         """
         X_p = LogTransform.transform(self, X=X_p)
         X = SeasonalDifferencing.inverse_transform(self, X_t=X_t, X_p=X_p)

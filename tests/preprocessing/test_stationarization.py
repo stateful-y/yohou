@@ -36,8 +36,8 @@ X = pl.DataFrame(
 )
 def test_identity(transformer):
     X_t = transformer.fit_transform(X)
-    memory_size = transformer.memory_size
+    observation_horizon = transformer.observation_horizon
 
-    X_it = transformer.inverse_transform(X_t=X_t, X_p=X[:memory_size])
+    X_it = transformer.inverse_transform(X_t=X_t, X_p=X[:observation_horizon])
 
-    pl.testing.assert_frame_equal(X_it, X[memory_size:])
+    pl.testing.assert_frame_equal(X_it, X[observation_horizon:])

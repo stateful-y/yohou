@@ -1,7 +1,6 @@
-"""
-The :mod:`yohou.model_selection.utils` module includes utilities for
-model evaluation and validation.
-"""
+"""Utilities for model evaluation and cross-validation scoring."""
+
+from __future__ import annotations
 
 import numbers
 import sys
@@ -479,6 +478,7 @@ def _run_trials_batch(
     n_trials_per_batch: int,
     catch: tuple[type[Exception], ...],
 ) -> trial_module.FrozenTrial:
+    """Run a batch of Optuna trials."""
     if is_heartbeat_enabled(study._storage):
         optuna.storages.fail_stale_trials(study)
 

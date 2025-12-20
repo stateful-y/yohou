@@ -1,4 +1,4 @@
-"""The module :mod:`preprocessing`"""
+"""Preprocessing transformers for stationarization and feature engineering."""
 
 from .stationarization import (
     LogTransform,

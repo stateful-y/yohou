@@ -1,3 +1,5 @@
+"""Core base classes for transformers, forecasters, and wrappers."""
+
 import abc
 import inspect
 from copy import deepcopy
@@ -26,11 +28,23 @@ REQUIRED_PARAM_VALUE = "__REQUIRED__"
 
 
 class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):  # type: ignore[misc]
-    """Base class for time series transfomers."""
+    """Base class for time series transformers."""
 
     @property
-    def memory_size(self) -> int:
-        return getattr(self, "_memory_size", 1)
+    def observation_horizon(self) -> int:
+        """Get the number of time steps needed for stateful operations.
+
+        The observation horizon defines how many recent observations the transformer
+        needs to maintain in its memory (stored in `_X_observed`). This is crucial
+        for operations like moving averages or lagged features.
+
+        Returns
+        -------
+        int
+            Number of time steps to retain. Defaults to 1 if not set.
+
+        """
+        return getattr(self, "_observation_horizon", 1)
 
     @abc.abstractmethod
     def fit(self, X: pl.DataFrame, y: Optional[pl.DataFrame] = None) -> "BaseTransformer":
@@ -42,8 +56,7 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):  
             Input time series.
 
         y : pl.DataFrame or None, default=None
-            Target time series. Ignored and only present for
-            API consistency.
+            Target time series. Ignored and only present for API consistency.
 
         Returns
         -------
@@ -57,10 +70,7 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):  
 
         return self
 
-    def reset(
-        self,
-        X: pl.DataFrame,
-    ) -> "BaseTransformer":
+    def reset(self, X: pl.DataFrame) -> "BaseTransformer":
         """Resets the transformer by resetting the observation horizon.
 
         Parameters
@@ -73,10 +83,10 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):  
         self
 
         """
-        if len(X) < self.memory_size:
+        if len(X) < self.observation_horizon:
             raise ValueError("Not enough input data to set the transformer memory.")
 
-        self._X_observed = X[-self.memory_size :]
+        self._X_observed = X[-self.observation_horizon :]
 
         return self
 
@@ -113,6 +123,22 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):  
 
         """
         raise NotImplementedError()
+
+    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame) -> pl.DataFrame:
+        """Inverts the input transformed time series.
+
+        Parameters
+        ----------
+        X_t : pl.DataFrame
+            Transformed time series.
+
+        Returns
+        -------
+        pl.DataFrame
+            Inverted transformed time series.
+
+        """
+        raise NotImplementedError("This transformer is not invertible.")
 
     def update_transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transforms the input, updates the transformer and returns
@@ -173,11 +199,76 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
 
     @property
     def prediction_type(self) -> str:
+        """Get the type of predictions this forecaster produces.
+
+        Returns
+        -------
+        str
+            Either "point" for single-value predictions or "interval" for
+            prediction intervals.
+
+        """
         return str(self._prediction_type)
 
     def _set_local_groups(
         self, y: pl.DataFrame, X_ante: pl.DataFrame | None, X_post: pl.DataFrame | None
     ) -> None:
+        """Detect and validate panel data structure across target and features.
+
+        Inspects whether the data contains global (single time series) or local
+        (panel/struct columns with multiple time series) and ensures consistency
+        across y, X_ante, and X_post. Sets instance attributes for downstream use.
+
+        This method is critical for enabling both univariate and panel forecasting
+        with the same forecaster interface.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series, may contain struct columns for panel data.
+
+        X_ante : pl.DataFrame or None
+            Ex-ante features, may contain struct columns.
+
+        X_post : pl.DataFrame or None
+            Ex-post features, may contain struct columns.
+
+        Returns
+        -------
+        None
+            Sets the following attributes:
+            - `local_group_names_` : list of str or None
+                Names of struct columns representing local groups (e.g., ["stores"])
+            - `local_y_names_` : list of str
+                Names of target columns within each local group
+            - `local_X_names_` : list of str
+                Names of feature columns (global + local combined)
+
+        Raises
+        ------
+        ValueError
+            If y contains both global and local columns (ambiguous structure),
+            or if struct column field names don't match across local groups,
+            or if X_ante/X_post local groups don't match y's structure.
+
+        Notes
+        -----
+        Panel data example:
+            y has struct column "sales" with fields ["store_1", "store_2"]
+            → local_group_names_ = ["sales"]
+            → local_y_names_ = ["store_1", "store_2"]
+
+        Global data example:
+            y has regular columns ["sales"]
+            → local_group_names_ = None
+            → local_y_names_ = ["sales"]
+
+        See Also
+        --------
+        :func:`yohou.utils.polars.inspect_locality` : Detects struct columns
+        :meth:`_fit_transform_inputs` : Uses local group information for transformation
+
+        """
         y_global_names, y_local_groups = inspect_locality(y)
 
         local_group_names, local_y_names = None, y_global_names
@@ -241,17 +332,61 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
     def _fit_transform_one(
         self, y: pl.DataFrame, X: pl.DataFrame | None
     ) -> tuple[pl.DataFrame, pl.DataFrame, BaseTransformer | None, BaseTransformer | None]:
+        """Fit and apply target and feature transformers to a single time series.
+
+        Orchestrates the transformation pipeline: target transformer first (if any),
+        then feature transformer (if any). Handles observation horizon alignment to
+        ensure transformed data matches temporally.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series with "time" column.
+
+        X : pl.DataFrame or None
+            Combined features (X_ante + X_post) with "time" column, or None.
+
+        Returns
+        -------
+        y_t : pl.DataFrame
+            Transformed target time series.
+
+        X_t : pl.DataFrame
+            Transformed feature matrix (includes transformed y if no separate X provided).
+
+        target_transformer : BaseTransformer or None
+            Fitted target transformer instance, or None if not used.
+
+        feature_transformer : BaseTransformer or None
+            Fitted feature transformer instance, or None if not used.
+
+        Notes
+        -----
+        Transformation order matters:
+        1. Apply target_transformer to y → y_t
+        2. Concatenate y_t with X (aligned by observation horizon)
+        3. Apply feature_transformer to combined → X_t
+        4. Trim y_t if feature transformer has its own observation horizon
+
+        This ensures features can include lagged versions of the transformed target.
+
+        See Also
+        --------
+        :meth:`_update_one` : Incremental version for new data
+        :class:`BaseTransformer` : Base class for transformers
+
+        """
         y_t = y
-        target_transformer, target_memory_size = None, 0
+        target_transformer, target_observation_horizon = None, 0
         if self.target_transformer is not None:
             target_transformer = clone(self.target_transformer)
             y_t = target_transformer.fit_transform(y)
-            target_memory_size = target_transformer.memory_size
+            target_observation_horizon = target_transformer.observation_horizon
 
         X_t = y_t
         if X is not None:
             X_t = pl.concat(
-                [y_t, X.select(~cs.by_name("time"))[target_memory_size:]],
+                [y_t, X.select(~cs.by_name("time"))[target_observation_horizon:]],
                 how="horizontal",
             )
 
@@ -260,8 +395,8 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
             feature_transformer = clone(self.feature_transformer)
             X_t = feature_transformer.fit_transform(X_t)
             if target_transformer is not None:
-                feature_memory_size = target_transformer.memory_size
-                y_t = y_t[feature_memory_size:]
+                feature_observation_horizon = target_transformer.observation_horizon
+                y_t = y_t[feature_observation_horizon:]
 
         return y_t, X_t, target_transformer, feature_transformer
 
@@ -272,6 +407,28 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         target_transformer: BaseTransformer | None,
         feature_transformer: BaseTransformer | None,
     ) -> pl.DataFrame:
+        """Update transformers with new observations.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations.
+
+        X : pl.DataFrame or None
+            New features.
+
+        target_transformer : BaseTransformer or None
+            Target transformer to update.
+
+        feature_transformer : BaseTransformer or None
+            Feature transformer to update.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed new observations.
+
+        """
         y_t_new = y
         if self.target_transformer is not None and target_transformer is not None:
             y_t_new = target_transformer.update_transform(y)
@@ -296,6 +453,47 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         X_ante: Optional[pl.DataFrame] = None,
         X_post: Optional[pl.DataFrame] = None,
     ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
+        """Combine target and exogenous features into standard format.
+
+        Merges X_ante (ex-ante features) and X_post (ex-post features) into a single
+        feature DataFrame X, handling None cases. Ex-post features are filtered to
+        match the target's time index.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series with "time" column.
+
+        X_ante : pl.DataFrame or None, default=None
+            Ex-ante features (known in advance) with "time" column.
+
+        X_post : pl.DataFrame or None, default=None
+            Ex-post features (observed after) with "time" column.
+
+        Returns
+        -------
+        y : pl.DataFrame
+            Target unchanged (passed through).
+
+        X : pl.DataFrame or None
+            Combined features with "time" column, or None if no features provided.
+            Structure: [time, X_ante columns..., X_post columns...]
+
+        Notes
+        -----
+        Ex-ante vs Ex-post:
+        - Ex-ante: Known before forecasting (holidays, planned promotions)
+        - Ex-post: Only known at prediction time (actual weather, traffic)
+
+        X_post is filtered to match y's time index since it's only available
+        for observed periods.
+
+        See Also
+        --------
+        :meth:`fit` : Calls this during fitting
+        :meth:`update` : Calls this when adding new observations
+
+        """
         time = y.select(cs.by_name("time"))
 
         X = None
@@ -324,6 +522,31 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         X_post: Optional[pl.DataFrame] = None,
         forecasting_horizon: StrictInt = 1,
     ) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """Preprocess and transform inputs before fitting.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series.
+
+        X_ante : pl.DataFrame or None, default=None
+            Ex-ante features.
+
+        X_post : pl.DataFrame or None, default=None
+            Ex-post features.
+
+        forecasting_horizon : int, default=1
+            Number of steps ahead to forecast.
+
+        Returns
+        -------
+        y_t : pl.DataFrame
+            Transformed target.
+
+        X_t : pl.DataFrame
+            Transformed features.
+
+        """
         self.interval_ = check_inputs(y, X_ante, X_post)
         self._set_local_groups(y, X_ante, X_post)
 
@@ -349,6 +572,25 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
     def _fit_transform_inputs(
         self, y: pl.DataFrame, X: pl.DataFrame | None
     ) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """Fit and transform inputs with configured transformers.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series.
+
+        X : pl.DataFrame or None
+            Feature time series.
+
+        Returns
+        -------
+        y_t : pl.DataFrame
+            Transformed target.
+
+        X_t : pl.DataFrame
+            Transformed features.
+
+        """
         y = y.select(["time"] + self.local_y_names_)
         if X is not None:
             X = X.select(["time"] + self.local_X_names_)
@@ -363,6 +605,22 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         return y_t, X_t
 
     def _update_inputs(self, y: pl.DataFrame, X: pl.DataFrame | None) -> pl.DataFrame:
+        """Update transformers with new inputs.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations.
+
+        X : pl.DataFrame or None
+            New features.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed new observations.
+
+        """
         y = y.select(["time"] + self.local_y_names_)
         if X is not None:
             X = X.select(["time"] + self.local_X_names_)
@@ -402,7 +660,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         """
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    # TODO: Use this to predict the train set
     def reset(
         self,
         y: pl.DataFrame,
@@ -427,8 +685,11 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         self
 
         """
-        # TODO: Write a reset function and use it to predict the train set
-        raise NotImplementedError()
+        self._y_observed = y
+        self._X_ante_observed = X_ante
+        self._X_post_observed = X_post
+
+        return self
 
     def update(
         self,
@@ -468,6 +729,19 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         return self
 
     def _add_time_columns(self, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Add time metadata columns to predictions.
+
+        Parameters
+        ----------
+        y_pred : pl.DataFrame
+            Predictions without time columns.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predictions with observed_time and predicted_time columns.
+
+        """
         time = self._y_observed[-self.fit_forecasting_horizon_ :][["time"]]
         time = (
             time.with_columns(observed_time=self._y_observed["time"][-1])
@@ -484,6 +758,14 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         return y_pred
 
     def _predict_one(self) -> pl.DataFrame:
+        """Generate one-step or multi-step prediction (must be implemented by subclasses).
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted values for the forecasting horizon.
+
+        """
         raise NotImplementedError()
 
     def predict(
@@ -615,6 +897,11 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
 
 
 class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
+    """Base class for forecasters using reduction to supervised learning.
+
+    Converts time series forecasting to tabular regression by creating lag features.
+    """
+
     def __init__(
         self,
         estimator: RegressorMixin = LinearRegression(),
@@ -634,6 +921,25 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y: pl.DataFrame,
         X: pl.DataFrame,
     ) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """Fit and transform inputs, handling panel data.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series (may contain struct columns for panel data).
+
+        X : pl.DataFrame
+            Feature time series.
+
+        Returns
+        -------
+        y_t : pl.DataFrame
+            Transformed target.
+
+        X_t : pl.DataFrame
+            Transformed features.
+
+        """
         # TODO: Use name for reoder in local case too
         if self.local_group_names_ is None:
             return BaseForecaster._fit_transform_inputs(self, y, X)
@@ -686,6 +992,22 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         return y_t, X_t
 
     def _update_inputs(self, y: pl.DataFrame, X: pl.DataFrame | None) -> pl.DataFrame:
+        """Update transformers with new observations (handles panel data).
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations.
+
+        X : pl.DataFrame or None
+            New features.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed new observations.
+
+        """
         if self.local_group_names_ is None:
             return BaseForecaster._update_inputs(self, y, X)
 
@@ -742,6 +1064,56 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         np.ndarray[tuple[int, int], np.dtype[np.float64]],
         np.ndarray[tuple[int, int], np.dtype[np.float64]],
     ]:
+        """Convert transformed time series to tabular supervised learning format.
+
+        Creates feature matrix (X_tab) and target matrix (y_tab) suitable for training
+        sklearn regressors. Target columns are lagged and renamed to indicate forecast
+        steps (lag_1 → step_1 for 1-step-ahead prediction, etc.).
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame
+            Transformed target time series.
+
+        X_t : pl.DataFrame
+            Transformed feature matrix (may include lagged y_t).
+
+        forecasting_horizon : int
+            Number of steps to forecast (determines how many lag features needed).
+
+        y_pred_local_columns : list of str or None
+            Target column names to predict. If None, uses all local_y_names_.
+
+        Returns
+        -------
+        X_tab : np.ndarray of shape (n_samples, n_features)
+            Feature matrix for supervised learning. Excludes "time" column and
+            truncates last forecasting_horizon rows (no targets available).
+
+        y_tab : np.ndarray of shape (n_samples, forecasting_horizon * n_targets)
+            Target matrix with columns for each (target, step) combination.
+            Columns follow pattern: {target}_step_{1}, {target}_step_{2}, ...
+
+        Notes
+        -----
+        Lag-to-step renaming convention:
+        - Input: y with lag_0, lag_1, lag_2, ..., lag_H features
+        - For forecasting_horizon=3:
+            - lag_1 → step_1 (1-step-ahead target)
+            - lag_2 → step_2 (2-step-ahead target)
+            - lag_3 → step_3 (3-step-ahead target)
+            - lag_0 is the most recent observation (not a target)
+
+        This convention makes it clear that we're predicting future values, not
+        explaining historical ones.
+
+        See Also
+        --------
+        :func:`yohou.utils.tabularization.tabularize` : Creates lagged features
+        :meth:`_estimator_fit_one` : Uses this for training
+        :meth:`_estimator_predict_one` : Uses trained model for predictions
+
+        """
         if y_pred_local_columns is None:
             y_pred_local_columns = self.local_y_names_
 
@@ -773,6 +1145,54 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_pred_local_columns: list[str] | None = None,
         **estimator_params: object,
     ) -> BaseEstimator:
+        """Fit an sklearn regressor on tabularized time series data.
+
+        Converts time series to supervised learning format and trains the estimator.
+        Handles both global (single series) and local (panel data) cases, stacking
+        panel data vertically for training a single global model.
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame
+            Transformed target time series.
+
+        X_t : pl.DataFrame
+            Transformed feature matrix.
+
+        forecasting_horizon : int
+            Number of steps to forecast.
+
+        y_pred_local_columns : list of str or None, default=None
+            Target columns to predict. If None, predicts all targets.
+
+        **estimator_params : object
+            Additional parameters to pass to the estimator's set_params method.
+
+        Returns
+        -------
+        BaseEstimator
+            Fitted sklearn regressor.
+
+        Notes
+        -----
+        For panel data (local_group_names_ is not None):
+        - Unnests each struct column
+        - Tabularizes each local time series separately
+        - Stacks all series vertically (X_tab = vstack of all local X_tabs)
+        - Trains single model across all series (global model)
+
+        For global data:
+        - Directly tabularizes and fits
+
+        This enables "global forecasting" where patterns learned from multiple
+        series can benefit predictions for all series.
+
+        See Also
+        --------
+        :meth:`_get_tabularized_dataset` : Creates supervised learning matrices
+        :meth:`_estimator_predict_one` : Uses fitted model for prediction
+
+        """
         if y_pred_local_columns is None:
             y_pred_local_columns = self.local_y_names_
 
@@ -829,6 +1249,22 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         estimator: RegressorMixin,
         y_pred_local_columns: list[str] | None = None,
     ) -> pl.DataFrame:
+        """Generate predictions using fitted estimator on tabularized data.
+
+        Parameters
+        ----------
+        estimator : sklearn regressor
+            Fitted regression model.
+
+        y_pred_local_columns : list of str or None, default=None
+            Column names for predictions.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predictions for the forecasting horizon.
+
+        """
         # TODO: Adapt for cross-learning
         if y_pred_local_columns is None:
             y_pred_local_columns = self.local_y_names_
@@ -893,6 +1329,14 @@ class BaseWrapper(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
 
     @property
     def estimator_name(self) -> str:
+        """Get the name of the wrapped estimator type.
+
+        Returns
+        -------
+        str
+            The estimator name.
+
+        """
         if not isinstance(self._estimator_name, str):
             raise ValueError("Class should define a static `_estimator_name`.")
 
@@ -900,6 +1344,14 @@ class BaseWrapper(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
 
     @property
     def estimator_base_class(self) -> type:
+        """Get the required base class for the wrapped estimator.
+
+        Returns
+        -------
+        type
+            The base class.
+
+        """
         if self._estimator_base_class is None:
             raise ValueError("Class should define a static `_estimator_base_class`.")
 
@@ -968,6 +1420,13 @@ class BaseWrapper(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
             )
 
     def instantiate(self) -> "BaseWrapper":
+        """Validate parameters and prepare for instantiation.
+
+        Returns
+        -------
+        self
+
+        """
         self._validate_params()
 
         for param_name, param_value in self.params.items():

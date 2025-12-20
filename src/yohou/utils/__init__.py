@@ -1,3 +1,5 @@
+"""Utility functions for data manipulation, validation, and tabularization."""
+
 from .polars import concat_struct, inspect_locality, neg_struct, select_struct
 from .tabularization import tabularize
 from .validation import check_inputs

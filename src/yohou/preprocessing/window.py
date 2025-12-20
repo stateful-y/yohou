@@ -50,7 +50,7 @@ class LagTransformer(BaseTransformer):
         if isinstance(self.lag, int):
             self.lags_ = [self.lag]
 
-        self._memory_size = max(self.lags_) + 1
+        self._observation_horizon = max(self.lags_) + 1
 
         return self
 

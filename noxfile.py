@@ -9,11 +9,11 @@ nox.needs_version = ">=2024.3.2"
 nox.options.default_venv_backend = "uv|virtualenv"
 
 # Default sessions to run when nox is called without arguments
-nox.options.sessions = ["fix", "tests_coverage", "docs"]
+nox.options.sessions = ["fix", "test", "docs"]
 
 
 @nox.session(python=["3.12"], venv_backend="uv")
-def tests_coverage(session: nox.Session) -> None:
+def test(session: nox.Session) -> None:
     """Run the tests with pytest under the specified Python version."""
     session.env["COVERAGE_FILE"] = f".coverage.{session.python}"
     session.env["COVERAGE_PROCESS_START"] = "pyproject.toml"
@@ -31,7 +31,7 @@ def tests_coverage(session: nox.Session) -> None:
     # Clears all .coverage* files
     session.run("coverage", "erase")
 
-    # Run unit tests under coverage
+    # Run unit tests and doctests under coverage
     session.run(
         "coverage",
         "run",
@@ -40,6 +40,7 @@ def tests_coverage(session: nox.Session) -> None:
         "-m",
         "pytest",
         "src/yohou",
+        "--doctest-modules",
         f"--junitxml=junit.{session.python}.xml",
         *session.posargs,
     )

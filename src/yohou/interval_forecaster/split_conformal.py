@@ -25,6 +25,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     @property
     def prediction_type(self) -> str:
+        """Get prediction type based on underlying point forecaster.
+
+        Returns
+        -------
+        str
+            "point+interval" if point forecaster produces points, else "interval".
+
+        """
         # TODO: Use sklearn tags?
         if self.point_forecaster.prediction_type == "point":
             return "point+interval"

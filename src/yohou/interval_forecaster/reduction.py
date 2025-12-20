@@ -5,7 +5,7 @@ from typing import List, Literal, Optional
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
-from sklearn.base import RegressorMixin
+from sklearn.base import BaseEstimator
 from sklearn.linear_model import QuantileRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
@@ -16,9 +16,80 @@ from .base import BaseIntervalForecaster
 
 
 class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaster):
+    """Interval forecaster using sklearn estimators on tabularized time series.
+
+    Converts the time series interval forecasting task to a tabular one.
+
+    Parameters
+    ----------
+    estimator : BaseEstimator, default=MultiOutputRegressor(QuantileRegressor())
+        Quantile estimator used to fit the tabularized data.
+
+    reduction_strategy : {"direct", "multi-output"}, default="multi-output"
+        Strategy for multi-step forecasting.
+
+    coverage_rates : list of float, default=[0.5]
+        Target coverage rates for intervals.
+
+    update_strategy : {"average", "constant"}, default="average"
+        How to update intervals with new observations.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.interval_forecaster import IntervalReductionForecaster
+    >>>
+    >>> # Create simple time series data
+    >>> df = pl.DataFrame({
+    ...     "time": pl.datetime_range(
+    ...         start=datetime(2021, 1, 1),
+    ...         end=datetime(2021, 1, 10),
+    ...         interval="1d",
+    ...         eager=True
+    ...     ),
+    ...     "value": [10.0, 12.0, 15.0, 14.0, 16.0, 18.0, 20.0, 19.0, 21.0, 23.0]
+    ... })
+    >>>
+    >>> # Split into train/test
+    >>> train = df[:8]
+    >>>
+    >>> # Create and fit interval forecaster
+    >>> forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.5, 0.9])
+    >>> _ = forecaster.fit(y=train, forecasting_horizon=1)
+    >>>
+    >>> # Generate prediction intervals
+    >>> y_pred = forecaster.predict(forecasting_horizon=1)
+    >>> len(y_pred)
+    1
+    >>> # Check that prediction has lower and upper bounds for each coverage rate
+    >>> "value_lower_0.1" in y_pred.columns
+    True
+    >>> "value_upper_0.9" in y_pred.columns
+    True
+
+    Notes
+    -----
+    This forecaster uses quantile regression to produce prediction intervals.
+    For each coverage rate α, it predicts:
+
+    - Lower bound: (1 - α)/2 quantile
+    - Upper bound: (1 + α)/2 quantile
+
+    The intervals naturally adapt to heteroscedastic data where uncertainty
+    varies over time.
+
+    See Also
+    --------
+    SplitConformalForecaster : Conformal prediction intervals
+    PointReductionForecaster : Point forecasts without intervals
+
+    """
+
     def __init__(
         self,
-        estimator: RegressorMixin = MultiOutputRegressor(QuantileRegressor()),
+        estimator: BaseEstimator = MultiOutputRegressor(QuantileRegressor()),
+        reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
         coverage_rates: List[StrictFloat] = [0.5],
         update_strategy: Literal["average", "constant"] = "average",
     ):
@@ -27,6 +98,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             feature_transformer=None,
             target_transformer=None,
             estimator=estimator,
+            reduction_strategy=reduction_strategy,
         )
 
         BaseIntervalForecaster.__init__(

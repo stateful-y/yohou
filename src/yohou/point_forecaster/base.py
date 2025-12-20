@@ -1,3 +1,5 @@
+"""Base class for point forecasters."""
+
 import abc
 from typing import Optional
 

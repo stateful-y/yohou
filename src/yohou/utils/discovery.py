@@ -1,7 +1,4 @@
-"""
-The :mod:`yohou.utils.discovery` module includes utilities to discover
-objects (i.e. estimators, displays, functions) from the `yohou` package.
-"""
+"""Utilities for discovering estimators, displays, and functions in yohou."""
 
 # Adapted from scikit-learn
 # Authors: scikit-learn-contrib developers
@@ -57,6 +54,7 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
     """
 
     def is_abstract(c: type) -> bool:
+        """Check if a class is abstract."""
         if not (hasattr(c, "__abstractmethods__")):
             return False
         if not len(c.__abstractmethods__):
@@ -157,6 +155,7 @@ def all_displays() -> list[tuple[str, type]]:
 
 
 def _is_checked_function(item: object) -> bool:
+    """Check if a function should be included in discovery."""
     if not inspect.isfunction(item):
         return False
 

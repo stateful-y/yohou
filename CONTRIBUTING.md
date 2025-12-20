@@ -95,5 +95,5 @@ We use a branching model that helps us keep track of branches in a logical, cons
 * **Unit tests** are in the `src/yohou/tests/` directory and use `pytest`. Run them with:
 
   ```bash
-  uvx nox -s tests_coverage
+  uvx nox -s test
   ```

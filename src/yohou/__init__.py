@@ -1,6 +1,4 @@
-"""The module :mod:`yohou` contains a sklearn-based time series
-forecasting framework.
-"""
+"""Scikit-learn-compatible time series forecasting framework built on polars."""
 
 from yohou import (
     analysis,

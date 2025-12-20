@@ -1,7 +1,4 @@
-"""
-The :mod:`yohou.pipeline` module implements utilities to build a composite
-estimator, as a chain of transforms and estimators.
-"""
+"""Pipeline utilities for chaining transformers and forecasters."""
 
 from collections import Counter
 from copy import deepcopy
@@ -150,6 +147,23 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         memory: None | Memory | str = None,
         verbose: bool = False,
     ) -> None:
+        """Initialize pipeline.
+
+        Parameters
+        ----------
+        steps : list of tuple
+            List of (name, transformer) tuples.
+
+        transform_input : list of str or None, default=None
+            Which inputs to transform.
+
+        memory : Memory, str, or None, default=None
+            Caching mechanism.
+
+        verbose : bool, default=False
+            Enable verbose output.
+
+        """
         self.steps = steps
         self.transform_input = transform_input
         self.memory = memory
@@ -173,15 +187,31 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
     _get_metadata_for_step = sklearn_Pipeline._get_metadata_for_step
 
     @property
-    def memory_size(self) -> int:
-        memory_size = 0
+    def observation_horizon(self) -> int:
+        """Get cumulative observation horizon across all steps.
+
+        Returns
+        -------
+        int
+            Total observation horizon needed.
+
+        """
+        observation_horizon = 0
         for _, t in self.steps:
             if t != "passthrough":
-                memory_size += t.memory_size  # type: ignore[attr-defined]
+                observation_horizon += t.observation_horizon  # type: ignore[attr-defined]
 
-        return memory_size
+        return observation_horizon
 
     def _validate_steps(self) -> None:
+        """Validate that all steps are BaseTransformer instances.
+
+        Raises
+        ------
+        TypeError
+            If any step is not a BaseTransformer or 'passthrough'.
+
+        """
         names, transformers = zip(*self.steps)
 
         # validate names
@@ -248,7 +278,9 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         # estimators in Pipeline.steps are not validated yet
         prefer_skip_nested_validation=False
     )
-    def fit_transform(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object) -> object:
+    def fit_transform(
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object
+    ) -> object:
         """Fit the model and transform with the final estimator.
 
         Fit all the transformers one after the other and sequentially transform
@@ -332,6 +364,14 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         return X_t
 
     def _can_inverse_transform(self) -> bool:
+        """Check if all steps support inverse_transform.
+
+        Returns
+        -------
+        bool
+            True if all steps have inverse_transform method.
+
+        """
         return all(hasattr(t, "inverse_transform") for _, _, t in self._iter())
 
     @available_if(_can_inverse_transform)  # type: ignore[untyped-decorator]
@@ -366,13 +406,13 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         routed_params = process_routing(self, "inverse_transform", **params)
         reverse_iter = reversed(list(self._iter()))
 
-        if self.memory_size:
+        if self.observation_horizon:
             # TODO: Routes params
             # routed_params_previous = process_routing(self, "fit_transform", **params)
 
             # Build X_p_iter_list by transforming X_p through each step
             # The key insight: for the first transformer's inverse, we need
-            # X_p[sum_of_other_memory_sizes : memory_size], not X_p[:first_memory_size]
+            # X_p[sum_of_other_observation_horizons : observation_horizon], not X_p[:first_observation_horizon]
             steps_list = list(self._iter())
 
             X_p_iter = X_p
@@ -381,9 +421,9 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
                 # Transform X_p_iter through this step using the fitted transform
                 X_p_iter = (
                     deepcopy(transform)
-                    .reset(X_p_iter[: transform.memory_size])
+                    .reset(X_p_iter[: transform.observation_horizon])
                     .transform(
-                        X_p_iter[transform.memory_size :],  # **routed_params_previous
+                        X_p_iter[transform.observation_horizon :],  # **routed_params_previous
                     )
                 )
                 X_p_iter_list.append(X_p_iter)
@@ -391,8 +431,8 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
             # For the first transformer's inverse, we need the slice of X_p
             # that comes after all the memory used by other transformers
             first_transform = steps_list[0][2]
-            offset = sum(t.memory_size for _, _, t in steps_list[1:])
-            X_p_iter_list.append(X_p[offset : offset + first_transform.memory_size])
+            offset = sum(t.observation_horizon for _, _, t in steps_list[1:])
+            X_p_iter_list.append(X_p[offset : offset + first_transform.observation_horizon])
 
             X_p_iter_list.reverse()
 
@@ -480,13 +520,34 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         return router
 
 
-def _hstack(Xs: list[object], column_names: list[list[str]], memory_sizes: list[int]) -> pl.DataFrame:
-    ref_memory_size = max(memory_sizes)
-    time = Xs[0].select(cs.by_name("time"))[ref_memory_size - memory_sizes[0] :]  # type: ignore[attr-defined]
+def _hstack(
+    Xs: list[object], column_names: list[list[str]], observation_horizons: list[int]
+) -> pl.DataFrame:
+    """Stack transformed features horizontally, aligning observation horizons.
+
+    Parameters
+    ----------
+    Xs : list
+        List of transformed DataFrames.
+
+    column_names : list of list of str
+        Column names for each DataFrame.
+
+    observation_horizons : list of int
+        Observation horizon for each transformer.
+
+    Returns
+    -------
+    pl.DataFrame
+        Horizontally concatenated features.
+
+    """
+    ref_observation_horizon = max(observation_horizons)
+    time = Xs[0].select(cs.by_name("time"))[ref_observation_horizon - observation_horizons[0] :]  # type: ignore[attr-defined]
     Xs_concat = pl.concat(
         [
-            X.select(~cs.by_name("time"))[ref_memory_size - memory_size :]  # type: ignore[attr-defined]
-            for X, memory_size in zip(Xs, memory_sizes)
+            X.select(~cs.by_name("time"))[ref_observation_horizon - observation_horizon :]  # type: ignore[attr-defined]
+            for X, observation_horizon in zip(Xs, observation_horizons)
         ],
         how="horizontal",
     )
@@ -574,23 +635,25 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
     __sklearn_is_fitted__ = sklearn_FeatureUnion.__sklearn_is_fitted__
     _sk_visual_block_ = sklearn_FeatureUnion._sk_visual_block_
 
-    def _get_memory_sizes(self) -> list[int]:
-        memory_sizes = []
+    def _get_observation_horizons(self) -> list[int]:
+        """Get observation horizons from all transformers."""
+        observation_horizons = []
         for _, t, _ in self._iter():
-            memory_size = 0
+            observation_horizon = 0
             if t != "passthrough":
-                memory_size = t.memory_size
+                observation_horizon = t.observation_horizon
 
-            memory_sizes.append(memory_size)
+            observation_horizons.append(observation_horizon)
 
-        return memory_sizes
+        return observation_horizons
 
     @property
-    def memory_size(self) -> int:
-        memory_sizes = self._get_memory_sizes()
-        memory_size = max(memory_sizes)
+    def observation_horizon(self) -> int:
+        """Maximum observation horizon across all transformers."""
+        observation_horizons = self._get_observation_horizons()
+        observation_horizon = max(observation_horizons)
 
-        return memory_size
+        return observation_horizon
 
     def __init__(
         self,
@@ -601,6 +664,26 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         verbose: bool = False,
         verbose_feature_names_out: bool = True,
     ) -> None:
+        """Initialize feature union.
+
+        Parameters
+        ----------
+        transformer_list : list of tuple
+            List of (name, transformer) tuples.
+
+        n_jobs : int or None, default=None
+            Number of parallel jobs.
+
+        transformer_weights : dict or None, default=None
+            Weights for transformer outputs.
+
+        verbose : bool, default=False
+            Enable verbose output.
+
+        verbose_feature_names_out : bool, default=True
+            Prefix feature names with transformer names.
+
+        """
         self.transformer_list = transformer_list
         self.n_jobs = n_jobs
         self.transformer_weights = transformer_weights
@@ -608,6 +691,14 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         self.verbose_feature_names_out = verbose_feature_names_out
 
     def _validate_transformers(self) -> None:
+        """Validate all transformers are BaseTransformer instances.
+
+        Raises
+        ------
+        TypeError
+            If any transformer is invalid.
+
+        """
         names, transformers = zip(*self.transformer_list)
 
         # validate names
@@ -626,6 +717,14 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
                 )
 
     def _validate_transformer_weights(self) -> None:
+        """Validate transformer weights dictionary.
+
+        Raises
+        ------
+        ValueError
+            If weight keys don't match transformer names.
+
+        """
         if not self.transformer_weights:
             return
 
@@ -681,7 +780,9 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         self._update_transformer_list(transformers)
         return self
 
-    def fit_transform(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object) -> object:
+    def fit_transform(
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object
+    ) -> object:
         """Fit all transformers, transform the data and concatenate results.
 
         Parameters
@@ -735,7 +836,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         return _hstack(
             list(Xs),
             column_names=self.get_feature_names_out(),
-            memory_sizes=self._get_memory_sizes(),
+            observation_horizons=self._get_observation_horizons(),
         )
 
     def transform(self, X: pl.DataFrame, **params: object) -> object:
@@ -780,7 +881,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         return _hstack(
             Xs,
             column_names=self.get_feature_names_out(),
-            memory_sizes=self._get_memory_sizes(),
+            observation_horizons=self._get_observation_horizons(),
         )
 
     def get_metadata_routing(self) -> object:
@@ -978,6 +1079,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         verbose: bool = False,
         verbose_feature_names_out: bool = True,
     ) -> None:
+        """Initialize ColumnTransformer."""
         self.transformers = transformers
         self.remainder = remainder
         self.n_jobs = n_jobs
@@ -985,28 +1087,30 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         self.verbose = verbose
         self.verbose_feature_names_out = verbose_feature_names_out
 
-    def _get_memory_sizes(self) -> list[int]:
-        memory_sizes = []
+    def _get_observation_horizons(self) -> list[int]:
+        """Get observation horizons from all fitted transformers."""
+        observation_horizons = []
         for _, t, _, _ in self._iter(
             fitted=True,
             column_as_labels=True,
             skip_drop=False,
             skip_empty_columns=False,
         ):
-            memory_size = 0
+            observation_horizon = 0
             if t not in ("drop", "passthrough"):
-                memory_size = t.memory_size
+                observation_horizon = t.observation_horizon
 
-            memory_sizes.append(memory_size)
+            observation_horizons.append(observation_horizon)
 
-        return memory_sizes
+        return observation_horizons
 
     @property
-    def memory_size(self) -> int:
-        memory_sizes = self._get_memory_sizes()
-        memory_size = max(memory_sizes)
+    def observation_horizon(self) -> int:
+        """Maximum observation horizon across all transformers."""
+        observation_horizons = self._get_observation_horizons()
+        observation_horizon = max(observation_horizons)
 
-        return memory_size
+        return observation_horizon
 
     def _validate_transformers(self) -> None:
         """Validate names of transformers and the transformers themselves.
@@ -1034,7 +1138,14 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
                     "'%s' (type %s) doesn't" % (t, type(t))
                 )
 
-    def _call_func_on_transformers(self, X: pl.DataFrame, y: pl.DataFrame | None, func: str, column_as_labels: bool, routed_params: dict[str, dict[str, dict[str, object]]]) -> list[object]:
+    def _call_func_on_transformers(
+        self,
+        X: pl.DataFrame,
+        y: pl.DataFrame | None,
+        func: str,
+        column_as_labels: bool,
+        routed_params: dict[str, dict[str, dict[str, object]]],
+    ) -> list[object]:
         """
         Private function to fit and/or transform on demand.
 
@@ -1073,6 +1184,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
             fitted = True
 
         def safe_indexing(X: pl.DataFrame, columns: object, axis: int) -> object:
+            """Safe indexing helper for polars DataFrames."""
             Xi = _safe_indexing(X, columns, axis=axis)
 
             if isinstance(Xi, pl.Series):
@@ -1127,7 +1239,9 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
             else:
                 raise
 
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object) -> "ColumnTransformer":
+    def fit(
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object
+    ) -> "ColumnTransformer":
         """Fit all transformers using X.
 
         Parameters
@@ -1161,7 +1275,9 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         # estimators in ColumnTransformer.transformers are not validated yet
         prefer_skip_nested_validation=False
     )
-    def fit_transform(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object) -> object:
+    def fit_transform(
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object
+    ) -> object:
         """Fit all transformers, transform the data and concatenate results.
 
         Parameters
@@ -1378,9 +1494,13 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
                     "names."
                 )
 
-        output = _hstack(Xs, column_names=feature_names_outs, memory_sizes=self._get_memory_sizes())
+        output = _hstack(
+            Xs,
+            column_names=feature_names_outs,
+            observation_horizons=self._get_observation_horizons(),
+        )
         output_samples = output.shape[0]
-        if output_samples != n_samples - self.memory_size:
+        if output_samples != n_samples - self.observation_horizon:
             raise ValueError(
                 "Concatenating DataFrames from the transformer's output lead to"
                 " an inconsistent number of samples."

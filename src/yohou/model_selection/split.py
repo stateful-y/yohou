@@ -1,3 +1,5 @@
+"""Time series cross-validation splitters for model selection."""
+
 import numbers
 from collections.abc import Iterable, Iterator
 
@@ -6,7 +8,7 @@ import polars as pl
 from sklearn.model_selection._split import BaseCrossValidator, TimeSeriesSplit
 
 
-class KFold(TimeSeriesSplit):  # type: ignore[misc]
+class Splitter(TimeSeriesSplit):  # type: ignore[misc]
     """Time Series splitter.
 
     Provides train/test indices to split time series data samples
@@ -128,11 +130,11 @@ class _CVIterableWrapper(BaseCrossValidator):  # type: ignore[misc]
 
 def check_cv(
     cv: int
-    | KFold
+    | Splitter
     | Iterable[tuple[np.ndarray[object, object], np.ndarray[object, object]]]
     | None = 5,
     forecasting_horizon: int = 1,
-) -> KFold | _CVIterableWrapper:
+) -> Splitter | _CVIterableWrapper:
     """Input checker utility for building a cross-validator.
 
     Parameters
@@ -141,8 +143,8 @@ def check_cv(
         Determines the cross-validation splitting strategy.
         Possible inputs for cv are:
         - None, to use the default 5-fold time series cross validation,
-        - integer, to specify the number of folds in a time series `KFold`,
-        - :class:`yohou.model_selection.KFold` instance,
+        - integer, to specify the number of folds in a time series `Splitter`,
+        - :class:`yohou.model_selection.Splitter` instance,
         - An iterable yielding (train, test) splits as arrays of indices.
 
     forecasting_horizon : int >= 1, default=1
@@ -157,9 +159,9 @@ def check_cv(
     """
     cv = 5 if cv is None else cv
     if isinstance(cv, numbers.Integral):
-        return KFold(cv, test_size=forecasting_horizon)
+        return Splitter(cv, test_size=forecasting_horizon)
 
-    if not isinstance(cv, KFold):
+    if not isinstance(cv, Splitter):
         if isinstance(cv, Iterable):
             return _CVIterableWrapper(cv)
 

@@ -23,3 +23,10 @@ repos:
         args: ["--strict", "src"]
         pass_filenames: false
         types: [python]
+
+-   repo: https://github.com/econchick/interrogate
+    rev: 1.7.0
+    hooks:
+    -   id: interrogate
+        types: [python]
+        exclude: ^(tests/|examples/|.*_version\.py$)

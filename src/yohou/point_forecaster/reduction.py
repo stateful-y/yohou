@@ -4,8 +4,9 @@ from typing import Optional
 
 import polars as pl
 from pydantic import StrictInt
-from sklearn.base import RegressorMixin
+from sklearn.base import BaseEstimator
 from sklearn.linear_model import LinearRegression
+from typing_extensions import Literal
 
 from yohou.base import BaseReductionForecaster, BaseTransformer
 
@@ -13,17 +14,86 @@ from .base import BasePointForecaster
 
 
 class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
+    """Point forecaster using sklearn estimators on tabularized time series.
+
+    Converts time series forecasting to supervised learning by creating lag features,
+    then applies any sklearn estimator for predictions.
+
+    Parameters
+    ----------
+    estimator : BaseEstimator, default=LinearRegression()
+        Point estimator used to fit the tabularized data.
+
+    reduction_strategy : {"direct", "multi-output"}, default="multi-output"
+        Strategy for multi-step forecasting.
+
+    target_transformer : BaseTransformer or None, default=None
+        Transformer for target preprocessing.
+
+    feature_transformer : BaseTransformer or None, default=None
+        Transformer for feature engineering (typically LagTransformer).
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.point_forecaster import PointReductionForecaster
+    >>>
+    >>> # Create simple time series data
+    >>> df = pl.DataFrame({
+    ...     "time": pl.datetime_range(
+    ...         start=datetime(2021, 1, 1),
+    ...         end=datetime(2021, 1, 10),
+    ...         interval="1d",
+    ...         eager=True
+    ...     ),
+    ...     "value": [10.0, 12.0, 15.0, 14.0, 16.0, 18.0, 20.0, 19.0, 21.0, 23.0]
+    ... })
+    >>>
+    >>> # Split into train/test
+    >>> train = df[:8]
+    >>>
+    >>> # Create and fit forecaster
+    >>> forecaster = PointReductionForecaster()
+    >>> _ = forecaster.fit(y=train, forecasting_horizon=1)
+    >>>
+    >>> # Generate one-step prediction
+    >>> y_pred = forecaster.predict(forecasting_horizon=1)
+    >>> len(y_pred)
+    1
+    >>> sorted(y_pred.columns)
+    ['observed_time', 'predicted_time', 'value']
+
+    Notes
+    -----
+    This forecaster implements the reduction strategy for time series forecasting,
+    converting the problem to supervised learning through tabularization. It supports:
+
+    - Recursive multi-step forecasting (default behavior)
+    - Integration with any scikit-learn regressor
+    - Feature engineering via transformers (e.g., lag features, rolling statistics)
+    - Target transformations (e.g., differencing, scaling)
+
+    See Also
+    --------
+    BaseReductionForecaster : Base class for reduction forecasters
+    LagTransformer : Create lagged features for reduction strategies
+
+    """
+
     _supports_cross_learning = True
 
     def __init__(
         self,
-        estimator: RegressorMixin = LinearRegression(),
+        estimator: BaseEstimator = LinearRegression(),
+        reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
         target_transformer: Optional[BaseTransformer] = None,
         feature_transformer: Optional[BaseTransformer] = None,
-    ):
+    ) -> None:
         BaseReductionForecaster.__init__(
             self,
             estimator=estimator,
+            reduction_strategy=reduction_strategy,
         )
 
         BasePointForecaster.__init__(

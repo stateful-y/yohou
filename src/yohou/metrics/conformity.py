@@ -1,12 +1,35 @@
+"""Conformity scoring functions for conformal prediction intervals."""
+
 import polars as pl
 
 from .base import BaseConformityScorer
 
 
 class Residual(BaseConformityScorer):
+    r"""Residual-based conformity scorer using signed prediction errors.
+
+    Computes conformity scores as $y - \hat{y}$ for asymmetric intervals.
+    """
+
     _prediction_type = "point"
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute signed residual conformity scores.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True target values.
+
+        y_pred : pl.DataFrame
+            Predicted values.
+
+        Returns
+        -------
+        pl.DataFrame
+            Conformity scores (y_truth - y_pred).
+
+        """
         self._validate_inputs(y_truth, y_pred)
 
         scores = y_truth - y_pred
@@ -16,6 +39,25 @@ class Residual(BaseConformityScorer):
     def inverse_score(
         self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float
     ) -> pl.DataFrame:
+        """Construct prediction intervals from conformity scores.
+
+        Parameters
+        ----------
+        y_pred : pl.DataFrame
+            Point predictions.
+
+        conformity_scores : pl.DataFrame
+            Computed conformity scores from calibration set.
+
+        coverage_rate : float
+            Desired coverage probability (e.g., 0.9 for 90% intervals).
+
+        Returns
+        -------
+        pl.DataFrame
+            Prediction intervals with lower and upper bounds.
+
+        """
         lower_quantile, upper_quantile = self._compute_assymetric_quantile(
             conformity_scores, coverage_rate
         )
@@ -27,7 +69,28 @@ class Residual(BaseConformityScorer):
 
 
 class AbsoluteResidual(Residual):
+    r"""Absolute residual conformity scorer using unsigned prediction errors.
+
+    Computes conformity scores as $|y - \hat{y}|$ for symmetric intervals.
+    """
+
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute absolute residual conformity scores.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True target values.
+
+        y_pred : pl.DataFrame
+            Predicted values.
+
+        Returns
+        -------
+        pl.DataFrame
+            Conformity scores (|y_truth - y_pred|).
+
+        """
         self._validate_inputs(y_truth, y_pred)
 
         scores = (y_truth - y_pred).abs()
@@ -37,6 +100,25 @@ class AbsoluteResidual(Residual):
     def inverse_score(
         self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float
     ) -> pl.DataFrame:
+        """Construct symmetric prediction intervals from absolute conformity scores.
+
+        Parameters
+        ----------
+        y_pred : pl.DataFrame
+            Point predictions.
+
+        conformity_scores : pl.DataFrame
+            Absolute conformity scores from calibration set.
+
+        coverage_rate : float
+            Desired coverage probability.
+
+        Returns
+        -------
+        pl.DataFrame
+            Symmetric prediction intervals.
+
+        """
         quantile = self._compute_symetric_quantile(conformity_scores, coverage_rate)
         lower_bound, upper_bound = y_pred - quantile, y_pred + quantile
 
@@ -46,6 +128,17 @@ class AbsoluteResidual(Residual):
 
 
 class GammaResidual(BaseConformityScorer):
+    r"""Gamma residual scorer using relative prediction errors.
+
+    Computes conformity scores as $(y - \hat{y}) / (\hat{y} + \epsilon)$.
+
+    Parameters
+    ----------
+    epsilon : float, default=1e-8
+        Small constant to prevent division by zero.
+
+    """
+
     _prediction_type = "point"
 
     def __init__(self, epsilon: float = 1e-8) -> None:
@@ -54,6 +147,22 @@ class GammaResidual(BaseConformityScorer):
         self.epsilon = epsilon
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute gamma (relative) residual conformity scores.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True target values.
+
+        y_pred : pl.DataFrame
+            Predicted values.
+
+        Returns
+        -------
+        pl.DataFrame
+            Relative conformity scores (y_truth - y_pred) / (y_pred + epsilon).
+
+        """
         self._validate_inputs(y_truth, y_pred)
 
         scores = (y_truth - y_pred) / (y_pred + self.epsilon)
@@ -62,21 +171,48 @@ class GammaResidual(BaseConformityScorer):
 
 
 class AbsoluteGammaResidual(GammaResidual):
+    r"""Absolute gamma residual scorer using absolute relative errors.
+
+    Computes conformity scores as $|(y - \hat{y}) / (\hat{y} + \epsilon)|$.
+    """
+
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute absolute gamma residual conformity scores.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True target values.
+
+        y_pred : pl.DataFrame
+            Predicted values.
+
+        Returns
+        -------
+        pl.DataFrame
+            Absolute relative conformity scores.
+
+        """
         scores = GammaResidual.score(self, y_truth, y_pred).abs()
 
         return scores
 
 
 class QuantileResidual(BaseConformityScorer):
+    """Quantile residual scorer for interval forecasts."""
+
     _prediction_type = "interval"
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute quantile residual scores."""
         pass
 
 
 class AbsoluteQuantileResidual(BaseConformityScorer):
+    """Absolute quantile residual scorer for interval forecasts."""
+
     _prediction_type = "interval"
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute absolute quantile residual scores."""
         pass

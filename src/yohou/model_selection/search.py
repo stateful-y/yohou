@@ -1,6 +1,6 @@
-"""The :mod:`yohou.model_selection.search` includes utilities to search
-the hyperparameter space of a forecaster.
-"""
+"""Optuna-based hyperparameter search with time series (nested) cross-validation."""
+
+from __future__ import annotations
 
 import gc
 import numbers
@@ -158,8 +158,8 @@ class SearchCV(BaseForecaster):
         Possible inputs for cv are:
 
         - None, to use the default 5-fold time series cross validation,
-        - integer, to specify the number of folds in a time series `KFold`,
-        - :class:`yohou.model_selection.KFold` instance,
+        - integer, to specify the number of folds in a time series `Splitter`,
+        - :class:`yohou.model_selection.Splitter` instance,
         - An iterable yielding (train, test) splits as arrays of indices.
 
     verbose : int
@@ -320,9 +320,12 @@ class SearchCV(BaseForecaster):
 
     @property
     def prediction_type(self) -> str:
+        """Prediction type of the scoring metric."""
         return self.scoring._prediction_type  # type: ignore[no-any-return]
 
+    # TODO: This is no longer part of the sklearn API
     def _more_tags(self) -> dict[str, object]:
+        """Additional sklearn tags for cross-validation compatibility."""
         # allows cross-validation to see 'precomputed' metrics
         return {
             "_xfail_checks": {"check_supervised_y_2d": "DataConversionWarning not caught"},
@@ -504,6 +507,7 @@ class SearchCV(BaseForecaster):
         return self.best_forecaster_.n_features_in_
 
     def _get_candidate_params(self, trial: optuna.Trial, i_trial: int) -> dict[str, object]:
+        """Generate candidate parameters for a trial."""
         if i_trial == self.n_warmup_trials:
             self.study_.sampler = self.sampler_
 
@@ -634,6 +638,7 @@ class SearchCV(BaseForecaster):
         """
 
         def batch_func(trial_batch: list[object], i_trial: int) -> tuple[object, object]:
+            """Evaluate batch of trials."""
             cand_params = [
                 self._get_candidate_params(trial, i_trial + i_trial_cand)
                 for i_trial_cand, trial in enumerate(trial_batch)
@@ -719,7 +724,14 @@ class SearchCV(BaseForecaster):
         # *SearchCV.forecaster is not validated yet
         prefer_skip_nested_validation=False
     )
-    def fit(self, y: pl.DataFrame, X_ante: pl.DataFrame | None = None, X_post: pl.DataFrame | None = None, forecasting_horizon: int = 1, **params: object) -> "SearchCV":
+    def fit(
+        self,
+        y: pl.DataFrame,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
+        forecasting_horizon: int = 1,
+        **params: object,
+    ) -> "SearchCV":
         """Run fit with all sets of parameters.
 
         Parameters
@@ -802,7 +814,12 @@ class SearchCV(BaseForecaster):
             all_out: list[object] = []
             all_more_results: dict[str, list[object]] = defaultdict(list)
 
-            def evaluate_candidates(cand_params: list[dict[str, object]], i_trial: int, more_results: dict[str, object] | None = None) -> dict[str, object]:
+            def evaluate_candidates(
+                cand_params: list[dict[str, object]],
+                i_trial: int,
+                more_results: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                """Evaluate candidate parameters via cross-validation."""
                 cv = cv_orig
                 n_candidates = self.n_warmup_trials + self.n_trials
 
@@ -866,7 +883,10 @@ class SearchCV(BaseForecaster):
                         all_more_results[key].extend(value)  # type: ignore[arg-type]
 
                 results = self._format_results(
-                    all_candidate_params, n_splits, all_out, all_more_results  # type: ignore[arg-type]
+                    all_candidate_params,
+                    n_splits,
+                    all_out,
+                    all_more_results,  # type: ignore[arg-type]
                 )
 
                 return results
@@ -905,7 +925,11 @@ class SearchCV(BaseForecaster):
 
             refit_start_time = time.time()
             self.best_forecaster_.fit(
-                y, X_ante, X_post, forecasting_horizon, **routed_params.forecaster.fit  # type: ignore[attr-defined]
+                y,
+                X_ante,
+                X_post,
+                forecasting_horizon,
+                **routed_params.forecaster.fit,  # type: ignore[attr-defined]
             )
             refit_end_time = time.time()
             self.refit_time_ = refit_end_time - refit_start_time
@@ -924,7 +948,14 @@ class SearchCV(BaseForecaster):
 
         return self
 
-    def _format_results(self, candidate_params: list[dict[str, object]], n_splits: int, out: list[object], more_results: dict[str, object] | None = None) -> dict[str, object]:
+    def _format_results(
+        self,
+        candidate_params: list[dict[str, object]],
+        n_splits: int,
+        out: list[object],
+        more_results: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        """Format cross-validation results into cv_results_ dictionary."""
         n_candidates = len(candidate_params)
         out = _aggregate_score_dicts(out)
 
@@ -934,7 +965,13 @@ class SearchCV(BaseForecaster):
             # we convert it to an array for consistency with the other keys
             results[key] = np.asarray(val)
 
-        def _store(key_name: str, array: object, weights: object = None, splits: bool = False, rank: bool = False) -> None:
+        def _store(
+            key_name: str,
+            array: object,
+            weights: object = None,
+            splits: bool = False,
+            rank: bool = False,
+        ) -> None:
             """A small helper to store the scores/times to the cv_results_"""
             # When iterated first by splits, then by parameters
             # We want `array` to have `n_candidates` rows and `n_splits` cols.

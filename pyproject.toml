@@ -57,6 +57,7 @@ docs = [
 fix = [
   "pre-commit",
   "ruff==0.4.2",
+  "interrogate>=1.7.0",
 ]
 tests = [
   "pytest",
@@ -127,3 +128,17 @@ run.concurrency = ["multiprocessing"]
 run.plugins = [
   "covdefaults",
 ]
+
+[tool.interrogate]
+fail-under = 100
+ignore-private = true
+ignore-magic = true
+ignore-module = false
+ignore-init-method = true
+ignore-init-module = true
+ignore-nested-functions = false
+ignore-nested-classes = true
+ignore-setters = false
+exclude = ["tests", "docs", "build", "dist", "examples", "*_version.py"]
+verbose = 1
+color = true

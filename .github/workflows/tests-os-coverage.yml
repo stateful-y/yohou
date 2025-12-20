@@ -50,7 +50,7 @@ jobs:
         run: uv python install --python-preference only-managed ${{ matrix.python-version }}
 
       - name: Run tests
-        run: nox -s tests_coverage --python ${{ matrix.python-version }}
+        run: nox -s test --python ${{ matrix.python-version }}
         env:
           DIFF_AGAINST: HEAD
           PYTEST_XDIST_AUTO_NUM_WORKERS: 0

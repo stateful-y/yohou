@@ -1,3 +1,5 @@
+"""Visualization functions for forecast analysis using Plotly."""
+
 from typing import List, Optional
 
 import numpy as np
