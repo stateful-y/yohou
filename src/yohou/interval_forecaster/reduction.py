@@ -1,6 +1,6 @@
 """Implementation of reduction-based interval forecasters."""
 
-from typing import List, Literal, Optional
+from typing import List, Literal
 
 import polars as pl
 import polars.selectors as cs
@@ -70,6 +70,13 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     Notes
     -----
+    Reduction strategies:
+    - Direct: Separate model for each horizon step; predicts directly from inputs.
+    - Multi-output: Single model predicts all horizon steps simultaneously.
+
+    All models can be applied recursively for multi-step forecasting by specifying
+    the forecasting horizon during prediction.
+
     This forecaster uses quantile regression to produce prediction intervals.
     For each coverage rate α, it predicts:
 
@@ -110,8 +117,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     def fit(
         self,
         y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "IntervalReductionForecaster":
         """Fits the forecaster and returns it.

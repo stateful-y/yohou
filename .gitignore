@@ -66,3 +66,9 @@ yohou/_version.py
 
 # vscode
 .vscode
+
+# Type checkers
+.ruff_cache/
+
+# GitHub Copilot
+# .github/copilot_plans/

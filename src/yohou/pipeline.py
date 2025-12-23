@@ -4,6 +4,7 @@ from collections import Counter
 from copy import deepcopy
 from itertools import chain
 from numbers import Integral
+from typing import Any, Iterator
 
 import polars as pl
 import polars.selectors as cs
@@ -59,7 +60,7 @@ from yohou.base import BaseTransformer
 __all__ = ["Pipeline", "FeatureUnion", "ColumnTransformer"]
 
 
-class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
+class Pipeline(BaseTransformer, _BaseComposition):
     """
     A sequence of data transformers with an optional final predictor.
 
@@ -127,12 +128,68 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         Names of features seen during :term:`fit`. Only defined if the
         underlying estimator exposes such an attribute when fit.
 
+    See Also
+    --------
+    sklearn.pipeline.Pipeline : Underlying scikit-learn pipeline class.
+    BaseTransformer : Base class for time series transformers.
+    FeatureUnion : Parallel transformer combination.
+    ColumnTransformer : Apply transformers to specific columns.
+
+    Notes
+    -----
+    All input data must include a `time` column with datetime values. The `time`
+    column is preserved through all transformations.
+
+    The `observation_horizon` property accumulates across all steps, returning
+    the sum of all transformer observation horizons. This indicates the total
+    amount of historical data required by the pipeline.
+
+    Supports time series-specific `update()` method for incremental learning,
+    allowing the pipeline to incorporate new observations without full retraining.
+
+    The final step can be a forecaster, enabling end-to-end forecasting pipelines
+    that transform features and generate predictions.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime, timedelta
+    >>> from yohou.pipeline import Pipeline
+    >>> from yohou.preprocessing import SeasonalDifferencing
+    >>> from yohou.preprocessing.window import LagTransformer
+    >>>
+    >>> # Create sample weekly time series data (52 weeks)
+    >>> time = pl.datetime_range(
+    ...     start=datetime(2023, 1, 1),
+    ...     end=datetime(2023, 1, 1) + timedelta(weeks=51),
+    ...     interval="1w",
+    ...     eager=True
+    ... )
+    >>> data = pl.DataFrame({
+    ...     "time": time,
+    ...     "sales": range(1, 53)
+    ... })
+    >>>
+    >>> # Example 1: Create a sequential preprocessing pipeline
+    >>> pipe = Pipeline([
+    ...     ('deseason', SeasonalDifferencing(seasonality=4)),
+    ...     ('lags', LagTransformer(lag=[1, 2, 3]))
+    ... ])
+    >>>
+    >>> # Example 2: Access individual steps by name
+    >>> pipe.named_steps['deseason']  # doctest: +ELLIPSIS
+    SeasonalDifferencing(...)
+    >>>
+    >>> # Example 3: Access individual steps by position
+    >>> pipe[0]  # doctest: +ELLIPSIS
+    SeasonalDifferencing(...)
+
     """
 
     # BaseEstimator interface
     _required_parameters = ["steps"]
 
-    _parameter_constraints: dict[str, object] = {
+    _parameter_constraints: dict[str, Any] = {
         "steps": [list, Hidden(tuple)],
         "transform_input": [list, None],
         "memory": [None, str, HasMethods(["cache"])],
@@ -141,50 +198,300 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
 
     def __init__(
         self,
-        steps: list[tuple[str, object]],
+        steps: list[tuple[str, Any]],
         *,
         transform_input: list[str] | None = None,
         memory: None | Memory | str = None,
         verbose: bool = False,
     ) -> None:
-        """Initialize pipeline.
-
-        Parameters
-        ----------
-        steps : list of tuple
-            List of (name, transformer) tuples.
-
-        transform_input : list of str or None, default=None
-            Which inputs to transform.
-
-        memory : Memory, str, or None, default=None
-            Caching mechanism.
-
-        verbose : bool, default=False
-            Enable verbose output.
-
-        """
         self.steps = steps
         self.transform_input = transform_input
         self.memory = memory
         self.verbose = verbose
 
-    get_params = sklearn_Pipeline.get_params
-    set_params = sklearn_Pipeline.set_params
-    _iter = sklearn_Pipeline._iter
-    __len__ = sklearn_Pipeline.__len__
-    __getitem__ = sklearn_Pipeline.__getitem__
-    _fit = sklearn_Pipeline._fit
-    named_steps = sklearn_Pipeline.named_steps
-    _final_estimator = sklearn_Pipeline._final_estimator
-    _log_message = sklearn_Pipeline._log_message
-    _check_method_params = sklearn_Pipeline._check_method_params
-    get_feature_names_out = sklearn_Pipeline.get_feature_names_out
-    n_features_in_ = sklearn_Pipeline.n_features_in_
-    feature_names_in_ = sklearn_Pipeline.feature_names_in_
-    __sklearn_is_fitted__ = sklearn_Pipeline.__sklearn_is_fitted__
-    _sk_visual_block_ = sklearn_Pipeline._sk_visual_block_
-    _get_metadata_for_step = sklearn_Pipeline._get_metadata_for_step
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """Get parameters for this estimator.
+
+        Parameters
+        ----------
+        deep : bool, default=True
+            If True, will return the parameters for this estimator and
+            contained subobjects that are estimators.
+
+        Returns
+        -------
+        params : dict[str, Any]
+            Parameter names mapped to their values.
+
+        """
+        return _BaseComposition._get_params(self, attr="steps", deep=deep)  # type: ignore[return-value]
+
+    def set_params(self, **params: Any) -> "Pipeline":
+        """Set the parameters of this estimator.
+
+        Parameters
+        ----------
+        **params : dict
+            Estimator parameters.
+
+        Returns
+        -------
+        self : Pipeline
+            Pipeline instance.
+
+        """
+        _BaseComposition._set_params(self, attr="steps", **params)
+        return self
+
+    def _iter(
+        self,
+        with_final: bool = True,
+        filter_passthrough: bool = True,
+    ) -> Iterator[tuple[int, str, Any]]:
+        """Generate (idx, name, trans) tuples from self.steps.
+
+        Parameters
+        ----------
+        with_final : bool, default=True
+            Include the final estimator.
+
+        filter_passthrough : bool, default=True
+            Filter out 'passthrough' steps.
+
+        Yields
+        ------
+        idx : int
+            Step index.
+        name : str
+            Step name.
+        trans : Any
+            Step transformer.
+
+        """
+        return sklearn_Pipeline._iter(  # type: ignore[return-value]
+            self,
+            with_final=with_final,
+            filter_passthrough=filter_passthrough,
+        )
+
+    def __len__(self) -> int:
+        """Return the length of the Pipeline.
+
+        Returns
+        -------
+        length : int
+            Number of steps in the pipeline.
+
+        """
+        return len(self.steps)
+
+    def __getitem__(self, ind: int | str | slice) -> Any:
+        """Return a sub-pipeline or a single estimator in the pipeline.
+
+        Parameters
+        ----------
+        ind : int, str, or slice
+            Index, name, or slice of the step to retrieve.
+
+        Returns
+        -------
+        estimator : Any
+            The estimator or sub-pipeline.
+
+        """
+        if isinstance(ind, slice):
+            if ind.step is not None:
+                raise ValueError("Pipeline slicing only supports a step of 1")
+            return self.__class__(steps=self.steps[ind], memory=self.memory, verbose=self.verbose)
+        elif isinstance(ind, int):
+            _, est = self.steps[ind]
+            return est
+        else:
+            # String case - get by name
+            return self.named_steps[ind]
+
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None, routed_params: Any) -> pl.DataFrame:
+        """Fit the pipeline.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Training data.
+
+        y : pl.DataFrame | None
+            Training targets.
+
+        routed_params : Any
+            Routed parameters.
+
+        Returns
+        -------
+        X_t : pl.DataFrame
+            Transformed data.
+
+        """
+        return sklearn_Pipeline._fit(self, X, y, routed_params)  # type: ignore[return-value]
+
+    @property
+    def named_steps(self) -> Bunch:
+        """Access the steps by name.
+
+        Returns
+        -------
+        named_steps : Bunch
+            Dictionary-like object with step names as keys.
+
+        """
+        return sklearn_Pipeline.named_steps.fget(self)  # type: ignore[attr-defined]
+
+    @property
+    def _final_estimator(self) -> Any:
+        """Get the final estimator.
+
+        Returns
+        -------
+        estimator : Any
+            The final estimator in the pipeline.
+
+        """
+        return sklearn_Pipeline._final_estimator.fget(self)  # type: ignore[attr-defined]
+
+    def _log_message(self, step_idx: int) -> str:
+        """Get log message for a step.
+
+        Parameters
+        ----------
+        step_idx : int
+            Index of the step.
+
+        Returns
+        -------
+        message : str
+            Log message.
+
+        """
+        return sklearn_Pipeline._log_message(self, step_idx)  # type: ignore[return-value]
+
+    def _check_method_params(self, method: str, props: dict[str, Any]) -> Any:
+        """Check and route method parameters.
+
+        Parameters
+        ----------
+        method : str
+            Method name.
+
+        props : dict[str, Any]
+            Properties to check.
+
+        Returns
+        -------
+        routed_params : Any
+            Routed parameters.
+
+        """
+        if _routing_enabled():
+            return process_routing(self, method, **props)
+        else:
+            # Legacy behavior: check fit params by step prefix
+            fit_params_steps: dict[str, dict[str, Any]] = {name: {} for name, _ in self.steps}
+            for pname, pval in props.items():
+                if "__" not in pname:
+                    raise ValueError(
+                        f"Pipeline.fit does not accept the {pname} parameter. "
+                        "You can pass parameters to specific steps of your "
+                        "pipeline using the stepname__parameter format, e.g. "
+                        "`Pipeline.fit(X, y, logisticregression__sample_weight"
+                        "=sample_weight)`."
+                    )
+
+                step, param = pname.split("__", 1)
+                fit_params_steps[step][param] = pval
+
+            routed_params: dict[str, Any] = {}
+            for step_name, _ in self.steps:
+                routed_params[step_name] = {method: fit_params_steps[step_name]}
+
+            return routed_params
+
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> Any:
+        """Get output feature names for transformation.
+
+        Parameters
+        ----------
+        input_features : list[str] | None, default=None
+            Input feature names.
+
+        Returns
+        -------
+        feature_names_out : Any
+            Output feature names.
+
+        """
+        return super().get_feature_names_out(input_features)
+
+    @property
+    def n_features_in_(self) -> int:
+        """Number of features seen during fit.
+
+        Returns
+        -------
+        n_features_in_ : int
+            Number of input features.
+
+        """
+        return sklearn_Pipeline.n_features_in_.fget(self)  # type: ignore[attr-defined]
+
+    @property
+    def feature_names_in_(self) -> Any:
+        """Names of features seen during fit.
+
+        Returns
+        -------
+        feature_names_in_ : Any
+            Names of input features.
+
+        """
+        return sklearn_Pipeline.feature_names_in_.fget(self)  # type: ignore[attr-defined]
+
+    def __sklearn_is_fitted__(self) -> bool:
+        """Check if the pipeline is fitted.
+
+        Returns
+        -------
+        is_fitted : bool
+            True if the pipeline is fitted.
+
+        """
+        return sklearn_Pipeline.__sklearn_is_fitted__(self)  # type: ignore[return-value]
+
+    def _sk_visual_block_(self) -> Any:
+        """Get visual block representation.
+
+        Returns
+        -------
+        visual_block : Any
+            Visual block representation.
+
+        """
+        # Delegate to sklearn's implementation
+        # Access the method from sklearn_Pipeline and call it as unbound
+        return sklearn_Pipeline._sk_visual_block_(self)  # type: ignore[arg-type]
+
+    def _get_metadata_for_step(self, **kwargs: Any) -> Any:
+        """Get metadata for a specific step.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Arguments passed from sklearn's _fit method.
+
+        Returns
+        -------
+        metadata : Any
+            Metadata for the step.
+
+        """
+        return sklearn_Pipeline._get_metadata_for_step(self, **kwargs)
 
     @property
     def observation_horizon(self) -> int:
@@ -195,11 +502,18 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         int
             Total observation horizon needed.
 
+        Raises
+        ------
+        NotFittedError
+            If the pipeline has not been fitted yet.
+
         """
+        check_is_fitted(self)
+
         observation_horizon = 0
         for _, t in self.steps:
-            if t != "passthrough":
-                observation_horizon += t.observation_horizon  # type: ignore[attr-defined]
+            if t != "passthrough" and t is not None and hasattr(t, "observation_horizon"):
+                observation_horizon += t.observation_horizon
 
         return observation_horizon
 
@@ -231,7 +545,7 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         # estimators in Pipeline.steps are not validated yet
         prefer_skip_nested_validation=False
     )
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object) -> "Pipeline":
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: Any) -> "Pipeline":
         """Fit the model.
 
         Fit all the transformers one after the other and sequentially transform the
@@ -279,8 +593,8 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         prefer_skip_nested_validation=False
     )
     def fit_transform(
-        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object
-    ) -> object:
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: Any
+    ) -> pl.DataFrame:
         """Fit the model and transform with the final estimator.
 
         Fit all the transformers one after the other and sequentially transform
@@ -321,12 +635,13 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         last_step = self._final_estimator
         with _print_elapsed_time("Pipeline", self._log_message(len(self.steps) - 1)):
             if last_step == "passthrough":
-                return X_t
+                return X_t  # type: ignore[return-value]
 
             last_step_params = routed_params[self.steps[-1][0]]
-            return last_step.fit_transform(X_t, y, **last_step_params["fit_transform"])
+            result = last_step.fit_transform(X_t, y, **last_step_params["fit_transform"])
+            return result  # type: ignore[return-value]
 
-    def transform(self, X: pl.DataFrame, **params: object) -> object:
+    def transform(self, X: pl.DataFrame, **params: Any) -> pl.DataFrame:
         """Transform the data, and apply `transform` with the final estimator.
 
         Call `transform` of each transformer in the pipeline. The transformed
@@ -361,21 +676,23 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         X_t = X
         for _, name, transform in self._iter():
             X_t = transform.transform(X_t, **routed_params[name].transform)
-        return X_t
+        return X_t  # type: ignore[return-value]
 
     def _can_inverse_transform(self) -> bool:
-        """Check if all steps support inverse_transform.
+        """Check if all steps support `inverse_transform`.
 
         Returns
         -------
         bool
-            True if all steps have inverse_transform method.
+            True if all steps have `inverse_transform` method.
 
         """
         return all(hasattr(t, "inverse_transform") for _, _, t in self._iter())
 
     @available_if(_can_inverse_transform)  # type: ignore[untyped-decorator]
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame, **params: object) -> object:
+    def inverse_transform(
+        self, X_t: pl.DataFrame, X_p: pl.DataFrame, **params: Any
+    ) -> pl.DataFrame:
         """Apply `inverse_transform` for each step in a reverse order.
 
         All estimators in the pipeline must support `inverse_transform`.
@@ -412,7 +729,8 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
 
             # Build X_p_iter_list by transforming X_p through each step
             # The key insight: for the first transformer's inverse, we need
-            # X_p[sum_of_other_observation_horizons : observation_horizon], not X_p[:first_observation_horizon]
+            # X_p[sum_of_other_observation_horizons : observation_horizon]
+            # not X_p[:first_observation_horizon]
             steps_list = list(self._iter())
 
             X_p_iter = X_p
@@ -434,19 +752,22 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
             offset = sum(t.observation_horizon for _, _, t in steps_list[1:])
             X_p_iter_list.append(X_p[offset : offset + first_transform.observation_horizon])
 
-            X_p_iter_list.reverse()
+            # NOTE: Do NOT reverse! X_p_iter_list is built as: [X_p for last step's inverse, ..., X_p for first step's inverse]
+            # which matches reverse_iter: [last step, ..., first step]
+            # X_p_iter_list.reverse()
 
             X = X_t
             for (_, _, transform), X_p_iter in zip(reverse_iter, X_p_iter_list):
                 X = transform.inverse_transform(X_t=X, X_p=X_p_iter)
 
         else:
+            X = X_t
             for _, name, transform in reverse_iter:
                 X = transform.inverse_transform(X_t, **routed_params[name].inverse_transform)
 
-        return X
+        return X  # type: ignore[return-value]  # type: ignore[return-value]
 
-    def get_metadata_routing(self) -> object:
+    def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing of this object.
 
         Please check :ref:`User Guide <metadata_routing>` on how the routing
@@ -521,13 +842,13 @@ class Pipeline(BaseTransformer, _BaseComposition):  # type: ignore[misc]
 
 
 def _hstack(
-    Xs: list[object], column_names: list[list[str]], observation_horizons: list[int]
+    Xs: list[pl.DataFrame], column_names: list[list[str]], observation_horizons: list[int]
 ) -> pl.DataFrame:
     """Stack transformed features horizontally, aligning observation horizons.
 
     Parameters
     ----------
-    Xs : list
+    Xs : list of pl.DataFrame
         List of transformed DataFrames.
 
     column_names : list of list of str
@@ -544,20 +865,25 @@ def _hstack(
     """
     ref_observation_horizon = max(observation_horizons)
     time = Xs[0].select(cs.by_name("time"))[ref_observation_horizon - observation_horizons[0] :]  # type: ignore[attr-defined]
-    Xs_concat = pl.concat(
-        [
-            X.select(~cs.by_name("time"))[ref_observation_horizon - observation_horizon :]  # type: ignore[attr-defined]
-            for X, observation_horizon in zip(Xs, observation_horizons)
-        ],
-        how="horizontal",
-    )
-    Xs_concat.columns = column_names
+
+    # Rename columns before concat to avoid duplicates
+    Xs_renamed = []
+    col_idx = 0
+    for X, observation_horizon, cols in zip(Xs, observation_horizons, column_names):
+        X_no_time = X.select(~cs.by_name("time"))[ref_observation_horizon - observation_horizon :]  # type: ignore[attr-defined]
+        # Create rename mapping for this transformer's columns
+        rename_map = dict(zip(X_no_time.columns, cols))
+        X_renamed = X_no_time.rename(rename_map)
+        Xs_renamed.append(X_renamed)
+        col_idx += len(cols)
+
+    Xs_concat = pl.concat(Xs_renamed, how="horizontal")
     result = pl.concat([time, Xs_concat], how="horizontal")
 
     return result
 
 
-class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
+class FeatureUnion(BaseTransformer, _BaseComposition):
     """Concatenates results of multiple transformer objects.
 
     This estimator applies a list of transformer objects in parallel to the
@@ -616,31 +942,316 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         Names of features seen during :term:`fit`. Defined only when
         `X` has feature names that are all strings.
 
+    See Also
+    --------
+    sklearn.pipeline.FeatureUnion : Underlying scikit-learn feature union class.
+    Pipeline : Sequential transformer chaining.
+    BaseTransformer : Base class for transformers.
+    preprocessing.window.LagTransformer : Common transformer for lag features.
+
+    Notes
+    -----
+    Transformers run in parallel when `n_jobs` is set to a value other than 1.
+    This can significantly improve performance for computationally expensive transformers.
+
+    Results are concatenated horizontally with automatic time alignment. The
+    internal `_hstack()` function handles transformers with different observation
+    horizons by aligning their outputs to the maximum observation horizon.
+
+    The `observation_horizon` property returns the MAXIMUM across all transformers
+    (not the sum). This is because all transformers operate on the same input data,
+    and the union needs enough history to satisfy the most demanding transformer.
+
+    Useful for multi-scale feature engineering, such as combining short-term and
+    long-term lag features, or mixing different preprocessing approaches in parallel.
+
+    All transformers must accept the same input time series with a `time` column.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime, timedelta
+    >>> from yohou.pipeline import FeatureUnion
+    >>> from yohou.preprocessing.window import LagTransformer
+    >>>
+    >>> # Create sample weekly time series data (52 weeks)
+    >>> time = pl.datetime_range(
+    ...     start=datetime(2023, 1, 1),
+    ...     end=datetime(2023, 1, 1) + timedelta(weeks=51),
+    ...     interval="1w",
+    ...     eager=True
+    ... )
+    >>> data = pl.DataFrame({
+    ...     "time": time,
+    ...     "demand": range(1, 53)
+    ... })
+    >>>
+    >>> # Example 1: Combine short-term and long-term lags for multi-scale features
+    >>> union = FeatureUnion([
+    ...     ('short_lags', LagTransformer(lag=[1, 2, 3])),
+    ...     ('long_lags', LagTransformer(lag=[7, 14, 21]))
+    ... ])
+    >>>
+    >>> # Example 2: Access transformers by name
+    >>> union.named_transformers['short_lags']  # doctest: +ELLIPSIS
+    LagTransformer(...)
+    >>>
+    >>> # Example 3: Access transformers by position
+    >>> union[0]  # doctest: +ELLIPSIS
+    LagTransformer(...)
+
     """
 
     _required_parameters = ["transformer_list"]
 
-    get_params = sklearn_FeatureUnion.get_params
-    set_params = sklearn_FeatureUnion.set_params
-    _iter = sklearn_FeatureUnion._iter
-    __getitem__ = sklearn_FeatureUnion.__getitem__
-    named_transformers = sklearn_FeatureUnion.named_transformers
-    _log_message = sklearn_FeatureUnion._log_message
-    _parallel_func = sklearn_FeatureUnion._parallel_func
-    _update_transformer_list = sklearn_FeatureUnion._update_transformer_list
-    get_feature_names_out = sklearn_FeatureUnion.get_feature_names_out
-    n_features_in_ = sklearn_FeatureUnion.n_features_in_
-    feature_names_in_ = sklearn_FeatureUnion.feature_names_in_
-    _add_prefix_for_feature_names_out = sklearn_FeatureUnion._add_prefix_for_feature_names_out
-    __sklearn_is_fitted__ = sklearn_FeatureUnion.__sklearn_is_fitted__
-    _sk_visual_block_ = sklearn_FeatureUnion._sk_visual_block_
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """Get parameters for this estimator.
+
+        Parameters
+        ----------
+        deep : bool, default=True
+            If True, will return the parameters for this estimator and
+            contained subobjects that are estimators.
+
+        Returns
+        -------
+        params : dict[str, Any]
+            Parameter names mapped to their values.
+
+        """
+        return _BaseComposition._get_params(self, attr="transformer_list", deep=deep)  # type: ignore[return-value]
+
+    def set_params(self, **params: Any) -> "FeatureUnion":
+        """Set the parameters of this estimator.
+
+        Parameters
+        ----------
+        **params : dict
+            Estimator parameters.
+
+        Returns
+        -------
+        self : FeatureUnion
+            FeatureUnion instance.
+
+        """
+        _BaseComposition._set_params(self, attr="transformer_list", **params)
+        return self
+
+    def _iter(self) -> Iterator[tuple[str, Any, float]]:
+        """Generate (name, trans, weight) tuples excluding None and 'drop' transformers.
+
+        Yields
+        ------
+        name : str
+            Transformer name.
+        trans : Any
+            Transformer instance.
+        weight : float
+            Transformer weight.
+
+        """
+        return sklearn_FeatureUnion._iter(self)  # type: ignore[arg-type,return-value]
+
+    def __getitem__(self, ind: int | str | slice) -> Any:
+        """Return a sub-union or a single transformer.
+
+        Parameters
+        ----------
+        ind : int, str, or slice
+            Index, name, or slice of the transformer to retrieve.
+
+        Returns
+        -------
+        transformer : Any
+            The transformer or sub-union.
+
+        """
+        if isinstance(ind, slice):
+            if ind.step is not None:
+                raise ValueError("FeatureUnion slicing only supports a step of 1")
+            return self.__class__(
+                transformer_list=self.transformer_list[ind],
+                n_jobs=self.n_jobs,
+                transformer_weights=self.transformer_weights,
+                verbose=self.verbose,
+            )
+        elif isinstance(ind, int):
+            _, est = self.transformer_list[ind]
+            return est
+        else:
+            # String case - get by name
+            return self.named_transformers[ind]
+
+    @property
+    def named_transformers(self) -> Bunch:
+        """Access the transformers by name.
+
+        Returns
+        -------
+        named_transformers : Bunch
+            Dictionary-like object with transformer names as keys.
+
+        """
+        return Bunch(**{name: trans for name, trans in self.transformer_list})
+
+    def _log_message(self, name: str, idx: int, total: int) -> str:
+        """Get log message for a transformer.
+
+        Parameters
+        ----------
+        name : str
+            Transformer name.
+        idx : int
+            Current index.
+        total : int
+            Total number of transformers.
+
+        Returns
+        -------
+        message : str
+            Log message.
+
+        """
+        return f"(step {idx} of {total}) Processing {name}"
+
+    def _parallel_func(
+        self, X: pl.DataFrame, y: pl.DataFrame | None, func: Any, routed_params: Any
+    ) -> Any:
+        """Run func in parallel on X and y.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Input data.
+        y : pl.DataFrame | None
+            Target data.
+        func : Any
+            Function to apply.
+        routed_params : Any
+            Routed parameters.
+
+        Returns
+        -------
+        results : Any
+            Results from parallel execution.
+
+        """
+        return sklearn_FeatureUnion._parallel_func(self, X, y, func, routed_params)  # type: ignore[arg-type]
+
+    def _update_transformer_list(self, transformers: Any) -> None:
+        """Update transformer_list with fitted transformers.
+
+        Parameters
+        ----------
+        transformers : Any
+            Fitted transformers.
+
+        """
+        transformers_iter = iter(transformers)
+        self.transformer_list[:] = [
+            (name, next(transformers_iter) if old is not None else None)
+            for name, old in self.transformer_list
+        ]
+
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> Any:
+        """Get output feature names.
+
+        Parameters
+        ----------
+        input_features : list[str] | None, default=None
+            Input feature names.
+
+        Returns
+        -------
+        feature_names_out : Any
+            Output feature names.
+
+        """
+        return super().get_feature_names_out(input_features)
+
+    @property
+    def n_features_in_(self) -> int:
+        """Number of features seen during fit.
+
+        Returns
+        -------
+        n_features_in_ : int
+            Number of input features.
+
+        """
+        # Delegate to first transformer
+        for _, trans in self.transformer_list:
+            if hasattr(trans, "n_features_in_"):
+                return trans.n_features_in_
+        raise AttributeError("n_features_in_ not available")
+
+    @property
+    def feature_names_in_(self) -> Any:
+        """Names of features seen during fit.
+
+        Returns
+        -------
+        feature_names_in_ : Any
+            Names of input features.
+
+        """
+        for _, trans in self.transformer_list:
+            if hasattr(trans, "feature_names_in_"):
+                return trans.feature_names_in_
+        raise AttributeError("feature_names_in_ not available")
+
+    def _add_prefix_for_feature_names_out(self, feature_names_out: list[list[str]]) -> list[str]:
+        """Add prefixes to feature names.
+
+        Parameters
+        ----------
+        feature_names_out : list[list[str]]
+            Feature names from each transformer.
+
+        Returns
+        -------
+        prefixed_names : list[str]
+            Feature names with prefixes.
+
+        """
+        return sklearn_FeatureUnion._add_prefix_for_feature_names_out(self, feature_names_out)  # type: ignore[arg-type]
+
+    def __sklearn_is_fitted__(self) -> bool:
+        """Check if fitted.
+
+        Returns
+        -------
+        is_fitted : bool
+            True if the union is fitted.
+
+        """
+        return sklearn_FeatureUnion.__sklearn_is_fitted__(self)  # type: ignore[return-value]
+
+    def _sk_visual_block_(self) -> Any:
+        """Get visual block representation.
+
+        Returns
+        -------
+        visual_block : Any
+            Visual block representation.
+
+        """
+        return sklearn_FeatureUnion._sk_visual_block_(self)  # type: ignore[arg-type]
 
     def _get_observation_horizons(self) -> list[int]:
-        """Get observation horizons from all transformers."""
+        """Get observation horizons from all transformers.
+
+        Returns
+        -------
+        observation_horizons : list[int]
+            List of observation horizons from each transformer.
+
+        """
         observation_horizons = []
         for _, t, _ in self._iter():
             observation_horizon = 0
-            if t != "passthrough":
+            if t != "passthrough" and t is not None and hasattr(t, "observation_horizon"):
                 observation_horizon = t.observation_horizon
 
             observation_horizons.append(observation_horizon)
@@ -649,7 +1260,21 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
 
     @property
     def observation_horizon(self) -> int:
-        """Maximum observation horizon across all transformers."""
+        """Maximum observation horizon across all transformers.
+
+        Returns
+        -------
+        int
+            Maximum observation horizon needed.
+
+        Raises
+        ------
+        NotFittedError
+            If the feature union has not been fitted yet.
+
+        """
+        check_is_fitted(self)
+
         observation_horizons = self._get_observation_horizons()
         observation_horizon = max(observation_horizons)
 
@@ -657,33 +1282,13 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
 
     def __init__(
         self,
-        transformer_list: list[tuple[str, object]],
+        transformer_list: list[tuple[str, Any]],
         *,
         n_jobs: int | None = None,
         transformer_weights: dict[str, float] | None = None,
         verbose: bool = False,
         verbose_feature_names_out: bool = True,
     ) -> None:
-        """Initialize feature union.
-
-        Parameters
-        ----------
-        transformer_list : list of tuple
-            List of (name, transformer) tuples.
-
-        n_jobs : int or None, default=None
-            Number of parallel jobs.
-
-        transformer_weights : dict or None, default=None
-            Weights for transformer outputs.
-
-        verbose : bool, default=False
-            Enable verbose output.
-
-        verbose_feature_names_out : bool, default=True
-            Prefix feature names with transformer names.
-
-        """
         self.transformer_list = transformer_list
         self.n_jobs = n_jobs
         self.transformer_weights = transformer_weights
@@ -736,7 +1341,9 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
                     "but it is not present in transformer_list."
                 )
 
-    def fit(self, X: object, y: object = None, **fit_params: object) -> "FeatureUnion":
+    def fit(
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **fit_params: Any
+    ) -> "FeatureUnion":
         """Fit all transformers using X.
 
         Parameters
@@ -833,13 +1440,18 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
         Xs, transformers = zip(*results)
         self._update_transformer_list(transformers)
 
-        return _hstack(
+        # Extract actual column names from each DataFrame (excluding time)
+        column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
+
+        result = _hstack(
             list(Xs),
-            column_names=self.get_feature_names_out(),
+            # column_names=self.get_feature_names_out(),
+            column_names=column_names,
             observation_horizons=self._get_observation_horizons(),
         )
+        return result  # type: ignore[return-value]
 
-    def transform(self, X: pl.DataFrame, **params: object) -> object:
+    def transform(self, X: pl.DataFrame, **params: Any) -> pl.DataFrame:
         """Transform X separately by each transformer, concatenate results.
 
         Parameters
@@ -878,13 +1490,18 @@ class FeatureUnion(BaseTransformer, _BaseComposition):  # type: ignore[misc]
             time = X.select(cs.by_name("time"))
             return time
 
-        return _hstack(
+        # Extract actual column names from each DataFrame (excluding time)
+        column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
+
+        result = _hstack(
             Xs,
-            column_names=self.get_feature_names_out(),
+            # column_names=self.get_feature_names_out(),
+            column_names=column_names,
             observation_horizons=self._get_observation_horizons(),
         )
+        return result  # type: ignore[return-value]
 
-    def get_metadata_routing(self) -> object:
+    def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing of this object.
 
         Please check :ref:`User Guide <metadata_routing>` on how the routing
@@ -919,7 +1536,7 @@ _ERR_MSG_1DCOLUMN = (
 )
 
 
-class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc]
+class ColumnTransformer(BaseTransformer, _BaseComposition):
     """Applies transformers to columns of a polars DataFrame.
 
     This estimator allows different columns or column subsets of the input
@@ -1026,6 +1643,13 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         Names of features seen during :term:`fit`. Defined only when `X`
         has feature names that are all strings.
 
+    See Also
+    --------
+    sklearn.compose.ColumnTransformer : Underlying scikit-learn column transformer.
+    Pipeline : Sequential transformation.
+    BaseTransformer : Base transformer interface.
+    preprocessing.stationarization.SeasonalDifferencing : Common column-wise transformer.
+
     Notes
     -----
     The order of the columns in the transformed feature matrix follows the
@@ -1034,9 +1658,72 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
     dropped from the resulting transformed feature matrix, unless specified
     in the `passthrough` keyword. Those columns specified with `passthrough`
     are added at the right to the output of the transformers.
+
+    Apply heterogeneous preprocessing to different columns, useful when different
+    time series have different characteristics (e.g., different seasonal patterns).
+
+    Column selection by name (string) works seamlessly with polars DataFrames,
+    allowing intuitive column-specific transformations.
+
+    Time alignment across columns with different observation horizons is handled
+    automatically by the internal `_hstack()` function, ensuring all transformed
+    columns are properly aligned in time.
+
+    Setting `remainder='passthrough'` (default is 'drop') preserves untransformed
+    columns in the output, useful for keeping auxiliary columns that don't require
+    transformation.
+
+    The `verbose_feature_names_out` parameter (default=True) prefixes output column
+    names with transformer names (e.g., 'deseason__sales') to prevent name collisions
+    when multiple transformers produce columns with the same names.
+
+    The `observation_horizon` property returns the MAXIMUM across all column
+    transformers, as the transformer needs enough history to satisfy the most
+    demanding column-specific transformation.
+
+    All columns must share the same `time` index. The `time` column is automatically
+    handled and preserved in the output.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime, timedelta
+    >>> from yohou.pipeline import ColumnTransformer
+    >>> from yohou.preprocessing import SeasonalDifferencing, SeasonalLogDifferencing
+    >>>
+    >>> # Create sample weekly time series data with multiple columns (52 weeks)
+    >>> time = pl.datetime_range(
+    ...     start=datetime(2023, 1, 1),
+    ...     end=datetime(2023, 1, 1) + timedelta(weeks=51),
+    ...     interval="1w",
+    ...     eager=True
+    ... )
+    >>> data = pl.DataFrame({
+    ...     "time": time,
+    ...     "sales": range(1, 53),
+    ...     "temperature": range(10, 62)
+    ... })
+    >>>
+    >>> # Example 1: Apply different seasonal differencing to different columns
+    >>> ct = ColumnTransformer([
+    ...     ('sales_diff', SeasonalDifferencing(seasonality=4), 'sales'),
+    ...     ('temp_diff', SeasonalDifferencing(seasonality=7), 'temperature')
+    ... ])
+    >>>
+    >>> # Example 2: Use remainder='passthrough' to keep auxiliary columns
+    >>> ct_passthrough = ColumnTransformer(
+    ...     [('sales_diff', SeasonalDifferencing(seasonality=4), 'sales')],
+    ...     remainder='passthrough'
+    ... )
+    >>>
+    >>> # Example 3: Disable verbose_feature_names_out for cleaner names
+    >>> ct_clean = ColumnTransformer(
+    ...     [('diff', SeasonalDifferencing(seasonality=4), 'sales')],
+    ...     verbose_feature_names_out=False
+    ... )
     """
 
-    _parameter_constraints: dict[str, object] = {
+    _parameter_constraints: dict[str, Any] = {
         "transformers": [list, Hidden(tuple)],
         "remainder": [
             StrOptions({"drop", "passthrough"}),
@@ -1049,37 +1736,323 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         "verbose_feature_names_out": ["boolean"],
     }
 
-    get_params = sklearn_ColumnTransformer.get_params
-    set_params = sklearn_ColumnTransformer.set_params
-    _transformers = sklearn_ColumnTransformer._transformers
-    _iter = sklearn_ColumnTransformer._iter
-    __getitem__ = sklearn_ColumnTransformer.__getitem__
-    _log_message = sklearn_ColumnTransformer._log_message
-    _update_fitted_transformers = sklearn_ColumnTransformer._update_fitted_transformers
-    _get_feature_name_out_for_transformer = (
-        sklearn_ColumnTransformer._get_feature_name_out_for_transformer
-    )
-    get_feature_names_out = sklearn_ColumnTransformer.get_feature_names_out
-    _get_remainder_cols = sklearn_ColumnTransformer._get_remainder_cols
-    _get_remainder_cols_dtype = sklearn_ColumnTransformer._get_remainder_cols_dtype
-    _add_prefix_for_feature_names_out = sklearn_ColumnTransformer._add_prefix_for_feature_names_out
-    _sk_visual_block_ = sklearn_ColumnTransformer._sk_visual_block_
-    _get_empty_routing = sklearn_ColumnTransformer._get_empty_routing
-    _validate_remainder = sklearn_ColumnTransformer._validate_remainder
-    _validate_column_callables = sklearn_ColumnTransformer._validate_column_callables
-    _record_output_indices = sklearn_ColumnTransformer._record_output_indices
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """Get parameters for this estimator.
+
+        Parameters
+        ----------
+        deep : bool, default=True
+            If True, will return the parameters for this estimator and
+            contained subobjects that are estimators.
+
+        Returns
+        -------
+        params : dict[str, Any]
+            Parameter names mapped to their values.
+
+        """
+        return _BaseComposition._get_params(self, attr="transformers", deep=deep)  # type: ignore[return-value]
+
+    def set_params(self, **params: Any) -> "ColumnTransformer":
+        """Set the parameters of this estimator.
+
+        Parameters
+        ----------
+        **params : dict
+            Estimator parameters.
+
+        Returns
+        -------
+        self : ColumnTransformer
+            ColumnTransformer instance.
+
+        """
+        _BaseComposition._set_params(self, attr="transformers", **params)
+        return self
+
+    @property
+    def _transformers(self) -> list[tuple[str, Any, Any]]:
+        """List of (name, fitted_transformer, column) tuples.
+
+        Returns
+        -------
+        transformers : list[tuple[str, Any, Any]]
+            The fitted transformers.
+
+        """
+        return sklearn_ColumnTransformer._transformers.fget(self)  # type: ignore[attr-defined]
+
+    def _iter(
+        self,
+        fitted: bool = False,
+        column_as_labels: bool = False,
+        skip_drop: bool = False,
+        skip_empty_columns: bool = True,
+    ) -> Iterator[tuple[str, Any, Any, Any]]:
+        """Generate (name, trans, column, weight) tuples.
+
+        Parameters
+        ----------
+        fitted : bool, default=False
+            Whether to iterate over fitted transformers.
+        column_as_labels : bool, default=False
+            Whether to return columns as labels.
+        skip_drop : bool, default=False
+            Whether to skip 'drop' transformers.
+        skip_empty_columns : bool, default=True
+            Whether to skip transformers with empty columns.
+
+        Yields
+        ------
+        name : str
+            Transformer name.
+        trans : Any
+            Transformer instance.
+        column : Any
+            Column specification.
+        weight : Any
+            Transformer weight.
+
+        """
+        return sklearn_ColumnTransformer._iter(
+            self,  # type: ignore[arg-type]
+            fitted=fitted,
+            column_as_labels=column_as_labels,
+            skip_drop=skip_drop,
+            skip_empty_columns=skip_empty_columns,
+        )
+
+    def __getitem__(self, ind: int | str | slice) -> Any:
+        """Return a sub-transformer or a single transformer.
+
+        Parameters
+        ----------
+        ind : int, str, or slice
+            Index, name, or slice of the transformer to retrieve.
+
+        Returns
+        -------
+        transformer : Any
+            The transformer or sub-transformer.
+
+        """
+        if isinstance(ind, slice):
+            if ind.step is not None:
+                raise ValueError("ColumnTransformer slicing only supports a step of 1")
+            return self.__class__(
+                transformers=self.transformers[ind],
+                remainder=self.remainder,
+                n_jobs=self.n_jobs,
+                transformer_weights=self.transformer_weights,
+                verbose=self.verbose,
+            )
+        elif isinstance(ind, int):
+            name, trans, _ = self.transformers[ind]
+            # If fitted, use named_transformers_, otherwise return from transformers
+            if hasattr(self, "named_transformers_"):
+                return self.named_transformers_[name]  # type: ignore[attr-defined]
+            return trans
+        else:
+            # String case - get by name
+            if hasattr(self, "named_transformers_"):
+                return self.named_transformers_[ind]  # type: ignore[attr-defined]
+            # Not fitted yet, search in transformers list
+            for name, trans, _ in self.transformers:
+                if name == ind:
+                    return trans
+            raise KeyError(f"Transformer {ind} not found")
+
+    def _log_message(self, name: str, idx: int, total: int) -> str:
+        """Get log message for a transformer.
+
+        Parameters
+        ----------
+        name : str
+            Transformer name.
+        idx : int
+            Current index.
+        total : int
+            Total number of transformers.
+
+        Returns
+        -------
+        message : str
+            Log message.
+
+        """
+        return f"(step {idx} of {total}) Processing {name}"
+
+    def _update_fitted_transformers(self, transformers: Any) -> None:
+        """Update fitted transformers.
+
+        Parameters
+        ----------
+        transformers : Any
+            Fitted transformers.
+
+
+        """
+        # Directly use sklearn's implementation - it's tightly coupled with internal state
+        sklearn_ColumnTransformer._update_fitted_transformers(self, transformers)  # type: ignore[arg-type]
+
+    def _get_feature_name_out_for_transformer(
+        self, name: str, trans: Any, feature_names_in: Any
+    ) -> Any:
+        """Get feature names for a transformer.
+
+        Parameters
+        ----------
+        name : str
+            Transformer name.
+        trans : Any
+            Transformer instance.
+        feature_names_in : Any
+            Input feature names.
+
+        Returns
+        -------
+        feature_names_out : Any
+            Output feature names.
+
+        """
+        return sklearn_ColumnTransformer._get_feature_name_out_for_transformer(
+            self,
+            name,
+            trans,
+            feature_names_in,  # type: ignore[arg-type]
+        )
+
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> Any:
+        """Get output feature names.
+
+        Parameters
+        ----------
+        input_features : list[str] | None, default=None
+            Input feature names.
+
+        Returns
+        -------
+        feature_names_out : Any
+            Output feature names.
+
+        """
+        return super().get_feature_names_out(input_features)
+
+    def _get_remainder_cols(self, indices: Any) -> Any:
+        """Get remainder columns.
+
+        Parameters
+        ----------
+        indices : Any
+            Column indices.
+
+        Returns
+        -------
+        remainder_cols : Any
+            Remainder columns.
+
+        """
+        # Directly use sklearn's implementation - it calls _get_remainder_cols_dtype internally
+        return sklearn_ColumnTransformer._get_remainder_cols(self, indices)  # type: ignore[arg-type]
+
+    def _get_remainder_cols_dtype(self) -> Any:
+        """Get dtype of remainder columns.
+
+        Returns
+        -------
+        dtype : Any
+            Data type of remainder columns.
+
+        """
+        return sklearn_ColumnTransformer._get_remainder_cols_dtype(self)  # type: ignore[arg-type]
+
+    def _add_prefix_for_feature_names_out(self, feature_names_out: Any) -> Any:
+        """Add prefixes to feature names.
+
+        Parameters
+        ----------
+        feature_names_out : Any
+            Feature names from transformers.
+
+        Returns
+        -------
+        prefixed_names : Any
+            Feature names with prefixes.
+
+        """
+        return sklearn_ColumnTransformer._add_prefix_for_feature_names_out(
+            self,
+            feature_names_out,  # type: ignore[arg-type]
+        )
+
+    def _sk_visual_block_(self) -> Any:
+        """Get visual block representation.
+
+        Returns
+        -------
+        visual_block : Any
+            Visual block representation.
+
+        """
+        return sklearn_ColumnTransformer._sk_visual_block_(self)  # type: ignore[arg-type]
+
+    def _get_empty_routing(self) -> Any:
+        """Get empty routing object.
+
+        Returns
+        -------
+        routing : Any
+            Empty routing object.
+
+        """
+        return sklearn_ColumnTransformer._get_empty_routing(self)  # type: ignore[arg-type]
+
+    def _validate_remainder(self, X: Any) -> None:
+        """Validate remainder parameter.
+
+        Parameters
+        ----------
+        X : Any
+            Input data.
+
+        """
+        # Let sklearn handle validation completely
+        sklearn_ColumnTransformer._validate_remainder(self, X)  # type: ignore[arg-type]
+
+    def _validate_column_callables(self, X: Any) -> None:
+        """Validate column callables.
+
+        Parameters
+        ----------
+        X : Any
+            Input data.
+
+        """
+        # Let sklearn handle validation
+        sklearn_ColumnTransformer._validate_column_callables(self, X)  # type: ignore[arg-type]
+
+    def _record_output_indices(self, Xs: Any) -> None:
+        """Record output indices for each transformer.
+
+        Parameters
+        ----------
+        Xs : Any
+            Transformed outputs.
+
+        """
+        # Let sklearn handle recording
+        sklearn_ColumnTransformer._record_output_indices(self, Xs)  # type: ignore[arg-type]
 
     def __init__(
         self,
-        transformers: list[tuple[str, object, object]],
+        transformers: list[tuple[str, Any, Any]],
         *,
-        remainder: str | object = "drop",
+        remainder: str | Any = "drop",
         n_jobs: int | None = None,
         transformer_weights: dict[str, float] | None = None,
         verbose: bool = False,
         verbose_feature_names_out: bool = True,
     ) -> None:
-        """Initialize ColumnTransformer."""
         self.transformers = transformers
         self.remainder = remainder
         self.n_jobs = n_jobs
@@ -1088,7 +2061,14 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         self.verbose_feature_names_out = verbose_feature_names_out
 
     def _get_observation_horizons(self) -> list[int]:
-        """Get observation horizons from all fitted transformers."""
+        """Get observation horizons from all fitted transformers.
+
+        Returns
+        -------
+        observation_horizons : list[int]
+            List of observation horizons from each transformer.
+
+        """
         observation_horizons = []
         for _, t, _, _ in self._iter(
             fitted=True,
@@ -1097,7 +2077,11 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
             skip_empty_columns=False,
         ):
             observation_horizon = 0
-            if t not in ("drop", "passthrough"):
+            if (
+                t not in ("drop", "passthrough")
+                and t is not None
+                and hasattr(t, "observation_horizon")
+            ):
                 observation_horizon = t.observation_horizon
 
             observation_horizons.append(observation_horizon)
@@ -1106,7 +2090,21 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
 
     @property
     def observation_horizon(self) -> int:
-        """Maximum observation horizon across all transformers."""
+        """Maximum observation horizon across all transformers.
+
+        Returns
+        -------
+        int
+            Maximum observation horizon needed.
+
+        Raises
+        ------
+        NotFittedError
+            If the column transformer has not been fitted yet.
+
+        """
+        check_is_fitted(self)
+
         observation_horizons = self._get_observation_horizons()
         observation_horizon = max(observation_horizons)
 
@@ -1142,10 +2140,10 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         self,
         X: pl.DataFrame,
         y: pl.DataFrame | None,
-        func: str,
+        func: Any,
         column_as_labels: bool,
-        routed_params: dict[str, dict[str, dict[str, object]]],
-    ) -> list[object]:
+        routed_params: dict[str, dict[str, dict[str, Any]]],
+    ) -> list[pl.DataFrame]:
         """
         Private function to fit and/or transform on demand.
 
@@ -1221,7 +2219,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
                     delayed(func)(
                         transformer=clone(trans) if not fitted else trans,
                         X=pl.concat(
-                            [time, safe_indexing(X, column, axis=1)],
+                            [time, safe_indexing(X, column, axis=1)],  # type: ignore[list-item]
                             how="horizontal",
                         ),
                         y=y,
@@ -1240,7 +2238,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
                 raise
 
     def fit(
-        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: Any
     ) -> "ColumnTransformer":
         """Fit all transformers using X.
 
@@ -1276,8 +2274,8 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         prefer_skip_nested_validation=False
     )
     def fit_transform(
-        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object
-    ) -> object:
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: Any
+    ) -> pl.DataFrame:
         """Fit all transformers, transform the data and concatenate results.
 
         Parameters
@@ -1343,9 +2341,10 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         self._update_fitted_transformers(transformers)
         self._record_output_indices(Xs)
 
-        return self._hstack(list(Xs), n_samples=n_samples)
+        result = self._hstack(list(Xs), n_samples=n_samples)
+        return result  # type: ignore[return-value]
 
-    def transform(self, X: pl.DataFrame, **params: object) -> object:
+    def transform(self, X: pl.DataFrame, **params: Any) -> pl.DataFrame:
         """Transform X separately by each transformer, concatenate results.
 
         Parameters
@@ -1386,12 +2385,12 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         column_names = _get_feature_names(X)
 
         if fit_dataframe_and_transform_dataframe:
-            named_transformers = self.named_transformers_
+            named_transformers = self.named_transformers_  # type: ignore[attr-defined]
             # check that all names seen in fit are in transform, unless
             # they were dropped
             non_dropped_indices = [
                 ind
-                for name, ind in self._transformer_to_input_indices.items()
+                for name, ind in self._transformer_to_input_indices.items()  # type: ignore[attr-defined]
                 if name in named_transformers and named_transformers[name] != "drop"
             ]
 
@@ -1404,7 +2403,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
         else:
             # ndarray was used for fitting or transforming, thus we only
             # check that n_features_in_ is consistent
-            self._check_n_features(X, reset=False)
+            self._check_n_features(X, reset=False)  # type: ignore[attr-defined]
 
         if _routing_enabled():
             routed_params = process_routing(self, "transform", **params)
@@ -1424,7 +2423,8 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
             time = X.select(cs.by_name("time"))
             return time
 
-        return self._hstack(list(Xs), n_samples=n_samples)
+        result = self._hstack(list(Xs), n_samples=n_samples)
+        return result  # type: ignore[return-value]
 
     def _hstack(self, Xs: list[pl.DataFrame], *, n_samples: int) -> pl.DataFrame:
         """Stacks Xs horizontally.
@@ -1508,7 +2508,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):  # type: ignore[misc
 
         return output
 
-    def get_metadata_routing(self) -> object:
+    def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing of this object.
 
         Please check :ref:`User Guide <metadata_routing>` on how the routing

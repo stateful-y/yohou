@@ -16,7 +16,7 @@
 
 ## What are the features of yohou?
 
-- **Scikit-learn compatible:** Built on the latest scikit-learn API, allowing the use of any tabular regressor for forecasting with full metadata routing support.
+- **Scikit-learn compatible:** Built on the latest scikit-learn API, allowing the use of any tabular regressor for forecasting with full metadata routing and feature name support.
 - **Extended API:** Adds `update`, `reset`, and `update_predict` methods to sklearn's standard `fit`/`transform`/`predict` interface for incremental learning.
 - **Multi-DataFrame support:** Works with polars, pandas, and more via [Narwhals](https://narwhals-dev.github.io/narwhals/).
 - **Multiple reduction strategies:** Supports Recursive, Direct, Multi-output, and DirRec forecasting approaches.

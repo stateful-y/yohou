@@ -1,7 +1,5 @@
 """Implementation of seasonal naive forecaster."""
 
-from typing import Optional
-
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
@@ -24,36 +22,6 @@ class SeasonalNaive(BasePointForecaster):
         BasePointForecaster.__init__(self)
 
         self.seasonality = seasonality
-
-    def reset(
-        self,
-        y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame],
-        X_post: Optional[pl.DataFrame],
-    ) -> "SeasonalNaive":
-        """Resets the forecaster by resetting the observation horizon.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series.
-
-        X_ante : pl.DataFrame or None
-            Ex-ante feature time series.
-
-        X_post : pl.DataFrame or None
-            Ex-post feature time series.
-
-        Returns
-        -------
-        self
-
-        """
-        self._y_observed = y
-        self._X_ante_observed = X_ante
-        self._X_post_observed = X_post
-
-        return self
 
     def _predict_one(self) -> pl.DataFrame:
         """Predicts the model forecasting horizon from the

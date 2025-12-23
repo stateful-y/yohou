@@ -1,5 +1,7 @@
 """Conformity scoring functions for conformal prediction intervals."""
 
+import abc
+
 import polars as pl
 
 from .base import BaseConformityScorer
@@ -11,7 +13,17 @@ class Residual(BaseConformityScorer):
     Computes conformity scores as $y - \hat{y}$ for asymmetric intervals.
     """
 
-    _prediction_type = "point"
+    @property
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this scorer handles.
+
+        Returns
+        -------
+        set of str
+            {"point"}
+
+        """
+        return {"point"}
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute signed residual conformity scores.
@@ -58,7 +70,7 @@ class Residual(BaseConformityScorer):
             Prediction intervals with lower and upper bounds.
 
         """
-        lower_quantile, upper_quantile = self._compute_assymetric_quantile(
+        lower_quantile, upper_quantile = self._compute_assymetric_quantiles(
             conformity_scores, coverage_rate
         )
         lower_bound, upper_bound = y_pred + lower_quantile, y_pred + upper_quantile
@@ -93,7 +105,7 @@ class AbsoluteResidual(Residual):
         """
         self._validate_inputs(y_truth, y_pred)
 
-        scores = (y_truth - y_pred).abs()
+        scores = (y_truth - y_pred).select(pl.all().abs())
 
         return scores
 
@@ -119,7 +131,7 @@ class AbsoluteResidual(Residual):
             Symmetric prediction intervals.
 
         """
-        quantile = self._compute_symetric_quantile(conformity_scores, coverage_rate)
+        quantile = self._compute_symetric_quantiles(conformity_scores, coverage_rate)
         lower_bound, upper_bound = y_pred - quantile, y_pred + quantile
 
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
@@ -139,7 +151,17 @@ class GammaResidual(BaseConformityScorer):
 
     """
 
-    _prediction_type = "point"
+    @property
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this scorer handles.
+
+        Returns
+        -------
+        set of str
+            {"point"}
+
+        """
+        return {"point"}
 
     def __init__(self, epsilon: float = 1e-8) -> None:
         BaseConformityScorer.__init__(self)
@@ -193,7 +215,7 @@ class AbsoluteGammaResidual(GammaResidual):
             Absolute relative conformity scores.
 
         """
-        scores = GammaResidual.score(self, y_truth, y_pred).abs()
+        scores = GammaResidual.score(self, y_truth, y_pred).select(pl.all().abs())
 
         return scores
 
@@ -201,18 +223,40 @@ class AbsoluteGammaResidual(GammaResidual):
 class QuantileResidual(BaseConformityScorer):
     """Quantile residual scorer for interval forecasts."""
 
-    _prediction_type = "interval"
+    @property
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this scorer handles.
 
+        Returns
+        -------
+        set of str
+            {"interval"}
+
+        """
+        return {"interval"}
+
+    @abc.abstractmethod
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute quantile residual scores."""
-        pass
+        raise NotImplementedError()
 
 
 class AbsoluteQuantileResidual(BaseConformityScorer):
     """Absolute quantile residual scorer for interval forecasts."""
 
-    _prediction_type = "interval"
+    @property
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this scorer handles.
 
+        Returns
+        -------
+        set of str
+            {"interval"}
+
+        """
+        return {"interval"}
+
+    @abc.abstractmethod
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute absolute quantile residual scores."""
-        pass
+        raise NotImplementedError()

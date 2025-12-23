@@ -1,6 +1,6 @@
 """Distance-based similarity measures for interval forecasting."""
 
-from typing import Optional
+from typing import Any
 
 import numpy as np
 import polars as pl
@@ -127,8 +127,8 @@ class DistanceSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
     ) -> "DistanceSimilarity":
         """Fits the similarity model.
 
@@ -158,8 +158,8 @@ class DistanceSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
     ) -> "DistanceSimilarity":
         """Update similarity model with new observations.
 
@@ -191,9 +191,9 @@ class DistanceSimilarity(BaseSimilarity):
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
-    ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[object]]]:
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute similarity weights for new predictions.
 
         Parameters
@@ -215,7 +215,9 @@ class DistanceSimilarity(BaseSimilarity):
         """
         X = self._get_X(y_pred, X_ante, X_post)
 
-        distances = cdist(X, self._X_observed, self.metric, **self.metric_params)
+        XA = X.select(pl.exclude("time")).to_numpy()
+        XB = self._X_observed.select(pl.exclude("time")).to_numpy()
+        distances: np.ndarray = cdist(XA, XB, metric=self.metric, **self.metric_params)  # type: ignore[arg-type]
         weights = np.reciprocal(np.exp(distances))
 
         weights = weights / np.sum(weights, axis=1)[:, np.newaxis] * self._X_observed.shape[1]

@@ -1,7 +1,6 @@
 """Base class for point forecasters."""
 
 import abc
-from typing import Optional
 
 import polars as pl
 from pydantic import StrictInt
@@ -22,13 +21,23 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         .
     """
 
-    _prediction_type = "point"
+    @property
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this forecaster produces.
+
+        Returns
+        -------
+        set of str
+            {"point"}
+
+        """
+        return {"point"}
 
     def fit(
         self,
         y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "BasePointForecaster":
         """Fits the forecaster and returns it.

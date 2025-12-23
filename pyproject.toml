@@ -33,6 +33,8 @@ dependencies = [
     "plotly>=5.19",
     "pydantic>=2.6",
     "tables>=3.9",
+    "marimo>=0.18.4",
+    "pyzmq>=27.1.0",
 ]
 
 [project.urls]
@@ -54,14 +56,19 @@ docs = [
   "pymdown-extensions==10.17",
   "black==25.11",
 ]
+examples = [
+  "marimo",
+]
 fix = [
   "pre-commit",
-  "ruff==0.4.2",
+  "ruff>=0.14.10",
+  "ty>=0.0.4",
   "interrogate>=1.7.0",
 ]
 tests = [
   "pytest",
   "pytest-cov",
+  "covdefaults",
 ]
 
 [tool.hatch.version]
@@ -98,14 +105,6 @@ ignore=[
 # It's fine not to put the import at the top of the file in the examples
 # folder.
 "examples/*"=["E402"]
-
-[tool.mypy]
-strict = true
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "sklearn.*"
-ignore_errors = true
 
 [tool.pytest.ini_options]
 addopts = "--doctest-modules --color=yes"

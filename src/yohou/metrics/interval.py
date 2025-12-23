@@ -1,1 +1,1 @@
-"""Metrics for evaluating interval forecast quality (placeholder)."""
+"""Metrics for evaluating interval forecast quality."""

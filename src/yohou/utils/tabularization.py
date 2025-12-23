@@ -1,4 +1,4 @@
-"""Tabularization utilities for converting time series to supervised learning format."""
+"""Tabularization utilities for converting time series tasks to tabular tasks."""
 
 from typing import Sequence
 
@@ -6,11 +6,11 @@ import polars as pl
 
 
 def tabularize(df_time_series: pl.DataFrame, lags: Sequence[int]) -> pl.DataFrame:
-    """Convert time series to tabular format with lagged features.
+    """Convert time series to tabular format using lags.
 
-    Creates a supervised learning dataset by generating lagged versions of each
-    time series column. This is the core operation for reduction-based forecasting,
-    enabling use of sklearn regressors for time series prediction.
+    Creates a tabular dataset by generating lagged versions of each time series
+    column. This is the core operation for reduction-based forecasting, enabling
+    use of sklearn estimators for time series prediction.
 
     Parameters
     ----------
@@ -50,19 +50,10 @@ def tabularize(df_time_series: pl.DataFrame, lags: Sequence[int]) -> pl.DataFram
     │ 5    ┆ 4          ┆ 3          ┆ 40          ┆ 30          │
     └──────┴────────────┴────────────┴─────────────┴─────────────┘
 
-    Notes
-    -----
-    The transformation is commonly used in reduction forecasting strategies:
-    - **Recursive**: Use lag features to predict next step iteratively
-    - **Direct**: Use lag features to predict each horizon directly
-    - **Multi-output**: Predict all horizons simultaneously from lag features
-
-    The function automatically skips the "time" column and any datetime columns.
-
     See Also
     --------
     :class:`yohou.base.BaseReductionForecaster` : Uses tabularize for forecasting
-    :meth:`yohou.base.BaseReductionForecaster._get_tabularized_dataset` : Wrapper with horizon handling
+    LagTransformer : Transformer that applies similar lagging logic
 
     """
     columns = [col for col in df_time_series.columns if col != "time"]

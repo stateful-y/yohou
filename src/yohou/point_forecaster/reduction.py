@@ -1,7 +1,5 @@
 """Implementation of reduction-based point forecasters."""
 
-from typing import Optional
-
 import polars as pl
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator
@@ -16,8 +14,7 @@ from .base import BasePointForecaster
 class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     """Point forecaster using sklearn estimators on tabularized time series.
 
-    Converts time series forecasting to supervised learning by creating lag features,
-    then applies any sklearn estimator for predictions.
+    Converts the time series point forecasting task to a tabular one.
 
     Parameters
     ----------
@@ -62,17 +59,16 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     >>> len(y_pred)
     1
     >>> sorted(y_pred.columns)
-    ['observed_time', 'predicted_time', 'value']
+    ['observed_time', 'time', 'value']
 
     Notes
     -----
-    This forecaster implements the reduction strategy for time series forecasting,
-    converting the problem to supervised learning through tabularization. It supports:
+    Reduction strategies:
+    - Direct: Separate model for each horizon step; predicts directly from inputs.
+    - Multi-output: Single model predicts all horizon steps simultaneously.
 
-    - Recursive multi-step forecasting (default behavior)
-    - Integration with any scikit-learn regressor
-    - Feature engineering via transformers (e.g., lag features, rolling statistics)
-    - Target transformations (e.g., differencing, scaling)
+    All models can be applied recursively for multi-step forecasting by specifying
+    the forecasting horizon during prediction.
 
     See Also
     --------
@@ -87,8 +83,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         self,
         estimator: BaseEstimator = LinearRegression(),
         reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
-        target_transformer: Optional[BaseTransformer] = None,
-        feature_transformer: Optional[BaseTransformer] = None,
+        target_transformer: BaseTransformer | None = None,
+        feature_transformer: BaseTransformer | None = None,
     ) -> None:
         BaseReductionForecaster.__init__(
             self,
@@ -105,8 +101,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "PointReductionForecaster":
         """Fits the forecaster and returns it.

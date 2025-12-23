@@ -1,1 +1,1 @@
-"""Time series decomposition methods (placeholder)."""
+"""Time series decomposition methods."""

@@ -7,8 +7,8 @@ import polars as pl
 from sklearn.base import BaseEstimator
 
 
-class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
-    """Abstract base class for all forecasting metrics.
+class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
+    """Base class for all forecasting metrics.
 
     Defines the interface for scoring forecast quality. All scorers must implement
     the :meth:`score` method and can optionally override :meth:`fit` for metrics
@@ -16,22 +16,23 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
 
     Attributes
     ----------
-    prediction_type : str
-        Type of predictions this scorer evaluates ("point" or "interval").
+    prediction_types : set of str
+        Types of predictions this scorer evaluates ({"point"} or {"interval"}).
 
     """
 
     @property
-    def prediction_type(self) -> str:
-        """Get the prediction type this scorer handles.
+    @abc.abstractmethod
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this scorer handles.
 
         Returns
         -------
-        str
-            Either "point" or "interval".
+        set of str
+            Either {"point"} or {"interval"}.
 
         """
-        return str(self._prediction_type)
+        raise NotImplementedError()
 
     def _validate_inputs(
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame
@@ -47,7 +48,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
             Ground truth values with "time" column.
 
         y_pred : pl.DataFrame
-            Predicted values with "observed_time" and "predicted_time" columns.
+            Predicted values with "observed_time" and "time" columns.
 
         Returns
         -------
@@ -58,19 +59,16 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
             Aligned predictions with time columns removed.
 
         """
-        y_truth = y_truth.join(
-            y_pred.rename({"predicted_time": "time"})[["time"]],
-            on="time",
-        )
+        y_truth = y_truth.join(y_pred[["time"]], on="time")
 
-        y_pred = y_pred.filter(pl.col("predicted_time").is_in(y_truth["time"].implode()))
+        y_pred = y_pred.filter(pl.col("time").is_in(y_truth["time"].implode()))
 
         y_truth = y_truth.drop("time")
-        y_pred = y_pred.drop("observed_time", "predicted_time")
+        y_pred = y_pred.drop("observed_time", "time")
 
         return y_truth, y_pred
 
-    def fit(self, y_train: pl.DataFrame) -> "BaseScorer":
+    def fit(self, y_train: pl.DataFrame | None) -> "BaseScorer":
         """Fit the scorer on training data if needed.
 
         Most metrics are stateless and don't require fitting, but some (e.g.,
@@ -78,7 +76,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
 
         Parameters
         ----------
-        y_train : pl.DataFrame
+        y_train : pl.DataFrame or None
             Training set target values.
 
         Returns
@@ -89,7 +87,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
         return self
 
     @abc.abstractmethod
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> float:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute the metric score.
 
         Parameters
@@ -98,17 +96,17 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
             Ground truth values with "time" column.
 
         y_pred : pl.DataFrame
-            Predicted values with "observed_time" and "predicted_time" columns.
+            Predicted values with "observed_time" and "time" columns.
 
         Returns
         -------
-        float
-            Metric value. Lower is better for error metrics.
+        pl.DataFrame
+            Metric value dataframe. Lower is better for error metrics.
 
         """
         raise NotImplementedError()
 
-    def __call__(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> float:
+    def __call__(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute score using callable interface.
 
         Enables using scorers as functions: scorer(y_truth, y_pred).
@@ -123,8 +121,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
 
         Returns
         -------
-        float
-            Metric score.
+        pl.DataFrame
+            Metric score dataframe.
 
         """
         return self.score(y_truth, y_pred)
@@ -143,7 +141,17 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     """
 
-    _prediction_type = "point"
+    @property
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this scorer handles.
+
+        Returns
+        -------
+        set of str
+            {"point"}
+
+        """
+        return {"point"}
 
 
 class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
@@ -159,7 +167,17 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     """
 
-    _prediction_type = "point"
+    @property
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this scorer handles.
+
+        Returns
+        -------
+        set of str
+            {"interval"}
+
+        """
+        return {"interval"}
 
 
 class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
@@ -172,14 +190,15 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
     See Also
     --------
     :mod:`yohou.metrics.conformity` : Concrete conformity scorers
-    :class:`yohou.interval_forecaster.split_conformal.SplitConformalForecaster` : Uses conformity scores
+    :class:`yohou.interval_forecaster.split_conformal.SplitConformalForecaster` : Uses conformity
+    scores
 
     """
 
     @staticmethod
     def _compute_assymetric_quantiles(
         conformity_scores: pl.DataFrame, coverage_rate: float
-    ) -> tuple[pl.DataFrame, pl.DataFrame]:
+    ) -> tuple[float, float]:
         """Compute lower and upper quantiles for asymmetric intervals.
 
         Parameters
@@ -192,23 +211,23 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        lower_quantile : pl.DataFrame
+        lower_quantile : float
             Lower quantile value.
 
-        upper_quantile : pl.DataFrame
+        upper_quantile : float
             Upper quantile value.
 
         """
-        lower_quantile = np.quantile(conformity_scores, coverage_rate / 2.0, method="lower")
+        lower_quantile: float = np.quantile(conformity_scores, coverage_rate / 2.0, method="lower")  # type: ignore[call-overload]
 
-        upper_quantile = np.quantile(conformity_scores, 1 - coverage_rate / 2.0, method="upper")
+        upper_quantile: float = np.quantile(
+            conformity_scores, 1 - coverage_rate / 2.0, method="upper"
+        )  # type: ignore[call-overload]
 
         return lower_quantile, upper_quantile
 
     @staticmethod
-    def _compute_symetric_quantiles(
-        conformity_scores: pl.DataFrame, coverage_rate: float
-    ) -> pl.DataFrame:
+    def _compute_symetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> float:
         """Compute quantile for symmetric intervals.
 
         Parameters
@@ -221,11 +240,11 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        pl.DataFrame
+        float
             Quantile value for symmetric intervals.
 
         """
-        quantile = np.quantile(conformity_scores, 1 - coverage_rate, method="lower")
+        quantile: float = np.quantile(conformity_scores, 1 - coverage_rate, method="lower")  # type: ignore[call-overload]
 
         return quantile
 

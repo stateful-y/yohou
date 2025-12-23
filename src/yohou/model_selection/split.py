@@ -2,13 +2,14 @@
 
 import numbers
 from collections.abc import Iterable, Iterator
+from typing import Any
 
 import numpy as np
 import polars as pl
 from sklearn.model_selection._split import BaseCrossValidator, TimeSeriesSplit
 
 
-class Splitter(TimeSeriesSplit):  # type: ignore[misc]
+class Splitter(TimeSeriesSplit):
     """Time Series splitter.
 
     Provides train/test indices to split time series data samples
@@ -21,7 +22,7 @@ class Splitter(TimeSeriesSplit):  # type: ignore[misc]
 
     Parameters
     ----------
-    n_splits : int, default=5
+    n_splits : int, default=3
         Number of splits. Must be at least 2.
 
     max_train_size : int, default=None
@@ -36,7 +37,7 @@ class Splitter(TimeSeriesSplit):  # type: ignore[misc]
 
     def __init__(
         self,
-        n_splits: int = 5,
+        n_splits: int = 3,
         *,
         max_train_size: int | None = None,
         test_size: int | None = None,
@@ -50,7 +51,7 @@ class Splitter(TimeSeriesSplit):  # type: ignore[misc]
 
     def split(
         self, y: pl.DataFrame
-    ) -> Iterator[tuple[np.ndarray[int, np.dtype[np.intp]], np.ndarray[int, np.dtype[np.intp]]]]:
+    ) -> Iterator[tuple[np.ndarray[Any, np.dtype[np.intp]], np.ndarray[Any, np.dtype[np.intp]]]]:
         """Generate indices to split data into training and test set.
 
         Parameters
@@ -71,12 +72,10 @@ class Splitter(TimeSeriesSplit):  # type: ignore[misc]
         return TimeSeriesSplit.split(self, y)  # type: ignore[no-any-return]
 
 
-class _CVIterableWrapper(BaseCrossValidator):  # type: ignore[misc]
+class _CVIterableWrapper(BaseCrossValidator):
     """Wrapper class for old style cv objects and iterables."""
 
-    def __init__(
-        self, cv: Iterable[tuple[np.ndarray[object, object], np.ndarray[object, object]]]
-    ) -> None:
+    def __init__(self, cv: Iterable[tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]]) -> None:
         self.cv = list(cv)
 
     def get_n_splits(
@@ -105,9 +104,7 @@ class _CVIterableWrapper(BaseCrossValidator):  # type: ignore[misc]
         """
         return len(self.cv)
 
-    def split(
-        self, y: pl.DataFrame
-    ) -> Iterator[tuple[np.ndarray[object, object], np.ndarray[object, object]]]:
+    def split(self, y: pl.DataFrame) -> Iterator[tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]]:
         """Generate indices to split data into training and test set.
 
         Parameters
@@ -129,10 +126,7 @@ class _CVIterableWrapper(BaseCrossValidator):  # type: ignore[misc]
 
 
 def check_cv(
-    cv: int
-    | Splitter
-    | Iterable[tuple[np.ndarray[object, object], np.ndarray[object, object]]]
-    | None = 5,
+    cv: int | Splitter | Iterable[tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]] | None = 5,
     forecasting_horizon: int = 1,
 ) -> Splitter | _CVIterableWrapper:
     """Input checker utility for building a cross-validator.

@@ -8,7 +8,7 @@ import time
 import warnings
 from collections import defaultdict
 from functools import partial
-from typing import Optional
+from typing import Any
 
 import numpy as np
 import optuna
@@ -46,7 +46,6 @@ from sklearn.utils.metaestimators import available_if
 from sklearn.utils.parallel import Parallel, delayed
 from sklearn.utils.validation import (
     _check_method_params,
-    _estimator_has,
     check_is_fitted,
     indexable,
 )
@@ -54,13 +53,43 @@ from sklearn.utils.validation import (
 from yohou.base import BaseForecaster
 from yohou.metrics.base import BaseScorer
 
-from .base import Sampler, Storage
+from .optuna import Sampler, Storage
 from .split import check_cv
 from .utils import (
     _check_scoring,
     _fit_and_score,
     _run_trials_batch,
 )
+
+
+def _best_forecaster_has(attr):
+    """Check if best_forecaster_ has the given attribute.
+
+    This is used as the check for available_if decorator to ensure
+    predict/update methods are only available when refit=True and
+    the best_forecaster_ has been fitted.
+
+    Parameters
+    ----------
+    attr : str
+        The name of the attribute to check.
+
+    Returns
+    -------
+    callable
+        A function that checks if the best_forecaster_ has the attribute.
+    """
+
+    def check(self):
+        # Check refit and best_forecaster_ existence
+        if not self.refit:
+            return False
+        if not hasattr(self, "best_forecaster_"):
+            return False
+        # Check if best_forecaster_ has the attribute
+        return hasattr(self.best_forecaster_, attr)
+
+    return check
 
 
 # TODO: Use methods from GridSearchCV without inheriting from it
@@ -281,12 +310,13 @@ class SearchCV(BaseForecaster):
         "verbose": ["verbose"],
         "pre_dispatch": [numbers.Integral, str],
         "error_score": [StrOptions({"raise"}), numbers.Real],
+        "return_train_score": ["boolean"],
     }
 
     def __init__(
         self,
         forecaster: "BaseForecaster",
-        param_distributions: dict[str, object],
+        param_distributions: dict[str, optuna.distributions.BaseDistribution],
         scoring: "BaseScorer" | "_MultimetricScorer",
         *,
         sampler: "Sampler" = Sampler(),
@@ -301,6 +331,7 @@ class SearchCV(BaseForecaster):
         verbose: int = 0,
         pre_dispatch: str | int = "2*n_jobs",
         error_score: float | str = np.nan,
+        return_train_score: bool = False,
     ) -> None:
         self.forecaster = forecaster
         self.param_distributions = param_distributions
@@ -317,19 +348,21 @@ class SearchCV(BaseForecaster):
         self.verbose = verbose
         self.pre_dispatch = pre_dispatch
         self.error_score = error_score
+        self.return_train_score = return_train_score
 
     @property
-    def prediction_type(self) -> str:
-        """Prediction type of the scoring metric."""
-        return self.scoring._prediction_type  # type: ignore[no-any-return]
+    def prediction_types(self) -> set[str]:
+        """Get the types of predictions this forecaster produces.
 
-    # TODO: This is no longer part of the sklearn API
-    def _more_tags(self) -> dict[str, object]:
-        """Additional sklearn tags for cross-validation compatibility."""
-        # allows cross-validation to see 'precomputed' metrics
-        return {
-            "_xfail_checks": {"check_supervised_y_2d": "DataConversionWarning not caught"},
-        }
+        Returns
+        -------
+        set of {"point", "interval"}
+            Set of prediction types produced by the implicit forecaster.
+            Point forecasters return {"point"}, interval forecasters return {"interval"},
+            and forecasters producing both return {"point", "interval"}.
+
+        """
+        return self.forecaster.prediction_types
 
     def score(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object) -> object:
         """Return the score on the given data, if the forecaster has been refit.
@@ -385,12 +418,13 @@ class SearchCV(BaseForecaster):
             score = score[self.refit]
         return score
 
-    @available_if(_estimator_has("predict"))  # type: ignore[untyped-decorator]
+    @available_if(_best_forecaster_has("predict"))  # type: ignore[untyped-decorator]
     def predict(
         self,
-        X_post: Optional[pl.DataFrame] = None,
-        forecasting_horizon: Optional[StrictInt] = 1,
-        predict_transformed: bool = False,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt = 1,
+        predict_transformed: bool = True,
     ) -> pl.DataFrame:
         """Call predict on the forecaster with the best found parameters.
 
@@ -399,13 +433,16 @@ class SearchCV(BaseForecaster):
 
         Parameters
         ----------
+        X_ante : pl.DataFrame or None, default=None
+            Ex-ante feature time series.
+
         X_post : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
 
-        predict_transformed : bool, default=False
+        predict_transformed : bool, default=True
             Whether to output prediction in the transformed space.
 
         Returns
@@ -416,14 +453,19 @@ class SearchCV(BaseForecaster):
 
         """
         check_is_fitted(self)
-        return self.best_forecaster_.predict(X_post, forecasting_horizon, predict_transformed)
+        return self.best_forecaster_.predict(
+            X_post=X_post,
+            forecasting_horizon=forecasting_horizon,
+            predict_transformed=predict_transformed,
+        )
 
-    @available_if(_estimator_has("update"))  # type: ignore[untyped-decorator]
+    @available_if(_best_forecaster_has("update"))  # type: ignore[untyped-decorator]
     def update(
         self,
         y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-    ) -> pl.DataFrame:
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
+    ) -> "SearchCV":
         """Call update on the forecaster with the best found parameters.
 
         Only available if ``refit=True`` and the underlying forecaster supports
@@ -434,8 +476,11 @@ class SearchCV(BaseForecaster):
         y : pl.DataFrame
             Target time series for updates.
 
-        X_ante : pl.DataFrame or None
+        X_ante : pl.DataFrame or None, default=None
             Ex-ante feature time series for updates.
+
+        X_post : pl.DataFrame or None, default=None
+            Ex-post feature time series.
 
         Returns
         -------
@@ -443,14 +488,15 @@ class SearchCV(BaseForecaster):
 
         """
         check_is_fitted(self)
-        return self.best_forecaster_.update(y, X_ante)
+        self.best_forecaster_.update(y, X_ante, X_post)
+        return self
 
-    @available_if(_estimator_has("update_predict"))  # type: ignore[untyped-decorator]
+    @available_if(_best_forecaster_has("update_predict"))  # type: ignore[untyped-decorator]
     def update_predict(
         self,
         y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         stride: StrictInt = 1,
         predict_transformed: bool = False,
@@ -465,17 +511,20 @@ class SearchCV(BaseForecaster):
         y : pl.DataFrame
             Target time series for updates.
 
-        X_ante : pl.DataFrame or None
+        X_ante : pl.DataFrame or None, default=None
             Ex-ante feature time series for updates.
 
-        X_post : pl.DataFrame or None
+        X_post : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast recursively.
 
-        stride : int>= 1, default=1
+        stride : int >= 1, default=1
             Stride in between two predictions.
+
+        predict_transformed : bool, default=False
+            Whether to output prediction in the transformed space.
 
         Returns
         -------
@@ -488,6 +537,38 @@ class SearchCV(BaseForecaster):
         return self.best_forecaster_.update_predict(
             y, X_ante, X_post, forecasting_horizon, stride, predict_transformed
         )
+
+    @available_if(_best_forecaster_has("reset"))  # type: ignore[untyped-decorator]
+    def reset(
+        self,
+        y: pl.DataFrame,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
+    ) -> "SearchCV":
+        """Call reset on the forecaster with the best found parameters.
+
+        Only available if ``refit=True`` and the underlying forecaster supports
+        ``reset``.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series.
+
+        X_ante : pl.DataFrame or None, default=None
+            Ex-ante feature time series.
+
+        X_post : pl.DataFrame or None, default=None
+            Ex-post feature time series.
+
+        Returns
+        -------
+        self
+
+        """
+        check_is_fitted(self)
+        self.best_forecaster_.reset(y, X_ante, X_post)
+        return self
 
     @property
     def n_features_in_(self) -> object:
@@ -511,7 +592,7 @@ class SearchCV(BaseForecaster):
         if i_trial == self.n_warmup_trials:
             self.study_.sampler = self.sampler_
 
-        candidate_params = {
+        candidate_params: dict[str, Any] = {
             name: trial._suggest(name, distribution)
             for name, distribution in self.param_distributions.items()
         }
@@ -637,7 +718,7 @@ class SearchCV(BaseForecaster):
 
         """
 
-        def batch_func(trial_batch: list[object], i_trial: int) -> tuple[object, object]:
+        def batch_func(trial_batch: list[optuna.Trial], i_trial: int) -> tuple[object, object]:
             """Evaluate batch of trials."""
             cand_params = [
                 self._get_candidate_params(trial, i_trial + i_trial_cand)
@@ -762,6 +843,22 @@ class SearchCV(BaseForecaster):
         self : object
             Instance of fitted forecaster.
         """
+        # Import here to avoid circular dependency
+        from yohou.utils.validation import check_inputs
+
+        # Set forecasting horizon attribute (required by forecaster interface)
+        if forecasting_horizon < 1:
+            raise ValueError(
+                f"`forecasting_horizon` should be a positive int. It is: {forecasting_horizon}"
+            )
+        self.fit_forecasting_horizon_ = forecasting_horizon
+
+        # Set interval attribute (required by forecaster interface)
+        self.interval_ = check_inputs(y, X_ante, X_post)
+
+        # Set panel data structure attributes (required by forecaster interface)
+        self._set_local_groups(y, X_ante, X_post)
+
         self.sampler_ = clone(self.sampler).instantiate().instance_
         self.warmup_sampler_ = optuna.samplers.RandomSampler()
 
@@ -802,6 +899,7 @@ class SearchCV(BaseForecaster):
                 "stride": self.predict_stride,
             },
             score_params=routed_params.scorer.score,  # type: ignore[attr-defined]
+            return_train_score=self.return_train_score,
             return_n_test_samples=True,
             return_times=True,
             return_parameters=False,
@@ -919,8 +1017,8 @@ class SearchCV(BaseForecaster):
             # sometimes the parameters themselves might be forecasters, e.g.
             # when we search over different forecasters in a pipeline.
             # ref: https://github.com/scikit-learn/scikit-learn/pull/26786
-            self.best_forecaster_ = clone(base_forecaster).set_params(
-                **clone(self.best_params_, safe=False)
+            self.best_forecaster_ = clone(
+                clone(base_forecaster).set_params(**clone(self.best_params_, safe=False))
             )
 
             refit_start_time = time.time()
@@ -936,6 +1034,8 @@ class SearchCV(BaseForecaster):
 
             if hasattr(self.best_forecaster_, "feature_names_in_"):
                 self.feature_names_in_ = self.best_forecaster_.feature_names_in_
+            if hasattr(self.best_forecaster_, "n_features_in_"):
+                self.n_features_in_ = self.best_forecaster_.n_features_in_
 
         # Store the only scorer not as a dict for single metric evaluation
         if isinstance(scorers, _MultimetricScorer):
@@ -1016,7 +1116,7 @@ class SearchCV(BaseForecaster):
                     rank_result = rankdata(-array_means, method="min").astype(np.int32, copy=False)
                 results["rank_%s" % key_name] = rank_result
 
-        ("fit_time", out["fit_time"])  # type: ignore[call-overload]
+        _store("fit_time", out["fit_time"])  # type: ignore[call-overload]
         _store("score_time", out["score_time"])  # type: ignore[call-overload]
         # Use one MaskedArray and mask all the places where the param is not
         # applicable for that candidate. Use defaultdict as each candidate may
@@ -1054,6 +1154,17 @@ class SearchCV(BaseForecaster):
                 weights=None,
             )
 
+        if self.return_train_score:
+            train_scores_dict = _normalize_score_results(out["train_scores"])  # type: ignore[call-overload]
+            for scorer_name in train_scores_dict:
+                _store(
+                    "train_%s" % scorer_name,
+                    train_scores_dict[scorer_name],
+                    splits=True,
+                    rank=False,
+                    weights=None,
+                )
+
         return results
 
     def get_metadata_routing(self) -> object:
@@ -1068,10 +1179,14 @@ class SearchCV(BaseForecaster):
             A :class:`~sklearn.utils.metadata_routing.MetadataRouter` encapsulating
             routing information.
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        router = MetadataRouter(owner=self)
         router.add(
             forecaster=self.forecaster,
-            method_mapping=MethodMapping().add(caller="fit", callee="fit"),
+            method_mapping=MethodMapping()
+            .add(caller="fit", callee="fit")
+            .add(caller="predict", callee="predict")
+            .add(caller="update", callee="update")
+            .add(caller="update_predict", callee="update_predict"),
         )
 
         scorer, _ = self._get_scorers()

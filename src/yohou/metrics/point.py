@@ -36,7 +36,7 @@ class MAE(BasePointScorer):
     ... })
     >>> y_pred = pl.DataFrame({
     ...     "observed_time": [datetime(2019, 12, 31)] * 3,
-    ...     "predicted_time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0]
     ... })
     >>> mae = MAE()
@@ -113,7 +113,7 @@ class MSE(BasePointScorer):
     ... })
     >>> y_pred = pl.DataFrame({
     ...     "observed_time": [datetime(2019, 12, 31)] * 3,
-    ...     "predicted_time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0]
     ... })
     >>> mse = MSE()

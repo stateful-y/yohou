@@ -1,6 +1,4 @@
-"""Implementation of invertible transformations."""
-
-from typing import Optional
+"""Implementation of invertible transformations for stationarization."""
 
 import numpy as np
 import polars as pl
@@ -9,6 +7,7 @@ from pydantic import StrictFloat, StrictInt
 from sklearn.utils.validation import _check_feature_names_in
 
 from yohou.base import BaseTransformer
+from yohou.utils.validation import check_inverse_transform
 
 
 class LogTransform(BaseTransformer):
@@ -21,10 +20,31 @@ class LogTransform(BaseTransformer):
 
     """
 
-    _observation_horizon: int = 0
-
     def __init__(self, offset: StrictFloat = 0.0):
         self.offset = offset
+
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "LogTransform":
+        """Fits the transformer and returns it.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Feature time series.
+
+        y : pl.DataFrame or None, default=None
+            Target time series. Ignored and only present for
+            API consistency.
+
+        Returns
+        -------
+        self
+
+        """
+        self._observation_horizon = 0
+
+        BaseTransformer.fit(self, X, y)
+
+        return self
 
     def transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transforms the input time series.
@@ -42,7 +62,8 @@ class LogTransform(BaseTransformer):
         """
         time = X.select(cs.by_name("time"))
         X_t = (X.select(~cs.by_name("time")) + self.offset).with_columns(pl.all().log())
-        X_t.columns = self.get_feature_names_out()
+        feature_names = self.get_feature_names_out()
+        X_t = X_t.rename(dict(zip(X_t.columns, feature_names)))
         X_t = pl.concat([time, X_t], how="horizontal")
 
         return X_t
@@ -65,10 +86,11 @@ class LogTransform(BaseTransformer):
             Inverted transformed time series.
 
         """
+        check_inverse_transform(X_t, X_p, self.observation_horizon)
 
         time = X_t.select(cs.by_name("time"))
         X = X_t.select(~cs.by_name("time")).with_columns(pl.all().exp()) - self.offset
-        X.columns = self.feature_names_in_
+        X = X.rename(dict(zip(X.columns, self.feature_names_in_)))
         X = pl.concat([time, X], how="horizontal")
 
         return X
@@ -106,7 +128,7 @@ class SeasonalDifferencing(BaseTransformer):
     def __init__(self, seasonality: StrictInt = 1):
         self.seasonality = seasonality
 
-    def fit(self, X: pl.DataFrame, y: Optional[pl.DataFrame] = None) -> "SeasonalDifferencing":
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "SeasonalDifferencing":
         """Fits the transformer and returns it.
 
         Parameters
@@ -147,7 +169,8 @@ class SeasonalDifferencing(BaseTransformer):
         X_t = X.select(~cs.by_name("time")).select(pl.all().diff(self.seasonality))[
             self.seasonality :
         ]
-        X_t.columns = self.get_feature_names_out()
+        feature_names = self.get_feature_names_out()
+        X_t = X_t.rename(dict(zip(X_t.columns, feature_names)))
         X_t = pl.concat([time, X_t], how="horizontal")
 
         return X_t
@@ -170,6 +193,10 @@ class SeasonalDifferencing(BaseTransformer):
             Inverted transformed time series.
 
         """
+        check_inverse_transform(X_t, X_p, self.observation_horizon)
+
+        assert X_p is not None  # for ty
+
         time = X_t.select(cs.by_name("time"))
         X_t.columns = X_p.columns
         X = pl.concat([X_p, X_t])
@@ -197,9 +224,7 @@ class SeasonalDifferencing(BaseTransformer):
 
         return X
 
-    def get_feature_names_out(
-        self, input_features: list[str] | None = None
-    ) -> np.ndarray[object, np.dtype[np.object_]]:
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.
 
         Parameters
@@ -209,13 +234,13 @@ class SeasonalDifferencing(BaseTransformer):
 
         Returns
         -------
-        feature_names_out : ndarray of str objects
+        feature_names_out : list of str
             Transformed feature names.
         """
         input_features = _check_feature_names_in(self, input_features)
         feature_names = [f"diff_s_{self.seasonality}_{col}" for col in input_features]
 
-        return np.asarray(feature_names, dtype=object)
+        return feature_names
 
 
 class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
@@ -234,6 +259,34 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
     def __init__(self, seasonality: StrictInt = 1, offset: StrictFloat = 0.0):
         SeasonalDifferencing.__init__(self, seasonality=seasonality)
         LogTransform.__init__(self, offset=offset)
+
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "SeasonalLogDifferencing":
+        """Fits the transformer and returns it.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Feature time series.
+
+        y : pl.DataFrame or None, default=None
+            Target time series. Ignored and only present for
+            API consistency.
+
+        Returns
+        -------
+        self
+
+        """
+        self._observation_horizon = self.seasonality
+
+        BaseTransformer.fit(self, X, y)
+
+        self.log_transform_ = LogTransform(offset=self.offset).fit(X=X, y=y)
+        self.seasonal_diff_transform_ = SeasonalDifferencing(seasonality=self.seasonality).fit(
+            X=X, y=y
+        )
+
+        return self
 
     def transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transforms the input time series.
@@ -271,15 +324,16 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
         pl.DataFrame
             Inverted transformed time series.
         """
-        X_p = LogTransform.transform(self, X=X_p)
-        X = SeasonalDifferencing.inverse_transform(self, X_t=X_t, X_p=X_p)
-        X = LogTransform.inverse_transform(self, X_t=X, X_p=None)
+        check_inverse_transform(X_t, X_p, self.observation_horizon)
+
+        assert X_p is not None  # for ty
+        X_p = self.log_transform_.transform(X=X_p)
+        X = self.seasonal_diff_transform_.inverse_transform(X_t=X_t, X_p=X_p)
+        X = self.log_transform_.inverse_transform(X_t=X, X_p=None)
 
         return X
 
-    def get_feature_names_out(
-        self, input_features: list[str] | None = None
-    ) -> np.ndarray[object, np.dtype[np.object_]]:
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.
 
         Parameters
@@ -289,7 +343,7 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
 
         Returns
         -------
-        feature_names_out : ndarray of str objects
+        feature_names_out : list of str
             Transformed feature names.
         """
         input_features = _check_feature_names_in(self, input_features)
@@ -297,4 +351,4 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
             f"log_off_{self.offset}_diff_s_{self.seasonality}_{col}" for col in input_features
         ]
 
-        return np.asarray(feature_names, dtype=object)
+        return feature_names

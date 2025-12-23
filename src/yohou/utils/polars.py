@@ -1,5 +1,7 @@
 """Polars utilities for panel data and struct column manipulation."""
 
+from typing import Literal
+
 import polars as pl
 import polars.selectors as cs
 
@@ -57,8 +59,7 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
     See Also
     --------
     concat_struct : Concatenate DataFrames while preserving struct columns
-    :meth:`yohou.base.BaseForecaster._set_local_groups` : Uses this for panel detection
-
+    select_struct : Select specific columns from struct DataFrames
     """
     global_names, local_groups = [], {}
     for col, dtype in df.schema.items():
@@ -66,14 +67,19 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
             continue
 
         if isinstance(dtype, pl.Struct):
-            local_groups[col] = [field.name for field in df.schema[col].fields]
+            # Cast to Struct to access fields attribute
+            struct_dtype = df.schema[col]
+            if hasattr(struct_dtype, "fields"):
+                local_groups[col] = [field.name for field in struct_dtype.fields]  # type: ignore[attr-defined]
         else:
             global_names.append(col)
 
     return global_names, local_groups
 
 
-def concat_struct(items: list[pl.DataFrame], *, how: str) -> pl.DataFrame:
+def concat_struct(
+    items: list[pl.DataFrame], *, how: Literal["vertical", "horizontal", "diagonal"]
+) -> pl.DataFrame:
     """Concatenate DataFrames with struct columns preserved.
 
     This function properly handles concatenation of DataFrames containing struct
@@ -179,7 +185,7 @@ def concat_struct(items: list[pl.DataFrame], *, how: str) -> pl.DataFrame:
 
         df_group = pl.concat(df_group_list, how=how)
 
-        df_group = pl.DataFrame({local_group_name: df_group.select(~cs.by_name("time"))})
+        df_group = pl.DataFrame({local_group_name: df_group})
 
         out = pl.concat([out, df_group], how="horizontal")
 

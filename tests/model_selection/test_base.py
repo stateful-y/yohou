@@ -2,7 +2,7 @@ import optuna
 import pytest
 from sklearn.utils._param_validation import InvalidParameterError
 
-from yohou.model_selection.base import Sampler, Storage
+from yohou.model_selection.optuna import Sampler, Storage
 
 
 @pytest.mark.parametrize(

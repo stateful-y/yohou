@@ -1,7 +1,5 @@
 """Implementation of window transformations."""
 
-from typing import List, Optional
-
 import numpy as np
 import polars as pl
 from pydantic import StrictInt
@@ -26,10 +24,10 @@ class LagTransformer(BaseTransformer):
 
     """
 
-    def __init__(self, lag: StrictInt | List[StrictInt] = 1):
+    def __init__(self, lag: StrictInt | list[StrictInt] = 1):
         self.lag = lag
 
-    def fit(self, X: pl.DataFrame, y: Optional[pl.DataFrame] = None) -> "LagTransformer":
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "LagTransformer":
         """Fits the transformer and returns it.
 
         Parameters
@@ -46,11 +44,11 @@ class LagTransformer(BaseTransformer):
         self
 
         """
-        self.lags_ = self.lag
-        if isinstance(self.lag, int):
-            self.lags_ = [self.lag]
+        self.lags_: list[int] = self.lag if isinstance(self.lag, list) else [self.lag]
 
         self._observation_horizon = max(self.lags_) + 1
+
+        BaseTransformer.fit(self, X, y)
 
         return self
 

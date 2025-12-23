@@ -70,9 +70,9 @@ def test_predict(fit_forecasting_horizon, predict_forecasting_horizon, expected_
         predict_transformed=False,
     )
 
-    for col in y_train.columns:
-        if col == "time":
-            continue
+    # Extract non-time column names from y_train
+    y_columns = [col for col in y_train.columns if col != "time"]
+    for col in y_columns:
         for coverage_rate in coverage_rates:
             assert all(
                 y_pred[f"{col}_upper_{coverage_rate}"] + 1e-14
@@ -101,9 +101,9 @@ def test_update_predict(fit_forecasting_horizon, predict_forecasting_horizon, st
         stride=stride,
     )
 
-    for col in y_train.columns:
-        if col == "time":
-            continue
+    # Extract non-time column names from y_train
+    y_columns = [col for col in y_train.columns if col != "time"]
+    for col in y_columns:
         for coverage_rate in coverage_rates:
             assert all(
                 y_pred[f"{col}_upper_{coverage_rate}"] + 1e-14

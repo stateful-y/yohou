@@ -1,4 +1,4 @@
-"""Utilities for model evaluation and cross-validation scoring."""
+"""Utilities for model evaluation and (nested) cross-validation scoring."""
 
 from __future__ import annotations
 
@@ -131,7 +131,10 @@ class _MultimetricScorer:
 
         for name, scorer in self._scorers.items():
             try:
-                scores[name] = scorer(*args, **routed_params.get(name).score)
+                params = routed_params.get(name)
+                if params is None:
+                    raise ValueError(f"Missing routing params for scorer '{name}'")
+                scores[name] = scorer(*args, **params.score)
             except Exception as e:
                 if self._raise_exc:
                     raise e
@@ -164,13 +167,14 @@ def _fit_and_score(
     forecasting_horizon: int,
     *,
     scorer: BaseScorer | _MultimetricScorer,
-    train: np.ndarray[object, object],
-    test: np.ndarray[object, object],
+    train: np.ndarray[Any, Any],
+    test: np.ndarray[Any, Any],
     verbose: int,
     parameters: dict[str, object] | None,
     fit_params: dict[str, object] | None,
     predict_params: dict[str, object] | None,
     score_params: dict[str, object] | None,
+    return_train_score: bool = False,
     return_parameters: bool = False,
     return_n_test_samples: bool = False,
     return_times: bool = False,
@@ -231,6 +235,9 @@ def _fit_and_score(
     score_params : dict or None
         Parameters that will be passed to the scorer.
 
+    return_train_score : bool, default=False
+        Whether to return the train scores.
+
     return_parameters : bool, default=False
         Return parameters that has been used for the forecaster.
 
@@ -255,6 +262,9 @@ def _fit_and_score(
     result : dict with the following attributes
         test_scores : dict of scorer name -> float
             Score on testing set (for all the scorers).
+        train_scores : dict of scorer name -> float, optional
+            Score on training set (for all the scorers).
+            Only returned if `return_train_score` is True.
         n_test_samples : int
             Number of test samples.
         fit_time : float
@@ -299,6 +309,10 @@ def _fit_and_score(
     score_params_test = _check_method_params(y, params=score_params, indices=test)
 
     if parameters is not None:
+        print("GET PARAMS--------")
+        print(forecaster.get_params(deep=True).keys())
+        print("SET PARAMS--------")
+        print(parameters.keys())
         # here we clone the parameters, since sometimes the parameters
         # themselves might be estimators, e.g. when we search over different
         # estimators in a pipeline.
@@ -312,6 +326,7 @@ def _fit_and_score(
 
     result: dict[str, object] = {}
     test_scores: dict[str, float | str] | float | str
+    train_scores: dict[str, float | str] | float | str | None = None
     fit_time: float
     score_time: float
     try:
@@ -326,8 +341,12 @@ def _fit_and_score(
         elif isinstance(error_score, numbers.Number):
             if isinstance(scorer, _MultimetricScorer):
                 test_scores = {name: float(error_score) for name in scorer._scorers}
+                if return_train_score:
+                    train_scores = {name: float(error_score) for name in scorer._scorers}
             else:
                 test_scores = float(error_score)
+                if return_train_score:
+                    train_scores = float(error_score)
         result["fit_error"] = format_exc()
     else:
         result["fit_error"] = None
@@ -344,6 +363,20 @@ def _fit_and_score(
             error_score,
         )
         score_time = time.time() - start_time - fit_time
+
+        if return_train_score:
+            # TODO: forecaster is stateful and needs to be reset to predict the past
+            score_params_train = _check_method_params(y, params=score_params, indices=train)
+            train_scores = _score(
+                forecaster,
+                y_train,
+                X_ante_train,
+                X_post,
+                predict_params,
+                scorer,
+                score_params_train,
+                error_score,
+            )
 
     if verbose > 1:
         total_time = score_time + fit_time
@@ -365,6 +398,8 @@ def _fit_and_score(
         print(end_msg)
 
     result["test_scores"] = test_scores
+    if return_train_score:
+        result["train_scores"] = train_scores
     if return_n_test_samples:
         result["n_test_samples"] = _num_samples(y_test)
     if return_times:

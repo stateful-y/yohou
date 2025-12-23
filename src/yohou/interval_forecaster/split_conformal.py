@@ -1,6 +1,6 @@
 """Implementation of conformal forecasters."""
 
-from typing import List, Literal, Optional
+from typing import List, Literal
 
 import polars as pl
 from pydantic import StrictFloat, StrictInt
@@ -24,20 +24,16 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     """
 
     @property
-    def prediction_type(self) -> str:
-        """Get prediction type based on underlying point forecaster.
+    def prediction_types(self) -> set[str]:
+        """Get prediction types produced by this forecaster.
 
         Returns
         -------
-        str
-            "point+interval" if point forecaster produces points, else "interval".
+        set of str
+            {"point", "interval"} - produces both point predictions and intervals.
 
         """
-        # TODO: Use sklearn tags?
-        if self.point_forecaster.prediction_type == "point":
-            return "point+interval"
-
-        return "interval"
+        return {"point", "interval"}
 
     def __init__(
         self,
@@ -45,7 +41,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         calibration_size: StrictInt = 100,
         coverage_rates: List[StrictFloat] = [0.05],
         conformity_scorer: BaseConformityScorer = Residual(),
-        similarity: Optional[BaseSimilarity] = None,
+        similarity: BaseSimilarity | None = None,
         update_strategy: Literal["average", "constant"] = "average",
     ):
         BaseIntervalForecaster.__init__(
@@ -62,8 +58,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "SplitConformalForecaster":
         """Fits the forecaster and returns it.
@@ -111,7 +107,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             predict_transformed=False,
         )
 
-        y_pred_calib = y_pred_calib.drop("observed_time").rename({"predicted_time": "time"})
+        y_pred_calib = y_pred_calib.drop("observed_time")
 
         conformity_scorers = {}
         conformity_scores = pl.DataFrame()
@@ -156,7 +152,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     def predict(
         self,
-        X_post: Optional[pl.DataFrame] = None,
+        X_post: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         predict_transformed: bool = True,
     ) -> pl.DataFrame:
@@ -180,11 +176,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         pl.DataFrame
             Predicted interval time series.
         """
-        y_pred = (
-            self.point_forecaster_.predict(X_post=X_post)
-            .drop("observed_time")
-            .rename({"predicted_time": "time"})
-        )
+        y_pred = self.point_forecaster_.predict(X_post=X_post).drop("observed_time")
 
         y_pred_intervals = pl.DataFrame()
         for step in range(1, 1 + forecasting_horizon):

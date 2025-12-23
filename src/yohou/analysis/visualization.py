@@ -1,6 +1,6 @@
 """Visualization functions for forecast analysis using Plotly."""
 
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 import plotly.graph_objects as go
@@ -12,7 +12,7 @@ def plot_prediction_intervals(
     y_pred: pl.DataFrame,
     y_pred_int: pl.DataFrame,
     coverage_rates: List[StrictFloat],
-    y_test: Optional[pl.DataFrame] = None,
+    y_test: pl.DataFrame | None = None,
 ) -> go.Figure:
     """Plot the prediction intervals.
 
@@ -47,9 +47,12 @@ def plot_prediction_intervals(
 
         y_int = pl.concat([y_pred_lower, y_pred_upper[::-1]])
 
+        # Get time column for x-axis
+        time_col = y_pred_int.select("time").to_series().to_list()
+
         fig.add_trace(
             go.Scatter(
-                x=y_pred_int.index.tolist() + y_pred_int.index.tolist()[::-1],
+                x=time_col + time_col[::-1],
                 y=y_int,
                 fill="toself",
                 opacity=0.3,
@@ -59,7 +62,7 @@ def plot_prediction_intervals(
 
     fig.add_trace(
         go.Scatter(
-            x=y_pred.index,
+            x=y_pred.select("time").to_series().to_list(),
             y=y_pred[y_column],
             name=f"{y_column}_prediction",
         )
@@ -68,7 +71,7 @@ def plot_prediction_intervals(
     if y_test is not None:
         fig.add_trace(
             go.Scatter(
-                x=y_test.index,
+                x=y_test.select("time").to_series().to_list(),
                 y=y_test[y_column],
                 name=f"{y_column}_truth",
             )
@@ -116,9 +119,14 @@ def plot_calibration(
         y_pred_upper = y_pred_int[f"{y_column}_upper_{coverage_rate}"]
         y_pred_lower = y_pred_int[f"{y_column}_lower_{coverage_rate}"]
 
+        # Convert to numpy arrays for comparison
+        y_test_vals = y_test[y_column].to_numpy()
+        y_pred_lower_vals = y_pred_lower.to_numpy()
+        y_pred_upper_vals = y_pred_upper.to_numpy()
+
         errors_level = np.logical_or(
-            np.less(y_test.values.flatten(), y_pred_lower.values.flatten()),
-            np.greater(y_test.values.flatten(), y_pred_upper.values.flatten()),
+            np.less(y_test_vals.flatten(), y_pred_lower_vals.flatten()),
+            np.greater(y_test_vals.flatten(), y_pred_upper_vals.flatten()),
         )
 
         errors.append(np.mean(errors_level))

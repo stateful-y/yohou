@@ -1,8 +1,9 @@
 """Base classes for interval forecasters and similarity measures."""
 
 import abc
-from typing import Optional
+from typing import Any
 
+import numpy as np
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
@@ -12,7 +13,7 @@ from yohou.base import BaseForecaster
 from yohou.utils import select_struct
 
 
-class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc]
+class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     """Base class for similarity measures used in interval forecasting."""
 
     @property
@@ -31,8 +32,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Fit the similarity measure.
 
@@ -62,8 +63,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Update the similarity measure with new observations.
 
@@ -92,9 +93,9 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
-    ) -> pl.DataFrame:
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute similarity weights for predictions.
 
         Parameters
@@ -110,7 +111,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):  # type: ignore[misc
 
         Returns
         -------
-        pl.DataFrame
+        np.ndarray
             Similarity weights.
 
         """
@@ -127,7 +128,17 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     """
 
-    _prediction_type = "interval"
+    @property
+    def prediction_types(self) -> set[str]:
+        """Get the prediction types this forecaster produces.
+
+        Returns
+        -------
+        set of str
+            {"interval"}
+
+        """
+        return {"interval"}
 
     def __init__(
         self,
@@ -141,8 +152,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def fit(
         self,
         y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame] = None,
-        X_post: Optional[pl.DataFrame] = None,
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "BaseIntervalForecaster":
         """Fits the forecaster and returns it.
@@ -172,8 +183,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def update(
         self,
         y: pl.DataFrame,
-        X_ante: Optional[pl.DataFrame],
-        X_post: Optional[pl.DataFrame],
+        X_ante: pl.DataFrame | None = None,
+        X_post: pl.DataFrame | None = None,
     ) -> "BaseIntervalForecaster":
         """Updates the forecaster with more recent data and
         returns it.
@@ -202,7 +213,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             and set(self.local_y_names_) <= set(y.unnest(self.local_group_names_[0]).columns)
         )
 
-        if "point" in self.prediction_type or y_contains_points:
+        if "point" in self.prediction_types or y_contains_points:
             y = select_struct(y, local_col_names=self.local_y_names_, select_time=True)
 
         else:
@@ -271,4 +282,6 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             y = pl.concat([time, y], how="horizontal")
 
-        return BaseForecaster.update(self, y, X_ante, X_post)
+        BaseForecaster.update(self, y, X_ante, X_post)
+
+        return self
