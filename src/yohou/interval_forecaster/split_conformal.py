@@ -58,8 +58,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X_ante: pl.DataFrame | None = None,
         X_post: pl.DataFrame | None = None,
+        X_ante: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "SplitConformalForecaster":
         """Fits the forecaster and returns it.
@@ -69,10 +69,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y : pl.DataFrame
             Target time series.
 
-        X_ante : pl.DataFrame or None, default=None
+        X_post : pl.DataFrame or None, default=None
             Ex-ante feature time series.
 
-        X_post : pl.DataFrame or None, default=None
+        X_ante : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
         forecasting_horizon : int >= 1, default=1
@@ -83,14 +83,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self
 
         """
-        y_train, y_calib, X_ante_train, X_ante_calib = train_test_split(
-            y, X_ante, test_size=self.calibration_size, shuffle=False
+        y_train, y_calib, X_post_train, X_post_calib = train_test_split(
+            y, X_post, test_size=self.calibration_size, shuffle=False
         )
 
         self.point_forecaster_ = clone(self.point_forecaster).fit(
             y=y_train,
-            X_ante=X_ante_train,
-            X_post=X_post,
+            X_post=X_post_train,
+            X_ante=X_ante,
             forecasting_horizon=forecasting_horizon,
         )
 
@@ -100,8 +100,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         y_pred_calib = self.point_forecaster_.update_predict(
             y=y_calib,
-            X_ante=X_ante_calib,
-            X_post=X_post,
+            X_post=X_post_calib,
+            X_ante=X_ante,
             forecasting_horizon=predict_forecasting_horizon,
             stride=predict_stride,
             predict_transformed=False,
@@ -152,31 +152,36 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     def predict(
         self,
-        X_post: pl.DataFrame | None = None,
+        X_ante: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        cross_learning_group: str | None = None,
         predict_transformed: bool = True,
     ) -> pl.DataFrame:
-        """Predicts the model forecasting horizon from the
-        observation horizon.
+        """Predicts the model forecasting horizon from the observation horizon.
 
         Parameters
         ----------
-        X_post : pl.DataFrame or None, default=None
+        X_ante : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
 
+        cross_learning_group : str or None, default=None
+            For panel data (local_group_names_ is not None):
+            - If None: predict for all groups (default behavior)
+            - If str: predict only for the specified group (cross-learning)
+            For global data: parameter is ignored.
+
         predict_transformed : bool, default=True
-            Whether to return the predictions in the transformed
-            space.
+            If ``True``, the predictions are returned in the transformed space.
 
         Returns
         -------
         pl.DataFrame
             Predicted interval time series.
         """
-        y_pred = self.point_forecaster_.predict(X_post=X_post).drop("observed_time")
+        y_pred = self.point_forecaster_.predict(X_ante=X_ante).drop("observed_time")
 
         y_pred_intervals = pl.DataFrame()
         for step in range(1, 1 + forecasting_horizon):

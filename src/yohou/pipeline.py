@@ -517,6 +517,32 @@ class Pipeline(BaseTransformer, _BaseComposition):
 
         return observation_horizon
 
+    def reset(self, X: pl.DataFrame) -> "Pipeline":
+        """Resets the pipeline.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Input time series.
+
+        Returns
+        -------
+        self
+
+        """
+        # TODO: We don't want to store _X_observed in the pipeline
+        BaseTransformer.reset(self, X)
+
+        Xt = X
+        for _, _, transform in self._iter():
+            if hasattr(transform, "reset"):
+                transform.reset(Xt)
+
+            if hasattr(transform, "transform"):
+                Xt = transform.transform(Xt)
+
+        return self
+
     def _validate_steps(self) -> None:
         """Validate that all steps are BaseTransformer instances.
 

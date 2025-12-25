@@ -6,7 +6,7 @@ Yohou currently validates time series intervals using exact `timedelta` matching
 
 **Error observed:**
 ```
-ValueError: Time series has inconsistent intervals. Expected uniform interval of 31 days, 0:00:00, 
+ValueError: Time series has inconsistent intervals. Expected uniform interval of 31 days, 0:00:00,
 but found 4 different intervals: [timedelta(days=28), timedelta(days=29), timedelta(days=30), timedelta(days=31)]
 ```
 
@@ -41,7 +41,7 @@ Interval = str  # e.g., "1d", "1h", "1mo", "1q", "1y"
 # Supported string formats (aligned with polars)
 # Fixed intervals:
 # - "1h", "2h", "12h" → hours
-# - "1d", "7d" → days  
+# - "1d", "7d" → days
 # - "1w", "2w" → weeks
 #
 # Variable-length intervals:
@@ -73,7 +73,7 @@ Interval = str  # e.g., "1d", "1h", "1mo", "1q", "1y"
 ```python
 def check_interval_consistency(df: pl.DataFrame) -> Interval:
     """Check time series has consistent intervals and return interval.
-    
+
     Returns
     -------
     str
@@ -86,7 +86,7 @@ def check_interval_consistency(df: pl.DataFrame) -> Interval:
 ```python
 def check_interval_consistency(df: pl.DataFrame) -> str:
     """Infer time series interval with support for variable-length periods.
-    
+
     Always returns a string representation of the interval.
     Uses a robust frequency inference algorithm inspired by pandas.infer_freq:
     1. Calculate unique deltas
@@ -96,22 +96,22 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
     5. Support multi-period intervals (e.g., "2mo", "3mo", "6mo")
     """
     time_series = df["time"].to_list()
-    
+
     if len(time_series) < 2:
         raise ValueError("Need at least 2 time points to infer interval")
-    
+
     # Calculate deltas
     deltas = [time_series[i+1] - time_series[i] for i in range(len(time_series) - 1)]
     unique_deltas = sorted(set(deltas))
-    
+
     # Fast path: exact timedelta match - convert to string
     if len(unique_deltas) == 1:
         return _timedelta_to_string(unique_deltas[0])
-    
+
     # Check if deltas are all similar (within small tolerance for rounding)
     delta_days = [d.days for d in unique_deltas]
     min_delta, max_delta = min(delta_days), max(delta_days)
-    
+
     # Sub-day intervals with small variation (e.g., hourly with DST)
     if max_delta == 0:
         # All deltas are sub-day
@@ -119,12 +119,12 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
         if max(delta_seconds) - min(delta_seconds) <= 3600:  # ±1 hour tolerance
             median_seconds = sorted(delta_seconds)[len(delta_seconds)//2]
             return _timedelta_to_string(timedelta(seconds=median_seconds))
-    
+
     # Infer based on delta distribution
     freq = _infer_freq_from_deltas(time_series, unique_deltas)
     if freq is not None:
         return freq
-    
+
     # Could not infer - raise detailed error
     raise ValueError(
         f"Time series has inconsistent intervals. "
@@ -135,22 +135,22 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
 
 def _timedelta_to_string(td: timedelta) -> str:
     """Convert a timedelta to string interval format.
-    
+
     Examples:
         timedelta(hours=1) → "1h"
         timedelta(days=1) → "1d"
         timedelta(days=7) → "1w"
         timedelta(days=14) → "2w"
-    
+
     # Weekly pattern: 7-day intervals
     if len(unique_deltas) == 1 and delta_days[0] % 7 == 0:
         weeks = delta_days[0] // 7
         return f"{weeks}w"
-    
+
     # Daily pattern: uniform day intervals
     if len(unique_deltas) == 1:
         return _timedelta_to_string(unique_deltas[0])
-    
+
     # Monthly patterns: 28-31 day range
     elif total_seconds % 86400 == 0:
         days = int(total_seconds // 86400)
@@ -168,7 +168,7 @@ def _timedelta_to_string(td: timedelta) -> str:
 
 def _infer_freq_from_deltas(time_series: list[datetime], unique_deltas: list[timedelta]) -> str | None:
     """Infer frequency from delta distribution.
-    
+
     Inspired by pandas._FrequencyInferer logic:
     - Analyze month differences for monthly/quarterly/yearly patterns
     - Check day-of-month consistency
@@ -176,30 +176,30 @@ def _infer_freq_from_deltas(time_series: list[datetime], unique_deltas: list[tim
     """
     delta_days = [d.days for d in unique_deltas]
     min_delta, max_delta = min(delta_days), max(delta_days)
-    
+
     # Weekly pattern: 7-day intervals
     if len(unique_deltas) == 1 and delta_days[0] % 7 == 0:
         weeks = delta_days[0] // 7
         return f"{weeks}w" if weeks > 1 else timedelta(days=7)
-    
+
     # Monthly patterns: 28-31 day range
     if 28 <= min_delta <= 31 and 28 <= max_delta <= 31:
         month_freq = _infer_monthly_freq(time_series)
         if month_freq:
             return month_freq
-    
+
     # Quarterly patterns: ~89-92 day range (3 months)
     if 89 <= min_delta <= 92 and 89 <= max_delta <= 92:
         return _infer_quarterly_freq(time_series)
-    
+
     # Semi-annual: ~181-184 day range (6 months)
     if 181 <= min_delta <= 184 and 181 <= max_delta <= 184:
         return "6mo"
-    
+
     # Yearly patterns: 365-366 day range
     if 365 <= min_delta <= 366 and 365 <= max_delta <= 366:
         return "1y"
-    
+
     # Multi-month patterns (2, 4, 6, 12 months)
     # Check if deltas are roughly N months
     for n_months in [2, 3, 4, 6, 12]:
@@ -208,7 +208,7 @@ def _infer_freq_from_deltas(time_series: list[datetime], unique_deltas: list[tim
         if expected_min <= min_delta <= expected_max and expected_min <= max_delta <= expected_max:
             if _verify_n_month_pattern(time_series, n_months):
                 return f"{n_months}mo"
-    
+
     return None
 
 
@@ -220,16 +220,16 @@ def _infer_monthly_freq(time_series: list[datetime]) -> str | None:
         d1, d2 = time_series[i], time_series[i + 1]
         month_diff = (d2.year - d1.year) * 12 + (d2.month - d1.month)
         month_diffs.append(month_diff)
-    
+
     unique_month_diffs = set(month_diffs)
-    
+
     # All month differences should be the same for regular monthly data
     if len(unique_month_diffs) == 1:
         n_months = month_diffs[0]
         # Verify day-of-month consistency
         if _check_day_of_month_consistency(time_series):
             return f"{n_months}mo" if n_months > 1 else "1mo"
-    
+
     return None
 
 
@@ -240,11 +240,11 @@ def _infer_quarterly_freq(time_series: list[datetime]) -> str | None:
         d1, d2 = time_series[i], time_series[i + 1]
         month_diff = (d2.year - d1.year) * 12 + (d2.month - d1.month)
         month_diffs.append(month_diff)
-    
+
     # Quarterly should be exactly 3 months
     if all(md == 3 for md in month_diffs) and _check_day_of_month_consistency(time_series):
         return "1q"
-    
+
     return None
 
 
@@ -260,7 +260,7 @@ def _verify_n_month_pattern(time_series: list[datetime], n_months: int) -> bool:
 
 def _check_day_of_month_consistency(time_series: list[datetime]) -> bool:
     """Check if day-of-month is consistent (allowing for month-end edge cases).
-    
+
     Examples:
     - [Jan 31, Feb 28, Mar 31] → True (month-end adjusted)
     - [Jan 15, Feb 15, Mar 15] → True (consistent day)
@@ -268,38 +268,38 @@ def _check_day_of_month_consistency(time_series: list[datetime]) -> bool:
     """
     days = [d.day for d in time_series]
     unique_days = set(days)
-    
+
     # All same day-of-month
     if len(unique_days) == 1:
         return True
-    
+
     # Check if variations are due to month-end adjustments
     # E.g., 31 → 28/29 → 31 is acceptable for Jan 31 + 1mo
     import calendar
-    
+
     for i in range(len(time_series) - 1):
         d1, d2 = time_series[i], time_series[i + 1]
         days_in_d2_month = calendar.monthrange(d2.year, d2.month)[1]
-        
+
         # Check if d1.day would overflow into next month
         target_day = d1.day
         actual_day = d2.day
-        
+
         # If target day exceeds days in month, should be capped at month end
         if target_day > days_in_d2_month:
             if actual_day != days_in_d2_month:
                 return False
         elif target_day != actual_day:
             return False
-    
+
     return True
 **Store interval as `str` type:**
 ```python
 class BaseForecaster:
     interval_: str  # Changed from timedelta to str
-    
-    def _pre_fit(self, y, X_ante, X_post, forecasting_horizon):
-        self.interval_ = check_inputs(y, X_ante, X_post)  # Now returns str
+
+    def _pre_fit(self, y, X_post, X_ante, forecasting_horizon):
+        self.interval_ = check_inputs(y, X_post, X_ante)  # Now returns str
         # ... rest of method
 ```
 
@@ -315,7 +315,7 @@ class BaseForecaster:
 ```python
 def parse_interval(interval: str) -> tuple[int, str]:
     """Parse interval string into (multiplier, unit).
-    
+
     Examples:
         "1d" → (1, "d")
         "3mo" → (3, "mo")
@@ -338,12 +338,12 @@ def is_variable_interval(interval: str) -> bool:
     """Check if interval is variable-length (monthly, yearly)."""
     _, unit = parse_interval(interval)
     """Add n intervals to a datetime (handles variable-length intervals).
-    
+
     Supports multi-period intervals like "2mo", "3mo", "6mo", etc.
     """
     multiplier, unit = parse_interval(interval)
     total_units = multiplier * n
-    
+
     if unit == "d":
         return dt + timedelta(days=total_units)
     elif unit == "h":
@@ -371,17 +371,17 @@ def is_variable_interval(interval: str) -> bool:
     else:
         raise ValueError(f"Unsupported interval unit: {unit}")
         return dt + (interval * n)
-    
+
     # Parse string interval (e.g., "2mo" → (2, "mo"))
     import re
     match = re.match(r'(\d+)(mo|q|y|w|d|h)', interval)
     if not match:
         raise ValueError(f"Invalid interval format: {interval}")
-    
+
     multiplier = int(match.group(1))
     unit = match.group(2)
     total_units = multiplier * n
-    
+
     if unit == "mo":
         # Add months handling year rollover
         month = dt.month - 1 + total_units
@@ -419,13 +419,13 @@ def _days_in_month(year: int, month: int) -> int:
 def _add_time_columns(self, y_pred: pl.DataFrame) -> pl.DataFrame:
     """Add time columns to predictions."""
     last_time = self._y_observed["time"].max()
-    
+
     # Generate future times using interval-aware helper
     future_times = [
         add_interval(last_time, self.interval_, i + 1)
         for i in range(len(y_pred))
     ]
-    
+
     return y_pred.with_columns([
         pl.Series("time", future_times),
         pl.lit(last_time).alias("observed_time"),
@@ -567,16 +567,16 @@ def random_start_date(seed=None):
 @pytest.mark.parametrize("interval_str,n_periods,seed", [
     # Fixed intervals - daily
     ("1d", 100, 42), ("1d", 365, 123), ("7d", 52, 456), ("14d", 26, 789),
-    
+
     # Fixed intervals - sub-daily
     ("1h", 168, 111), ("6h", 240, 222), ("12h", 120, 333),
-    
+
     # Fixed intervals - weekly
     ("1w", 52, 444), ("2w", 26, 555),
-    
+
     # Variable intervals - monthly
     ("1mo", 120, 666), ("2mo", 60, 777), ("3mo", 40, 888), ("6mo", 20, 999),
-    
+
     # Variable intervals - quarterly and yearly
     ("1q", 40, 1111), ("1y", 10, 2222), ("2y", 10, 3333),
 ])
@@ -585,7 +585,7 @@ def test_check_interval_consistency_parametrized(interval_str, n_periods, seed):
     start = random_start_date(seed)
     time_series = [add_interval(start, interval_str, i) for i in range(n_periods)]
     df = pl.DataFrame({"time": time_series})
-    
+
     detected_interval = check_interval_consistency(df)
     assert detected_interval == interval_str
 
@@ -593,10 +593,10 @@ def test_check_interval_consistency_parametrized(interval_str, n_periods, seed):
 @pytest.mark.parametrize("start_day,interval_str,n_periods,seed", [
     # Month-end edge cases - start on day 31
     (31, "1mo", 12, 4444), (31, "2mo", 6, 5555), (31, "3mo", 4, 6666),
-    
+
     # Month-end edge cases - start on day 30
     (30, "1mo", 12, 7777), (30, "2mo", 6, 8888),
-    
+
     # Month-end edge cases - start on day 29 (leap year handling)
     (29, "1mo", 24, 9999), (29, "2mo", 12, 10000),
 ])
@@ -604,7 +604,7 @@ def test_check_interval_consistency_month_end(start_day, interval_str, n_periods
     """Test monthly intervals with month-end edge cases (Jan 31 → Feb 28/29 → Mar 31)."""
     random.seed(seed)
     year = random.randint(2000, 2030)
-    
+
     # Pick a month that has the required start_day
     if start_day == 31:
         month = random.choice([1, 3, 5, 7, 8, 10, 12])
@@ -612,11 +612,11 @@ def test_check_interval_consistency_month_end(start_day, interval_str, n_periods
         month = random.choice([1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
     else:
         month = random.randint(1, 12)
-    
+
     start = datetime(year, month, start_day)
     time_series = [add_interval(start, interval_str, i) for i in range(n_periods)]
     df = pl.DataFrame({"time": time_series})
-    
+
     detected_interval = check_interval_consistency(df)
     assert detected_interval == interval_str
 
@@ -662,7 +662,7 @@ def test_add_interval_monthly(start_seed, interval_str, n, expected_months_added
     """Test add_interval for monthly patterns with random start dates."""
     start = random_start_date(start_seed)
     result = add_interval(start, interval_str, n)
-    
+
     months_diff = (result.year - start.year) * 12 + (result.month - start.month)
     assert months_diff == expected_months_added
 
@@ -676,7 +676,7 @@ def test_add_interval_roundtrip(start_seed, interval_str, n_periods):
     start = random_start_date(start_seed)
     time_series = [add_interval(start, interval_str, i) for i in range(n_periods)]
     df = pl.DataFrame({"time": time_series})
-    
+
     detected = check_interval_consistency(df)
     assert detected == interval_str
 ```

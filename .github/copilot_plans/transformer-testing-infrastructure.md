@@ -167,11 +167,11 @@ def test_my_transformer_checks(transformer, tags, expected_failures, time_series
     # Generate data
     X_train = time_series_factory(length=100, seed=42)
     X_test = time_series_factory(length=50, seed=123)
-    
+
     # Fit transformer
     transformer_fitted = clone(transformer)
     transformer_fitted.fit(X_train)
-    
+
     # Run all generated checks
     expected_failures_set = set(expected_failures)
     for check_name, check_func, check_kwargs in _yield_yohou_transformer_checks(
@@ -192,7 +192,7 @@ def test_my_transformer_specific_behavior(time_series_factory):
     X = time_series_factory(length=50)
     transformer = MyTransformer(param=value)
     transformer.fit(X)
-    
+
     # Test specific behavior
     assert some_condition
 ```
@@ -243,7 +243,7 @@ def fit(self, X, y=None):
 
 **Why**: `BaseTransformer.fit()` sets required sklearn attributes:
 - `feature_names_in_` - Required for sklearn compatibility
-- `n_features_in_` - Required for sklearn compatibility  
+- `n_features_in_` - Required for sklearn compatibility
 - Calls `reset(X)` internally to initialize observation memory
 - Enables `check_is_fitted()` to work correctly
 - Allows Pipeline composition to recognize fitted transformers
@@ -389,4 +389,3 @@ Module-specific conftest files provide specialized fixtures (e.g., `positive_tim
 - sklearn composition: `sklearn/compose/tests/test_column_transformer.py`
 - sklearn inverse: `sklearn/preprocessing/tests/test_function_transformer.py`
 - sklearn minimal: `sklearn/utils/_testing.py::MinimalTransformer`
-

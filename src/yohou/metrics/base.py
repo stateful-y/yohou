@@ -60,7 +60,6 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         """
         y_truth = y_truth.join(y_pred[["time"]], on="time")
-
         y_pred = y_pred.filter(pl.col("time").is_in(y_truth["time"].implode()))
 
         y_truth = y_truth.drop("time")

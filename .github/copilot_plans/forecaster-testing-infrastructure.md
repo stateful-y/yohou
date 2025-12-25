@@ -7,13 +7,13 @@
 
 ## Overview
 
-Yohou's forecaster testing infrastructure provides comprehensive, reusable testing for time series forecasters (point and interval). It adapts patterns from scikit-learn's regressor/classifier testing framework while accommodating time series-specific requirements (forecasting_horizon, update/reset, multiple DataFrames for y/X_ante/X_post, dual time columns in predictions).
+Yohou's forecaster testing infrastructure provides comprehensive, reusable testing for time series forecasters (point and interval). It adapts patterns from scikit-learn's regressor/classifier testing framework while accommodating time series-specific requirements (forecasting_horizon, update/reset, multiple DataFrames for y/X_post/X_ante, dual time columns in predictions).
 
 ### Key Features
 
 1. **Check Generator Pattern**: Systematic check generation via `_yield_yohou_forecaster_checks()` (similar to sklearn's `_yield_regressor_checks`)
 
-2. **Pytest Fixtures Architecture**: Factory fixtures for flexible data generation (y, X_ante, X_post tuples), forecaster registry with tags
+2. **Pytest Fixtures Architecture**: Factory fixtures for flexible data generation (y, X_post, X_ante tuples), forecaster registry with tags
 
 3. **Point vs Interval Forecasters**: Distinct validation for point predictions vs interval predictions with coverage rates
 
@@ -21,7 +21,7 @@ Yohou's forecaster testing infrastructure provides comprehensive, reusable testi
 
 5. **Analytical Tests**: Exact numerical validation for PointReductionForecaster with LinearRegression on known processes (linear trends, AR(1))
 
-6. **Ex-ante vs Ex-post Features**: Correct handling of features known in advance (X_ante) vs observed after (X_post)
+6. **Ex-ante vs Ex-post Features**: Correct handling of features known in advance (X_post) vs observed after (X_ante)
 
 ---
 
@@ -34,13 +34,15 @@ The testing infrastructure is organized following pytest conventions:
 ```
 tests/
 ├── conftest.py                         # Global fixtures (y_X_factory, forecaster_registry)
-├── estimator_checks.py                 # Check function library (16+ functions + generator)
+├── estimator_checks.py                 # Check function library (20 functions + generator)
 ├── test_estimator_checks.py            # Meta-tests for check functions
 ├── point_forecaster/
 │   ├── test_naive.py                   # Tests for SeasonalNaive
-│   └── test_reduction.py               # Tests for PointReductionForecaster + analytical tests
+│   ├── test_reduction.py               # Tests for PointReductionForecaster + analytical tests
+│   └── test_cross_learning.py          # Cross-learning tests for point forecasters
 └── interval_forecaster/
-    └── test_reduction.py               # Tests for SplitConformalForecaster (in progress)
+    ├── test_reduction.py               # Tests for IntervalReductionForecaster
+    └── test_cross_learning.py          # Cross-learning tests for interval forecasters
 ```
 
 **Organization Principles**:
@@ -58,36 +60,36 @@ The testing infrastructure consists of three main components that work together 
 
 ### 1. Check Functions Library (`tests/estimator_checks.py`)
 
-**Purpose**: Reusable library of 16+ validation functions that test forecaster contracts
+**Purpose**: Reusable library of 20 validation functions that test forecaster contracts
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
 - Comprehensive docstrings with parameters and error conditions
-- Functions accept `(forecaster, y, X_ante, X_post, **kwargs)` signature
-- Handle multiple DataFrames (y, X_ante, X_post) with "time" columns
+- Functions accept `(forecaster, y, X_post, X_ante, **kwargs)` signature
+- Handle multiple DataFrames (y, X_post, X_ante) with "time" columns
 
 **Check Categories**:
 
 **Common Forecaster Checks (8 functions)**:
-1. **`check_fit_sets_forecaster_attributes`** - Validates fit() sets required attributes (fit_forecasting_horizon_, interval_, local_group_names_, local_y_names_, local_X_names_, _y_observed, _X_ante_observed, _X_t_observed). Note: _X_post_observed is NOT checked because X_post features are merged into X during _preprocess_inputs() - they cannot be stored separately.
+1. **`check_fit_sets_forecaster_attributes`** - Validates fit() sets required attributes (fit_forecasting_horizon_, interval_, local_group_names_, local_y_names_, local_X_names_, _y_observed, _X_post_observed, _X_t_observed). Note: _X_ante_observed is NOT checked because X_ante features are merged into X during _preprocess_inputs() - they cannot be stored separately.
 2. **`check_forecaster_not_fitted_error`** - Ensures NotFittedError before fit() when accessing fitted attributes
-3. **`check_predict_time_columns`** - Validates predictions have "observed_time" and "predicted_time" columns. Note: Only X_post is passed to predict() since X_ante (known in advance) is stored during fit.
-4. **`check_update_extends_observations`** - Tests update() properly extends _y_observed, _X_ante_observed buffers (X_post is not stored separately)
-5. **`check_reset_replaces_observations`** - Tests reset() replaces observation buffers correctly (_y_observed, _X_ante_observed only)
+3. **`check_predict_time_columns`** - Validates predictions have "observed_time" and "predicted_time" columns. Note: Only X_ante is passed to predict() since X_post (known in advance) is stored during fit.
+4. **`check_update_extends_observations`** - Tests update() properly extends _y_observed, _X_post_observed buffers (X_ante is not stored separately)
+5. **`check_reset_replaces_observations`** - Tests reset() replaces observation buffers correctly (_y_observed, _X_post_observed only)
 6. **`check_reset_propagates_to_transformers`** - Tests reset() calls reset() on target_transformer and feature_transformer when present
 7. **`check_forecasting_horizon_validation`** - Ensures forecasting_horizon < 1 raises ValueError
 8. **`check_prediction_types_property`** - Validates prediction_types returns correct set ({"point"}, {"interval"}, or both)
 
 **Additional Common Checks (1 function)**:
-9. **`check_clone_preserves_forecaster_params`** - sklearn's clone() preserves init parameters (enhanced to handle nested estimators like LinearRegression)
+9. **`check_clone_preserves_forecaster_params`** - sklearn's clone() preserves init parameters (enhanced to handle deeply nested estimators like MultiOutputRegressor)
 
 **Point Forecaster Checks (2 functions)**:
 10. **`check_point_prediction_structure`** - Validates output has observed_time, predicted_time, and target columns only (no interval columns)
 11. **`check_point_prediction_types`** - Ensures prediction_types == {"point"}
 
 **Interval Forecaster Checks (4 functions)**:
-12. **`check_interval_prediction_columns`** - Validates {col}_lower_{rate} and {col}_upper_{rate} format
-13. **`check_interval_bounds`** - Ensures upper >= lower for all coverage rates and time steps
+12. **`check_interval_prediction_columns`** - Validates {col}_lower_{rate} and {col}_upper_{rate} format (handles both global and panel data with struct columns)
+13. **`check_interval_bounds`** - Ensures upper >= lower for all coverage rates and time steps (handles struct columns by unnesting)
 14. **`check_interval_prediction_types`** - Validates prediction_types contains "interval"
 15. **`check_coverage_rates_parameter`** - Validates coverage_rates is list of floats in (0, 1)
 
@@ -95,9 +97,14 @@ The testing infrastructure consists of three main components that work together 
 16. **`check_estimator_parameter`** - Validates estimator is sklearn BaseEstimator
 17. **`check_reduction_strategy`** - Validates reduction_strategy parameter exists
 
+**Cross-Learning Forecaster Checks (3 functions)**:
+18. **`check_cross_learning_panel_data`** - Validates cross_learning_group=None predicts all groups in panel data
+19. **`check_cross_learning_single_group`** - Validates cross_learning_group filters to specified struct column
+20. **`check_cross_learning_invalid_group_raises`** - Validates ValueError raised for invalid cross_learning_group
+
 ### 2. Check Generator (`tests/estimator_checks.py`)
 
-**Function**: `_yield_yohou_forecaster_checks(forecaster, y_train, X_ante_train, X_post_train, y_test, X_ante_test, X_post_test, tags=None)`
+**Function**: `_yield_yohou_forecaster_checks(forecaster, y_train, X_post_train, X_ante_train, y_test, X_post_test, X_ante_test, tags=None)`
 
 **Purpose**: Dynamically generates applicable checks based on forecaster properties, eliminating boilerplate test code
 
@@ -125,7 +132,7 @@ The testing infrastructure consists of three main components that work together 
 **Purpose**: Centralized test data generation for forecasters
 
 **Data Generation Fixtures** (1 fixture):
-- `y_X_factory` - Factory function returning (y, X_ante, X_post) tuples with configurable length, n_features, seed
+- `y_X_factory` - Factory function returning (y, X_post, X_ante) tuples with configurable length, n_features, seed
 
 **Configuration Fixtures** (1 fixture):
 - `forecaster_registry` - Dict mapping forecaster names to instances, tags, and expected_failures (planned, not yet implemented)
@@ -134,14 +141,14 @@ The testing infrastructure consists of three main components that work together 
 ```python
 def test_my_forecaster(y_X_factory):
     # Generate train/test data
-    y, X_ante, X_post = y_X_factory(length=100, seed=42)
+    y, X_post, X_ante = y_X_factory(length=100, seed=42)
     y_train, y_test = y[:80], y[80:]
-    X_ante_train, X_ante_test = X_ante[:80], X_ante[80:]
-    X_post_train, X_post_test = (X_post[:80], X_post[80:]) if X_post is not None else (None, None)
-    
+    X_post_train, X_post_test = X_post[:80], X_post[80:]
+    X_ante_train, X_ante_test = (X_ante[:80], X_ante[80:]) if X_ante is not None else (None, None)
+
     # Fit and test forecaster
-    forecaster.fit(y_train, X_ante_train, X_post_train, forecasting_horizon=3)
-    y_pred = forecaster.predict(forecasting_horizon=3, X_post=X_post_test)
+    forecaster.fit(y_train, X_post_train, X_ante_train, forecasting_horizon=3)
+    y_pred = forecaster.predict(forecasting_horizon=3, X_ante=X_ante_test)
 ```
 
 ---
@@ -202,20 +209,20 @@ from estimator_checks import _yield_yohou_forecaster_checks
 def test_my_forecaster_checks(forecaster, tags, expected_failures, y_X_factory):
     """Run systematic checks on MyForecaster."""
     # Generate data
-    y, X_ante, X_post = y_X_factory(length=100, seed=42)
+    y, X_post, X_ante = y_X_factory(length=100, seed=42)
     y_train, y_test = y[:80], y[80:]
-    X_ante_train, X_ante_test = X_ante[:80], X_ante[80:]
-    X_post_train, X_post_test = (X_post[:80], X_post[80:]) if X_post is not None else (None, None)
-    
+    X_post_train, X_post_test = X_post[:80], X_post[80:]
+    X_ante_train, X_ante_test = (X_ante[:80], X_ante[80:]) if X_ante is not None else (None, None)
+
     # Fit forecaster
     forecaster_fitted = clone(forecaster)
-    forecaster_fitted.fit(y_train, X_ante_train, X_post_train, forecasting_horizon=3)
-    
+    forecaster_fitted.fit(y_train, X_post_train, X_ante_train, forecasting_horizon=3)
+
     # Run all generated checks
     expected_failures_set = set(expected_failures)
     for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
-        forecaster_fitted, y_train, X_ante_train, X_post_train,
-        y_test, X_ante_test, X_post_test, tags=tags
+        forecaster_fitted, y_train, X_post_train, X_ante_train,
+        y_test, X_post_test, X_ante_test, tags=tags
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")
@@ -229,12 +236,12 @@ Below the parametrized test, add any forecaster-specific behavior tests:
 
 ```python
 def test_my_forecaster_specific_behavior(y_X_factory):
-    y, X_ante, X_post = y_X_factory(length=50)
+    y, X_post, X_ante = y_X_factory(length=50)
     forecaster = MyForecaster(param=value)
-    forecaster.fit(y, X_ante, X_post, forecasting_horizon=3)
-    
-    y_pred = forecaster.predict(forecasting_horizon=3, X_post=X_post)
-    
+    forecaster.fit(y, X_post, X_ante, forecasting_horizon=3)
+
+    y_pred = forecaster.predict(forecasting_horizon=3, X_ante=X_ante)
+
     # Test specific behavior
     assert some_condition
 ```
@@ -248,7 +255,9 @@ def test_my_forecaster_specific_behavior(y_X_factory):
 **Forecaster Tests**:
 - `tests/point_forecaster/test_naive.py`: 11/11 passing (2 check generator + 9 seasonality-specific)
 - `tests/point_forecaster/test_reduction.py`: 13/13 passing (2 check generator + 9 existing + 2 analytical)
-- `tests/interval_forecaster/test_reduction.py`: In progress
+- `tests/point_forecaster/test_cross_learning.py`: 5/5 passing (1 check generator + 4 behavior-specific)
+- `tests/interval_forecaster/test_reduction.py`: 9/9 passing
+- `tests/interval_forecaster/test_cross_learning.py`: 5/5 passing (1 check generator with 1 expected failure + 4 behavior-specific)
 
 ### Validated Forecasters
 
@@ -260,43 +269,49 @@ def test_my_forecaster_specific_behavior(y_X_factory):
 **PointReductionForecaster** (Reduction + Point Forecaster):
 - Check generator validates 11 checks automatically
 - Analytical tests with LinearRegression validate exact numerical behavior
+- Cross-learning tests validate panel data handling with `supports_panel_data=True` tag
 - No expected failures - all checks pass
+
+**IntervalReductionForecaster** (Reduction + Interval Forecaster):
+- Check generator validates 15+ checks automatically
+- Cross-learning tests validate panel data handling with struct columns
+- Expected failure: `check_interval_bounds` with default QuantileRegressor (known issue - doesn't guarantee monotonic bounds)
 
 ---
 
 ## Implementation Insights
 
-### Critical Understanding: X_ante vs X_post
+### Critical Understanding: X_post vs X_ante
 
-**Ex-ante Features (X_ante)**:
+**Ex-ante Features (X_post)**:
 - Known in advance (holidays, planned promotions, scheduled events)
-- Stored in `_X_ante_observed` during fit()
+- Stored in `_X_post_observed` during fit()
 - NOT passed to predict() - used automatically from stored values
 - Can be projected into the future
 
-**Ex-post Features (X_post)**:
+**Ex-post Features (X_ante)**:
 - Only known after observation (actual weather, traffic, sales)
 - Filtered to match y's time index in `_preprocess_inputs()`
 - Merged into combined X DataFrame during preprocessing
-- NOT stored as `_X_post_observed` because they can't be used for future predictions
+- NOT stored as `_X_ante_observed` because they can't be used for future predictions
 - CAN be passed to predict() if somehow known for prediction period
 
 **predict() Signature**:
 ```python
-def predict(self, X_post=None, forecasting_horizon=1, predict_transformed=True):
-    # X_ante is NOT a parameter - it's stored and used automatically
-    # Only X_post can be provided (if known for prediction period)
+def predict(self, X_ante=None, forecasting_horizon=1, predict_transformed=True):
+    # X_post is NOT a parameter - it's stored and used automatically
+    # Only X_ante can be provided (if known for prediction period)
 ```
 
 ### Forecaster vs Transformer Differences
 
 **Fitted Attributes**:
 - **Transformers**: `feature_names_in_`, `n_features_in_`, `_observation_horizon`, `_X_observed`
-- **Forecasters**: `fit_forecasting_horizon_`, `interval_`, `local_group_names_`, `local_y_names_`, `local_X_names_`, `_y_observed`, `_X_ante_observed`, `_X_t_observed`, transformers
+- **Forecasters**: `fit_forecasting_horizon_`, `interval_`, `local_group_names_`, `local_y_names_`, `local_X_names_`, `_y_observed`, `_X_post_observed`, `_X_t_observed`, transformers
 
 **Lifecycle Methods**:
 - **Transformers**: `fit(X, y=None)`, `transform(X)`, `update(X)`, `reset(X)`
-- **Forecasters**: `fit(y, X_ante, X_post, forecasting_horizon)`, `predict(X_post, forecasting_horizon)`, `update(y, X_ante, X_post)`, `reset(y, X_ante, X_post)`
+- **Forecasters**: `fit(y, X_post, X_ante, forecasting_horizon)`, `predict(X_ante, forecasting_horizon)`, `update(y, X_post, X_ante)`, `reset(y, X_post, X_ante)`
 
 **Time Columns**:
 - **Transformers**: Input/output both have "time" column
@@ -309,25 +324,25 @@ For forecasters with analytical solutions (e.g., PointReductionForecaster + Line
 ```python
 def test_linear_regression_ar1_process():
     """Test PointReductionForecaster with LinearRegression on AR(1) process.
-    
+
     For an AR(1) process y_t = phi * y_{t-1} + c, LinearRegression with default lag=1
     should recover the exact parameters and produce exact one-step-ahead predictions.
     """
     # Create AR(1) process: y_t = 0.8 * y_{t-1} + 5
     phi = 0.8
     c = 5.0
-    
+
     # Generate series
     values = [10.0]  # Initial value
     for i in range(1, length):
         values.append(phi * values[-1] + c)
-    
+
     y = pl.DataFrame({"time": time, "value": values})
-    
+
     # Fit forecaster
     forecaster = PointReductionForecaster(estimator=LinearRegression())
     forecaster.fit(y_train, forecasting_horizon=1)
-    
+
     # Check fitted coefficients match analytical solution
     fitted_estimator = forecaster.estimator_
     np.testing.assert_allclose(fitted_estimator.coef_[0], phi, rtol=1e-10, atol=1e-10)
@@ -362,10 +377,10 @@ This prevents false failures when comparing estimator instances.
 - `interval_` is a timedelta object
 - `local_group_names_`, `local_y_names_`, `local_X_names_` are set
 - `_y_observed` and `_X_t_observed` buffers exist
-- `_X_ante_observed` exists if X_ante was provided
+- `_X_post_observed` exists if X_post was provided
 - Transformer references set when transformers provided
 
-**Critical Note**: Does NOT check `_X_post_observed` because X_post features are merged during preprocessing, not stored separately.
+**Critical Note**: Does NOT check `_X_ante_observed` because X_ante features are merged during preprocessing, not stored separately.
 
 ### Time Column Validation
 
@@ -458,15 +473,15 @@ from estimator_checks import _yield_yohou_forecaster_checks
 ```python
 def test_my_forecaster(y_X_factory):
     # Generate data
-    y, X_ante, X_post = y_X_factory(length=100, seed=42)
-    
+    y, X_post, X_ante = y_X_factory(length=100, seed=42)
+
     # Split maintaining temporal order
     y_train, y_test = y[:80], y[80:]
-    X_ante_train, X_ante_test = X_ante[:80], X_ante[80:]
-    X_post_train, X_post_test = (X_post[:80], X_post[80:]) if X_post is not None else (None, None)
+    X_post_train, X_post_test = X_post[:80], X_post[80:]
+    X_ante_train, X_ante_test = (X_ante[:80], X_ante[80:]) if X_ante is not None else (None, None)
 ```
 
-**Critical**: Always check `X_post is not None` before slicing - some tests use X_post=None.
+**Critical**: Always check `X_ante is not None` before slicing - some tests use X_ante=None.
 
 ### Expected Failures Pattern
 
@@ -492,6 +507,58 @@ def test_my_forecaster_checks(forecaster, tags, expected_failures, y_X_factory):
 ```
 
 **Purpose**: Document known limitations while maintaining systematic testing.
+
+### Cross-Learning Testing Pattern
+
+**Overview**: Cross-learning enables training on all groups (e.g., all stores) but predicting for specific groups only. This is tested via the `supports_panel_data=True` tag.
+
+**Check Generator Integration**:
+```python
+@pytest.mark.parametrize(
+    "forecaster,tags,expected_failures",
+    [
+        (
+            PointReductionForecaster(
+                estimator=LinearRegression(),
+                feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            {"forecaster_type": "point", "uses_reduction": True, "supports_panel_data": True},
+            [],
+        ),
+    ],
+)
+def test_point_reduction_cross_learning_checks(forecaster, tags, expected_failures, panel_data):
+    """Run systematic cross-learning checks on PointReductionForecaster with panel data."""
+    y = panel_data["y"]
+    y_train, y_test = y[:80], y[80:]
+
+    forecaster_fitted = clone(forecaster)
+    forecaster_fitted.fit(y_train, X_post=None, X_ante=None, forecasting_horizon=3)
+
+    # Run all generated checks (including cross-learning checks)
+    for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
+        forecaster_fitted, y_train, None, None, y_test, None, None, tags=tags
+    ):
+        if check_name in set(expected_failures):
+            pytest.skip(f"Expected failure: {check_name}")
+        else:
+            check_func(forecaster_fitted, **check_kwargs)
+```
+
+**Cross-Learning Check Functions**:
+1. **`check_cross_learning_panel_data`**: Validates `cross_learning_group=None` predicts all groups
+2. **`check_cross_learning_single_group`**: Validates filtering to specific struct column
+3. **`check_cross_learning_invalid_group_raises`**: Validates error handling for invalid groups
+
+**Panel Data Structure**:
+- Single struct column: `{"time": ..., "stores": pl.DataFrame({"store_0": ..., "store_1": ..., ...})}`
+- Framework constraint: All struct columns must have same field names
+- Interval forecasters nest interval bounds within structs: `store_0_lower_0.1` inside `"stores"` struct
+
+**Key Considerations**:
+- `cross_learning_group` operates on struct column level, not field level (e.g., `"stores"` not `"store_0"`)
+- For interval forecasters, unnest struct columns to access interval bounds
+- Expected failure for `IntervalReductionForecaster` with default estimator: `check_interval_bounds` (QuantileRegressor doesn't guarantee monotonic bounds)
 
 ---
 

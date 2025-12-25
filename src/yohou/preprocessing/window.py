@@ -46,7 +46,7 @@ class LagTransformer(BaseTransformer):
         """
         self.lags_: list[int] = self.lag if isinstance(self.lag, list) else [self.lag]
 
-        self._observation_horizon = max(self.lags_) + 1
+        self._observation_horizon = max(self.lags_)
 
         BaseTransformer.fit(self, X, y)
 

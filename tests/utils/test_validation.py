@@ -294,9 +294,7 @@ def test_add_interval_unsupported_unit():
 def test_air_passengers_monthly_data():
     """Integration test with air passengers-like monthly data."""
     # Create 12 years of monthly data starting Jan 1949
-    dates = pl.date_range(
-        datetime(1949, 1, 1), datetime(1960, 12, 1), interval="1mo", eager=True
-    )
+    dates = pl.date_range(datetime(1949, 1, 1), datetime(1960, 12, 1), interval="1mo", eager=True)
 
     df = pl.DataFrame({"time": dates, "passengers": range(len(dates))})
 

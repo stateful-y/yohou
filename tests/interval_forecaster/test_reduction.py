@@ -31,7 +31,7 @@ y = pl.DataFrame(
 )
 y = pl.concat([time, y], how="horizontal")
 
-X_ante = pl.DataFrame(
+X_post = pl.DataFrame(
     {
         "c": range(length),
         "d": range(10, length + 10),
@@ -43,10 +43,10 @@ X_ante = pl.DataFrame(
         "e": pl.Float64,
     },
 )
-X_ante = pl.concat([time, X_ante], how="horizontal")
+X_post = pl.concat([time, X_post], how="horizontal")
 
-y_train, y_test, X_ante_train, X_ante_test = train_test_split(
-    y, X_ante, test_size=0.2, shuffle=False
+y_train, y_test, X_post_train, X_post_test = train_test_split(
+    y, X_post, test_size=0.2, shuffle=False
 )
 
 
@@ -62,11 +62,11 @@ def test_predict(fit_forecasting_horizon, predict_forecasting_horizon, expected_
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     forecaster = IntervalReductionForecaster(coverage_rates=coverage_rates)
 
-    forecaster.fit(y=y_train, X_ante=X_ante_train, forecasting_horizon=fit_forecasting_horizon)
+    forecaster.fit(y=y_train, X_post=X_post_train, forecasting_horizon=fit_forecasting_horizon)
 
     y_pred = forecaster.predict(
         forecasting_horizon=predict_forecasting_horizon,
-        X_post=None,
+        X_ante=None,
         predict_transformed=False,
     )
 
@@ -92,11 +92,11 @@ def test_update_predict(fit_forecasting_horizon, predict_forecasting_horizon, st
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     forecaster = IntervalReductionForecaster(coverage_rates=coverage_rates)
 
-    forecaster.fit(y=y_train, X_ante=X_ante_train, forecasting_horizon=fit_forecasting_horizon)
+    forecaster.fit(y=y_train, X_post=X_post_train, forecasting_horizon=fit_forecasting_horizon)
 
     y_pred = forecaster.update_predict(
         y=y_test,
-        X_ante=X_ante_test,
+        X_post=X_post_test,
         forecasting_horizon=predict_forecasting_horizon,
         stride=stride,
     )
@@ -133,7 +133,7 @@ y_struct = pl.DataFrame(
 )
 y_struct = pl.concat([time, y_struct], how="horizontal")
 
-X_ante_struct = pl.DataFrame(
+X_post_struct = pl.DataFrame(
     {
         "x": pl.DataFrame(
             {
@@ -155,10 +155,10 @@ X_ante_struct = pl.DataFrame(
         "e": pl.Float64,
     },
 )
-X_ante_struct = pl.concat([time, X_ante_struct], how="horizontal")
+X_post_struct = pl.concat([time, X_post_struct], how="horizontal")
 
-y_train_struct, y_test_struct, X_ante_train_struct, X_ante_test_struct = train_test_split(
-    y_struct, X_ante_struct, test_size=0.2, shuffle=False
+y_train_struct, y_test_struct, X_post_train_struct, X_post_test_struct = train_test_split(
+    y_struct, X_post_struct, test_size=0.2, shuffle=False
 )
 
 
@@ -178,13 +178,13 @@ def test_update_predict_global(
 
     forecaster.fit(
         y=y_train_struct,
-        X_ante=X_ante_train_struct,
+        X_post=X_post_train_struct,
         forecasting_horizon=fit_forecasting_horizon,
     )
 
     y_pred = forecaster.update_predict(
         y=y_test_struct,
-        X_ante=X_ante_test_struct,
+        X_post=X_post_test_struct,
         forecasting_horizon=predict_forecasting_horizon,
         stride=stride,
     )

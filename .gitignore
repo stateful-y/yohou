@@ -72,3 +72,6 @@ yohou/_version.py
 
 # GitHub Copilot
 # .github/copilot_plans/
+
+# Marimo
+examples/__marimo__/

@@ -1,6 +1,7 @@
 """Base classes for interval forecasters and similarity measures."""
 
 import abc
+from copy import deepcopy
 from typing import Any
 
 import numpy as np
@@ -8,6 +9,7 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
 from yohou.utils import select_struct
@@ -32,8 +34,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_ante: pl.DataFrame | None = None,
         X_post: pl.DataFrame | None = None,
+        X_ante: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Fit the similarity measure.
 
@@ -45,10 +47,10 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Point predictions.
 
-        X_ante : pl.DataFrame or None, default=None
+        X_post : pl.DataFrame or None, default=None
             Ex-ante features.
 
-        X_post : pl.DataFrame or None, default=None
+        X_ante : pl.DataFrame or None, default=None
             Ex-post features.
 
         Returns
@@ -63,8 +65,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_ante: pl.DataFrame | None = None,
         X_post: pl.DataFrame | None = None,
+        X_ante: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Update the similarity measure with new observations.
 
@@ -76,10 +78,10 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             New predictions.
 
-        X_ante : pl.DataFrame or None, default=None
+        X_post : pl.DataFrame or None, default=None
             New ex-ante features.
 
-        X_post : pl.DataFrame or None, default=None
+        X_ante : pl.DataFrame or None, default=None
             New ex-post features.
 
         Returns
@@ -93,8 +95,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X_ante: pl.DataFrame | None = None,
         X_post: pl.DataFrame | None = None,
+        X_ante: pl.DataFrame | None = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute similarity weights for predictions.
 
@@ -103,10 +105,10 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predictions to compute similarities for.
 
-        X_ante : pl.DataFrame or None, default=None
+        X_post : pl.DataFrame or None, default=None
             Ex-ante features.
 
-        X_post : pl.DataFrame or None, default=None
+        X_ante : pl.DataFrame or None, default=None
             Ex-post features.
 
         Returns
@@ -152,8 +154,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def fit(
         self,
         y: pl.DataFrame,
-        X_ante: pl.DataFrame | None = None,
         X_post: pl.DataFrame | None = None,
+        X_ante: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "BaseIntervalForecaster":
         """Fits the forecaster and returns it.
@@ -163,10 +165,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series.
 
-        X_ante : pl.DataFrame or None, default=None
+        X_post : pl.DataFrame or None, default=None
             Ex-ante feature time series.
 
-        X_post : pl.DataFrame or None, default=None
+        X_ante : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
         forecasting_horizon : int >= 1, default=1
@@ -183,8 +185,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def update(
         self,
         y: pl.DataFrame,
-        X_ante: pl.DataFrame | None = None,
         X_post: pl.DataFrame | None = None,
+        X_ante: pl.DataFrame | None = None,
     ) -> "BaseIntervalForecaster":
         """Updates the forecaster with more recent data and
         returns it.
@@ -194,10 +196,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series.
 
-        X_ante : pl.DataFrame or None
+        X_post : pl.DataFrame or None
             Ex-ante feature time series.
 
-        X_post : pl.DataFrame or None
+        X_ante : pl.DataFrame or None
             Ex-post feature time series.
 
 
@@ -282,6 +284,169 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             y = pl.concat([time, y], how="horizontal")
 
-        BaseForecaster.update(self, y, X_ante, X_post)
+        BaseForecaster.update(self, y, X_post, X_ante)
 
         return self
+
+    def predict(
+        self,
+        X_ante: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt = 1,
+        cross_learning_group: str | None = None,
+        predict_transformed: bool = True,
+    ) -> pl.DataFrame:
+        """Predicts the model forecasting horizon from the observation horizon.
+
+        Parameters
+        ----------
+        X_ante : pl.DataFrame or None, default=None
+            Ex-post feature time series.
+
+        forecasting_horizon : int >= 1, default=1
+            Horizon to forecast.
+
+        cross_learning_group : str or None, default=None
+            For panel data (local_group_names_ is not None):
+            - If None: predict for all groups (default behavior)
+            - If str: predict only for the specified group (cross-learning)
+            For global data: parameter is ignored.
+
+        predict_transformed : bool, default=True
+            If ``True``, the predictions are returned in the transformed space.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted time series with interval bounds.
+
+        """
+        check_is_fitted(self, "fit_forecasting_horizon_")
+        forecaster = deepcopy(self)
+
+        if cross_learning_group is not None:
+            if (
+                self.local_group_names_ is None
+                or cross_learning_group not in self.local_group_names_
+            ):
+                raise ValueError(
+                    f"Group {cross_learning_group} not found in local groups: {self.local_group_names_}"
+                )
+
+            forecaster.local_group_names_ = [cross_learning_group]
+
+            # Filter _y_observed
+            if forecaster._y_observed is not None:
+                cols_to_keep = [
+                    c
+                    for c in forecaster._y_observed.columns
+                    if c == "time" or c == cross_learning_group
+                ]
+                forecaster._y_observed = forecaster._y_observed.select(cols_to_keep)
+
+            # Filter _X_post_observed
+            if forecaster._X_post_observed is not None:
+                cols_to_keep = [
+                    c
+                    for c in forecaster._X_post_observed.columns
+                    if c == "time"
+                    or c == cross_learning_group
+                    or c not in self.local_group_names_
+                ]
+                forecaster._X_post_observed = forecaster._X_post_observed.select(cols_to_keep)
+
+            # Filter X_ante
+            if X_ante is not None:
+                cols_to_keep = [
+                    c
+                    for c in X_ante.columns
+                    if c == "time"
+                    or c == cross_learning_group
+                    or c not in self.local_group_names_
+                ]
+                X_ante = X_ante.select(cols_to_keep)
+
+        y_pred = pl.DataFrame()
+        for step in range(1, forecasting_horizon + 1, self.fit_forecasting_horizon_):
+            y_pred_step, y_pred_step_inv = BaseForecaster._predict(
+                forecaster, cross_learning_group
+            )
+
+            # Choose which version to accumulate based on predict_transformed
+            if predict_transformed:
+                y_pred = pl.concat([y_pred, y_pred_step])
+            else:
+                y_pred = pl.concat([y_pred, y_pred_step_inv])
+
+            if step + self.fit_forecasting_horizon_ <= forecasting_horizon:
+                time = y_pred_step.select(cs.by_name("time"))
+                # Guard against None - X_post_observed should be set after fit
+                if forecaster._X_post_observed is not None:
+                    X_post_old = forecaster._X_post_observed[[-1]].select(~cs.by_name("time"))
+                    X_post = pl.concat([X_post_old] * len(time))
+                    X_post = pl.concat([time, X_post], how="horizontal")
+                else:
+                    X_post = None
+
+                # Compute midpoints from intervals for recursive update
+                if self.local_group_names_ is None:
+                    # Global data case
+                    y_data = {"time": time["time"]}
+                    for col in self.local_y_names_:
+                        # Find all coverage rates for this column
+                        lower_cols = [
+                            c for c in y_pred_step_inv.columns if c.startswith(f"{col}_lower_")
+                        ]
+                        upper_cols = [
+                            c for c in y_pred_step_inv.columns if c.startswith(f"{col}_upper_")
+                        ]
+
+                        if lower_cols and upper_cols:
+                            # Use the first coverage rate to compute midpoint
+                            lower_col = sorted(lower_cols)[0]
+                            upper_col = sorted(upper_cols)[0]
+                            y_data[col] = (
+                                y_pred_step_inv[lower_col] + y_pred_step_inv[upper_col]
+                            ) / 2
+                    y = pl.DataFrame(y_data)
+                else:
+                    # Panel data case: reconstruct struct columns
+                    y_struct_dict = {}
+                    for local_group_name in self.local_group_names_:
+                        # Unnest the struct column
+                        y_local_pred = y_pred_step_inv[[local_group_name]].unnest(
+                            local_group_name
+                        )
+
+                        y_local_data = {}
+                        for col in self.local_y_names_:
+                            # Find coverage rate columns for this target
+                            lower_cols = [
+                                c for c in y_local_pred.columns if c.startswith(f"{col}_lower_")
+                            ]
+                            upper_cols = [
+                                c for c in y_local_pred.columns if c.startswith(f"{col}_upper_")
+                            ]
+
+                            if lower_cols and upper_cols:
+                                # Use the first coverage rate to compute midpoint
+                                lower_col = sorted(lower_cols)[0]
+                                upper_col = sorted(upper_cols)[0]
+                                y_local_data[col] = (
+                                    y_local_pred[lower_col] + y_local_pred[upper_col]
+                                ) / 2
+
+                        y_struct_dict[local_group_name] = pl.DataFrame(y_local_data)
+
+                    y = pl.concat([time, pl.DataFrame(y_struct_dict)], how="horizontal")
+
+                forecaster.update(y, X_post, X_ante)
+
+        y_pred = y_pred.with_columns(observed_time=y_pred["observed_time"][0])
+
+        if forecasting_horizon % self.fit_forecasting_horizon_:
+            end = (
+                self.fit_forecasting_horizon_ - forecasting_horizon % self.fit_forecasting_horizon_
+            )
+            y_pred = y_pred[:-end]
+
+        return y_pred

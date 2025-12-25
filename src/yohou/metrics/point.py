@@ -79,7 +79,7 @@ class MAE(BasePointScorer):
 
         score = (y_truth - y_pred).select(pl.all().abs().mean())
 
-        score_value: float = float(np.mean(score.rows()))
+        score_value: float = float(np.nanmean(score.to_numpy()))
 
         return score_value
 

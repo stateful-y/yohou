@@ -162,8 +162,8 @@ class _MultimetricScorer:
 def _fit_and_score(
     forecaster: "BaseForecaster",
     y: pl.DataFrame,
-    X_ante: pl.DataFrame | None,
     X_post: pl.DataFrame | None,
+    X_ante: pl.DataFrame | None,
     forecasting_horizon: int,
     *,
     scorer: BaseScorer | _MultimetricScorer,
@@ -193,10 +193,10 @@ def _fit_and_score(
     y : pl.DataFrame
         Target time series.
 
-    X_ante : pl.DataFrame or None
+    X_post : pl.DataFrame or None
         Ex-ante feature time series.
 
-    X_post : pl.DataFrame or None
+    X_ante : pl.DataFrame or None
         Ex-post feature time series.
 
     forecasting_horizon : int >= 1
@@ -309,10 +309,6 @@ def _fit_and_score(
     score_params_test = _check_method_params(y, params=score_params, indices=test)
 
     if parameters is not None:
-        print("GET PARAMS--------")
-        print(forecaster.get_params(deep=True).keys())
-        print("SET PARAMS--------")
-        print(parameters.keys())
         # here we clone the parameters, since sometimes the parameters
         # themselves might be estimators, e.g. when we search over different
         # estimators in a pipeline.
@@ -321,8 +317,8 @@ def _fit_and_score(
 
     start_time = time.time()
 
-    y_train, X_ante_train = _safe_split(forecaster, y, X_ante, train)
-    y_test, X_ante_test = _safe_split(forecaster, y, X_ante, test, train)
+    y_train, X_post_train = _safe_split(forecaster, y, X_post, train)
+    y_test, X_post_test = _safe_split(forecaster, y, X_post, test, train)
 
     result: dict[str, object] = {}
     test_scores: dict[str, float | str] | float | str
@@ -330,7 +326,7 @@ def _fit_and_score(
     fit_time: float
     score_time: float
     try:
-        forecaster.fit(y_train, X_ante_train, X_post, forecasting_horizon, **fit_params)
+        forecaster.fit(y_train, X_post_train, X_ante, forecasting_horizon, **fit_params)
 
     except Exception:
         # Note fit time as time until error
@@ -355,8 +351,8 @@ def _fit_and_score(
         test_scores = _score(
             forecaster,
             y_test,
-            X_ante_test,
-            X_post,
+            X_post_test,
+            X_ante,
             predict_params,
             scorer,
             score_params_test,
@@ -370,8 +366,8 @@ def _fit_and_score(
             train_scores = _score(
                 forecaster,
                 y_train,
-                X_ante_train,
-                X_post,
+                X_post_train,
+                X_ante,
                 predict_params,
                 scorer,
                 score_params_train,
@@ -415,8 +411,8 @@ def _fit_and_score(
 def _score(
     forecaster: "BaseForecaster",
     y_test: pl.DataFrame,
-    X_ante_test: pl.DataFrame | None,
-    X_post: pl.DataFrame | None,
+    X_post_test: pl.DataFrame | None,
+    X_ante: pl.DataFrame | None,
     predict_params: dict[str, object] | None,
     scorer: BaseScorer | _MultimetricScorer,
     score_params: dict[str, object] | None,
@@ -432,7 +428,7 @@ def _score(
 
     scores: float | dict[str, float | str] | str
     try:
-        y_pred = forecaster.update_predict(y_test, X_ante_test, X_post, **predict_params)  # type: ignore[arg-type]
+        y_pred = forecaster.update_predict(y_test, X_post_test, X_ante, **predict_params)  # type: ignore[arg-type]
         scores = scorer(y_truth=y_test, y_pred=y_pred, **score_params)
 
     except Exception:

@@ -117,8 +117,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     def fit(
         self,
         y: pl.DataFrame,
-        X_ante: pl.DataFrame | None = None,
         X_post: pl.DataFrame | None = None,
+        X_ante: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "IntervalReductionForecaster":
         """Fits the forecaster and returns it.
@@ -128,10 +128,10 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         y : pl.DataFrame
             Target time series.
 
-        X_ante : pl.DataFrame or None, default=None
+        X_post : pl.DataFrame or None, default=None
             Ex-ante feature time series.
 
-        X_post : pl.DataFrame or None, default=None
+        X_ante : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
         forecasting_horizon : int > 1, default=1
@@ -145,8 +145,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         y_t, X_t = BaseIntervalForecaster._pre_fit(
             self,
             y=y,
-            X_ante=X_ante,
             X_post=X_post,
+            X_ante=X_ante,
             forecasting_horizon=forecasting_horizon,
         )
 

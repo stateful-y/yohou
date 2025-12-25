@@ -42,20 +42,21 @@ def _(mo):
 @app.cell
 def _():
     # Import required libraries
-    import polars as pl
-    from datetime import datetime
-    from sklearn.base import clone
-    from sklearn.model_selection import train_test_split
-    from sklearn.linear_model import Ridge
-    import plotly.graph_objects as go
+
     import optuna
+    import plotly.graph_objects as go
+    import polars as pl
+    from sklearn.base import clone
+    from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
+
+    from yohou.metrics import MAE
+    from yohou.model_selection import SearchCV, Splitter
+    from yohou.pipeline import Pipeline
 
     # Yohou imports
-    from yohou.point_forecaster import SeasonalNaive, PointReductionForecaster
+    from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer, LogTransform, SeasonalDifferencing
-    from yohou.pipeline import Pipeline
-    from yohou.metrics import MAE
-    from yohou.model_selection import Splitter, SearchCV
     return (
         LagTransformer,
         LogTransform,
@@ -100,10 +101,12 @@ def _(pl):
     df_raw = pl.read_csv(url)
 
     # Convert Month string to datetime and rename columns
-    y = df_raw.with_columns([
-        pl.col("Month").str.strptime(pl.Datetime, format="%Y-%m").alias("time"),
-        pl.col("Passengers").cast(pl.Float64).alias("passengers")
-    ]).select(["time", "passengers"])
+    y = df_raw.with_columns(
+        [
+            pl.col("Month").str.strptime(pl.Datetime, format="%Y-%m").alias("time"),
+            pl.col("Passengers").cast(pl.Float64).alias("passengers"),
+        ]
+    ).select(["time", "passengers"])
 
     # Display first and last rows
     print("First 5 rows:")
@@ -138,7 +141,7 @@ def _(go, y):
             y=y["passengers"].to_list(),
             mode="lines",
             name="Passengers",
-            line=dict(color="royalblue", width=2)
+            line=dict(color="royalblue", width=2),
         )
     )
     fig_raw.update_layout(
@@ -146,7 +149,7 @@ def _(go, y):
         xaxis_title="Time",
         yaxis_title="Passengers (thousands)",
         height=400,
-        hovermode="x unified"
+        hovermode="x unified",
     )
     fig_raw
     return
@@ -189,8 +192,12 @@ def _(train_test_split, y):
     # Define forecasting horizon
     forecasting_horizon = 12  # 12 months ahead
 
-    print(f"Training set: {len(y_train)} observations ({y_train['time'].min()} to {y_train['time'].max()})")
-    print(f"Test set: {len(y_test)} observations ({y_test['time'].min()} to {y_test['time'].max()})")
+    print(
+        f"Training set: {len(y_train)} observations ({y_train['time'].min()} to {y_train['time'].max()})"
+    )
+    print(
+        f"Test set: {len(y_test)} observations ({y_test['time'].min()} to {y_test['time'].max()})"
+    )
     print(f"\nForecasting horizon: {forecasting_horizon} months")
     return forecasting_horizon, y_test, y_train
 
@@ -221,7 +228,7 @@ def _(mo):
 def _(MAE, SeasonalNaive, forecasting_horizon, y_test, y_train):
     # Create and fit baseline model
     baseline = SeasonalNaive(seasonality=12)
-    baseline.fit(y_train, X_ante=None, X_post=None, forecasting_horizon=forecasting_horizon)
+    baseline.fit(y_train, X_post=None, X_ante=None, forecasting_horizon=forecasting_horizon)
 
     # Make predictions
     y_pred_baseline = baseline.predict(forecasting_horizon=forecasting_horizon)
@@ -246,7 +253,7 @@ def _(go, y_pred_baseline, y_test, y_train):
             y=y_train["passengers"].to_list(),
             mode="lines",
             name="Training data",
-            line=dict(color="royalblue", width=2)
+            line=dict(color="royalblue", width=2),
         )
     )
 
@@ -257,7 +264,7 @@ def _(go, y_pred_baseline, y_test, y_train):
             y=y_test["passengers"].to_list(),
             mode="lines",
             name="Actual (test)",
-            line=dict(color="green", width=2)
+            line=dict(color="green", width=2),
         )
     )
 
@@ -269,7 +276,7 @@ def _(go, y_pred_baseline, y_test, y_train):
             mode="lines+markers",
             name="Baseline predictions",
             line=dict(color="red", width=2, dash="dash"),
-            marker=dict(size=6)
+            marker=dict(size=6),
         )
     )
 
@@ -278,7 +285,7 @@ def _(go, y_pred_baseline, y_test, y_train):
         x=y_test["time"].min().timestamp() * 1000,
         line_dash="dot",
         line_color="gray",
-        annotation_text="Train/Test Split"
+        annotation_text="Train/Test Split",
     )
 
     fig_baseline.update_layout(
@@ -286,7 +293,7 @@ def _(go, y_pred_baseline, y_test, y_train):
         xaxis_title="Time",
         yaxis_title="Passengers (thousands)",
         height=400,
-        hovermode="x unified"
+        hovermode="x unified",
     )
     fig_baseline
     return
@@ -342,25 +349,16 @@ def _(mo):
 def _(mo):
     # Interactive parameter controls
     forecast_horizon_slider = mo.ui.slider(
-        start=1,
-        stop=24,
-        value=12,
-        label="Forecast Horizon (months)",
-        show_value=True
+        start=1, stop=24, value=12, label="Forecast Horizon (months)", show_value=True
     )
 
     max_lag_slider = mo.ui.slider(
-        start=1,
-        stop=24,
-        value=12,
-        label="Maximum Lag Window",
-        show_value=True
+        start=1, stop=24, value=12, label="Maximum Lag Window", show_value=True
     )
 
-    params = mo.ui.dictionary({
-        "forecast_horizon": forecast_horizon_slider,
-        "max_lag": max_lag_slider
-    })
+    params = mo.ui.dictionary(
+        {"forecast_horizon": forecast_horizon_slider, "max_lag": max_lag_slider}
+    )
 
     params
     return (params,)
@@ -400,16 +398,23 @@ def _(
     y_train,
 ):
     # Build preprocessing pipeline (reactive to slider values)
-    pipeline_target = Pipeline([
-        ("log", LogTransform(offset=1.0)),  # Add offset to handle zero values
-        ("diff", SeasonalDifferencing(seasonality=12)),  # Remove yearly seasonality
-    ])
+    pipeline_target = Pipeline(
+        [
+            ("log", LogTransform(offset=1.0)),  # Add offset to handle zero values
+            ("diff", SeasonalDifferencing(seasonality=12)),  # Remove yearly seasonality
+        ]
+    )
 
-    pipeline_feature = Pipeline([
-        ("log", LogTransform(offset=1.0)),  # Add offset to handle zero values
-        ("diff", SeasonalDifferencing(seasonality=12)),  # Remove yearly seasonality
-        ("lag", LagTransformer(lag=list(range(1, params.value["max_lag"] + 1)))),  # Create lag features
-    ])
+    pipeline_feature = Pipeline(
+        [
+            ("log", LogTransform(offset=1.0)),  # Add offset to handle zero values
+            ("diff", SeasonalDifferencing(seasonality=12)),  # Remove yearly seasonality
+            (
+                "lag",
+                LagTransformer(lag=list(range(1, params.value["max_lag"] + 1))),
+            ),  # Create lag features
+        ]
+    )
 
     reduction_forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
@@ -419,14 +424,13 @@ def _(
 
     # Fit the forecaster
     reduction_forecaster.fit(
-        y=y_train,
-        X_ante=None,
-        X_post=None,
-        forecasting_horizon=params.value["forecast_horizon"]
+        y=y_train, X_post=None, X_ante=None, forecasting_horizon=params.value["forecast_horizon"]
     )
 
     # Make predictions
-    y_pred_reduction_forecaster = reduction_forecaster.predict(forecasting_horizon=params.value["forecast_horizon"])
+    y_pred_reduction_forecaster = reduction_forecaster.predict(
+        forecasting_horizon=params.value["forecast_horizon"]
+    )
 
     # Evaluate
     mae_reduction_forecaster = mae_scorer.score(y_test, y_pred_reduction_forecaster)
@@ -466,7 +470,7 @@ def _(
             y=y_train["passengers"].to_list(),
             mode="lines",
             name="Training data",
-            line=dict(color="royalblue", width=2)
+            line=dict(color="royalblue", width=2),
         )
     )
 
@@ -477,7 +481,7 @@ def _(
             y=y_test["passengers"].to_list(),
             mode="lines",
             name="Actual (test)",
-            line=dict(color="green", width=2)
+            line=dict(color="green", width=2),
         )
     )
 
@@ -489,7 +493,7 @@ def _(
             mode="lines+markers",
             name=f"Baseline (MAE: {mae_baseline:.2f})",
             line=dict(color="red", width=2, dash="dash"),
-            marker=dict(size=6)
+            marker=dict(size=6),
         )
     )
 
@@ -501,7 +505,7 @@ def _(
             mode="lines+markers",
             name=f"Reducer (MAE: {mae_reduction_forecaster:.2f}, {improvement:.1f}%)",
             line=dict(color="purple", width=2, dash="dash"),
-            marker=dict(size=6, symbol="diamond")
+            marker=dict(size=6, symbol="diamond"),
         )
     )
 
@@ -510,7 +514,7 @@ def _(
         x=y_test["time"].min().timestamp() * 1000,
         line_dash="dot",
         line_color="gray",
-        annotation_text="Train/Test Split"
+        annotation_text="Train/Test Split",
     )
 
     fig_reduction_forecaster.update_layout(
@@ -518,7 +522,7 @@ def _(
         xaxis_title="Time",
         yaxis_title="Passengers (thousands)",
         height=400,
-        hovermode="x unified"
+        hovermode="x unified",
     )
     fig_reduction_forecaster
     return
@@ -590,11 +594,9 @@ def _(
 
     # Define search space
     param_distributions = {
-        "estimator__alpha": optuna.distributions.FloatDistribution(
-            0.01, 10.0, log=True
-        ),
+        "estimator__alpha": optuna.distributions.FloatDistribution(0.01, 10.0, log=True),
         "feature_transformer__lag__lag": optuna.distributions.IntDistribution(1, 24),
-        "feature_transformer__diff__seasonality": optuna.distributions.IntDistribution(10, 14)
+        "feature_transformer__diff__seasonality": optuna.distributions.IntDistribution(10, 14),
     }
 
     # Set up hyperparameter search
@@ -606,15 +608,14 @@ def _(
         n_trials=20,
         n_warmup_trials=5,
         refit=True,
-    
     )
 
     # Run search (this takes time!)
     print("Running hyperparameter search... (this may take 1-2 minutes)")
-    search.fit(y_train, X_ante=None, X_post=None, forecasting_horizon=forecasting_horizon)
+    search.fit(y_train, X_post=None, X_ante=None, forecasting_horizon=forecasting_horizon)
 
     print("\n✅ Search complete!")
-    print(f"\nBest parameters found:")
+    print("\nBest parameters found:")
     for param, value in search.best_params_.items():
         print(f"  {param}: {value}")
     print(f"\nBest cross-validation MAE: {search.best_score_:.2f}")
@@ -690,23 +691,40 @@ def _(mae_scorer, reduction_forecaster, y_test):
     mae_static_list = []
     mae_incremental_list = []
 
+    import sys
+
     # Rolling forecast simulation
     print("Simulating rolling forecast...")
     for i in range(1, len(y_test)):
         # Get current test observation
-        y_current = y_test[i:i+1]
+        y_current = y_test[i : i + 1]
 
         # Static forecast (no updates)
-        y_pred_static = pipeline_static.predict(forecasting_horizon=1)
+        # Predict up to the current step (i+1 relative to training end)
+        y_pred_static_all = pipeline_static.predict(forecasting_horizon=i + 1)
+        # Take only the last prediction which corresponds to y_current
+        y_pred_static = y_pred_static_all.head(i + 1).tail(1)
+
+        # Debug print to file
+        if i < 3:
+            with open("debug_log.txt", "a") as f:
+                f.write(f"Step {i}:\n")
+                f.write(f"y_current:\n{y_current}\n")
+                f.write(f"y_pred_static (sliced):\n{y_pred_static}\n")
+                f.write(f"y_pred_static columns: {y_pred_static.columns}\n")
+                f.write(f"y_pred_static_all head:\n{y_pred_static_all.head(i+2)}\n")
+                f.write("-" * 20 + "\n")
+            print(f"y_pred_static_all tail:\n{y_pred_static_all.tail()}", file=sys.stderr)
+    
         mae_static = mae_scorer.score(y_current, y_pred_static)
         mae_static_list.append(mae_static)
 
         # Incremental forecast (with updates)
         y_pred_incremental = pipeline_incremental.update_predict(
-            y=y_test[i-1:i],  # Previous observation
-            X_ante=None,
+            y=y_test[i - 1 : i],  # Previous observation
             X_post=None,
-            forecasting_horizon=1
+            X_ante=None,
+            forecasting_horizon=1,
         )
         mae_incremental = mae_scorer.score(y_current, y_pred_incremental)
         mae_incremental_list.append(mae_incremental)
@@ -748,7 +766,7 @@ def _(
             mode="lines+markers",
             name=f"Static (avg: {avg_mae_static:.2f})",
             line=dict(color="red", width=2),
-            marker=dict(size=4)
+            marker=dict(size=4),
         )
     )
 
@@ -760,7 +778,7 @@ def _(
             mode="lines+markers",
             name=f"Incremental (avg: {avg_mae_incremental:.2f})",
             line=dict(color="green", width=2),
-            marker=dict(size=4)
+            marker=dict(size=4),
         )
     )
 
@@ -769,9 +787,9 @@ def _(
         xaxis_title="Forecast Step",
         yaxis_title="MAE (thousands)",
         height=400,
-        hovermode="x unified"
+        hovermode="x unified",
     )
-    fig_incremental
+    fig_incremental.show()
     return
 
 
@@ -817,7 +835,7 @@ def _(mo):
     ### What We Covered
 
     ✅ **Yohou's scikit-learn-compatible API**
-    - `fit(y, X_ante, X_post, forecasting_horizon)` for training
+    - `fit(y, X_post, X_ante, forecasting_horizon)` for training
     - `predict(forecasting_horizon)` for forecasting
     - `update(y)` for incremental learning
 
@@ -846,7 +864,7 @@ def _(mo):
     2. **Panel data**: Forecast multiple time series simultaneously with struct columns
     3. **Custom transformers**: Build domain-specific preprocessing (holiday effects, promotions)
     4. **Model ensembles**: Combine multiple forecasters for robust predictions
-    5. **Feature engineering**: Add exogenous variables (X_ante for planned events, X_post for observed covariates)
+    5. **Feature engineering**: Add exogenous variables (X_post for planned events, X_ante for observed covariates)
 
     ### Resources
 

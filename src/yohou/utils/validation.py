@@ -102,11 +102,11 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
     )
 
 
-def check_inputs(y: pl.DataFrame, X_ante: pl.DataFrame | None, X_post: pl.DataFrame | None) -> str:
+def check_inputs(y: pl.DataFrame, X_post: pl.DataFrame | None, X_ante: pl.DataFrame | None) -> str:
     """Validate that target and feature DataFrames have consistent time intervals.
 
-    Ensures all input DataFrames (target y, ex-ante features X_ante, ex-post features
-    X_post) have the same uniform time interval. This is required for proper alignment
+    Ensures all input DataFrames (target y, ex-ante features X_post, ex-post features
+    X_ante) have the same uniform time interval. This is required for proper alignment
     in forecasting operations.
 
     Parameters
@@ -114,10 +114,10 @@ def check_inputs(y: pl.DataFrame, X_ante: pl.DataFrame | None, X_post: pl.DataFr
     y : pl.DataFrame
         Target time series with "time" column.
 
-    X_ante : pl.DataFrame or None
+    X_post : pl.DataFrame or None
         Ex-ante (known in advance) feature time series with "time" column, or None.
 
-    X_post : pl.DataFrame or None
+    X_ante : pl.DataFrame or None
         Ex-post (observed after the fact) feature time series with "time" column, or None.
 
     Returns
@@ -142,8 +142,8 @@ def check_inputs(y: pl.DataFrame, X_ante: pl.DataFrame | None, X_post: pl.DataFr
     ...     eager=True
     ... )
     >>> y = pl.DataFrame({"time": time_index, "sales": [100, 110, 120, 130, 140]})
-    >>> X_ante = pl.DataFrame({"time": time_index, "holiday": [0, 0, 1, 0, 0]})
-    >>> interval = check_inputs(y, X_ante, None)
+    >>> X_post = pl.DataFrame({"time": time_index, "holiday": [0, 0, 1, 0, 0]})
+    >>> interval = check_inputs(y, X_post, None)
     >>> interval
     '1d'
 
@@ -153,22 +153,22 @@ def check_inputs(y: pl.DataFrame, X_ante: pl.DataFrame | None, X_post: pl.DataFr
 
     """
     y_interval = check_interval_consistency(y)
-    if X_ante is not None:
-        X_ante_interval = check_interval_consistency(X_ante)
-
-        if X_ante_interval != y_interval:
-            raise ValueError(
-                f"Time interval mismatch: y has interval {y_interval},  but X_ante has interval "
-                f"{X_ante_interval}. All inputs must have the same time interval."
-            )
-
     if X_post is not None:
         X_post_interval = check_interval_consistency(X_post)
 
         if X_post_interval != y_interval:
             raise ValueError(
-                f"Time interval mismatch: y has interval {y_interval}, but X_post has interval "
+                f"Time interval mismatch: y has interval {y_interval},  but X_post has interval "
                 f"{X_post_interval}. All inputs must have the same time interval."
+            )
+
+    if X_ante is not None:
+        X_ante_interval = check_interval_consistency(X_ante)
+
+        if X_ante_interval != y_interval:
+            raise ValueError(
+                f"Time interval mismatch: y has interval {y_interval}, but X_ante has interval "
+                f"{X_ante_interval}. All inputs must have the same time interval."
             )
 
     return y_interval

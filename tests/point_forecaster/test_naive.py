@@ -30,7 +30,7 @@ y = pl.DataFrame(
     }
 )
 
-X_ante = pl.DataFrame(
+X_post = pl.DataFrame(
     {
         "time": pl.datetime_range(
             start=datetime(2021, 12, 16),
@@ -63,25 +63,25 @@ X_ante = pl.DataFrame(
 def test_seasonal_naive_checks(forecaster, tags, expected_failures, y_X_factory):
     """Run systematic checks on SeasonalNaive forecaster."""
     # Generate data
-    y, X_ante, X_post = y_X_factory(length=100, seed=42)
+    y, X_post, X_ante = y_X_factory(length=100, seed=42)
     y_train, y_test = y[:80], y[80:]
-    X_ante_train, X_ante_test = X_ante[:80], X_ante[80:]
-    X_post_train, X_post_test = (X_post[:80], X_post[80:]) if X_post is not None else (None, None)
+    X_post_train, X_post_test = X_post[:80], X_post[80:]
+    X_ante_train, X_ante_test = (X_ante[:80], X_ante[80:]) if X_ante is not None else (None, None)
 
     # Fit forecaster
     forecaster_fitted = clone(forecaster)
-    forecaster_fitted.fit(y_train, X_ante_train, X_post_train, forecasting_horizon=3)
+    forecaster_fitted.fit(y_train, X_post_train, X_ante_train, forecasting_horizon=3)
 
     # Run all generated checks
     expected_failures_set = set(expected_failures)
     for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
         forecaster_fitted,
         y_train,
-        X_ante_train,
         X_post_train,
+        X_ante_train,
         y_test,
-        X_ante_test,
         X_post_test,
+        X_ante_test,
         tags=tags,
     ):
         if check_name in expected_failures_set:
@@ -106,12 +106,12 @@ def test_seasonal_naive_checks(forecaster, tags, expected_failures, y_X_factory)
 )
 def test_predict(seasonality, fit_forecasting_horizon, predict_forecasting_horizon, expected_a):
     """Test specific prediction behavior of SeasonalNaive."""
-    y_train, y_test, X_ante_train, X_ante_test = train_test_split(
-        y, X_ante, test_size=0.2, shuffle=False
+    y_train, y_test, X_post_train, X_post_test = train_test_split(
+        y, X_post, test_size=0.2, shuffle=False
     )
     forecaster = SeasonalNaive(seasonality=seasonality)
 
-    forecaster.fit(y=y_train, X_ante=X_ante_train, forecasting_horizon=fit_forecasting_horizon)
+    forecaster.fit(y=y_train, X_post=X_post_train, forecasting_horizon=fit_forecasting_horizon)
 
     y_pred = forecaster.predict(forecasting_horizon=predict_forecasting_horizon)
 

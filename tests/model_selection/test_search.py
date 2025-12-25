@@ -33,7 +33,7 @@ y = pl.DataFrame(
     }
 )
 
-X_ante = pl.DataFrame(
+X_post = pl.DataFrame(
     {
         "time": pl.datetime_range(
             start=datetime(2021, 12, 16),
@@ -59,7 +59,7 @@ def test_search():
         n_jobs=2,
     )
 
-    search.fit(y, X_ante, forecasting_horizon=1)
+    search.fit(y, X_post, forecasting_horizon=1)
 
 
 @pytest.mark.parametrize(
@@ -88,10 +88,10 @@ def test_search_cv_forecaster_checks(base_forecaster, tags, expected_failures, y
     after fitting, so it should pass all standard forecaster checks.
     """
     # Generate data
-    y, X_ante, X_post = y_X_factory(length=100, seed=42)
+    y, X_post, X_ante = y_X_factory(length=100, seed=42)
     y_train, y_test = y[:80], y[80:]
-    X_ante_train, X_ante_test = X_ante[:80], X_ante[80:]
-    X_post_train, X_post_test = (X_post[:80], X_post[80:]) if X_post is not None else (None, None)
+    X_post_train, X_post_test = X_post[:80], X_post[80:]
+    X_ante_train, X_ante_test = (X_ante[:80], X_ante[80:]) if X_ante is not None else (None, None)
 
     # Create SearchCV with minimal trials for testing
     search_cv = SearchCV(
@@ -110,17 +110,17 @@ def test_search_cv_forecaster_checks(base_forecaster, tags, expected_failures, y
 
     # Fit SearchCV
     search_cv_fitted = clone(search_cv)
-    search_cv_fitted.fit(y_train, X_ante_train, None, forecasting_horizon=3)
+    search_cv_fitted.fit(y_train, X_post_train, None, forecasting_horizon=3)
 
     # Run all generated checks
     expected_failures_set = set(expected_failures)
     for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
         search_cv_fitted,
         y_train,
-        X_ante_train,
+        X_post_train,
         None,
         y_test,
-        X_ante_test,
+        X_post_test,
         None,
         tags=tags,
     ):
@@ -132,7 +132,7 @@ def test_search_cv_forecaster_checks(base_forecaster, tags, expected_failures, y
 
 def test_search_cv_best_forecaster_attributes(y_X_factory):
     """Test that SearchCV properly exposes best_forecaster_ attributes."""
-    y, X_ante, X_post = y_X_factory(length=50, seed=42)
+    y, X_post, X_ante = y_X_factory(length=50, seed=42)
 
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
@@ -144,7 +144,7 @@ def test_search_cv_best_forecaster_attributes(y_X_factory):
         refit=True,
     )
 
-    search_cv.fit(y, X_ante, None, forecasting_horizon=3)
+    search_cv.fit(y, X_post, None, forecasting_horizon=3)
 
     # Verify best_forecaster_ exists and is fitted
     assert hasattr(search_cv, "best_forecaster_")
@@ -163,7 +163,7 @@ def test_search_cv_best_forecaster_attributes(y_X_factory):
 
 def test_search_cv_return_train_score(y_X_factory):
     """Test that return_train_score parameter correctly stores training scores."""
-    y, X_ante, X_post = y_X_factory(length=50, seed=42)
+    y, X_post, X_ante = y_X_factory(length=50, seed=42)
 
     # With return_train_score=True
     search_cv_with_train = SearchCV(
@@ -177,7 +177,7 @@ def test_search_cv_return_train_score(y_X_factory):
         return_train_score=True,
     )
 
-    search_cv_with_train.fit(y, X_ante, None, forecasting_horizon=3)
+    search_cv_with_train.fit(y, X_post, None, forecasting_horizon=3)
 
     # Verify train scores are present
     assert "mean_train_score" in search_cv_with_train.cv_results_
@@ -195,7 +195,7 @@ def test_search_cv_return_train_score(y_X_factory):
         return_train_score=False,
     )
 
-    search_cv_without_train.fit(y, X_ante, None, forecasting_horizon=3)
+    search_cv_without_train.fit(y, X_post, None, forecasting_horizon=3)
 
     # Verify train scores are NOT present
     assert "mean_train_score" not in search_cv_without_train.cv_results_
@@ -204,10 +204,10 @@ def test_search_cv_return_train_score(y_X_factory):
 
 def test_search_cv_predict_delegates(y_X_factory):
     """Test that SearchCV.predict() properly delegates to best_forecaster_."""
-    y, X_ante, X_post = y_X_factory(length=50, seed=42)
+    y, X_post, X_ante = y_X_factory(length=50, seed=42)
     y_train, y_test = y[:40], y[40:]
-    X_ante_train, X_ante_test = X_ante[:40], X_ante[40:]
-    X_post_train, X_post_test = (X_post[:40], X_post[40:]) if X_post is not None else (None, None)
+    X_post_train, X_post_test = X_post[:40], X_post[40:]
+    X_ante_train, X_ante_test = (X_ante[:40], X_ante[40:]) if X_ante is not None else (None, None)
 
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
@@ -219,23 +219,21 @@ def test_search_cv_predict_delegates(y_X_factory):
         refit=True,
     )
 
-    search_cv.fit(y_train, X_ante_train, None, forecasting_horizon=3)
+    search_cv.fit(y_train, X_post_train, None, forecasting_horizon=3)
 
-    # Predict with SearchCV (using new signature with X_ante)
-    y_pred_search = search_cv.predict(X_ante=None, X_post=None, forecasting_horizon=3)
+    # Predict with SearchCV (using new signature with X_post)
+    y_pred_search = search_cv.predict(X_ante=None, forecasting_horizon=3)
 
     # Predict directly with best_forecaster_
-    y_pred_direct = search_cv.best_forecaster_.predict(
-        X_post=None, forecasting_horizon=3
-    )
+    y_pred_direct = search_cv.best_forecaster_.predict(X_ante=None, forecasting_horizon=3)
 
     # Both should produce identical predictions
     assert y_pred_search.equals(y_pred_direct)
 
 
 def test_search_cv_predict_with_x_ante(y_X_factory):
-    """Test that SearchCV.predict() correctly passes X_ante to best_forecaster_."""
-    y, X_ante, X_post = y_X_factory(length=50, seed=42)
+    """Test that SearchCV.predict() correctly passes X_post to best_forecaster_."""
+    y, X_post, X_ante = y_X_factory(length=50, seed=42)
     y_train = y[:40]
     X_ante_train = X_ante[:40]
 
@@ -255,12 +253,10 @@ def test_search_cv_predict_with_x_ante(y_X_factory):
     X_ante_future = X_ante[40:43]
 
     # Predict with SearchCV passing X_ante
-    y_pred_search = search_cv.predict(X_ante=X_ante_future, X_post=None, forecasting_horizon=3)
+    y_pred_search = search_cv.predict(X_ante=X_ante_future, forecasting_horizon=3)
 
     # Predict directly with best_forecaster_
-    y_pred_direct = search_cv.best_forecaster_.predict(
-        X_post=None, forecasting_horizon=3
-    )
+    y_pred_direct = search_cv.best_forecaster_.predict(forecasting_horizon=3)
 
     # Both should produce identical predictions
     assert y_pred_search.equals(y_pred_direct)
@@ -268,11 +264,11 @@ def test_search_cv_predict_with_x_ante(y_X_factory):
 
 
 def test_search_cv_update_with_x_post(y_X_factory):
-    """Test that SearchCV.update() correctly passes X_post to best_forecaster_."""
-    y, X_ante, X_post = y_X_factory(length=50, seed=42)
+    """Test that SearchCV.update() correctly passes X_ante to best_forecaster_."""
+    y, X_post, X_ante = y_X_factory(length=50, seed=42)
     y_train = y[:40]
-    X_ante_train = X_ante[:40]
-    X_post_train = X_post[:40] if X_post is not None else None
+    X_post_train = X_post[:40]
+    X_ante_train = X_ante[:40] if X_ante is not None else None
 
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
@@ -284,15 +280,15 @@ def test_search_cv_update_with_x_post(y_X_factory):
         refit=True,
     )
 
-    search_cv.fit(y_train, X_ante_train, X_post_train, forecasting_horizon=3)
+    search_cv.fit(y_train, X_post_train, X_ante_train, forecasting_horizon=3)
 
-    # Update with new data including X_post
+    # Update with new data including X_ante
     y_update = y[40:45]
-    X_ante_update = X_ante[40:45]
-    X_post_update = X_post[40:45] if X_post is not None else None
+    X_post_update = X_post[40:45]
+    X_ante_update = X_ante[40:45] if X_ante is not None else None
 
     # Update SearchCV
-    search_cv_result = search_cv.update(y_update, X_ante_update, X_post_update)
+    search_cv_result = search_cv.update(y_update, X_post_update, X_ante_update)
 
     # Verify returns self
     assert search_cv_result is search_cv
@@ -300,9 +296,9 @@ def test_search_cv_update_with_x_post(y_X_factory):
 
 def test_search_cv_update_predict_delegates(y_X_factory):
     """Test that SearchCV.update_predict() properly delegates all parameters."""
-    y, X_ante, X_post = y_X_factory(length=50, seed=42)
+    y, X_post, X_ante = y_X_factory(length=50, seed=42)
     y_train = y[:40]
-    X_ante_train = X_ante[:40]
+    X_post_train = X_post[:40]
 
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
@@ -314,17 +310,17 @@ def test_search_cv_update_predict_delegates(y_X_factory):
         refit=True,
     )
 
-    search_cv.fit(y_train, X_ante_train, None, forecasting_horizon=3)
+    search_cv.fit(y_train, X_post_train, None, forecasting_horizon=3)
 
     # Prepare update data
     y_update = y[40:45]
-    X_ante_update = X_ante[40:45]
+    X_post_update = X_post[40:45]
 
     # Use update_predict
     y_pred = search_cv.update_predict(
         y=y_update,
-        X_ante=X_ante_update,
-        X_post=None,
+        X_post=X_post_update,
+        X_ante=None,
         forecasting_horizon=3,
         stride=1,
     )
@@ -336,9 +332,9 @@ def test_search_cv_update_predict_delegates(y_X_factory):
 
 def test_search_cv_reset_delegates(y_X_factory):
     """Test that SearchCV.reset() properly delegates to best_forecaster_."""
-    y, X_ante, X_post = y_X_factory(length=50, seed=42)
+    y, X_post, X_ante = y_X_factory(length=50, seed=42)
     y_train = y[:40]
-    X_ante_train = X_ante[:40]
+    X_post_train = X_post[:40]
 
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
@@ -350,14 +346,14 @@ def test_search_cv_reset_delegates(y_X_factory):
         refit=True,
     )
 
-    search_cv.fit(y_train, X_ante_train, None, forecasting_horizon=3)
+    search_cv.fit(y_train, X_post_train, None, forecasting_horizon=3)
 
     # Reset with new observation data
     y_reset = y[35:40]
-    X_ante_reset = X_ante[35:40]
+    X_post_reset = X_post[35:40]
 
     # Reset SearchCV
-    search_cv_result = search_cv.reset(y_reset, X_ante_reset, None)
+    search_cv_result = search_cv.reset(y_reset, X_post_reset, None)
 
     # Verify returns self
     assert search_cv_result is search_cv
