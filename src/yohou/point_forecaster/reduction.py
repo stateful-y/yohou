@@ -1,5 +1,7 @@
 """Implementation of reduction-based point forecasters."""
 
+from typing import Callable
+
 import polars as pl
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator
@@ -104,6 +106,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         X_post: pl.DataFrame | None = None,
         X_ante: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        time_weight: Callable | pl.DataFrame | None = None,
+        **params,
     ) -> "PointReductionForecaster":
         """Fits the forecaster and returns it.
 
@@ -121,6 +125,14 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
 
+        time_weight : callable or pl.DataFrame or None, default=None
+            Time-based weights for training samples. If callable, it should take
+            a time column and return a dataframe with added corresponding weights.
+            If DataFrame, it should align with y.
+
+        **params : dict
+            Metadata to route to nested estimators.
+
         Returns
         -------
         self
@@ -134,7 +146,9 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             forecasting_horizon=forecasting_horizon,
         )
 
-        self.estimator_ = self._estimator_fit_one(y_t, X_t, forecasting_horizon)
+        self.estimator_ = self._estimator_fit_one(
+            y_t, X_t, forecasting_horizon, time_weight=time_weight, estimator_fit_params=params
+        )
 
         return self
 

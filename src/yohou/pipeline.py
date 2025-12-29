@@ -4,7 +4,7 @@ from collections import Counter
 from copy import deepcopy
 from itertools import chain
 from numbers import Integral
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import polars as pl
 import polars.selectors as cs
@@ -62,127 +62,127 @@ __all__ = ["Pipeline", "FeatureUnion", "ColumnTransformer"]
 
 class Pipeline(BaseTransformer, _BaseComposition):
     """
-    A sequence of data transformers with an optional final predictor.
+        A sequence of time series transformers.
 
-    `Pipeline` allows you to sequentially apply a list of time series
-    transformers to preprocess the data.
+        `Pipeline` allows you to sequentially apply a list of time series
+        transformers to preprocess the data.
 
-    Steps of the pipeline must be 'transforms', that is, they must implement
-    `fit`, `transform` and `update` methods.
+        Steps of the pipeline must be 'transforms', that is, they must implement
+        `fit`, `transform` and `update` methods.
 
-    The purpose of the pipeline is to assemble several steps that can be
-    cross-validated together while setting different parameters. For this, it
-    enables setting parameters of the various steps using their names and the
-    parameter name separated by a `'__'`, as in the example below. A step's
-    estimator may be replaced entirely by setting the parameter with its name
-    to another estimator, or a transformer removed by setting it to
-    `'passthrough'` or `None`.
+        The purpose of the pipeline is to assemble several steps that can be
+        cross-validated together while setting different parameters. For this, it
+        enables setting parameters of the various steps using their names and the
+        parameter name separated by a `'__'`, as in the example below. A step's
+        estimator may be replaced entirely by setting the parameter with its name
+        to another estimator, or a transformer removed by setting it to
+        `'passthrough'` or `None`.
 
-    Parameters
-    ----------
-    steps : list of tuples
-        List of (name of step, estimator) tuples that are to be chained in
-        sequential order. To be compatible with the scikit-learn API, all steps
-        must define `fit`. All non-last steps must also define `transform`. See
-        :ref:`Combining Estimators <combining_estimators>` for more details.
+        Parameters
+        ----------
+        steps : list of tuples
+            List of (name of step, estimator) tuples that are to be chained in
+            sequential order. To be compatible with the scikit-learn API, all steps
+            must define `fit`. All non-last steps must also define `transform`. See
+            :ref:`Combining Estimators <combining_estimators>` for more details.
+    model_selection/_search
+        transform_input : list of str, default=None
+            The names of the :term:`metadata` parameters that should be transformed by the
+            pipeline before passing it to the step consuming it.
 
-    transform_input : list of str, default=None
-        The names of the :term:`metadata` parameters that should be transformed by the
-        pipeline before passing it to the step consuming it.
+            This enables transforming some input arguments to ``fit`` (other than ``X``)
+            to be transformed by the steps of the pipeline up to the step which requires
+            them. Requirement is defined via :ref:`metadata routing <metadata_routing>`.
+            For instance, this can be used to pass a validation set through the pipeline.
 
-        This enables transforming some input arguments to ``fit`` (other than ``X``)
-        to be transformed by the steps of the pipeline up to the step which requires
-        them. Requirement is defined via :ref:`metadata routing <metadata_routing>`.
-        For instance, this can be used to pass a validation set through the pipeline.
+            You can only set this if metadata routing is enabled, which you
+            can enable using ``sklearn.set_config(enable_metadata_routing=True)``.
 
-        You can only set this if metadata routing is enabled, which you
-        can enable using ``sklearn.set_config(enable_metadata_routing=True)``.
+        memory : str or object with the joblib.Memory interface, default=None
+            Used to cache the fitted transformers of the pipeline. The last step
+            will never be cached, even if it is a transformer. By default, no
+            caching is performed. If a string is given, it is the path to the
+            caching directory. Enabling caching triggers a clone of the transformers
+            before fitting. Therefore, the transformer instance given to the
+            pipeline cannot be inspected directly. Use the attribute ``named_steps``
+            or ``steps`` to inspect estimators within the pipeline. Caching the
+            transformers is advantageous when fitting is time consuming.
 
-    memory : str or object with the joblib.Memory interface, default=None
-        Used to cache the fitted transformers of the pipeline. The last step
-        will never be cached, even if it is a transformer. By default, no
-        caching is performed. If a string is given, it is the path to the
-        caching directory. Enabling caching triggers a clone of the transformers
-        before fitting. Therefore, the transformer instance given to the
-        pipeline cannot be inspected directly. Use the attribute ``named_steps``
-        or ``steps`` to inspect estimators within the pipeline. Caching the
-        transformers is advantageous when fitting is time consuming.
+        verbose : bool, default=False
+            If True, the time elapsed while fitting each step will be printed as it
+            is completed.
 
-    verbose : bool, default=False
-        If True, the time elapsed while fitting each step will be printed as it
-        is completed.
+        Attributes
+        ----------
+        named_steps : :class:`~sklearn.utils.Bunch`
+            Dictionary-like object, with the following attributes.
+            Read-only attribute to access any step parameter by user given name.
+            Keys are step names and values are steps parameters.
 
-    Attributes
-    ----------
-    named_steps : :class:`~sklearn.utils.Bunch`
-        Dictionary-like object, with the following attributes.
-        Read-only attribute to access any step parameter by user given name.
-        Keys are step names and values are steps parameters.
+        n_features_in_ : int
+            Number of features seen during :term:`fit`. Only defined if the
+            underlying first estimator in `steps` exposes such an attribute
+            when fit.
 
-    n_features_in_ : int
-        Number of features seen during :term:`fit`. Only defined if the
-        underlying first estimator in `steps` exposes such an attribute
-        when fit.
+        feature_names_in_ : ndarray of shape (`n_features_in_`,)
+            Names of features seen during :term:`fit`. Only defined if the
+            underlying estimator exposes such an attribute when fit.
 
-    feature_names_in_ : ndarray of shape (`n_features_in_`,)
-        Names of features seen during :term:`fit`. Only defined if the
-        underlying estimator exposes such an attribute when fit.
+        See Also
+        --------
+        sklearn.pipeline.Pipeline : Underlying scikit-learn pipeline class.
+        BaseTransformer : Base class for time series transformers.
+        FeatureUnion : Parallel transformer combination.
+        ColumnTransformer : Apply transformers to specific columns.
 
-    See Also
-    --------
-    sklearn.pipeline.Pipeline : Underlying scikit-learn pipeline class.
-    BaseTransformer : Base class for time series transformers.
-    FeatureUnion : Parallel transformer combination.
-    ColumnTransformer : Apply transformers to specific columns.
+        Notes
+        -----
+        All input data must include a `time` column with datetime values. The `time`
+        column is preserved through all transformations.
 
-    Notes
-    -----
-    All input data must include a `time` column with datetime values. The `time`
-    column is preserved through all transformations.
+        The `observation_horizon` property accumulates across all steps, returning
+        the sum of all transformer observation horizons. This indicates the total
+        amount of historical data required by the pipeline.
 
-    The `observation_horizon` property accumulates across all steps, returning
-    the sum of all transformer observation horizons. This indicates the total
-    amount of historical data required by the pipeline.
+        Supports time series-specific `update()` method for incremental learning,
+        allowing the pipeline to incorporate new observations without full retraining.
 
-    Supports time series-specific `update()` method for incremental learning,
-    allowing the pipeline to incorporate new observations without full retraining.
+        The final step can be a forecaster, enabling end-to-end forecasting pipelines
+        that transform features and generate predictions.
 
-    The final step can be a forecaster, enabling end-to-end forecasting pipelines
-    that transform features and generate predictions.
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> from datetime import datetime, timedelta
-    >>> from yohou.pipeline import Pipeline
-    >>> from yohou.preprocessing import SeasonalDifferencing
-    >>> from yohou.preprocessing.window import LagTransformer
-    >>>
-    >>> # Create sample weekly time series data (52 weeks)
-    >>> time = pl.datetime_range(
-    ...     start=datetime(2023, 1, 1),
-    ...     end=datetime(2023, 1, 1) + timedelta(weeks=51),
-    ...     interval="1w",
-    ...     eager=True
-    ... )
-    >>> data = pl.DataFrame({
-    ...     "time": time,
-    ...     "sales": range(1, 53)
-    ... })
-    >>>
-    >>> # Example 1: Create a sequential preprocessing pipeline
-    >>> pipe = Pipeline([
-    ...     ('deseason', SeasonalDifferencing(seasonality=4)),
-    ...     ('lags', LagTransformer(lag=[1, 2, 3]))
-    ... ])
-    >>>
-    >>> # Example 2: Access individual steps by name
-    >>> pipe.named_steps['deseason']  # doctest: +ELLIPSIS
-    SeasonalDifferencing(...)
-    >>>
-    >>> # Example 3: Access individual steps by position
-    >>> pipe[0]  # doctest: +ELLIPSIS
-    SeasonalDifferencing(...)
+        Examples
+        --------
+        >>> import polars as pl
+        >>> from datetime import datetime, timedelta
+        >>> from yohou.pipeline import Pipeline
+        >>> from yohou.preprocessing import SeasonalDifferencing
+        >>> from yohou.preprocessing.window import LagTransformer
+        >>>
+        >>> # Create sample weekly time series data (52 weeks)
+        >>> time = pl.datetime_range(
+        ...     start=datetime(2023, 1, 1),
+        ...     end=datetime(2023, 1, 1) + timedelta(weeks=51),
+        ...     interval="1w",
+        ...     eager=True
+        ... )
+        >>> data = pl.DataFrame({
+        ...     "time": time,
+        ...     "sales": range(1, 53)
+        ... })
+        >>>
+        >>> # Example 1: Create a sequential preprocessing pipeline
+        >>> pipe = Pipeline([
+        ...     ('deseason', SeasonalDifferencing(seasonality=4)),
+        ...     ('lags', LagTransformer(lag=[1, 2, 3]))
+        ... ])
+        >>>
+        >>> # Example 2: Access individual steps by name
+        >>> pipe.named_steps['deseason']  # doctest: +ELLIPSIS
+        SeasonalDifferencing(...)
+        >>>
+        >>> # Example 3: Access individual steps by position
+        >>> pipe[0]  # doctest: +ELLIPSIS
+        SeasonalDifferencing(...)
 
     """
 
@@ -200,6 +200,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
         self,
         steps: list[tuple[str, Any]],
         *,
+        # TODO: Can we have a transform_input for forecasting?
         transform_input: list[str] | None = None,
         memory: None | Memory | str = None,
         verbose: bool = False,
@@ -704,6 +705,43 @@ class Pipeline(BaseTransformer, _BaseComposition):
             X_t = transform.transform(X_t, **routed_params[name].transform)
         return X_t  # type: ignore[return-value]
 
+    def update_transform(self, X: pl.DataFrame, **params: Any) -> pl.DataFrame:
+        """Update and transform the data through the pipeline.
+
+        This method atomically updates each transformer with new data and
+        transforms it in sequence. The transformation uses the pre-update state,
+        then updates the memory. This is more efficient and correct than calling
+        update() then transform() separately.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            New data to update with and transform. Must fulfill input requirements
+            of first step of the pipeline.
+
+        **params : dict of str -> object
+            Parameters routed to the `transform` methods of the steps. Each step must
+            have requested certain metadata via `set_transform_request()` for these
+            parameters to be forwarded to them.
+
+        Returns
+        -------
+        X_t : pl.DataFrame
+            Transformed data corresponding to the new input rows.
+
+        """
+        _raise_for_params(params, self, "update_transform")
+
+        routed_params = process_routing(self, "update_transform", **params)
+
+        # Transform sequentially through all steps using their update_transform
+        # Each transformer handles its own memory management internally
+        X_t = X
+        for _, name, transform in self._iter():
+            X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+
+        return X_t
+
     def _can_inverse_transform(self) -> bool:
         """Check if all steps support `inverse_transform`.
 
@@ -855,9 +893,6 @@ class Pipeline(BaseTransformer, _BaseComposition):
             method_mapping.add(caller="fit", callee="fit")
             .add(caller="predict", callee="predict")
             .add(caller="fit_predict", callee="fit_predict")
-            .add(caller="predict_proba", callee="predict_proba")
-            .add(caller="decision_function", callee="decision_function")
-            .add(caller="predict_log_proba", callee="predict_log_proba")
             .add(caller="transform", callee="transform")
             .add(caller="inverse_transform", callee="inverse_transform")
             .add(caller="score", callee="score")
@@ -1527,6 +1562,61 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         )
         return result  # type: ignore[return-value]
 
+    def update_transform(self, X: pl.DataFrame, **params: Any) -> pl.DataFrame:
+        """Update and transform X in parallel for each transformer, concatenate results.
+
+        This method atomically updates each transformer with new data and
+        transforms it in parallel. The transformation uses the pre-update state,
+        then updates the memory. This is more efficient and correct than calling
+        update() then transform() separately.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            New data to update with and transform.
+
+        **params : dict, default=None
+            Parameters routed to the `transform` methods of the sub-transformers
+            via the metadata routing API. See :ref:`Metadata Routing User Guide
+            <metadata_routing>` for more details.
+
+        Returns
+        -------
+        X_t : pl.DataFrame
+            Horizontally stacked results of transformers, aligned by observation horizons.
+
+        """
+        _raise_for_params(params, self, "update_transform")
+
+        if _routing_enabled():
+            routed_params = process_routing(self, "update_transform", **params)
+        else:
+            routed_params = Bunch()
+            for name, _ in self.transformer_list:
+                routed_params[name] = Bunch(update_transform={})
+
+        # Parallel execution of update_transform on all transformers
+        Xs = Parallel(n_jobs=self.n_jobs)(
+            delayed(_update_transform_one)(trans, X, None, weight, routed_params[name])
+            for name, trans, weight in self._iter()
+        )
+
+        if not Xs:
+            # All transformers are None
+            time = X.select(cs.by_name("time"))
+            return time
+
+        # Extract actual column names from each DataFrame (excluding time)
+        column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
+
+        result = _hstack(
+            Xs,
+            column_names=column_names,
+            observation_horizons=self._get_observation_horizons(),
+        )
+
+        return result
+
     def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing of this object.
 
@@ -2166,7 +2256,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         self,
         X: pl.DataFrame,
         y: pl.DataFrame | None,
-        func: Any,
+        func: Callable,
         column_as_labels: bool,
         routed_params: dict[str, dict[str, dict[str, Any]]],
     ) -> list[pl.DataFrame]:
@@ -2452,6 +2542,59 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         result = self._hstack(list(Xs), n_samples=n_samples)
         return result  # type: ignore[return-value]
 
+    def update_transform(self, X: pl.DataFrame, **params: Any) -> pl.DataFrame:
+        """Update and transform X by each transformer, concatenate results.
+
+        This method atomically updates each column transformer with new data and
+        transforms it. The transformation uses the pre-update state, then updates
+        the memory. This is more efficient and correct than calling update() then
+        transform() separately.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            New data to update with and transform.
+
+        **params : dict, default=None
+            Parameters routed to the `transform` methods of the transformers.
+
+            You can only pass this if metadata routing is enabled, which you
+            can enable using ``sklearn.set_config(enable_metadata_routing=True)``.
+
+        Returns
+        -------
+        X_t : pl.DataFrame
+            Horizontally stacked results of transformers.
+
+        """
+        _raise_for_params(params, self, "update_transform")
+        check_is_fitted(self)
+        X = _check_X(X)
+
+        n_samples = _num_samples(X)
+
+        if _routing_enabled():
+            routed_params = process_routing(self, "update_transform", **params)
+        else:
+            routed_params = self._get_empty_routing()
+
+        Xs = self._call_func_on_transformers(
+            X,
+            None,
+            _update_transform_one,
+            column_as_labels=False,
+            routed_params=routed_params,
+        )
+
+        if not Xs:
+            # All transformers are None
+            time = X.select(cs.by_name("time"))
+            return time
+
+        result = self._hstack(list(Xs), n_samples=n_samples)
+
+        return result
+
     def _hstack(self, Xs: list[pl.DataFrame], *, n_samples: int) -> pl.DataFrame:
         """Stacks Xs horizontally.
 
@@ -2571,3 +2714,33 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             router.add(method_mapping=method_mapping, **{name: step})
 
         return router
+
+
+def _update_transform_one(
+    transformer: Any, X: pl.DataFrame, y: None, weight: float | None, routed_params: Any
+) -> pl.DataFrame:
+    """Update and transform data using a single transformer.
+
+    Parameters
+    ----------
+    transformer : estimator
+        The transformer to update and transform with.
+    X : pl.DataFrame
+        Input data to update and transform.
+    y : None
+        Not used, present for API consistency.
+    weight : float | None
+        Weight to apply to transformed output.
+    routed_params : Any
+        Routed parameters for the transformer.
+
+    Returns
+    -------
+    pl.DataFrame
+        Transformed data.
+
+    """
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+    if weight is None:
+        return X_transformed
+    return X_transformed * weight

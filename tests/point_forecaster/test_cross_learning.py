@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-import polars as pl
 import pytest
 from sklearn.base import clone
 from sklearn.linear_model import LinearRegression
@@ -14,7 +13,6 @@ from yohou.preprocessing import LagTransformer
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from estimator_checks import _yield_yohou_forecaster_checks
-
 
 # ============================================================================
 # Check generator tests with panel data
@@ -135,8 +133,12 @@ def test_cross_learning_global_data_no_groups(time_series_factory):
     forecaster.fit(y=y_train, X_post=None, X_ante=None, forecasting_horizon=3)
 
     # Should work the same with or without cross_learning_group
-    y_pred_default = forecaster.predict(X_ante=None, forecasting_horizon=3, cross_learning_group=None)
-    y_pred_explicit = forecaster.predict(X_ante=None, forecasting_horizon=3, cross_learning_group=None)
+    y_pred_default = forecaster.predict(
+        X_ante=None, forecasting_horizon=3, cross_learning_group=None
+    )
+    y_pred_explicit = forecaster.predict(
+        X_ante=None, forecasting_horizon=3, cross_learning_group=None
+    )
 
     assert y_pred_default.equals(y_pred_explicit)
     assert "feature_0" in y_pred_default.columns

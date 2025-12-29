@@ -100,8 +100,6 @@ def test_search_cv_forecaster_checks(base_forecaster, tags, expected_failures, y
         scoring=MAE(),
         n_warmup_trials=1,
         n_trials=2,
-        predict_forecasting_horizon=3,
-        predict_stride=1,
         n_jobs=1,
         refit=True,
         cv=2,

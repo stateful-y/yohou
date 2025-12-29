@@ -58,7 +58,7 @@ class MAE(BasePointScorer):
 
     """
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> float:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float:
         """Compute mean absolute error.
 
         Parameters
@@ -68,6 +68,9 @@ class MAE(BasePointScorer):
 
         y_pred : pl.DataFrame
             Predicted values.
+
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -134,7 +137,7 @@ class MSE(BasePointScorer):
 
     """
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> float:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float:
         """Compute mean squared error.
 
         Parameters
@@ -144,6 +147,9 @@ class MSE(BasePointScorer):
 
         y_pred : pl.DataFrame
             Predicted values.
+
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------

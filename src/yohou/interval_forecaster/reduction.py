@@ -197,7 +197,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 X_t,
                 forecasting_horizon,
                 y_pred_local_columns=y_pred_local_columns,
-                **estimator_params,
+                estimator_params=estimator_params,
             )
             estimators[f"coverage_rate_{coverage_rate}"] = estimator_rate
 

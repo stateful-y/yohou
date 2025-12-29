@@ -974,6 +974,18 @@ def _yield_yohou_transformer_checks(
         # Note: panel data will be provided by test fixtures
         pass
 
+    # Metadata routing checks (always applicable)
+    yield (
+        "check_metadata_routing_default_request",
+        check_metadata_routing_default_request,
+        {},
+    )
+    yield (
+        "check_metadata_routing_get_metadata_routing",
+        check_metadata_routing_get_metadata_routing,
+        {},
+    )
+
 
 # ============================================================================
 # FORECASTER CHECKS (25+ functions)
@@ -1416,12 +1428,12 @@ def check_clone_preserves_forecaster_params(forecaster):
             # Use deep=True to get all nested params, compare them
             orig_deep_params = orig_val.get_params(deep=True)
             cloned_deep_params = cloned_val.get_params(deep=True)
-            
+
             # Compare only primitive values and types (not object instances)
             for param_key in orig_deep_params.keys():
                 orig_param = orig_deep_params.get(param_key)
                 cloned_param = cloned_deep_params.get(param_key)
-                
+
                 # Skip comparing estimator instances themselves, just check types
                 if hasattr(orig_param, "get_params"):
                     assert type(orig_param) == type(cloned_param), (
@@ -1535,7 +1547,7 @@ def check_interval_prediction_columns(forecaster, y_test, X_post_test=None, X_an
 
     # Check if we have panel data (struct columns)
     _, y_local_groups = inspect_locality(y_test)
-    
+
     if len(y_local_groups) > 0:
         # For panel data, interval columns are nested within struct columns
         # Need to unnest to access them: store_0_lower_0.1 inside "stores" struct
@@ -1544,10 +1556,10 @@ def check_interval_prediction_columns(forecaster, y_test, X_post_test=None, X_an
             if struct_col in y_pred.columns:
                 # Unnest the struct to check interval columns
                 y_pred_unnest = y_pred.unnest(struct_col)
-                
+
                 # Get fields from the original training data
                 expected_fields = y_local_groups[struct_col]
-                
+
                 for rate in coverage_rates:
                     for field in expected_fields:
                         lower_col = f"{field}_lower_{rate}"
@@ -1601,7 +1613,7 @@ def check_interval_bounds(forecaster, y_test, X_post_test=None, X_ante_test=None
 
     # Check if we have panel data (struct columns)
     _, y_local_groups = inspect_locality(y_test)
-    
+
     if len(y_local_groups) > 0:
         # For panel data, interval columns are nested within struct columns
         struct_cols = list(y_local_groups.keys())
@@ -1609,10 +1621,10 @@ def check_interval_bounds(forecaster, y_test, X_post_test=None, X_ante_test=None
             if struct_col in y_pred.columns:
                 # Unnest the struct to access interval columns
                 y_pred_unnest = y_pred.unnest(struct_col)
-                
+
                 # Get fields from the original training data
                 expected_fields = y_local_groups[struct_col]
-                
+
                 for rate in coverage_rates:
                     for field in expected_fields:
                         lower_col = f"{field}_lower_{rate}"
@@ -2076,3 +2088,88 @@ def _yield_yohou_forecaster_checks(
                 check_cross_learning_invalid_group_raises,
                 {"y_panel": y_test, "X_post_panel": X_post_test, "X_ante_panel": X_ante_test},
             )
+
+    # Metadata routing checks (always applicable)
+    yield (
+        "check_metadata_routing_default_request",
+        check_metadata_routing_default_request,
+        {},
+    )
+    yield (
+        "check_metadata_routing_get_metadata_routing",
+        check_metadata_routing_get_metadata_routing,
+        {},
+    )
+
+
+# ============================================================================
+# METADATA ROUTING CHECKS
+# ============================================================================
+
+
+def check_metadata_routing_default_request(estimator_fitted):
+    """Check that by default metadata routing request is empty.
+
+    Tests:
+    - get_metadata_routing() returns MetadataRouter or MetadataRequest
+    - Default requests are empty (all metadata values are None)
+
+    Parameters
+    ----------
+    estimator_fitted : BaseForecaster or BaseTransformer
+        A fitted estimator instance.
+
+    Raises
+    ------
+    AssertionError
+        If routing structure is incorrect or requests are not empty.
+
+    """
+    from metadata_routing_common import assert_request_is_empty
+    from sklearn.utils.metadata_routing import MetadataRequest, MetadataRouter
+
+    # Routing is always enabled in Yohou - no check needed
+
+    router = estimator_fitted.get_metadata_routing()
+    assert isinstance(router, (MetadataRouter, MetadataRequest)), (
+        f"Expected MetadataRouter or MetadataRequest, got {type(router)}"
+    )
+
+    # Check requests are empty (with possible exclusions for defaults)
+    exclude = {}  # Can add specific exclusions per estimator type
+    assert_request_is_empty(router, exclude=exclude)
+
+
+def check_metadata_routing_get_metadata_routing(estimator_fitted):
+    """Check that get_metadata_routing() is implemented correctly.
+
+    Tests:
+    - Method exists and returns MetadataRouter or MetadataRequest
+    - Router has correct owner
+    - Router includes child estimators if applicable
+
+    Parameters
+    ----------
+    estimator_fitted : BaseForecaster or BaseTransformer
+        A fitted estimator instance.
+
+    Raises
+    ------
+    AssertionError
+        If get_metadata_routing implementation is incorrect.
+
+    """
+    from sklearn.utils.metadata_routing import MetadataRequest, MetadataRouter
+
+    assert hasattr(estimator_fitted, "get_metadata_routing"), (
+        f"{type(estimator_fitted).__name__} must implement get_metadata_routing()"
+    )
+
+    router = estimator_fitted.get_metadata_routing()
+
+    assert isinstance(router, (MetadataRouter, MetadataRequest)), (
+        f"get_metadata_routing() must return MetadataRouter or MetadataRequest, got {type(router)}"
+    )
+
+    # Check owner is set
+    assert router.owner is not None, "Router must have an owner set"

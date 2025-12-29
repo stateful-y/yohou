@@ -12,7 +12,7 @@ from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
-from yohou.utils import select_struct
+from yohou.utils import filter_panel_columns, select_struct
 
 
 class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
@@ -157,6 +157,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X_post: pl.DataFrame | None = None,
         X_ante: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        **params,
     ) -> "BaseIntervalForecaster":
         """Fits the forecaster and returns it.
 
@@ -173,6 +174,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
+
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -291,9 +295,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def predict(
         self,
         X_ante: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
+        forecasting_horizon: StrictInt | None = None,
         cross_learning_group: str | None = None,
-        predict_transformed: bool = True,
+        predict_transformed: bool = False,
+        **params,
     ) -> pl.DataFrame:
         """Predicts the model forecasting horizon from the observation horizon.
 
@@ -302,8 +307,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X_ante : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
-        forecasting_horizon : int >= 1, default=1
-            Horizon to forecast.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
 
         cross_learning_group : str or None, default=None
             For panel data (local_group_names_ is not None):
@@ -311,8 +316,11 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             - If str: predict only for the specified group (cross-learning)
             For global data: parameter is ignored.
 
-        predict_transformed : bool, default=True
+        predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed space.
+
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -321,55 +329,56 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         check_is_fitted(self, "fit_forecasting_horizon_")
+
+        # Use fit_forecasting_horizon_ as default
+        if forecasting_horizon is None:
+            forecasting_horizon = self.fit_forecasting_horizon_
+
+        # Validate cross_learning_group only if provided
+        if cross_learning_group is not None and (
+            self.local_group_names_ is None or cross_learning_group not in self.local_group_names_
+        ):
+            raise ValueError(
+                f"Group {cross_learning_group} not found in local groups: {self.local_group_names_}"
+            )
+
+        # Handle panel data: predict all struct columns if cross_learning_group=None
+        # For now, just predict all groups together (default behavior)
+        # TODO: Implement individual group predictions if needed
+
         forecaster = deepcopy(self)
 
-        if cross_learning_group is not None:
-            if (
-                self.local_group_names_ is None
-                or cross_learning_group not in self.local_group_names_
-            ):
-                raise ValueError(
-                    f"Group {cross_learning_group} not found in local groups: {self.local_group_names_}"
-                )
-
-            forecaster.local_group_names_ = [cross_learning_group]
-
+        if self.local_group_names_ is not None and cross_learning_group is not None:
             # Filter _y_observed
             if forecaster._y_observed is not None:
-                cols_to_keep = [
-                    c
-                    for c in forecaster._y_observed.columns
-                    if c == "time" or c == cross_learning_group
-                ]
-                forecaster._y_observed = forecaster._y_observed.select(cols_to_keep)
+                forecaster._y_observed = filter_panel_columns(
+                    forecaster._y_observed,
+                    cross_learning_group,
+                    self.local_group_names_,
+                    include_global=False,
+                )
 
             # Filter _X_post_observed
             if forecaster._X_post_observed is not None:
-                cols_to_keep = [
-                    c
-                    for c in forecaster._X_post_observed.columns
-                    if c == "time"
-                    or c == cross_learning_group
-                    or c not in self.local_group_names_
-                ]
-                forecaster._X_post_observed = forecaster._X_post_observed.select(cols_to_keep)
+                forecaster._X_post_observed = filter_panel_columns(
+                    forecaster._X_post_observed,
+                    cross_learning_group,
+                    self.local_group_names_,
+                    include_global=True,
+                )
 
             # Filter X_ante
             if X_ante is not None:
-                cols_to_keep = [
-                    c
-                    for c in X_ante.columns
-                    if c == "time"
-                    or c == cross_learning_group
-                    or c not in self.local_group_names_
-                ]
-                X_ante = X_ante.select(cols_to_keep)
+                X_ante = filter_panel_columns(
+                    X_ante,
+                    cross_learning_group,
+                    self.local_group_names_,
+                    include_global=True,
+                )
 
         y_pred = pl.DataFrame()
         for step in range(1, forecasting_horizon + 1, self.fit_forecasting_horizon_):
-            y_pred_step, y_pred_step_inv = BaseForecaster._predict(
-                forecaster, cross_learning_group
-            )
+            y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, cross_learning_group)
 
             # Choose which version to accumulate based on predict_transformed
             if predict_transformed:
@@ -413,9 +422,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     y_struct_dict = {}
                     for local_group_name in self.local_group_names_:
                         # Unnest the struct column
-                        y_local_pred = y_pred_step_inv[[local_group_name]].unnest(
-                            local_group_name
-                        )
+                        y_local_pred = y_pred_step_inv[[local_group_name]].unnest(local_group_name)
 
                         y_local_data = {}
                         for col in self.local_y_names_:

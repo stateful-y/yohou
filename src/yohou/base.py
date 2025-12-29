@@ -2,8 +2,7 @@
 
 import abc
 import inspect
-from copy import deepcopy
-from typing import Literal
+from typing import Any, Callable, Literal
 
 import numpy as np
 import polars as pl
@@ -12,10 +11,12 @@ from pydantic import StrictInt
 from sklearn.base import (
     BaseEstimator,
     TransformerMixin,
+    _fit_context,
     clone,
 )
 from sklearn.linear_model import LinearRegression
 from sklearn.utils._param_validation import InvalidParameterError
+from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.utils import add_interval, check_inputs, concat_struct, inspect_locality, tabularize
@@ -30,6 +31,8 @@ REQUIRED_PARAM_VALUE = "__REQUIRED__"
 
 class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
     """Base class for time series transformers."""
+
+    _parameter_constraints: dict = {}
 
     @property
     def observation_horizon(self) -> int:
@@ -52,7 +55,8 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         check_is_fitted(self, "_observation_horizon")
         return self._observation_horizon
 
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "BaseTransformer":
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "BaseTransformer":
         """Fits the transformer and returns it.
 
         Parameters
@@ -63,11 +67,16 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         y : pl.DataFrame or None, default=None
             Target time series. Ignored and only present for API consistency.
 
+        **params : dict
+            Metadata to route to nested estimators.
+
         Returns
         -------
         self
 
         """
+        # Router transformers would call process_routing() in their fit function
+
         self.reset(X)
 
         self.feature_names_in_ = X.select(~cs.by_name("time")).columns
@@ -101,6 +110,9 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
     def update(self, X: pl.DataFrame) -> "BaseTransformer":
         """Updates the transformer and returns it.
 
+        This method extends the internal memory buffer with new observations,
+        then calls reset() to maintain the fixed observation horizon window.
+
         Parameters
         ----------
         X : pl.DataFrame
@@ -116,13 +128,16 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         return self
 
     @abc.abstractmethod
-    def transform(self, X: pl.DataFrame) -> pl.DataFrame:
+    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
         """Transforms the input time series.
 
         Parameters
         ----------
         X : pl.DataFrame
             Feature time series.
+
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -132,7 +147,9 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError()
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
+    def inverse_transform(
+        self, X_t: pl.DataFrame, X_p: pl.DataFrame | None, **params
+    ) -> pl.DataFrame:
         """Inverts the input transformed time series.
 
         Parameters
@@ -144,6 +161,9 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
             Untransformed time series corresponding to at least `observation_horizon` immediately
             previous time stamps. Can be None if `observation_horizon == 0`.
 
+        **params : dict
+            Metadata to route to nested estimators.
+
         Returns
         -------
         pl.DataFrame
@@ -151,7 +171,7 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError("This transformer is not invertible.")
 
-    def update_transform(self, X: pl.DataFrame) -> pl.DataFrame:
+    def update_transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
         """Transforms the input, updates the transformer and returns
         the transformed input.
 
@@ -160,18 +180,22 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         X : pl.DataFrame
             Input time series.
 
+        **params : dict
+            Metadata to route to `transform()`.
+
         Returns
         -------
         pl.DataFrame
             Transformed input time series.
 
         """
+        # Route all params to transform only (update is memory management)
         if self.observation_horizon > 0:
             X_full = pl.concat([self._X_observed, X])
-            X_t = self.transform(X_full)
+            X_t = self.transform(X_full, **params)
             X_t = X_t[-len(X) :]
         else:
-            X_t = self.transform(X)
+            X_t = self.transform(X, **params)
 
         self.update(X)
 
@@ -206,6 +230,8 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         Transformer used to transform the target time series into features.
         .
     """
+
+    _parameter_constraints: dict = {}
 
     def __init__(
         self,
@@ -687,12 +713,14 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         return X_t_new
 
     @abc.abstractmethod
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
         X_post: pl.DataFrame | None = None,
         X_ante: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        **params,
     ) -> "BaseForecaster":
         """Fits the forecaster and returns it.
 
@@ -709,6 +737,9 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
+
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -766,7 +797,6 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
         X_ante : pl.DataFrame or None
             Ex-post feature time series.
-
 
         Returns
         -------
@@ -858,7 +888,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
         y_pred_step_inv = y_pred_step
         if forecaster.target_transformer is not None:
-            if cross_learning_group is None:
+            if forecaster.local_group_names_ is None:
                 # Remove "observed_time" before inverse_transform (transformers don't handle it)
                 observed_time = y_pred_step.select(cs.by_name("observed_time"))
                 y_pred_step_no_obs = y_pred_step.select(~cs.by_name("observed_time"))
@@ -873,47 +903,54 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             else:
                 y_pred_step_inv_dict = {}
 
-                transformer = forecaster.target_transformer_[cross_learning_group]
-
-                # Extract the group's data
-                y_pred_step_group = y_pred_step.select(
-                    cs.by_name("observed_time")
-                    | cs.by_name("time")
-                    | cs.by_name(cross_learning_group)
-                ).unnest(cross_learning_group)
-
-                # Remove "observed_time" before inverse_transform (transformers don't handle it)
-                observed_time = y_pred_step_group.select(cs.by_name("observed_time"))
-                y_pred_step_group_no_obs = y_pred_step_group.select(
-                    ~cs.by_name("observed_time")
+                local_group_names = (
+                    forecaster.local_group_names_
+                    if cross_learning_group is None
+                    else [cross_learning_group]
                 )
 
-                # Inverse transform
-                y_pred_step_group_inv = transformer.inverse_transform(
-                    X_t=y_pred_step_group_no_obs,
-                    X_p=forecaster._y_observed.select(
-                        cs.by_name("time") | cs.by_name(cross_learning_group)
-                    ).unnest(cross_learning_group),
-                )
+                for local_group_name in local_group_names:
+                    transformer = forecaster.target_transformer_[local_group_name]
 
-                # Add "observed_time" back
-                y_pred_step_group_inv = pl.concat(
-                    [observed_time, y_pred_step_group_inv], how="horizontal"
-                )
+                    # Extract the group's data
+                    y_pred_step_group = y_pred_step.select(
+                        cs.by_name("observed_time")
+                        | cs.by_name("time")
+                        | cs.by_name(local_group_name)
+                    ).unnest(local_group_name)
 
-                # Store in dict
-                y_pred_step_inv_dict[cross_learning_group] = y_pred_step_group_inv.select(
-                    ~cs.by_name("observed_time") & ~cs.by_name("time")
-                )
+                    # Remove "observed_time" before inverse_transform (transformers don't handle it)
+                    observed_time = y_pred_step_group.select(cs.by_name("observed_time"))
+                    y_pred_step_group_no_obs = y_pred_step_group.select(
+                        ~cs.by_name("observed_time")
+                    )
 
-                # Reconstruct the struct
-                y_pred_step_inv = concat_struct(y_pred_step_inv_dict, how="horizontal")
+                    # Inverse transform
+                    y_pred_step_group_inv = transformer.inverse_transform(
+                        X_t=y_pred_step_group_no_obs,
+                        X_p=forecaster._y_observed.select(
+                            cs.by_name("time") | cs.by_name(local_group_name)
+                        ).unnest(local_group_name),
+                    )
 
-                # Add time columns back
-                time_cols = y_pred_step.select(
-                    cs.by_name("observed_time") | cs.by_name("time")
-                )
-                y_pred_step_inv = pl.concat([time_cols, y_pred_step_inv], how="horizontal")
+                    # Add "observed_time" back
+                    y_pred_step_group_inv = pl.concat(
+                        [observed_time, y_pred_step_group_inv], how="horizontal"
+                    )
+
+                    # Store in dict (without time columns)
+                    y_pred_step_inv_dict[local_group_name] = y_pred_step_group_inv.select(
+                        ~cs.by_name("observed_time") & ~cs.by_name("time")
+                    )
+
+                # Get time columns first
+                time_cols = y_pred_step.select(cs.by_name("observed_time") | cs.by_name("time"))
+
+                # Reconstruct the struct from dict
+                struct_df = pl.DataFrame(y_pred_step_inv_dict)
+
+                # Combine time columns with struct
+                y_pred_step_inv = concat_struct([time_cols, struct_df], how="horizontal")
 
         return y_pred_step, y_pred_step_inv
 
@@ -921,9 +958,10 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
     def predict(
         self,
         X_ante: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
+        forecasting_horizon: StrictInt | None = None,
         cross_learning_group: str | None = None,
-        predict_transformed: bool = True,
+        predict_transformed: bool = False,
+        **params,
     ) -> pl.DataFrame:
         """Predicts the model forecasting horizon from the observation horizon.
 
@@ -932,8 +970,8 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         X_ante : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
-        forecasting_horizon : int >= 1, default=1
-            Horizon to forecast.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
 
         cross_learning_group : str or None, default=None
             For panel data (local_group_names_ is not None):
@@ -941,8 +979,11 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             - If str: predict only for the specified group (cross-learning)
             For global data: parameter is ignored.
 
-        predict_transformed : bool, default=True
+        predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed space.
+
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -957,9 +998,10 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         y: pl.DataFrame,
         X_post: pl.DataFrame | None = None,
         X_ante: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        stride: StrictInt = 1,
+        forecasting_horizon: StrictInt | None = None,
+        stride: StrictInt | None = None,
         predict_transformed: bool = False,
+        **params,
     ) -> pl.DataFrame:
         """Alternate `recursive_predict` and `update`.
 
@@ -972,17 +1014,21 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             Ex-ante feature time series for updates.
 
         X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+            Ex-post feature time series for predictions.
 
-        forecasting_horizon : int >= 1, default=1
-            Horizon to forecast recursively.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast recursively. If None, uses ``fit_forecasting_horizon_``.
 
-        stride : int >= 1, default=1
-            Number of new observations to use for each update.
+        stride : int >= 1 or None, default=None
+            Number of new observations to use for each update. If None, uses
+            ``fit_forecasting_horizon_``.
 
         predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed
             space.
+
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -990,7 +1036,21 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             Predicted time series.
 
         """
-        y_pred_i = self.predict(X_ante, forecasting_horizon=forecasting_horizon)
+        check_is_fitted(self, "fit_forecasting_horizon_")
+
+        # Use fit_forecasting_horizon_ as default for both parameters
+        if forecasting_horizon is None:
+            forecasting_horizon = self.fit_forecasting_horizon_
+        if stride is None:
+            stride = self.fit_forecasting_horizon_
+
+        # Initial prediction with predict_transformed parameter
+        y_pred_i = self.predict(
+            X_ante=X_ante,
+            forecasting_horizon=forecasting_horizon,
+            predict_transformed=predict_transformed,
+            **params,
+        )
 
         y_pred = y_pred_i
         for i in range(0, len(y), stride):
@@ -1004,11 +1064,50 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                 X_ante=X_ante,
                 forecasting_horizon=forecasting_horizon,
                 predict_transformed=predict_transformed,
+                **params,
             )
 
             y_pred = pl.concat([y_pred, y_pred_i])
 
         return y_pred
+
+    def get_metadata_routing(self) -> MetadataRouter:
+        """Get metadata routing for this forecaster.
+
+        BaseForecaster is both a consumer AND a router:
+        - Consumer: Can accept metadata like forecasting_horizon
+        - Router: Forwards metadata to target_transformer and feature_transformer
+
+        Subclasses with additional nested estimators should call super() and
+        add their own child routing.
+
+        Returns
+        -------
+        router : MetadataRouter
+            Router that forwards metadata to transformers.
+        """
+        router = MetadataRouter(owner=self.__class__.__name__)
+
+        # Route to target_transformer if present
+        # This allows target_transformer to receive metadata if it requests it
+        if hasattr(self, "target_transformer") and self.target_transformer is not None:
+            router.add(
+                target_transformer=self.target_transformer,
+                method_mapping=MethodMapping()
+                .add(caller="fit", callee="fit")
+                .add(caller="fit", callee="transform"),
+            )
+
+        # Route to feature_transformer if present
+        if hasattr(self, "feature_transformer") and self.feature_transformer is not None:
+            router.add(
+                feature_transformer=self.feature_transformer,
+                method_mapping=MethodMapping()
+                .add(caller="fit", callee="fit")
+                .add(caller="fit", callee="transform"),
+            )
+
+        return router
 
 
 class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
@@ -1295,8 +1394,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_t: pl.DataFrame,
         X_t: pl.DataFrame,
         forecasting_horizon: StrictInt,
+        time_weight: Callable | pl.DataFrame | None = None,
         y_pred_local_columns: list[str] | None = None,
-        **estimator_params: object,
+        estimator_params: dict[str, Any] | None = None,
+        estimator_fit_params: dict[str, Any] | None = None,
     ) -> BaseEstimator:
         """Fit an sklearn estimator on tabularized time series data.
 
@@ -1315,11 +1416,18 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon : int
             Number of steps to forecast.
 
+        time_weight : callable or pl.DataFrame or None, default=None
+            Time weighting function or DataFrame to weight samples.
+            Converted to sample_weight during tabularization.
+
         y_pred_local_columns : list of str or None, default=None
             Target columns to predict. If None, predicts all targets.
 
-        **estimator_params : object
+        estimator_params : dict
             Additional parameters to pass to the estimator's set_params method.
+
+        estimator_fit_params : dict
+            Additional parameters to pass to the estimator's fit method.
 
         Returns
         -------
@@ -1351,9 +1459,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if y_pred_local_columns is None:
             y_pred_local_columns = self.local_y_t_names_  # TODO: Was self.local_y_names_
 
-        estimator = clone(self.estimator).set_params(**estimator_params)
+        estimator = clone(self.estimator).set_params(**(estimator_params or {}))
 
         if self.local_group_names_ is None:
+            # Global time series
             X_tab, y_tab = self._get_tabularized_dataset(
                 y_t,
                 X_t,
@@ -1362,6 +1471,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             )
 
         else:
+            # Panel data: stack all series
             X_tab_list, y_tab_list = [], []
             for local_group_name in self.local_group_names_:
                 y_t_local = y_t[
@@ -1395,7 +1505,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             X_tab = np.vstack(X_tab_list)
             y_tab = np.vstack(y_tab_list)
 
-        estimator.fit(X_tab, y_tab)
+        estimator.fit(X_tab, y_tab, **(estimator_fit_params or {}))
 
         return estimator
 
@@ -1457,6 +1567,31 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             y_pred = pl.DataFrame(y_pred_dict)
 
         return y_pred
+
+    def get_metadata_routing(self) -> MetadataRouter:
+        """Get metadata routing including wrapped estimator.
+
+        BaseReductionForecaster is a router because it wraps a sklearn estimator.
+        It needs to forward metadata (like time_weight) from the forecaster's
+        fit() method to the wrapped estimator's fit() method.
+
+        Returns
+        -------
+        router : MetadataRouter
+            Router that forwards to transformers (from parent) and wrapped estimator.
+        """
+        # Get parent routing (for target_transformer, feature_transformer)
+        router = super().get_metadata_routing()
+
+        # Add wrapped sklearn estimator routing
+        # This allows metadata like time_weight to flow to the underlying model
+        if hasattr(self, "estimator") and self.estimator is not None:
+            router.add(
+                estimator=self.estimator,
+                method_mapping=MethodMapping().add(caller="fit", callee="fit"),
+            )
+
+        return router
 
 
 class BaseWrapper(BaseEstimator, metaclass=abc.ABCMeta):

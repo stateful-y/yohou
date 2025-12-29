@@ -146,12 +146,6 @@ class SearchCV(BaseForecaster):
         If `scoring` represents multiple scores, one can use:
         - a dictionary with metric names as keys and callables a values.
 
-    predict_forecasting_horizon : int >= 1, default=1
-        Horizon to forecast recursively.
-
-    predict_stride : int >= 1, default=1
-        Stride in between two predictions.
-
     n_jobs : int, default=None
         Number of jobs to run in parallel.
         ``None`` means 1 unless in a :obj:`joblib.parallel_backend` context.
@@ -301,8 +295,6 @@ class SearchCV(BaseForecaster):
         "storage": [Storage, None],
         "n_warmup_trials": [numbers.Integral],
         "n_trials": [numbers.Integral],
-        "predict_forecasting_horizon": [numbers.Integral],
-        "predict_stride": [numbers.Integral],
         "scoring": [BaseScorer],
         "n_jobs": [numbers.Integral, None],
         "refit": ["boolean", str, callable],
@@ -323,8 +315,6 @@ class SearchCV(BaseForecaster):
         storage: "Storage" | None = None,
         n_warmup_trials: int = 0,
         n_trials: int = 5,
-        predict_forecasting_horizon: int = 1,
-        predict_stride: int = 1,
         n_jobs: int | None = None,
         refit: bool | str | object = True,
         cv: object = None,
@@ -338,8 +328,6 @@ class SearchCV(BaseForecaster):
         self.scoring = scoring
         self.sampler = sampler
         self.storage = storage
-        self.predict_forecasting_horizon = predict_forecasting_horizon
-        self.predict_stride = predict_stride
         self.n_warmup_trials = n_warmup_trials
         self.n_trials = n_trials
         self.n_jobs = n_jobs
@@ -367,8 +355,7 @@ class SearchCV(BaseForecaster):
     def score(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object) -> object:
         """Return the score on the given data, if the forecaster has been refit.
 
-        This uses the score defined by ``scoring`` where provided, and the
-        ``best_forecaster_.score`` method otherwise.
+        This uses the score defined by ``scoring``.
 
         Parameters
         ----------
@@ -422,9 +409,9 @@ class SearchCV(BaseForecaster):
     def predict(
         self,
         X_ante: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
+        forecasting_horizon: StrictInt | None = None,
         cross_learning_group: str | None = None,
-        predict_transformed: bool = True,
+        predict_transformed: bool = False,
     ) -> pl.DataFrame:
         """Call predict on the forecaster with the best found parameters.
 
@@ -436,8 +423,9 @@ class SearchCV(BaseForecaster):
         X_ante : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
-        forecasting_horizon : int >= 1, default=1
-            Horizon to forecast.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast. If None, uses the fitted forecaster's
+            ``fit_forecasting_horizon_``.
 
         cross_learning_group : str or None, default=None
             For panel data (local_group_names_ is not None):
@@ -445,7 +433,7 @@ class SearchCV(BaseForecaster):
             - If str: predict only for the specified group (cross-learning)
             For global data: parameter is ignored.
 
-        predict_transformed : bool, default=True
+        predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed space.
 
         Returns
@@ -501,9 +489,10 @@ class SearchCV(BaseForecaster):
         y: pl.DataFrame,
         X_post: pl.DataFrame | None = None,
         X_ante: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        stride: StrictInt = 1,
+        forecasting_horizon: StrictInt | None = None,
+        stride: StrictInt | None = None,
         predict_transformed: bool = False,
+        **params,
     ) -> pl.DataFrame:
         """Call update_predict on the forecaster with the best found parameters.
 
@@ -521,14 +510,19 @@ class SearchCV(BaseForecaster):
         X_ante : pl.DataFrame or None, default=None
             Ex-post feature time series.
 
-        forecasting_horizon : int >= 1, default=1
-            Horizon to forecast recursively.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast recursively. If None, uses the fitted forecaster's
+            ``fit_forecasting_horizon_``.
 
-        stride : int >= 1, default=1
-            Stride in between two predictions.
+        stride : int >= 1 or None, default=None
+            Stride in between two predictions. If None, uses the fitted forecaster's
+            ``fit_forecasting_horizon_``.
 
         predict_transformed : bool, default=False
             Whether to output prediction in the transformed space.
+
+        **params : dict
+            Metadata to route to `predict()`.
 
         Returns
         -------
@@ -539,7 +533,7 @@ class SearchCV(BaseForecaster):
         """
         check_is_fitted(self)
         return self.best_forecaster_.update_predict(
-            y, X_post, X_ante, forecasting_horizon, stride, predict_transformed
+            y, X_post, X_ante, forecasting_horizon, stride, predict_transformed, **params
         )
 
     @available_if(_best_forecaster_has("reset"))  # type: ignore[untyped-decorator]
@@ -646,6 +640,8 @@ class SearchCV(BaseForecaster):
         self.study_._stop_flag = False
 
         try:
+            all_outputs: dict[str, object] = {}
+
             # Here we set `in_optimize_loop = True`, not at the beginning of the `_optimize()`
             # function. Because it is a thread-local object and `n_jobs` option spawns new threads.
             self.study_._thread_local.in_optimize_loop = True
@@ -674,6 +670,15 @@ class SearchCV(BaseForecaster):
                         self.study_, func, i_trial, n_trials_per_batch, catch=()
                     )
 
+                    if not all_outputs:
+                        all_outputs = outputs
+                    else:
+                        for key, value in outputs.items():
+                            if isinstance(all_outputs[key], list):
+                                all_outputs[key].extend(value)
+                            else:
+                                all_outputs[key] = np.concatenate((all_outputs[key], value))
+
                 finally:
                     # The following line mitigates memory problems that can be occurred in some
                     # environments (e.g., services that use computing containers such as GitHub
@@ -696,7 +701,7 @@ class SearchCV(BaseForecaster):
             self.study_._thread_local.in_optimize_loop = False
             progress_bar.close()
 
-        return outputs  # type: ignore[no-any-return]
+        return all_outputs  # type: ignore[no-any-return]
 
     def _run_search(self, evaluate_candidates: object) -> dict[str, object]:
         """Repeatedly calls `evaluate_candidates` to conduct a search.
@@ -724,12 +729,12 @@ class SearchCV(BaseForecaster):
 
         def batch_func(trial_batch: list[optuna.Trial], i_trial: int) -> tuple[object, object]:
             """Evaluate batch of trials."""
-            cand_params = [
+            candidate_params = [
                 self._get_candidate_params(trial, i_trial + i_trial_cand)
                 for i_trial_cand, trial in enumerate(trial_batch)
             ]
 
-            results = evaluate_candidates(cand_params, i_trial)  # type: ignore[operator]
+            results = evaluate_candidates(candidate_params, i_trial)  # type: ignore[operator]
 
             batch_values = results["mean_test_score"]
 
@@ -897,11 +902,7 @@ class SearchCV(BaseForecaster):
             scorer=scorers,
             fit_params=routed_params.forecaster.fit,  # type: ignore[attr-defined]
             # TODO: Use routing?
-            # predict_params=routed_params.forecaster.predict
-            predict_params={
-                "forecasting_horizon": self.predict_forecasting_horizon,
-                "stride": self.predict_stride,
-            },
+            predict_params=routed_params.forecaster.predict,
             score_params=routed_params.scorer.score,  # type: ignore[attr-defined]
             return_train_score=self.return_train_score,
             return_n_test_samples=True,
@@ -917,7 +918,7 @@ class SearchCV(BaseForecaster):
             all_more_results: dict[str, list[object]] = defaultdict(list)
 
             def evaluate_candidates(
-                cand_params: list[dict[str, object]],
+                candidate_params: list[dict[str, object]],
                 i_trial: int,
                 more_results: dict[str, object] | None = None,
             ) -> dict[str, object]:
@@ -941,7 +942,7 @@ class SearchCV(BaseForecaster):
                         forecasting_horizon,
                         train=train,
                         test=test,
-                        parameters=cand_params[i_trial_cand],
+                        parameters=candidate_params[i_trial_cand],
                         split_progress=(split_idx, n_splits),
                         candidate_progress=(
                             i_trial + i_trial_cand,
@@ -957,14 +958,12 @@ class SearchCV(BaseForecaster):
 
                 if len(out) < 1:
                     raise ValueError(
-                        "No fits were performed. "
-                        "Was the CV iterator empty? "
+                        "No fits were performed. Was the CV iterator empty? "
                         "Were there no candidates?"
                     )
                 elif len(out) != n_cand_per_trials * n_splits:
                     raise ValueError(
-                        "cv.split and cv.get_n_splits returned "
-                        "inconsistent results. Expected {} "
+                        "cv.split and cv.get_n_splits returned inconsistent results. Expected {} "
                         "splits, got {}".format(n_splits, len(out) // n_cand_per_trials)
                     )
 
@@ -977,18 +976,19 @@ class SearchCV(BaseForecaster):
                 if callable(self.scoring):
                     _insert_error_scores(out, self.error_score)
 
-                all_candidate_params.extend(cand_params)
+                all_candidate_params.extend(candidate_params)
                 all_out.extend(out)
 
                 if more_results is not None:
                     for key, value in more_results.items():
                         all_more_results[key].extend(value)  # type: ignore[arg-type]
 
+                # TODO: Rank only works batch-wise so it is not global
                 results = self._format_results(
-                    all_candidate_params,
+                    candidate_params,
                     n_splits,
-                    all_out,
-                    all_more_results,  # type: ignore[arg-type]
+                    out,
+                    more_results,  # type: ignore[arg-type]
                 )
 
                 return results
@@ -1188,9 +1188,7 @@ class SearchCV(BaseForecaster):
             forecaster=self.forecaster,
             method_mapping=MethodMapping()
             .add(caller="fit", callee="fit")
-            .add(caller="predict", callee="predict")
-            .add(caller="update", callee="update")
-            .add(caller="update_predict", callee="update_predict"),
+            .add(caller="predict", callee="predict"),
         )
 
         scorer, _ = self._get_scorers()

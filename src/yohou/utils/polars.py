@@ -5,76 +5,7 @@ from typing import Literal
 import polars as pl
 import polars.selectors as cs
 
-
-def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]:
-    """Inspect DataFrame columns to distinguish global and local (panel) data.
-
-    Global columns apply to all time series (e.g., single univariate series or
-    features common across all panels). Local columns are polars Struct columns
-    containing different time series for each group (e.g., sales per store).
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input DataFrame with potential mix of global and struct columns.
-        Must contain a "time" column (which is ignored in the output).
-
-    Returns
-    -------
-    global_names : list of str
-        Names of non-struct columns (excluding "time").
-
-    local_groups : dict of str to list of str
-        Mapping from struct column names to their field names.
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> # Global time series (single series)
-    >>> df_global = pl.DataFrame({
-    ...     "time": [1, 2, 3],
-    ...     "value": [10, 20, 30]
-    ... })
-    >>> global_names, local_groups = inspect_locality(df_global)
-    >>> global_names
-    ['value']
-    >>> local_groups
-    {}
-
-    >>> # Panel data with struct column
-    >>> df_panel = pl.DataFrame({
-    ...     "time": [1, 2, 3],
-    ...     "sales": pl.Series([
-    ...         {"store_1": 100, "store_2": 150},
-    ...         {"store_1": 110, "store_2": 160},
-    ...         {"store_1": 120, "store_2": 170}
-    ...     ])
-    ... })
-    >>> global_names, local_groups = inspect_locality(df_panel)
-    >>> global_names
-    []
-    >>> local_groups
-    {'sales': ['store_1', 'store_2']}
-
-    See Also
-    --------
-    concat_struct : Concatenate DataFrames while preserving struct columns
-    select_struct : Select specific columns from struct DataFrames
-    """
-    global_names, local_groups = [], {}
-    for col, dtype in df.schema.items():
-        if col == "time":
-            continue
-
-        if isinstance(dtype, pl.Struct):
-            # Cast to Struct to access fields attribute
-            struct_dtype = df.schema[col]
-            if hasattr(struct_dtype, "fields"):
-                local_groups[col] = [field.name for field in struct_dtype.fields]  # type: ignore[attr-defined]
-        else:
-            global_names.append(col)
-
-    return global_names, local_groups
+from .panel import inspect_locality
 
 
 def concat_struct(

@@ -7,10 +7,11 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
+
     return (mo,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # 📊 Air Passenger Forecasting with Yohou
@@ -57,6 +58,7 @@ def _():
     # Yohou imports
     from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer, LogTransform, SeasonalDifferencing
+
     return (
         LagTransformer,
         LogTransform,
@@ -76,7 +78,7 @@ def _():
     )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Loading the Data
@@ -118,7 +120,7 @@ def _(pl):
     return (y,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Visualizing the Time Series
@@ -131,7 +133,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(go, y):
     # Create time series plot
     fig_raw = go.Figure()
@@ -155,7 +157,7 @@ def _(go, y):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### What We Observe
@@ -171,7 +173,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Train/Test Split
@@ -202,7 +204,7 @@ def _(train_test_split, y):
     return forecasting_horizon, y_test, y_train
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Baseline Forecasting with Seasonal Naive
@@ -241,7 +243,7 @@ def _(MAE, SeasonalNaive, forecasting_horizon, y_test, y_train):
     return mae_baseline, mae_scorer, y_pred_baseline
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(go, y_pred_baseline, y_test, y_train):
     # Visualize baseline predictions
     fig_baseline = go.Figure()
@@ -299,7 +301,7 @@ def _(go, y_pred_baseline, y_test, y_train):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### Baseline Results Interpretation
@@ -314,7 +316,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ---
@@ -333,7 +335,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Interactive Parameter Controls
@@ -345,7 +347,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     # Interactive parameter controls
     forecast_horizon_slider = mo.ui.slider(
@@ -353,7 +355,7 @@ def _(mo):
     )
 
     max_lag_slider = mo.ui.slider(
-        start=1, stop=24, value=12, label="Maximum Lag Window", show_value=True
+        start=1, stop=24, value=3, label="Maximum Lag Window", show_value=True
     )
 
     params = mo.ui.dictionary(
@@ -364,7 +366,7 @@ def _(mo):
     return (params,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Preprocessing Pipeline with Stationarization
@@ -417,14 +419,17 @@ def _(
     )
 
     reduction_forecaster = PointReductionForecaster(
-        estimator=Ridge(alpha=1.0),
+        estimator=Ridge(alpha=10),
         target_transformer=pipeline_target,
         feature_transformer=pipeline_feature,
     )
 
     # Fit the forecaster
     reduction_forecaster.fit(
-        y=y_train, X_post=None, X_ante=None, forecasting_horizon=params.value["forecast_horizon"]
+        y=y_train,
+        X_post=None,
+        X_ante=None,
+        forecasting_horizon=params.value["forecast_horizon"],
     )
 
     # Make predictions
@@ -449,7 +454,7 @@ def _(
     )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     go,
     improvement,
@@ -528,7 +533,7 @@ def _(
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### Pipeline Results Interpretation
@@ -552,7 +557,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Cross-Validation and Hyperparameter Tuning
@@ -573,12 +578,12 @@ def _(mo):
     - **Ridge alpha**: Regularization strength
     - **Differencing period**: Seasonal period to remove (around 12 for monthly data)
 
-    ⚠️ **Note**: This cell may take 1-2 minutes to run (20 trials × 5 CV folds).
+    ⚠️ **Note**: This cell may take 1-2 minutes to run (20 trials × 3 CV folds).
     """)
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     MAE,
     SearchCV,
@@ -590,13 +595,12 @@ def _(
     y_train,
 ):
     # Set up cross-validation
-    cv_splitter = Splitter(n_splits=5, test_size=12)
+    cv_splitter = Splitter(n_splits=3, test_size=12)
 
     # Define search space
     param_distributions = {
         "estimator__alpha": optuna.distributions.FloatDistribution(0.01, 10.0, log=True),
         "feature_transformer__lag__lag": optuna.distributions.IntDistribution(1, 24),
-        "feature_transformer__diff__seasonality": optuna.distributions.IntDistribution(10, 14),
     }
 
     # Set up hyperparameter search
@@ -605,9 +609,11 @@ def _(
         param_distributions=param_distributions,
         scoring=MAE(),
         cv=cv_splitter,
-        n_trials=20,
-        n_warmup_trials=5,
+        n_trials=50,
+        n_warmup_trials=25,
         refit=True,
+        return_train_score=True,
+        n_jobs=4,
     )
 
     # Run search (this takes time!)
@@ -619,20 +625,133 @@ def _(
     for param, value in search.best_params_.items():
         print(f"  {param}: {value}")
     print(f"\nBest cross-validation MAE: {search.best_score_:.2f}")
+    return (search,)
+
+
+@app.cell
+def _(search):
+    search.cv_results_
     return
 
 
 @app.cell
+def _(forecasting_horizon, mae_scorer, search, y_test):
+    # Make predictions with the best forecaster
+    y_pred_best = search.predict(forecasting_horizon=forecasting_horizon)
+
+    # Evaluate
+    mae_best = mae_scorer.score(y_test, y_pred_best)
+
+    print(f"Best forecaster MAE: {mae_best:.2f} thousand passengers")
+    return mae_best, y_pred_best
+
+
+@app.cell(hide_code=True)
+def _(
+    go,
+    mae_baseline,
+    mae_best,
+    mae_reduction_forecaster,
+    y_pred_baseline,
+    y_pred_best,
+    y_pred_reduction_forecaster,
+    y_test,
+    y_train,
+):
+    # Visualize best forecaster vs untuned vs baseline
+    fig_comparison = go.Figure()
+
+    # Training data
+    fig_comparison.add_trace(
+        go.Scatter(
+            x=y_train["time"].to_list(),
+            y=y_train["passengers"].to_list(),
+            mode="lines",
+            name="Training data",
+            line=dict(color="royalblue", width=2),
+        )
+    )
+
+    # Test data (actual)
+    fig_comparison.add_trace(
+        go.Scatter(
+            x=y_test["time"].to_list(),
+            y=y_test["passengers"].to_list(),
+            mode="lines",
+            name="Actual (test)",
+            line=dict(color="green", width=3),
+        )
+    )
+
+    # Baseline predictions
+    fig_comparison.add_trace(
+        go.Scatter(
+            x=y_pred_baseline["time"].to_list(),
+            y=y_pred_baseline["passengers"].to_list(),
+            mode="lines+markers",
+            name=f"Baseline (MAE: {mae_baseline:.2f})",
+            line=dict(color="red", width=2, dash="dash"),
+            marker=dict(size=6),
+        )
+    )
+
+    # Untuned pipeline predictions
+    fig_comparison.add_trace(
+        go.Scatter(
+            x=y_pred_reduction_forecaster["time"].to_list(),
+            y=y_pred_reduction_forecaster["passengers"].to_list(),
+            mode="lines+markers",
+            name=f"Untuned Reducer (MAE: {mae_reduction_forecaster:.2f})",
+            line=dict(color="purple", width=2, dash="dash"),
+            marker=dict(size=6, symbol="diamond"),
+        )
+    )
+
+    # Best forecaster predictions
+    fig_comparison.add_trace(
+        go.Scatter(
+            x=y_pred_best["time"].to_list(),
+            y=y_pred_best["passengers"].to_list(),
+            mode="lines+markers",
+            name=f"Optimized Reducer (MAE: {mae_best:.2f})",
+            line=dict(color="orange", width=2, dash="dot"),
+            marker=dict(size=7, symbol="star"),
+        )
+    )
+
+    # Add vertical line at train/test split
+    fig_comparison.add_vline(
+        x=y_test["time"].min().timestamp() * 1000,
+        line_dash="dot",
+        line_color="gray",
+        annotation_text="Train/Test Split",
+    )
+
+    fig_comparison.update_layout(
+        title="Model Comparison: Baseline vs. Untuned vs. Optimized",
+        xaxis_title="Time",
+        yaxis_title="Passengers (thousands)",
+        height=500,
+        hovermode="x unified",
+    )
+    fig_comparison
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### Hyperparameter Tuning Results
 
-    The search explored different combinations of:
-    - **Lag patterns**: Different ways to use historical data
-    - **Regularization**: Balancing model complexity and generalization
-    - **Seasonal period**: Fine-tuning the differencing transformation
+    The comparison shows the impact of hyperparameter optimization:
+
+    **Performance progression**:
+    1. **Baseline (Seasonal Naive)**: Simple but misses trend
+    2. **Untuned Reducer**: Better with default parameters
+    3. **Optimized Reducer**: Best performance with tuned hyperparameters
 
     **Key insights**:
+    - The search explored different combinations of lag patterns and regularization strength
     - Optuna uses TPE (Tree-structured Parzen Estimator) to efficiently explore the space
     - Cross-validation provides robust performance estimates
     - Best parameters balance model complexity with predictive accuracy
@@ -640,7 +759,7 @@ def _(mo):
     **In practice**:
     - Use `SearchCV` during initial model development
     - Re-run periodically as new data arrives
-    - Consider computational cost vs. accuracy gains (20 trials × 5 folds = 100 model fits!)
+    - Consider computational cost vs. accuracy gains (20 trials × 3 folds = 60 model fits!)
     """)
     return
 
@@ -712,10 +831,10 @@ def _(mae_scorer, reduction_forecaster, y_test):
                 f.write(f"y_current:\n{y_current}\n")
                 f.write(f"y_pred_static (sliced):\n{y_pred_static}\n")
                 f.write(f"y_pred_static columns: {y_pred_static.columns}\n")
-                f.write(f"y_pred_static_all head:\n{y_pred_static_all.head(i+2)}\n")
+                f.write(f"y_pred_static_all head:\n{y_pred_static_all.head(i + 2)}\n")
                 f.write("-" * 20 + "\n")
             print(f"y_pred_static_all tail:\n{y_pred_static_all.tail()}", file=sys.stderr)
-    
+
         mae_static = mae_scorer.score(y_current, y_pred_static)
         mae_static_list.append(mae_static)
 
@@ -789,11 +908,11 @@ def _(
         height=400,
         hovermode="x unified",
     )
-    fig_incremental.show()
+    fig_incremental
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### Incremental Learning Insights
@@ -823,7 +942,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ---
@@ -875,6 +994,11 @@ def _(mo):
 
     **Happy forecasting!** 🚀📈
     """)
+    return
+
+
+@app.cell
+def _():
     return
 
 

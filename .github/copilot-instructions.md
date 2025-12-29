@@ -402,7 +402,7 @@ def _(pl):
 @app.cell
 def _(mo):
     # Interactive controls with marimo UI
-    horizon_slider = mo.ui.slider(start=1, stop=24, value=12, 
+    horizon_slider = mo.ui.slider(start=1, stop=24, value=12,
                                    label="Forecast Horizon")
     return (horizon_slider,)
 ```
@@ -464,18 +464,18 @@ import polars.selectors as cs
 
 class MAPE(BasePointScorer):
     """Mean Absolute Percentage Error."""
-    
+
     @property
     def prediction_types(self) -> set[str]:
         return {"point"}
-    
+
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> float:
         # Align predictions with ground truth (removes time columns)
         y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
-        
+
         # Compute metric on numeric columns (excluding time)
         mape = (
-            ((y_truth.select(cs.numeric()) - y_pred.select(cs.numeric())).abs() 
+            ((y_truth.select(cs.numeric()) - y_pred.select(cs.numeric())).abs()
              / y_truth.select(cs.numeric()).abs())
             .mean()
             .to_numpy()[0, 0]
@@ -662,7 +662,7 @@ result = df.select([
    ```python
    # Eager: Loads all data immediately
    df = pl.read_csv("large_file.csv")
-   
+
    # Lazy: Optimized query plan, streams results
    df = pl.scan_csv("large_file.csv").filter(...).collect()
    ```

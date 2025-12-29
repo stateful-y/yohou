@@ -17,7 +17,7 @@
 ## What are the features of yohou?
 
 - **Scikit-learn compatible:** Built on the latest scikit-learn API, allowing the use of any tabular regressor for forecasting with full metadata routing and feature name support.
-- **Extended API:** Adds `update`, `reset`, and `update_predict` methods to sklearn's standard `fit`/`transform`/`predict` interface for incremental learning.
+- **Extended API:** Adds `update`, `reset`, and `update_predict` methods to sklearn's standard `fit`/`transform`/`predict` interface for incremental learning: fit/forecast_point/forecast_interval/roll/revert/roll_forecast_point/roll_forecast_interval
 - **Multi-DataFrame support:** Works with polars, pandas, and more via [Narwhals](https://narwhals-dev.github.io/narwhals/).
 - **Multiple reduction strategies:** Supports Recursive, Direct, Multi-output, and DirRec forecasting approaches.
 - **Panel data support:** Enables both local and global forecasting for panel (hierarchical) time series data.
@@ -26,6 +26,8 @@
 - **Point and interval forecasting:** Native support for both point predictions and prediction intervals.
 - **Conformal prediction:** Statistical guarantees for prediction intervals via conformal prediction methods.
 - **Hierarchical forecasting:** Reconciliation methods for coherent hierarchical forecasts.
+- **Ensembling**
+- **Divine intervention**
 - **Hyperparameter optimization:** Optuna-based cross-validation and nested cross-validation for time series.
 - **Time series metrics:** Specialized scoring functions designed for temporal data.
 - **Visualization tools:** Plotly-based interactive visualizations for EDA, model tuning, evaluation, uncertainty quantification, and comparison.

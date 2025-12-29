@@ -94,16 +94,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             forecasting_horizon=forecasting_horizon,
         )
 
-        # TODO: Handle with metadata routing?
-        predict_forecasting_horizon = forecasting_horizon
-        predict_stride = 1
-
+        # Use None to delegate to fit_forecasting_horizon_
         y_pred_calib = self.point_forecaster_.update_predict(
             y=y_calib,
             X_post=X_post_calib,
             X_ante=X_ante,
-            forecasting_horizon=predict_forecasting_horizon,
-            stride=predict_stride,
+            forecasting_horizon=None,
+            stride=None,
             predict_transformed=False,
         )
 
@@ -155,7 +152,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X_ante: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         cross_learning_group: str | None = None,
-        predict_transformed: bool = True,
+        predict_transformed: bool = False,
     ) -> pl.DataFrame:
         """Predicts the model forecasting horizon from the observation horizon.
 
@@ -173,7 +170,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             - If str: predict only for the specified group (cross-learning)
             For global data: parameter is ignored.
 
-        predict_transformed : bool, default=True
+        predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed space.
 
         Returns

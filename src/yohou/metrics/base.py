@@ -4,7 +4,7 @@ import abc
 
 import numpy as np
 import polars as pl
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, _fit_context
 
 
 class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
@@ -20,6 +20,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         Types of predictions this scorer evaluates ({"point"} or {"interval"}).
 
     """
+
+    _parameter_constraints: dict = {}
 
     @property
     @abc.abstractmethod
@@ -67,7 +69,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return y_truth, y_pred
 
-    def fit(self, y_train: pl.DataFrame | None) -> "BaseScorer":
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, y_train: pl.DataFrame | None, **params) -> "BaseScorer":
         """Fit the scorer on training data if needed.
 
         Most metrics are stateless and don't require fitting, but some (e.g.,
@@ -78,6 +81,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         y_train : pl.DataFrame or None
             Training set target values.
 
+        **params : dict
+            Metadata to route to nested estimators.
+
         Returns
         -------
         self
@@ -86,7 +92,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         return self
 
     @abc.abstractmethod
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> pl.DataFrame:
         """Compute the metric score.
 
         Parameters
@@ -97,6 +103,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predicted values with "observed_time" and "time" columns.
 
+        **params : dict
+            Metadata to route to nested estimators.
+
         Returns
         -------
         pl.DataFrame
@@ -105,7 +114,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError()
 
-    def __call__(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+    def __call__(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> pl.DataFrame:
         """Compute score using callable interface.
 
         Enables using scorers as functions: scorer(y_truth, y_pred).
@@ -118,13 +127,16 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predicted values.
 
+        **params : dict
+            Metadata to route to nested estimators.
+
         Returns
         -------
         pl.DataFrame
             Metric score dataframe.
 
         """
-        return self.score(y_truth, y_pred)
+        return self.score(y_truth, y_pred, **params)
 
 
 class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
