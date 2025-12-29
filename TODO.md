@@ -1,0 +1,31 @@
+- Rename yohou class functions
+- Think about exogenous feature forecasting.
+- Remove X_post and call X_ante X
+- Implement ExogeneousFeatureForecaster
+- Make Pipeline accept forecast as last estimator
+- Implement TargetTransformedForecaster
+- Move feature_transformer and target_transformer out of forecasters
+- Refactor reducers to enable direct and multi-output strategies
+- Implement TrendForecaster, SeasonalityForecaster, and Decomposer
+- Add scorer to testing infrastructure
+- Enable time_weight for forecaster and scorer
+- Implement variety of scorers
+- Simplify SearchCV, make sure it follows BaseSearchCV as closely as possible
+- Make sure we can predict and score in transformed space as well as that we can access predictions
+- Can we use skore/skrub to visualize CV results?
+- Implement NestedCV
+- Implement SkTimeTransformerWrapper
+- Implement SkTimeForecasterWrapper
+- Check panel forecasting works
+- Implement new conformal prediction approaches
+- Implement ensembling
+- Implement divine intervention
+- Ensure feature naming works
+- Implement visualizations (get inspiration from pytimetk)
+- Implement variety of tutorials
+- Move to Narwhals
+- Implement hierarchical forecasting
+- Implement signal processing transformers
+- Improve set up of documentation
+- Create sklearn-inspired user guide
+- Recreate repository and release

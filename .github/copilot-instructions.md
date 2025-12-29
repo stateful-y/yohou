@@ -157,13 +157,20 @@ y_pred = search.predict(forecasting_horizon=3, X_post=X_post_future)
   - NOT traditional Jupyter notebooks - marimo is a reactive notebook system
   - Run examples: `marimo edit examples/air_passengers_tutorial.py`
 
-### Nox Sessions (All commands use `uvx nox -s <session>`)
-Critical: Always use `uvx nox` (not plain `nox`) to leverage uv backend:
-- `test`: Pytest with coverage (default session)
-- `fix`: Pre-commit hooks (ruff linter/formatter + ty type checking)
-- `docs`: Build MkDocs documentation
-- `serve_docs`: Local docs server on `localhost:8080`
-- `deploy_docs`: Deploy to GitHub Pages
+### Nox Sessions (`noxfile.py` at project root)
+**Critical**: Nox is configured to use `uv` as the default venv backend. Run sessions with:
+- Locally after installing nox: `uv tool install nox` then `nox -s <session>`
+- Or via uvx (installs nox temporarily): `uvx nox -s <session>`
+
+**Available sessions** (default: `fix`, `test`, `docs`):
+- `test`: Pytest with coverage, runs doctests and unit tests
+  - Outputs: `coverage.{python}.xml`, `junit.{python}.xml`, HTML coverage in temp dir
+  - Uses `coverage run --parallel-mode` for parallel execution
+- `fix`: Pre-commit hooks (ruff linter/formatter + ty type checking + interrogate)
+  - Runs all pre-commit hooks with `--all-files`
+- `docs`: Build MkDocs documentation (output in `site/`)
+- `serve_docs`: Local docs server on `localhost:8080` with live reload
+- `deploy_docs`: Deploy to GitHub Pages via `mkdocs gh-deploy`
 
 ### Code Quality Tools
 - **Linter/Formatter**: Ruff (100 char line length, target py3.12)
@@ -176,8 +183,9 @@ Critical: Always use `uvx nox` (not plain `nox`) to leverage uv backend:
 - **Docstring Coverage**: `interrogate` requires 100% coverage (see `pyproject.toml`)
   - Excludes: tests, examples, `_version.py`, private/magic methods
 - **Pre-commit hooks**: Defined in `.pre-commit-config.yaml`
-  - Run manually: `uvx nox -s fix`
+  - Run manually: `nox -s fix` or `pre-commit run --all-files`
   - Auto-runs on git commit (includes ty, ruff, interrogate)
+  - Hooks: check-yaml, check-merge-conflict, end-of-file-fixer, trailing-whitespace, interrogate, ruff, ruff-format, ty
 
 ## Coding Conventions
 
@@ -267,7 +275,7 @@ def fit(self, X: pl.DataFrame) -> "MyClass":
 - Coverage requirements in `pyproject.toml`: `fail-under = 100`
 - Excludes: tests, examples, `_version.py`, private/magic/init methods
 - Ignores nested classes but NOT nested functions
-- Run check: `uvx interrogate src/yohou` or via `uvx nox -s fix` (pre-commit hooks)
+- Run check: `uvx interrogate src/yohou` or via `nox -s fix` (pre-commit hooks)
 
 ## Testing Patterns
 
@@ -322,9 +330,9 @@ Key fixtures:
 
 ### Test Organization
 - Tests in `tests/` mirror `src/yohou/` structure
-- Run tests: `uvx nox -s test` (includes coverage, doctests, and unit tests)
+- Run tests: `nox -s test` (includes coverage, doctests, and unit tests)
   - Alternative: `uv run pytest` (quicker for local testing, no coverage report)
-  - Note: `uvx nox` uses uv backend for virtual environment management
+  - Note: nox uses uv as the default venv backend (configured in `noxfile.py`)
 - Use sample data with `pl.datetime_range` for time columns:
   ```python
   time = pl.DataFrame({
@@ -361,8 +369,9 @@ Key fixtures:
 - **Branch naming**: `<type>/<description>` where type is `feature|fix|docs|tests`
 - **Commits**: Must be signed off (`git commit -s`)
 - **PR titles**: Follow [Conventional Commits](https://www.conventionalcommits.org/) format
-- **Pre-commit hooks**: Run automatically on commit or manually with `uvx nox -s fix`
+- **Pre-commit hooks**: Run automatically on commit or manually with `nox -s fix`
 - **CI validation**: All nox sessions must pass (test, fix, docs)
+- **Nox configuration**: `noxfile.py` at project root with uv backend
 - **Code compatibility**: Target Python 3.12+, cross-platform (Windows, macOS, Linux)
 - **License**: All contributions under BSD License
 
@@ -430,12 +439,12 @@ def _(mo):
 1. **`tests-os-coverage.yml`**: Comprehensive coverage testing
    - Matrix: Python 3.12 across Windows/macOS/Linux
    - Uses `uv` for fast dependency installation
-   - Runs `uvx nox -s test` for full test suite
+   - Installs nox via `uv tool install nox`, runs `nox -s test`
    - Concurrent execution with auto-cancellation on new pushes
 
 2. **`lint.yml`**: Code quality checks
-   - Runs `uvx nox -s fix` (ruff + ty + interrogate)
-   - Validates docstring coverage at 100%
+   - Installs nox via `uv tool install nox`, runs `nox -s fix`
+   - Validates ruff + ty + interrogate (100% docstring coverage)
 
 3. **`release.yml`**: PyPI package publishing
    - Automated on version tags (e.g., `v0.1.0`)
@@ -443,10 +452,10 @@ def _(mo):
    - Publishes to PyPI with trusted publishing
 
 ### CI Debugging Tips
-- **Local CI simulation**: Use `uvx nox` to run same commands as CI
+- **Local CI simulation**: Use `nox` to run same commands as CI
   ```bash
-  uvx nox -s test  # Same as CI test step
-  uvx nox -s fix   # Same as CI lint step
+  nox -s test  # Same as CI test step
+  nox -s fix   # Same as CI lint step
   ```
 - **Coverage failures**: Check `coverage.xml` or HTML report in `htmlcov/`
 - **Cross-platform issues**: Use `pathlib` over string paths, avoid shell-specific commands
@@ -619,7 +628,7 @@ print(df.lazy().select(pl.col("value").mean()).explain())
 - **Validate time consistency**: `yohou.utils.validation.check_interval_consistency(df)`
 - **Test transformers in isolation**: Use `tests/conftest.py` dummy transformers as templates
 - **Pytest with verbose**: `uv run pytest -vv tests/path/to/test.py::test_name`
-- **Coverage gaps**: `uvx nox -s test` then open `htmlcov/index.html`
+- **Coverage gaps**: `nox -s test` then open `htmlcov/index.html`
 
 ## Performance & Optimization
 
