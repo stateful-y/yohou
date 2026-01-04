@@ -15,6 +15,8 @@ import pytest
 from sklearn.exceptions import NotFittedError
 
 from yohou.base import BaseTransformer
+from yohou.interval_forecaster.base import BaseIntervalForecaster
+from yohou.point_forecaster.base import BasePointForecaster
 
 # ============================================================================
 # DUMMY TRANSFORMER CLASSES
@@ -94,9 +96,6 @@ class InvertibleTransformer(BaseTransformer):
     def observation_horizon(self, value):
         self._observation_horizon = value
 
-    def fit(self, X, y=None):
-        self.reset(X)
-        return self
 
     def transform(self, X):
         return X.select([pl.col("time"), (cs.numeric() & ~cs.by_name("time")) + self.offset])
@@ -109,7 +108,7 @@ class InvertibleTransformer(BaseTransformer):
 
 
 class PanelAwareTransformer(BaseTransformer):
-    """Transformer explicitly handling panel data struct columns."""
+    """Transformer explicitly handling panel data columns."""
 
     def __init__(self, observation_horizon=1):
         self.observation_horizon = observation_horizon
@@ -124,12 +123,9 @@ class PanelAwareTransformer(BaseTransformer):
     def observation_horizon(self, value):
         self._observation_horizon = value
 
-    def fit(self, X, y=None):
-        self.reset(X)
-        return self
 
     def transform(self, X):
-        # Preserve struct columns (panel data)
+        # Preserve panel columns
         return X
 
     def get_feature_names_out(self, input_features=None):
@@ -151,7 +147,7 @@ def time_series_factory():
     - Deterministic data based on seed
     """
 
-    def _make(length=50, n_features=2, seed=42, min_length=None):
+    def _make(length=50, n_components=2, seed=42, min_length=None):
         if min_length and length < min_length:
             raise ValueError(f"length {length} < min_length {min_length}")
 
@@ -164,7 +160,7 @@ def time_series_factory():
             eager=True,
         )
         rng = pl.Series(range(length)).cast(pl.Float64)
-        features = {f"feature_{i}": rng + (i * 100) for i in range(n_features)}
+        features = {f"feature_{i}": rng + (i * 100) for i in range(n_components)}
         return pl.DataFrame({"time": time, **features})
 
     return _make
@@ -194,17 +190,17 @@ def base_time_series():
 
 @pytest.fixture
 def panel_time_series_factory():
-    """Factory for panel data with both global and local (struct) columns.
+    """Factory for panel data with both global and local columns.
 
     Creates a DataFrame with:
     - "time" column (datetime)
     - Global columns (shared across all panels)
-    - "panel" struct column (panel-specific time series)
+    - Panel-specific columns with `__` separator (e.g., "panel__series_0")
 
     This tests transformers handling mixed global/local data.
     """
 
-    def _make(length=50, n_series=3, n_global=2, seed=42):
+    def _make(length=50, n_series=3, n_global=0, seed=42):
         time = pl.datetime_range(
             start=datetime(2021, 1, 1),
             end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
@@ -212,17 +208,10 @@ def panel_time_series_factory():
             eager=True,
         )
 
-        # Build panel data (local/struct columns)
-        series_data = {}
+        # Build panel data (columns with __ separator)
+        panel_data = {}
         for i in range(n_series):
-            series_data[f"series_{i}"] = range(i * 10, length + (i * 10))
-
-        schema = {f"series_{i}": pl.Float64 for i in range(n_series)}
-
-        # Create DataFrame with struct column
-        panel_df = pl.DataFrame(
-            {"panel": pl.DataFrame(series_data)}, schema={"panel": pl.Struct(schema)}
-        )
+            panel_data[f"panel__series_{i}"] = range(i * 10, length + (i * 10))
 
         # Add global columns (shared features across all panels)
         global_features = {}
@@ -231,9 +220,8 @@ def panel_time_series_factory():
                 range(i * 100, length + (i * 100)), dtype=pl.Float64
             )
 
-        # Combine: time + global columns + panel struct
-        result = pl.DataFrame({"time": time, **global_features})
-        result = pl.concat([result, panel_df], how="horizontal")
+        # Combine: time + global columns + panel columns
+        result = pl.DataFrame({"time": time, **global_features, **panel_data})
 
         return result
 
@@ -344,7 +332,7 @@ def transformer_registry():
 
 @pytest.fixture
 def y_X_factory():
-    """Factory for generating (y, X_post, X_ante) tuples.
+    """Factory for generating (y, X) tuples.
 
     Returns a callable that generates time series data for forecaster testing.
     """
@@ -352,34 +340,28 @@ def y_X_factory():
 
     import numpy as np
 
-    def _factory(
-        length=100, n_y_features=2, n_X_post_features=3, n_X_ante_features=2, seed=42, panel=False
-    ):
+    def _factory(length=100, n_targets=2, n_features=3, seed=42, panel=False):
         """Generate forecaster test data.
 
         Parameters
         ----------
         length : int
             Number of time steps
-        n_y_features : int
+        n_targets : int
             Number of target features
-        n_X_post_features : int
-            Number of ex-ante features (0 for None)
-        n_X_ante_features : int
-            Number of ex-post features (0 for None)
+        n_features : int
+            Number of features (0 for None)
         seed : int
             Random seed
         panel : bool
-            Whether to create panel data with struct columns
+            Whether to create panel data with columns using __ separator
 
         Returns
         -------
         y : pl.DataFrame
             Target data with "time" column
-        X_post : pl.DataFrame or None
-            Ex-ante features with "time" column
-        X_ante : pl.DataFrame or None
-            Ex-post features with "time" column
+        X : pl.DataFrame or None
+            Features with "time" column
         """
         rng = np.random.default_rng(seed)
 
@@ -392,29 +374,22 @@ def y_X_factory():
 
         # Generate y
         y = pl.DataFrame({"time": time})
-        for i in range(n_y_features):
+        for i in range(n_targets):
             y = y.with_columns(pl.Series(f"y_{i}", rng.random(length)))
 
-        # Generate X_post
-        X_post = None
-        if n_X_post_features > 0:
-            X_post = pl.DataFrame({"time": time})
-            for i in range(n_X_post_features):
-                X_post = X_post.with_columns(pl.Series(f"X_post_{i}", rng.random(length)))
-
-        # Generate X_ante
-        X_ante = None
-        if n_X_ante_features > 0:
-            X_ante = pl.DataFrame({"time": time})
-            for i in range(n_X_ante_features):
-                X_ante = X_ante.with_columns(pl.Series(f"X_ante_{i}", rng.random(length)))
+        # Generate X
+        X = None
+        if n_features > 0:
+            X = pl.DataFrame({"time": time})
+            for i in range(n_features):
+                X = X.with_columns(pl.Series(f"X_{i}", rng.random(length)))
 
         if panel:
-            # TODO: Convert to struct columns for panel data
+            # TODO: Convert to columns with __ separator for panel data
             # This would require implementing panel data conversion
             pass
 
-        return y, X_post, X_ante
+        return y, X
 
     return _factory
 
@@ -462,3 +437,68 @@ def forecaster_registry():
             "expected_failed_checks": ["check_reset_propagates_to_transformers"],
         },
     }
+
+
+@pytest.fixture
+def panel_X_factory():
+    """Factory for panel data X with panel columns."""
+
+    def _make(length=50, n_panels=2, n_features=2):
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
+            interval="1s",
+            eager=True,
+        )
+
+        # Create panel columns with __ separator
+        panel_data = {}
+        for i in range(n_panels):
+            for j in range(n_features):
+                panel_data[f"panel_{i}__feature_{j}"] = range(i * 100 + j * 10, length + (i * 100 + j * 10))
+
+        # Create DataFrame with panel columns
+        panel_df = pl.DataFrame(panel_data)
+
+        return pl.concat([pl.DataFrame({"time": time}), panel_df], how="horizontal")
+
+    return _make
+
+
+class DummyPointForecaster(BasePointForecaster):
+    """Minimal point forecaster for composition testing."""
+
+    def __init__(self, constant=0.0):
+        super().__init__()
+        self.constant = constant
+
+    def fit(self, y, X=None, forecasting_horizon=1):
+        super().fit(y, X, forecasting_horizon)
+        return self
+
+    def _predict_one(self):
+        # Return constant prediction
+        return pl.DataFrame(
+            {col: [self.constant] * self.fit_forecasting_horizon_ for col in list(self.local_y_schema_.keys())}
+        )
+
+
+class DummyIntervalForecaster(BaseIntervalForecaster):
+    """Minimal interval forecaster for composition testing."""
+
+    def __init__(self, width=1.0):
+        super().__init__()
+        self.width = width
+
+    def fit(self, y, X=None, forecasting_horizon=1):
+        super().fit(y, X, forecasting_horizon)
+        return self
+
+    def _predict_one(self):
+        # Return constant interval
+        data = {}
+        for col in list(self.local_y_schema_.keys()):
+            data[f"{col}_lower"] = [-self.width] * self.fit_forecasting_horizon_
+            data[f"{col}_upper"] = [self.width] * self.fit_forecasting_horizon_
+
+        return pl.DataFrame(data)

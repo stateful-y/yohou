@@ -91,9 +91,9 @@ def test_get_metadata_routing_exists_on_transformers():
 
 def test_default_request_is_empty(y_X_factory):
     """By default, metadata requests should be empty."""
-    y, X_post, _ = y_X_factory(length=31, n_X_ante_features=0)
+    y, X = y_X_factory(length=31)
     forecaster = SeasonalNaive(seasonality=3)
-    forecaster.fit(y, X_post, forecasting_horizon=3)
+    forecaster.fit(y, X, forecasting_horizon=3)
 
     routing = forecaster.get_metadata_routing()
     assert_request_is_empty(routing)
@@ -107,7 +107,7 @@ def test_set_fit_request_methods_exist():
     # Method should accept parameters from signature
     sig = inspect.signature(forecaster.set_fit_request)
     params = list(sig.parameters.keys())
-    assert "X_post" in params or "X_ante" in params
+    assert "forecasting_horizon" in params
 
 
 def test_set_predict_request_methods_exist():
@@ -117,7 +117,7 @@ def test_set_predict_request_methods_exist():
 
     sig = inspect.signature(forecaster.set_predict_request)
     params = list(sig.parameters.keys())
-    assert "X_ante" in params or "forecasting_horizon" in params
+    assert "forecasting_horizon" in params
 
 
 def test_set_update_predict_request_exists():
@@ -133,7 +133,7 @@ def test_set_update_predict_request_exists():
 
 def test_transformer_accepts_params_in_transform(time_series_factory):
     """Transformers should accept **params in transform method."""
-    y = time_series_factory(length=50, n_features=1)
+    y = time_series_factory(length=50, n_components=1)
     transformer = SeasonalDifferencing(seasonality=3)
     transformer.fit(y)
 
@@ -148,7 +148,7 @@ def test_transformer_accepts_params_in_transform(time_series_factory):
 
 def test_transformer_update_transform_routes_to_transform_only(time_series_factory):
     """update_transform should route params to transform, not update."""
-    y = time_series_factory(length=50, n_features=1)
+    y = time_series_factory(length=50, n_components=1)
     transformer = SeasonalDifferencing(seasonality=3)
     transformer.fit(y)
 
@@ -160,7 +160,7 @@ def test_transformer_update_transform_routes_to_transform_only(time_series_facto
 
 def test_transformer_does_not_route_to_update(time_series_factory):
     """update() should not accept **params (memory management only)."""
-    y = time_series_factory(length=50, n_features=1)
+    y = time_series_factory(length=50, n_components=1)
     transformer = SeasonalDifferencing(seasonality=3)
     transformer.fit(y)
 
@@ -178,22 +178,22 @@ def test_transformer_does_not_route_to_update(time_series_factory):
 
 def test_forecaster_accepts_params_in_fit(y_X_factory):
     """Forecasters should accept **params in fit method."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1)
     forecaster = SeasonalNaive(seasonality=3)
 
     # Should work without params
-    forecaster.fit(y, X_post, forecasting_horizon=3)
+    forecaster.fit(y, X, forecasting_horizon=3)
 
     # Should also accept empty params
     forecaster_clone = clone(forecaster)
-    forecaster_clone.fit(y, X_post, forecasting_horizon=3, **{})
+    forecaster_clone.fit(y, X, forecasting_horizon=3, **{})
 
 
 def test_forecaster_accepts_params_in_predict(y_X_factory):
     """Forecasters should accept **params in predict method."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1)
     forecaster = SeasonalNaive(seasonality=3)
-    forecaster.fit(y, X_post, forecasting_horizon=3)
+    forecaster.fit(y, X, forecasting_horizon=3)
 
     # Should work without params
     y_pred = forecaster.predict(forecasting_horizon=3)
@@ -206,25 +206,25 @@ def test_forecaster_accepts_params_in_predict(y_X_factory):
 
 def test_forecaster_update_predict_accepts_params(y_X_factory):
     """update_predict should accept **params and route to predict."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1)
     y_train, y_test = y[:-10], y[-10:]
-    X_post_train, X_post_test = X_post[:-10], X_post[-10:]
+    X_train, X_test = X[:-10], X[-10:]
 
     forecaster = SeasonalNaive(seasonality=3)
-    forecaster.fit(y_train, X_post_train, forecasting_horizon=3)
+    forecaster.fit(y_train, X_train, forecasting_horizon=3)
 
     # update_predict should work
-    y_pred = forecaster.update_predict(y_test[:3], X_post_test[:3], forecasting_horizon=3)
+    y_pred = forecaster.update_predict(y_test[:3], X_test[:3], forecasting_horizon=3)
     assert len(y_pred) > 0
 
 
 def test_forecaster_routing_with_reduction(y_X_factory, consuming_estimator):
     """Reduction forecasters should route metadata to sub-estimators."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1, n_features=1)
     estimator, registry = consuming_estimator
 
     forecaster = PointReductionForecaster(estimator=estimator)
-    forecaster.fit(y, X_post, forecasting_horizon=3)
+    forecaster.fit(y, X, forecasting_horizon=3)
 
     # Check that estimator's fit was called (recorded in registry)
     assert len(registry) > 0
@@ -239,7 +239,7 @@ def test_forecaster_routing_with_reduction(y_X_factory, consuming_estimator):
 
 def test_pipeline_get_metadata_routing(time_series_factory):
     """Pipeline should implement get_metadata_routing."""
-    y = time_series_factory(length=50, n_features=1)
+    y = time_series_factory(length=50, n_components=1)
     pipeline = Pipeline(
         [
             ("diff1", SeasonalDifferencing(seasonality=3)),
@@ -255,7 +255,7 @@ def test_pipeline_get_metadata_routing(time_series_factory):
 
 def test_pipeline_routes_to_steps(time_series_factory):
     """Pipeline should route metadata to its steps."""
-    y = time_series_factory(length=50, n_features=1)
+    y = time_series_factory(length=50, n_components=1)
     pipeline = Pipeline(
         [
             ("diff1", SeasonalDifferencing(seasonality=3)),
@@ -273,7 +273,7 @@ def test_pipeline_routes_to_steps(time_series_factory):
 
 def test_pipeline_update_transform(y_X_factory):
     """Pipeline.update_transform should work with transformers."""
-    y, _, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=0, n_X_ante_features=0)
+    y, _ = y_X_factory(length=50, n_targets=1)
     y_train, y_test = y[:-10], y[-10:]
 
     pipeline = Pipeline(
@@ -291,7 +291,7 @@ def test_pipeline_update_transform(y_X_factory):
 
 def test_featureunion_get_metadata_routing(time_series_factory):
     """FeatureUnion should implement get_metadata_routing."""
-    y = time_series_factory(length=50, n_features=1)
+    y = time_series_factory(length=50, n_components=1)
 
     feature_union = FeatureUnion(
         [
@@ -308,7 +308,7 @@ def test_featureunion_get_metadata_routing(time_series_factory):
 
 def test_featureunion_routes_to_transformers(time_series_factory):
     """FeatureUnion should route metadata to each transformer."""
-    y = time_series_factory(length=50, n_features=1)
+    y = time_series_factory(length=50, n_components=1)
 
     feature_union = FeatureUnion(
         [
@@ -330,7 +330,7 @@ def test_featureunion_routes_to_transformers(time_series_factory):
 
 def test_featureunion_update_transform(y_X_factory):
     """FeatureUnion.update_transform should route to all transformers."""
-    y, _, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=0, n_X_ante_features=0)
+    y, _ = y_X_factory(length=50, n_targets=1)
     y_train, y_test = y[:-10], y[-10:]
 
     feature_union = FeatureUnion(
@@ -352,7 +352,7 @@ def test_columntransformer_get_metadata_routing(time_series_factory):
         "ColumnTransformer column selection implementation needs review - 'time' column handling. "
         "See test_pipeline.py::test_columntransformer_column_selection for details."
     )
-    y = time_series_factory(length=50, n_features=3)
+    y = time_series_factory(length=50, n_components=1)
 
     ct = ColumnTransformer(
         [
@@ -374,7 +374,7 @@ def test_columntransformer_routes_to_transformers(time_series_factory):
         "ColumnTransformer column selection implementation needs review - 'time' column handling. "
         "See test_pipeline.py::test_columntransformer_column_selection for details."
     )
-    y = time_series_factory(length=50, n_features=3)
+    y = time_series_factory(length=50, n_components=3)
 
     ct = ColumnTransformer(
         [
@@ -401,7 +401,7 @@ def test_columntransformer_update_transform(y_X_factory):
         "ColumnTransformer column selection implementation needs review - 'time' column handling. "
         "See test_pipeline.py::test_columntransformer_column_selection for details."
     )
-    y, _, _ = y_X_factory(length=50, n_y_features=3, n_X_post_features=0, n_X_ante_features=0)
+    y, _ = y_X_factory(length=50, n_targets=3)
     y_train, y_test = y[:-10], y[-10:]
 
     ct = ColumnTransformer(
@@ -425,7 +425,7 @@ def test_columntransformer_update_transform(y_X_factory):
 
 def test_searchcv_get_metadata_routing(y_X_factory):
     """SearchCV should implement get_metadata_routing."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1)
     import optuna
 
     search = SearchCV(
@@ -443,7 +443,7 @@ def test_searchcv_get_metadata_routing(y_X_factory):
 
 def test_searchcv_fits_with_metadata(y_X_factory):
     """SearchCV should work with metadata routing enabled."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1)
     import optuna
 
     search = SearchCV(
@@ -455,7 +455,7 @@ def test_searchcv_fits_with_metadata(y_X_factory):
     )
 
     # Should fit successfully
-    search.fit(y, X_post, forecasting_horizon=3)
+    search.fit(y, X, forecasting_horizon=3)
     assert hasattr(search, "best_forecaster_")
 
     # Should predict successfully
@@ -465,9 +465,9 @@ def test_searchcv_fits_with_metadata(y_X_factory):
 
 def test_searchcv_update_predict(y_X_factory):
     """SearchCV.update_predict should route metadata."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1)
     y_train, y_test = y[:-10], y[-10:]
-    X_post_train, X_post_test = X_post[:-10], X_post[-10:]
+    X_train, X_test = X[:-10], X[-10:]
 
     import optuna
 
@@ -478,10 +478,10 @@ def test_searchcv_update_predict(y_X_factory):
         n_trials=2,
         n_warmup_trials=1,
     )
-    search.fit(y_train, X_post_train, forecasting_horizon=3)
+    search.fit(y_train, X_train, forecasting_horizon=3)
 
     # update_predict should work
-    y_pred = search.update_predict(y_test[:3], X_post_test[:3], forecasting_horizon=3)
+    y_pred = search.update_predict(y_test[:3], X_test[:3], forecasting_horizon=3)
     assert len(y_pred) > 0
 
 
@@ -505,34 +505,30 @@ def test_error_when_metadata_not_requested(time_series_factory):
 
 def test_no_error_when_explicit_params_passed(y_X_factory):
     """Explicit parameters should always be accepted."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1, n_features=1)
     forecaster = SeasonalNaive(seasonality=3)
 
     # These are explicit parameters, not metadata - should always work
-    forecaster.fit(y, X_post=X_post, X_ante=None, forecasting_horizon=3)
-
-    y_pred = forecaster.predict(X_ante=None, forecasting_horizon=3, cross_learning_group=None)
-    assert len(y_pred) > 0
+    forecaster.fit(y, X=X, forecasting_horizon=3)
 
 
 def test_cloning_preserves_routing_state(y_X_factory):
     """Cloning should preserve metadata routing configuration."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1, n_features=1)
     forecaster = SeasonalNaive(seasonality=3)
 
     # Set some requests
-    forecaster.set_fit_request(X_post=True)
-    forecaster.set_predict_request(X_ante=False)
+    forecaster.set_predict_request(forecasting_horizon=True)
 
     # Clone
     forecaster_clone = clone(forecaster)
 
     # Routing state should be preserved
     routing = forecaster_clone.get_metadata_routing()
-    routing_orig = forecaster.get_metadata_routing()
 
-    # Both should have similar structure
-    assert type(routing) == type(routing_orig)
+    assert "forecasting_horizon" in routing.consumes(
+        method="predict", params=["forecasting_horizon"]
+    )
 
 
 # ============================================================================
@@ -542,7 +538,7 @@ def test_cloning_preserves_routing_state(y_X_factory):
 
 def test_nested_pipeline_with_searchcv(y_X_factory):
     """Test deeply nested routing: SearchCV -> Reduction Forecaster with Pipeline."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1, n_features=1)
     import optuna
     from sklearn.linear_model import Ridge
 
@@ -565,7 +561,7 @@ def test_nested_pipeline_with_searchcv(y_X_factory):
     )
 
     # Should fit successfully through nested routing
-    search.fit(y, X_post, forecasting_horizon=3)
+    search.fit(y, X, forecasting_horizon=3)
     assert hasattr(search, "best_forecaster_")
 
     # Should predict successfully
@@ -575,7 +571,7 @@ def test_nested_pipeline_with_searchcv(y_X_factory):
 
 def test_featureunion_in_forecaster_pipeline(y_X_factory):
     """Test metadata routing through FeatureUnion in forecaster pipeline."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1, n_features=1)
     from sklearn.linear_model import Ridge
 
     # FeatureUnion as feature transformer
@@ -590,7 +586,7 @@ def test_featureunion_in_forecaster_pipeline(y_X_factory):
     forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=feature_union)
 
     # Should fit successfully with parallel transformer execution
-    forecaster.fit(y, X_post, forecasting_horizon=3)
+    forecaster.fit(y, X, forecasting_horizon=3)
 
     # Should predict successfully
     y_pred = forecaster.predict(forecasting_horizon=3)
@@ -603,7 +599,7 @@ def test_columntransformer_in_forecaster_pipeline(y_X_factory):
         "ColumnTransformer column selection implementation needs review - 'time' column handling. "
         "See test_pipeline.py::test_columntransformer_column_selection for details."
     )
-    y, X_post, _ = y_X_factory(length=50, n_y_features=3, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=3, n_features=1)
     from sklearn.linear_model import Ridge
 
     # ColumnTransformer as feature transformer
@@ -619,7 +615,7 @@ def test_columntransformer_in_forecaster_pipeline(y_X_factory):
     forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=ct)
 
     # Should fit successfully with column-specific transformations
-    forecaster.fit(y, X_post, forecasting_horizon=3)
+    forecaster.fit(y, X, forecasting_horizon=3)
 
     # Should predict successfully
     y_pred = forecaster.predict(forecasting_horizon=3)
@@ -628,7 +624,7 @@ def test_columntransformer_in_forecaster_pipeline(y_X_factory):
 
 def test_full_pipeline_with_reduction_forecaster(y_X_factory, consuming_estimator):
     """Test complete pipeline with reduction forecaster and metadata."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1, n_X_ante_features=0)
+    y, X = y_X_factory(length=50, n_targets=1, n_features=1)
     estimator, registry = consuming_estimator
 
     # Pipeline as feature transformer
@@ -642,7 +638,7 @@ def test_full_pipeline_with_reduction_forecaster(y_X_factory, consuming_estimato
     forecaster = PointReductionForecaster(estimator=estimator, feature_transformer=feature_pipeline)
 
     # Fit pipeline
-    forecaster.fit(y, X_post, forecasting_horizon=3)
+    forecaster.fit(y, X, forecasting_horizon=3)
 
     # Check that the estimator received calls
     assert len(registry) > 0

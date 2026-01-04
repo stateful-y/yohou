@@ -92,8 +92,7 @@ class DistanceSimilarity(BaseSimilarity):
     def _get_X(
         self,
         y_pred: pl.DataFrame,
-        X_post: pl.DataFrame | None,
-        X_ante: pl.DataFrame | None,
+        X: pl.DataFrame | None,
     ) -> pl.DataFrame:
         """Combine predictions and features into single feature matrix.
 
@@ -102,11 +101,8 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             Predictions.
 
-        X_post : pl.DataFrame or None
-            Ex-ante features.
-
-        X_ante : pl.DataFrame or None
-            Ex-post features.
+        X : pl.DataFrame or None
+            Exogenous features.
 
         Returns
         -------
@@ -114,21 +110,15 @@ class DistanceSimilarity(BaseSimilarity):
             Combined feature matrix.
 
         """
-        X = y_pred
-        if X_post is not None:
-            X = pl.concat([X, X_post], how="horizontal")
-
-        if X_ante is not None:
-            X = pl.concat([X, X_ante], how="horizontal")
-
-        return X
+        if X is not None:
+            return pl.concat([y_pred, X], how="horizontal")
+        return y_pred
 
     def fit(
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> "DistanceSimilarity":
         """Fits the similarity model.
 
@@ -140,17 +130,14 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             Point forecasts time series.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         """
-        X = self._get_X(y_pred, X_post, X_ante)
-        self._X_observed = X.drop_nulls()
+        X_features = self._get_X(y_pred, X)
+        self._X_observed = X_features.drop_nulls()
 
-        self._n_discarded_indices = len(y_pred) - len(X)
+        self._n_discarded_indices = len(y_pred) - len(X_features)
 
         return self
 
@@ -158,8 +145,7 @@ class DistanceSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> "DistanceSimilarity":
         """Update similarity model with new observations.
 
@@ -171,28 +157,24 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             New predictions.
 
-        X_post : pl.DataFrame or None, default=None
-            New ex-ante features.
-
-        X_ante : pl.DataFrame or None, default=None
-            New ex-post features.
+        X : pl.DataFrame or None, default=None
+            New exogenous features.
 
         Returns
         -------
         self
 
         """
-        X = self._get_X(y_pred, X_post, X_ante)
+        X_features = self._get_X(y_pred, X)
 
-        self._X_observed = pl.concat([self._X_observed, X])
+        self._X_observed = pl.concat([self._X_observed, X_features])
 
         return self
 
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute similarity weights for new predictions.
 
@@ -201,11 +183,8 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             New predictions to compute similarities for.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante features.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post features.
+        X : pl.DataFrame or None, default=None
+            Exogenous features.
 
         Returns
         -------
@@ -213,9 +192,9 @@ class DistanceSimilarity(BaseSimilarity):
             Similarity weight matrix.
 
         """
-        X = self._get_X(y_pred, X_post, X_ante)
+        X_features = self._get_X(y_pred, X)
 
-        XA = X.select(pl.exclude("time")).to_numpy()
+        XA = X_features.select(pl.exclude("time")).to_numpy()
         XB = self._X_observed.select(pl.exclude("time")).to_numpy()
         distances: np.ndarray = cdist(XA, XB, metric=self.metric, **self.metric_params)  # type: ignore[arg-type]
         weights = np.reciprocal(np.exp(distances))

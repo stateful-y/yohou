@@ -5,13 +5,16 @@ Yohou is a scikit-learn-compatible time series forecasting framework built on **
 
 **Philosophy**: Bridge sklearn's tabular ML ecosystem with time series forecasting by treating forecasting as a supervised learning reduction problem while maintaining temporal structure.
 
+**Critical Bootstrap Behavior**: Yohou automatically enables sklearn's metadata routing on import (`set_config(enable_metadata_routing=True)` in `src/yohou/__init__.py`). This is a global state change that enables metadata propagation through pipelines and cross-validation. It also registers custom composite methods (`update_transform`, `update_predict`) with sklearn's routing system.
+
 ## Architecture & Core Concepts
 
 ### Data Flow
-All data uses **polars DataFrames** with a mandatory `"time"` column (datetime type). Three feature types:
+All data uses **polars DataFrames** with a mandatory `"time"` column (datetime type). Two feature types:
 - `y`: Target time series (what to forecast)
-- `X_post`: Ex-ante features (known in advance, e.g., holidays, planned promotions)
-- `X_ante`: Ex-post features (observed after the fact, e.g., actual weather, traffic)
+- `X`: Exogenous features (known in advance, e.g., holidays, planned promotions, weather forecasts)
+
+**Note**: All features in `X` are expected to be known ex-ante (in advance). For ex-post features (observed after the fact), use `ColumnForecaster` to forecast them first.
 
 **Critical**: Time columns are preserved differently across components:
 - Transformers: Input/output have "time" column
@@ -28,8 +31,8 @@ All data uses **polars DataFrames** with a mandatory `"time"` column (datetime t
 2. **BaseForecaster** (base for all forecasters)
    - Handles `target_transformer` and `feature_transformer` composition
    - `_set_local_groups()` enables panel data (local vs. global time series)
-   - Stores `_y_observed`, `_X_post_observed` for recursive prediction
-   - Signature: `fit(y, X_post, X_ante, forecasting_horizon)` - note horizon at fit time
+   - Stores `_y_observed`, `_X_observed` for recursive prediction
+   - Signature: `fit(y, X, forecasting_horizon)` - note horizon at fit time
 
 3. **BaseReductionForecaster** (forecasting via sklearn regressors)
    - Converts time series to supervised learning via `tabularize()` (creates lag features)
@@ -37,21 +40,32 @@ All data uses **polars DataFrames** with a mandatory `"time"` column (datetime t
    - `_estimator_predict_one()`: Generates one-step predictions (recursive for multi-step)
    - Supports panel data via struct columns (see "Locality" below)
    - Must provide `estimator` param (any sklearn regressor)
+   - Supports `reduction_strategy`: "direct" (separate model per step) or "multi-output" (single model)
 
 4. **Point vs Interval Forecasters**
    - `BasePointForecaster` → `PointReductionForecaster` (standard forecasting)
    - `BaseIntervalForecaster` → `SplitConformalForecaster` (conformal prediction intervals)
    - Both extend `BaseForecaster` but handle different `prediction_types`
 
+5. **Decomposer** (meta-forecaster for sequential decomposition)
+   - Decomposes time series into additive components (trend + seasonality + residual)
+   - Fits forecasters sequentially: each models residuals from previous components
+   - Final prediction = sum of all component predictions
+   - **Key pattern**: `residuals = y - forecaster1.predict()`, then fit forecaster2 on residuals
+   - Use `target_transformer=LogTransform()` for multiplicative decomposition (additive in log-space)
+   - Extends `_BaseComposition` for sklearn compatibility with nested estimators
+   - Example: `Decomposer([("trend", PolynomialTrend()), ("season", SeasonalNaive())])`
+   - `store_residuals=True` enables inspection of intermediate residuals in `self.residuals_`
+
 ### Time Series-Specific Methods
 **Standard sklearn lifecycle extended:**
-- `fit(y, X_post, X_ante, forecasting_horizon)`: Train on historical data
+- `fit(y, X, forecasting_horizon)`: Train on historical data
   - Forecasters: Horizon is required at fit time (unlike sklearn's predict-time horizon)
   - Transformers: `fit(X, y)` follows sklearn convention (`y` optional)
-- `update(y, X_post, X_ante)`: Add new observations **without full retrain** (incremental learning)
+- `update(y, X)`: Add new observations **without full retrain** (incremental learning)
   - Updates internal memory buffers (`_X_observed`, `_y_observed`, etc.)
   - Does NOT refit models - use for streaming/online scenarios
-- `predict(forecasting_horizon, X_post, X_ante)`: Generate forecasts
+- `predict(forecasting_horizon, X)`: Generate forecasts
   - Can predict different horizon than fit (applies model recursively)
 - `update_predict()`: Combined update + predict (atomic operation, common in rolling evaluation)
 - `reset(X)`: Reset memory/observation horizon to last `observation_horizon` rows
@@ -90,14 +104,17 @@ Pipeline([
   global_names, local_groups = inspect_locality(y)
   # Returns: ([], {"sales": ["store_1", "store_2"]})
   ```
-- Forecasters automatically handle both via `local_group_names_` and `local_y_names_`
+- Forecasters automatically handle both via `local_group_names_` and `local_y_columns_`
 - Use `concat_struct()` for vertical/horizontal concatenation preserving struct columns
 - Access panel data: `df.unnest("sales")` flattens struct to separate columns
 
 **Why structs?** Polars structs enable efficient panel data storage while maintaining type consistency and allowing vectorized operations across groups.
 
-### Reduction Strategies (README mentions but not yet in code)
-Framework designed for Recursive, Direct, Multi-output, DirRec strategies via `BaseReductionForecaster`.
+**Critical naming convention**: Forecasters maintain separate attributes for untransformed vs. transformed column names:
+- `local_y_columns_`, `local_X_columns_`: Column names in **original space** (before transformers)
+- `local_y_t_columns_`, `local_X_t_columns_`: Column names in **transformed space** (after transformers applied)
+- This distinction is crucial for BaseReductionForecaster where tabularization happens on transformed data
+- Example: If `target_transformer=SeasonalDifferencing()` creates new columns, `local_y_t_columns_` reflects those
 
 ### Metrics & Scoring (`src/yohou/metrics/base.py`)
 All metrics extend `BaseScorer`:
@@ -138,14 +155,43 @@ search = SearchCV(
     n_trials=20,
     refit=True  # Refits on full data with best params
 )
-search.fit(y, X_post, X_ante, forecasting_horizon=3)
-y_pred = search.predict(forecasting_horizon=3, X_post=X_post_future)
+search.fit(y, X, forecasting_horizon=3)
+y_pred = search.predict(forecasting_horizon=3, X=X_future)
 ```
 
 **Critical notes**:
 - Param names follow sklearn convention: `step__param` for pipelines
 - Always returns `best_forecaster_`, `best_params_`, `cv_results_`
 - Integrates with sklearn's metadata routing for CV splits
+
+### Metadata Routing (`src/yohou/__init__.py`, detailed in `.github/copilot_plans/`)
+**Critical infrastructure**: Yohou uses sklearn's metadata routing system to propagate auxiliary parameters through pipelines and nested estimators.
+
+**Automatic setup on import**:
+```python
+# This happens automatically when you import yohou
+from sklearn import set_config
+set_config(enable_metadata_routing=True)  # Global enable
+
+# Registers custom composite methods
+SIMPLE_METHODS.extend(["update_transform", "update_predict"])
+COMPOSITE_METHODS["update_transform"] = ["update", "transform"]  # Metadata routes only to transform
+COMPOSITE_METHODS["update_predict"] = ["update", "predict"]      # Metadata routes only to predict
+```
+
+**What is routed vs NOT routed**:
+- ❌ NOT routed: `y`, `X` (primary time series data - always explicit parameters)
+- ✅ Routed via `**params`: `time_weight`, custom metadata
+- ⚠️ `forecasting_horizon` is an explicit parameter (not in `**params`) but CAN be routed if needed
+- ⚠️ `update()` does NOT accept `**params` (memory management only, no metadata)
+
+**Implementation pattern**:
+- All forecasters/transformers have `**params` in method signatures (`fit`, `transform`, `predict`)
+- Routers (Pipeline, forecasters with transformers) implement `get_metadata_routing()` → returns `MetadataRouter`
+- Consumers (simple transformers, scorers) just accept `**params` for future extensibility
+- Use `@_fit_context` decorator on `fit()` methods for automatic routing
+
+**Current status**: Infrastructure 100% complete. Actual metadata consumption (e.g., `time_weight` → `sample_weight` conversion) not yet implemented. See `.github/copilot_plans/sklearn-metadata-routing-implementation.md` for full details.
 
 ## Developer Workflow
 
@@ -158,9 +204,7 @@ y_pred = search.predict(forecasting_horizon=3, X_post=X_post_future)
   - Run examples: `marimo edit examples/air_passengers_tutorial.py`
 
 ### Nox Sessions (`noxfile.py` at project root)
-**Critical**: Nox is configured to use `uv` as the default venv backend. Run sessions with:
-- Locally after installing nox: `uv tool install nox` then `nox -s <session>`
-- Or via uvx (installs nox temporarily): `uvx nox -s <session>`
+**Critical**: Always use `uvx nox` (not plain `nox`) to leverage uv's automatic tool management. Nox is configured to use `uv` as the default venv backend.
 
 **Available sessions** (default: `fix`, `test`, `docs`):
 - `test`: Pytest with coverage, runs doctests and unit tests
@@ -183,9 +227,494 @@ y_pred = search.predict(forecasting_horizon=3, X_post=X_post_future)
 - **Docstring Coverage**: `interrogate` requires 100% coverage (see `pyproject.toml`)
   - Excludes: tests, examples, `_version.py`, private/magic methods
 - **Pre-commit hooks**: Defined in `.pre-commit-config.yaml`
-  - Run manually: `nox -s fix` or `pre-commit run --all-files`
+  - Run manually: `uvx nox -s fix` or `pre-commit run --all-files`
   - Auto-runs on git commit (includes ty, ruff, interrogate)
   - Hooks: check-yaml, check-merge-conflict, end-of-file-fixer, trailing-whitespace, interrogate, ruff, ruff-format, ty
+
+## Creating New Forecasters
+
+### Step-by-Step Guide to Roll a New Forecaster
+
+This guide walks through creating a new forecaster in Yohou, using real examples from the codebase.
+
+#### 1. Choose Forecaster Type & Location
+
+**Decision tree**:
+- **Pattern-based/Statistical**: `src/yohou/point_forecaster/` (e.g., naive, seasonality, trend models)
+- **ML-based reduction**: Extend `PointReductionForecaster` or `BaseReductionForecaster`
+- **Interval forecasting**: `src/yohou/interval_forecaster/` (extends `BaseIntervalForecaster`)
+
+**File naming**: Use descriptive names like `polynomial_trend.py`, `seasonality.py`, `fourier_seasonality.py`
+
+#### 2. Implement Core Structure
+
+**Minimum requirements** for a point forecaster:
+
+```python
+"""Module docstring describing the forecaster."""
+
+import numbers  # For _parameter_constraints
+
+import polars as pl
+from pydantic import StrictInt  # For strict type validation
+from sklearn.base import _fit_context  # REQUIRED: For automatic parameter validation
+from sklearn.utils._param_validation import Interval  # For range constraints
+
+from yohou.base import BaseTransformer  # For _parameter_constraints
+from .base import BasePointForecaster  # Or BaseIntervalForecaster
+
+
+class MyForecaster(BasePointForecaster):
+    """Class docstring with NumPy-style documentation.
+    
+    Parameters
+    ----------
+    param1 : type
+        Description of parameter.
+    target_transformer : BaseTransformer, optional
+        Transformer for target variable (standard across forecasters).
+    
+    Attributes
+    ----------
+    fitted_attr_ : type
+        Fitted attributes end with underscore (sklearn convention).
+    
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.point_forecaster import MyForecaster
+    >>>
+    >>> # Create example data
+    >>> time = pl.datetime_range(
+    ...     start=datetime(2020, 1, 1),
+    ...     end=datetime(2020, 2, 1),
+    ...     interval="1d",
+    ...     eager=True
+    ... )
+    >>> y = pl.DataFrame({"time": time, "value": range(len(time))})
+    >>>
+    >>> # Fit and predict
+    >>> forecaster = MyForecaster(param1=10)
+    >>> forecaster.fit(y, forecasting_horizon=5)
+    MyForecaster(param1=10)
+    >>> y_pred = forecaster.predict(forecasting_horizon=5)
+    
+    Notes
+    -----
+    - Implementation notes, limitations, assumptions
+    - References to papers/algorithms if applicable
+    
+    """
+    
+    # sklearn parameter validation - REQUIRED for all forecasters
+    _parameter_constraints: dict = {
+        **BasePointForecaster._parameter_constraints,  # Inherit parent constraints
+        "param1": [Interval(numbers.Integral, 1, None, closed="left")],  # Integer ≥ 1
+        # Use Interval for range validation (min, max, closed="left|right|both|neither")
+    }
+    
+    def __init__(
+        self,
+        param1: int,
+        target_transformer: BaseTransformer | None = None,
+    ):
+        """Initialize forecaster.
+        
+        Parameters
+        ----------
+        param1 : int
+            Description.
+        target_transformer : BaseTransformer, optional
+            Transformer for target variable.
+        
+        """
+        super().__init__(target_transformer=target_transformer)
+        self.param1 = param1
+        # DO NOT validate parameters here - validation happens at fit time via @_fit_context
+        # Only store parameters in __init__
+    
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt = 1,
+        **params,  # For metadata routing (always include)
+    ) -> "MyForecaster":
+        """Fit forecaster to historical data.
+        
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series with "time" column (datetime type).
+        X : pl.DataFrame, optional
+            Exogenous features with "time" column (not used by all forecasters).
+        forecasting_horizon : int, default=1
+            Number of steps ahead to forecast.
+        **params : dict
+            Additional metadata (routed via sklearn's metadata routing).
+        
+        Returns
+        -------
+        self
+            Fitted forecaster.
+        
+        """
+        # ALWAYS call _pre_fit first - handles transformers, validation, panel data
+        y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
+        
+        # Domain-specific validation (after automatic validation from @_fit_context)
+        # Example: Check relationships between parameters that aren't expressible in _parameter_constraints
+        # if self.param1 > len(y_t):
+        #     raise ValueError(f"param1 ({self.param1}) cannot exceed data length ({len(y_t)})")
+        
+        # Your fitting logic here
+        # - y_t, X_t are already transformed via target_transformer/feature_transformer
+        # - self._y_observed, self._X_observed are set by _pre_fit
+        # - self.local_group_names_, self.local_y_columns_ set if panel data
+        
+        # Store fitted parameters with trailing underscore
+        self.fitted_attr_ = self._compute_something(y_t)
+        
+        return self
+    
+    def predict(
+        self,
+        forecasting_horizon: StrictInt | None = None,
+        X: pl.DataFrame | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Generate forecasts.
+        
+        Parameters
+        ----------
+        forecasting_horizon : int, optional
+            Number of steps to forecast. If None, uses horizon from fit().
+        X : pl.DataFrame, optional
+            Future exogenous features (must have forecasting_horizon rows).
+        **params : dict
+            Additional metadata.
+        
+        Returns
+        -------
+        pl.DataFrame
+            Predictions with columns: "observed_time", "time", <target_columns>
+            - "observed_time": Last observation time used for prediction
+            - "time": Predicted time steps
+        
+        """
+        # Handle horizon (use fit horizon if not specified)
+        if forecasting_horizon is None:
+            forecasting_horizon = self._forecasting_horizon
+        
+        # Your prediction logic here
+        # Use self._y_observed, self._X_observed for context
+        y_pred = self._generate_predictions(forecasting_horizon)
+        
+        # CRITICAL: Always add time columns before returning
+        return self._add_time_columns(y_pred)
+    
+    def _add_time_columns(self, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Add observed_time and time columns to predictions.
+        
+        This is inherited from BaseForecaster - handles:
+        - observed_time: Last time in self._y_observed
+        - time: Future time steps based on forecasting_horizon
+        
+        """
+        return super()._add_time_columns(y_pred)
+```
+
+#### 3. Add Parameter Constraints
+
+**Critical**: All forecasters MUST implement `_parameter_constraints` for sklearn validation:
+
+```python
+import numbers
+from sklearn.utils._param_validation import Interval
+from yohou.base import BaseTransformer
+
+_parameter_constraints: dict = {
+    **ParentForecaster._parameter_constraints,  # Inherit parent
+    "int_param": [Interval(numbers.Integral, 1, None, closed="left")],  # Integer ≥ 1
+    "float_param": [Interval(numbers.Real, 0.0, 1.0, closed="both")],   # Float in [0, 1]
+    "positive_float": [Interval(numbers.Real, 0.0, None, closed="neither")],  # Float > 0
+    "optional_param": [Interval(numbers.Real, 0.0, 1.0, closed="both"), None],  # Optional
+    "transformer_param": [BaseTransformer, None],  # Optional transformer
+    "string_param": [str],                         # String parameters
+}
+```
+
+**Common constraint patterns**:
+- `Interval(numbers.Integral, min, max, closed)`: Range-constrained integer
+  - `closed="left"`: `[min, max)` - min ≤ value < max
+  - `closed="right"`: `(min, max]` - min < value ≤ max
+  - `closed="both"`: `[min, max]` - min ≤ value ≤ max
+  - `closed="neither"`: `(min, max)` - min < value < max
+  - Use `None` for min/max to leave unbounded (e.g., `1, None` means ≥ 1)
+- `Interval(numbers.Real, min, max, closed)`: Range-constrained float (includes integers)
+- `[Type, None]`: Optional parameters (e.g., `[numbers.Real, None]`)
+- `[str]`: String parameters (sklearn validates type only)
+- Inherit parent constraints: `**BasePointForecaster._parameter_constraints`
+
+**Validation timing**: 
+- **Automatic validation** at fit time via `@_fit_context` decorator (type + range checks)
+- **Domain-specific validation** in `fit()` body after automatic validation (e.g., data-dependent checks)
+- **NO validation in `__init__`** - only store parameters there
+
+**Real-world examples**:
+```python
+# Example 1: FourierSeasonalityForecaster
+_parameter_constraints: dict = {
+    **_BaseSeasonalityForecaster._parameter_constraints,
+    "n_harmonics": [Interval(numbers.Integral, 1, None, closed="left")],  # ≥ 1
+    "alpha": [Interval(numbers.Real, 0.0, None, closed="neither")],        # > 0
+    "l1_ratio": [Interval(numbers.Real, 0.0, 1.0, closed="both")],         # [0, 1]
+}
+
+# Domain validation in fit() - Nyquist limit check
+if self.n_harmonics > self._seasonality // 2:
+    raise ValueError(...)
+
+# Example 2: PolynomialTrendForecaster
+_parameter_constraints: dict = {
+    **BasePointForecaster._parameter_constraints,
+    "degree": [Interval(numbers.Integral, 0, None, closed="left")],  # ≥ 0
+}
+
+# Example 3: SeasonalityForecaster with string enum
+_parameter_constraints: dict = {
+    **_BaseSeasonalityForecaster._parameter_constraints,
+    "method": [str],  # Type validation only
+}
+
+# Custom validation in fit() for allowed values
+if self.method not in ["naive", "average", "median"]:
+    raise ValueError(f"Invalid method: {self.method}")
+```
+
+**Required imports**:
+```python
+import numbers
+from sklearn.base import _fit_context
+from sklearn.utils._param_validation import Interval
+```
+
+#### 4. Handle Panel Data (if applicable)
+
+If your forecaster should support panel data (multiple time series in struct columns):
+
+```python
+def fit(self, y, X, forecasting_horizon, **params):
+    y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
+    
+    # Check if panel data
+    if self.local_group_names_ is not None:
+        # Panel data: self.local_y_columns_ has field names
+        # Process each series separately or vectorize
+        for col_name in self.local_y_columns_:
+            # Extract series, fit separately
+            pass
+    else:
+        # Global data: regular columns
+        pass
+```
+
+**Testing panel data**: Use `panel_time_series_factory` fixture (see "Testing Patterns").
+
+#### 5. Write Comprehensive Tests
+
+**Test file structure**: `tests/point_forecaster/test_<forecaster_name>.py`
+
+**Minimum test coverage**:
+
+```python
+"""Tests for MyForecaster."""
+
+from datetime import datetime, timedelta
+
+import polars as pl
+import pytest
+
+from yohou.point_forecaster import MyForecaster
+
+
+def test_my_forecaster_basic_fit_predict():
+    """Test basic fit and predict workflow."""
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
+    )
+    y = pl.DataFrame({"time": time, "value": range(50)})
+    
+    forecaster = MyForecaster(param1=10)
+    forecaster.fit(y[:30], forecasting_horizon=5)
+    
+    y_pred = forecaster.predict(forecasting_horizon=5)
+    
+    # Validate output structure
+    assert len(y_pred) == 5
+    assert "observed_time" in y_pred.columns
+    assert "time" in y_pred.columns
+    assert "value" in y_pred.columns
+
+
+def test_my_forecaster_parameter_validation():
+    """Test parameter validation."""
+    with pytest.raises(ValueError, match="param1 must be positive"):
+        MyForecaster(param1=0)
+
+
+def test_my_forecaster_different_horizons():
+    """Test prediction with different horizons."""
+    # ... test predicting different horizon than fit
+
+
+def test_my_forecaster_panel_data(panel_time_series_factory):
+    """Test with panel data."""
+    y_panel = panel_time_series_factory(length=50, n_series=3, seed=42)
+    
+    forecaster = MyForecaster(param1=10)
+    forecaster.fit(y_panel[:30], forecasting_horizon=5)
+    
+    y_pred = forecaster.predict(forecasting_horizon=5)
+    # Validate panel structure preserved
+
+
+def test_my_forecaster_update_predict():
+    """Test update_predict method."""
+    # ... test incremental learning workflow
+```
+
+**Run tests**: `uv run pytest tests/point_forecaster/test_my_forecaster.py -v`
+
+#### 6. Add Docstring Examples (Doctests)
+
+**Critical**: All public methods need docstring examples that actually run:
+
+```python
+def predict(self, forecasting_horizon=None, X=None, **params):
+    """Generate forecasts.
+    
+    Examples
+    --------
+    >>> # Setup
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.point_forecaster import MyForecaster
+    >>> time = pl.datetime_range(
+    ...     start=datetime(2020, 1, 1),
+    ...     end=datetime(2020, 1, 30),
+    ...     interval="1d",
+    ...     eager=True
+    ... )
+    >>> y = pl.DataFrame({"time": time, "value": range(30)})
+    >>>
+    >>> # Fit and predict
+    >>> forecaster = MyForecaster(param1=5)
+    >>> forecaster.fit(y, forecasting_horizon=3)
+    MyForecaster(param1=5)
+    >>> y_pred = forecaster.predict(forecasting_horizon=3)
+    >>> len(y_pred)
+    3
+    
+    """
+```
+
+**Run doctests**: `uv run pytest --doctest-modules src/yohou/point_forecaster/my_forecaster.py`
+
+#### 7. Update Module Exports
+
+Add to `src/yohou/point_forecaster/__init__.py`:
+
+```python
+from .my_forecaster import MyForecaster
+
+__all__ = [
+    # ... existing exports
+    "MyForecaster",
+]
+```
+
+#### 8. Quality Checks Checklist
+
+Before committing, ensure:
+
+- [ ] **Linting**: `uvx ruff check src/yohou/point_forecaster/my_forecaster.py`
+- [ ] **Formatting**: `uvx ruff format src/yohou/point_forecaster/my_forecaster.py`
+- [ ] **Type checking**: `uvx ty check src/yohou/point_forecaster/my_forecaster.py`
+- [ ] **Docstring coverage**: `uvx interrogate src/yohou/point_forecaster/my_forecaster.py` (100% required)
+- [ ] **Tests pass**: `uv run pytest tests/point_forecaster/test_my_forecaster.py`
+- [ ] **Doctests pass**: `uv run pytest --doctest-modules src/yohou/point_forecaster/my_forecaster.py`
+- [ ] **Pre-commit**: `uvx nox -s fix` (runs all quality checks)
+
+#### 9. Real-World Examples from Codebase
+
+**Pattern-based forecaster** (`src/yohou/point_forecaster/seasonality.py`):
+- Stores seasonal pattern in `_extract_pattern()`
+- Repeats/averages pattern in `_predict_from_pattern()`
+- Validates sufficient data (at least 2 cycles)
+- Supports 3 methods via `method` parameter
+
+**Model-based forecaster** (`src/yohou/point_forecaster/fourier_seasonality.py`):
+- Uses sklearn model (ElasticNet) for fitting
+- Builds feature matrix in `_build_fourier_features()`
+- Stores fitted models in `fourier_coefficients_` dict
+- Parameters: `alpha`, `l1_ratio`, `n_harmonics`
+
+**Trend forecaster** (`src/yohou/point_forecaster/polynomial_trend.py`):
+- Fits polynomial with `numpy.polyfit()`
+- Extrapolates via `numpy.polyval()`
+- Simple stateless prediction
+- Single parameter: `degree`
+
+#### 10. Common Pitfalls & Solutions
+
+**Problem**: Predictions don't have time columns
+- **Solution**: Always call `self._add_time_columns(y_pred)` before returning
+
+**Problem**: Panel data not handled
+- **Solution**: Check `self.local_group_names_` and iterate over `self.local_y_columns_`
+
+**Problem**: Transformers not applied
+- **Solution**: Use `_pre_fit()` to get transformed data (`y_t`, `X_t`)
+
+**Problem**: Tests fail with type errors
+- **Solution**: Use `StrictInt` from pydantic for integer params, validate in `__init__`
+
+**Problem**: Doctests fail with repr mismatches
+- **Solution**: Use exact repr format: `MyForecaster(param1=5)` not `MyForecaster(param1=5, ...)`
+
+**Problem**: Linting fails on imports
+- **Solution**: Order imports: stdlib → third-party → local, use `uvx ruff check --fix`
+
+**Problem**: 100% docstring coverage not met
+- **Solution**: Add NumPy-style docstrings to ALL public methods, classes, modules
+
+#### 11. Advanced: Reduction Forecasters
+
+For ML-based forecasters using sklearn estimators, extend `BaseReductionForecaster`:
+
+```python
+from yohou.point_forecaster.reduction import PointReductionForecaster
+
+# Use directly with any sklearn regressor
+forecaster = PointReductionForecaster(
+    estimator=RandomForestRegressor(n_estimators=100),
+    lags=[1, 2, 3, 7, 14],
+    reduction_strategy="direct"  # or "multi-output"
+)
+```
+
+**When to create custom reduction forecaster**:
+- Need custom lag/feature engineering beyond `lags` parameter
+- Want to bundle specific estimator with preset hyperparameters
+- Implementing novel forecasting algorithm that reduces to supervised learning
+
+**Example**: See `src/yohou/point_forecaster/reduction.py` for full implementation.
 
 ## Coding Conventions
 
@@ -239,10 +768,10 @@ class MyTransformer(BaseTransformer):
 ### Forecasters Pattern (Reduction)
 ```python
 class MyForecaster(BaseReductionForecaster, BasePointForecaster):
-    def fit(self, y, X_post, X_ante, forecasting_horizon):
+    def fit(self, y, X, forecasting_horizon):
         # Pre-fit handles transformers and sets up observation buffers
         y_t, X_t = BasePointForecaster._pre_fit(
-            self, y=y, X_post=X_post, X_ante=X_ante,
+            self, y=y, X=X,
             forecasting_horizon=forecasting_horizon
         )
         # Tabularize and fit sklearn estimator
@@ -275,7 +804,7 @@ def fit(self, X: pl.DataFrame) -> "MyClass":
 - Coverage requirements in `pyproject.toml`: `fail-under = 100`
 - Excludes: tests, examples, `_version.py`, private/magic/init methods
 - Ignores nested classes but NOT nested functions
-- Run check: `uvx interrogate src/yohou` or via `nox -s fix` (pre-commit hooks)
+- Run check: `uvx interrogate src/yohou` or via `uvx nox -s fix` (pre-commit hooks)
 
 ## Testing Patterns
 
@@ -330,9 +859,8 @@ Key fixtures:
 
 ### Test Organization
 - Tests in `tests/` mirror `src/yohou/` structure
-- Run tests: `nox -s test` (includes coverage, doctests, and unit tests)
-  - Alternative: `uv run pytest` (quicker for local testing, no coverage report)
-  - Note: nox uses uv as the default venv backend (configured in `noxfile.py`)
+- **Run tests locally**: `uv run pytest` (quick, no coverage) or `uvx nox -s test` (full coverage report)
+- **Run specific test**: `uv run pytest tests/decomposition/test_polynomial_trend.py -v`
 - Use sample data with `pl.datetime_range` for time columns:
   ```python
   time = pl.DataFrame({
@@ -354,7 +882,75 @@ Key fixtures:
 - `yohou.utils.polars.inspect_locality(df)`: Parse global/local columns
 - `yohou.utils.polars.concat_struct(items, how)`: Merge panel data struct columns
 - `yohou.utils.validation.check_interval_consistency(df)`: Validate time spacing
-- `yohou.utils.validation.check_inputs(y, X_post, X_ante)`: Validate all inputs have matching intervals
+- `yohou.utils.validation.check_inputs(y, X)`: Validate all inputs have matching intervals
+
+## Decomposition Module (`src/yohou/decomposition/`)
+
+**Architecture pattern**: Time series decomposition into sequential additive components.
+
+### Available Decomposition Forecasters
+1. **Trend Forecasters**:
+   - `PolynomialTrendForecaster`: Fits polynomial trend via `numpy.polyfit()`, extrapolates with `numpy.polyval()`
+   - `ExponentialTrendForecaster`: Exponential growth/decay patterns
+   
+2. **Seasonality Forecasters**:
+   - `SeasonalityForecaster`: Pattern-based seasonality (naive, average, median methods)
+   - `FourierSeasonalityForecaster`: Fourier basis functions with ElasticNet fitting
+
+3. **Meta-Forecaster**:
+   - `Decomposer`: Orchestrates sequential decomposition workflow
+
+### Decomposer Usage Pattern
+```python
+from yohou.decomposition import Decomposer, PolynomialTrendForecaster, SeasonalityForecaster
+from yohou.preprocessing import LogTransform
+
+# Additive decomposition: trend + seasonality + residual
+forecaster = Decomposer([
+    ("trend", PolynomialTrendForecaster(degree=2)),
+    ("season", SeasonalityForecaster(seasonality=7, method="average")),
+])
+forecaster.fit(y, forecasting_horizon=7)
+y_pred = forecaster.predict(forecasting_horizon=7)
+
+# Multiplicative decomposition (additive in log-space)
+forecaster_mult = Decomposer(
+    [("trend", PolynomialTrendForecaster(degree=1)),
+     ("season", SeasonalityForecaster(seasonality=12))],
+    target_transformer=LogTransform()
+)
+
+# Inspect intermediate residuals
+forecaster_inspect = Decomposer(
+    [("trend", ...), ("season", ...)],
+    store_residuals=True
+)
+forecaster_inspect.fit(y, forecasting_horizon=7)
+trend_residuals = forecaster_inspect.residuals_["trend"]
+season_residuals = forecaster_inspect.residuals_["season"]
+```
+
+### Key Implementation Details
+- **Sequential fitting**: Each component models residuals from all previous components
+  ```python
+  # Inside Decomposer.fit():
+  residuals = y_t  # Start with target
+  for name, forecaster in self.forecasters:
+      forecaster.fit(residuals, X_t, forecasting_horizon)
+      y_pred_train = forecaster.predict(...)
+      residuals = residuals - y_pred_train  # Update residuals
+  ```
+- **Prediction aggregation**: Final prediction = sum of all component predictions
+- **Inheritance**: Extends `_BaseComposition` (sklearn's meta-estimator base class)
+- **Metadata routing**: Properly routes params to nested forecasters via `process_routing()`
+- **Validation**: All component forecasters must be point forecasters (no interval forecasters)
+
+### Common Patterns
+- **Classical decomposition**: Trend → Seasonal → Residual (use naive/baseline for residual)
+- **STL-style**: Polynomial trend + Fourier seasonality
+- **Hierarchical**: Multiple levels of seasonality (daily + weekly + yearly)
+- **Debugging**: Enable `store_residuals=True` to inspect what each component captures
+
 
 
 ## Plans & Documentation
@@ -369,7 +965,7 @@ Key fixtures:
 - **Branch naming**: `<type>/<description>` where type is `feature|fix|docs|tests`
 - **Commits**: Must be signed off (`git commit -s`)
 - **PR titles**: Follow [Conventional Commits](https://www.conventionalcommits.org/) format
-- **Pre-commit hooks**: Run automatically on commit or manually with `nox -s fix`
+- **Pre-commit hooks**: Run automatically on commit or manually with `uvx nox -s fix`
 - **CI validation**: All nox sessions must pass (test, fix, docs)
 - **Nox configuration**: `noxfile.py` at project root with uv backend
 - **Code compatibility**: Target Python 3.12+, cross-platform (Windows, macOS, Linux)
@@ -437,13 +1033,13 @@ def _(mo):
 
 ### Workflow Files (`.github/workflows/`)
 1. **`tests-os-coverage.yml`**: Comprehensive coverage testing
-   - Matrix: Python 3.12 across Windows/macOS/Linux
+   - Matrix: Python 3.12+ across Windows/macOS/Linux
    - Uses `uv` for fast dependency installation
-   - Installs nox via `uv tool install nox`, runs `nox -s test`
+   - **CI workflow**: `uvx nox -s test` (installs nox as uv tool first)
    - Concurrent execution with auto-cancellation on new pushes
 
 2. **`lint.yml`**: Code quality checks
-   - Installs nox via `uv tool install nox`, runs `nox -s fix`
+   - **CI workflow**: `uvx nox -s fix`
    - Validates ruff + ty + interrogate (100% docstring coverage)
 
 3. **`release.yml`**: PyPI package publishing
@@ -452,12 +1048,13 @@ def _(mo):
    - Publishes to PyPI with trusted publishing
 
 ### CI Debugging Tips
-- **Local CI simulation**: Use `nox` to run same commands as CI
+- **Local development**: Always use `uvx nox` (uv's automatic tool runner)
   ```bash
-  nox -s test  # Same as CI test step
-  nox -s fix   # Same as CI lint step
+  uvx nox -s test  # Runs same tests as CI
+  uvx nox -s fix   # Runs same quality checks as CI
   ```
-- **Coverage failures**: Check `coverage.xml` or HTML report in `htmlcov/`
+- **CI vs Local difference**: CI uses `uv tool install nox` + `nox`, local uses `uvx nox` (automatic)
+- **Coverage failures**: Check `coverage.{python}.xml` or HTML report in temp dir
 - **Cross-platform issues**: Use `pathlib` over string paths, avoid shell-specific commands
 - **Dependency conflicts**: Run `uv sync` to regenerate lockfile
 
@@ -628,7 +1225,9 @@ print(df.lazy().select(pl.col("value").mean()).explain())
 - **Validate time consistency**: `yohou.utils.validation.check_interval_consistency(df)`
 - **Test transformers in isolation**: Use `tests/conftest.py` dummy transformers as templates
 - **Pytest with verbose**: `uv run pytest -vv tests/path/to/test.py::test_name`
-- **Coverage gaps**: `nox -s test` then open `htmlcov/index.html`
+- **Coverage gaps**: `uvx nox -s test` then open `htmlcov/index.html`
+- **Rerun failed tests only**: `uv run pytest --lf` (last-failed)
+- **Step through with debugger**: `uv run pytest --pdb tests/path/to/test.py::test_name`
 
 ## Performance & Optimization
 

@@ -6,6 +6,6 @@ from .reduction import PointReductionForecaster
 
 __all__ = [
     "BasePointForecaster",
-    "SeasonalNaive",
     "PointReductionForecaster",
+    "SeasonalNaive",
 ]

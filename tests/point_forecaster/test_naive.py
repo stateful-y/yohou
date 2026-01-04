@@ -30,7 +30,7 @@ y = pl.DataFrame(
     }
 )
 
-X_post = pl.DataFrame(
+X = pl.DataFrame(
     {
         "time": pl.datetime_range(
             start=datetime(2021, 12, 16),
@@ -63,25 +63,22 @@ X_post = pl.DataFrame(
 def test_seasonal_naive_checks(forecaster, tags, expected_failures, y_X_factory):
     """Run systematic checks on SeasonalNaive forecaster."""
     # Generate data
-    y, X_post, X_ante = y_X_factory(length=100, seed=42)
-    y_train, y_test = y[:80], y[80:]
-    X_post_train, X_post_test = X_post[:80], X_post[80:]
-    X_ante_train, X_ante_test = (X_ante[:80], X_ante[80:]) if X_ante is not None else (None, None)
+    y, X = y_X_factory(length=200, seed=42)
+    y_train, y_test = y[:160], y[160:]
+    X_train, X_test = (X[:160], X[160:]) if X is not None else (None, None)
 
     # Fit forecaster
     forecaster_fitted = clone(forecaster)
-    forecaster_fitted.fit(y_train, X_post_train, X_ante_train, forecasting_horizon=3)
+    forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
 
     # Run all generated checks
     expected_failures_set = set(expected_failures)
     for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
         forecaster_fitted,
         y_train,
-        X_post_train,
-        X_ante_train,
+        X_train,
         y_test,
-        X_post_test,
-        X_ante_test,
+        X_test,
         tags=tags,
     ):
         if check_name in expected_failures_set:
@@ -97,7 +94,7 @@ def test_seasonal_naive_checks(forecaster, tags, expected_failures, y_X_factory)
         (1, 3, 5, [16, 16, 16, 16, 16]),
         (1, 3, 2, [16, 16]),
         (2, 1, 5, [15, 16, 15, 16, 15]),
-        (2, 3, 5, [15, 16, 16, 16, 16]),
+        (2, 3, 5, [15, 16, 15, 16, 15]),
         (2, 3, 2, [15, 16]),
         (8, 1, 5, [9, 10, 11, 12, 13]),
         (8, 3, 5, [9, 10, 11, 12, 13]),
@@ -106,12 +103,10 @@ def test_seasonal_naive_checks(forecaster, tags, expected_failures, y_X_factory)
 )
 def test_predict(seasonality, fit_forecasting_horizon, predict_forecasting_horizon, expected_a):
     """Test specific prediction behavior of SeasonalNaive."""
-    y_train, y_test, X_post_train, X_post_test = train_test_split(
-        y, X_post, test_size=0.2, shuffle=False
-    )
+    y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2, shuffle=False)
     forecaster = SeasonalNaive(seasonality=seasonality)
 
-    forecaster.fit(y=y_train, X_post=X_post_train, forecasting_horizon=fit_forecasting_horizon)
+    forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
 
     y_pred = forecaster.predict(forecasting_horizon=predict_forecasting_horizon)
 

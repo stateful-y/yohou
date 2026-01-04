@@ -58,8 +58,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
     ) -> "SplitConformalForecaster":
         """Fits the forecaster and returns it.
@@ -69,11 +68,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y : pl.DataFrame
             Target time series.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
@@ -83,22 +79,20 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self
 
         """
-        y_train, y_calib, X_post_train, X_post_calib = train_test_split(
-            y, X_post, test_size=self.calibration_size, shuffle=False
+        y_train, y_calib, X_train, X_calib = train_test_split(
+            y, X, test_size=self.calibration_size, shuffle=False
         )
 
         self.point_forecaster_ = clone(self.point_forecaster).fit(
             y=y_train,
-            X_post=X_post_train,
-            X_ante=X_ante,
+            X=X_train,
             forecasting_horizon=forecasting_horizon,
         )
 
         # Use None to delegate to fit_forecasting_horizon_
         y_pred_calib = self.point_forecaster_.update_predict(
             y=y_calib,
-            X_post=X_post_calib,
-            X_ante=X_ante,
+            X=X_calib,
             forecasting_horizon=None,
             stride=None,
             predict_transformed=False,
@@ -149,7 +143,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     def predict(
         self,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         cross_learning_group: str | None = None,
         predict_transformed: bool = False,
@@ -158,8 +152,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         Parameters
         ----------
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
@@ -178,7 +172,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         pl.DataFrame
             Predicted interval time series.
         """
-        y_pred = self.point_forecaster_.predict(X_ante=X_ante).drop("observed_time")
+        y_pred = self.point_forecaster_.predict(X=X).drop("observed_time")
 
         y_pred_intervals = pl.DataFrame()
         for step in range(1, 1 + forecasting_horizon):

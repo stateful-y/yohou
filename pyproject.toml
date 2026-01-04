@@ -13,10 +13,12 @@ authors = [
 ]
 description = "A time series forecasting package based on scikit-learn and narwhals"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: BSD License",
     "Operating System :: POSIX",
     "Operating System :: Unix",
@@ -60,7 +62,7 @@ examples = [
   "marimo",
 ]
 fix = [
-  "pre-commit",
+  "pre-commit-uv>=4.1",
   "ruff>=0.14.10",
   "ty>=0.0.4",
   "interrogate>=1.7.0",

@@ -230,7 +230,7 @@ def _(mo):
 def _(MAE, SeasonalNaive, forecasting_horizon, y_test, y_train):
     # Create and fit baseline model
     baseline = SeasonalNaive(seasonality=12)
-    baseline.fit(y_train, X_post=None, X_ante=None, forecasting_horizon=forecasting_horizon)
+    baseline.fit(y_train, X=None, forecasting_horizon=forecasting_horizon)
 
     # Make predictions
     y_pred_baseline = baseline.predict(forecasting_horizon=forecasting_horizon)
@@ -427,8 +427,7 @@ def _(
     # Fit the forecaster
     reduction_forecaster.fit(
         y=y_train,
-        X_post=None,
-        X_ante=None,
+        X=None,
         forecasting_horizon=params.value["forecast_horizon"],
     )
 
@@ -618,7 +617,7 @@ def _(
 
     # Run search (this takes time!)
     print("Running hyperparameter search... (this may take 1-2 minutes)")
-    search.fit(y_train, X_post=None, X_ante=None, forecasting_horizon=forecasting_horizon)
+    search.fit(y_train, X=None, forecasting_horizon=forecasting_horizon)
 
     print("\n✅ Search complete!")
     print("\nBest parameters found:")
@@ -841,8 +840,7 @@ def _(mae_scorer, reduction_forecaster, y_test):
         # Incremental forecast (with updates)
         y_pred_incremental = pipeline_incremental.update_predict(
             y=y_test[i - 1 : i],  # Previous observation
-            X_post=None,
-            X_ante=None,
+            X=None,
             forecasting_horizon=1,
         )
         mae_incremental = mae_scorer.score(y_current, y_pred_incremental)
@@ -954,7 +952,7 @@ def _(mo):
     ### What We Covered
 
     ✅ **Yohou's scikit-learn-compatible API**
-    - `fit(y, X_post, X_ante, forecasting_horizon)` for training
+    - `fit(y, X, forecasting_horizon)` for training
     - `predict(forecasting_horizon)` for forecasting
     - `update(y)` for incremental learning
 
@@ -980,10 +978,10 @@ def _(mo):
     Ready to dive deeper? Try these extensions:
 
     1. **Interval forecasting**: Use `SplitConformalForecaster` for prediction intervals with calibrated coverage
-    2. **Panel data**: Forecast multiple time series simultaneously with struct columns
+    2. **Panel data**: Forecast multiple time series simultaneously
     3. **Custom transformers**: Build domain-specific preprocessing (holiday effects, promotions)
     4. **Model ensembles**: Combine multiple forecasters for robust predictions
-    5. **Feature engineering**: Add exogenous variables (X_post for planned events, X_ante for observed covariates)
+    5. **Feature engineering**: Add exogenous variables
 
     ### Resources
 

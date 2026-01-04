@@ -102,23 +102,20 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
     )
 
 
-def check_inputs(y: pl.DataFrame, X_post: pl.DataFrame | None, X_ante: pl.DataFrame | None) -> str:
+def check_inputs(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
     """Validate that target and feature DataFrames have consistent time intervals.
 
-    Ensures all input DataFrames (target y, ex-ante features X_post, ex-post features
-    X_ante) have the same uniform time interval. This is required for proper alignment
-    in forecasting operations.
+    Ensures all input DataFrames (target y and exogenous features X) have the same
+    uniform time interval. This is required for proper alignment in forecasting
+    operations.
 
     Parameters
     ----------
     y : pl.DataFrame
         Target time series with "time" column.
 
-    X_post : pl.DataFrame or None
-        Ex-ante (known in advance) feature time series with "time" column, or None.
-
-    X_ante : pl.DataFrame or None
-        Ex-post (observed after the fact) feature time series with "time" column, or None.
+    X : pl.DataFrame or None
+        Exogenous feature time series with "time" column, or None.
 
     Returns
     -------
@@ -142,36 +139,117 @@ def check_inputs(y: pl.DataFrame, X_post: pl.DataFrame | None, X_ante: pl.DataFr
     ...     eager=True
     ... )
     >>> y = pl.DataFrame({"time": time_index, "sales": [100, 110, 120, 130, 140]})
-    >>> X_post = pl.DataFrame({"time": time_index, "holiday": [0, 0, 1, 0, 0]})
-    >>> interval = check_inputs(y, X_post, None)
+    >>> X = pl.DataFrame({"time": time_index, "holiday": [0, 0, 1, 0, 0]})
+    >>> interval = check_inputs(y, X)
     >>> interval
     '1d'
 
     See Also
     --------
     check_interval_consistency : Validates single DataFrame intervals
+    validate_column_names : Validates column names don't misuse __ separator
 
     """
+    # Validate column names first
+    validate_column_names(y)
+    if X is not None:
+        validate_column_names(X)
+    
     y_interval = check_interval_consistency(y)
-    if X_post is not None:
-        X_post_interval = check_interval_consistency(X_post)
+    if X is not None:
+        X_interval = check_interval_consistency(X)
 
-        if X_post_interval != y_interval:
+        if X_interval != y_interval:
             raise ValueError(
-                f"Time interval mismatch: y has interval {y_interval},  but X_post has interval "
-                f"{X_post_interval}. All inputs must have the same time interval."
-            )
-
-    if X_ante is not None:
-        X_ante_interval = check_interval_consistency(X_ante)
-
-        if X_ante_interval != y_interval:
-            raise ValueError(
-                f"Time interval mismatch: y has interval {y_interval}, but X_ante has interval "
-                f"{X_ante_interval}. All inputs must have the same time interval."
+                f"Time interval mismatch: y has interval {y_interval}, but X has interval "
+                f"{X_interval}. All inputs must have the same time interval."
             )
 
     return y_interval
+
+
+def validate_column_names(df: pl.DataFrame) -> None:
+    """Validate that __ separator is used only for panel data group names.
+
+    The __ separator is reserved for panel data groups following the pattern
+    <GROUP>__<SERIES> (e.g., "sales__store_1"). This function ensures column
+    names either:
+    - Don't contain __ at all (global columns), OR
+    - Follow the exact pattern ^[^_]+__[^_]+.*$ (group columns)
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        DataFrame to validate.
+
+    Raises
+    ------
+    ValueError
+        If any column name contains __ but doesn't match the group pattern,
+        or if __ appears multiple times in inconsistent way.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> # Valid: no __ separator
+    >>> df = pl.DataFrame({"time": [1, 2], "value": [10, 20]})
+    >>> validate_column_names(df)  # No error
+    
+    >>> # Valid: proper group pattern
+    >>> df = pl.DataFrame({"time": [1, 2], "sales__store_1": [100, 110]})
+    >>> validate_column_names(df)  # No error
+    
+    >>> # Invalid: __ without proper pattern
+    >>> df = pl.DataFrame({"time": [1, 2], "my__bad__col": [10, 20]})
+    >>> validate_column_names(df)  # doctest: +SKIP
+    Traceback (most recent call last):
+        ...
+    ValueError: Column 'my__bad__col' contains multiple __ separators...
+
+    See Also
+    --------
+    check_inputs : Validates time intervals and calls this function
+
+    """
+    import re
+    
+    # Pattern: one or more non-underscore chars, then __, then one or more chars
+    # This ensures __ appears exactly once and separates non-empty parts
+    group_pattern = re.compile(r'^([^_]+)__(.+)$')
+    
+    for col_name in df.columns:
+        if col_name == "time":
+            continue
+        
+        if "__" not in col_name:
+            # No __ separator - valid global column
+            continue
+        
+        # Column contains __ - must match group pattern
+        match = group_pattern.match(col_name)
+        if not match:
+            # Check for common issues to provide helpful error messages
+            underscore_count = col_name.count("__")
+            if underscore_count > 1:
+                raise ValueError(
+                    f"Column '{col_name}' contains multiple __ separators. "
+                    f"The __ separator is reserved for panel data groups and must appear "
+                    f"exactly once, following the pattern '<GROUP>__<SERIES>' "
+                    f"(e.g., 'sales__store_1'). Please rename columns to avoid using __ "
+                    f"or use it only for panel data groups."
+                )
+            elif col_name.startswith("__") or col_name.endswith("__"):
+                raise ValueError(
+                    f"Column '{col_name}' has __ at the beginning or end. "
+                    f"The __ separator must separate a non-empty group prefix from a "
+                    f"non-empty series suffix (e.g., 'sales__store_1')."
+                )
+            else:
+                raise ValueError(
+                    f"Column '{col_name}' contains __ but doesn't follow the required "
+                    f"pattern '<GROUP>__<SERIES>'. The group and series parts must not "
+                    f"contain underscores adjacent to the __ separator."
+                )
 
 
 def check_continuity(
@@ -619,14 +697,14 @@ def interval_to_timedelta(interval: str) -> timedelta | None:
         return None
 
 
-def add_interval(dt: datetime, interval: str, n: int = 1) -> datetime:
+def add_interval(start: datetime, interval: str, n: int = 1) -> datetime:
     """Add n intervals to a datetime (handles variable-length intervals).
 
     Supports multi-period intervals like \"2mo\", \"3mo\", \"6mo\", etc.
 
     Parameters
     ----------
-    dt : datetime
+    start : datetime
         Starting datetime.
 
     interval : str
@@ -655,27 +733,27 @@ def add_interval(dt: datetime, interval: str, n: int = 1) -> datetime:
     total_units = multiplier * n
 
     if unit == "d":
-        return dt + timedelta(days=total_units)
+        return start + timedelta(days=total_units)
     elif unit == "h":
-        return dt + timedelta(hours=total_units)
+        return start + timedelta(hours=total_units)
     elif unit == "min":
-        return dt + timedelta(minutes=total_units)
+        return start + timedelta(minutes=total_units)
     elif unit == "s":
-        return dt + timedelta(seconds=total_units)
+        return start + timedelta(seconds=total_units)
     elif unit == "w":
-        return dt + timedelta(weeks=total_units)
+        return start + timedelta(weeks=total_units)
     elif unit == "mo":
         # Add months with day-of-month preservation
-        month = dt.month - 1 + total_units
-        year = dt.year + month // 12
+        month = start.month - 1 + total_units
+        year = start.year + month // 12
         month = month % 12 + 1
-        day = min(dt.day, calendar.monthrange(year, month)[1])
-        return dt.replace(year=year, month=month, day=day)
+        day = min(start.day, calendar.monthrange(year, month)[1])
+        return start.replace(year=year, month=month, day=day)
     elif unit == "q":
         # Quarters are 3 months
-        return add_interval(dt, "3mo", n)
+        return add_interval(start, "3mo", n)
     elif unit == "y":
         # Add years (handles leap years)
-        return dt.replace(year=dt.year + total_units)
+        return start.replace(year=start.year + total_units)
     else:
         raise ValueError(f"Unsupported interval unit: {unit}")

@@ -298,8 +298,8 @@ def _check_day_of_month_consistency(time_series: list[datetime]) -> bool:
 class BaseForecaster:
     interval_: str  # Changed from timedelta to str
 
-    def _pre_fit(self, y, X_post, X_ante, forecasting_horizon):
-        self.interval_ = check_inputs(y, X_post, X_ante)  # Now returns str
+    def _pre_fit(self, y, X, forecasting_horizon):
+        self.interval_ = check_inputs(y, X)  # Now returns str
         # ... rest of method
 ```
 

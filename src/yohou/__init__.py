@@ -21,6 +21,7 @@ if "update_transform" not in SIMPLE_METHODS:
 from yohou import (
     analysis,
     base,
+    forecaster,
     interval_forecaster,
     metrics,
     model_selection,
@@ -33,6 +34,7 @@ from yohou import (
 __all__ = [
     "analysis",
     "base",
+    "forecaster",
     "interval_forecaster",
     "metrics",
     "model_selection",

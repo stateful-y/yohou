@@ -3,14 +3,12 @@
 from typing import List, Literal
 
 import polars as pl
-import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import QuantileRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
-from yohou.base import BaseReductionForecaster
-from yohou.utils import concat_struct, neg_struct
+from yohou.base import BaseReductionForecaster, BaseTransformer
 
 from .base import BaseIntervalForecaster
 
@@ -24,15 +22,21 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     ----------
     estimator : BaseEstimator, default=MultiOutputRegressor(QuantileRegressor())
         Quantile estimator used to fit the tabularized data.
-
     reduction_strategy : {"direct", "multi-output"}, default="multi-output"
         Strategy for multi-step forecasting.
-
     coverage_rates : list of float, default=[0.5]
         Target coverage rates for intervals.
-
+    feature_transformer : BaseTransformer or None, default=None
+        Transformer used to transform the `input_features` time series into features.
     update_strategy : {"average", "constant"}, default="average"
         How to update intervals with new observations.
+
+    Attributes
+    ----------
+    y_pred_local_columns_ : list of str
+        Column names for predictions in transformed space. Set during fit.
+        For interval forecasters, corresponds to keys of local_y_t_schema_.
+        Separate lower and upper bound estimators are trained for each coverage rate.
 
     Examples
     --------
@@ -98,28 +102,29 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         estimator: BaseEstimator = MultiOutputRegressor(QuantileRegressor()),
         reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
         coverage_rates: List[StrictFloat] = [0.5],
+        feature_transformer: BaseTransformer | None = None,
         update_strategy: Literal["average", "constant"] = "average",
     ):
         BaseReductionForecaster.__init__(
             self,
-            feature_transformer=None,
-            target_transformer=None,
             estimator=estimator,
             reduction_strategy=reduction_strategy,
+            feature_transformer=feature_transformer,
         )
 
         BaseIntervalForecaster.__init__(
             self,
             coverage_rates=coverage_rates,
             update_strategy=update_strategy,
+            feature_transformer=feature_transformer,
         )
 
     def fit(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        **params,
     ) -> "IntervalReductionForecaster":
         """Fits the forecaster and returns it.
 
@@ -128,11 +133,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         y : pl.DataFrame
             Target time series.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         forecasting_horizon : int > 1, default=1
             Horizon to forecast.
@@ -145,34 +147,15 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         y_t, X_t = BaseIntervalForecaster._pre_fit(
             self,
             y=y,
-            X_post=X_post,
-            X_ante=X_ante,
+            X=X,
             forecasting_horizon=forecasting_horizon,
         )
 
-        # TODO: Do that to y instead of y_t?
-        time = y_t.select(cs.by_name("time"))
-        y_t = concat_struct(
-            [
-                neg_struct(y_t.select(~cs.by_name("time")), prefix="negative_"),
-                y_t.select(~cs.by_name("time")),
-            ],
-            how="horizontal",
-        )
-        y_t = pl.concat([time, y_t], how="horizontal")
+        # y_t and X_t are guaranteed to be non-None after _pre_fit
+        assert y_t is not None
+        assert X_t is not None
 
-        # y_t = pl.concat(
-        #     [
-        #         time,
-        #         y_t.select(~cs.by_name("time")).with_columns((-pl.all()).prefix("negative_"))
-        #         .drop(y_t.columns),
-        #         y_t.select(~cs.by_name("time")),
-        #     ],
-        #     how="horizontal",
-        # )
-        y_pred_local_columns = [
-            f"negative_{col}" for col in self.local_y_names_
-        ] + self.local_y_names_
+        self.y_pred_local_columns_ = list(self.local_y_t_schema_.keys())
 
         estimator_param_names = list(self.estimator.get_params(deep=True))
         quantile_param_names = [
@@ -189,17 +172,30 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         estimators = {}
         # TODO: Support CatBoost multiquantile
         for coverage_rate in self.coverage_rates:
-            estimator_params = {
-                quantile_param_name: 1.0 - coverage_rate / 2.0,
+            # Fit lower bound estimator (lower quantile)
+            estimator_params_lower = {
+                quantile_param_name: (1.0 - coverage_rate) / 2.0,
             }
-            estimator_rate = self._estimator_fit_one(
+            estimator_lower = self._estimator_fit_one(
                 y_t,
                 X_t,
                 forecasting_horizon,
-                y_pred_local_columns=y_pred_local_columns,
-                estimator_params=estimator_params,
+                estimator_params=estimator_params_lower,
             )
-            estimators[f"coverage_rate_{coverage_rate}"] = estimator_rate
+
+            # Fit upper bound estimator (upper quantile)
+            estimator_params_upper = {
+                quantile_param_name: (1.0 + coverage_rate) / 2.0,
+            }
+            estimator_upper = self._estimator_fit_one(
+                y_t,
+                X_t,
+                forecasting_horizon,
+                estimator_params=estimator_params_upper,
+            )
+
+            estimators[f"coverage_rate_{coverage_rate}_lower"] = estimator_lower
+            estimators[f"coverage_rate_{coverage_rate}_upper"] = estimator_upper
 
         self.estimator_ = estimators
         return self
@@ -218,53 +214,34 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         """
         y_pred = pl.DataFrame()
         for coverage_rate in self.coverage_rates:
-            estimator_rate = self.estimator_[f"coverage_rate_{coverage_rate}"]
+            estimator_lower = self.estimator_[f"coverage_rate_{coverage_rate}_lower"]
+            estimator_upper = self.estimator_[f"coverage_rate_{coverage_rate}_upper"]
 
-            y_pred_lower_columns = [f"{col}_lower_{coverage_rate}" for col in self.local_y_names_]
-            y_pred_upper_columns = [f"{col}_upper_{coverage_rate}" for col in self.local_y_names_]
+            # Predict lower bounds
+            y_pred_lower = self._estimator_predict_one(estimator_lower)
 
-            y_pred_rate = self._estimator_predict_one(
-                estimator_rate,
-                y_pred_local_columns=y_pred_lower_columns + y_pred_upper_columns,
-            )
+            # Predict upper bounds
+            y_pred_upper = self._estimator_predict_one(estimator_upper)
 
-            y_pred_rate = neg_struct(y_pred_rate, local_col_names=y_pred_lower_columns)
+            # Rename columns to include coverage rate
+            lower_rename = {
+                col: f"{col}_lower_{coverage_rate}" for col in list(self.local_y_t_schema_.keys())
+            }
+            upper_rename = {
+                col: f"{col}_upper_{coverage_rate}" for col in list(self.local_y_t_schema_.keys())
+            }
 
+            # Rename columns (works for both global and panel data)
+            y_pred_lower = y_pred_lower.rename(lower_rename)
+            y_pred_upper = y_pred_upper.rename(upper_rename)
+
+            # Merge lower and upper bounds
             if y_pred.shape[1] == 0:
-                # First iteration, use the entire dataframe
-                y_pred = y_pred_rate
+                # First iteration: concatenate lower and upper bounds
+                y_pred = pl.concat([y_pred_lower, y_pred_upper], how="horizontal")
             else:
-                # For subsequent iterations, merge columns
-                if self.local_group_names_ is not None:
-                    # For struct columns, process each group separately
-                    struct_updates = {}
-                    for group_name in self.local_group_names_:
-                        # Unnest the struct in both dataframes
-                        y_pred_group = y_pred[[group_name]].unnest(group_name)
-                        y_pred_rate_group = y_pred_rate[[group_name]].unnest(group_name)
-
-                        # Find new columns in this iteration
-                        new_cols = [
-                            col
-                            for col in y_pred_rate_group.columns
-                            if col not in y_pred_group.columns
-                        ]
-                        if new_cols:
-                            # Merge the new columns
-                            y_pred_group_merged = pl.concat(
-                                [y_pred_group, y_pred_rate_group.select(new_cols)], how="horizontal"
-                            )
-                            # Store the merged struct
-                            struct_updates[group_name] = y_pred_group_merged.to_struct(group_name)
-
-                    # Apply all struct updates
-                    for group_name, struct_col in struct_updates.items():
-                        y_pred = y_pred.with_columns(**{group_name: struct_col})
-                else:
-                    # For non-struct columns, only add columns that don't exist yet
-                    new_cols = [col for col in y_pred_rate.columns if col not in y_pred.columns]
-                    if new_cols:
-                        y_pred = pl.concat([y_pred, y_pred_rate.select(new_cols)], how="horizontal")
+                # Subsequent iterations: concatenate with existing predictions
+                y_pred = pl.concat([y_pred, y_pred_lower, y_pred_upper], how="horizontal")
 
         y_pred = self._add_time_columns(y_pred)
 

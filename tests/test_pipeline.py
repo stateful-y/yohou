@@ -9,6 +9,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 from sklearn.base import clone
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -62,7 +63,7 @@ def test_pipeline_sequential_execution(dummy_transformers, time_series_factory):
     # (excluding time column)
     X_expected = X.select([pl.col("time"), (pl.all().exclude("time") + 15.0)])
 
-    pl.testing.assert_frame_equal(X_trans, X_expected)
+    assert_frame_equal(X_trans, X_expected)
 
 
 def test_pipeline_named_access(dummy_transformers, time_series_factory):
@@ -202,7 +203,7 @@ def test_pipeline_with_clone(dummy_transformers, time_series_factory):
     X_trans1 = pipeline.transform(X)
     X_trans2 = pipeline_clone.transform(X)
 
-    pl.testing.assert_frame_equal(X_trans1, X_trans2)
+    assert_frame_equal(X_trans1, X_trans2)
 
 
 def test_pipeline_get_set_params(dummy_transformers, time_series_factory):

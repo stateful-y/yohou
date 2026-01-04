@@ -45,7 +45,7 @@ def test_lag_transformer_checks(lag, time_series_factory):
 
 def test_lag_transformer_feature_names(time_series_factory):
     """Test LagTransformer generates correct feature names."""
-    X = time_series_factory(length=50, n_features=2)
+    X = time_series_factory(length=50, n_components=2)
     transformer = LagTransformer(lag=[1, 2])
     transformer.fit(X)
 
@@ -96,7 +96,7 @@ def test_lag_transformer_output_length(time_series_factory):
 
 def test_lag_transformer_single_lag(time_series_factory):
     """Test LagTransformer with single lag value."""
-    X = time_series_factory(length=50, n_features=1)
+    X = time_series_factory(length=50, n_components=1)
     transformer = LagTransformer(lag=[1])
     transformer.fit(X)
 

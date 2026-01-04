@@ -4,7 +4,7 @@ from typing import Callable
 
 import polars as pl
 from pydantic import StrictInt
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, _fit_context
 from sklearn.linear_model import LinearRegression
 from typing_extensions import Literal
 
@@ -31,6 +31,12 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 
     feature_transformer : BaseTransformer or None, default=None
         Transformer for feature engineering (typically LagTransformer).
+
+    Attributes
+    ----------
+    y_pred_local_columns_ : list of str
+        Column names for predictions in transformed space. Set during fit.
+        For point forecasters, corresponds to keys of local_y_t_schema_.
 
     Examples
     --------
@@ -100,11 +106,11 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             feature_transformer=feature_transformer,
         )
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         time_weight: Callable | pl.DataFrame | None = None,
         **params,
@@ -116,11 +122,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         y : pl.DataFrame
             Target time series.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
@@ -141,10 +144,11 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         y_t, X_t = BasePointForecaster._pre_fit(
             self,
             y=y,
-            X_post=X_post,
-            X_ante=X_ante,
+            X=X,
             forecasting_horizon=forecasting_horizon,
         )
+
+        self.y_pred_local_columns_ = list(self.local_y_t_schema_.keys())
 
         self.estimator_ = self._estimator_fit_one(
             y_t, X_t, forecasting_horizon, time_weight=time_weight, estimator_fit_params=params

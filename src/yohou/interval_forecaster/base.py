@@ -11,8 +11,8 @@ from pydantic import StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseForecaster
-from yohou.utils import filter_panel_columns, select_struct
+from yohou.base import BaseForecaster, BaseTransformer
+from yohou.utils import filter_panel_columns
 
 
 class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
@@ -34,8 +34,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Fit the similarity measure.
 
@@ -47,11 +46,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Point predictions.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante features.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post features.
+        X : pl.DataFrame or None, default=None
+            Exogenous features.
 
         Returns
         -------
@@ -65,8 +61,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Update the similarity measure with new observations.
 
@@ -78,11 +73,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             New predictions.
 
-        X_post : pl.DataFrame or None, default=None
-            New ex-ante features.
-
-        X_ante : pl.DataFrame or None, default=None
-            New ex-post features.
+        X : pl.DataFrame or None, default=None
+            New exogenous features.
 
         Returns
         -------
@@ -95,8 +87,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute similarity weights for predictions.
 
@@ -105,11 +96,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predictions to compute similarities for.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante features.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post features.
+        X : pl.DataFrame or None, default=None
+            Exogenous features.
 
         Returns
         -------
@@ -146,7 +134,12 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         coverage_rates: list[float],
         update_strategy: str,
+        feature_transformer: BaseTransformer | None = None,
     ) -> None:
+        super().__init__(
+            feature_transformer=feature_transformer,
+            target_transformer=None,
+        )
         self.coverage_rates = coverage_rates
         self.update_strategy = update_strategy
 
@@ -154,8 +147,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def fit(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         **params,
     ) -> "BaseIntervalForecaster":
@@ -166,11 +158,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
@@ -185,12 +174,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError()
 
-    # TODO: Separate reduction code?
     def update(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> "BaseIntervalForecaster":
         """Updates the forecaster with more recent data and
         returns it.
@@ -200,11 +187,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series.
 
-        X_post : pl.DataFrame or None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None
-            Ex-post feature time series.
+        X : pl.DataFrame or None
+            Exogenous feature time series.
 
 
         Returns
@@ -212,15 +196,11 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self
 
         """
-        y_contains_points = (
-            self.local_group_names_ is None and set(self.local_y_names_) <= set(y.columns)
-        ) or (
-            self.local_group_names_ is not None
-            and set(self.local_y_names_) <= set(y.unnest(self.local_group_names_[0]).columns)
-        )
+        y_contains_points = set(list(self.local_y_schema_.keys())) <= set(y.columns)
 
         if "point" in self.prediction_types or y_contains_points:
-            y = select_struct(y, local_col_names=self.local_y_names_, select_time=True)
+            # Select time and the specified columns
+            y = y.select(["time"] + list(self.local_y_schema_.keys()))
 
         else:
             time = y.select(cs.by_name("time"))
@@ -228,15 +208,11 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             match self.update_strategy:
                 case "average":
                     if self.local_group_names_ is not None:
-                        y_groups = pl.DataFrame()
+                        y_groups_list = []
                         for local_group_name in self.local_group_names_:
-                            y_local = y[
-                                [
-                                    col
-                                    for col, dtype in y.schema.items()
-                                    if dtype != pl.Struct or col == local_group_name
-                                ]
-                            ].unnest(local_group_name)
+                            # Select columns for this group
+                            group_cols = [c for c in y.columns if c.startswith(f"{local_group_name}__")]
+                            y_local = y.select(group_cols)
 
                             y_local = y_local.select(
                                 [
@@ -252,16 +228,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                                     )
                                     .list.mean()
                                     .alias(col)
-                                    for col in self.local_y_names_
+                                    for col in list(self.local_y_schema_.keys())
                                 ]
                             )
 
-                            y_groups = pl.concat(
-                                [y_groups, pl.DataFrame({local_group_name: y_local})],
-                                how="horizontal",
-                            )
+                            y_groups_list.append(y_local)
 
-                        y = y_groups
+                        y = pl.concat(y_groups_list, how="horizontal")
 
                     else:
                         y = y.select(
@@ -278,7 +251,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                                 )
                                 .list.mean()
                                 .alias(col)
-                                for col in self.local_y_names_
+                                for col in list(self.local_y_schema_.keys())
                             ]
                         )
 
@@ -288,13 +261,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             y = pl.concat([time, y], how="horizontal")
 
-        BaseForecaster.update(self, y, X_post, X_ante)
+        BaseForecaster.update(self, y, X)
 
         return self
 
     def predict(
         self,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         cross_learning_group: str | None = None,
         predict_transformed: bool = False,
@@ -304,8 +277,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
@@ -342,7 +315,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 f"Group {cross_learning_group} not found in local groups: {self.local_group_names_}"
             )
 
-        # Handle panel data: predict all struct columns if cross_learning_group=None
+        # Handle panel data: predict all panel groups if cross_learning_group=None
         # For now, just predict all groups together (default behavior)
         # TODO: Implement individual group predictions if needed
 
@@ -358,19 +331,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     include_global=False,
                 )
 
-            # Filter _X_post_observed
-            if forecaster._X_post_observed is not None:
-                forecaster._X_post_observed = filter_panel_columns(
-                    forecaster._X_post_observed,
-                    cross_learning_group,
-                    self.local_group_names_,
-                    include_global=True,
-                )
-
-            # Filter X_ante
-            if X_ante is not None:
-                X_ante = filter_panel_columns(
-                    X_ante,
+            # Filter X
+            if X is not None:
+                X = filter_panel_columns(
+                    X,
                     cross_learning_group,
                     self.local_group_names_,
                     include_global=True,
@@ -388,19 +352,12 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             if step + self.fit_forecasting_horizon_ <= forecasting_horizon:
                 time = y_pred_step.select(cs.by_name("time"))
-                # Guard against None - X_post_observed should be set after fit
-                if forecaster._X_post_observed is not None:
-                    X_post_old = forecaster._X_post_observed[[-1]].select(~cs.by_name("time"))
-                    X_post = pl.concat([X_post_old] * len(time))
-                    X_post = pl.concat([time, X_post], how="horizontal")
-                else:
-                    X_post = None
 
                 # Compute midpoints from intervals for recursive update
                 if self.local_group_names_ is None:
                     # Global data case
                     y_data = {"time": time["time"]}
-                    for col in self.local_y_names_:
+                    for col in list(self.local_y_schema_.keys()):
                         # Find all coverage rates for this column
                         lower_cols = [
                             c for c in y_pred_step_inv.columns if c.startswith(f"{col}_lower_")
@@ -418,14 +375,15 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                             ) / 2
                     y = pl.DataFrame(y_data)
                 else:
-                    # Panel data case: reconstruct struct columns
-                    y_struct_dict = {}
+                    # Panel data case: compute midpoints for each group
+                    y_dict = {}
                     for local_group_name in self.local_group_names_:
-                        # Unnest the struct column
-                        y_local_pred = y_pred_step_inv[[local_group_name]].unnest(local_group_name)
+                        # Select columns for this group
+                        group_cols = [c for c in y_pred_step_inv.columns if c.startswith(f"{local_group_name}__")]
+                        y_local_pred = y_pred_step_inv.select(group_cols)
 
                         y_local_data = {}
-                        for col in self.local_y_names_:
+                        for col in list(self.local_y_schema_.keys()):
                             # Find coverage rate columns for this target
                             lower_cols = [
                                 c for c in y_local_pred.columns if c.startswith(f"{col}_lower_")
@@ -442,11 +400,23 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                                     y_local_pred[lower_col] + y_local_pred[upper_col]
                                 ) / 2
 
-                        y_struct_dict[local_group_name] = pl.DataFrame(y_local_data)
+                        y_dict[local_group_name] = pl.DataFrame(y_local_data)
 
-                    y = pl.concat([time, pl.DataFrame(y_struct_dict)], how="horizontal")
+                    y = pl.concat([time] + list(y_dict.values()), how="horizontal")
 
-                forecaster.update(y, X_post, X_ante)
+                X_slice = None
+                if X is not None:
+                    start_idx = step - 1
+                    end_idx = start_idx + self.fit_forecasting_horizon_
+                    X_slice = X[start_idx:end_idx]
+
+                    if len(X_slice) != len(y):
+                        raise ValueError(
+                            f"Missing X for future steps. Needed {len(y)} rows, "
+                            f"but X slice has {len(X_slice)} rows."
+                        )
+
+                forecaster.update(y, X_slice)
 
         y_pred = y_pred.with_columns(observed_time=y_pred["observed_time"][0])
 

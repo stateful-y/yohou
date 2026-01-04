@@ -445,17 +445,17 @@ def check_inverse_transform_identity(transformer, X, y=None, atol=1e-6, rtol=1e-
 
 
 def check_panel_data_support(transformer, X_panel, y=None):
-    """Check transformer handles struct columns (panel data) correctly.
+    """Check transformer handles panel columns (panel data) correctly.
 
-    Panel data uses struct columns to represent multiple time series.
-    Transformers should preserve struct columns or handle them appropriately.
+    Panel data uses columns with __ separator to represent multiple time series.
+    Transformers should preserve panel columns or handle them appropriately.
 
     Parameters
     ----------
     transformer : BaseTransformer
         Unfitted transformer
     X_panel : pl.DataFrame
-        Panel data with struct columns
+        Panel data with panel columns
     y : pl.DataFrame, optional
         Target data
 
@@ -466,7 +466,7 @@ def check_panel_data_support(transformer, X_panel, y=None):
     """
     from yohou.utils import inspect_locality
 
-    # Check if X_panel actually has struct columns
+    # Check if X_panel actually has panel columns
     global_names, local_groups = inspect_locality(X_panel)
 
     if not local_groups:
@@ -682,7 +682,7 @@ def check_inverse_transform_round_trip(transformer, X, y=None, atol=1e-6, rtol=1
     More comprehensive than check_inverse_transform_identity:
     - Validates shape preservation
     - Checks dtype consistency
-    - Handles panel data struct columns
+    - Handles panel data columns
     - Configurable tolerance
 
     Parameters
@@ -997,13 +997,11 @@ def _yield_yohou_transformer_checks(
 # ============================================================================
 
 
-def check_fit_sets_forecaster_attributes(
-    forecaster, y, X_post=None, X_ante=None, forecasting_horizon=3
-):
+def check_fit_sets_forecaster_attributes(forecaster, y, X=None, forecasting_horizon=3):
     """Check fit() sets required forecaster attributes.
 
     Validates that fit() creates all required attributes for forecasters including
-    fit_forecasting_horizon_, interval_, local_group_names_, local_y_names_,
+    fit_forecasting_horizon_, interval_, local_group_names_, local_y_schema_,
     observation buffers, and transformer references.
 
     Parameters
@@ -1012,10 +1010,8 @@ def check_fit_sets_forecaster_attributes(
         Unfitted forecaster instance
     y : pl.DataFrame
         Training target data with "time" column
-    X_post : pl.DataFrame, optional
-        Training ex-ante features with "time" column
-    X_ante : pl.DataFrame, optional
-        Training ex-post features with "time" column
+    X : pl.DataFrame, optional
+        Training features with "time" column
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
 
@@ -1025,7 +1021,7 @@ def check_fit_sets_forecaster_attributes(
         If required attributes are not set after fit()
     """
     forecaster_clone = clone(forecaster)
-    forecaster_clone.fit(y, X_post, X_ante, forecasting_horizon=forecasting_horizon)
+    forecaster_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
 
     # Check core fitted attributes
     assert hasattr(forecaster_clone, "fit_forecasting_horizon_"), (
@@ -1040,21 +1036,16 @@ def check_fit_sets_forecaster_attributes(
     assert hasattr(forecaster_clone, "local_group_names_"), (
         "fit() must set local_group_names_ attribute (None or list)"
     )
-    assert hasattr(forecaster_clone, "local_y_names_"), (
-        "fit() must set local_y_names_ attribute (list)"
+    assert hasattr(forecaster_clone, "local_y_schema_"), (
+        "fit() must set local_y_schema_ attribute (dict[str, pl.DataType])"
     )
-    assert hasattr(forecaster_clone, "local_X_names_"), (
-        "fit() must set local_X_names_ attribute (list)"
+    assert hasattr(forecaster_clone, "local_X_schema_"), (
+        "fit() must set local_X_schema_ attribute (dict[str, pl.DataType])"
     )
 
     # Check observation buffers
     assert hasattr(forecaster_clone, "_y_observed"), "fit() must set _y_observed buffer"
     assert hasattr(forecaster_clone, "_X_t_observed"), "fit() must set _X_t_observed buffer"
-
-    if X_post is not None:
-        assert hasattr(forecaster_clone, "_X_post_observed"), (
-            "fit() must set _X_post_observed buffer when X_post provided"
-        )
 
     # Check transformer attributes
     if forecaster_clone.target_transformer is not None:
@@ -1068,7 +1059,7 @@ def check_fit_sets_forecaster_attributes(
         )
 
 
-def check_forecaster_not_fitted_error(forecaster, y, X_post=None, X_ante=None):
+def check_forecaster_not_fitted_error(forecaster, y, X=None):
     """Check accessing fitted attributes before fit() raises NotFittedError.
 
     Parameters
@@ -1077,10 +1068,8 @@ def check_forecaster_not_fitted_error(forecaster, y, X_post=None, X_ante=None):
         Unfitted forecaster instance
     y : pl.DataFrame
         Test target data
-    X_post : pl.DataFrame, optional
-        Test ex-ante features
-    X_ante : pl.DataFrame, optional
-        Test ex-post features
+    X : pl.DataFrame, optional
+        Test features
 
     Raises
     ------
@@ -1103,7 +1092,7 @@ def check_forecaster_not_fitted_error(forecaster, y, X_post=None, X_ante=None):
         pass
 
 
-def check_predict_time_columns(forecaster, y_test, X_post_test=None, X_ante_test=None):
+def check_predict_time_columns(forecaster, y_test, X_test=None):
     """Check predictions have observed_time and time columns.
 
     Parameters
@@ -1112,24 +1101,16 @@ def check_predict_time_columns(forecaster, y_test, X_post_test=None, X_ante_test
         Fitted forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_post_test : pl.DataFrame, optional
-        Test ex-ante features (not used - stored in _X_post_observed during fit)
-    X_ante_test : pl.DataFrame, optional
-        Test ex-post features
+    X_test : pl.DataFrame, optional
+        Test features
 
     Raises
     ------
     AssertionError
         If predictions lack required time columns
-
-    Notes
-    -----
-    X_post is not passed to predict() because ex-ante features (known in advance)
-    are stored during fit() and used automatically. Only X_ante can be provided
-    at predict time since those are "observed after" features.
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X_ante=X_ante_test)
+    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
     assert "observed_time" in y_pred.columns, "Predictions must have 'observed_time' column"
     assert "time" in y_pred.columns, "Predictions must have 'time' column"
@@ -1148,10 +1129,8 @@ def check_update_extends_observations(
     forecaster,
     y_train,
     y_update,
-    X_post_train=None,
-    X_post_update=None,
-    X_ante_train=None,
-    X_ante_update=None,
+    X_train=None,
+    X_update=None,
 ):
     """Check update() extends observation buffers correctly.
 
@@ -1163,10 +1142,8 @@ def check_update_extends_observations(
         Original training data
     y_update : pl.DataFrame
         New data for update
-    X_post_train, X_post_update : pl.DataFrame, optional
-        Ex-ante features for training and update
-    X_ante_train, X_ante_update : pl.DataFrame, optional
-        Ex-post features for training and update
+    X_train, X_update : pl.DataFrame, optional
+        Features for training and update
 
     Raises
     ------
@@ -1174,36 +1151,52 @@ def check_update_extends_observations(
         If observation buffers are not extended correctly
     """
     # Store original buffer length
-    original_y_len = len(forecaster._y_observed)
+    original_observed_time = forecaster.observed_time_
+
+    if forecaster._y_observed is not None:
+        original_y_observed_last_time = forecaster._y_observed["time"][-1]
+
+        assert original_observed_time == original_y_observed_last_time, (
+            "observed_time_ should match last time in _y_observed before update()"
+        )
+
+    if forecaster._X_t_observed is not None:
+        original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
+
+        assert original_observed_time == original_X_t_observed_last_time, (
+            "observed_time_ should match last time in _X_t_observed before update()"
+        )
 
     # Update with new data
-    forecaster.update(y_update, X_post_update, X_ante_update)
+    forecaster.update(y_update, X_update)
 
     # Check buffers were extended
-    updated_y_len = len(forecaster._y_observed)
+    updated_observed_time = forecaster.observed_time_
 
-    # Buffer should contain new data (may be truncated to observation horizon)
-    assert updated_y_len >= min(original_y_len, len(y_update)), (
-        f"_y_observed should be extended after update(), got {updated_y_len} vs {original_y_len}"
+    assert updated_observed_time >= original_observed_time, (
+        "observed_time_ should be updated to at least the last time in update data"
     )
 
-    # Last observations should match update data
-    expected_last_time = y_update["time"].max()
-    actual_last_time = forecaster._y_observed["time"].max()
+    if forecaster._y_observed is not None:
+        updated_y_observed_last_time = forecaster._y_observed["time"][-1]
 
-    assert actual_last_time == expected_last_time, (
-        f"Last observation time should be {expected_last_time}, got {actual_last_time}"
-    )
+        assert updated_y_observed_last_time == updated_observed_time, (
+            "Last time in _y_observed should match updated observed_time_ after update()"
+        )
 
+    if forecaster._X_t_observed is not None:
+        updated_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
+
+        assert updated_X_t_observed_last_time == updated_observed_time, (
+            "Last time in _X_t_observed should match updated observed_time_ after update()"
+        )
 
 def check_reset_replaces_observations(
     forecaster,
     y_train,
     y_reset,
-    X_post_train=None,
-    X_post_reset=None,
-    X_ante_train=None,
-    X_ante_reset=None,
+    X_train=None,
+    X_reset=None,
 ):
     """Check reset() replaces observation buffers correctly.
 
@@ -1215,106 +1208,57 @@ def check_reset_replaces_observations(
         Original training data
     y_reset : pl.DataFrame
         New data for reset
-    X_post_train, X_post_reset : pl.DataFrame, optional
-        Ex-ante features for training and reset
-    X_ante_train, X_ante_reset : pl.DataFrame, optional
-        Ex-post features for training and reset
+    X_train, X_reset : pl.DataFrame, optional
+        Features for training and reset
 
     Raises
     ------
     AssertionError
         If observation buffers are not replaced correctly
     """
+    # Store original buffer length
+    original_observed_time = forecaster.observed_time_
+
+    if forecaster._y_observed is not None:
+        original_y_observed_last_time = forecaster._y_observed["time"][-1]
+
+        assert original_observed_time == original_y_observed_last_time, (
+            "observed_time_ should match last time in _y_observed before update()"
+        )
+
+    if forecaster._X_t_observed is not None:
+        original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
+
+        assert original_observed_time == original_X_t_observed_last_time, (
+            "observed_time_ should match last time in _X_t_observed before update()"
+        )
+
     # Reset to new data
-    forecaster.reset(y_reset, X_post_reset, X_ante_reset)
+    forecaster.reset(y_reset, X_reset)
 
-    # Check buffers match reset data
-    reset_y_len = len(forecaster._y_observed)
-    expected_len = len(y_reset)
+    # Check buffers were replaced
+    reset_observed_time = forecaster.observed_time_
 
-    # Buffer should match reset data (may be truncated to observation horizon if longer)
-    assert reset_y_len <= expected_len, (
-        f"_y_observed length after reset should be <= {expected_len}, got {reset_y_len}"
+    assert reset_observed_time == y_reset["time"][-1], (
+        "observed_time_ should be reset to last time in reset data"
     )
 
-    # Time should match reset data
-    expected_last_time = y_reset["time"].max()
-    actual_last_time = forecaster._y_observed["time"].max()
+    if forecaster._y_observed is not None:
+        reset_y_observed_last_time = forecaster._y_observed["time"][-1]
 
-    assert actual_last_time == expected_last_time, (
-        f"Last observation time after reset should be {expected_last_time}, got {actual_last_time}"
-    )
-
-
-def check_reset_propagates_to_transformers(
-    forecaster,
-    y_train,
-    y_reset,
-    X_post_train=None,
-    X_post_reset=None,
-    X_ante_train=None,
-    X_ante_reset=None,
-):
-    """Check reset() calls reset() on target_transformer and feature_transformer.
-
-    Parameters
-    ----------
-    forecaster : BaseForecaster
-        Fitted forecaster instance with transformers
-    y_train : pl.DataFrame
-        Original training data
-    y_reset : pl.DataFrame
-        New data for reset
-    X_post_train, X_post_reset : pl.DataFrame, optional
-        Ex-ante features for training and reset
-    X_ante_train, X_ante_reset : pl.DataFrame, optional
-        Ex-post features for training and reset
-
-    Raises
-    ------
-    AssertionError
-        If reset() doesn't propagate to transformers
-    """
-    # Only check if forecaster has transformers
-    if forecaster.target_transformer is None and forecaster.feature_transformer is None:
-        return
-
-    # Store original transformer states (if they exist)
-    if forecaster.target_transformer is not None and hasattr(
-        forecaster.target_transformer_, "_X_observed"
-    ):
-        original_target_time = forecaster.target_transformer_._X_observed["time"].max()
-    else:
-        original_target_time = None
-
-    if forecaster.feature_transformer is not None and hasattr(
-        forecaster.feature_transformer_, "_X_observed"
-    ):
-        original_feature_time = forecaster.feature_transformer_._X_observed["time"].max()
-    else:
-        original_feature_time = None
-
-    # Call reset on forecaster
-    forecaster.reset(y_reset, X_post_reset, X_ante_reset)
-
-    # Check target transformer was reset
-    if original_target_time is not None:
-        new_target_time = forecaster.target_transformer_._X_observed["time"].max()
-        expected_time = y_reset["time"].max()
-        assert new_target_time >= expected_time or new_target_time != original_target_time, (
-            f"reset() should update target_transformer state, time unchanged at {original_target_time}"
+        assert reset_y_observed_last_time == reset_observed_time, (
+            "Last time in _y_observed should match reset observed_time_ after reset()"
         )
 
-    # Check feature transformer was reset
-    if original_feature_time is not None:
-        new_feature_time = forecaster.feature_transformer_._X_observed["time"].max()
-        # Feature transformer gets combined X_post/X_ante, so check it was updated
-        assert new_feature_time != original_feature_time, (
-            f"reset() should update feature_transformer state, time unchanged at {original_feature_time}"
+    if forecaster._X_t_observed is not None:
+        reset_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
+
+        assert reset_X_t_observed_last_time == reset_observed_time, (
+            "Last time in _X_t_observed should match reset observed_time_ after reset()"
         )
 
 
-def check_forecasting_horizon_validation(forecaster, y, X_post=None, X_ante=None):
+def check_forecasting_horizon_validation(forecaster, y, X=None):
     """Check forecasting_horizon < 1 raises ValueError.
 
     Parameters
@@ -1323,10 +1267,8 @@ def check_forecasting_horizon_validation(forecaster, y, X_post=None, X_ante=None
         Unfitted forecaster instance
     y : pl.DataFrame
         Training target data
-    X_post : pl.DataFrame, optional
-        Training ex-ante features
-    X_ante : pl.DataFrame, optional
-        Training ex-post features
+    X : pl.DataFrame, optional
+        Training features
 
     Raises
     ------
@@ -1337,7 +1279,7 @@ def check_forecasting_horizon_validation(forecaster, y, X_post=None, X_ante=None
 
     # Test horizon = 0
     try:
-        forecaster_clone.fit(y, X_post, X_ante, forecasting_horizon=0)
+        forecaster_clone.fit(y, X, forecasting_horizon=0)
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__} should raise ValueError "
             f"for forecasting_horizon=0"
@@ -1350,7 +1292,7 @@ def check_forecasting_horizon_validation(forecaster, y, X_post=None, X_ante=None
     # Test negative horizon
     forecaster_clone = clone(forecaster)
     try:
-        forecaster_clone.fit(y, X_post, X_ante, forecasting_horizon=-1)
+        forecaster_clone.fit(y, X, forecasting_horizon=-1)
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__} should raise ValueError "
             f"for forecasting_horizon=-1"
@@ -1420,6 +1362,48 @@ def check_clone_preserves_forecaster_params(forecaster):
         # For None values
         if orig_val is None:
             assert cloned_val is None, f"Parameter {key}: expected None, got {cloned_val}"
+        # For list of (name, estimator) tuples (meta-estimators like Decomposer, Pipeline)
+        elif isinstance(orig_val, list) and len(orig_val) > 0 and isinstance(orig_val[0], tuple):
+            assert isinstance(cloned_val, list), f"Parameter {key}: expected list, got {type(cloned_val)}"
+            assert len(orig_val) == len(cloned_val), f"Parameter {key}: different lengths"
+            
+            for i, (orig_item, cloned_item) in enumerate(zip(orig_val, cloned_val)):
+                assert isinstance(orig_item, tuple), f"Parameter {key}[{i}]: expected tuple"
+                assert isinstance(cloned_item, tuple), f"Parameter {key}[{i}]: expected tuple"
+                assert len(orig_item) == 2, f"Parameter {key}[{i}]: expected (name, estimator) tuple"
+                assert len(cloned_item) == 2, f"Parameter {key}[{i}]: expected (name, estimator) tuple"
+                
+                orig_name, orig_est = orig_item
+                cloned_name, cloned_est = cloned_item
+                
+                # Names should match exactly
+                assert orig_name == cloned_name, (
+                    f"Parameter {key}[{i}]: different names {cloned_name} != {orig_name}"
+                )
+                
+                # Estimators should be different instances but same type
+                assert type(orig_est) == type(cloned_est), (
+                    f"Parameter {key}[{i}] estimator: different types {type(cloned_est)} vs {type(orig_est)}"
+                )
+                assert orig_est is not cloned_est, (
+                    f"Parameter {key}[{i}] estimator: should be cloned, not same instance"
+                )
+                
+                # Check estimator params match
+                if hasattr(orig_est, "get_params"):
+                    orig_est_params = orig_est.get_params(deep=True)
+                    cloned_est_params = cloned_est.get_params(deep=True)
+                    for param_key in orig_est_params.keys():
+                        orig_param = orig_est_params.get(param_key)
+                        cloned_param = cloned_est_params.get(param_key)
+                        if hasattr(orig_param, "get_params"):
+                            assert type(orig_param) == type(cloned_param), (
+                                f"Parameter {key}[{i}]__{param_key}: different types"
+                            )
+                        elif orig_param != cloned_param:
+                            assert orig_param == cloned_param, (
+                                f"Parameter {key}[{i}]__{param_key}: {cloned_param} != {orig_param}"
+                            )
         # For estimator instances, check type and params (recursively)
         elif hasattr(orig_val, "get_params"):
             assert type(orig_val) == type(cloned_val), (
@@ -1456,7 +1440,7 @@ def check_clone_preserves_forecaster_params(forecaster):
 # ============================================================================
 
 
-def check_point_prediction_structure(forecaster, y_test, X_post_test=None, X_ante_test=None):
+def check_point_prediction_structure(forecaster, y_test, X_test=None):
     """Check point predictions have correct column structure.
 
     Parameters
@@ -1465,10 +1449,8 @@ def check_point_prediction_structure(forecaster, y_test, X_post_test=None, X_ant
         Fitted point forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_post_test : pl.DataFrame, optional
-        Test ex-ante features
-    X_ante_test : pl.DataFrame, optional
-        Test ex-post features
+    X_test : pl.DataFrame, optional
+        Test features
 
     Raises
     ------
@@ -1476,7 +1458,7 @@ def check_point_prediction_structure(forecaster, y_test, X_post_test=None, X_ant
         If prediction structure is incorrect
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X_ante=X_ante_test)
+    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
     # Should have observed_time, time, and target columns
     assert "observed_time" in y_pred.columns, "Point predictions must have 'observed_time'"
@@ -1518,7 +1500,7 @@ def check_point_prediction_types(forecaster):
 # ============================================================================
 
 
-def check_interval_prediction_columns(forecaster, y_test, X_post_test=None, X_ante_test=None):
+def check_interval_prediction_columns(forecaster, y_test, X_test=None):
     """Check interval predictions have {col}_lower_{rate} and {col}_upper_{rate} format.
 
     Parameters
@@ -1527,53 +1509,46 @@ def check_interval_prediction_columns(forecaster, y_test, X_post_test=None, X_an
         Fitted interval forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_post_test : pl.DataFrame, optional
-        Test ex-ante features
-    X_ante_test : pl.DataFrame, optional
-        Test ex-post features
+    X_test : pl.DataFrame, optional
+        Test features
 
     Raises
     ------
     AssertionError
         If interval column naming is incorrect
     """
-    from yohou.utils.polars import inspect_locality
+    from yohou.utils.panel import inspect_locality
 
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X_ante=X_ante_test)
+    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
     # Get coverage rates
     coverage_rates = forecaster.coverage_rates
 
-    # Check if we have panel data (struct columns)
+    # Check if we have panel data (columns with __ separator)
     _, y_local_groups = inspect_locality(y_test)
 
     if len(y_local_groups) > 0:
-        # For panel data, interval columns are nested within struct columns
-        # Need to unnest to access them: store_0_lower_0.1 inside "stores" struct
-        struct_cols = list(y_local_groups.keys())
-        for struct_col in struct_cols:
-            if struct_col in y_pred.columns:
-                # Unnest the struct to check interval columns
-                y_pred_unnest = y_pred.unnest(struct_col)
+        # For panel data, interval columns use __ separator
+        # e.g., "stores__store_0_lower_0.1"
+        for group_prefix in y_local_groups.keys():
+            # Get fields from the original training data (full column names)
+            expected_fields = y_local_groups[group_prefix]
 
-                # Get fields from the original training data
-                expected_fields = y_local_groups[struct_col]
+            for rate in coverage_rates:
+                for field in expected_fields:
+                    lower_col = f"{field}_lower_{rate}"
+                    upper_col = f"{field}_upper_{rate}"
 
-                for rate in coverage_rates:
-                    for field in expected_fields:
-                        lower_col = f"{field}_lower_{rate}"
-                        upper_col = f"{field}_upper_{rate}"
-
-                        assert lower_col in y_pred_unnest.columns, (
-                            f"Missing lower bound column: {lower_col} in struct {struct_col}"
-                        )
-                        assert upper_col in y_pred_unnest.columns, (
-                            f"Missing upper bound column: {upper_col} in struct {struct_col}"
-                        )
+                    assert lower_col in y_pred.columns, (
+                        f"Missing lower bound column: {lower_col}"
+                    )
+                    assert upper_col in y_pred.columns, (
+                        f"Missing upper bound column: {upper_col}"
+                    )
     else:
         # For global data, check individual column pattern: {col}_lower_{rate}
-        target_cols = forecaster.local_y_names_
+        target_cols = list(forecaster.local_y_schema_.keys())
 
         # Check each coverage rate has lower and upper bounds for each target
         for rate in coverage_rates:
@@ -1585,7 +1560,7 @@ def check_interval_prediction_columns(forecaster, y_test, X_post_test=None, X_an
                 assert upper_col in y_pred.columns, f"Missing upper bound column: {upper_col}"
 
 
-def check_interval_bounds(forecaster, y_test, X_post_test=None, X_ante_test=None):
+def check_interval_bounds(forecaster, y_test, X_test=None):
     """Check upper >= lower for all coverage rates and time steps.
 
     Parameters
@@ -1594,54 +1569,47 @@ def check_interval_bounds(forecaster, y_test, X_post_test=None, X_ante_test=None
         Fitted interval forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_post_test : pl.DataFrame, optional
-        Test ex-ante features
-    X_ante_test : pl.DataFrame, optional
-        Test ex-post features
+    X_test : pl.DataFrame, optional
+        Test features
 
     Raises
     ------
     AssertionError
         If upper bounds are less than lower bounds
     """
-    from yohou.utils.polars import inspect_locality
+    from yohou.utils.panel import inspect_locality
 
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X_ante=X_ante_test)
+    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
     coverage_rates = forecaster.coverage_rates
 
-    # Check if we have panel data (struct columns)
+    # Check if we have panel data (columns with __ separator)
     _, y_local_groups = inspect_locality(y_test)
 
     if len(y_local_groups) > 0:
-        # For panel data, interval columns are nested within struct columns
-        struct_cols = list(y_local_groups.keys())
-        for struct_col in struct_cols:
-            if struct_col in y_pred.columns:
-                # Unnest the struct to access interval columns
-                y_pred_unnest = y_pred.unnest(struct_col)
+        # For panel data, interval columns use __ separator
+        for group_prefix in y_local_groups.keys():
+            # Get fields from the original training data (full column names)
+            expected_fields = y_local_groups[group_prefix]
 
-                # Get fields from the original training data
-                expected_fields = y_local_groups[struct_col]
+            for rate in coverage_rates:
+                for field in expected_fields:
+                    lower_col = f"{field}_lower_{rate}"
+                    upper_col = f"{field}_upper_{rate}"
 
-                for rate in coverage_rates:
-                    for field in expected_fields:
-                        lower_col = f"{field}_lower_{rate}"
-                        upper_col = f"{field}_upper_{rate}"
+                    lower_vals = y_pred[lower_col].to_numpy()
+                    upper_vals = y_pred[upper_col].to_numpy()
 
-                        lower_vals = y_pred_unnest[lower_col].to_numpy()
-                        upper_vals = y_pred_unnest[upper_col].to_numpy()
-
-                        violations = lower_vals > upper_vals
-                        if violations.any():
-                            raise AssertionError(
-                                f"Found {violations.sum()} violations where lower > upper for "
-                                f"{struct_col}.{field} at coverage {rate}"
-                            )
+                    violations = lower_vals > upper_vals
+                    if violations.any():
+                        raise AssertionError(
+                            f"Found {violations.sum()} violations where lower > upper for "
+                            f"{field} at coverage {rate}"
+                        )
     else:
         # For global data, check individual columns
-        target_cols = forecaster.local_y_names_
+        target_cols = list(forecaster.local_y_schema_.keys())
 
         for rate in coverage_rates:
             for col in target_cols:
@@ -1765,102 +1733,90 @@ def check_reduction_strategy(forecaster):
 # ============================================================================
 
 
-def check_cross_learning_panel_data(forecaster, y_panel, X_post_panel=None, X_ante_panel=None):
+def check_cross_learning_panel_data(forecaster, y_panel, X_panel=None):
     """Check cross-learning with panel data predicts all groups by default.
 
     Validates that when cross_learning_group=None (default), predictions are
-    generated for all groups in the panel data struct columns.
+    generated for all groups in the panel data columns.
 
     Parameters
     ----------
     forecaster : BaseForecaster
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
-        Panel data with struct columns for testing
-    X_post_panel : pl.DataFrame or None
-        Panel ex-ante features
-    X_ante_panel : pl.DataFrame or None
-        Panel ex-post features
+        Panel data with panel columns for testing
+    X_panel : pl.DataFrame or None
+        Panel features
 
     Raises
     ------
     AssertionError
         If default prediction doesn't include all groups
     """
-    from yohou.utils.polars import inspect_locality
+    from yohou.utils.panel import inspect_locality
 
     # Predict with default (cross_learning_group=None)
-    y_pred = forecaster.predict(
-        X_ante=X_ante_panel, forecasting_horizon=3, cross_learning_group=None
-    )
+    y_pred = forecaster.predict(X=X_panel, forecasting_horizon=3, cross_learning_group=None)
 
     # Check that all local groups from training data are in predictions
     _, y_local_groups = inspect_locality(y_panel)
 
     if len(y_local_groups) > 0:
-        # Should have predictions for all struct columns
-        for struct_col in y_local_groups.keys():
-            assert struct_col in y_pred.columns, (
-                f"Struct column '{struct_col}' missing from predictions. "
-                f"cross_learning_group=None should predict all groups."
-            )
-
-            # Unnest and verify all fields present
-            y_pred_unnest = y_pred.unnest(struct_col)
-            expected_fields = y_local_groups[struct_col]
+        # Should have predictions for all group columns (with __ separator)
+        for group_prefix, expected_fields in y_local_groups.items():
             for field in expected_fields:
-                assert field in y_pred_unnest.columns, (
-                    f"Field '{field}' missing from struct '{struct_col}' predictions"
+                assert field in y_pred.columns, (
+                    f"Column '{field}' missing from predictions. "
+                    f"cross_learning_group=None should predict all groups."
                 )
 
 
-def check_cross_learning_single_group(forecaster, y_panel, X_post_panel=None, X_ante_panel=None):
-    """Check cross-learning filters to specified struct column.
+def check_cross_learning_single_group(forecaster, y_panel, X_panel=None):
+    """Check cross-learning filters to specified panel group.
 
     Validates that when cross_learning_group is specified, predictions are
-    generated only for that struct column (though all fields within it).
+    generated only for that panel group (all columns with that prefix).
 
     Parameters
     ----------
     forecaster : BaseForecaster
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
-        Panel data with struct columns for testing
-    X_post_panel : pl.DataFrame or None
-        Panel ex-ante features
-    X_ante_panel : pl.DataFrame or None
-        Panel ex-post features
+        Panel data with panel columns for testing
+    X_panel : pl.DataFrame or None
+        Panel features
 
     Raises
     ------
     AssertionError
         If filtered prediction doesn't match specified group
     """
-    from yohou.utils.polars import inspect_locality
+    from yohou.utils.panel import inspect_locality
 
     _, y_local_groups = inspect_locality(y_panel)
 
     if len(y_local_groups) > 0:
-        # Get first struct column name
+        # Get first group prefix
         first_group = list(y_local_groups.keys())[0]
 
         # Predict with specific group
         y_pred = forecaster.predict(
-            X_ante=X_ante_panel, forecasting_horizon=3, cross_learning_group=first_group
+            X=X_panel, forecasting_horizon=3, cross_learning_group=first_group
         )
 
-        # Should still have the struct column (with all its fields)
-        assert first_group in y_pred.columns, (
-            f"Struct column '{first_group}' should be in predictions when specified"
-        )
+        # Should have columns from the specified group (flat columns with __ separator)
+        group_cols = y_local_groups[first_group]
+        assert len(group_cols) > 0, f"Group '{first_group}' should have columns"
+        for col in group_cols:
+            assert col in y_pred.columns, (
+                f"Column '{col}' from group '{first_group}' should be in predictions"
+            )
 
 
-def check_cross_learning_invalid_group_raises(
-    forecaster, y_panel, X_post_panel=None, X_ante_panel=None
-):
+def check_cross_learning_invalid_group_raises(forecaster, y_panel, X_panel=None):
     """Check that invalid cross_learning_group raises ValueError.
 
-    Validates error handling when cross_learning_group specifies a struct column
+    Validates error handling when cross_learning_group specifies a panel group
     that doesn't exist in the training data.
 
     Parameters
@@ -1868,18 +1824,16 @@ def check_cross_learning_invalid_group_raises(
     forecaster : BaseForecaster
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
-        Panel data with struct columns for testing
-    X_post_panel : pl.DataFrame or None
-        Panel ex-ante features
-    X_ante_panel : pl.DataFrame or None
-        Panel ex-post features
+        Panel data with panel columns for testing
+    X_panel : pl.DataFrame or None
+        Panel features
 
     Raises
     ------
     AssertionError
         If ValueError is not raised for invalid group
     """
-    from yohou.utils.polars import inspect_locality
+    from yohou.utils.panel import inspect_locality
 
     _, y_local_groups = inspect_locality(y_panel)
 
@@ -1887,7 +1841,7 @@ def check_cross_learning_invalid_group_raises(
         # Try to predict with invalid group name
         try:
             forecaster.predict(
-                X_ante=X_ante_panel, forecasting_horizon=3, cross_learning_group="invalid_group"
+                X=X_panel, forecasting_horizon=3, cross_learning_group="invalid_group"
             )
             raise AssertionError(
                 "predict() should raise ValueError for invalid cross_learning_group, but didn't"
@@ -1907,11 +1861,9 @@ def check_cross_learning_invalid_group_raises(
 def _yield_yohou_forecaster_checks(
     forecaster,
     y_train: pl.DataFrame,
-    X_post_train: pl.DataFrame | None,
-    X_ante_train: pl.DataFrame | None,
+    X_train: pl.DataFrame | None,
     y_test: pl.DataFrame,
-    X_post_test: pl.DataFrame | None,
-    X_ante_test: pl.DataFrame | None,
+    X_test: pl.DataFrame | None,
     tags: Dict[str, Any] | None = None,
 ) -> Generator[Tuple[str, Callable, Dict], None, None]:
     """Generate applicable checks for a forecaster based on tags.
@@ -1922,16 +1874,12 @@ def _yield_yohou_forecaster_checks(
         Fitted forecaster instance
     y_train : pl.DataFrame
         Training target data with "time" column
-    X_post_train : pl.DataFrame or None
-        Training ex-ante features
-    X_ante_train : pl.DataFrame or None
-        Training ex-post features
+    X_train : pl.DataFrame or None
+        Training features
     y_test : pl.DataFrame
         Test target data
-    X_post_test : pl.DataFrame or None
-        Test ex-ante features
-    X_ante_test : pl.DataFrame or None
-        Test ex-post features
+    X_test : pl.DataFrame or None
+        Test features
     tags : dict or None
         Forecaster metadata tags:
         - forecaster_type: "point" | "interval" | "both"
@@ -1955,45 +1903,41 @@ def _yield_yohou_forecaster_checks(
     # Bundle data for check functions
     check_kwargs = {
         "y_train": y_train,
-        "X_post_train": X_post_train,
-        "X_ante_train": X_ante_train,
+        "X_train": X_train,
         "y_test": y_test,
-        "X_post_test": X_post_test,
-        "X_ante_test": X_ante_test,
+        "X_test": X_test,
     }
 
     # Common forecaster checks (always yield)
     yield (
         "check_fit_sets_forecaster_attributes",
         check_fit_sets_forecaster_attributes,
-        {"y": y_train, "X_post": X_post_train, "X_ante": X_ante_train, "forecasting_horizon": 3},
+        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
     )
     yield (
         "check_forecaster_not_fitted_error",
         check_forecaster_not_fitted_error,
-        {"y": y_train, "X_post": X_post_train, "X_ante": X_ante_train},
+        {"y": y_train, "X": X_train},
     )
     yield (
         "check_predict_time_columns",
         check_predict_time_columns,
-        {"y_test": y_test, "X_post_test": X_post_test, "X_ante_test": X_ante_test},
+        {"y_test": y_test, "X_test": X_test},
     )
     yield (
         "check_forecasting_horizon_validation",
         check_forecasting_horizon_validation,
-        {"y": y_train, "X_post": X_post_train, "X_ante": X_ante_train},
+        {"y": y_train, "X": X_train},
     )
     yield "check_prediction_types_property", check_prediction_types_property, {}
     yield "check_clone_preserves_forecaster_params", check_clone_preserves_forecaster_params, {}
 
     # Update/reset checks (if enough data)
-    if len(y_test) >= 5:
+    if len(y_test) >= 10:
         y_update = y_test[:3]
-        y_reset = y_test[2:5]
-        X_post_update = X_post_test[:3] if X_post_test is not None else None
-        X_post_reset = X_post_test[2:5] if X_post_test is not None else None
-        X_ante_update = X_ante_test[:3] if X_ante_test is not None else None
-        X_ante_reset = X_ante_test[2:5] if X_ante_test is not None else None
+        y_reset = y_test[:10]
+        X_update = X_test[:3] if X_test is not None else None
+        X_reset = X_test[:10] if X_test is not None else None
 
         yield (
             "check_update_extends_observations",
@@ -2001,10 +1945,8 @@ def _yield_yohou_forecaster_checks(
             {
                 "y_train": y_train,
                 "y_update": y_update,
-                "X_post_train": X_post_train,
-                "X_post_update": X_post_update,
-                "X_ante_train": X_ante_train,
-                "X_ante_update": X_ante_update,
+                "X_train": X_train,
+                "X_update": X_update,
             },
         )
         yield (
@@ -2013,10 +1955,8 @@ def _yield_yohou_forecaster_checks(
             {
                 "y_train": y_train,
                 "y_reset": y_reset,
-                "X_post_train": X_post_train,
-                "X_post_reset": X_post_reset,
-                "X_ante_train": X_ante_train,
-                "X_ante_reset": X_ante_reset,
+                "X_train": X_train,
+                "X_reset": X_reset,
             },
         )
 
@@ -2029,10 +1969,8 @@ def _yield_yohou_forecaster_checks(
                 {
                     "y_train": y_train,
                     "y_reset": y_reset,
-                    "X_post_train": X_post_train,
-                    "X_post_reset": X_post_reset,
-                    "X_ante_train": X_ante_train,
-                    "X_ante_reset": X_ante_reset,
+                    "X_train": X_train,
+                    "X_reset": X_reset,
                 },
             )
 
@@ -2041,7 +1979,7 @@ def _yield_yohou_forecaster_checks(
         yield (
             "check_point_prediction_structure",
             check_point_prediction_structure,
-            {"y_test": y_test, "X_post_test": X_post_test, "X_ante_test": X_ante_test},
+            {"y_test": y_test, "X_test": X_test},
         )
         yield "check_point_prediction_types", check_point_prediction_types, {}
 
@@ -2050,12 +1988,12 @@ def _yield_yohou_forecaster_checks(
         yield (
             "check_interval_prediction_columns",
             check_interval_prediction_columns,
-            {"y_test": y_test, "X_post_test": X_post_test, "X_ante_test": X_ante_test},
+            {"y_test": y_test, "X_test": X_test},
         )
         yield (
             "check_interval_bounds",
             check_interval_bounds,
-            {"y_test": y_test, "X_post_test": X_post_test, "X_ante_test": X_ante_test},
+            {"y_test": y_test, "X_test": X_test},
         )
         yield "check_interval_prediction_types", check_interval_prediction_types, {}
         yield "check_coverage_rates_parameter", check_coverage_rates_parameter, {}
@@ -2068,7 +2006,7 @@ def _yield_yohou_forecaster_checks(
     # Cross-learning checks (for panel data)
     if tags.get("supports_panel_data", False):
         # Need to check if we have panel data available
-        from yohou.utils.polars import inspect_locality
+        from yohou.utils.panel import inspect_locality
 
         _, y_local_groups = inspect_locality(y_train)
         if len(y_local_groups) > 0:
@@ -2076,17 +2014,17 @@ def _yield_yohou_forecaster_checks(
             yield (
                 "check_cross_learning_panel_data",
                 check_cross_learning_panel_data,
-                {"y_panel": y_test, "X_post_panel": X_post_test, "X_ante_panel": X_ante_test},
+                {"y_panel": y_test, "X_panel": X_test},
             )
             yield (
                 "check_cross_learning_single_group",
                 check_cross_learning_single_group,
-                {"y_panel": y_test, "X_post_panel": X_post_test, "X_ante_panel": X_ante_test},
+                {"y_panel": y_test, "X_panel": X_test},
             )
             yield (
                 "check_cross_learning_invalid_group_raises",
                 check_cross_learning_invalid_group_raises,
-                {"y_panel": y_test, "X_post_panel": X_post_test, "X_ante_panel": X_ante_test},
+                {"y_panel": y_test, "X_panel": X_test},
             )
 
     # Metadata routing checks (always applicable)

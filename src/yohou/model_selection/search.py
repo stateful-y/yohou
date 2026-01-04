@@ -408,7 +408,7 @@ class SearchCV(BaseForecaster):
     @available_if(_best_forecaster_has("predict"))  # type: ignore[untyped-decorator]
     def predict(
         self,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         cross_learning_group: str | None = None,
         predict_transformed: bool = False,
@@ -420,8 +420,8 @@ class SearchCV(BaseForecaster):
 
         Parameters
         ----------
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses the fitted forecaster's
@@ -445,7 +445,7 @@ class SearchCV(BaseForecaster):
         """
         check_is_fitted(self)
         return self.best_forecaster_.predict(
-            X_ante=X_ante,
+            X=X,
             forecasting_horizon=forecasting_horizon,
             cross_learning_group=cross_learning_group,
             predict_transformed=predict_transformed,
@@ -455,8 +455,7 @@ class SearchCV(BaseForecaster):
     def update(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> "SearchCV":
         """Call update on the forecaster with the best found parameters.
 
@@ -468,11 +467,8 @@ class SearchCV(BaseForecaster):
         y : pl.DataFrame
             Target time series for updates.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series for updates.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series for updates.
 
         Returns
         -------
@@ -480,15 +476,15 @@ class SearchCV(BaseForecaster):
 
         """
         check_is_fitted(self)
-        self.best_forecaster_.update(y, X_post, X_ante)
+
+        self.best_forecaster_.update(y, X)
         return self
 
     @available_if(_best_forecaster_has("update_predict"))  # type: ignore[untyped-decorator]
     def update_predict(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         stride: StrictInt | None = None,
         predict_transformed: bool = False,
@@ -504,11 +500,8 @@ class SearchCV(BaseForecaster):
         y : pl.DataFrame
             Target time series for updates.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series for updates.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series for updates.
 
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast recursively. If None, uses the fitted forecaster's
@@ -532,16 +525,16 @@ class SearchCV(BaseForecaster):
 
         """
         check_is_fitted(self)
+
         return self.best_forecaster_.update_predict(
-            y, X_post, X_ante, forecasting_horizon, stride, predict_transformed, **params
+            y, X, forecasting_horizon, stride, predict_transformed, **params
         )
 
     @available_if(_best_forecaster_has("reset"))  # type: ignore[untyped-decorator]
     def reset(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
     ) -> "SearchCV":
         """Call reset on the forecaster with the best found parameters.
 
@@ -553,11 +546,8 @@ class SearchCV(BaseForecaster):
         y : pl.DataFrame
             Target time series.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         Returns
         -------
@@ -565,7 +555,8 @@ class SearchCV(BaseForecaster):
 
         """
         check_is_fitted(self)
-        self.best_forecaster_.reset(y, X_post, X_ante)
+
+        self.best_forecaster_.reset(y, X)
         return self
 
     @property
@@ -817,8 +808,7 @@ class SearchCV(BaseForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: int = 1,
         **params: object,
     ) -> "SearchCV":
@@ -829,11 +819,8 @@ class SearchCV(BaseForecaster):
         y : pl.DataFrame
             Target time series.
 
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
 
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
@@ -863,10 +850,10 @@ class SearchCV(BaseForecaster):
         self.fit_forecasting_horizon_ = forecasting_horizon
 
         # Set interval attribute (required by forecaster interface)
-        self.interval_ = check_inputs(y, X_post, X_ante)
+        self.interval_ = check_inputs(y, X)
 
         # Set panel data structure attributes (required by forecaster interface)
-        self._set_local_groups(y, X_post, X_ante)
+        self._set_local_groups(y, X)
 
         self.sampler_ = clone(self.sampler).instantiate().instance_
         self.warmup_sampler_ = optuna.samplers.RandomSampler()
@@ -885,7 +872,7 @@ class SearchCV(BaseForecaster):
         scorers, refit_metric = self._get_scorers()
 
         # TODO: Replace with something adapted to pl time series
-        y, X_post = indexable(y, X_post)
+        y, X = indexable(y, X)
         params = _check_method_params(y, params=params)
 
         routed_params = self._get_routed_params_for_fit(params)
@@ -937,8 +924,7 @@ class SearchCV(BaseForecaster):
                     delayed(_fit_and_score)(
                         clone(base_forecaster),
                         y,
-                        X_post,
-                        X_ante,
+                        X,
                         forecasting_horizon,
                         train=train,
                         test=test,
@@ -1028,9 +1014,8 @@ class SearchCV(BaseForecaster):
             refit_start_time = time.time()
             self.best_forecaster_.fit(
                 y,
-                X_post,
-                X_ante,
-                forecasting_horizon,
+                X=X,
+                forecasting_horizon=forecasting_horizon,
                 **routed_params.forecaster.fit,  # type: ignore[attr-defined]
             )
             refit_end_time = time.time()

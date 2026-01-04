@@ -4,7 +4,6 @@ import abc
 from copy import deepcopy
 
 import polars as pl
-import polars.selectors as cs
 from pydantic import StrictInt
 from sklearn.utils.validation import check_is_fitted
 
@@ -19,10 +18,10 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     ----------
     target_transformer : instance of `BaseTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
-
     feature_transformer : instance of `BaseTransformer` or None, default=None
         Transformer used to transform the target time series into features.
-        .
+    input_features: "X" | "y_t|X" | "y|X", default="y_t|X"
+        Defines how the input to the ``feature_transformer`` is built.
     """
 
     @property
@@ -40,8 +39,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def fit(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         **params,
     ) -> "BasePointForecaster":
@@ -51,16 +49,10 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ----------
         y : pl.DataFrame
             Target time series.
-
-        X_post : pl.DataFrame or None, default=None
-            Ex-ante feature time series.
-
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
-
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
-
         **params : dict
             Metadata to route to nested estimators.
 
@@ -72,8 +64,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         BaseForecaster._pre_fit(
             self,
             y=y,
-            X_post=X_post,
-            X_ante=X_ante,
+            X=X,
             forecasting_horizon=forecasting_horizon,
         )
 
@@ -81,7 +72,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def predict(
         self,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         cross_learning_group: str | None = None,
         predict_transformed: bool = False,
@@ -91,21 +82,17 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        X_ante : pl.DataFrame or None, default=None
-            Ex-post feature time series.
-
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
-
         cross_learning_group : str or None, default=None
             For panel data (local_group_names_ is not None):
             - If None: predict for all groups (default behavior)
             - If str: predict only for the specified group (cross-learning)
             For global data: parameter is ignored.
-
         predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed space.
-
         **params : dict
             Metadata to route to nested estimators.
 
@@ -129,7 +116,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 f"Group {cross_learning_group} not found in local groups: {self.local_group_names_}"
             )
 
-        # Handle panel data: predict all struct columns if cross_learning_group=None
+        # Handle panel data: predict all panel groups if cross_learning_group=None
         # For now, just predict all groups together (default behavior)
         # TODO: Implement individual group predictions if needed
 
@@ -145,26 +132,17 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     include_global=False,
                 )
 
-            # Filter _X_post_observed
-            if forecaster._X_post_observed is not None:
-                forecaster._X_post_observed = filter_panel_columns(
-                    forecaster._X_post_observed,
-                    cross_learning_group,
-                    self.local_group_names_,
-                    include_global=True,
-                )
-
-            # Filter X_ante
-            if X_ante is not None:
-                X_ante = filter_panel_columns(
-                    X_ante,
+            # Filter X
+            if X is not None:
+                X = filter_panel_columns(
+                    X,
                     cross_learning_group,
                     self.local_group_names_,
                     include_global=True,
                 )
 
         y_pred = pl.DataFrame()
-        for step in range(1, forecasting_horizon + 1, self.fit_forecasting_horizon_):
+        for step in range(0, forecasting_horizon, self.fit_forecasting_horizon_):
             y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, cross_learning_group)
 
             # Choose which version to accumulate based on predict_transformed
@@ -173,25 +151,24 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             else:
                 y_pred = pl.concat([y_pred, y_pred_step_inv])
 
-            if step + self.fit_forecasting_horizon_ <= forecasting_horizon:
-                time = y_pred_step.select(cs.by_name("time"))
-                # Guard against None - X_post_observed should be set after fit
-                if forecaster._X_post_observed is not None:
-                    X_post_old = forecaster._X_post_observed[[-1]].select(~cs.by_name("time"))
-                    X_post = pl.concat([X_post_old] * len(time))
-                    X_post = pl.concat([time, X_post], how="horizontal")
-                else:
-                    X_post = None
-
+            if step + self.fit_forecasting_horizon_ < forecasting_horizon:
                 # Use inverse-transformed predictions for recursive update
-                if self.local_group_names_ is None:
-                    # Global data: select flat columns
-                    y = y_pred_step_inv.select(["time"] + self.local_y_names_)
-                else:
-                    # Panel data: predictions already have struct columns
-                    y = y_pred_step_inv.select(["time"] + self.local_group_names_)
+                # For both global and panel data, select columns from local_y_schema_
+                y = y_pred_step_inv.select(["time"] + list(self.local_y_schema_.keys()))
 
-                forecaster.update(y, X_post, X_ante)
+                X_slice = None
+                if X is not None:
+                    start_idx = step
+                    end_idx = start_idx + self.fit_forecasting_horizon_
+                    X_slice = X[start_idx:end_idx]
+
+                    if len(X_slice) != len(y):
+                        raise ValueError(
+                            f"Missing X for future steps. Needed {len(y)} rows, "
+                            f"but X slice has {len(X_slice)} rows."
+                        )
+
+                forecaster.update(y, X_slice)
 
         y_pred = y_pred.with_columns(observed_time=y_pred["observed_time"][0])
 

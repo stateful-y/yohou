@@ -1,5 +1,7 @@
 """Utilities for panel data inspection and filtering."""
 
+import re
+
 import polars as pl
 
 
@@ -7,22 +9,24 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
     """Inspect DataFrame columns to distinguish global and local (panel) data.
 
     Global columns apply to all time series (e.g., single univariate series or
-    features common across all panels). Local columns are polars Struct columns
-    containing different time series for each group (e.g., sales per store).
+    features common across all panels). Local columns use the __ separator to
+    indicate panel data groups following the pattern <GROUP>__<SERIES>
+    (e.g., sales__store_1, sales__store_2).
 
     Parameters
     ----------
     df : pl.DataFrame
-        Input DataFrame with potential mix of global and struct columns.
+        Input DataFrame with potential mix of global and group columns.
         Must contain a "time" column (which is ignored in the output).
 
     Returns
     -------
     global_names : list of str
-        Names of non-struct columns (excluding "time").
+        Names of columns without __ separator (excluding "time").
 
     local_groups : dict of str to list of str
-        Mapping from struct column names to their field names.
+        Mapping from group prefixes to their full column names.
+        Example: {"sales": ["sales__store_1", "sales__store_2"]}
 
     Examples
     --------
@@ -38,38 +42,43 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
     >>> local_groups
     {}
 
-    >>> # Panel data with struct column
+    >>> # Panel data with __ separator
     >>> df_panel = pl.DataFrame({
     ...     "time": [1, 2, 3],
-    ...     "sales": pl.Series([
-    ...         {"store_1": 100, "store_2": 150},
-    ...         {"store_1": 110, "store_2": 160},
-    ...         {"store_1": 120, "store_2": 170}
-    ...     ])
+    ...     "sales__store_1": [100, 110, 120],
+    ...     "sales__store_2": [150, 160, 170]
     ... })
     >>> global_names, local_groups = inspect_locality(df_panel)
     >>> global_names
     []
     >>> local_groups
-    {'sales': ['store_1', 'store_2']}
+    {'sales': ['sales__store_1', 'sales__store_2']}
 
     See Also
     --------
-    filter_panel_columns : Filter DataFrame to specific struct column for cross-learning
+    filter_panel_columns : Filter DataFrame to specific group for cross-learning
     """
-    global_names, local_groups = [], {}
-    for col, dtype in df.schema.items():
+    # Pattern to match <GROUP>__<SERIES> format
+    group_pattern = re.compile(r'^([^_]+)__(.+)$')
+    
+    global_names = []
+    local_groups: dict[str, list[str]] = {}
+    
+    for col in df.columns:
         if col == "time":
             continue
-
-        if isinstance(dtype, pl.Struct):
-            # Cast to Struct to access fields attribute
-            struct_dtype = df.schema[col]
-            if hasattr(struct_dtype, "fields"):
-                local_groups[col] = [field.name for field in struct_dtype.fields]  # type: ignore[attr-defined]
+        
+        match = group_pattern.match(col)
+        if match:
+            # This is a panel data column
+            group_prefix = match.group(1)
+            if group_prefix not in local_groups:
+                local_groups[group_prefix] = []
+            local_groups[group_prefix].append(col)
         else:
+            # This is a global column
             global_names.append(col)
-
+    
     return global_names, local_groups
 
 
@@ -79,63 +88,63 @@ def filter_panel_columns(
     local_group_names: list[str] | None,
     include_global: bool = True,
 ) -> pl.DataFrame:
-    """Filter DataFrame to specific struct column for cross-learning.
+    """Filter DataFrame to specific group prefix for cross-learning.
 
-    For panel data (DataFrames with struct columns representing multiple time series),
-    this function filters columns to keep only the "time" column, a specified struct
-    column, and optionally global (non-struct) columns.
+    For panel data (DataFrames with columns using __ separator for groups),
+    this function filters columns to keep only the "time" column, columns
+    matching a specified group prefix, and optionally global columns.
 
     Parameters
     ----------
     df : pl.DataFrame
-        Input DataFrame with potential mix of global and struct columns.
+        Input DataFrame with potential mix of global and group columns.
         Must contain a "time" column.
 
     cross_learning_group : str
-        Name of the struct column to keep for cross-learning prediction.
+        Group prefix to keep for cross-learning prediction (e.g., "sales").
+        All columns matching <cross_learning_group>__* will be kept.
 
     local_group_names : list of str or None
-        Names of all struct columns in the dataset. Used to distinguish
-        struct columns from global columns. If None, no filtering is performed.
+        List of all group prefixes in the dataset. Used to distinguish
+        group columns from global columns. If None, no filtering is performed.
 
     include_global : bool, default=True
-        Whether to keep global (non-struct) columns in addition to time and
-        the specified struct column.
-        - True: Keep time + specified struct + all global columns (for X_post/X_ante)
-        - False: Keep only time + specified struct (for y target data)
+        Whether to keep global columns (without __) in addition to time and
+        the specified group columns.
+        - True: Keep time + specified group + all global columns for X
+        - False: Keep only time + specified group (for y target data)
 
     Returns
     -------
     pl.DataFrame
-        Filtered DataFrame containing "time", the specified struct column,
-        and optionally global columns.
+        Filtered DataFrame containing "time", columns matching the specified
+        group prefix, and optionally global columns.
 
     Examples
     --------
     >>> import polars as pl
-    >>> # Panel data with struct and global columns
+    >>> # Panel data with group columns and global column
     >>> df = pl.DataFrame({
     ...     "time": [1, 2, 3],
     ...     "global_feature": [10.0, 20.0, 30.0],
-    ...     "sales": pl.Series([
-    ...         {"store_1": 100, "store_2": 150},
-    ...         {"store_1": 110, "store_2": 160},
-    ...         {"store_1": 120, "store_2": 170}
-    ...     ])
+    ...     "sales__store_1": [100, 110, 120],
+    ...     "sales__store_2": [150, 160, 170],
+    ...     "inventory__store_1": [50, 55, 60],
+    ...     "inventory__store_2": [75, 80, 85]
     ... })
     >>> # Filter for target (y) - exclude global features
     >>> y_filtered = filter_panel_columns(
-    ...     df, "sales", ["sales"], include_global=False
+    ...     df, "sales", ["sales", "inventory"], include_global=False
     ... )
     >>> y_filtered.columns
-    ['time', 'sales']
+    ['time', 'sales__store_1', 'sales__store_2']
 
     >>> # Filter for features (X) - include global features
     >>> X_filtered = filter_panel_columns(
-    ...     df, "sales", ["sales"], include_global=True
+    ...     df, "sales", ["sales", "inventory"], include_global=True
     ... )
-    >>> X_filtered.columns
-    ['time', 'global_feature', 'sales']
+    >>> set(X_filtered.columns) == {'time', 'global_feature', 'sales__store_1', 'sales__store_2'}
+    True
 
     See Also
     --------
@@ -145,15 +154,24 @@ def filter_panel_columns(
     if local_group_names is None:
         return df
 
-    if include_global:
-        # Keep time + specific struct + all global columns (non-struct columns)
-        cols_to_keep = [
-            c
-            for c in df.columns
-            if c == "time" or c == cross_learning_group or c not in local_group_names
-        ]
-    else:
-        # Keep only time + specific struct column
-        cols_to_keep = [c for c in df.columns if c == "time" or c == cross_learning_group]
-
+    # Determine which columns to keep
+    cols_to_keep = ["time"]
+    
+    for col in df.columns:
+        if col == "time":
+            continue
+        
+        # Check if this column belongs to the target group
+        if col.startswith(f"{cross_learning_group}__"):
+            cols_to_keep.append(col)
+        elif include_global:
+            # Check if this is a global column (doesn't match any group prefix)
+            is_global = True
+            for group_prefix in local_group_names:
+                if col.startswith(f"{group_prefix}__"):
+                    is_global = False
+                    break
+            if is_global:
+                cols_to_keep.append(col)
+    
     return df.select(cols_to_keep)

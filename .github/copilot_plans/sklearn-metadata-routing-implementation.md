@@ -4,7 +4,7 @@
 
 Yohou integrates with scikit-learn's metadata routing system to enable flexible propagation of metadata (e.g., `forecasting_horizon`, `time_weight`, and custom parameters) through pipelines, transformers, and cross-validation workflows. This document explains how metadata routing is implemented in Yohou and how it differs from standard sklearn usage.
 
-**Key Design Principle**: Time series data (`y`, `X_post`, `X_ante`) are **NOT routed as metadata** - they remain explicit positional/keyword arguments in all method signatures. Only auxiliary parameters like `time_weight`, `forecasting_horizon`, and custom metadata are routed through the `**params` mechanism.
+**Key Design Principle**: Time series data (`y`, `X`) are **NOT routed as metadata** - they remain explicit positional/keyword arguments in all method signatures. Only auxiliary parameters like `time_weight`, `forecasting_horizon`, and custom metadata are routed through the `**params` mechanism.
 
 ## Critical Implementation Decisions
 
@@ -62,16 +62,17 @@ if "update_transform" not in SIMPLE_METHODS:
 
 ### 3. Data vs Metadata Distinction
 
-**Core Principle**: Time series data (`y`, `X_post`, `X_ante`) are NOT metadata - they are the primary data being modeled.
+**Core Principle**: Time series data (`y`, `X`) are NOT metadata - they are the primary data being modeled.
 
 | Parameter | Type | Routing | Rationale |
-|-----------|------|---------|-----------|
+|-----------|------|---------|-----------||
 | `y` | pl.DataFrame | ❌ Not routed | Target time series - primary data |
-| `X_post` | pl.DataFrame | ❌ Not routed | Ex-ante features - primary data |
-| `X_ante` | pl.DataFrame | ❌ Not routed | Ex-post features - primary data |
+| `X` | pl.DataFrame | ❌ Not routed | Ex-ante features (known in advance) - primary data |
 | `forecasting_horizon` | int | Explicit parameter | Forecast horizon - explicit param that CAN be routed |
 | `time_weight` | Callable or pl.DataFrame | ✅ Routed | Time-based sample weighting |
 | Custom params | Any | ✅ Routed | User-defined metadata |
+
+**Note**: All features in `X` are expected to be known ex-ante (in advance). For ex-post features (observed after the fact), use `ColumnForecaster` to forecast them first.
 
 ### 4. Time Series-Specific Metadata
 
@@ -122,8 +123,7 @@ class BaseForecaster(BaseEstimator):
     def fit(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         **params,  # ← Metadata routing
     ) -> "BaseForecaster":
@@ -133,7 +133,7 @@ class BaseForecaster(BaseEstimator):
 
     def predict(
         self,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         **params,  # ← Metadata routing
     ) -> pl.DataFrame:
@@ -232,15 +232,14 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X_post: pl.DataFrame | None = None,
-        X_ante: pl.DataFrame | None = None,
+        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         time_weight: Callable | pl.DataFrame | None = None,  # ← Explicit param
         **params,
     ) -> "PointReductionForecaster":
         """Fit forecaster with optional time-based weighting."""
         y_t, X_t = BasePointForecaster._pre_fit(
-            self, y=y, X_post=X_post, X_ante=X_ante,
+            self, y=y, X=X,
             forecasting_horizon=forecasting_horizon
         )
 
@@ -370,11 +369,11 @@ def assert_request_is_empty(metadata_request, exclude=None):
 ```python
 def test_forecaster_routing_with_reduction(y_X_factory, consuming_estimator):
     """Reduction forecasters should route metadata to sub-estimators."""
-    y, X_post, _ = y_X_factory(length=50, n_y_features=1, n_X_post_features=1)
+    y, X = y_X_factory(length=50, n_targets=1, n_X_features=1)
     estimator, registry = consuming_estimator
 
     forecaster = PointReductionForecaster(estimator=estimator)
-    forecaster.fit(y, X_post, forecasting_horizon=3)
+    forecaster.fit(y, X, forecasting_horizon=3)
 
     # Check that estimator's fit was called
     assert len(registry) > 0
@@ -425,7 +424,7 @@ def filter_panel_columns(
         Struct column to keep for prediction
     include_global : bool
         Whether to keep global (non-struct) columns
-        - True: Keep for X_post/X_ante (features)
+        - True: Keep for X (features)
         - False: Keep only for y (target)
     """
     if local_group_names is None:
@@ -522,12 +521,13 @@ search = SearchCV(
 # time_weight routes through cross-validation to each fold
 search.fit(
     y,
+    X,
     forecasting_horizon=3,
     time_weight=exponential_weight  # ← Routes to each CV fold
 )
 
 # Best forecaster with optimal hyperparameters
-y_pred = search.predict(forecasting_horizon=3)
+y_pred = search.predict(forecasting_horizon=3, X=X_future)
 ```
 
 ### Panel Data with Cross-Learning
@@ -568,9 +568,11 @@ y_pred = forecaster.predict(
 
 1. **Global Enable**: `set_config(enable_metadata_routing=True)` called on import
 2. **Composite Methods**: Yohou-specific methods (`update_transform`, `update_predict`) registered
-3. **Time Series Params**: `y`, `X_post`, `X_ante` are NOT routed (explicit parameters only)
+3. **Time Series Params**: `y`, `X` are NOT routed (explicit parameters only)
 4. **Update Method**: `update()` does NOT accept `**params` (memory management only)
 5. **Explicit time_weight**: Declared as explicit parameter (not in `**params`)
+
+**Note**: All features in `X` are expected to be known ex-ante (in advance). For ex-post features (observed after the fact), use `ColumnForecaster` to forecast them first.
 
 ### Current Implementation Status
 
@@ -597,8 +599,12 @@ y_pred = forecaster.predict(
 - Enables nesting (pipelines, meta-estimators) without signature changes
 - Follows sklearn patterns for composability
 
-**Why not route `y`, `X_post`, `X_ante`?**
+**Why not route `y` and `X`?**
 - These are primary data, not auxiliary metadata
+- Explicit parameters make API clearer
+- Avoids confusion about what's being modeled vs what's metadata
+
+**Note**: All features in `X` are expected to be known ex-ante. For ex-post features, use `ColumnForecaster`.
 - Explicit parameters make API clearer
 - Avoids confusion about what's being modeled vs what's metadata
 
