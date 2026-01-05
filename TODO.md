@@ -1,7 +1,8 @@
 - Check panel forecasting works
-- Clarify _predict_one + _predict API
-- Make use of sklearn Tags
+- Implement predict_interval API
 - Implement proper check_dataframe
+- Make use of sklearn Tags
+- Clarify _predict_one + _predict API
 - Refactor reducers to enable direct and multi-output strategies
 - Add splitter to testing infrastructure
 - Implement variety of splitters

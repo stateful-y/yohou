@@ -410,7 +410,7 @@ class SearchCV(BaseForecaster):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        cross_learning_group: str | None = None,
+        panel_group: str | None = None,
         predict_transformed: bool = False,
     ) -> pl.DataFrame:
         """Call predict on the forecaster with the best found parameters.
@@ -427,7 +427,7 @@ class SearchCV(BaseForecaster):
             Horizon to forecast. If None, uses the fitted forecaster's
             ``fit_forecasting_horizon_``.
 
-        cross_learning_group : str or None, default=None
+        panel_group : str or None, default=None
             For panel data (local_group_names_ is not None):
             - If None: predict for all groups (default behavior)
             - If str: predict only for the specified group (cross-learning)
@@ -447,7 +447,7 @@ class SearchCV(BaseForecaster):
         return self.best_forecaster_.predict(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            cross_learning_group=cross_learning_group,
+            panel_group=panel_group,
             predict_transformed=predict_transformed,
         )
 
@@ -853,7 +853,7 @@ class SearchCV(BaseForecaster):
         self.interval_ = check_inputs(y, X)
 
         # Set panel data structure attributes (required by forecaster interface)
-        self._set_local_groups(y, X)
+        self._set_input_attributes(y, X)
 
         self.sampler_ = clone(self.sampler).instantiate().instance_
         self.warmup_sampler_ = optuna.samplers.RandomSampler()

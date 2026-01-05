@@ -196,11 +196,32 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self
 
         """
-        y_contains_points = set(list(self.local_y_schema_.keys())) <= set(y.columns)
+        # Check if y contains point data (original target) vs interval data (predictions)
+        # For panel data, columns are prefixed (e.g., "x__a"), so check with prefixes
+        if self.local_group_names_ is not None:
+            # Panel data: check if any group's columns exist
+            y_contains_points = any(
+                f"{group}__{col}" in y.columns
+                for group in self.local_group_names_
+                for col in self.local_y_schema_.keys()
+            )
+        else:
+            # Global data: direct column name check
+            y_contains_points = set(list(self.local_y_schema_.keys())) <= set(y.columns)
 
         if "point" in self.prediction_types or y_contains_points:
-            # Select time and the specified columns
-            y = y.select(["time"] + list(self.local_y_schema_.keys()))
+            # Point data: select time and target columns
+            if self.local_group_names_ is not None:
+                # Panel data: select prefixed columns
+                target_cols = [
+                    f"{group}__{col}"
+                    for group in self.local_group_names_
+                    for col in self.local_y_schema_.keys()
+                ]
+            else:
+                # Global data: select unprefixed columns
+                target_cols = list(self.local_y_schema_.keys())
+            y = y.select(["time"] + target_cols)
 
         else:
             time = y.select(cs.by_name("time"))
@@ -214,20 +235,22 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                             group_cols = [c for c in y.columns if c.startswith(f"{local_group_name}__")]
                             y_local = y.select(group_cols)
 
+                            # Build expressions using actual column names (with prefixes)
+                            # For each unprefixed col in schema, find matching prefixed columns
                             y_local = y_local.select(
                                 [
                                     pl.concat_list(
                                         [
-                                            f"{col}_lower_{coverage_rate}"
+                                            f"{local_group_name}__{col}_lower_{coverage_rate}"
                                             for coverage_rate in self.coverage_rates
                                         ]
                                         + [
-                                            f"{col}_upper_{coverage_rate}"
+                                            f"{local_group_name}__{col}_upper_{coverage_rate}"
                                             for coverage_rate in self.coverage_rates
                                         ]
                                     )
                                     .list.mean()
-                                    .alias(col)
+                                    .alias(f"{local_group_name}__{col}")
                                     for col in list(self.local_y_schema_.keys())
                                 ]
                             )
@@ -269,7 +292,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        cross_learning_group: str | None = None,
+        panel_group: str | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -283,7 +306,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
 
-        cross_learning_group : str or None, default=None
+        panel_group : str or None, default=None
             For panel data (local_group_names_ is not None):
             - If None: predict for all groups (default behavior)
             - If str: predict only for the specified group (cross-learning)
@@ -307,26 +330,26 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if forecasting_horizon is None:
             forecasting_horizon = self.fit_forecasting_horizon_
 
-        # Validate cross_learning_group only if provided
-        if cross_learning_group is not None and (
-            self.local_group_names_ is None or cross_learning_group not in self.local_group_names_
+        # Validate panel_group only if provided
+        if panel_group is not None and (
+            self.local_group_names_ is None or panel_group not in self.local_group_names_
         ):
             raise ValueError(
-                f"Group {cross_learning_group} not found in local groups: {self.local_group_names_}"
+                f"Group {panel_group} not found in local groups: {self.local_group_names_}"
             )
 
-        # Handle panel data: predict all panel groups if cross_learning_group=None
+        # Handle panel data: predict all panel groups if panel_group=None
         # For now, just predict all groups together (default behavior)
         # TODO: Implement individual group predictions if needed
 
         forecaster = deepcopy(self)
 
-        if self.local_group_names_ is not None and cross_learning_group is not None:
+        if self.local_group_names_ is not None and panel_group is not None:
             # Filter _y_observed
             if forecaster._y_observed is not None:
                 forecaster._y_observed = filter_panel_columns(
                     forecaster._y_observed,
-                    cross_learning_group,
+                    panel_group,
                     self.local_group_names_,
                     include_global=False,
                 )
@@ -335,14 +358,14 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             if X is not None:
                 X = filter_panel_columns(
                     X,
-                    cross_learning_group,
+                    panel_group,
                     self.local_group_names_,
                     include_global=True,
                 )
 
         y_pred = pl.DataFrame()
         for step in range(1, forecasting_horizon + 1, self.fit_forecasting_horizon_):
-            y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, cross_learning_group)
+            y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, panel_group)
 
             # Choose which version to accumulate based on predict_transformed
             if predict_transformed:
@@ -376,7 +399,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     y = pl.DataFrame(y_data)
                 else:
                     # Panel data case: compute midpoints for each group
-                    y_dict = {}
+                    y_parts = [time]
                     for local_group_name in self.local_group_names_:
                         # Select columns for this group
                         group_cols = [c for c in y_pred_step_inv.columns if c.startswith(f"{local_group_name}__")]
@@ -384,25 +407,26 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
                         y_local_data = {}
                         for col in list(self.local_y_schema_.keys()):
-                            # Find coverage rate columns for this target
+                            # Find coverage rate columns for this target (with prefix)
                             lower_cols = [
-                                c for c in y_local_pred.columns if c.startswith(f"{col}_lower_")
+                                c for c in y_local_pred.columns if c.startswith(f"{local_group_name}__{col}_lower_")
                             ]
                             upper_cols = [
-                                c for c in y_local_pred.columns if c.startswith(f"{col}_upper_")
+                                c for c in y_local_pred.columns if c.startswith(f"{local_group_name}__{col}_upper_")
                             ]
 
                             if lower_cols and upper_cols:
                                 # Use the first coverage rate to compute midpoint
                                 lower_col = sorted(lower_cols)[0]
                                 upper_col = sorted(upper_cols)[0]
-                                y_local_data[col] = (
+                                # Store with prefix to avoid duplicate column names
+                                y_local_data[f"{local_group_name}__{col}"] = (
                                     y_local_pred[lower_col] + y_local_pred[upper_col]
                                 ) / 2
 
-                        y_dict[local_group_name] = pl.DataFrame(y_local_data)
+                        y_parts.append(pl.DataFrame(y_local_data))
 
-                    y = pl.concat([time] + list(y_dict.values()), how="horizontal")
+                    y = pl.concat(y_parts, how="horizontal")
 
                 X_slice = None
                 if X is not None:

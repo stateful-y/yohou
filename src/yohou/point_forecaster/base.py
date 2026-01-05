@@ -74,7 +74,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        cross_learning_group: str | None = None,
+        panel_group: str | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -86,7 +86,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Exogenous feature time series.
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
-        cross_learning_group : str or None, default=None
+        panel_group : str or None, default=None
             For panel data (local_group_names_ is not None):
             - If None: predict for all groups (default behavior)
             - If str: predict only for the specified group (cross-learning)
@@ -108,26 +108,26 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if forecasting_horizon is None:
             forecasting_horizon = self.fit_forecasting_horizon_
 
-        # Validate cross_learning_group only if provided
-        if cross_learning_group is not None and (
-            self.local_group_names_ is None or cross_learning_group not in self.local_group_names_
+        # Validate panel_group only if provided
+        if panel_group is not None and (
+            self.local_group_names_ is None or panel_group not in self.local_group_names_
         ):
             raise ValueError(
-                f"Group {cross_learning_group} not found in local groups: {self.local_group_names_}"
+                f"Group {panel_group} not found in local groups: {self.local_group_names_}"
             )
 
-        # Handle panel data: predict all panel groups if cross_learning_group=None
+        # Handle panel data: predict all panel groups if panel_group=None
         # For now, just predict all groups together (default behavior)
         # TODO: Implement individual group predictions if needed
 
         forecaster = deepcopy(self)
 
-        if self.local_group_names_ and cross_learning_group is not None:
+        if self.local_group_names_ and panel_group is not None:
             # Filter _y_observed
             if forecaster._y_observed is not None:
                 forecaster._y_observed = filter_panel_columns(
                     forecaster._y_observed,
-                    cross_learning_group,
+                    panel_group,
                     self.local_group_names_,
                     include_global=False,
                 )
@@ -136,14 +136,14 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             if X is not None:
                 X = filter_panel_columns(
                     X,
-                    cross_learning_group,
+                    panel_group,
                     self.local_group_names_,
                     include_global=True,
                 )
 
         y_pred = pl.DataFrame()
         for step in range(0, forecasting_horizon, self.fit_forecasting_horizon_):
-            y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, cross_learning_group)
+            y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, panel_group)
 
             # Choose which version to accumulate based on predict_transformed
             if predict_transformed:
@@ -153,8 +153,16 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             if step + self.fit_forecasting_horizon_ < forecasting_horizon:
                 # Use inverse-transformed predictions for recursive update
-                # For both global and panel data, select columns from local_y_schema_
-                y = y_pred_step_inv.select(["time"] + list(self.local_y_schema_.keys()))
+                # Select columns based on whether we have panel data or not
+                if self.local_group_names_ is None:
+                    # Non-panel data: schemas contain actual column names
+                    y = y_pred_step_inv.select(["time"] + list(self.local_y_schema_.keys()))
+                else:
+                    # Panel data: reconstruct prefixed column names from schema
+                    y_columns = ["time"]
+                    for group_name in self.local_group_names_:
+                        y_columns.extend([f"{group_name}__{col}" for col in self.local_y_schema_.keys()])
+                    y = y_pred_step_inv.select(y_columns)
 
                 X_slice = None
                 if X is not None:

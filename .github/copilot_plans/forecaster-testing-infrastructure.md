@@ -97,9 +97,9 @@ The testing infrastructure consists of three main components that work together 
 17. **`check_reduction_strategy`** - Validates reduction_strategy parameter exists
 
 **Cross-Learning Forecaster Checks (3 functions)**:
-18. **`check_cross_learning_panel_data`** - Validates cross_learning_group=None predicts all groups in panel data
-19. **`check_cross_learning_single_group`** - Validates cross_learning_group filters to specified struct column
-20. **`check_cross_learning_invalid_group_raises`** - Validates ValueError raised for invalid cross_learning_group
+18. **`check_cross_learning_panel_data`** - Validates panel_group=None predicts all groups in panel data
+19. **`check_cross_learning_single_group`** - Validates panel_group filters to specified struct column
+20. **`check_cross_learning_invalid_group_raises`** - Validates ValueError raised for invalid panel_group
 
 **Composition Class Checks (8 functions)**:
 21. **`check_column_forecaster_column_selection`** - Validates column selectors (str, list, slice, callable) work correctly
@@ -553,7 +553,7 @@ def test_point_reduction_cross_learning_checks(forecaster, tags, expected_failur
 ```
 
 **Cross-Learning Check Functions**:
-1. **`check_cross_learning_panel_data`**: Validates `cross_learning_group=None` predicts all groups
+1. **`check_cross_learning_panel_data`**: Validates `panel_group=None` predicts all groups
 2. **`check_cross_learning_single_group`**: Validates filtering to specific struct column
 3. **`check_cross_learning_invalid_group_raises`**: Validates error handling for invalid groups
 
@@ -563,7 +563,7 @@ def test_point_reduction_cross_learning_checks(forecaster, tags, expected_failur
 - Interval forecasters nest interval bounds within structs: `store_0_lower_0.1` inside `"stores"` struct
 
 **Key Considerations**:
-- `cross_learning_group` operates on struct column level, not field level (e.g., `"stores"` not `"store_0"`)
+- `panel_group` operates on struct column level, not field level (e.g., `"stores"` not `"store_0"`)
 - For interval forecasters, unnest struct columns to access interval bounds
 - Expected failure for `IntervalReductionForecaster` with default estimator: `check_interval_bounds` (QuantileRegressor doesn't guarantee monotonic bounds)
 

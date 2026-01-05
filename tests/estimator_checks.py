@@ -1042,6 +1042,15 @@ def check_fit_sets_forecaster_attributes(forecaster, y, X=None, forecasting_hori
     assert hasattr(forecaster_clone, "local_X_schema_"), (
         "fit() must set local_X_schema_ attribute (dict[str, pl.DataType])"
     )
+    assert hasattr(forecaster_clone, "global_X_schema_"), (
+        "fit() must set global_X_schema_ attribute (None or dict[str, pl.DataType])"
+    )
+    assert hasattr(forecaster_clone, "local_y_t_schema_"), (
+        "fit() must set local_y_t_schema_ attribute (None or dict[str, pl.DataType])"
+    )
+    assert hasattr(forecaster_clone, "local_X_t_schema_"), (
+        "fit() must set local_X_t_schema_ attribute (None or dict[str, pl.DataType])"
+    )
 
     # Check observation buffers
     assert hasattr(forecaster_clone, "_y_observed"), "fit() must set _y_observed buffer"
@@ -1736,7 +1745,7 @@ def check_reduction_strategy(forecaster):
 def check_cross_learning_panel_data(forecaster, y_panel, X_panel=None):
     """Check cross-learning with panel data predicts all groups by default.
 
-    Validates that when cross_learning_group=None (default), predictions are
+    Validates that when panel_group=None (default), predictions are
     generated for all groups in the panel data columns.
 
     Parameters
@@ -1755,8 +1764,8 @@ def check_cross_learning_panel_data(forecaster, y_panel, X_panel=None):
     """
     from yohou.utils.panel import inspect_locality
 
-    # Predict with default (cross_learning_group=None)
-    y_pred = forecaster.predict(X=X_panel, forecasting_horizon=3, cross_learning_group=None)
+    # Predict with default (panel_group=None)
+    y_pred = forecaster.predict(X=X_panel, forecasting_horizon=3, panel_group=None)
 
     # Check that all local groups from training data are in predictions
     _, y_local_groups = inspect_locality(y_panel)
@@ -1767,14 +1776,14 @@ def check_cross_learning_panel_data(forecaster, y_panel, X_panel=None):
             for field in expected_fields:
                 assert field in y_pred.columns, (
                     f"Column '{field}' missing from predictions. "
-                    f"cross_learning_group=None should predict all groups."
+                    f"panel_group=None should predict all groups."
                 )
 
 
 def check_cross_learning_single_group(forecaster, y_panel, X_panel=None):
     """Check cross-learning filters to specified panel group.
 
-    Validates that when cross_learning_group is specified, predictions are
+    Validates that when panel_group is specified, predictions are
     generated only for that panel group (all columns with that prefix).
 
     Parameters
@@ -1801,7 +1810,7 @@ def check_cross_learning_single_group(forecaster, y_panel, X_panel=None):
 
         # Predict with specific group
         y_pred = forecaster.predict(
-            X=X_panel, forecasting_horizon=3, cross_learning_group=first_group
+            X=X_panel, forecasting_horizon=3, panel_group=first_group
         )
 
         # Should have columns from the specified group (flat columns with __ separator)
@@ -1814,9 +1823,9 @@ def check_cross_learning_single_group(forecaster, y_panel, X_panel=None):
 
 
 def check_cross_learning_invalid_group_raises(forecaster, y_panel, X_panel=None):
-    """Check that invalid cross_learning_group raises ValueError.
+    """Check that invalid panel_group raises ValueError.
 
-    Validates error handling when cross_learning_group specifies a panel group
+    Validates error handling when panel_group specifies a panel group
     that doesn't exist in the training data.
 
     Parameters
@@ -1841,10 +1850,10 @@ def check_cross_learning_invalid_group_raises(forecaster, y_panel, X_panel=None)
         # Try to predict with invalid group name
         try:
             forecaster.predict(
-                X=X_panel, forecasting_horizon=3, cross_learning_group="invalid_group"
+                X=X_panel, forecasting_horizon=3, panel_group="invalid_group"
             )
             raise AssertionError(
-                "predict() should raise ValueError for invalid cross_learning_group, but didn't"
+                "predict() should raise ValueError for invalid panel_group, but didn't"
             )
         except ValueError as e:
             # Expected - check error message mentions the invalid group

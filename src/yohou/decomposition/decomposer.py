@@ -298,7 +298,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        cross_learning_group: str | None = None,
+        panel_group: str | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -310,7 +310,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Future exogenous features (must have forecasting_horizon rows).
         forecasting_horizon : int, optional
             Number of steps to forecast. If None, uses horizon from fit().
-        cross_learning_group : str or None, default=None
+        panel_group : str or None, default=None
             For panel data: predict only for specified group.
         predict_transformed : bool, default=False
             If True, return predictions in transformed space without inverse transform.

@@ -30,7 +30,7 @@ All data uses **polars DataFrames** with a mandatory `"time"` column (datetime t
 
 2. **BaseForecaster** (base for all forecasters)
    - Handles `target_transformer` and `feature_transformer` composition
-   - `_set_local_groups()` enables panel data (local vs. global time series)
+   - `_set_input_attributes()` enables panel data (local vs. global time series)
    - Stores `_y_observed`, `_X_observed` for recursive prediction
    - Signature: `fit(y, X, forecasting_horizon)` - note horizon at fit time
 

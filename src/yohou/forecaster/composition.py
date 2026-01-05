@@ -147,7 +147,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: int | None = None,
-        cross_learning_group: str | None = None,
+        panel_group: str | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -159,7 +159,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Exogenous features.
         forecasting_horizon : int, optional
             Forecasting horizon.
-        cross_learning_group : str, optional
+        panel_group : str, optional
             Group to predict for (panel data).
         predict_transformed : bool, default=False
             Return transformed predictions.
@@ -176,7 +176,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             delayed(forecaster.predict)(
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                cross_learning_group=cross_learning_group,
+                panel_group=panel_group,
                 predict_transformed=predict_transformed,
                 **params,
             )

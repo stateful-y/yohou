@@ -224,11 +224,12 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             y_pred_upper = self._estimator_predict_one(estimator_upper)
 
             # Rename columns to include coverage rate
+            # Use actual column names (prefixed for panel data, unprefixed for global)
             lower_rename = {
-                col: f"{col}_lower_{coverage_rate}" for col in list(self.local_y_t_schema_.keys())
+                col: f"{col}_lower_{coverage_rate}" for col in y_pred_lower.columns
             }
             upper_rename = {
-                col: f"{col}_upper_{coverage_rate}" for col in list(self.local_y_t_schema_.keys())
+                col: f"{col}_upper_{coverage_rate}" for col in y_pred_upper.columns
             }
 
             # Rename columns (works for both global and panel data)

@@ -145,7 +145,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
-        cross_learning_group: str | None = None,
+        panel_group: str | None = None,
         predict_transformed: bool = False,
     ) -> pl.DataFrame:
         """Predicts the model forecasting horizon from the observation horizon.
@@ -158,7 +158,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
 
-        cross_learning_group : str or None, default=None
+        panel_group : str or None, default=None
             For panel data (local_group_names_ is not None):
             - If None: predict for all groups (default behavior)
             - If str: predict only for the specified group (cross-learning)

@@ -412,7 +412,7 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
 
 def filter_panel_columns(
     df: pl.DataFrame,
-    cross_learning_group: str,
+    panel_group: str,
     local_group_names: list[str] | None,
     include_global: bool = True,
 ) -> pl.DataFrame:
@@ -420,7 +420,7 @@ def filter_panel_columns(
 
     Parameters
     ----------
-    cross_learning_group : str
+    panel_group : str
         Struct column to keep for prediction
     include_global : bool
         Whether to keep global (non-struct) columns
@@ -433,10 +433,10 @@ def filter_panel_columns(
     if include_global:
         cols_to_keep = [
             c for c in df.columns
-            if c == "time" or c == cross_learning_group or c not in local_group_names
+            if c == "time" or c == panel_group or c not in local_group_names
         ]
     else:
-        cols_to_keep = [c for c in df.columns if c == "time" or c == cross_learning_group]
+        cols_to_keep = [c for c in df.columns if c == "time" or c == panel_group]
 
     return df.select(cols_to_keep)
 ```
@@ -550,7 +550,7 @@ forecaster.fit(y_panel, forecasting_horizon=3, time_weight=exponential_weight)
 # Predict for store_2
 y_pred = forecaster.predict(
     forecasting_horizon=3,
-    cross_learning_group="store_2"
+    panel_group="store_2"
 )
 ```
 

@@ -62,7 +62,7 @@ def test_point_reduction_cross_learning_checks(
 
 
 def test_cross_learning_predict_all_groups_default(panel_time_series_factory):
-    """Test that predict with cross_learning_group=None predicts all groups."""
+    """Test that predict with panel_group=None predicts all groups."""
     y = panel_time_series_factory(length=50, n_series=3)
     y_train = y[:40]
 
@@ -73,8 +73,8 @@ def test_cross_learning_predict_all_groups_default(panel_time_series_factory):
 
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
 
-    # Predict with cross_learning_group=None (default)
-    y_pred = forecaster.predict(X=None, forecasting_horizon=3, cross_learning_group=None)
+    # Predict with panel_group=None (default)
+    y_pred = forecaster.predict(X=None, forecasting_horizon=3, panel_group=None)
 
     # Should have predictions for all 3 series (with __ separator)
     assert "panel__series_0" in y_pred.columns
@@ -84,7 +84,7 @@ def test_cross_learning_predict_all_groups_default(panel_time_series_factory):
 
 
 def test_cross_learning_predict_single_group(panel_time_series_factory):
-    """Test that predict with cross_learning_group filters to a single group."""
+    """Test that predict with panel_group filters to a single group."""
     y = panel_time_series_factory(length=50, n_series=3)
     y_train = y[:40]
 
@@ -96,7 +96,7 @@ def test_cross_learning_predict_single_group(panel_time_series_factory):
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
 
     # Predict only for panel group (all series within the group)
-    y_pred = forecaster.predict(X=None, forecasting_horizon=3, cross_learning_group="panel")
+    y_pred = forecaster.predict(X=None, forecasting_horizon=3, panel_group="panel")
 
     # Should have all series columns with __ separator
     assert "panel__series_0" in y_pred.columns
@@ -106,7 +106,7 @@ def test_cross_learning_predict_single_group(panel_time_series_factory):
 
 
 def test_cross_learning_invalid_group_raises_error(panel_time_series_factory):
-    """Test that invalid cross_learning_group raises ValueError."""
+    """Test that invalid panel_group raises ValueError."""
     y = panel_time_series_factory(length=50, n_series=3)
     y_train = y[:40]
 
@@ -119,11 +119,11 @@ def test_cross_learning_invalid_group_raises_error(panel_time_series_factory):
 
     # Try to predict with invalid group name
     with pytest.raises(ValueError, match="not found in local groups"):
-        forecaster.predict(X=None, forecasting_horizon=3, cross_learning_group="invalid_group")
+        forecaster.predict(X=None, forecasting_horizon=3, panel_group="invalid_group")
 
 
 def test_cross_learning_global_data_no_groups(time_series_factory):
-    """Test that cross_learning_group has no effect on global data."""
+    """Test that panel_group has no effect on global data."""
     y = time_series_factory(length=50, n_components=1)
     y_train = y[:40]
 
@@ -134,9 +134,9 @@ def test_cross_learning_global_data_no_groups(time_series_factory):
 
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
 
-    # Should work the same with or without cross_learning_group
-    y_pred_default = forecaster.predict(X=None, forecasting_horizon=3, cross_learning_group=None)
-    y_pred_explicit = forecaster.predict(X=None, forecasting_horizon=3, cross_learning_group=None)
+    # Should work the same with or without panel_group
+    y_pred_default = forecaster.predict(X=None, forecasting_horizon=3, panel_group=None)
+    y_pred_explicit = forecaster.predict(X=None, forecasting_horizon=3, panel_group=None)
 
     assert y_pred_default.equals(y_pred_explicit)
     assert "feature_0" in y_pred_default.columns
