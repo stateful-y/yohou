@@ -2,7 +2,7 @@
 
 import abc
 from copy import deepcopy
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import polars as pl
@@ -12,7 +12,7 @@ from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, BaseTransformer
-from yohou.utils import filter_panel_columns
+from yohou.utils import select_panel_columns
 
 
 class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
@@ -113,10 +113,16 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    coverage_rates: list of floats, default=[0.05]
-        List of miscoverage levels to generate intervals for.
+    feature_transformer : instance of `BaseTransformer` or None, default=None
+        Transformer used to transform the `input_features` time series into features.
+    input_features: "X" | "y_t|X" | "y|X", default="y_t|X"
+        Defines how the feature or the input to the ``feature_transformer``
+         if passed is built.
 
     """
+    _parameter_constraints: dict = {
+        **BaseForecaster._parameter_constraints,
+    }
 
     @property
     def prediction_types(self) -> set[str]:
@@ -132,16 +138,14 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def __init__(
         self,
-        coverage_rates: list[float],
-        update_strategy: str,
         feature_transformer: BaseTransformer | None = None,
+        input_features: Literal["X", "y_t|X", "y|X"] = "y_t|X",
     ) -> None:
         super().__init__(
             feature_transformer=feature_transformer,
             target_transformer=None,
+            input_features=input_features,
         )
-        self.coverage_rates = coverage_rates
-        self.update_strategy = update_strategy
 
     @abc.abstractmethod
     def fit(
@@ -149,6 +153,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        coverage_rates: list[float] | None = None,
         **params,
     ) -> "BaseIntervalForecaster":
         """Fits the forecaster and returns it.
@@ -157,13 +162,12 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ----------
         y : pl.DataFrame
             Target time series.
-
         X : pl.DataFrame or None, default=None
             Exogenous feature time series.
-
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
-
+        coverage_rates : list of floats or None, default=None
+            Coverage rates for the prediction intervals. If None, uses ``[0.95]``.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -174,147 +178,36 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError()
 
-    def update(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-    ) -> "BaseIntervalForecaster":
-        """Updates the forecaster with more recent data and
-        returns it.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series.
-
-        X : pl.DataFrame or None
-            Exogenous feature time series.
-
-
-        Returns
-        -------
-        self
-
-        """
-        # Check if y contains point data (original target) vs interval data (predictions)
-        # For panel data, columns are prefixed (e.g., "x__a"), so check with prefixes
-        if self.local_group_names_ is not None:
-            # Panel data: check if any group's columns exist
-            y_contains_points = any(
-                f"{group}__{col}" in y.columns
-                for group in self.local_group_names_
-                for col in self.local_y_schema_.keys()
-            )
-        else:
-            # Global data: direct column name check
-            y_contains_points = set(list(self.local_y_schema_.keys())) <= set(y.columns)
-
-        if "point" in self.prediction_types or y_contains_points:
-            # Point data: select time and target columns
-            if self.local_group_names_ is not None:
-                # Panel data: select prefixed columns
-                target_cols = [
-                    f"{group}__{col}"
-                    for group in self.local_group_names_
-                    for col in self.local_y_schema_.keys()
-                ]
-            else:
-                # Global data: select unprefixed columns
-                target_cols = list(self.local_y_schema_.keys())
-            y = y.select(["time"] + target_cols)
-
-        else:
-            time = y.select(cs.by_name("time"))
-
-            match self.update_strategy:
-                case "average":
-                    if self.local_group_names_ is not None:
-                        y_groups_list = []
-                        for local_group_name in self.local_group_names_:
-                            # Select columns for this group
-                            group_cols = [c for c in y.columns if c.startswith(f"{local_group_name}__")]
-                            y_local = y.select(group_cols)
-
-                            # Build expressions using actual column names (with prefixes)
-                            # For each unprefixed col in schema, find matching prefixed columns
-                            y_local = y_local.select(
-                                [
-                                    pl.concat_list(
-                                        [
-                                            f"{local_group_name}__{col}_lower_{coverage_rate}"
-                                            for coverage_rate in self.coverage_rates
-                                        ]
-                                        + [
-                                            f"{local_group_name}__{col}_upper_{coverage_rate}"
-                                            for coverage_rate in self.coverage_rates
-                                        ]
-                                    )
-                                    .list.mean()
-                                    .alias(f"{local_group_name}__{col}")
-                                    for col in list(self.local_y_schema_.keys())
-                                ]
-                            )
-
-                            y_groups_list.append(y_local)
-
-                        y = pl.concat(y_groups_list, how="horizontal")
-
-                    else:
-                        y = y.select(
-                            [
-                                pl.concat_list(
-                                    [
-                                        f"{col}_lower_{coverage_rate}"
-                                        for coverage_rate in self.coverage_rates
-                                    ]
-                                    + [
-                                        f"{col}_upper_{coverage_rate}"
-                                        for coverage_rate in self.coverage_rates
-                                    ]
-                                )
-                                .list.mean()
-                                .alias(col)
-                                for col in list(self.local_y_schema_.keys())
-                            ]
-                        )
-
-                case "constant":
-                    y_old = self._y_observed[[-1]].select(~cs.by_name("time"))
-                    y = pl.concat([y_old] * len(time))
-
-            y = pl.concat([time, y], how="horizontal")
-
-        BaseForecaster.update(self, y, X)
-
-        return self
-
-    def predict(
+    def predict_interval(
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group: str | None = None,
-        predict_transformed: bool = False,
+        coverage_rates: list[float] | None = None,
+        strategy: Literal["mean", "median", "point"] | None = None,
+        panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
-        """Predicts the model forecasting horizon from the observation horizon.
+        """Predicts an interval according to coverage rates.
 
         Parameters
         ----------
         X : pl.DataFrame or None, default=None
             Exogenous feature time series.
-
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
-
-        panel_group : str or None, default=None
-            For panel data (local_group_names_ is not None):
-            - If None: predict for all groups (default behavior)
-            - If str: predict only for the specified group (cross-learning)
-            For global data: parameter is ignored.
-
-        predict_transformed : bool, default=False
-            If ``True``, the predictions are returned in the transformed space.
-
+        coverage_rates : list of floats or None, default=None
+            Coverage rates for the prediction intervals. If None, uses ``fit_coverage_rates_``.
+        strategy : {"mean", "median", "point"} or None, default=None
+            Strategy for updating with new point observations:
+            - "mean": use the mean of the interval bounds as point observation
+            - "median": use the median of the interval bounds as point observation
+            - "point": use the point forecast directly (if available)
+            If None, defaults to "mean".
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -330,109 +223,79 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if forecasting_horizon is None:
             forecasting_horizon = self.fit_forecasting_horizon_
 
-        # Validate panel_group only if provided
-        if panel_group is not None and (
-            self.local_group_names_ is None or panel_group not in self.local_group_names_
-        ):
-            raise ValueError(
-                f"Group {panel_group} not found in local groups: {self.local_group_names_}"
-            )
+        if coverage_rates is None:
+            coverage_rates = self.fit_coverage_rates_
 
-        # Handle panel data: predict all panel groups if panel_group=None
-        # For now, just predict all groups together (default behavior)
-        # TODO: Implement individual group predictions if needed
+        if panel_group_names is None:
+            panel_group_names = self.panel_group_names_
+        else:
+            # Validate specified panel groups
+            if self.panel_group_names_ is None:
+                raise ValueError(
+                    "The forecaster was fitted on global data, but `panel_group_names` "
+                    "were provided for update."
+                )
+            for panel_group in panel_group_names:
+                if panel_group not in self.panel_group_names_:
+                    raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
 
         forecaster = deepcopy(self)
 
-        if self.local_group_names_ is not None and panel_group is not None:
-            # Filter _y_observed
-            if forecaster._y_observed is not None:
-                forecaster._y_observed = filter_panel_columns(
-                    forecaster._y_observed,
-                    panel_group,
-                    self.local_group_names_,
-                    include_global=False,
-                )
+        y_columns = list(forecaster.local_y_schema_.keys())
+        if panel_group_names is not None:
+            y_columns = [
+                f"{panel_group}__{col}"
+                for panel_group in panel_group_names
+                for col in forecaster.local_y_schema_.keys()
+            ]
 
             # Filter X
             if X is not None:
-                X = filter_panel_columns(
+                X = select_panel_columns(
                     X,
-                    panel_group,
-                    self.local_group_names_,
+                    self.panel_group_names_,
                     include_global=True,
                 )
 
         y_pred = pl.DataFrame()
         for step in range(1, forecasting_horizon + 1, self.fit_forecasting_horizon_):
-            y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, panel_group)
-
-            # Choose which version to accumulate based on predict_transformed
-            if predict_transformed:
-                y_pred = pl.concat([y_pred, y_pred_step])
-            else:
-                y_pred = pl.concat([y_pred, y_pred_step_inv])
+            y_pred_step, y_pred_step_inv = BaseForecaster._predict(
+                forecaster, panel_group_names, coverage_rates=coverage_rates
+            )
+            y_pred = pl.concat([y_pred, y_pred_step_inv])
 
             if step + self.fit_forecasting_horizon_ <= forecasting_horizon:
                 time = y_pred_step.select(cs.by_name("time"))
 
-                # Compute midpoints from intervals for recursive update
-                if self.local_group_names_ is None:
-                    # Global data case
-                    y_data = {"time": time["time"]}
-                    for col in list(self.local_y_schema_.keys()):
-                        # Find all coverage rates for this column
-                        lower_cols = [
-                            c for c in y_pred_step_inv.columns if c.startswith(f"{col}_lower_")
-                        ]
-                        upper_cols = [
-                            c for c in y_pred_step_inv.columns if c.startswith(f"{col}_upper_")
-                        ]
+                # Global data case
+                y_data = {"time": time["time"]}
+                for col in y_columns:
+                    # Find all coverage rates for this column
+                    lower_cols = [
+                        c for c in y_pred_step_inv.columns if c.startswith(f"{col}_lower_")
+                    ]
+                    upper_cols = [
+                        c for c in y_pred_step_inv.columns if c.startswith(f"{col}_upper_")
+                    ]
 
-                        if lower_cols and upper_cols:
-                            # Use the first coverage rate to compute midpoint
-                            lower_col = sorted(lower_cols)[0]
-                            upper_col = sorted(upper_cols)[0]
-                            y_data[col] = (
-                                y_pred_step_inv[lower_col] + y_pred_step_inv[upper_col]
-                            ) / 2
-                    y = pl.DataFrame(y_data)
-                else:
-                    # Panel data case: compute midpoints for each group
-                    y_parts = [time]
-                    for local_group_name in self.local_group_names_:
-                        # Select columns for this group
-                        group_cols = [c for c in y_pred_step_inv.columns if c.startswith(f"{local_group_name}__")]
-                        y_local_pred = y_pred_step_inv.select(group_cols)
+                    all_bound_cols = lower_cols + upper_cols
 
-                        y_local_data = {}
-                        for col in list(self.local_y_schema_.keys()):
-                            # Find coverage rate columns for this target (with prefix)
-                            lower_cols = [
-                                c for c in y_local_pred.columns if c.startswith(f"{local_group_name}__{col}_lower_")
-                            ]
-                            upper_cols = [
-                                c for c in y_local_pred.columns if c.startswith(f"{local_group_name}__{col}_upper_")
-                            ]
+                    if strategy == "point" and col in y_pred_step_inv.columns:
+                        y_data[col] = y_pred_step_inv[col]
+                    elif strategy == "median":
+                        y_data[col] = y_pred_step_inv.select(
+                            pl.median_horizontal(all_bound_cols)
+                        ).to_series()
+                    else:
+                        y_data[col] = y_pred_step_inv.select(
+                            pl.mean_horizontal(all_bound_cols)
+                        ).to_series()
 
-                            if lower_cols and upper_cols:
-                                # Use the first coverage rate to compute midpoint
-                                lower_col = sorted(lower_cols)[0]
-                                upper_col = sorted(upper_cols)[0]
-                                # Store with prefix to avoid duplicate column names
-                                y_local_data[f"{local_group_name}__{col}"] = (
-                                    y_local_pred[lower_col] + y_local_pred[upper_col]
-                                ) / 2
-
-                        y_parts.append(pl.DataFrame(y_local_data))
-
-                    y = pl.concat(y_parts, how="horizontal")
+                y = pl.DataFrame(y_data)
 
                 X_slice = None
                 if X is not None:
-                    start_idx = step - 1
-                    end_idx = start_idx + self.fit_forecasting_horizon_
-                    X_slice = X[start_idx:end_idx]
+                    X_slice = X.join(y.select("time"), on="time", how="semi")
 
                     if len(X_slice) != len(y):
                         raise ValueError(
@@ -449,5 +312,101 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 self.fit_forecasting_horizon_ - forecasting_horizon % self.fit_forecasting_horizon_
             )
             y_pred = y_pred[:-end]
+
+        return y_pred
+
+    def update_predict_interval(
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        coverage_rates: list[float] | None = None,
+        strategy: Literal["mean", "median", "point"] | None = None,
+        panel_group_names: list[str] | None = None,
+        stride: StrictInt | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Alternate recursive `predict` and `update`.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series for updates.
+        X : pl.DataFrame or None, default=None
+            Feature time series for predictions.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast recursively. If None, uses ``fit_forecasting_horizon_``.
+        coverage_rates : list of floats or None, default=None
+            Coverage rates for the prediction intervals. If None, uses ``fit_coverage_rates_``
+        strategy : {"mean", "median", "point"} or None, default=None
+            Strategy for updating with new point observations:
+            - "mean": use the mean of the interval bounds as point observation
+            - "median": use the median of the interval bounds as point observation
+            - "point": use the point forecast directly (if available)
+            If None, defaults to "mean".
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: update and predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
+        stride : int >= 1 or None, default=None
+            Number of new observations to use for each update. If None, uses
+            ``fit_forecasting_horizon_``.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted time series.
+
+        """
+        check_is_fitted(self, "fit_forecasting_horizon_")
+
+        # Use fit_forecasting_horizon_ as default for both parameters
+        if forecasting_horizon is None:
+            forecasting_horizon = self.fit_forecasting_horizon_
+        if stride is None:
+            stride = self.fit_forecasting_horizon_
+
+        # Initial prediction with predict_transformed parameter
+        y_pred_i = self.predict_interval(
+            X=X,
+            forecasting_horizon=forecasting_horizon,
+            coverage_rates=coverage_rates,
+            panel_group_names=panel_group_names,
+            strategy=strategy,
+            **params,
+        )
+
+        y_pred = y_pred_i
+        for i in range(0, len(y), stride):
+            y_slice = y[i : i + stride]
+
+            X_slice = None
+            if X is not None:
+                # Filter X to match y_slice times
+                # Use semi-join to f ilter X rows that have matching times in y_slice
+                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
+
+            self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+
+            X_future = None
+            if X is not None:
+                # Filter X to start after the last observed time
+                # This ensures predict() gets features aligned with the forecast horizon
+                last_time = y_slice["time"][-1]
+                X_future = X.filter(pl.col("time") > last_time)
+
+            y_pred_i = self.predict_interval(
+                X=X_future,
+                forecasting_horizon=forecasting_horizon,
+                coverage_rates=coverage_rates,
+                panel_group_names=panel_group_names,
+                strategy=strategy,
+                **params,
+            )
+
+            y_pred = pl.concat([y_pred, y_pred_i])
 
         return y_pred

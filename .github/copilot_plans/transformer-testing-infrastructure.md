@@ -36,7 +36,7 @@ tests/
 ├── conftest.py                         # Global fixtures (data, dummy transformers, registry)
 ├── estimator_checks.py                 # Check function library (18 functions + generator)
 ├── test_estimator_checks.py            # sklearn compatibility tests
-├── test_pipeline.py                    # Tests for src/yohou/pipeline.py (Pipeline, FeatureUnion, ColumnTransformer)
+├── test_pipeline.py                    # Tests for src/yohou/pipeline.py (FeaturePipeline, FeatureUnion, ColumnTransformer)
 └── preprocessing/
     ├── conftest.py                     # (Not needed - using global conftest only)
     ├── test_stationarization.py        # Tests for src/yohou/preprocessing/stationarization.py
@@ -222,8 +222,8 @@ def test_my_transformer_specific_behavior(time_series_factory):
 - **Test**: `test_columntransformer_column_selection` - SKIPPED
 - **Status**: Documented limitation requiring review of column indexing
 
-**3. Pipeline get_params() Behavior**
-- **Observation**: yohou Pipeline doesn't expose nested parameters like sklearn
+**3. FeaturePipeline get_params() Behavior**
+- **Observation**: yohou FeaturePipeline doesn't expose nested parameters like sklearn
 - **Impact**: `get_params(deep=True)` returns flat structure (memory, steps, verbose) instead of nested params with `__`
 - **Status**: Design choice, not a bug - tests updated to match actual behavior
 
@@ -246,10 +246,10 @@ def fit(self, X, y=None):
 - `n_features_in_` - Required for sklearn compatibility
 - Calls `reset(X)` internally to initialize observation memory
 - Enables `check_is_fitted()` to work correctly
-- Allows Pipeline composition to recognize fitted transformers
+- Allows FeaturePipeline composition to recognize fitted transformers
 
 **Impact**: This pattern is essential for:
-- Pipeline observation_horizon property access
+- FeaturePipeline observation_horizon property access
 - sklearn clone() functionality
 - Composition with other sklearn components
 

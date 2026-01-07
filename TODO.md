@@ -1,12 +1,12 @@
 - Check panel forecasting works
-- Implement predict_interval API
 - Implement proper check_dataframe
 - Make use of sklearn Tags
 - Clarify _predict_one + _predict API
+- Enable time_weight for forecaster and scorer
 - Refactor reducers to enable direct and multi-output strategies
+- Refactor estimator_check into a separate testing module
 - Add splitter to testing infrastructure
 - Implement variety of splitters
-- Enable time_weight for forecaster and scorer
 - Add scorer to testing infrastructure
 - Implement variety of scorers
 - Simplify SearchCV, make sure it follows BaseSearchCV as closely as possible

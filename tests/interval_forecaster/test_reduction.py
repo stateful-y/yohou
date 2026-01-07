@@ -58,14 +58,15 @@ y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2, shuffle
 )
 def test_predict(fit_forecasting_horizon, predict_forecasting_horizon, expected_a):
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    forecaster = IntervalReductionForecaster(coverage_rates=coverage_rates)
+    forecaster = IntervalReductionForecaster()
 
-    forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
+    forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon, coverage_rates=coverage_rates)
 
-    y_pred = forecaster.predict(
+    y_pred = forecaster.predict_interval(
         forecasting_horizon=predict_forecasting_horizon,
         X=X_test,
         predict_transformed=False,
+        coverage_rates=coverage_rates,
     )
 
     # Extract non-time column names from y_train
@@ -88,18 +89,19 @@ def test_predict(fit_forecasting_horizon, predict_forecasting_horizon, expected_
 )
 def test_update_predict(fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a):
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    forecaster = IntervalReductionForecaster(coverage_rates=coverage_rates)
+    forecaster = IntervalReductionForecaster()
 
-    forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
+    forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon, coverage_rates=coverage_rates)
 
     # Truncate y_test to ensure X_test covers the future horizon
     y_test_truncated = y_test[:-predict_forecasting_horizon]
 
-    y_pred = forecaster.update_predict(
+    y_pred = forecaster.update_predict_interval(
         y=y_test_truncated,
         X=X_test,
         forecasting_horizon=predict_forecasting_horizon,
         stride=stride,
+        coverage_rates=coverage_rates,
     )
 
     # Extract non-time column names from y_train
@@ -149,22 +151,24 @@ def test_update_predict_global(
     fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a
 ):
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    forecaster = IntervalReductionForecaster(coverage_rates=coverage_rates)
+    forecaster = IntervalReductionForecaster()
 
     forecaster.fit(
         y=y_train_panel,
         X=X_train_panel,
         forecasting_horizon=fit_forecasting_horizon,
+        coverage_rates=coverage_rates,
     )
 
     # Truncate y_test to ensure X_test covers the future horizon
     y_test_truncated = y_test_panel[:-predict_forecasting_horizon]
 
-    y_pred = forecaster.update_predict(
+    y_pred = forecaster.update_predict_interval(
         y=y_test_truncated,
         X=X_test_panel,
         forecasting_horizon=predict_forecasting_horizon,
         stride=stride,
+        coverage_rates=coverage_rates,
     )
 
     # Check that upper bounds >= lower bounds for columns with __ separator
@@ -178,74 +182,7 @@ def test_update_predict_global(
             if len(parts) == 2:
                 lower_col = f"{parts[0]}_lower_{parts[1]}"
                 if lower_col in y_pred.columns:
-                    assert all(
-                        y_pred[col] + 1e-13 >= y_pred[lower_col]
-                    ), f"Upper bound {col} should be >= lower bound {lower_col}"
+                    assert all(y_pred[col] + 1e-13 >= y_pred[lower_col]), (
+                        f"Upper bound {col} should be >= lower bound {lower_col}"
+                    )
 
-
-def test_y_pred_local_columns_interval_global_data():
-    """Test y_pred_local_columns_ for interval forecaster with global data."""
-    time = pl.datetime_range(
-        start=datetime(2020, 1, 1),
-        end=datetime(2020, 1, 31),
-        interval="1d",
-        eager=True,
-    )
-    y = pl.DataFrame({"time": time, "value": range(31)})
-
-    forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.5, 0.9])
-    forecaster.fit(y[:20], forecasting_horizon=3)
-
-    # Should match local_y_t_schema_ keys (separate estimators for lower/upper)
-    assert hasattr(forecaster, "y_pred_local_columns_")
-    assert forecaster.y_pred_local_columns_ == ["value"]
-
-
-def test_y_pred_local_columns_interval_multiple_coverage():
-    """Test y_pred_local_columns_ with multiple coverage rates."""
-    time = pl.datetime_range(
-        start=datetime(2020, 1, 1),
-        end=datetime(2020, 1, 31),
-        interval="1d",
-        eager=True,
-    )
-    y = pl.DataFrame({"time": time, "value": range(31)})
-
-    # Multiple coverage rates - should still use same y_pred_local_columns_
-    forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.3, 0.5, 0.7, 0.9])
-    forecaster.fit(y[:20], forecasting_horizon=3)
-
-    assert forecaster.y_pred_local_columns_ == ["value"]
-
-
-def test_y_pred_local_columns_interval_multiple_targets():
-    """Test y_pred_local_columns_ with multiple target columns."""
-    time = pl.datetime_range(
-        start=datetime(2020, 1, 1),
-        end=datetime(2020, 1, 31),
-        interval="1d",
-        eager=True,
-    )
-    y = pl.DataFrame({
-        "time": time,
-        "sales": range(31),
-        "revenue": [x * 10 for x in range(31)],
-    })
-
-    forecaster = IntervalReductionForecaster(coverage_rates=[0.5])
-    forecaster.fit(y[:20], forecasting_horizon=3)
-
-    # Should match all target columns
-    assert set(forecaster.y_pred_local_columns_) == {"sales", "revenue"}
-
-
-def test_y_pred_local_columns_interval_panel_data(panel_time_series_factory):
-    """Test y_pred_local_columns_ for interval forecaster with panel data."""
-    y = panel_time_series_factory(length=50, n_series=2, seed=42)
-
-    forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.9])
-    forecaster.fit(y[:30], forecasting_horizon=3)
-
-    # Should match local_y_t_schema_ keys (separate estimators for lower/upper)
-    assert hasattr(forecaster, "y_pred_local_columns_")
-    assert set(forecaster.y_pred_local_columns_) == set(forecaster.local_y_t_schema_.keys())

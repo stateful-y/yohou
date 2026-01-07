@@ -4,8 +4,8 @@ This module provides systematic validation functions for testing BaseTransformer
 implementations. All check functions raise AssertionError on failure.
 
 Organized into three categories:
-1. Core Yohou Checks (12 functions) - Time series-specific validation
-2. Enhanced sklearn Checks (6 functions) - Adapted from sklearn patterns
+1. Core Yohou Checks - Time series-specific validation
+2. Enhanced sklearn Checks - Adapted from sklearn patterns
 3. Check Generator - Dynamically generates applicable checks based on tags
 """
 
@@ -18,7 +18,7 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 
 # ============================================================================
-# CORE YOHOU CHECKS (12 functions)
+# CORE YOHOU CHECKS
 # ============================================================================
 
 
@@ -467,9 +467,9 @@ def check_panel_data_support(transformer, X_panel, y=None):
     from yohou.utils import inspect_locality
 
     # Check if X_panel actually has panel columns
-    global_names, local_groups = inspect_locality(X_panel)
+    global_names, panel_groups = inspect_locality(X_panel)
 
-    if not local_groups:
+    if not panel_groups:
         # Not panel data, skip
         return
 
@@ -519,7 +519,7 @@ def check_clone_preserves_params(transformer):
 
 
 # ============================================================================
-# ENHANCED SKLEARN CHECKS (6 functions)
+# ENHANCED SKLEARN CHECKS
 # ============================================================================
 
 
@@ -988,12 +988,12 @@ def _yield_yohou_transformer_checks(
 
 
 # ============================================================================
-# FORECASTER CHECKS (25+ functions)
+# FORECASTER CHECKS
 # ============================================================================
-# Common Forecaster Checks (12-15 functions)
-# Point Forecaster Checks (3-5 functions)
-# Interval Forecaster Checks (6-8 functions)
-# Reduction Forecaster Checks (5-7 functions)
+# Common Forecaster Checks
+# Point Forecaster Checks
+# Interval Forecaster Checks
+# Reduction Forecaster Checks
 # ============================================================================
 
 
@@ -1001,7 +1001,7 @@ def check_fit_sets_forecaster_attributes(forecaster, y, X=None, forecasting_hori
     """Check fit() sets required forecaster attributes.
 
     Validates that fit() creates all required attributes for forecasters including
-    fit_forecasting_horizon_, interval_, local_group_names_, local_y_schema_,
+    fit_forecasting_horizon_, interval_, panel_group_names_, local_y_schema_,
     observation buffers, and transformer references.
 
     Parameters
@@ -1033,8 +1033,8 @@ def check_fit_sets_forecaster_attributes(forecaster, y, X=None, forecasting_hori
 
     assert hasattr(forecaster_clone, "interval_"), "fit() must set interval_ attribute (timedelta)"
 
-    assert hasattr(forecaster_clone, "local_group_names_"), (
-        "fit() must set local_group_names_ attribute (None or list)"
+    assert hasattr(forecaster_clone, "panel_group_names_"), (
+        "fit() must set panel_group_names_ attribute (None or list)"
     )
     assert hasattr(forecaster_clone, "local_y_schema_"), (
         "fit() must set local_y_schema_ attribute (dict[str, pl.DataType])"
@@ -1199,6 +1199,7 @@ def check_update_extends_observations(
         assert updated_X_t_observed_last_time == updated_observed_time, (
             "Last time in _X_t_observed should match updated observed_time_ after update()"
         )
+
 
 def check_reset_replaces_observations(
     forecaster,
@@ -1371,25 +1372,31 @@ def check_clone_preserves_forecaster_params(forecaster):
         # For None values
         if orig_val is None:
             assert cloned_val is None, f"Parameter {key}: expected None, got {cloned_val}"
-        # For list of (name, estimator) tuples (meta-estimators like Decomposer, Pipeline)
+        # For list of (name, estimator) tuples (meta-estimators like Decomposer, FeaturePipeline)
         elif isinstance(orig_val, list) and len(orig_val) > 0 and isinstance(orig_val[0], tuple):
-            assert isinstance(cloned_val, list), f"Parameter {key}: expected list, got {type(cloned_val)}"
+            assert isinstance(cloned_val, list), (
+                f"Parameter {key}: expected list, got {type(cloned_val)}"
+            )
             assert len(orig_val) == len(cloned_val), f"Parameter {key}: different lengths"
-            
+
             for i, (orig_item, cloned_item) in enumerate(zip(orig_val, cloned_val)):
                 assert isinstance(orig_item, tuple), f"Parameter {key}[{i}]: expected tuple"
                 assert isinstance(cloned_item, tuple), f"Parameter {key}[{i}]: expected tuple"
-                assert len(orig_item) == 2, f"Parameter {key}[{i}]: expected (name, estimator) tuple"
-                assert len(cloned_item) == 2, f"Parameter {key}[{i}]: expected (name, estimator) tuple"
-                
+                assert len(orig_item) == 2, (
+                    f"Parameter {key}[{i}]: expected (name, estimator) tuple"
+                )
+                assert len(cloned_item) == 2, (
+                    f"Parameter {key}[{i}]: expected (name, estimator) tuple"
+                )
+
                 orig_name, orig_est = orig_item
                 cloned_name, cloned_est = cloned_item
-                
+
                 # Names should match exactly
                 assert orig_name == cloned_name, (
                     f"Parameter {key}[{i}]: different names {cloned_name} != {orig_name}"
                 )
-                
+
                 # Estimators should be different instances but same type
                 assert type(orig_est) == type(cloned_est), (
                     f"Parameter {key}[{i}] estimator: different types {type(cloned_est)} vs {type(orig_est)}"
@@ -1397,7 +1404,7 @@ def check_clone_preserves_forecaster_params(forecaster):
                 assert orig_est is not cloned_est, (
                     f"Parameter {key}[{i}] estimator: should be cloned, not same instance"
                 )
-                
+
                 # Check estimator params match
                 if hasattr(orig_est, "get_params"):
                     orig_est_params = orig_est.get_params(deep=True)
@@ -1445,7 +1452,7 @@ def check_clone_preserves_forecaster_params(forecaster):
 
 
 # ============================================================================
-# POINT FORECASTER CHECKS (3-5 functions)
+# POINT FORECASTER CHECKS
 # ============================================================================
 
 
@@ -1505,7 +1512,7 @@ def check_point_prediction_types(forecaster):
 
 
 # ============================================================================
-# INTERVAL FORECASTER CHECKS (6-8 functions)
+# INTERVAL FORECASTER CHECKS
 # ============================================================================
 
 
@@ -1535,26 +1542,22 @@ def check_interval_prediction_columns(forecaster, y_test, X_test=None):
     coverage_rates = forecaster.coverage_rates
 
     # Check if we have panel data (columns with __ separator)
-    _, y_local_groups = inspect_locality(y_test)
+    _, y_panel_groups = inspect_locality(y_test)
 
-    if len(y_local_groups) > 0:
+    if len(y_panel_groups) > 0:
         # For panel data, interval columns use __ separator
         # e.g., "stores__store_0_lower_0.1"
-        for group_prefix in y_local_groups.keys():
+        for group_prefix in y_panel_groups.keys():
             # Get fields from the original training data (full column names)
-            expected_fields = y_local_groups[group_prefix]
+            expected_fields = y_panel_groups[group_prefix]
 
             for rate in coverage_rates:
                 for field in expected_fields:
                     lower_col = f"{field}_lower_{rate}"
                     upper_col = f"{field}_upper_{rate}"
 
-                    assert lower_col in y_pred.columns, (
-                        f"Missing lower bound column: {lower_col}"
-                    )
-                    assert upper_col in y_pred.columns, (
-                        f"Missing upper bound column: {upper_col}"
-                    )
+                    assert lower_col in y_pred.columns, f"Missing lower bound column: {lower_col}"
+                    assert upper_col in y_pred.columns, f"Missing upper bound column: {upper_col}"
     else:
         # For global data, check individual column pattern: {col}_lower_{rate}
         target_cols = list(forecaster.local_y_schema_.keys())
@@ -1594,13 +1597,13 @@ def check_interval_bounds(forecaster, y_test, X_test=None):
     coverage_rates = forecaster.coverage_rates
 
     # Check if we have panel data (columns with __ separator)
-    _, y_local_groups = inspect_locality(y_test)
+    _, y_panel_groups = inspect_locality(y_test)
 
-    if len(y_local_groups) > 0:
+    if len(y_panel_groups) > 0:
         # For panel data, interval columns use __ separator
-        for group_prefix in y_local_groups.keys():
+        for group_prefix in y_panel_groups.keys():
             # Get fields from the original training data (full column names)
-            expected_fields = y_local_groups[group_prefix]
+            expected_fields = y_panel_groups[group_prefix]
 
             for rate in coverage_rates:
                 for field in expected_fields:
@@ -1685,7 +1688,7 @@ def check_coverage_rates_parameter(forecaster):
 
 
 # ============================================================================
-# REDUCTION FORECASTER CHECKS (5-7 functions)
+# REDUCTION FORECASTER CHECKS
 # ============================================================================
 
 
@@ -1738,11 +1741,11 @@ def check_reduction_strategy(forecaster):
 
 
 # ============================================================================
-# Cross-Learning Forecaster Checks (3 functions)
+# Cross-Learning Forecaster Checks
 # ============================================================================
 
 
-def check_cross_learning_panel_data(forecaster, y_panel, X_panel=None):
+def check_panel_data(forecaster, y_panel, X_panel=None):
     """Check cross-learning with panel data predicts all groups by default.
 
     Validates that when panel_group=None (default), predictions are
@@ -1768,11 +1771,11 @@ def check_cross_learning_panel_data(forecaster, y_panel, X_panel=None):
     y_pred = forecaster.predict(X=X_panel, forecasting_horizon=3, panel_group=None)
 
     # Check that all local groups from training data are in predictions
-    _, y_local_groups = inspect_locality(y_panel)
+    _, y_panel_groups = inspect_locality(y_panel)
 
-    if len(y_local_groups) > 0:
+    if len(y_panel_groups) > 0:
         # Should have predictions for all group columns (with __ separator)
-        for group_prefix, expected_fields in y_local_groups.items():
+        for group_prefix, expected_fields in y_panel_groups.items():
             for field in expected_fields:
                 assert field in y_pred.columns, (
                     f"Column '{field}' missing from predictions. "
@@ -1780,7 +1783,7 @@ def check_cross_learning_panel_data(forecaster, y_panel, X_panel=None):
                 )
 
 
-def check_cross_learning_single_group(forecaster, y_panel, X_panel=None):
+def check_panel_single_group(forecaster, y_panel, X_panel=None):
     """Check cross-learning filters to specified panel group.
 
     Validates that when panel_group is specified, predictions are
@@ -1802,19 +1805,17 @@ def check_cross_learning_single_group(forecaster, y_panel, X_panel=None):
     """
     from yohou.utils.panel import inspect_locality
 
-    _, y_local_groups = inspect_locality(y_panel)
+    _, y_panel_groups = inspect_locality(y_panel)
 
-    if len(y_local_groups) > 0:
+    if len(y_panel_groups) > 0:
         # Get first group prefix
-        first_group = list(y_local_groups.keys())[0]
+        first_group = list(y_panel_groups.keys())[0]
 
         # Predict with specific group
-        y_pred = forecaster.predict(
-            X=X_panel, forecasting_horizon=3, panel_group=first_group
-        )
+        y_pred = forecaster.predict(X=X_panel, forecasting_horizon=3, panel_group=first_group)
 
         # Should have columns from the specified group (flat columns with __ separator)
-        group_cols = y_local_groups[first_group]
+        group_cols = y_panel_groups[first_group]
         assert len(group_cols) > 0, f"Group '{first_group}' should have columns"
         for col in group_cols:
             assert col in y_pred.columns, (
@@ -1822,7 +1823,7 @@ def check_cross_learning_single_group(forecaster, y_panel, X_panel=None):
             )
 
 
-def check_cross_learning_invalid_group_raises(forecaster, y_panel, X_panel=None):
+def check_panel_invalid_group_raises(forecaster, y_panel, X_panel=None):
     """Check that invalid panel_group raises ValueError.
 
     Validates error handling when panel_group specifies a panel group
@@ -1844,14 +1845,12 @@ def check_cross_learning_invalid_group_raises(forecaster, y_panel, X_panel=None)
     """
     from yohou.utils.panel import inspect_locality
 
-    _, y_local_groups = inspect_locality(y_panel)
+    _, y_panel_groups = inspect_locality(y_panel)
 
-    if len(y_local_groups) > 0:
+    if len(y_panel_groups) > 0:
         # Try to predict with invalid group name
         try:
-            forecaster.predict(
-                X=X_panel, forecasting_horizon=3, panel_group="invalid_group"
-            )
+            forecaster.predict(X=X_panel, forecasting_horizon=3, panel_group="invalid_group")
             raise AssertionError(
                 "predict() should raise ValueError for invalid panel_group, but didn't"
             )
@@ -2017,22 +2016,22 @@ def _yield_yohou_forecaster_checks(
         # Need to check if we have panel data available
         from yohou.utils.panel import inspect_locality
 
-        _, y_local_groups = inspect_locality(y_train)
-        if len(y_local_groups) > 0:
+        _, y_panel_groups = inspect_locality(y_train)
+        if len(y_panel_groups) > 0:
             # We have panel data, run cross-learning checks
             yield (
-                "check_cross_learning_panel_data",
-                check_cross_learning_panel_data,
+                "check_panel_data",
+                check_panel_data,
                 {"y_panel": y_test, "X_panel": X_test},
             )
             yield (
-                "check_cross_learning_single_group",
-                check_cross_learning_single_group,
+                "check_panel_single_group",
+                check_panel_single_group,
                 {"y_panel": y_test, "X_panel": X_test},
             )
             yield (
-                "check_cross_learning_invalid_group_raises",
-                check_cross_learning_invalid_group_raises,
+                "check_panel_invalid_group_raises",
+                check_panel_invalid_group_raises,
                 {"y_panel": y_test, "X_panel": X_test},
             )
 

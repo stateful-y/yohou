@@ -32,12 +32,6 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     feature_transformer : BaseTransformer or None, default=None
         Transformer for feature engineering (typically LagTransformer).
 
-    Attributes
-    ----------
-    y_pred_local_columns_ : list of str
-        Column names for predictions in transformed space. Set during fit.
-        For point forecasters, corresponds to keys of local_y_t_schema_.
-
     Examples
     --------
     >>> import polars as pl
@@ -85,7 +79,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 
     """
 
-    _supports_cross_learning = True
+    _supports_panel = True
 
     def __init__(
         self,
@@ -147,8 +141,6 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             X=X,
             forecasting_horizon=forecasting_horizon,
         )
-
-        self.y_pred_local_columns_ = list(self.local_y_t_schema_.keys())
 
         self.estimator_ = self._estimator_fit_one(
             y_t, X_t, forecasting_horizon, time_weight=time_weight, estimator_fit_params=params

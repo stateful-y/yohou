@@ -24,19 +24,13 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         Quantile estimator used to fit the tabularized data.
     reduction_strategy : {"direct", "multi-output"}, default="multi-output"
         Strategy for multi-step forecasting.
-    coverage_rates : list of float, default=[0.5]
-        Target coverage rates for intervals.
+    input_features : {"X", "y_t|X", "y|X"}, default="y_t|X"
+        Defines how the feature or the input to the ``feature_transformer``
+        if passed is built.
     feature_transformer : BaseTransformer or None, default=None
         Transformer used to transform the `input_features` time series into features.
     update_strategy : {"average", "constant"}, default="average"
         How to update intervals with new observations.
-
-    Attributes
-    ----------
-    y_pred_local_columns_ : list of str
-        Column names for predictions in transformed space. Set during fit.
-        For interval forecasters, corresponds to keys of local_y_t_schema_.
-        Separate lower and upper bound estimators are trained for each coverage rate.
 
     Examples
     --------
@@ -101,21 +95,19 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         self,
         estimator: BaseEstimator = MultiOutputRegressor(QuantileRegressor()),
         reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
-        coverage_rates: List[StrictFloat] = [0.5],
+        input_features: Literal["X", "y_t|X", "y|X"] = "y_t|X",
         feature_transformer: BaseTransformer | None = None,
-        update_strategy: Literal["average", "constant"] = "average",
     ):
         BaseReductionForecaster.__init__(
             self,
             estimator=estimator,
             reduction_strategy=reduction_strategy,
+            input_features=input_features,
             feature_transformer=feature_transformer,
         )
 
         BaseIntervalForecaster.__init__(
             self,
-            coverage_rates=coverage_rates,
-            update_strategy=update_strategy,
             feature_transformer=feature_transformer,
         )
 
@@ -124,6 +116,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        coverage_rates: List[StrictFloat] | None = None,
         **params,
     ) -> "IntervalReductionForecaster":
         """Fits the forecaster and returns it.
@@ -132,12 +125,14 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         ----------
         y : pl.DataFrame
             Target time series.
-
         X : pl.DataFrame or None, default=None
             Exogenous feature time series.
-
         forecasting_horizon : int > 1, default=1
             Horizon to forecast.
+        coverage_rates : list of float or None, default=None
+            Coverage rates for the prediction intervals. If None, uses ``[0.95]``.
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -151,11 +146,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             forecasting_horizon=forecasting_horizon,
         )
 
-        # y_t and X_t are guaranteed to be non-None after _pre_fit
-        assert y_t is not None
-        assert X_t is not None
-
-        self.y_pred_local_columns_ = list(self.local_y_t_schema_.keys())
+        self.fit_coverage_rates_ = coverage_rates if coverage_rates is not None else [0.95]
 
         estimator_param_names = list(self.estimator.get_params(deep=True))
         quantile_param_names = [
@@ -170,8 +161,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         quantile_param_name = quantile_param_names[0]
 
         estimators = {}
+
         # TODO: Support CatBoost multiquantile
-        for coverage_rate in self.coverage_rates:
+        for coverage_rate in self.fit_coverage_rates_:
             # Fit lower bound estimator (lower quantile)
             estimator_params_lower = {
                 quantile_param_name: (1.0 - coverage_rate) / 2.0,
@@ -202,9 +194,15 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     def _predict_one(
         self,
+        coverage_rates: List[StrictFloat],
     ) -> pl.DataFrame:
         """Predicts the model forecasting horizon from the
         observation horizon.
+
+        Parameters
+        ----------
+        coverage_rates : list of float
+            Coverage rates for the prediction intervals.
 
         Returns
         -------
@@ -213,7 +211,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
         """
         y_pred = pl.DataFrame()
-        for coverage_rate in self.coverage_rates:
+        for coverage_rate in coverage_rates:
             estimator_lower = self.estimator_[f"coverage_rate_{coverage_rate}_lower"]
             estimator_upper = self.estimator_[f"coverage_rate_{coverage_rate}_upper"]
 
@@ -225,12 +223,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
             # Rename columns to include coverage rate
             # Use actual column names (prefixed for panel data, unprefixed for global)
-            lower_rename = {
-                col: f"{col}_lower_{coverage_rate}" for col in y_pred_lower.columns
-            }
-            upper_rename = {
-                col: f"{col}_upper_{coverage_rate}" for col in y_pred_upper.columns
-            }
+            lower_rename = {col: f"{col}_lower_{coverage_rate}" for col in y_pred_lower.columns}
+            upper_rename = {col: f"{col}_upper_{coverage_rate}" for col in y_pred_upper.columns}
 
             # Rename columns (works for both global and panel data)
             y_pred_lower = y_pred_lower.rename(lower_rename)

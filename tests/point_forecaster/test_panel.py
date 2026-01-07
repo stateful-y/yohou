@@ -1,12 +1,15 @@
-"""Tests for cross-learning functionality in interval forecasters."""
+"""Tests for cross-learning functionality in point forecasters."""
 
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 from sklearn.base import clone
+from sklearn.linear_model import LinearRegression
 
-from yohou.interval_forecaster import IntervalReductionForecaster
+from yohou.point_forecaster import PointReductionForecaster
+from yohou.preprocessing import LagTransformer
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -21,18 +24,18 @@ from estimator_checks import _yield_yohou_forecaster_checks
     "forecaster,tags,expected_failures",
     [
         (
-            IntervalReductionForecaster(coverage_rates=[0.1, 0.5, 0.9]),
-            {"forecaster_type": "interval", "uses_reduction": True, "supports_panel_data": True},
-            [
-                "check_interval_bounds"
-            ],  # Known issue: QuantileRegressor doesn't guarantee monotonic bounds
+            PointReductionForecaster(
+                estimator=LinearRegression(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            {"forecaster_type": "point", "uses_reduction": True, "supports_panel_data": True},
+            [],
         ),
     ],
 )
-def test_interval_reduction_cross_learning_checks(
+def test_point_reduction_panel_checks(
     forecaster, tags, expected_failures, panel_time_series_factory
 ):
-    """Run systematic cross-learning checks on IntervalReductionForecaster with panel data."""
+    """Run systematic cross-learning checks on PointReductionForecaster with panel data."""
     y = panel_time_series_factory(length=100, n_series=3)
     y_train, y_test = y[:80], y[80:]
 
@@ -48,7 +51,9 @@ def test_interval_reduction_cross_learning_checks(
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")
         else:
-            check_func(forecaster_fitted, **check_kwargs)
+            # Use deepcopy to ensure checks don't affect each other (e.g. update/reset)
+            forecaster_for_check = deepcopy(forecaster_fitted)
+            check_func(forecaster_for_check, **check_kwargs)
 
 
 # ============================================================================
@@ -56,47 +61,59 @@ def test_interval_reduction_cross_learning_checks(
 # ============================================================================
 
 
-def test_cross_learning_interval_predict_all_groups_default(panel_time_series_factory):
-    """Test that interval predict with panel_group=None predicts all groups."""
+def test_panel_predict_all_groups_default(panel_time_series_factory):
+    """Test that predict with panel_group=None predicts all groups."""
     y = panel_time_series_factory(length=50, n_series=3)
     y_train = y[:40]
 
-    forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.5, 0.9])
+    forecaster = PointReductionForecaster(
+        estimator=LinearRegression(),
+        feature_transformer=LagTransformer(lag=[1, 2]),
+    )
 
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
 
     # Predict with panel_group=None (default)
     y_pred = forecaster.predict(X=None, forecasting_horizon=3, panel_group=None)
 
-    # Should have predictions for all 3 series with intervals (flat columns)
-    assert "panel__series_0_lower_0.1" in y_pred.columns
-    assert "panel__series_1_lower_0.1" in y_pred.columns
-    assert "panel__series_2_lower_0.1" in y_pred.columns
+    # Should have predictions for all 3 series (with __ separator)
+    assert "panel__series_0" in y_pred.columns
+    assert "panel__series_1" in y_pred.columns
+    assert "panel__series_2" in y_pred.columns
     assert len(y_pred) == 3  # 3 forecast steps
 
 
-def test_cross_learning_interval_predict_single_group(panel_time_series_factory):
-    """Test that interval predict with panel_group filters to a single group."""
+def test_panel_predict_single_group(panel_time_series_factory):
+    """Test that predict with panel_group filters to a single group."""
     y = panel_time_series_factory(length=50, n_series=3)
     y_train = y[:40]
 
-    forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.5, 0.9])
+    forecaster = PointReductionForecaster(
+        estimator=LinearRegression(),
+        feature_transformer=LagTransformer(lag=[1, 2]),
+    )
 
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
 
-    # Predict only for panel group
-    y_pred = forecaster.predict(forecasting_horizon=3, panel_group="panel")
+    # Predict only for panel group (all series within the group)
+    y_pred = forecaster.predict(X=None, forecasting_horizon=3, panel_group="panel")
 
-    # Should still have all series since "panel" is the group name
+    # Should have all series columns with __ separator
+    assert "panel__series_0" in y_pred.columns
+    assert "panel__series_1" in y_pred.columns
+    assert "panel__series_2" in y_pred.columns
     assert len(y_pred) == 3
 
 
-def test_cross_learning_interval_invalid_group(panel_time_series_factory):
+def test_panel_invalid_group_raises_error(panel_time_series_factory):
     """Test that invalid panel_group raises ValueError."""
     y = panel_time_series_factory(length=50, n_series=3)
     y_train = y[:40]
 
-    forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.5, 0.9])
+    forecaster = PointReductionForecaster(
+        estimator=LinearRegression(),
+        feature_transformer=LagTransformer(lag=[1, 2]),
+    )
 
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
 
@@ -105,12 +122,15 @@ def test_cross_learning_interval_invalid_group(panel_time_series_factory):
         forecaster.predict(X=None, forecasting_horizon=3, panel_group="invalid_group")
 
 
-def test_cross_learning_interval_global_data(time_series_factory):
+def test_panel_global_data_no_groups(time_series_factory):
     """Test that panel_group has no effect on global data."""
     y = time_series_factory(length=50, n_components=1)
     y_train = y[:40]
 
-    forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.5, 0.9])
+    forecaster = PointReductionForecaster(
+        estimator=LinearRegression(),
+        feature_transformer=LagTransformer(lag=[1, 2]),
+    )
 
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
 
@@ -119,5 +139,5 @@ def test_cross_learning_interval_global_data(time_series_factory):
     y_pred_explicit = forecaster.predict(X=None, forecasting_horizon=3, panel_group=None)
 
     assert y_pred_default.equals(y_pred_explicit)
-    assert "feature_0_lower_0.1" in y_pred_default.columns
+    assert "feature_0" in y_pred_default.columns
     assert len(y_pred_default) == 3

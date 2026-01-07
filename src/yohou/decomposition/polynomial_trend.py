@@ -2,7 +2,6 @@
 
 import numbers
 
-import numpy as np
 import polars as pl
 from pydantic import StrictInt
 from sklearn.base import _fit_context
@@ -103,7 +102,9 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
             Predictions for next forecasting_horizon steps (without time columns).
 
         """
-        time_indices = self._get_time_indices(self.fit_forecasting_horizon_).to_numpy().reshape(-1, 1)
+        time_indices = (
+            self._get_time_indices(self.fit_forecasting_horizon_).to_numpy().reshape(-1, 1)
+        )
 
         # Transform time points to polynomial features
         X_pred = self.poly_features_.transform(time_indices)
@@ -118,9 +119,7 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
             y_pred_array = y_pred_array.reshape(-1, 1)
 
         # Convert to polars DataFrame with correct column names
-        y_pred = pl.DataFrame(
-            {col: y_pred_array[:, i] for i, col in enumerate(self._column_names)}
-        )
+        y_pred = pl.DataFrame({col: y_pred_array[:, i] for i, col in enumerate(self._column_names)})
 
         print("y_pred:", y_pred)
 

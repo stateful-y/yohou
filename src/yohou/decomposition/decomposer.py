@@ -1,7 +1,5 @@
 """Decomposer meta-forecaster for residual-based sequential decomposition."""
-from alembic.command import current
-from yohou.utils import add_interval
-from jedi.debug import reset_time
+
 from copy import deepcopy
 
 import polars as pl
@@ -11,13 +9,15 @@ from sklearn.base import _fit_context, clone
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
+    _raise_for_params,
     process_routing,
 )
 from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseForecaster, BaseTransformer
+from yohou.base import BaseTransformer
 from yohou.point_forecaster.base import BasePointForecaster
+from yohou.utils import add_interval
 
 
 class Decomposer(BasePointForecaster, _BaseComposition):
@@ -138,7 +138,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
 
     def __init__(
         self,
-        forecasters: list[tuple[str, BaseForecaster]],
+        forecasters: list[tuple[str, BasePointForecaster]],
         store_residuals: bool = False,
         target_transformer: BaseTransformer | None = None,
     ):
@@ -195,19 +195,22 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Fitted decomposer.
 
         """
+        # Validate params before routing
+        _raise_for_params(params, self, "fit")
+
         # Validate forecaster names are unique
         self._validate_names([name for name, _ in self.forecasters])
 
-        # Apply transformers and get transformed data
-        y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
-
         # Validate all forecasters are point forecasters
         for name, forecaster in self.forecasters:
-            if "point" not in forecaster.prediction_types:
+            if not isinstance(forecaster, BasePointForecaster):
                 raise ValueError(
-                    f"All forecasters must have 'point' in prediction_types. "
-                    f"Forecaster '{name}' has prediction_types: {forecaster.prediction_types}"
+                    f"All forecasters must be instances of BasePointForecaster. "
+                    f"Forecaster '{name}' is {type(forecaster).__name__}"
                 )
+
+        # Apply transformers and get transformed data
+        y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
 
         # Process metadata routing
         routed_params = process_routing(self, "fit", **params)
@@ -223,14 +226,14 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             # Clone and fit forecaster on current residuals
             forecaster_clone = clone(forecaster)
 
-            # Get routed params for this forecaster
-            forecaster_params = routed_params.get(name, {}).get("fit", {})
+            # Get routed params for this forecaster (direct Bunch access)
+            step_params = routed_params[name]
 
             forecaster_clone.fit(
                 y=residuals,
                 X=X_t,
                 forecasting_horizon=forecasting_horizon,
-                **forecaster_params,
+                **step_params.fit,
             )
             self.forecasters_.append((name, forecaster_clone))
 
@@ -253,7 +256,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
                 )
                 y_reset = pl.DataFrame({"time": [reset_time]})
                 X_reset, X_pred = None, None
-                if X_t is not None: 
+                if X_t is not None:
                     X_reset = pl.DataFrame({"time": [reset_time]})
                     X_pred = X_t
             else:
@@ -282,10 +285,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             target_cols = [c for c in residuals.columns if c != "time"]
             residuals = aligned.select(
                 [pl.col("time")]
-                + [
-                    (pl.col(col) - pl.col(f"{col}_pred")).alias(col)
-                    for col in target_cols
-                ]
+                + [(pl.col(col) - pl.col(f"{col}_pred")).alias(col) for col in target_cols]
             )
 
             # Store residuals if requested
@@ -298,7 +298,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group: str | None = None,
+        panel_group_names: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -306,16 +306,20 @@ class Decomposer(BasePointForecaster, _BaseComposition):
 
         Parameters
         ----------
-        X : pl.DataFrame, optional
-            Future exogenous features (must have forecasting_horizon rows).
-        forecasting_horizon : int, optional
-            Number of steps to forecast. If None, uses horizon from fit().
-        panel_group : str or None, default=None
-            For panel data: predict only for specified group.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
         predict_transformed : bool, default=False
-            If True, return predictions in transformed space without inverse transform.
+            If ``True``, the predictions are returned in the transformed space.
         **params : dict
-            Additional metadata.
+            Metadata to route to nested estimators.
+
 
         Returns
         -------
@@ -323,6 +327,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Predictions with columns: "observed_time", "time", <target_columns>
 
         """
+        _raise_for_params(params, self, "predict")
         check_is_fitted(self, "forecasters_")
 
         # Use fit horizon if not specified
@@ -339,14 +344,14 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         time_cols = None
 
         for name, forecaster in self.forecasters_:
-            # Get routed params for this forecaster
-            forecaster_params = routed_params.get(name, {}).get("predict", {})
+            # Get routed params for this forecaster (direct Bunch access)
+            step_params = routed_params[name]
 
             y_pred = forecaster.predict(
                 X=X_t,
                 forecasting_horizon=forecasting_horizon,
                 predict_transformed=True,
-                **forecaster_params,
+                **step_params.predict,
             )
 
             # Store time columns from first prediction
@@ -379,7 +384,9 @@ class Decomposer(BasePointForecaster, _BaseComposition):
 
         return y_pred
 
-    def update(self, y: pl.DataFrame, X: pl.DataFrame | None = None) -> "Decomposer":
+    def update(
+        self, y: pl.DataFrame, X: pl.DataFrame | None = None, panel_group_names: list[str] | None = None
+    ) -> "Decomposer":
         """Update all component forecasters with new observations.
 
         Parameters
@@ -388,6 +395,9 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             New target observations with "time" column.
         X : pl.DataFrame, optional
             New exogenous features with "time" column.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data (ignored - Decomposer updates all groups).
+            Parameter is ignored if the forecaster was not fitted on panel data.
 
         Returns
         -------
@@ -432,10 +442,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             target_cols = [c for c in residuals.columns if c != "time"]
             residuals = aligned.select(
                 [pl.col("time")]
-                + [
-                    (pl.col(col) - pl.col(f"{col}_pred")).alias(col)
-                    for col in target_cols
-                ]
+                + [(pl.col(col) - pl.col(f"{col}_pred")).alias(col) for col in target_cols]
             )
 
             # Store residuals if requested
@@ -451,7 +458,9 @@ class Decomposer(BasePointForecaster, _BaseComposition):
 
         return self
 
-    def reset(self, y: pl.DataFrame, X: pl.DataFrame | None = None) -> "Decomposer":
+    def reset(
+        self, y: pl.DataFrame, X: pl.DataFrame | None = None, panel_group_names: list[str] | None = None
+    ) -> "Decomposer":
         """Reset all component forecasters to new observation window.
 
         Parameters
@@ -460,6 +469,9 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Target observations with "time" column.
         X : pl.DataFrame, optional
             Exogenous features with "time" column.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data (ignored - Decomposer resets all groups).
+            Parameter is ignored if the forecaster was not fitted on panel data.
 
         Returns
         -------
@@ -493,6 +505,32 @@ class Decomposer(BasePointForecaster, _BaseComposition):
 
         return self
 
+    @property
+    def prediction_types(self) -> set[str]:
+        """Return union of prediction types from all forecasters.
+
+        Returns
+        -------
+        set[str]
+            Set of prediction types supported. Returns intersection of
+            prediction types from all fitted forecasters, defaulting to
+            {"point"} if not fitted.
+
+        """
+        if not hasattr(self, "forecasters_"):
+            return {"point"}
+
+        # Return the intersection of prediction types from all forecasters
+        # since all forecasters need to support a prediction type for Decomposer to support it
+        if not self.forecasters_:
+            return {"point"}
+
+        types = set(self.forecasters_[0][1].prediction_types)
+        for _, forecaster in self.forecasters_[1:]:
+            types = types.intersection(forecaster.prediction_types)
+
+        return types
+
     def get_metadata_routing(self):
         """Get metadata routing for this estimator.
 
@@ -502,7 +540,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Metadata routing configuration.
 
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        router = MetadataRouter(owner=self)
 
         # Add routing for each forecaster
         for name, forecaster in self.forecasters:
@@ -510,7 +548,8 @@ class Decomposer(BasePointForecaster, _BaseComposition):
                 **{name: forecaster},
                 method_mapping=MethodMapping()
                 .add(caller="fit", callee="fit")
-                .add(caller="predict", callee="predict"),
+                .add(caller="predict", callee="predict")
+                .add(caller="update_predict", callee="update_predict"),
             )
 
         # Add routing for transformers

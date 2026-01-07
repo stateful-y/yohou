@@ -20,6 +20,7 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
+
     return (mo,)
 
 
@@ -45,27 +46,27 @@ def _(mo):
 @app.cell
 def _():
     # Imports
-    import polars as pl
-    import numpy as np
     from datetime import datetime, timedelta
-    import plotly.graph_objects as go
-    from plotly.subplots import make_subplots
 
-    from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
-    from yohou.preprocessing import LogTransform, SeasonalDifferencing, LagTransformer
-    from yohou.pipeline import Pipeline
+    import numpy as np
+    import optuna
+    import plotly.graph_objects as go
+    import polars as pl
+    from plotly.subplots import make_subplots
+    from sklearn.linear_model import Ridge
+
     from yohou.metrics import MAE, MSE
     from yohou.model_selection import SearchCV
+    from yohou.pipeline import FeaturePipeline
+    from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
+    from yohou.preprocessing import LagTransformer, LogTransform, SeasonalDifferencing
 
-    from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
-    import optuna
     return (
         LagTransformer,
         LogTransform,
         MAE,
         MSE,
-        Pipeline,
+        FeaturePipeline,
         PointReductionForecaster,
         Ridge,
         SearchCV,
@@ -133,37 +134,43 @@ def _(datetime, np, pl, timedelta):
 
     # Create panel data DataFrame with __ separator
     # Format: group__variable (e.g., store_1__sales)
-    y_panel = pl.DataFrame({
-        "time": time,
-        "store_1__sales": store1_sales,
-        "store_2__sales": store2_sales,
-        "store_3__sales": store3_sales,
-    })
+    y_panel = pl.DataFrame(
+        {
+            "time": time,
+            "store_1__sales": store1_sales,
+            "store_2__sales": store2_sales,
+            "store_3__sales": store3_sales,
+        }
+    )
 
     # Create exogenous features (promotions, weekends)
     # These are also panel-specific
-    y_panel = y_panel.with_columns([
-        # Weekend indicator for each store
-        pl.lit((day_of_week >= 5).astype(float)).alias("store_1__is_weekend"),
-        pl.lit((day_of_week >= 5).astype(float)).alias("store_2__is_weekend"),
-        pl.lit((day_of_week >= 5).astype(float)).alias("store_3__is_weekend"),
-        # Random promotion events (20% chance)
-        pl.lit(np.random.binomial(1, 0.2, n_days).astype(float)).alias("store_1__promotion"),
-        pl.lit(np.random.binomial(1, 0.2, n_days).astype(float)).alias("store_2__promotion"),
-        pl.lit(np.random.binomial(1, 0.2, n_days).astype(float)).alias("store_3__promotion"),
-    ])
+    y_panel = y_panel.with_columns(
+        [
+            # Weekend indicator for each store
+            pl.lit((day_of_week >= 5).astype(float)).alias("store_1__is_weekend"),
+            pl.lit((day_of_week >= 5).astype(float)).alias("store_2__is_weekend"),
+            pl.lit((day_of_week >= 5).astype(float)).alias("store_3__is_weekend"),
+            # Random promotion events (20% chance)
+            pl.lit(np.random.binomial(1, 0.2, n_days).astype(float)).alias("store_1__promotion"),
+            pl.lit(np.random.binomial(1, 0.2, n_days).astype(float)).alias("store_2__promotion"),
+            pl.lit(np.random.binomial(1, 0.2, n_days).astype(float)).alias("store_3__promotion"),
+        ]
+    )
 
     # Split into y (targets) and X (features)
     y = y_panel.select(["time", "store_1__sales", "store_2__sales", "store_3__sales"])
-    X = y_panel.select([
-        "time",
-        "store_1__is_weekend",
-        "store_2__is_weekend", 
-        "store_3__is_weekend",
-        "store_1__promotion",
-        "store_2__promotion",
-        "store_3__promotion",
-    ])
+    X = y_panel.select(
+        [
+            "time",
+            "store_1__is_weekend",
+            "store_2__is_weekend",
+            "store_3__is_weekend",
+            "store_1__promotion",
+            "store_2__promotion",
+            "store_3__promotion",
+        ]
+    )
 
     # Train/test split (80/20)
     split_idx = int(0.8 * n_days)
@@ -210,7 +217,6 @@ def _(go, make_subplots, y_train):
         fig_data.update_yaxes(title_text="Sales")
         return fig_data
 
-
     _()
     return
 
@@ -245,27 +251,25 @@ def _(MAE, MSE, SeasonalNaive, X_test, X_train, y_test, y_train):
 
         # Align predictions with actual test data for scoring
         y_test_aligned = y_test.join(
-            y_pred_baseline.select(["time"] + [c for c in y_pred_baseline.columns if c not in ["time", "observed_time"]]),
+            y_pred_baseline.select(
+                ["time"]
+                + [c for c in y_pred_baseline.columns if c not in ["time", "observed_time"]]
+            ),
             on="time",
-            suffix="_pred"
+            suffix="_pred",
         )
 
         # Calculate metrics for each store
         baseline_results = {}
         for store in ["store_1__sales", "store_2__sales", "store_3__sales"]:
             store_pred = store + "_pred"
-            mae = float(
-                (y_test_aligned[store] - y_test_aligned[store_pred]).abs().mean()
-            )
-            MSE = float(
-                ((y_test_aligned[store] - y_test_aligned[store_pred]) ** 2).mean() ** 0.5
-            )
+            mae = float((y_test_aligned[store] - y_test_aligned[store_pred]).abs().mean())
+            MSE = float(((y_test_aligned[store] - y_test_aligned[store_pred]) ** 2).mean() ** 0.5)
             baseline_results[store] = {"MAE": mae, "MSE": MSE}
 
         print("Baseline (Seasonal Naive) Results:")
         for store, metrics in baseline_results.items():
             print(f"{store}: MAE={metrics['MAE']:.2f}, MSE={metrics['MSE']:.2f}")
-
 
     _()
     return
@@ -274,7 +278,7 @@ def _(MAE, MSE, SeasonalNaive, X_test, X_train, y_test, y_train):
 @app.cell
 def _(mo):
     mo.md(r"""
-    ## 3. Advanced Pipeline with Preprocessing
+    ## 3. Advanced FeaturePipeline with Preprocessing
 
     Let's build a more sophisticated pipeline:
     1. **Log transform** - stabilize variance
@@ -289,7 +293,7 @@ def _(mo):
 def _(
     LagTransformer,
     LogTransform,
-    Pipeline,
+    FeaturePipeline,
     PointReductionForecaster,
     Ridge,
     SeasonalDifferencing,
@@ -300,14 +304,19 @@ def _(
     y_train,
 ):
     # Build preprocessing + forecasting pipeline
-    pipeline = Pipeline([
-        ("log", LogTransform()),
-        ("seasonal_diff", SeasonalDifferencing(seasonality=7)),
-        ("forecaster", PointReductionForecaster(
-            estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lags=[1, 2, 3, 7]),
-        )),
-    ])
+    pipeline = FeaturePipeline(
+        [
+            ("log", LogTransform()),
+            ("seasonal_diff", SeasonalDifferencing(seasonality=7)),
+            (
+                "forecaster",
+                PointReductionForecaster(
+                    estimator=Ridge(alpha=1.0),
+                    feature_transformer=LagTransformer(lags=[1, 2, 3, 7]),
+                ),
+            ),
+        ]
+    )
 
     # Fit on training data
     pipeline.fit(y_train, X=X_train, forecasting_horizon=len(y_test))
@@ -317,9 +326,11 @@ def _(
 
     # Evaluate
     y_test_aligned_pipeline = y_test.join(
-        y_pred_pipeline.select(["time"] + [c for c in y_pred_pipeline.columns if c not in ["time", "observed_time"]]),
+        y_pred_pipeline.select(
+            ["time"] + [c for c in y_pred_pipeline.columns if c not in ["time", "observed_time"]]
+        ),
         on="time",
-        suffix="_pred"
+        suffix="_pred",
     )
 
     pipeline_results = {}
@@ -329,18 +340,23 @@ def _(
             (y_test_aligned_pipeline[store] - y_test_aligned_pipeline[store_pred]).abs().mean()
         )
         MSE = float(
-            ((y_test_aligned_pipeline[store] - y_test_aligned_pipeline[store_pred]) ** 2).mean() ** 0.5
+            ((y_test_aligned_pipeline[store] - y_test_aligned_pipeline[store_pred]) ** 2).mean()
+            ** 0.5
         )
         pipeline_results[store] = {"MAE": mae, "MSE": MSE}
 
-    print("Pipeline Results:")
+    print("FeaturePipeline Results:")
     for store, metrics in pipeline_results.items():
         print(f"{store}: MAE={metrics['MAE']:.2f}, MSE={metrics['MSE']:.2f}")
 
     # Compare to baseline
     print("\nImprovement over baseline:")
     for store in baseline_results:
-        mae_improvement = (baseline_results[store]["MAE"] - pipeline_results[store]["MAE"]) / baseline_results[store]["MAE"] * 100
+        mae_improvement = (
+            (baseline_results[store]["MAE"] - pipeline_results[store]["MAE"])
+            / baseline_results[store]["MAE"]
+            * 100
+        )
         print(f"{store}: {mae_improvement:.1f}% MAE reduction")
     return MSE, pipeline_results, y_pred_pipeline
 
@@ -382,13 +398,13 @@ def _(go, make_subplots, y_pred_baseline, y_pred_pipeline, y_test):
             col=1,
         )
 
-        # Pipeline
+        # FeaturePipeline
         fig_pred.add_trace(
             go.Scatter(
                 x=y_pred_pipeline["time"],
                 y=y_pred_pipeline[store],
                 mode="lines",
-                name=f"Pipeline Store {i}",
+                name=f"FeaturePipeline Store {i}",
                 line=dict(color="red", width=1),
             ),
             row=i,
@@ -446,7 +462,7 @@ def _(
     LagTransformer,
     LogTransform,
     MAE,
-    Pipeline,
+    FeaturePipeline,
     PointReductionForecaster,
     Ridge,
     SearchCV,
@@ -460,24 +476,31 @@ def _(
     y_train,
 ):
     # Create forecaster for optimization
-    forecaster_to_optimize = Pipeline([
-        ("log", LogTransform()),
-        ("seasonal_diff", SeasonalDifferencing(seasonality=7)),
-        ("forecaster", PointReductionForecaster(
-            estimator=Ridge(),
-            feature_transformer=LagTransformer(lags=[1]),  # Will be optimized
-        )),
-    ])
+    forecaster_to_optimize = FeaturePipeline(
+        [
+            ("log", LogTransform()),
+            ("seasonal_diff", SeasonalDifferencing(seasonality=7)),
+            (
+                "forecaster",
+                PointReductionForecaster(
+                    estimator=Ridge(),
+                    feature_transformer=LagTransformer(lags=[1]),  # Will be optimized
+                ),
+            ),
+        ]
+    )
 
     # Define search space
     param_distributions = {
         "forecaster__estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0, log=True),
-        "forecaster__feature_transformer__lags": optuna.distributions.CategoricalDistribution([
-            [1, 2, 3],
-            [1, 2, 3, 7],
-            [1, 2, 3, 7, 14],
-            [1, 7, 14],
-        ]),
+        "forecaster__feature_transformer__lags": optuna.distributions.CategoricalDistribution(
+            [
+                [1, 2, 3],
+                [1, 2, 3, 7],
+                [1, 2, 3, 7, 14],
+                [1, 7, 14],
+            ]
+        ),
     }
 
     # Run optimization (this may take a minute)
@@ -501,17 +524,17 @@ def _(
 
     # Evaluate
     y_test_aligned_opt = y_test.join(
-        y_pred_optimized.select(["time"] + [c for c in y_pred_optimized.columns if c not in ["time", "observed_time"]]),
+        y_pred_optimized.select(
+            ["time"] + [c for c in y_pred_optimized.columns if c not in ["time", "observed_time"]]
+        ),
         on="time",
-        suffix="_pred"
+        suffix="_pred",
     )
 
     optimized_results = {}
     for store in ["store_1__sales", "store_2__sales", "store_3__sales"]:
         store_pred = store + "_pred"
-        mae = float(
-            (y_test_aligned_opt[store] - y_test_aligned_opt[store_pred]).abs().mean()
-        )
+        mae = float((y_test_aligned_opt[store] - y_test_aligned_opt[store_pred]).abs().mean())
         MSE = float(
             ((y_test_aligned_opt[store] - y_test_aligned_opt[store_pred]) ** 2).mean() ** 0.5
         )
@@ -523,7 +546,11 @@ def _(
 
     print("\nImprovement over baseline:")
     for store in baseline_results:
-        mae_improvement = (baseline_results[store]["MAE"] - optimized_results[store]["MAE"]) / baseline_results[store]["MAE"] * 100
+        mae_improvement = (
+            (baseline_results[store]["MAE"] - optimized_results[store]["MAE"])
+            / baseline_results[store]["MAE"]
+            * 100
+        )
         print(f"{store}: {mae_improvement:.1f}% MAE reduction")
     return MSE, optimized_results, search
 
@@ -653,13 +680,15 @@ def _(baseline_results, go, optimized_results, pipeline_results):
     comparison_data = []
     for store in ["store_1__sales", "store_2__sales", "store_3__sales"]:
         store_name = store.replace("__sales", "").replace("_", " ").title()
-        comparison_data.append({
-            "Store": store_name,
-            "Baseline MAE": f"{baseline_results[store]['MAE']:.2f}",
-            "Pipeline MAE": f"{pipeline_results[store]['MAE']:.2f}",
-            "Optimized MAE": f"{optimized_results[store]['MAE']:.2f}",
-            "Best Improvement": f"{(baseline_results[store]['MAE'] - optimized_results[store]['MAE']) / baseline_results[store]['MAE'] * 100:.1f}%",
-        })
+        comparison_data.append(
+            {
+                "Store": store_name,
+                "Baseline MAE": f"{baseline_results[store]['MAE']:.2f}",
+                "FeaturePipeline MAE": f"{pipeline_results[store]['MAE']:.2f}",
+                "Optimized MAE": f"{optimized_results[store]['MAE']:.2f}",
+                "Best Improvement": f"{(baseline_results[store]['MAE'] - optimized_results[store]['MAE']) / baseline_results[store]['MAE'] * 100:.1f}%",
+            }
+        )
 
     # Create bar chart
     fig_comparison = go.Figure()
@@ -670,7 +699,7 @@ def _(baseline_results, go, optimized_results, pipeline_results):
     optimized_maes = [optimized_results[f"store_{i}__sales"]["MAE"] for i in [1, 2, 3]]
 
     fig_comparison.add_trace(go.Bar(name="Baseline", x=stores, y=baseline_maes))
-    fig_comparison.add_trace(go.Bar(name="Pipeline", x=stores, y=pipeline_maes))
+    fig_comparison.add_trace(go.Bar(name="FeaturePipeline", x=stores, y=pipeline_maes))
     fig_comparison.add_trace(go.Bar(name="Optimized", x=stores, y=optimized_maes))
 
     fig_comparison.update_layout(
@@ -690,11 +719,11 @@ def _(comparison_data, mo):
     mo.md(f"""
     ### Results Table
 
-    | Store | Baseline MAE | Pipeline MAE | Optimized MAE | Best Improvement |
+    | Store | Baseline MAE | FeaturePipeline MAE | Optimized MAE | Best Improvement |
     |-------|--------------|--------------|---------------|------------------|
-    | {comparison_data[0]['Store']} | {comparison_data[0]['Baseline MAE']} | {comparison_data[0]['Pipeline MAE']} | {comparison_data[0]['Optimized MAE']} | {comparison_data[0]['Best Improvement']} |
-    | {comparison_data[1]['Store']} | {comparison_data[1]['Baseline MAE']} | {comparison_data[1]['Pipeline MAE']} | {comparison_data[1]['Optimized MAE']} | {comparison_data[1]['Best Improvement']} |
-    | {comparison_data[2]['Store']} | {comparison_data[2]['Baseline MAE']} | {comparison_data[2]['Pipeline MAE']} | {comparison_data[2]['Optimized MAE']} | {comparison_data[2]['Best Improvement']} |
+    | {comparison_data[0]["Store"]} | {comparison_data[0]["Baseline MAE"]} | {comparison_data[0]["FeaturePipeline MAE"]} | {comparison_data[0]["Optimized MAE"]} | {comparison_data[0]["Best Improvement"]} |
+    | {comparison_data[1]["Store"]} | {comparison_data[1]["Baseline MAE"]} | {comparison_data[1]["FeaturePipeline MAE"]} | {comparison_data[1]["Optimized MAE"]} | {comparison_data[1]["Best Improvement"]} |
+    | {comparison_data[2]["Store"]} | {comparison_data[2]["Baseline MAE"]} | {comparison_data[2]["FeaturePipeline MAE"]} | {comparison_data[2]["Optimized MAE"]} | {comparison_data[2]["Best Improvement"]} |
     """)
     return
 

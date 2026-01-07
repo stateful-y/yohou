@@ -154,7 +154,7 @@ def check_inputs(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
     validate_column_names(y)
     if X is not None:
         validate_column_names(X)
-    
+
     y_interval = check_interval_consistency(y)
     if X is not None:
         X_interval = check_interval_consistency(X)
@@ -194,11 +194,11 @@ def validate_column_names(df: pl.DataFrame) -> None:
     >>> # Valid: no __ separator
     >>> df = pl.DataFrame({"time": [1, 2], "value": [10, 20]})
     >>> validate_column_names(df)  # No error
-    
+
     >>> # Valid: proper group pattern
     >>> df = pl.DataFrame({"time": [1, 2], "sales__store_1": [100, 110]})
     >>> validate_column_names(df)  # No error
-    
+
     >>> # Invalid: __ without proper pattern
     >>> df = pl.DataFrame({"time": [1, 2], "my__bad__col": [10, 20]})
     >>> validate_column_names(df)  # doctest: +SKIP
@@ -212,19 +212,19 @@ def validate_column_names(df: pl.DataFrame) -> None:
 
     """
     import re
-    
+
     # Pattern: one or more non-underscore chars, then __, then one or more chars
     # This ensures __ appears exactly once and separates non-empty parts
-    group_pattern = re.compile(r'^([^_]+)__(.+)$')
-    
+    group_pattern = re.compile(r"^([^_]+)__(.+)$")
+
     for col_name in df.columns:
         if col_name == "time":
             continue
-        
+
         if "__" not in col_name:
             # No __ separator - valid global column
             continue
-        
+
         # Column contains __ - must match group pattern
         match = group_pattern.match(col_name)
         if not match:

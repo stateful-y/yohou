@@ -15,7 +15,7 @@
 #             "Storage",
 #             "ColumnTransformer",
 #             "FeatureUnion",
-#             "Pipeline",
+#             "FeaturePipeline",
 #             "SearchCV",
 #         ]
 #     ]

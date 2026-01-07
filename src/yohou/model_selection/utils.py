@@ -27,7 +27,6 @@ from sklearn.base import clone
 from sklearn.utils import Bunch
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
-    _routing_enabled,
     process_routing,
 )
 from sklearn.utils.metaestimators import _safe_split
@@ -123,11 +122,7 @@ class _MultimetricScorer:
         """Evaluate predicted target values."""
         scores: dict[str, float | str] = {}
 
-        if _routing_enabled():
-            routed_params = process_routing(self, "score", **kwargs)
-        else:
-            # they all get the same args, and they all get them all
-            routed_params = Bunch(**{name: Bunch(score=kwargs) for name in self._scorers})
+        routed_params = process_routing(self, "score", **kwargs)
 
         for name, scorer in self._scorers.items():
             try:
@@ -154,7 +149,7 @@ class _MultimetricScorer:
             A :class:`~utils.metadata_routing.MetadataRouter` encapsulating
             routing information.
         """
-        return MetadataRouter(owner=self.__class__.__name__).add(
+        return MetadataRouter(owner=self).add(
             **self._scorers, method_mapping="score"
         )
 

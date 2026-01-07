@@ -8,7 +8,7 @@ from pydantic import StrictInt
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
-from yohou.utils import filter_panel_columns
+from yohou.utils import select_panel_columns
 
 
 class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
@@ -74,7 +74,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group: str | None = None,
+        panel_group_names: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -86,11 +86,11 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Exogenous feature time series.
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
-        panel_group : str or None, default=None
-            For panel data (local_group_names_ is not None):
-            - If None: predict for all groups (default behavior)
-            - If str: predict only for the specified group (cross-learning)
-            For global data: parameter is ignored.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
         predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed space.
         **params : dict
@@ -108,13 +108,18 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if forecasting_horizon is None:
             forecasting_horizon = self.fit_forecasting_horizon_
 
-        # Validate panel_group only if provided
-        if panel_group is not None and (
-            self.local_group_names_ is None or panel_group not in self.local_group_names_
-        ):
-            raise ValueError(
-                f"Group {panel_group} not found in local groups: {self.local_group_names_}"
-            )
+        if panel_group_names is None:
+            panel_group_names = self.panel_group_names_
+        else:
+            # Validate specified panel groups
+            if self.panel_group_names_ is None:
+                raise ValueError(
+                    "The forecaster was fitted on global data, but `panel_group_names` "
+                    "were provided for update."
+                )
+            for panel_group in panel_group_names:
+                if panel_group not in self.panel_group_names_:
+                    raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
 
         # Handle panel data: predict all panel groups if panel_group=None
         # For now, just predict all groups together (default behavior)
@@ -122,28 +127,26 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         forecaster = deepcopy(self)
 
-        if self.local_group_names_ and panel_group is not None:
+        if panel_group_names is not None:
             # Filter _y_observed
             if forecaster._y_observed is not None:
-                forecaster._y_observed = filter_panel_columns(
+                forecaster._y_observed = select_panel_columns(
                     forecaster._y_observed,
-                    panel_group,
-                    self.local_group_names_,
+                    panel_group_names,
                     include_global=False,
                 )
 
             # Filter X
             if X is not None:
-                X = filter_panel_columns(
+                X = select_panel_columns(
                     X,
-                    panel_group,
-                    self.local_group_names_,
+                    panel_group_names,
                     include_global=True,
                 )
 
         y_pred = pl.DataFrame()
         for step in range(0, forecasting_horizon, self.fit_forecasting_horizon_):
-            y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, panel_group)
+            y_pred_step, y_pred_step_inv = BaseForecaster._predict(forecaster, panel_group_names)
 
             # Choose which version to accumulate based on predict_transformed
             if predict_transformed:
@@ -154,14 +157,16 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             if step + self.fit_forecasting_horizon_ < forecasting_horizon:
                 # Use inverse-transformed predictions for recursive update
                 # Select columns based on whether we have panel data or not
-                if self.local_group_names_ is None:
+                if self.panel_group_names_ is None:
                     # Non-panel data: schemas contain actual column names
                     y = y_pred_step_inv.select(["time"] + list(self.local_y_schema_.keys()))
                 else:
                     # Panel data: reconstruct prefixed column names from schema
                     y_columns = ["time"]
-                    for group_name in self.local_group_names_:
-                        y_columns.extend([f"{group_name}__{col}" for col in self.local_y_schema_.keys()])
+                    for group_name in self.panel_group_names_:
+                        y_columns.extend(
+                            [f"{group_name}__{col}" for col in self.local_y_schema_.keys()]
+                        )
                     y = y_pred_step_inv.select(y_columns)
 
                 X_slice = None
@@ -185,5 +190,93 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 self.fit_forecasting_horizon_ - forecasting_horizon % self.fit_forecasting_horizon_
             )
             y_pred = y_pred[:-end]
+
+        return y_pred
+
+    def update_predict(
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        panel_group_names: list[str] | None = None,
+        stride: StrictInt | None = None,
+        predict_transformed: bool = False,
+        **params,
+    ) -> pl.DataFrame:
+        """Alternate recursive `predict` and `update`.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series for updates.
+        X : pl.DataFrame or None, default=None
+            Feature time series for predictions.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast recursively. If None, uses ``fit_forecasting_horizon_``.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: update and predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
+        stride : int >= 1 or None, default=None
+            Number of new observations to use for each update. If None, uses
+            ``fit_forecasting_horizon_``.
+        predict_transformed : bool, default=False
+            If ``True``, the predictions are returned in the transformed
+            space.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted time series.
+
+        """
+        check_is_fitted(self, "fit_forecasting_horizon_")
+
+        # Use fit_forecasting_horizon_ as default for both parameters
+        if forecasting_horizon is None:
+            forecasting_horizon = self.fit_forecasting_horizon_
+        if stride is None:
+            stride = self.fit_forecasting_horizon_
+
+        # Initial prediction with predict_transformed parameter
+        y_pred_i = self.predict(
+            X=X,
+            forecasting_horizon=forecasting_horizon,
+            panel_group_names=panel_group_names,
+            predict_transformed=predict_transformed,
+            **params,
+        )
+
+        y_pred = y_pred_i
+        for i in range(0, len(y), stride):
+            y_slice = y[i : i + stride]
+
+            X_slice = None
+            if X is not None:
+                # Filter X to match y_slice times
+                # Use semi-join to f ilter X rows that have matching times in y_slice
+                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
+
+            self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+
+            X_future = None
+            if X is not None:
+                # Filter X to start after the last observed time
+                # This ensures predict() gets features aligned with the forecast horizon
+                last_time = y_slice["time"][-1]
+                X_future = X.filter(pl.col("time") > last_time)
+
+            y_pred_i = self.predict(
+                X=X_future,
+                forecasting_horizon=forecasting_horizon,
+                panel_group_names=panel_group_names,
+                predict_transformed=predict_transformed,
+                **params,
+            )
+
+            y_pred = pl.concat([y_pred, y_pred_i])
 
         return y_pred

@@ -6,7 +6,7 @@ This plan outlines the implementation of specialized forecasters for decompositi
 
 **Trend Forecasters**:
 - **PolynomialTrendForecaster**: Polynomial regression (linear is degree=1 special case)
-- **ExponentialTrendForecaster**: Exponential growth/decay patterns  
+- **ExponentialTrendForecaster**: Exponential growth/decay patterns
 - **MovingAverageTrendForecaster**: Moving average baseline
 
 **Seasonality Forecasters**:
@@ -106,21 +106,21 @@ tests/point_forecaster/
 ```python
 class PolynomialTrendForecaster(BasePointForecaster):
     """Polynomial trend forecasting (degree=1 for linear)."""
-    
+
     def __init__(self, degree: StrictInt = 1, target_transformer=None):
         super().__init__(target_transformer=target_transformer)
         self.degree = degree
-    
+
     def fit(self, y, X=None, forecasting_horizon=1, **params):
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
         self.coefficients_ = self._fit_polynomial(y_t)
         return self
-    
+
     def _fit_polynomial(self, y):
         # Convert time to numeric, fit polynomial for each column
         # Store coefficients [a_0, a_1, ..., a_degree]
         pass
-    
+
     def _predict_one(self, **params):
         # Evaluate polynomial at next time point
         pass
@@ -147,24 +147,24 @@ class PolynomialTrendForecaster(BasePointForecaster):
 ```python
 class ExponentialTrendForecaster(BasePointForecaster):
     """Exponential trend forecasting: y = a*exp(b*t)."""
-    
+
     def __init__(self, target_transformer=None):
         super().__init__(target_transformer=target_transformer)
-    
+
     def fit(self, y, X=None, forecasting_horizon=1, **params):
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
         self._validate_positive(y_t)
         self.coefficients_ = self._fit_exponential(y_t)
         return self
-    
+
     def _validate_positive(self, y):
         # Raise ValueError if any values <= 0
         pass
-    
+
     def _fit_exponential(self, y):
         # Fit linear to log(y), store [a, b]
         pass
-    
+
     def _predict_one(self, **params):
         # Evaluate a * exp(b*t) at next time point
         pass
@@ -192,20 +192,20 @@ class ExponentialTrendForecaster(BasePointForecaster):
 ```python
 class MovingAverageTrendForecaster(BasePointForecaster):
     """Moving average trend (constant forecast)."""
-    
+
     def __init__(self, window_size: StrictInt = 12, target_transformer=None):
         super().__init__(target_transformer=target_transformer)
         self.window_size = window_size
-    
+
     def fit(self, y, X=None, forecasting_horizon=1, **params):
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
         self.trend_value_ = self._compute_moving_average(y_t)
         return self
-    
+
     def _compute_moving_average(self, y):
         # Compute mean of last window_size rows for each column
         pass
-    
+
     def _predict_one(self, **params):
         # Return constant trend_value_
         pass
@@ -244,82 +244,82 @@ from yohou.utils.validation import check_interval_consistency
 
 class _BaseSeasonalityForecaster(BasePointForecaster):
     """Abstract base class for seasonality forecasters.
-    
+
     Provides common infrastructure for pattern-based and Fourier-based
     seasonality forecasting.
-    
+
     Parameters
     ----------
     seasonality : StrictInt
         Length of seasonal cycle (number of time steps).
     target_transformer : BaseTransformer, optional
         Transformer applied to target before forecasting.
-    
+
     """
-    
+
     def __init__(self, seasonality: StrictInt, target_transformer=None):
         super().__init__(target_transformer=target_transformer)
         self.seasonality = seasonality
-    
+
     def _validate_sufficient_data(self, y: pl.DataFrame) -> None:
         """Validates that y has at least one complete seasonal cycle.
-        
+
         Parameters
         ----------
         y : pl.DataFrame
             Target time series.
-        
+
         Raises
         ------
         ValueError
             If y has fewer than seasonality rows.
-        
+
         """
         if len(y) < self.seasonality:
             raise ValueError(
                 f"Insufficient data: need at least {self.seasonality} observations "
                 f"(one seasonal cycle), got {len(y)}"
             )
-    
+
     def _time_to_phase(self, time_col: pl.Series) -> pl.Series:
         """Converts time column to seasonal phase indices.
-        
+
         Handles irregular intervals by computing phase based on row position
         relative to first observation.
-        
+
         Parameters
         ----------
         time_col : pl.Series
             Time column (datetime type).
-        
+
         Returns
         -------
         pl.Series
             Integer phase indices in range [0, seasonality).
-        
+
         """
         # Compute row indices relative to first observation
         row_indices = pl.arange(0, len(time_col), eager=True)
         # Map to seasonal phases with wrap-around
         phases = row_indices % self.seasonality
         return phases
-    
+
     def _get_time_indices(self, forecasting_horizon: int) -> pl.Series:
         """Generates phase indices for future predictions.
-        
+
         Continues from current position (_y_observed length) and wraps around
         seasonal cycle.
-        
+
         Parameters
         ----------
         forecasting_horizon : int
             Number of steps to predict.
-        
+
         Returns
         -------
         pl.Series
             Phase indices for next forecasting_horizon steps.
-        
+
         """
         current_position = len(self._y_observed)
         future_indices = pl.arange(
@@ -328,60 +328,60 @@ class _BaseSeasonalityForecaster(BasePointForecaster):
             eager=True
         )
         return future_indices % self.seasonality
-    
+
     @abstractmethod
     def _extract_pattern(self, y: pl.DataFrame) -> pl.DataFrame:
         """Extracts seasonal pattern from training data.
-        
+
         Must be implemented by subclasses.
-        
+
         Parameters
         ----------
         y : pl.DataFrame
             Transformed target time series.
-        
+
         Returns
         -------
         pl.DataFrame
             Seasonal pattern (length = seasonality).
-        
+
         """
         pass
-    
+
     @abstractmethod
     def _predict_from_pattern(self, forecasting_horizon: int, **params) -> pl.DataFrame:
         """Generates predictions from stored seasonal pattern.
-        
+
         Must be implemented by subclasses.
-        
+
         Parameters
         ----------
         forecasting_horizon : int
             Number of steps to predict.
         **params : dict
             Additional parameters (e.g., for metadata routing).
-        
+
         Returns
         -------
         pl.DataFrame
             Predictions for next forecasting_horizon steps.
-        
+
         """
         pass
-    
+
     def _predict_one(self, **params) -> pl.DataFrame:
         """Generates predictions by delegating to _predict_from_pattern.
-        
+
         Parameters
         ----------
         **params : dict
             Additional parameters (e.g., for metadata routing).
-        
+
         Returns
         -------
         pl.DataFrame
             Predictions with time columns added.
-        
+
         """
         y_pred = self._predict_from_pattern(
             forecasting_horizon=self._forecasting_horizon,
@@ -409,7 +409,7 @@ class _BaseSeasonalityForecaster(BasePointForecaster):
 ```python
 class SeasonalityForecaster(_BaseSeasonalityForecaster):
     """Pattern-based seasonality forecasting.
-    
+
     Parameters
     ----------
     seasonality : StrictInt
@@ -418,9 +418,9 @@ class SeasonalityForecaster(_BaseSeasonalityForecaster):
         Aggregation method for multiple cycles.
     target_transformer : BaseTransformer, optional
         Transformer applied to target.
-    
+
     """
-    
+
     def __init__(
         self,
         seasonality: StrictInt,
@@ -429,22 +429,22 @@ class SeasonalityForecaster(_BaseSeasonalityForecaster):
     ):
         super().__init__(seasonality=seasonality, target_transformer=target_transformer)
         self.method = method
-    
+
     def fit(self, y, X=None, forecasting_horizon=1, **params):
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
         self._validate_sufficient_data(y_t)
         self.seasonal_pattern_ = self._extract_pattern(y_t)
         return self
-    
+
     def _validate_sufficient_data(self, y):
         # naive needs 1 cycle, average/median need 2 cycles
         pass
-    
+
     def _extract_pattern(self, y):
         # Reshape into cycles, aggregate per method
         # Return pattern with seasonal_index column
         pass
-    
+
     def _predict_one(self, **params):
         # Look up next position in cycle (modulo seasonality)
         pass
@@ -480,7 +480,7 @@ from sklearn.linear_model import LinearRegression
 
 class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     """Fourier series seasonality forecasting.
-    
+
     Parameters
     ----------
     seasonality : float
@@ -489,9 +489,9 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         Number of Fourier harmonics to use.
     target_transformer : BaseTransformer, optional
         Transformer applied to target.
-    
+
     """
-    
+
     def __init__(
         self,
         seasonality: float,
@@ -500,83 +500,83 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     ):
         super().__init__(seasonality=seasonality, target_transformer=target_transformer)
         self.n_harmonics = n_harmonics
-    
+
     def fit(self, y, X=None, forecasting_horizon=1, **params):
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
         self._validate_sufficient_data(y_t)
         self.fourier_coefficients_ = self._extract_pattern(y_t)
         return self
-    
+
     def _extract_pattern(self, y: pl.DataFrame) -> dict:
         """Fits Fourier coefficients for each column.
-        
+
         Parameters
         ----------
         y : pl.DataFrame
             Training data.
-        
+
         Returns
         -------
         dict
             Dictionary mapping column names to fitted LinearRegression models.
-        
+
         """
         coefficients = {}
         time_col = pl.arange(0, len(y), eager=True)
-        
+
         for col_name in y.columns:
             if col_name == "time":
                 continue
-            
+
             # Build Fourier feature matrix
             X_fourier = self._build_fourier_features(time_col)
-            
+
             # Fit linear regression
             y_values = y[col_name].to_numpy()
             model = LinearRegression()
             model.fit(X_fourier, y_values)
             coefficients[col_name] = model
-        
+
         return coefficients
-    
+
     def _build_fourier_features(self, time_indices: pl.Series) -> np.ndarray:
         """Constructs Fourier feature matrix.
-        
+
         Parameters
         ----------
         time_indices : pl.Series
             Time step indices.
-        
+
         Returns
         -------
         np.ndarray
             Shape (n_samples, 2 * n_harmonics) with sin/cos features.
-        
+
         """
         t = time_indices.to_numpy()
         features = []
-        
+
         for k in range(1, self.n_harmonics + 1):
             features.append(np.sin(2 * np.pi * k * t / self.seasonality))
             features.append(np.cos(2 * np.pi * k * t / self.seasonality))
-        
+
         return np.column_stack(features)
-    
+
     def _predict_from_pattern(self, forecasting_horizon: int, **params) -> pl.DataFrame:
         """Generates predictions using Fourier coefficients.
-        
+
         Parameters
         ----------
         forecasting_horizon : int
             Number of steps to predict.
         **params : dict
             Additional parameters.
-        
+
         Returns
         -------
         pl.DataFrame
             Predictions without time columns.
-        
+
         """
         # Get future time indices
         current_position = len(self._y_observed)
@@ -585,15 +585,15 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
             current_position + forecasting_horizon,
             eager=True
         )
-        
+
         # Build Fourier features for future times
         X_future = self._build_fourier_features(future_indices)
-        
+
         # Predict for each column
         predictions = {}
         for col_name, model in self.fourier_coefficients_.items():
             predictions[col_name] = model.predict(X_future)
-        
+
         return pl.DataFrame(predictions)
 ```
 
@@ -641,10 +641,10 @@ def test_forecaster_checks(forecaster, tags, expected_failures, y_X_factory):
     """Run systematic checks."""
     y, X = y_X_factory(length=100, n_targets=1, n_X_features=0, seed=42)
     y_train, y_test = y[:80], y[80:]
-    
+
     forecaster_fitted = clone(forecaster)
     forecaster_fitted.fit(y_train, forecasting_horizon=3)
-    
+
     for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
         forecaster_fitted, y_train, None, y_test, None, tags=tags
     ):

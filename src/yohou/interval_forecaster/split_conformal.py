@@ -1,4 +1,5 @@
 """Implementation of conformal forecasters."""
+from yohou.base import BaseTransformer
 
 from typing import List, Literal
 
@@ -6,6 +7,7 @@ import polars as pl
 from pydantic import StrictFloat, StrictInt
 from sklearn.base import clone
 from sklearn.model_selection import train_test_split
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.metrics import BaseConformityScorer, Residual
 from yohou.point_forecaster import BasePointForecaster, SeasonalNaive
@@ -18,8 +20,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     Parameters
     ----------
-    coverage_rates: list of floats, default=[0.05]
-        List of miscoverage levels to generate intervals for.
+    point_forecaster : BasePointForecaster, default=SeasonalNaive()
+        Point forecaster used to generate point predictions.
+    calibration_size : int >= 1, default=100
+        Number of observations to use for calibration.
+    conformity_scorer : BaseConformityScorer, default=Residual()
+        Scorer used to compute conformity scores.
+    similarity : BaseSimilarity or None, default=None
+        Similarity measure to weight conformity scores.
 
     """
 
@@ -39,16 +47,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self,
         point_forecaster: BasePointForecaster = SeasonalNaive(),
         calibration_size: StrictInt = 100,
-        coverage_rates: List[StrictFloat] = [0.05],
         conformity_scorer: BaseConformityScorer = Residual(),
         similarity: BaseSimilarity | None = None,
-        update_strategy: Literal["average", "constant"] = "average",
     ):
-        BaseIntervalForecaster.__init__(
-            self,
-            coverage_rates=coverage_rates,
-            update_strategy=update_strategy,
-        )
+        BaseIntervalForecaster.__init__(self)
 
         self.point_forecaster = point_forecaster
         self.conformity_scorer = conformity_scorer
@@ -60,6 +62,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        coverage_rates: List[StrictFloat] | None = None,
+        **params,
     ) -> "SplitConformalForecaster":
         """Fits the forecaster and returns it.
 
@@ -67,18 +71,23 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         ----------
         y : pl.DataFrame
             Target time series.
-
         X : pl.DataFrame or None, default=None
             Exogenous feature time series.
-
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
+        coverage_rates : list of float or None, default=None
+            Coverage rates for the prediction intervals. If None, uses ``[0.95]``
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
         self
 
         """
+
+        self.fit_coverage_rates_ = coverage_rates if coverage_rates is not None else [0.95]
+
         y_train, y_calib, X_train, X_calib = train_test_split(
             y, X, test_size=self.calibration_size, shuffle=False
         )
@@ -144,9 +153,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     def predict(
         self,
         X: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        panel_group: str | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        panel_group_names: list[str] | None = None,
         predict_transformed: bool = False,
+        **params,
     ) -> pl.DataFrame:
         """Predicts the model forecasting horizon from the observation horizon.
 
@@ -154,24 +164,84 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         ----------
         X : pl.DataFrame or None, default=None
             Exogenous feature time series.
-
-        forecasting_horizon : int >= 1, default=1
-            Horizon to forecast.
-
-        panel_group : str or None, default=None
-            For panel data (local_group_names_ is not None):
-            - If None: predict for all groups (default behavior)
-            - If str: predict only for the specified group (cross-learning)
-            For global data: parameter is ignored.
-
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
         predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed space.
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
         pl.DataFrame
-            Predicted interval time series.
+            Predicted time series.
+
         """
+        check_is_fitted(self, "fit_forecasting_horizon_")
+
+        return self.point_forecaster_.predict(
+            X=X,
+            forecasting_horizon=forecasting_horizon,
+            panel_group_names=panel_group_names,
+            predict_transformed=predict_transformed,
+        )
+
+    def predict_interval(
+        self,
+        X: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        coverage_rates: list[float] | None = None,
+        strategy: Literal["mean", "median", "point"] | None = None,
+        panel_group_names: list[str] | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Predicts an interval according to coverage rates.
+
+        Parameters
+        ----------
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
+        coverage_rates : list of floats or None, default=None
+            Coverage rates for the prediction intervals. If None, uses ``fit_coverage_rates_``.
+        strategy : {"mean", "median", "point"} or None, default=None
+            Strategy for updating with new point observations:
+            - "mean": use the mean of the interval bounds as point observation
+            - "median": use the median of the interval bounds as point observation
+            - "point": use the point forecast directly (if available)
+            If None, defaults to "mean".
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted time series with interval bounds.
+
+        """
+        check_is_fitted(self, "fit_forecasting_horizon_")
+
+        forecasting_horizon = (
+            forecasting_horizon
+            if forecasting_horizon is not None
+            else self.fit_forecasting_horizon_
+        )
+
+        coverage_rates = (
+            coverage_rates if coverage_rates is not None else self.fit_coverage_rates_
+        )
+
         y_pred = self.point_forecaster_.predict(X=X).drop("observed_time")
 
         y_pred_intervals = pl.DataFrame()
@@ -181,7 +251,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             conformity_scores_step = self.conformity_scores_.filter(pl.col("step") == step)
 
             y_pred_intervals_step = pl.DataFrame()
-            for coverage_rate in self.coverage_rates:
+            for coverage_rate in coverage_rates:
                 y_pred_interval_rate_step = conformity_scorer_step.inverse_score(
                     y_pred=y_pred_step,
                     conformity_scores=conformity_scores_step,

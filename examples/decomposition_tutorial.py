@@ -7,6 +7,7 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
+
     return (mo,)
 
 
@@ -34,7 +35,6 @@ def _(mo):
 def _():
     from datetime import datetime
 
-    import numpy as np
     import plotly.graph_objects as go
     import polars as pl
     from plotly.subplots import make_subplots
@@ -44,21 +44,19 @@ def _():
     # Yohou imports
     from yohou.decomposition import (
         Decomposer,
-        ExponentialTrendForecaster,
         FourierSeasonalityForecaster,
         PolynomialTrendForecaster,
         SeasonalityForecaster,
     )
-    from yohou.metrics import MAE, MSE
-    from yohou.pipeline import Pipeline
+    from yohou.metrics import MAE
     from yohou.point_forecaster import (
         PointReductionForecaster,
-        SeasonalNaive,
     )
     from yohou.preprocessing import (
         LagTransformer,
         LogTransform,
     )
+
     return (
         Decomposer,
         FourierSeasonalityForecaster,
@@ -92,15 +90,14 @@ def _(datetime, pl, train_test_split):
     df_raw = pl.read_csv(url)
 
     # Convert to yohou format
-    y = pl.DataFrame({
-        "time": pl.datetime_range(
-            start=datetime(1949, 1, 1),
-            end=datetime(1960, 12, 1),
-            interval="1mo",
-            eager=True
-        ),
-        "passengers": df_raw["Passengers"].cast(pl.Float64)
-    })
+    y = pl.DataFrame(
+        {
+            "time": pl.datetime_range(
+                start=datetime(1949, 1, 1), end=datetime(1960, 12, 1), interval="1mo", eager=True
+            ),
+            "passengers": df_raw["Passengers"].cast(pl.Float64),
+        }
+    )
 
     # Split: 80% train, 20% test
     y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
@@ -145,11 +142,14 @@ def _(
         #     ("trend", PolynomialTrendForecaster(degree=2)),
         #     ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3]))
         # ], target_transformer=LogTransform(offset=1)),
-        "Seasonality → Trend": Decomposer([
-            ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
-            ("trend", PolynomialTrendForecaster(degree=2))
-        ], target_transformer=LogTransform(offset=1)),
-        "Baseline (Seasonal Naive)": SeasonalityForecaster(seasonality=12, method="naive")
+        "Seasonality → Trend": Decomposer(
+            [
+                ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
+                ("trend", PolynomialTrendForecaster(degree=2)),
+            ],
+            target_transformer=LogTransform(offset=1),
+        ),
+        "Baseline (Seasonal Naive)": SeasonalityForecaster(seasonality=12, method="naive"),
     }
 
     ordering_results = {}
@@ -222,7 +222,7 @@ def _(go, ordering_results, y_test, y_train):
         yaxis_title="Passengers (thousands)",
         height=450,
         hovermode="x unified",
-        template="plotly_white"
+        template="plotly_white",
     )
 
     fig_ordering
@@ -266,16 +266,22 @@ def _(
     y_train,
 ):
     # Build decomposer with residual storage
-    decomp_viz = Decomposer([
-        ("trend", PolynomialTrendForecaster(degree=2)),
-        ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3]))
-    ], store_residuals=True, target_transformer=LogTransform())
+    decomp_viz = Decomposer(
+        [
+            ("trend", PolynomialTrendForecaster(degree=2)),
+            ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
+        ],
+        store_residuals=True,
+        target_transformer=LogTransform(),
+    )
 
     decomp_viz.fit(y_train, forecasting_horizon=forecasting_horizon)
 
     # Get predictions from each component
     trend_pred = decomp_viz.forecasters_["trend"].predict(forecasting_horizon=forecasting_horizon)
-    season_pred = decomp_viz.forecasters_["seasonality"].predict(forecasting_horizon=forecasting_horizon)
+    season_pred = decomp_viz.forecasters_["seasonality"].predict(
+        forecasting_horizon=forecasting_horizon
+    )
     final_pred = decomp_viz.predict(forecasting_horizon=forecasting_horizon)
 
     # Inverse transform to original scale (components are in log space)
@@ -297,10 +303,11 @@ def _(
 ):
     # Create subplots for component visualization
     fig_components = make_subplots(
-        rows=2, cols=1,
+        rows=2,
+        cols=1,
         subplot_titles=("Original Scale: Final Forecast", "Component Contributions (Log Scale)"),
         vertical_spacing=0.12,
-        row_heights=[0.6, 0.4]
+        row_heights=[0.6, 0.4],
     )
 
     # Top plot: Original scale predictions
@@ -312,7 +319,8 @@ def _(
             name="Training",
             line=dict(color="lightgray", width=2),
         ),
-        row=1, col=1
+        row=1,
+        col=1,
     )
 
     fig_components.add_trace(
@@ -323,7 +331,8 @@ def _(
             name="Actual",
             line=dict(color="green", width=3),
         ),
-        row=1, col=1
+        row=1,
+        col=1,
     )
 
     fig_components.add_trace(
@@ -335,7 +344,8 @@ def _(
             line=dict(color="purple", width=2),
             marker=dict(size=5),
         ),
-        row=1, col=1
+        row=1,
+        col=1,
     )
 
     fig_components.add_trace(
@@ -346,7 +356,8 @@ def _(
             name="Trend Component",
             line=dict(color="red", width=2, dash="dash"),
         ),
-        row=1, col=1
+        row=1,
+        col=1,
     )
 
     # Bottom plot: Components in log space (additive)
@@ -359,7 +370,8 @@ def _(
             line=dict(color="red", width=2),
             showlegend=False,
         ),
-        row=2, col=1
+        row=2,
+        col=1,
     )
 
     fig_components.update_xaxes(title_text="Time", row=2, col=1)
@@ -370,7 +382,7 @@ def _(
         title="🎨 Decomposition: Component Contributions",
         height=700,
         hovermode="x unified",
-        template="plotly_white"
+        template="plotly_white",
     )
 
     fig_components
@@ -407,20 +419,28 @@ def _(
 ):
     # Build 3-component model
     multi_comp_models = {
-        "2-Component (Trend + Season)": Decomposer([
-            ("trend", PolynomialTrendForecaster(degree=2)),
-            ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3]))
-        ], target_transformer=LogTransform()),
-
-        "3-Component (+ ML Residual)": Decomposer([
-            ("trend", PolynomialTrendForecaster(degree=2)),
-            ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
-            ("residual", PointReductionForecaster(
-                estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lags=[1, 2, 3, 12]),
-                reduction_strategy="direct"
-            ))
-        ], target_transformer=LogTransform()),
+        "2-Component (Trend + Season)": Decomposer(
+            [
+                ("trend", PolynomialTrendForecaster(degree=2)),
+                ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
+            ],
+            target_transformer=LogTransform(),
+        ),
+        "3-Component (+ ML Residual)": Decomposer(
+            [
+                ("trend", PolynomialTrendForecaster(degree=2)),
+                ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
+                (
+                    "residual",
+                    PointReductionForecaster(
+                        estimator=Ridge(alpha=1.0),
+                        feature_transformer=LagTransformer(lags=[1, 2, 3, 12]),
+                        reduction_strategy="direct",
+                    ),
+                ),
+            ],
+            target_transformer=LogTransform(),
+        ),
     }
 
     multi_comp_results = {}
@@ -490,7 +510,7 @@ def _(go, multi_comp_results, y_test, y_train):
         yaxis_title="Passengers (thousands)",
         height=450,
         hovermode="x unified",
-        template="plotly_white"
+        template="plotly_white",
     )
 
     fig_multi
@@ -543,24 +563,31 @@ def _(
 ):
     # Ablation study: incrementally add components
     ablation_models = {
-        "1. Trend Only": Decomposer([
-            ("trend", PolynomialTrendForecaster(degree=2))
-        ], target_transformer=LogTransform()),
-
-        "2. Trend + Seasonality": Decomposer([
-            ("trend", PolynomialTrendForecaster(degree=2)),
-            ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3]))
-        ], target_transformer=LogTransform()),
-
-        "3. Trend + Seasonality + Residual": Decomposer([
-            ("trend", PolynomialTrendForecaster(degree=2)),
-            ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
-            ("residual", PointReductionForecaster(
-                estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lags=[1, 2, 3]),
-                reduction_strategy="direct"
-            ))
-        ], target_transformer=LogTransform()),
+        "1. Trend Only": Decomposer(
+            [("trend", PolynomialTrendForecaster(degree=2))], target_transformer=LogTransform()
+        ),
+        "2. Trend + Seasonality": Decomposer(
+            [
+                ("trend", PolynomialTrendForecaster(degree=2)),
+                ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
+            ],
+            target_transformer=LogTransform(),
+        ),
+        "3. Trend + Seasonality + Residual": Decomposer(
+            [
+                ("trend", PolynomialTrendForecaster(degree=2)),
+                ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
+                (
+                    "residual",
+                    PointReductionForecaster(
+                        estimator=Ridge(alpha=1.0),
+                        feature_transformer=LagTransformer(lags=[1, 2, 3]),
+                        reduction_strategy="direct",
+                    ),
+                ),
+            ],
+            target_transformer=LogTransform(),
+        ),
     }
 
     ablation_results = {}
@@ -568,10 +595,7 @@ def _(
         model_abl.fit(y_train, forecasting_horizon=forecasting_horizon)
         y_pred_abl = model_abl.predict(forecasting_horizon=forecasting_horizon)
         mae_abl = MAE().score(y_test, y_pred_abl)
-        ablation_results[name_abl] = {
-            "predictions": y_pred_abl,
-            "mae": mae_abl
-        }
+        ablation_results[name_abl] = {"predictions": y_pred_abl, "mae": mae_abl}
 
     print("Ablation Study: Incremental Component Value\n")
     baseline_mae = None
@@ -615,7 +639,7 @@ def _(ablation_results, go):
         xaxis_title="Model Configuration",
         yaxis_title="MAE",
         height=400,
-        template="plotly_white"
+        template="plotly_white",
     )
 
     fig_ablation
@@ -649,10 +673,13 @@ def _(
     y_train,
 ):
     # Simulate streaming workflow
-    decomp_stream = Decomposer([
-        ("trend", PolynomialTrendForecaster(degree=2)),
-        ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3]))
-    ], target_transformer=LogTransform())
+    decomp_stream = Decomposer(
+        [
+            ("trend", PolynomialTrendForecaster(degree=2)),
+            ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
+        ],
+        target_transformer=LogTransform(),
+    )
 
     # Initial fit
     decomp_stream.fit(y_train, forecasting_horizon=1)
@@ -665,25 +692,25 @@ def _(
     split_idx = len(y_train)
     for i in range(split_idx, len(y) - 1):  # -1 to always have ground truth
         # New observation
-        y_new = y[i:i+1]
+        y_new = y[i : i + 1]
 
         # Update and predict next step
         y_pred_stream = decomp_stream.update_predict(y_new, forecasting_horizon=1)
 
         # Store results
         streaming_predictions.append(y_pred_stream["passengers"][0])
-        streaming_actuals.append(y["passengers"][i+1])
-        streaming_times.append(y["time"][i+1])
+        streaming_actuals.append(y["passengers"][i + 1])
+        streaming_times.append(y["time"][i + 1])
 
     # Create dataframe for comparison
-    streaming_df = pl.DataFrame({
-        "time": streaming_times,
-        "actual": streaming_actuals,
-        "predicted": streaming_predictions
-    })
+    streaming_df = pl.DataFrame(
+        {"time": streaming_times, "actual": streaming_actuals, "predicted": streaming_predictions}
+    )
 
     # Calculate streaming MAE
-    mae_streaming = float(streaming_df.select((pl.col("actual") - pl.col("predicted")).abs().mean())[0, 0])
+    mae_streaming = float(
+        streaming_df.select((pl.col("actual") - pl.col("predicted")).abs().mean())[0, 0]
+    )
 
     print(f"Streaming MAE (1-step ahead): {mae_streaming:.2f}")
     print(f"Total predictions: {len(streaming_predictions)}")
@@ -738,7 +765,7 @@ def _(go, mae_streaming, streaming_df, y_train):
         yaxis_title="Passengers (thousands)",
         height=450,
         hovermode="x unified",
-        template="plotly_white"
+        template="plotly_white",
     )
 
     fig_streaming

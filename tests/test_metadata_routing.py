@@ -8,7 +8,7 @@ Test Categories:
 1. Basic Routing (get_metadata_routing, set_*_request methods)
 2. Transformer Routing (transform, update_transform)
 3. Forecaster Routing (fit, predict, update_predict)
-4. Pipeline Routing (Pipeline, FeatureUnion, ColumnTransformer)
+4. FeaturePipeline Routing (FeaturePipeline, FeatureUnion, ColumnTransformer)
 5. SearchCV Routing (routing through cross-validation)
 6. Error Handling (UnsetMetadataPassedError, validation)
 7. Integration Tests (nested routing scenarios)
@@ -25,7 +25,7 @@ from sklearn.utils.metadata_routing import MetadataRequest, MetadataRouter
 
 from yohou.metrics import MAE
 from yohou.model_selection import SearchCV
-from yohou.pipeline import ColumnTransformer, FeatureUnion, Pipeline
+from yohou.pipeline import ColumnTransformer, FeatureUnion, FeaturePipeline
 from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
 from yohou.preprocessing import SeasonalDifferencing
 
@@ -238,9 +238,9 @@ def test_forecaster_routing_with_reduction(y_X_factory, consuming_estimator):
 
 
 def test_pipeline_get_metadata_routing(time_series_factory):
-    """Pipeline should implement get_metadata_routing."""
+    """FeaturePipeline should implement get_metadata_routing."""
     y = time_series_factory(length=50, n_components=1)
-    pipeline = Pipeline(
+    pipeline = FeaturePipeline(
         [
             ("diff1", SeasonalDifferencing(seasonality=3)),
             ("diff2", SeasonalDifferencing(seasonality=2)),
@@ -254,9 +254,9 @@ def test_pipeline_get_metadata_routing(time_series_factory):
 
 
 def test_pipeline_routes_to_steps(time_series_factory):
-    """Pipeline should route metadata to its steps."""
+    """FeaturePipeline should route metadata to its steps."""
     y = time_series_factory(length=50, n_components=1)
-    pipeline = Pipeline(
+    pipeline = FeaturePipeline(
         [
             ("diff1", SeasonalDifferencing(seasonality=3)),
             ("diff2", SeasonalDifferencing(seasonality=2)),
@@ -272,11 +272,11 @@ def test_pipeline_routes_to_steps(time_series_factory):
 
 
 def test_pipeline_update_transform(y_X_factory):
-    """Pipeline.update_transform should work with transformers."""
+    """FeaturePipeline.update_transform should work with transformers."""
     y, _ = y_X_factory(length=50, n_targets=1)
     y_train, y_test = y[:-10], y[-10:]
 
-    pipeline = Pipeline(
+    pipeline = FeaturePipeline(
         [
             ("diff1", SeasonalDifferencing(seasonality=3)),
             ("diff2", SeasonalDifferencing(seasonality=2)),
@@ -537,13 +537,13 @@ def test_cloning_preserves_routing_state(y_X_factory):
 
 
 def test_nested_pipeline_with_searchcv(y_X_factory):
-    """Test deeply nested routing: SearchCV -> Reduction Forecaster with Pipeline."""
+    """Test deeply nested routing: SearchCV -> Reduction Forecaster with FeaturePipeline."""
     y, X = y_X_factory(length=50, n_targets=1, n_features=1)
     import optuna
     from sklearn.linear_model import Ridge
 
-    # Pipeline as feature transformer
-    feature_pipeline = Pipeline(
+    # FeaturePipeline as feature transformer
+    feature_pipeline = FeaturePipeline(
         [
             ("diff", SeasonalDifferencing(seasonality=3)),
         ]
@@ -627,8 +627,8 @@ def test_full_pipeline_with_reduction_forecaster(y_X_factory, consuming_estimato
     y, X = y_X_factory(length=50, n_targets=1, n_features=1)
     estimator, registry = consuming_estimator
 
-    # Pipeline as feature transformer
-    feature_pipeline = Pipeline(
+    # FeaturePipeline as feature transformer
+    feature_pipeline = FeaturePipeline(
         [
             ("diff", SeasonalDifferencing(seasonality=3)),
         ]

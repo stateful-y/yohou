@@ -5,17 +5,17 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 
-from yohou.utils.panel import filter_panel_columns, inspect_locality
+from yohou.utils.panel import select_panel_columns, inspect_locality
 
 
 def test_inspect_locality_global_data_single_column():
     """Test inspect_locality with global data (single non-panel column)."""
     df = pl.DataFrame({"time": [1, 2, 3], "value": [10.0, 20.0, 30.0]})
 
-    global_names, local_groups = inspect_locality(df)
+    global_names, panel_groups = inspect_locality(df)
 
     assert global_names == ["value"]
-    assert local_groups == {}
+    assert panel_groups == {}
 
 
 def test_inspect_locality_global_data_multiple_columns():
@@ -28,10 +28,10 @@ def test_inspect_locality_global_data_multiple_columns():
         }
     )
 
-    global_names, local_groups = inspect_locality(df)
+    global_names, panel_groups = inspect_locality(df)
 
     assert set(global_names) == {"feature_1", "feature_2"}
-    assert local_groups == {}
+    assert panel_groups == {}
 
 
 def test_inspect_locality_panel_data_single_group():
@@ -44,10 +44,10 @@ def test_inspect_locality_panel_data_single_group():
         }
     )
 
-    global_names, local_groups = inspect_locality(df)
+    global_names, panel_groups = inspect_locality(df)
 
     assert global_names == []
-    assert local_groups == {"sales": ["sales__store_1", "sales__store_2"]}
+    assert panel_groups == {"sales": ["sales__store_1", "sales__store_2"]}
 
 
 def test_inspect_locality_panel_data_multiple_groups():
@@ -62,10 +62,10 @@ def test_inspect_locality_panel_data_multiple_groups():
         }
     )
 
-    global_names, local_groups = inspect_locality(df)
+    global_names, panel_groups = inspect_locality(df)
 
     assert global_names == []
-    assert local_groups == {
+    assert panel_groups == {
         "sales": ["sales__store_1", "sales__store_2"],
         "inventory": ["inventory__store_1", "inventory__store_2"],
     }
@@ -82,10 +82,10 @@ def test_inspect_locality_mixed_global_and_panel_data():
         }
     )
 
-    global_names, local_groups = inspect_locality(df)
+    global_names, panel_groups = inspect_locality(df)
 
     assert global_names == ["global_feature"]
-    assert local_groups == {"sales": ["sales__store_1", "sales__store_2"]}
+    assert panel_groups == {"sales": ["sales__store_1", "sales__store_2"]}
 
 
 def test_inspect_locality_time_column_excluded():
@@ -98,13 +98,13 @@ def test_inspect_locality_time_column_excluded():
         }
     )
 
-    global_names, local_groups = inspect_locality(df)
+    global_names, panel_groups = inspect_locality(df)
 
     assert "time" not in global_names
-    assert "time" not in local_groups
+    assert "time" not in panel_groups
 
 
-def test_filter_panel_columns_target_exclude_global():
+def test_select_panel_columns_target_exclude_global():
     """Test filtering for target (y) - should exclude global features."""
     df = pl.DataFrame(
         {
@@ -115,15 +115,13 @@ def test_filter_panel_columns_target_exclude_global():
         }
     )
 
-    result = filter_panel_columns(
-        df, panel_group="sales", local_group_names=["sales"], include_global=False
-    )
+    result = select_panel_columns(df, panel_group_names=["sales"], include_global=False)
 
     assert set(result.columns) == {"time", "sales__store_1", "sales__store_2"}
     assert len(result) == 3
 
 
-def test_filter_panel_columns_features_include_global():
+def test_select_panel_columns_features_include_global():
     """Test filtering for features (X) - should include global features."""
     df = pl.DataFrame(
         {
@@ -139,16 +137,14 @@ def test_filter_panel_columns_features_include_global():
         }
     )
 
-    result = filter_panel_columns(
-        df, panel_group="sales", local_group_names=["sales"], include_global=True
-    )
+    result = select_panel_columns(df, panel_group_names=["sales"], include_global=True)
 
     assert set(result.columns) == {"time", "global_feature", "sales"}
     assert len(result) == 3
 
 
-def test_filter_panel_columns_multiple_panel_columns():
-    """Test filtering when multiple panel groups exist (flat columns)."""
+def test_select_panel_columns_multiple_panel_columns():
+    """Test filtering when multiple panel groups exist - returns all groups."""
     df = pl.DataFrame(
         {
             "time": [1, 2, 3],
@@ -160,19 +156,24 @@ def test_filter_panel_columns_multiple_panel_columns():
         }
     )
 
-    result = filter_panel_columns(
+    result = select_panel_columns(
         df,
-        panel_group="sales",
-        local_group_names=["sales", "inventory"],
+        panel_group_names=["sales", "inventory"],
         include_global=False,
     )
 
-    # Should keep only time and sales columns (not inventory)
-    assert set(result.columns) == {"time", "sales__store_1", "sales__store_2"}
+    # Should keep time and ALL panel group columns (both sales and inventory)
+    assert set(result.columns) == {
+        "time",
+        "sales__store_1",
+        "sales__store_2",
+        "inventory__store_1",
+        "inventory__store_2",
+    }
     assert len(result) == 3
 
 
-def test_filter_panel_columns_multiple_global_columns():
+def test_select_panel_columns_multiple_global_columns():
     """Test filtering preserves all global columns when include_global=True."""
     df = pl.DataFrame(
         {
@@ -189,16 +190,14 @@ def test_filter_panel_columns_multiple_global_columns():
         }
     )
 
-    result = filter_panel_columns(
-        df, panel_group="sales", local_group_names=["sales"], include_global=True
-    )
+    result = select_panel_columns(df, panel_group_names=["sales"], include_global=True)
 
     assert set(result.columns) == {"time", "global_1", "global_2", "sales"}
     assert len(result) == 3
 
 
-def test_filter_panel_columns_none_local_group_names():
-    """Test that None local_group_names returns DataFrame unchanged."""
+def test_select_panel_columns_none_panel_group_names():
+    """Test that None panel_group_names returns DataFrame unchanged."""
     df = pl.DataFrame(
         {
             "time": [1, 2, 3],
@@ -207,16 +206,14 @@ def test_filter_panel_columns_none_local_group_names():
         }
     )
 
-    result = filter_panel_columns(
-        df, panel_group="value", local_group_names=None, include_global=True
-    )
+    result = select_panel_columns(df, panel_group_names=None, include_global=True)
 
     # Should return unchanged DataFrame
     assert result.columns == df.columns
     assert result.equals(df)
 
 
-def test_filter_panel_columns_empty_dataframe():
+def test_select_panel_columns_empty_dataframe():
     """Test filtering with empty DataFrame."""
     df = pl.DataFrame(
         {
@@ -227,15 +224,13 @@ def test_filter_panel_columns_empty_dataframe():
         }
     )
 
-    result = filter_panel_columns(
-        df, panel_group="sales", local_group_names=["sales"], include_global=False
-    )
+    result = select_panel_columns(df, panel_group_names=["sales"], include_global=False)
 
     assert set(result.columns) == {"time", "sales__store_1", "sales__store_2"}
     assert len(result) == 0
 
 
-def test_filter_panel_columns_preserves_data_values():
+def test_select_panel_columns_preserves_data_values():
     """Test that filtering preserves actual data values correctly."""
     df = pl.DataFrame(
         {
@@ -251,9 +246,7 @@ def test_filter_panel_columns_preserves_data_values():
         }
     )
 
-    result = filter_panel_columns(
-        df, panel_group="sales", local_group_names=["sales"], include_global=True
-    )
+    result = select_panel_columns(df, panel_group_names=["sales"], include_global=True)
 
     # Verify data values are preserved
     assert result["time"].to_list() == [1, 2, 3]
@@ -262,7 +255,7 @@ def test_filter_panel_columns_preserves_data_values():
     assert "sales" in result.columns
 
 
-def test_filter_panel_columns_datetime_time_column():
+def test_select_panel_columns_datetime_time_column():
     """Test filtering with datetime time column (real-world scenario)."""
     time = pl.datetime_range(
         start=datetime(2021, 1, 1),
@@ -279,16 +272,14 @@ def test_filter_panel_columns_datetime_time_column():
         }
     )
 
-    result = filter_panel_columns(
-        df, panel_group="sales", local_group_names=["sales"], include_global=False
-    )
+    result = select_panel_columns(df, panel_group_names=["sales"], include_global=False)
 
     assert set(result.columns) == {"time", "sales__store_1", "sales__store_2"}
     assert result["time"].dtype == pl.Datetime
 
 
-def test_filter_panel_columns_forecaster_y_filtering_pattern():
-    """Test filtering pattern used for _y_observed in forecasters."""
+def test_select_panel_columns_forecaster_y_filtering_pattern():
+    """Test filtering pattern used for _y_observed in forecasters - returns all groups."""
     # Simulate _y_observed with multiple panel groups (flat columns)
     df = pl.DataFrame(
         {
@@ -301,21 +292,24 @@ def test_filter_panel_columns_forecaster_y_filtering_pattern():
         }
     )
 
-    # Filter for cross-learning on store_sales
-    result = filter_panel_columns(
+    # Filter with all panel groups - should keep ALL group columns
+    result = select_panel_columns(
         df,
-        panel_group="store_sales",
-        local_group_names=["store_sales", "online_sales"],
+        panel_group_names=["store_sales", "online_sales"],
         include_global=False,
     )
 
-    assert set(result.columns) == {"time", "store_sales__store_1", "store_sales__store_2", "store_sales__store_3"}
-    assert "online_sales__web" not in result.columns
-    assert "online_sales__app" not in result.columns
-    assert "online_sales" not in result.columns
+    assert set(result.columns) == {
+        "time",
+        "store_sales__store_1",
+        "store_sales__store_2",
+        "store_sales__store_3",
+        "online_sales__web",
+        "online_sales__app",
+    }
 
 
-def test_filter_panel_columns_forecaster_x_filtering_pattern():
+def test_select_panel_columns_forecaster_x_filtering_pattern():
     """Test filtering pattern used for X in forecasters."""
     # Simulate X features with global and local columns
     df = pl.DataFrame(
@@ -333,18 +327,17 @@ def test_filter_panel_columns_forecaster_x_filtering_pattern():
         }
     )
 
-    # Filter for cross-learning (should keep global features)
-    result = filter_panel_columns(
+    # Filter (should keep global features)
+    result = select_panel_columns(
         df,
-        panel_group="store_promotions",
-        local_group_names=["store_promotions"],
+        panel_group_names=["store_promotions"],
         include_global=True,
     )
 
     assert set(result.columns) == {"time", "holiday", "temperature", "store_promotions"}
 
 
-def test_filter_panel_columns_no_filtering_when_no_panel_data():
+def test_select_panel_columns_no_filtering_when_no_panel_data():
     """Test that global data passes through unchanged."""
     df = pl.DataFrame(
         {
@@ -354,10 +347,8 @@ def test_filter_panel_columns_no_filtering_when_no_panel_data():
         }
     )
 
-    # No panel data (local_group_names=None or empty)
-    result = filter_panel_columns(
-        df, panel_group="value", local_group_names=None, include_global=True
-    )
+    # No panel data (panel_group_names=None or empty)
+    result = select_panel_columns(df, panel_group_names=None, include_global=True)
 
     assert result.equals(df)
 
@@ -416,7 +407,7 @@ def test_inspect_locality_no_conflict_different_names():
     )
 
     # Should not raise
-    global_names, local_groups = inspect_locality(df)
+    global_names, panel_groups = inspect_locality(df)
 
     assert set(global_names) == {"temperature", "holiday"}
-    assert local_groups == {"x": ["x__sales", "x__inventory"]}
+    assert panel_groups == {"x": ["x__sales", "x__inventory"]}

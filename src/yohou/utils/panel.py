@@ -24,7 +24,7 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
     global_names : list of str
         Names of columns without __ separator (excluding "time").
 
-    local_groups : dict of str to list of str
+    panel_groups : dict of str to list of str
         Mapping from group prefixes to their full column names.
         Example: {"sales": ["sales__store_1", "sales__store_2"]}
 
@@ -36,10 +36,10 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
     ...     "time": [1, 2, 3],
     ...     "value": [10, 20, 30]
     ... })
-    >>> global_names, local_groups = inspect_locality(df_global)
+    >>> global_names, panel_groups = inspect_locality(df_global)
     >>> global_names
     ['value']
-    >>> local_groups
+    >>> panel_groups
     {}
 
     >>> # Panel data with __ separator
@@ -48,21 +48,21 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
     ...     "sales__store_1": [100, 110, 120],
     ...     "sales__store_2": [150, 160, 170]
     ... })
-    >>> global_names, local_groups = inspect_locality(df_panel)
+    >>> global_names, panel_groups = inspect_locality(df_panel)
     >>> global_names
     []
-    >>> local_groups
+    >>> panel_groups
     {'sales': ['sales__store_1', 'sales__store_2']}
 
     See Also
     --------
-    filter_panel_columns : Filter DataFrame to specific group for cross-learning
+    select_panel_columns : Filter DataFrame to panel group columns and global columns
     """
     # Pattern to match <GROUP>__<SERIES> format
-    group_pattern = re.compile(r'^([^_]+)__(.+)$')
+    group_pattern = re.compile(r"^([^_]+)__(.+)$")
 
     global_names = []
-    local_groups: dict[str, list[str]] = {}
+    panel_groups: dict[str, list[str]] = {}
 
     for col in df.columns:
         if col == "time":
@@ -72,18 +72,18 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
         if match:
             # This is a panel data column
             group_prefix = match.group(1)
-            if group_prefix not in local_groups:
-                local_groups[group_prefix] = []
-            local_groups[group_prefix].append(col)
+            if group_prefix not in panel_groups:
+                panel_groups[group_prefix] = []
+            panel_groups[group_prefix].append(col)
         else:
             # This is a global column
             global_names.append(col)
 
     # Validate that unprefixed panel column names don't conflict with global columns
-    if local_groups and global_names:
+    if panel_groups and global_names:
         # Extract unprefixed names from all panel columns
         unprefixed_panel_names = set()
-        for group_cols in local_groups.values():
+        for group_cols in panel_groups.values():
             for col in group_cols:
                 # Extract the part after __
                 unprefixed_name = col.split("__", 1)[1]
@@ -98,7 +98,7 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
                 f"For example, if you have 'x__a' and a global column 'a', this creates ambiguity."
             )
 
-    return global_names, local_groups
+    return global_names, panel_groups
 
 
 def get_group_df(
@@ -156,7 +156,7 @@ def get_group_df(
     See Also
     --------
     inspect_locality : Inspect DataFrame to identify global and local columns
-    filter_panel_columns : Filter DataFrame to specific group for cross-learning
+    select_panel_columns : Filter DataFrame to panel group columns and global columns
 
     Notes
     -----
@@ -200,17 +200,16 @@ def get_group_df(
     return df_group
 
 
-def filter_panel_columns(
+def select_panel_columns(
     df: pl.DataFrame,
-    panel_group: str,
-    local_group_names: list[str] | None,
+    panel_group_names: list[str] | None,
     include_global: bool = True,
 ) -> pl.DataFrame:
-    """Filter DataFrame to specific group prefix for cross-learning.
+    """Select panel group columns and optionally global columns of a DataFrame.
 
     For panel data (DataFrames with columns using __ separator for groups),
     this function filters columns to keep only the "time" column, columns
-    matching a specified group prefix, and optionally global columns.
+    matching any of the panel group prefixes, and optionally global columns.
 
     Parameters
     ----------
@@ -218,24 +217,20 @@ def filter_panel_columns(
         Input DataFrame with potential mix of global and group columns.
         Must contain a "time" column.
 
-    panel_group : str
-        Group prefix to keep for cross-learning prediction (e.g., "sales").
-        All columns matching <panel_group>__* will be kept.
-
-    local_group_names : list of str or None
-        List of all group prefixes in the dataset. Used to distinguish
-        group columns from global columns. If None, no filtering is performed.
+    panel_group_names : list of str or None
+        List of all group prefixes in the dataset. All columns matching
+        any <group>__* pattern will be kept. If None, no filtering is performed.
 
     include_global : bool, default=True
         Whether to keep global columns (without __) in addition to time and
-        the specified group columns.
-        - True: Keep time + specified group + all global columns for X
-        - False: Keep only time + specified group (for y target data)
+        panel group columns.
+        - True: Keep time + all panel groups + all global columns for X
+        - False: Keep only time + all panel groups (for y target data)
 
     Returns
     -------
     pl.DataFrame
-        Filtered DataFrame containing "time", columns matching the specified
+        Filtered DataFrame containing "time", columns matching any panel
         group prefix, and optionally global columns.
 
     Examples
@@ -251,17 +246,23 @@ def filter_panel_columns(
     ...     "inventory__store_2": [75, 80, 85]
     ... })
     >>> # Filter for target (y) - exclude global features
-    >>> y_filtered = filter_panel_columns(
-    ...     df, "sales", ["sales", "inventory"], include_global=False
+    >>> y_filtered = select_panel_columns(
+    ...     df, ["sales", "inventory"], include_global=False
     ... )
-    >>> y_filtered.columns
-    ['time', 'sales__store_1', 'sales__store_2']
+    >>> set(y_filtered.columns) == {
+    ...     'time', 'sales__store_1', 'sales__store_2',
+    ...     'inventory__store_1', 'inventory__store_2'
+    ... }
+    True
 
     >>> # Filter for features (X) - include global features
-    >>> X_filtered = filter_panel_columns(
-    ...     df, "sales", ["sales", "inventory"], include_global=True
+    >>> X_filtered = select_panel_columns(
+    ...     df, ["sales", "inventory"], include_global=True
     ... )
-    >>> set(X_filtered.columns) == {'time', 'global_feature', 'sales__store_1', 'sales__store_2'}
+    >>> set(X_filtered.columns) == {
+    ...     'time', 'global_feature', 'sales__store_1', 'sales__store_2',
+    ...     'inventory__store_1', 'inventory__store_2'
+    ... }
     True
 
     See Also
@@ -269,27 +270,27 @@ def filter_panel_columns(
     inspect_locality : Inspect DataFrame to identify global and local columns
     """
     # If no local groups, return DataFrame unchanged (no filtering needed)
-    if local_group_names is None:
+    if panel_group_names is None:
         return df
 
     # Determine which columns to keep
     cols_to_keep = ["time"]
-    
+
     for col in df.columns:
         if col == "time":
             continue
+
+        # Check if this column belongs to any panel group
+        is_panel = False
+        for group_prefix in panel_group_names:
+            if col.startswith(f"{group_prefix}__"):
+                is_panel = True
+                break
         
-        # Check if this column belongs to the target group
-        if col.startswith(f"{panel_group}__"):
+        if is_panel:
             cols_to_keep.append(col)
         elif include_global:
-            # Check if this is a global column (doesn't match any group prefix)
-            is_global = True
-            for group_prefix in local_group_names:
-                if col.startswith(f"{group_prefix}__"):
-                    is_global = False
-                    break
-            if is_global:
-                cols_to_keep.append(col)
-    
+            # Global column (doesn't match any group prefix)
+            cols_to_keep.append(col)
+
     return df.select(cols_to_keep)

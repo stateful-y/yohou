@@ -96,7 +96,6 @@ class InvertibleTransformer(BaseTransformer):
     def observation_horizon(self, value):
         self._observation_horizon = value
 
-
     def transform(self, X):
         return X.select([pl.col("time"), (cs.numeric() & ~cs.by_name("time")) + self.offset])
 
@@ -122,7 +121,6 @@ class PanelAwareTransformer(BaseTransformer):
     @observation_horizon.setter
     def observation_horizon(self, value):
         self._observation_horizon = value
-
 
     def transform(self, X):
         # Preserve panel columns
@@ -273,7 +271,7 @@ def dummy_transformers():
     """Minimal transformers for composition testing.
 
     Returns a dictionary of dummy transformer instances that can be
-    used to test composition classes (Pipeline, FeatureUnion, etc.)
+    used to test composition classes (FeaturePipeline, FeatureUnion, etc.)
     """
     return {
         "simple": SimpleTransformer(observation_horizon=1),
@@ -455,7 +453,9 @@ def panel_X_factory():
         panel_data = {}
         for i in range(n_panels):
             for j in range(n_features):
-                panel_data[f"panel_{i}__feature_{j}"] = range(i * 100 + j * 10, length + (i * 100 + j * 10))
+                panel_data[f"panel_{i}__feature_{j}"] = range(
+                    i * 100 + j * 10, length + (i * 100 + j * 10)
+                )
 
         # Create DataFrame with panel columns
         panel_df = pl.DataFrame(panel_data)
@@ -479,7 +479,10 @@ class DummyPointForecaster(BasePointForecaster):
     def _predict_one(self):
         # Return constant prediction
         return pl.DataFrame(
-            {col: [self.constant] * self.fit_forecasting_horizon_ for col in list(self.local_y_schema_.keys())}
+            {
+                col: [self.constant] * self.fit_forecasting_horizon_
+                for col in list(self.local_y_schema_.keys())
+            }
         )
 
 

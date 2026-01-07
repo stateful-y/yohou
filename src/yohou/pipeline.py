@@ -1,4 +1,4 @@
-"""Pipeline utilities for chaining transformers and forecasters."""
+"""FeaturePipeline utilities for chaining transformers and forecasters."""
 
 from collections import Counter
 from copy import deepcopy
@@ -17,10 +17,10 @@ from sklearn.compose._column_transformer import (
     _check_X,
 )
 from sklearn.pipeline import (
-    FeatureUnion as sklearn_FeatureUnion,
+    Pipeline as sklearn_Pipeline,
 )
 from sklearn.pipeline import (
-    Pipeline as sklearn_Pipeline,
+    FeatureUnion as sklearn_FeatureUnion,
 )
 from sklearn.pipeline import (
     _fit_one,
@@ -42,7 +42,6 @@ from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
     _raise_for_params,
-    _routing_enabled,
     process_routing,
 )
 from sklearn.utils.metaestimators import _BaseComposition, available_if
@@ -57,14 +56,14 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseTransformer
 
-__all__ = ["Pipeline", "FeatureUnion", "ColumnTransformer"]
+__all__ = ["FeaturePipeline", "FeatureUnion", "ColumnTransformer"]
 
 
-class Pipeline(BaseTransformer, _BaseComposition):
+class FeaturePipeline(BaseTransformer, _BaseComposition):
     """
         A sequence of time series transformers.
 
-        `Pipeline` allows you to sequentially apply a list of time series
+        `FeaturePipeline` allows you to sequentially apply a list of time series
         transformers to preprocess the data.
 
         Steps of the pipeline must be 'transforms', that is, they must implement
@@ -130,7 +129,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
 
         See Also
         --------
-        sklearn.pipeline.Pipeline : Underlying scikit-learn pipeline class.
+        sklearn.pipeline.FeaturePipeline : Underlying scikit-learn pipeline class.
         BaseTransformer : Base class for time series transformers.
         FeatureUnion : Parallel transformer combination.
         ColumnTransformer : Apply transformers to specific columns.
@@ -154,7 +153,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
         --------
         >>> import polars as pl
         >>> from datetime import datetime, timedelta
-        >>> from yohou.pipeline import Pipeline
+        >>> from yohou.pipeline import FeaturePipeline
         >>> from yohou.preprocessing import SeasonalDifferencing
         >>> from yohou.preprocessing.window import LagTransformer
         >>>
@@ -171,7 +170,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
         ... })
         >>>
         >>> # Example 1: Create a sequential preprocessing pipeline
-        >>> pipe = Pipeline([
+        >>> pipe = FeaturePipeline([
         ...     ('deseason', SeasonalDifferencing(seasonality=4)),
         ...     ('lags', LagTransformer(lag=[1, 2, 3]))
         ... ])
@@ -227,7 +226,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
         """
         return _BaseComposition._get_params(self, attr="steps", deep=deep)  # type: ignore[return-value]
 
-    def set_params(self, **params: Any) -> "Pipeline":
+    def set_params(self, **params: Any) -> "FeaturePipeline":
         """Set the parameters of this estimator.
 
         Parameters
@@ -237,8 +236,8 @@ class Pipeline(BaseTransformer, _BaseComposition):
 
         Returns
         -------
-        self : Pipeline
-            Pipeline instance.
+        self : FeaturePipeline
+            FeaturePipeline instance.
 
         """
         _BaseComposition._set_params(self, attr="steps", **params)
@@ -276,7 +275,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
         )
 
     def __len__(self) -> int:
-        """Return the length of the Pipeline.
+        """Return the length of the FeaturePipeline.
 
         Returns
         -------
@@ -302,7 +301,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
         """
         if isinstance(ind, slice):
             if ind.step is not None:
-                raise ValueError("Pipeline slicing only supports a step of 1")
+                raise ValueError("FeaturePipeline slicing only supports a step of 1")
             return self.__class__(steps=self.steps[ind], memory=self.memory, verbose=self.verbose)
         elif isinstance(ind, int):
             _, est = self.steps[ind]
@@ -390,29 +389,9 @@ class Pipeline(BaseTransformer, _BaseComposition):
             Routed parameters.
 
         """
-        if _routing_enabled():
-            return process_routing(self, method, **props)
-        else:
-            # Legacy behavior: check fit params by step prefix
-            fit_params_steps: dict[str, dict[str, Any]] = {name: {} for name, _ in self.steps}
-            for pname, pval in props.items():
-                if "__" not in pname:
-                    raise ValueError(
-                        f"Pipeline.fit does not accept the {pname} parameter. "
-                        "You can pass parameters to specific steps of your "
-                        "pipeline using the stepname__parameter format, e.g. "
-                        "`Pipeline.fit(X, y, logisticregression__sample_weight"
-                        "=sample_weight)`."
-                    )
-
-                step, param = pname.split("__", 1)
-                fit_params_steps[step][param] = pval
-
-            routed_params: dict[str, Any] = {}
-            for step_name, _ in self.steps:
-                routed_params[step_name] = {method: fit_params_steps[step_name]}
-
-            return routed_params
+        # Validate params before routing (sklearn pattern)
+        _raise_for_params(props, self, method)
+        return process_routing(self, method, **props)
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> Any:
         """Get output feature names for transformation.
@@ -518,7 +497,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
 
         return observation_horizon
 
-    def reset(self, X: pl.DataFrame) -> "Pipeline":
+    def reset(self, X: pl.DataFrame) -> "FeaturePipeline":
         """Resets the pipeline.
 
         Parameters
@@ -569,10 +548,10 @@ class Pipeline(BaseTransformer, _BaseComposition):
                 )
 
     @_fit_context(  # type: ignore[untyped-decorator]
-        # estimators in Pipeline.steps are not validated yet
+        # estimators in FeaturePipeline.steps are not validated yet
         prefer_skip_nested_validation=False
     )
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: Any) -> "Pipeline":
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: Any) -> "FeaturePipeline":
         """Fit the model.
 
         Fit all the transformers one after the other and sequentially transform the
@@ -604,11 +583,11 @@ class Pipeline(BaseTransformer, _BaseComposition):
         Returns
         -------
         self : object
-            Pipeline with fitted steps.
+            FeaturePipeline with fitted steps.
         """
         routed_params = self._check_method_params(method="fit", props=params)
         X_t = self._fit(X, y, routed_params)
-        with _print_elapsed_time("Pipeline", self._log_message(len(self.steps) - 1)):
+        with _print_elapsed_time("FeaturePipeline", self._log_message(len(self.steps) - 1)):
             if self._final_estimator != "passthrough":
                 last_step_params = routed_params[self.steps[-1][0]]
                 self._final_estimator.fit(X_t, y, **last_step_params["fit"])
@@ -616,7 +595,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
         return self
 
     @_fit_context(  # type: ignore[untyped-decorator]
-        # estimators in Pipeline.steps are not validated yet
+        # estimators in FeaturePipeline.steps are not validated yet
         prefer_skip_nested_validation=False
     )
     def fit_transform(
@@ -660,7 +639,7 @@ class Pipeline(BaseTransformer, _BaseComposition):
         X_t = self._fit(X, y, routed_params)
 
         last_step = self._final_estimator
-        with _print_elapsed_time("Pipeline", self._log_message(len(self.steps) - 1)):
+        with _print_elapsed_time("FeaturePipeline", self._log_message(len(self.steps) - 1)):
             if last_step == "passthrough":
                 return X_t  # type: ignore[return-value]
 
@@ -891,8 +870,6 @@ class Pipeline(BaseTransformer, _BaseComposition):
             method_mapping.add(caller="fit", callee="fit").add(caller="fit", callee="transform")
         (
             method_mapping.add(caller="fit", callee="fit")
-            .add(caller="predict", callee="predict")
-            .add(caller="fit_predict", callee="fit_predict")
             .add(caller="transform", callee="transform")
             .add(caller="inverse_transform", callee="inverse_transform")
             .add(caller="score", callee="score")
@@ -1006,7 +983,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
     See Also
     --------
     sklearn.pipeline.FeatureUnion : Underlying scikit-learn feature union class.
-    Pipeline : Sequential transformer chaining.
+    FeaturePipeline : Sequential transformer chaining.
     BaseTransformer : Base class for transformers.
     preprocessing.window.LagTransformer : Common transformer for lag features.
 
@@ -1430,15 +1407,8 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         self : object
             FeatureUnion class instance.
         """
-        if _routing_enabled():
-            routed_params = process_routing(self, "fit", **fit_params)
-        else:
-            # TODO(SLEP6): remove when metadata routing cannot be disabled.
-            routed_params = Bunch()
-            for name, _ in self.transformer_list:
-                routed_params[name] = Bunch(fit={})
-                routed_params[name].fit = fit_params
-
+        _raise_for_params(fit_params, self, "fit")
+        routed_params = process_routing(self, "fit", **fit_params)
         transformers = self._parallel_func(X, y, _fit_one, routed_params)
 
         if not transformers:
@@ -1478,20 +1448,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             The `hstack` of results of transformers. `sum_n_components` is the
             sum of `n_components` (output dimension) over transformers.
         """
-        if _routing_enabled():
-            routed_params = process_routing(self, "fit_transform", **params)
-        else:
-            # TODO(SLEP6): remove when metadata routing cannot be disabled.
-            routed_params = Bunch()
-            for name, obj in self.transformer_list:
-                if hasattr(obj, "fit_transform"):
-                    routed_params[name] = Bunch(fit_transform={})
-                    routed_params[name].fit_transform = params
-                else:
-                    routed_params[name] = Bunch(fit={})
-                    routed_params[name] = Bunch(transform={})
-                    routed_params[name].fit = params
-
+        routed_params = process_routing(self, "fit_transform", **params)
         results = self._parallel_func(X, y, _fit_transform_one, routed_params)
         if not results:
             # All transformers are None
@@ -1533,14 +1490,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             sum of `n_components` (output dimension) over transformers.
         """
         _raise_for_params(params, self, "transform")
-
-        if _routing_enabled():
-            routed_params = process_routing(self, "transform", **params)
-        else:
-            # TODO(SLEP6): remove when metadata routing cannot be disabled.
-            routed_params = Bunch()
-            for name, _ in self.transformer_list:
-                routed_params[name] = Bunch(transform={})
+        routed_params = process_routing(self, "transform", **params)
 
         Xs = Parallel(n_jobs=self.n_jobs)(
             delayed(_transform_one)(trans, X, None, weight, routed_params[name])
@@ -1587,13 +1537,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         """
         _raise_for_params(params, self, "update_transform")
-
-        if _routing_enabled():
-            routed_params = process_routing(self, "update_transform", **params)
-        else:
-            routed_params = Bunch()
-            for name, _ in self.transformer_list:
-                routed_params[name] = Bunch(update_transform={})
+        routed_params = process_routing(self, "update_transform", **params)
 
         # Parallel execution of update_transform on all transformers
         Xs = Parallel(n_jobs=self.n_jobs)(
@@ -1629,7 +1573,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             A :class:`~sklearn.utils.metadata_routing.MetadataRouter` encapsulating
             routing information.
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        router = MetadataRouter(owner=self)
 
         for name, transformer in self.transformer_list:
             router.add(
@@ -1668,7 +1612,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         transformer objects to be applied to subsets of the data.
 
         name : str
-            Like in Pipeline and FeatureUnion, this allows the transformer and
+            Like in FeaturePipeline and FeatureUnion, this allows the transformer and
             its parameters to be set using ``set_params`` and searched in grid
             search.
         transformer : {'drop', 'passthrough'} or estimator
@@ -1762,7 +1706,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
     See Also
     --------
     sklearn.compose.ColumnTransformer : Underlying scikit-learn column transformer.
-    Pipeline : Sequential transformation.
+    FeaturePipeline : Sequential transformation.
     BaseTransformer : Base transformer interface.
     preprocessing.stationarization.SeasonalDifferencing : Common column-wise transformer.
 
@@ -2112,17 +2056,6 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         """
         return sklearn_ColumnTransformer._sk_visual_block_(self)  # type: ignore[arg-type]
 
-    def _get_empty_routing(self) -> Any:
-        """Get empty routing object.
-
-        Returns
-        -------
-        routing : Any
-            Empty routing object.
-
-        """
-        return sklearn_ColumnTransformer._get_empty_routing(self)  # type: ignore[arg-type]
-
     def _validate_remainder(self, X: Any) -> None:
         """Validate remainder parameter.
 
@@ -2431,10 +2364,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         self._validate_column_callables(X)
         self._validate_remainder(X)
 
-        if _routing_enabled():
-            routed_params = process_routing(self, "fit_transform", **params)
-        else:
-            routed_params = self._get_empty_routing()
+        routed_params = process_routing(self, "fit_transform", **params)
 
         result = self._call_func_on_transformers(
             X,
@@ -2521,10 +2451,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             # check that n_features_in_ is consistent
             self._check_n_features(X, reset=False)  # type: ignore[attr-defined]
 
-        if _routing_enabled():
-            routed_params = process_routing(self, "transform", **params)
-        else:
-            routed_params = self._get_empty_routing()
+        routed_params = process_routing(self, "transform", **params)
 
         Xs = self._call_func_on_transformers(
             X,
@@ -2573,10 +2500,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         n_samples = _num_samples(X)
 
-        if _routing_enabled():
-            routed_params = process_routing(self, "update_transform", **params)
-        else:
-            routed_params = self._get_empty_routing()
+        routed_params = process_routing(self, "update_transform", **params)
 
         Xs = self._call_func_on_transformers(
             X,
@@ -2689,7 +2613,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             A :class:`~sklearn.utils.metadata_routing.MetadataRouter` encapsulating
             routing information.
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        router = MetadataRouter(owner=self)
         # Here we don't care about which columns are used for which
         # transformers, and whether or not a transformer is used at all, which
         # might happen if no columns are selected for that transformer. We

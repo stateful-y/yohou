@@ -1,6 +1,4 @@
 """Core base classes for transformers, forecasters, and wrappers."""
-from sklearn.metrics.tests.test_dist_metrics import Y_bool
-from msgspec.json import schema
 
 import abc
 import inspect
@@ -277,7 +275,6 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         self.target_transformer = target_transformer
         self.input_features = input_features
 
-
     @property
     def observation_horizon(self) -> int:
         """Get the number of time steps needed for stateful operations.
@@ -340,7 +337,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         across y and X. Sets instance attributes for downstream use.
 
             Sets the following attributes:
-            - `local_group_names_` : list of str or None
+            - `panel_group_names_` : list of str or None
                 Group prefixes for panel data (e.g., ["sales", "inventory"])
             - `local_y_schema_` : dict of str to pl.DataType
                 Schema (column names → dtypes) for target columns
@@ -368,13 +365,13 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         -----
         Panel data example:
             y has columns ["sales__store_1", "sales__store_2"] (both Int64)
-            → local_group_names_ = ["sales"]
+            → panel_group_names_ = ["sales"]
             → local_y_schema_ = {"store_1": pl.Int64, "store_2": pl.Int64}
             (Note: schema has unprefixed column names)
 
         Global data example:
             y has regular column "sales" (Int64)
-            → local_group_names_ = None
+            → panel_group_names_ = None
             → local_y_schema_ = {"sales": pl.Int64}
 
         See Also
@@ -382,73 +379,79 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         :func:`yohou.utils.panel.inspect_locality` : Detects group columns
 
         """
-        y_global_names, y_local_groups = inspect_locality(y)
+        y_global_names, y_panel_groups = inspect_locality(y)
         if X is not None:
-            X_global_names, X_local_groups = inspect_locality(X)
+            X_global_names, X_panel_groups = inspect_locality(X)
 
-            if len(X_local_groups):
-                if list(X_local_groups.keys()) != list(y_local_groups.keys()):
+            if len(X_panel_groups):
+                if list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
                     raise ValueError("`X` and `y` do not have the same local group names.")
 
-        self.local_group_names_ = list(y_local_groups.keys()) or None
+        self.panel_group_names_ = list(y_panel_groups.keys()) or None
 
         # Non-panel data
-        if self.local_group_names_ is None:
+        if self.panel_group_names_ is None:
             self.local_y_schema_ = dict(y.select(~cs.by_name("time")).schema)
             self.global_X_schema_ = None
+
+            self.local_X_schema_ = None
             if X is not None:
                 self.local_X_schema_ = dict(X.select(~cs.by_name("time")).schema)
 
         # Panel data
         else:
             # Extract suffixes from first group to validate consistency
-            first_group_cols = y_local_groups[self.local_group_names_[0]]
+            first_group_cols = y_panel_groups[self.panel_group_names_[0]]
             first_group_suffixes = [col.split("__", 1)[1] for col in first_group_cols]
 
             if len(y_global_names):
                 raise ValueError("`y` contains both local and global columns.")
 
             # Validate all groups have the same suffixes
-            for group_name in self.local_group_names_[1:]:
-                group_cols = y_local_groups[group_name]
+            for group_name in self.panel_group_names_[1:]:
+                group_cols = y_panel_groups[group_name]
                 group_suffixes = [col.split("__", 1)[1] for col in group_cols]
                 if sorted(group_suffixes) != sorted(first_group_suffixes):
                     raise ValueError(
                         f"The local groups in `y` do not have the same column suffixes. "
-                        f"Group '{self.local_group_names_[0]}': {sorted(first_group_suffixes)}, "
+                        f"Group '{self.panel_group_names_[0]}': {sorted(first_group_suffixes)}, "
                         f"Group '{group_name}': {sorted(group_suffixes)}"
                     )
 
             # Extract y schema
-            local_y = y.select(first_group_cols).rename({
-                col: col.split("__", 1)[1] for col in first_group_cols
-            })
+            local_y = y.select(first_group_cols).rename(
+                {col: col.split("__", 1)[1] for col in first_group_cols}
+            )
             self.local_y_schema_ = dict(local_y.schema)
 
+            self.local_X_schema_ = None
+            self.global_X_schema_ = None
             if X is not None:
                 # Validate X groups have same suffixes
-                first_X_group_cols = X_local_groups[self.local_group_names_[0]]
+                first_X_group_cols = X_panel_groups[self.panel_group_names_[0]]
                 first_X_suffixes = [col.split("__", 1)[1] for col in first_X_group_cols]
 
-                for group_name in self.local_group_names_[1:]:
-                    group_cols = X_local_groups[group_name]
+                for group_name in self.panel_group_names_[1:]:
+                    group_cols = X_panel_groups[group_name]
                     group_suffixes = [col.split("__", 1)[1] for col in group_cols]
                     if sorted(group_suffixes) != sorted(first_X_suffixes):
                         raise ValueError(
                             f"The local groups in `X` do not have the same column suffixes. "
-                            f"Group '{self.local_group_names_[0]}': {sorted(first_X_suffixes)}, "
+                            f"Group '{self.panel_group_names_[0]}': {sorted(first_X_suffixes)}, "
                             f"Group '{group_name}': {sorted(group_suffixes)}"
                         )
 
                 # Extract X schema
                 self.global_X_schema_ = dict(X.select(X_global_names).schema)
-                local_X = X.select(first_X_group_cols).rename({
-                    col: col.split("__", 1)[1] for col in first_X_group_cols
-                })
+                local_X = X.select(first_X_group_cols).rename(
+                    {col: col.split("__", 1)[1] for col in first_X_group_cols}
+                )
                 self.local_X_schema_ = dict(local_X.schema)
 
     def _set_transformed_attributes(
-        self, y_t: pl.DataFrame | dict[str, pl.DataFrame], X_t: pl.DataFrame | dict[str, pl.DataFrame] | None
+        self,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
     ) -> None:
         """Set attributes for transformed data schemas.
 
@@ -481,7 +484,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         _set_input_attributes : Sets schemas for input (untransformed) data
         """
         # Non-panel data
-        if self.local_group_names_ is None:
+        if self.panel_group_names_ is None:
             # Global data (single DataFrame)
             self.local_y_t_schema_ = dict(y_t.select(~cs.by_name("time")).schema)
 
@@ -498,28 +501,34 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             y_t_df = y_t[first_group_name]
             self.local_y_t_schema_ = dict(y_t_df.select(~cs.by_name("time")).schema)
 
-            if X_t is not None and isinstance(X_t, dict):
-                X_t_df = X_t[first_group_name]
-                self.local_X_t_schema_ = dict(X_t_df.select(~cs.by_name("time")).schema)
-            else:
-                self.local_X_t_schema_ = None
+            self.local_X_t_schema_ = None
+            if X_t is not None:
+                if isinstance(X_t, dict):
+                    X_t_first_group = X_t[first_group_name]
+                    if X_t_first_group is not None:
+                        self.local_X_t_schema_ = dict(X_t_first_group.select(~cs.by_name("time")).schema)
 
-    def _update_y_X_t_observed(self, y: pl.DataFrame, X_t: pl.DataFrame | None)-> None:
+    def _update_y_X_t_observed(
+        self, y: pl.DataFrame, X_t: pl.DataFrame | None, panel_group_names: list[str]
+    ) -> None:
         """Update stored observed data for inverse transforms.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series.
-
         X_t : pl.DataFrame or None
             Transformed feature time series.
+        panel_group_names : list of str
+            Group prefixes for panel data. Updateonly for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
 
         """
-        self.observed_time_ = y["time"][-1]
 
         # Non-panel data
-        if self.local_group_names_ is None:
+        if self.panel_group_names_ is None:
+            self.observed_time_ = y["time"][-1]
+
             self._X_t_observed = None
             if X_t is not None:
                 self._X_t_observed = X_t[[-1]]
@@ -530,7 +539,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                 if self.observation_horizon > len(y):
                     raise ValueError("Not enough data to set observed y.")
 
-                y_observed = y[-self.observation_horizon:]
+                y_observed = y[-self.observation_horizon :]
 
             # TODO: Alignment
             if X_t is not None and y_observed is not None:
@@ -540,6 +549,8 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
         # Panel data
         else:
+            self.observed_time_ = {}
+
             # Panel data: store as dicts (one entry per group)
             y_observed = None
             if self.observation_horizon > len(y):
@@ -550,16 +561,27 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                 X_t_observed = {}
 
             y_observed = {}
-            for group_name in self.local_group_names_:
+            for panel_group_name in panel_group_names:
                 # Extract group columns for y and store last observation_horizon rows
-                y_group = get_group_df(df=y, group_name=group_name, schema=self.local_y_schema_)
-                y_observed[group_name] = y_group[-self.observation_horizon:]
+                y_group = get_group_df(
+                    df=y, group_name=panel_group_name, schema=self.local_y_schema_
+                )
+
+                self.observed_time_[panel_group_name] = y_group["time"][-1]
+                y_observed[panel_group_name] = y_group[-self.observation_horizon :]
 
                 # Store X_t_observed for this group
+                X_t_observed[panel_group_name] = None
                 if X_t is not None:
                     # Extract group columns for X_t
-                    X_t_group = X_t[group_name][[-1]]
-                    X_t_observed[group_name] = X_t_group
+                    X_t_group = X_t.get(panel_group_name)
+                    if X_t_group is not None:
+                        X_t_observed[panel_group_name] = X_t_group[[-1]]
+                    else:
+                        X_t_observed[panel_group_name] = None
+                elif X_t is not None:
+                    # X_t is a single DataFrame (not dict)
+                    X_t_observed[panel_group_name] = X_t[[-1]]
 
             self._y_observed = y_observed
             self._X_t_observed = X_t_observed
@@ -622,11 +644,9 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             if X is None:
                 if self.feature_transformer is not None:
                     # TODO: Raise error in fit
-                    raise ValueError(
-                        "input_features='X' requires X to be provided, but X is None."
-                    )
+                    raise ValueError("input_features='X' requires X to be provided, but X is None.")
                 else:
-                   X_feat_in = None
+                    X_feat_in = None
 
             X_feat_in = X
         else:
@@ -763,14 +783,12 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             target_transformer.reset(X=y[: -self.observation_horizon])
             y_t = target_transformer.update_transform(y[-self.observation_horizon :])
 
-        X_feat_in = self._build_feature_input(
-            y, y_t, X
-        )
+        X_feat_in = self._build_feature_input(y, y_t, X)
 
         X_t = X_feat_in
         if feature_transformer is not None and X_feat_in is not None:
             feature_observation_horizon = feature_transformer.observation_horizon
-            feature_transformer.reset(X=X_feat_in[-feature_observation_horizon - 1:-1])
+            feature_transformer.reset(X=X_feat_in[-feature_observation_horizon - 1 : -1])
             X_t = feature_transformer.update_transform(X_feat_in[[-1]])
 
         return X_t
@@ -780,7 +798,9 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
-    ) -> tuple[pl.DataFrame | dict[str, pl.DataFrame] | None, pl.DataFrame | dict[str, pl.DataFrame] | None]:
+    ) -> tuple[
+        pl.DataFrame | dict[str, pl.DataFrame] | None, pl.DataFrame | dict[str, pl.DataFrame] | None
+    ]:
         """Preprocess and transform inputs before fitting.
 
         Parameters
@@ -814,14 +834,15 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
         self._set_transformed_attributes(y_t, X_t)
 
-        self._update_y_X_t_observed(y, X_t)
+        self._update_y_X_t_observed(y, X_t, self.panel_group_names_ or [])
 
         return y_t, X_t
 
-
     def _fit_transform_inputs(
         self, y: pl.DataFrame, X: pl.DataFrame | None
-    ) -> tuple[pl.DataFrame | dict[str, pl.DataFrame] | None, pl.DataFrame | dict[str, pl.DataFrame] | None]:
+    ) -> tuple[
+        pl.DataFrame | dict[str, pl.DataFrame] | None, pl.DataFrame | dict[str, pl.DataFrame] | None
+    ]:
         """Fit the transformers and transform inputs.
 
         Parameters
@@ -840,23 +861,23 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
         """
         # Non-panel data
-        if self.local_group_names_ is None:
+        if self.panel_group_names_ is None:
             # Global data: schemas contain actual column names
             y = y.select(["time"] + list(self.local_y_schema_.keys()))
 
             if X is not None:
                 X = X.select(["time"] + list(self.local_X_schema_.keys()))
 
-            (
-                y_t, X_t, target_transformer, feature_transformer
-            ) = self._fit_transform_transformers(y, X)
+            (y_t, X_t, target_transformer, feature_transformer) = self._fit_transform_transformers(
+                y, X
+            )
 
         # Panel data
         else:
             y_t, X_t = {}, {}
             target_transformer, feature_transformer = {}, {}
 
-            for group_name in self.local_group_names_:
+            for group_name in self.panel_group_names_:
                 # Extract group data using get_group_df
                 y_local = get_group_df(df=y, group_name=group_name, schema=self.local_y_schema_)
 
@@ -912,12 +933,11 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError()
 
-    # TODO: We should be able to reset/update a single group at a time
-    # This means that observed_time should be a dict in the panel case
     def reset(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
     ) -> "BaseForecaster":
         """Resets the forecaster by resetting the observation horizon.
 
@@ -927,6 +947,11 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             Target time series.
         X : pl.DataFrame or None
             Feature time series.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
 
         Returns
         -------
@@ -935,10 +960,23 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         """
         check_is_fitted(self, "fit_forecasting_horizon_")
 
+        if panel_group_names is None:
+            panel_group_names = self.panel_group_names_
+        else:
+            # Validate specified panel groups
+            if self.panel_group_names_ is None:
+                raise ValueError(
+                    "The forecaster was fitted on global data, but `panel_group_names` "
+                    "were provided for reset."
+                )
+            for panel_group in panel_group_names:
+                if panel_group not in self.panel_group_names_:
+                    raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
+
         # TODO: Turn this into a check_inputs call
         if self.observation_horizon > 0:
             # Select columns based on schema
-            if self.local_group_names_ is None:
+            if self.panel_group_names_ is None:
                 # Global data: schemas contain actual column names
                 y = y.select(["time"] + list(self.local_y_schema_.keys()))
                 if X is not None:
@@ -946,17 +984,20 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             else:
                 # Panel data: schemas contain unprefixed names, need to reconstruct prefixed columns
                 y_cols = ["time"]
-                for group_name in self.local_group_names_:
+                for group_name in self.panel_group_names_:
                     y_cols.extend([f"{group_name}__{col}" for col in self.local_y_schema_.keys()])
                 y = y.select(y_cols)
 
                 if X is not None:
                     X_cols = ["time"]
-                    for group_name in self.local_group_names_:
-                        X_cols.extend([f"{group_name}__{col}" for col in self.local_X_schema_.keys()])
+                    for group_name in self.panel_group_names_:
+                        X_cols.extend(
+                            [f"{group_name}__{col}" for col in self.local_X_schema_.keys()]
+                        )
                     X_cols.extend(list(self.global_X_schema_.keys()))  # Add global columns
                     X = X.select(X_cols)
-        else: # TODO: This should only be useful for trend/seasonality forecasters - Use tags?
+
+        else:  # TODO: This should only be useful for trend/seasonality forecasters - Use tags?
             # If there is no observation horizon, only check for time column presence
             if "time" not in y.columns:
                 raise ValueError("y must contain 'time' column.")
@@ -964,7 +1005,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                 raise ValueError("X must contain 'time' column.")
 
         # Non-panel data
-        if self.local_group_names_ is None:
+        if self.panel_group_names_ is None:
             # Global data: use _reset_transformers
             X_t = self._reset_transformers(
                 y, X, self.target_transformer_, self.feature_transformer_
@@ -973,10 +1014,15 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         # Panel data
         else:
             X_t = {}
+            panel_group_names = (
+                [panel_group] if panel_group is not None else self.panel_group_names_
+            )
 
-            for local_group_name in self.local_group_names_:
+            for panel_group_name in panel_group_names:
                 # Extract group data using get_group_df
-                y_local = get_group_df(df=y, group_name=local_group_name, schema=self.local_y_schema_)
+                y_local = get_group_df(
+                    df=y, group_name=panel_group_name, schema=self.local_y_schema_
+                )
 
                 X_local = None
                 if X is not None:
@@ -984,15 +1030,19 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                     X_schema = dict(self.local_X_schema_)  # Start with local columns
                     if self.global_X_schema_:
                         X_schema.update(self.global_X_schema_)  # Add global columns
-                    X_local = get_group_df(df=X, group_name=local_group_name, schema=X_schema)
+                    X_local = get_group_df(df=X, group_name=panel_group_name, schema=X_schema)
 
                 local_target_transformer = None
-                if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
-                    local_target_transformer = self.target_transformer_[local_group_name]
+                if self.target_transformer is not None and isinstance(
+                    self.target_transformer_, dict
+                ):
+                    local_target_transformer = self.target_transformer_[panel_group_name]
 
                 local_feature_transformer = None
-                if self.feature_transformer is not None and isinstance(self.feature_transformer_, dict):
-                    local_feature_transformer = self.feature_transformer_[local_group_name]
+                if self.feature_transformer is not None and isinstance(
+                    self.feature_transformer_, dict
+                ):
+                    local_feature_transformer = self.feature_transformer_[panel_group_name]
 
                 X_t_local = self._reset_transformers(
                     y_local,
@@ -1002,9 +1052,9 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                 )
 
                 # Store transformed X with unprefixed columns for this group
-                X_t[local_group_name] = X_t_local
+                X_t[panel_group_name] = X_t_local
 
-        self._update_y_X_t_observed(y, X_t)
+        self._update_y_X_t_observed(y, X_t, panel_group_names)
 
         return self
 
@@ -1012,6 +1062,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
     ) -> "BaseForecaster":
         """Updates the forecaster with more recent data and returns it.
 
@@ -1021,6 +1072,11 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             Target time series.
         X : pl.DataFrame or None
             Feature time series.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups (default behavior)
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
 
         Returns
         -------
@@ -1029,8 +1085,21 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         """
         check_is_fitted(self, "fit_forecasting_horizon_")
 
+        if panel_group_names is None:
+            panel_group_names = self.panel_group_names_
+        else:
+            # Validate specified panel groups
+            if self.panel_group_names_ is None:
+                raise ValueError(
+                    "The forecaster was fitted on global data, but `panel_group_names` "
+                    "were provided for update."
+                )
+            for panel_group in panel_group_names:
+                if panel_group not in self.panel_group_names_:
+                    raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
+
         # Non-panel data
-        if self.local_group_names_ is None:
+        if self.panel_group_names_ is None:
             # Enforce column order based on schema
             y = y.select(["time"] + list(self.local_y_schema_.keys()))
             if self._y_observed is not None:
@@ -1049,37 +1118,40 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         else:
             # Panel data: schemas contain unprefixed names, need to reconstruct prefixed columns
             y_columns = ["time"]
-            for group_name in self.local_group_names_:
+            for group_name in panel_group_names:
                 y_columns.extend([f"{group_name}__{col}" for col in self.local_y_schema_.keys()])
             y = y.select(y_columns)
 
             if self._y_observed is not None and self._y_observed:
                 # Reconstruct full y from dict (skip None entries)
-                time = self._y_observed.values()[0].select(cs.by_name("time"))
+                time = list(self._y_observed.values())[0].select(cs.by_name("time"))
                 y_observed = pl.concat(
                     [
-                        df.rename({
-                            col: f"{group_name}__{col}"
-                            for col in df.columns if col != "time"
-                        })
+                        df.rename(
+                            {col: f"{group_name}__{col}" for col in df.columns if col != "time"}
+                        )
                         for group_name, df in self._y_observed.items()
                     ],
-                    how="vertical"
+                    how="vertical",
                 )
                 y_observed = pl.concat([time, y_observed], how="horizontal")
                 y = pl.concat([y_observed, y])
 
             if X is not None:
                 X_columns = ["time"]
-                for group_name in self.local_group_names_:
-                    X_columns.extend([f"{group_name}__{col}" for col in self.local_X_schema_.keys()])
+                for group_name in self.panel_group_names_:
+                    X_columns.extend(
+                        [f"{group_name}__{col}" for col in self.local_X_schema_.keys()]
+                    )
                 X_columns.extend(list(self.global_X_schema_.keys()))  # Add global columns
                 X = X.select(X_columns)
 
             y_updated, X_t_updated = {}, {}
-            for local_group_name in self.local_group_names_:
+            for panel_group_name in panel_group_names:
                 # Extract group data using get_group_df
-                y_local = get_group_df(df=y, group_name=local_group_name, schema=self.local_y_schema_)
+                y_local = get_group_df(
+                    df=y, group_name=panel_group_name, schema=self.local_y_schema_
+                )
 
                 X_local = None
                 if X is not None:
@@ -1087,25 +1159,29 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                     X_schema = dict(self.local_X_schema_)  # Start with local columns
                     if self.global_X_schema_:
                         X_schema.update(self.global_X_schema_)  # Add global columns
-                    X_local = get_group_df(df=X, group_name=local_group_name, schema=X_schema)
+                    X_local = get_group_df(df=X, group_name=panel_group_name, schema=X_schema)
 
                 local_target_transformer = None
-                if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
-                    local_target_transformer = self.target_transformer_[local_group_name]
+                if self.target_transformer is not None and isinstance(
+                    self.target_transformer_, dict
+                ):
+                    local_target_transformer = self.target_transformer_[panel_group_name]
 
                 local_feature_transformer = None
-                if self.feature_transformer is not None and isinstance(self.feature_transformer_, dict):
-                    local_feature_transformer = self.feature_transformer_[local_group_name]
+                if self.feature_transformer is not None and isinstance(
+                    self.feature_transformer_, dict
+                ):
+                    local_feature_transformer = self.feature_transformer_[panel_group_name]
 
-                y_updated[local_group_name] = y_local
-                X_t_updated[local_group_name] = self._update_transformers(
+                y_updated[panel_group_name] = y_local
+                X_t_updated[panel_group_name] = self._update_transformers(
                     y_local,
                     X_local,
                     local_target_transformer,
                     local_feature_transformer,
                 )
 
-        self._update_y_X_t_observed(y_updated, X_t_updated)
+        self._update_y_X_t_observed(y_updated, X_t_updated, panel_group_names)
 
         return self
 
@@ -1123,15 +1199,33 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             Predictions with observed_time and time columns.
 
         """
-        # Use add_interval to handle both fixed and variable intervals
-        predicted_times = [
-            add_interval(self.observed_time_, self.interval_, n=n)
-            for n in range(1, len(y_pred) + 1)
-        ]
+        # Panel data case: observed_time_ is a dict
+        if self.panel_group_names_ is not None:
+            # For panel data, we need to create time columns for each group
+            # All groups share the same time progression
+            # Use the first group's observed_time as reference
+            first_group_name = list(self.observed_time_.keys())[0]
+            observed_time_value = self.observed_time_[first_group_name]
+            
+            predicted_times = [
+                add_interval(observed_time_value, self.interval_, n=n)
+                for n in range(1, len(y_pred) + 1)
+            ]
+            
+            time = pl.DataFrame(
+                {"observed_time": [observed_time_value] * len(y_pred), "time": predicted_times}
+            )
+        # Global data case: observed_time_ is a datetime
+        else:
+            # Use add_interval to handle both fixed and variable intervals
+            predicted_times = [
+                add_interval(self.observed_time_, self.interval_, n=n)
+                for n in range(1, len(y_pred) + 1)
+            ]
 
-        time = pl.DataFrame(
-            {"observed_time": [self.observed_time_] * len(y_pred), "time": predicted_times}
-        )
+            time = pl.DataFrame(
+                {"observed_time": [self.observed_time_] * len(y_pred), "time": predicted_times}
+            )
 
         y_pred = pl.concat([time, y_pred], how="horizontal")
 
@@ -1153,7 +1247,8 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
     @staticmethod
     def _predict(
         forecaster: "BaseForecaster",
-        panel_group: str | None = None,
+        panel_group_names: list[str],
+        **params,
     ) -> tuple[pl.DataFrame, pl.DataFrame]:
         """Generate one-step or multi-step prediction.
 
@@ -1161,8 +1256,13 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         ----------
         forecaster : BaseForecaster
             Fitted forecaster to use for prediction.
-        panel_group : str or None, default=None
-            Group to forecast in case of cross-learning.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
+        **params : dict
+            Params to the _predict_one method.
 
         Returns
         -------
@@ -1172,11 +1272,12 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             Inverse transformed predicted time series (original scale).
 
         """
-        y_pred_step = forecaster._predict_one()
+        y_pred_step = forecaster._predict_one(**params)
 
         y_pred_step_inv = y_pred_step
         if forecaster.target_transformer is not None:
-            if forecaster.local_group_names_ is None:
+            # Non-panel data
+            if panel_group_names is None:
                 # Remove "observed_time" before inverse_transform (transformers don't handle it)
                 observed_time = y_pred_step.select(cs.by_name("observed_time"))
                 y_pred_step_no_obs = y_pred_step.select(~cs.by_name("observed_time"))
@@ -1188,46 +1289,41 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
                 # Cast to restore original dtypes
                 y_pred_step_inv_cast = cast(
-                    y_pred_step_inv.select(~cs.by_name("time")),
-                    forecaster.local_y_schema_
+                    y_pred_step_inv.select(~cs.by_name("time")), forecaster.local_y_schema_
                 )
 
                 # Reconstruct with time column
                 y_pred_step_inv = pl.concat(
                     [y_pred_step_inv.select(cs.by_name("time")), y_pred_step_inv_cast],
-                    how="horizontal"
+                    how="horizontal",
                 )
 
                 # Add "observed_time" back
                 y_pred_step_inv = pl.concat([observed_time, y_pred_step_inv], how="horizontal")
+
+            # Panel data
             else:
                 y_pred_step_inv_dict = {}
 
-                local_group_names = (
-                    forecaster.local_group_names_
-                    if panel_group is None
-                    else [panel_group]
-                )
-
-                for local_group_name in local_group_names:
-                    transformer = forecaster.target_transformer_[local_group_name]
+                for panel_group_name in panel_group_names:
+                    transformer = forecaster.target_transformer_[panel_group_name]
 
                     # Extract the group's data
-                    group_cols = [c for c in y_pred_step.columns if c.startswith(f"{local_group_name}__")]
+                    group_cols = [
+                        c for c in y_pred_step.columns if c.startswith(f"{panel_group_name}__")
+                    ]
                     y_pred_step_group = y_pred_step.select(
-                        cs.by_name("observed_time")
-                        | cs.by_name("time")
-                        | cs.by_name(group_cols)
+                        cs.by_name("observed_time") | cs.by_name("time") | cs.by_name(group_cols)
                     )
 
-                    # Remove "observed_time" before inverse_transform (transformers don't handle it)
+                    # Remove "observed_time" before inverse_transform as transformers don't handle it
                     observed_time = y_pred_step_group.select(cs.by_name("observed_time"))
                     y_pred_step_group_no_obs = y_pred_step_group.select(
                         ~cs.by_name("observed_time")
                     )
 
                     # Inverse transform
-                    y_observed_local = forecaster._y_observed[local_group_name]
+                    y_observed_local = forecaster._y_observed[panel_group_name]
                     y_pred_step_group_inv = transformer.inverse_transform(
                         X_t=y_pred_step_group_no_obs,
                         X_p=y_observed_local,
@@ -1236,18 +1332,20 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                     # Cast to restore original dtypes
                     # For panel data, need to create prefixed schema for casting
                     local_y_schema = {
-                        f"{local_group_name}__{col}": dtype
+                        f"{panel_group_name}__{col}": dtype
                         for col, dtype in forecaster.local_y_schema_.items()
                     }
                     y_pred_step_group_inv_cast = cast(
-                        y_pred_step_group_inv.select(~cs.by_name("time")),
-                        local_y_schema
+                        y_pred_step_group_inv.select(~cs.by_name("time")), local_y_schema
                     )
 
                     # Reconstruct with time column
                     y_pred_step_group_inv = pl.concat(
-                        [y_pred_step_group_inv.select(cs.by_name("time")), y_pred_step_group_inv_cast],
-                        how="horizontal"
+                        [
+                            y_pred_step_group_inv.select(cs.by_name("time")),
+                            y_pred_step_group_inv_cast,
+                        ],
+                        how="horizontal",
                     )
 
                     # Add "observed_time" back
@@ -1256,7 +1354,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                     )
 
                     # Store in dict (without time columns)
-                    y_pred_step_inv_dict[local_group_name] = y_pred_step_group_inv.select(
+                    y_pred_step_inv_dict[panel_group_name] = y_pred_step_group_inv.select(
                         ~cs.by_name("observed_time") & ~cs.by_name("time")
                     )
 
@@ -1266,121 +1364,6 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                 y_pred_step_inv = pl.concat([time_cols, y_pred_inv_cols], how="horizontal")
 
         return y_pred_step, y_pred_step_inv
-
-    @abc.abstractmethod
-    def predict(
-        self,
-        X: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt | None = None,
-        panel_group: str | None = None,
-        predict_transformed: bool = False,
-        **params,
-    ) -> pl.DataFrame:
-        """Predicts the model forecasting horizon from the observation horizon.
-
-        Parameters
-        ----------
-        X : pl.DataFrame or None, default=None
-            Feature time series.
-        forecasting_horizon : int >= 1 or None, default=None
-            Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
-        panel_group : str or None, default=None
-            For panel data (local_group_names_ is not None):
-            - If None: predict for all groups (default behavior)
-            - If str: predict only for the specified group (cross-learning)
-            For global data: parameter is ignored.
-        predict_transformed : bool, default=False
-            If ``True``, the predictions are returned in the transformed space.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Predicted time series.
-
-        """
-        raise NotImplementedError()
-
-    def update_predict(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt | None = None,
-        stride: StrictInt | None = None,
-        predict_transformed: bool = False,
-        **params,
-    ) -> pl.DataFrame:
-        """Alternate `recursive_predict` and `update`.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series for updates.
-        X : pl.DataFrame or None, default=None
-            Feature time series for predictions.
-        forecasting_horizon : int >= 1 or None, default=None
-            Horizon to forecast recursively. If None, uses ``fit_forecasting_horizon_``.
-        stride : int >= 1 or None, default=None
-            Number of new observations to use for each update. If None, uses
-            ``fit_forecasting_horizon_``.
-        predict_transformed : bool, default=False
-            If ``True``, the predictions are returned in the transformed
-            space.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Predicted time series.
-
-        """
-        check_is_fitted(self, "fit_forecasting_horizon_")
-
-        # Use fit_forecasting_horizon_ as default for both parameters
-        if forecasting_horizon is None:
-            forecasting_horizon = self.fit_forecasting_horizon_
-        if stride is None:
-            stride = self.fit_forecasting_horizon_
-
-        # Initial prediction with predict_transformed parameter
-        y_pred_i = self.predict(
-            X=X,
-            forecasting_horizon=forecasting_horizon,
-            predict_transformed=predict_transformed,
-            **params,
-        )
-
-        y_pred = y_pred_i
-        for i in range(0, len(y), stride):
-            y_slice = y[i : i + stride]
-
-            X_slice = None
-            if X is not None:
-                # Filter X to match y_slice times
-                # Use semi-join to f ilter X rows that have matching times in y_slice
-                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
-
-            self.update(y=y_slice, X=X_slice)
-
-            X_future = None
-            if X is not None:
-                # Filter X to start after the last observed time
-                # This ensures predict() gets features aligned with the forecast horizon
-                last_time = y_slice["time"][-1]
-                X_future = X.filter(pl.col("time") > last_time)
-
-            y_pred_i = self.predict(
-                X=X_future,
-                forecasting_horizon=forecasting_horizon,
-                predict_transformed=predict_transformed,
-                **params,
-            )
-
-            y_pred = pl.concat([y_pred, y_pred_i])
-
-        return y_pred
 
     def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing for this forecaster.
@@ -1397,7 +1380,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         router : MetadataRouter
             Router that forwards metadata to transformers.
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        router = MetadataRouter(owner=self)
         router.add_self_request(self)
 
         # Route to target_transformer if present
@@ -1433,6 +1416,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Estimator used to fit the tabularized data.
     reduction_strategy : {"direct", "multi-output"}, default="multi-output"
         Reduction strategy to use.
+    input_features : {"y_t|X", "y|X", "X"}, default="y_t|X"
+        Specifies which features to use for training the estimator.
     target_transformer : instance of `BaseTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
     feature_transformer : instance of `BaseTransformer` or None, default=None
@@ -1459,18 +1444,19 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         estimator: BaseEstimator = LinearRegression(),
         reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
+        input_features: Literal["y_t|X", "y|X", "X"] = "y_t|X",
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
     ):
         BaseForecaster.__init__(
             self,
+            input_features=input_features,
             target_transformer=target_transformer,
             feature_transformer=feature_transformer,
         )
 
         self.estimator = estimator
         self.reduction_strategy = reduction_strategy
-
 
     def _get_tabularized_dataset(
         self,
@@ -1524,10 +1510,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         :func:`yohou.utils.tabularization.tabularize` : Creates lagged features
 
         """
-        # Use provided y_columns or fall back to all y_pred_local_columns_
+        # Use provided y_columns or fall back to all columns from local_y_t_schema_
         if y_columns is None:
-            y_columns = self.y_pred_local_columns_
-        
+            y_columns = list(self.local_y_t_schema_.keys())
+
         X_tab = X_t.select(~cs.by_name("time"))[:-forecasting_horizon]
         y_tab = tabularize(
             y_t.select(~cs.by_name("time")),
@@ -1538,13 +1524,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 for lag in range(1 + forecasting_horizon)
                 for col in y_columns
             }
-        )[
-            [
-                f"{col}_step_{step}"
-                for step in range(1, 1 + forecasting_horizon)
-                for col in y_columns
-            ]
-        ]
+        )[[f"{col}_step_{step}" for step in range(1, 1 + forecasting_horizon) for col in y_columns]]
 
         return X_tab.to_numpy(), y_tab.to_numpy()
 
@@ -1586,7 +1566,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Notes
         -----
-        For panel data (local_group_names_ is not None):
+        For panel data (panel_group_names_ is not None):
         - Unnests each panel column
         - Tabularizes each local time series separately
         - Stacks all series vertically (X_tab = vstack of all local X_tabs)
@@ -1606,7 +1586,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         estimator = clone(self.estimator).set_params(**(estimator_params or {}))
 
-        if self.local_group_names_ is None:
+        if self.panel_group_names_ is None:
             # Global time series
             X_tab, y_tab = self._get_tabularized_dataset(
                 y_t,
@@ -1618,10 +1598,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             # Panel data: stack all series
             # y_t and X_t are dicts mapping group_name to DataFrames
             X_tab_list, y_tab_list = [], []
-            for local_group_name in self.local_group_names_:
+            for panel_group_name in self.panel_group_names_:
                 # Get DataFrames for this group (already have unprefixed columns)
-                y_t_local = y_t[local_group_name]
-                X_t_local = X_t[local_group_name]
+                y_t_local = y_t[panel_group_name]
+                X_t_local = X_t[panel_group_name]
 
                 # Get column names (excluding "time") for tabularization
                 y_columns = [c for c in y_t_local.columns if c != "time"]
@@ -1662,14 +1642,14 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         # Non-panel data
-        if self.local_group_names_ is None:
+        if self.panel_group_names_ is None:
             # Global data: _X_t_observed is a DataFrame
             X_t = self._X_t_observed[[-1]].select(~cs.by_name("time"))
             X_tab = X_t.select(list(self.local_X_t_schema_.keys())).to_numpy()
             y_tab_pred = estimator.predict(X_tab)  # type: ignore[attr-defined]
             y_pred = pl.DataFrame(
-                y_tab_pred.reshape(self.fit_forecasting_horizon_, len(self.y_pred_local_columns_)),
-                schema=self.y_pred_local_columns_,
+                y_tab_pred.reshape(self.fit_forecasting_horizon_, len(list(self.local_y_t_schema_.keys()))),
+                schema=list(self.local_y_t_schema_.keys()),
             )
             # Cast to preserve dtypes from transformed target schema
             y_pred = cast(y_pred, self.local_y_t_schema_)
@@ -1679,9 +1659,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             # Panel data: _X_t_observed is a dict (one DataFrame per group)
             # Each DataFrame has unprefixed columns (after get_group_df applied)
             y_pred_dict = {}
-            for local_group_name in self.local_group_names_:
+            for panel_group_name in self.panel_group_names_:
                 # Get X_t for this group (already unprefixed)
-                X_t_group = self._X_t_observed[local_group_name][[-1]].select(~cs.by_name("time"))
+                X_t_group = self._X_t_observed[panel_group_name][[-1]].select(~cs.by_name("time"))
 
                 # Use transformed schema to get feature order
                 X_tab = X_t_group.select(list(self.local_X_t_schema_.keys())).to_numpy()
@@ -1698,11 +1678,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
 
                 # Re-prefix column names for concatenation (e.g., "a" → "x__a")
-                y_pred_local = y_pred_local.rename({
-                    col: f"{local_group_name}__{col}" for col in group_y_cols
-                })
+                y_pred_local = y_pred_local.rename(
+                    {col: f"{panel_group_name}__{col}" for col in group_y_cols}
+                )
 
-                y_pred_dict[local_group_name] = y_pred_local
+                y_pred_dict[panel_group_name] = y_pred_local
 
             y_pred = pl.concat(list(y_pred_dict.values()), how="horizontal")
 
@@ -1895,7 +1875,7 @@ class BaseWrapper(BaseEstimator, metaclass=abc.ABCMeta):
         """Set the parameters of this estimator.
 
         The method works on simple estimators as well as on nested objects
-        (such as :class:`~sklearn.pipeline.Pipeline`). The latter have
+        (such as :class:`~sklearn.pipeline.FeaturePipeline`). The latter have
         parameters of the form ``<component>__<parameter>`` so that it's
         possible to update each component of a nested object.
 

@@ -41,9 +41,7 @@ from estimator_checks import _yield_yohou_forecaster_checks
         ),
     ],
 )
-def test_fourier_seasonality_forecaster_checks(
-    forecaster, tags, expected_failures, y_X_factory
-):
+def test_fourier_seasonality_forecaster_checks(forecaster, tags, expected_failures, y_X_factory):
     """Run systematic checks on FourierSeasonalityForecaster variants."""
     # Generate data with sufficient length
     seasonality = forecaster.seasonality
@@ -53,16 +51,12 @@ def test_fourier_seasonality_forecaster_checks(
     phases = np.arange(len(y))
     sine_values = np.sin(2 * np.pi * phases / seasonality)
     y = y.with_columns(
-        [
-            pl.Series(col, sine_values).alias(col) for col in y.columns if col != "time"
-        ]
+        [pl.Series(col, sine_values).alias(col) for col in y.columns if col != "time"]
     )
 
     train_size = int(2.5 * seasonality)
     y_train, y_test = y[:train_size], y[train_size:]
-    X_train, X_test = (
-        (X[:train_size], X[train_size:]) if X is not None else (None, None)
-    )
+    X_train, X_test = (X[:train_size], X[train_size:]) if X is not None else (None, None)
 
     # Fit forecaster
     forecaster_fitted = clone(forecaster)
@@ -92,8 +86,12 @@ def test_fourier_seasonality_sine_wave_recovery():
     length = seasonality * n_periods
 
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=length-1), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=length - 1),
+        interval="1d",
+        eager=True,
     )
 
     # Pure sine wave: y = sin(2π * t / T)
@@ -102,7 +100,9 @@ def test_fourier_seasonality_sine_wave_recovery():
     y = pl.DataFrame({"time": time, "value": sine_values})
 
     # Fit with 1 harmonic (should perfectly capture fundamental frequency)
-    forecaster = FourierSeasonalityForecaster(seasonality=seasonality, harmonics=[1], alpha=0.0, l1_ratio=0.0)
+    forecaster = FourierSeasonalityForecaster(
+        seasonality=seasonality, harmonics=[1], alpha=0.0, l1_ratio=0.0
+    )
     forecaster.fit(y, forecasting_horizon=1)
 
     # Predict next cycle
@@ -125,8 +125,12 @@ def test_fourier_seasonality_complex_pattern():
     length = seasonality * n_periods
 
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(hours=length-1), interval="1h", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(hours=length - 1),
+        interval="1h",
+        eager=True,
     )
 
     phases = np.arange(length)
@@ -137,7 +141,9 @@ def test_fourier_seasonality_complex_pattern():
     y = pl.DataFrame({"time": time, "value": values})
 
     # Fit with 3 harmonics (should capture both components)
-    forecaster = FourierSeasonalityForecaster(seasonality=seasonality, harmonics=[1, 2], alpha=0.0, l1_ratio=0.0)
+    forecaster = FourierSeasonalityForecaster(
+        seasonality=seasonality, harmonics=[1, 2], alpha=0.0, l1_ratio=0.0
+    )
     forecaster.fit(y, forecasting_horizon=1)
 
     # Predict next cycle
@@ -160,8 +166,12 @@ def test_fourier_seasonality_harmonics_constraint():
     forecaster = FourierSeasonalityForecaster(seasonality=12, harmonics=[5])
 
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=35), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=35),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": np.random.randn(36)})
 
@@ -182,8 +192,12 @@ def test_fourier_seasonality_non_integer_seasonality():
     n_periods = 4
     length = seasonality * n_periods
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=length-1), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=length - 1),
+        interval="1d",
+        eager=True,
     )
 
     phases = np.arange(length)
@@ -204,8 +218,12 @@ def test_fourier_seasonality_insufficient_data():
     """Test error handling for insufficient data."""
     # Less than 1 cycle
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=7), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=7),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": list(range(8))})
 
@@ -221,8 +239,12 @@ def test_fourier_seasonality_different_horizons():
     n_periods = 3
     length = seasonality * n_periods
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=length-1), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=length - 1),
+        interval="1d",
+        eager=True,
     )
 
     phases = np.arange(length)
@@ -244,9 +266,7 @@ def test_fourier_seasonality_panel_data(panel_time_series_factory):
     """Test FourierSeasonalityForecaster with panel data."""
     # Create panel data with different seasonal patterns per series
     seasonality = 12
-    y_panel = panel_time_series_factory(
-        length=3 * seasonality, n_series=3, seed=42
-    )
+    y_panel = panel_time_series_factory(length=3 * seasonality, n_series=3, seed=42)
 
     # Fit forecaster
     forecaster = FourierSeasonalityForecaster(seasonality=seasonality, harmonics=[2])
@@ -268,22 +288,28 @@ def test_fourier_seasonality_update_predict():
     n_periods = 4
     length = seasonality * n_periods
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=length-1), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=length - 1),
+        interval="1d",
+        eager=True,
     )
 
     phases = np.arange(length)
     values = np.sin(2 * np.pi * phases / seasonality)
     y = pl.DataFrame({"time": time, "value": values})
 
-    forecaster = FourierSeasonalityForecaster(seasonality=seasonality, harmonics=[2], alpha=0.0, l1_ratio=0.0)
+    forecaster = FourierSeasonalityForecaster(
+        seasonality=seasonality, harmonics=[2], alpha=0.0, l1_ratio=0.0
+    )
     fit_forecasting_horizon = 3
     forecaster.fit(y[:24], forecasting_horizon=fit_forecasting_horizon)
 
     # Update with new data and predict
     n_new = 12
     predict_forecasting_horizon = 12
-    y_new = y[24:24 + n_new]
+    y_new = y[24 : 24 + n_new]
     y_pred = forecaster.update_predict(y_new, forecasting_horizon=predict_forecasting_horizon)
 
     assert len(y_pred) == predict_forecasting_horizon * (1 + n_new // fit_forecasting_horizon)
@@ -298,10 +324,10 @@ def test_fourier_seasonality_zero_harmonics():
         start=datetime(2020, 1, 1), end=datetime(2020, 2, 1), interval="1d", eager=True
     )
     y = pl.DataFrame({"time": time, "value": np.random.randn(len(time))})
-    
+
     with pytest.raises(ValueError, match="harmonics list cannot be empty"):
         forecaster_empty.fit(y, forecasting_horizon=1)
-    
+
     # Test negative harmonics
     forecaster_negative = FourierSeasonalityForecaster(seasonality=12, harmonics=[1, -2, 3])
     with pytest.raises(ValueError, match="All harmonics must be positive"):

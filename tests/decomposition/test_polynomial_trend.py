@@ -73,8 +73,12 @@ def test_polynomial_linear_analytical():
     """Test linear trend forecaster on known linear process."""
     # Create perfect linear trend: y = 2*t + 5
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": [2 * i + 5 for i in range(50)]})
 
@@ -90,21 +94,23 @@ def test_polynomial_linear_analytical():
 
     # Allow small numerical error (floating point precision)
     pred_values = y_pred["value"].to_numpy().flatten()
-    assert np.allclose(
-        pred_values, expected_values, atol=1e-10
-    ), "Linear trend predictions should match exact linear process"
+    assert np.allclose(pred_values, expected_values, atol=1e-10), (
+        "Linear trend predictions should match exact linear process"
+    )
 
 
 def test_polynomial_quadratic_analytical():
     """Test polynomial trend on known quadratic process."""
     # Create perfect quadratic: y = 0.5*t^2 + 2*t + 1
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
-    y = pl.DataFrame(
-        {"time": time, "value": [0.5 * i**2 + 2 * i + 1 for i in range(50)]}
-    )
+    y = pl.DataFrame({"time": time, "value": [0.5 * i**2 + 2 * i + 1 for i in range(50)]})
 
     # Fit polynomial degree 2
     forecaster = PolynomialTrendForecaster(degree=2, alpha=0.0, l1_ratio=0.0)
@@ -118,16 +124,20 @@ def test_polynomial_quadratic_analytical():
 
     # Polynomial fitting may have small numerical errors
     pred_values = y_pred["value"].to_numpy().flatten()
-    assert np.allclose(
-        pred_values, expected_values, atol=1e-8
-    ), "Polynomial trend should match quadratic process closely"
+    assert np.allclose(pred_values, expected_values, atol=1e-8), (
+        "Polynomial trend should match quadratic process closely"
+    )
 
 
 def test_polynomial_different_horizons():
     """Test that different forecasting horizons work correctly."""
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": [2 * i + 5 for i in range(50)]})
 
@@ -169,8 +179,12 @@ def test_polynomial_panel_data(panel_time_series_factory):
 def test_polynomial_update_predict():
     """Test update_predict method."""
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": [2 * i + 5 for i in range(50)]})
 
@@ -181,7 +195,7 @@ def test_polynomial_update_predict():
     # Update with new data and predict
     n_new = 10
     predict_forecasting_horizon = 5
-    y_new = y[30:30 + n_new]
+    y_new = y[30 : 30 + n_new]
     y_pred = forecaster.update_predict(y_new, forecasting_horizon=predict_forecasting_horizon)
 
     assert len(y_pred) == predict_forecasting_horizon * (1 + n_new // fit_forecasting_horizon)

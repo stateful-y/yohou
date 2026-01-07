@@ -440,10 +440,12 @@ def test_dtype_preservation_single_column():
         interval="1d",
         eager=True,
     )
-    y = pl.DataFrame({
-        "time": time,
-        "value": pl.Series(range(31), dtype=pl.Int32),
-    })
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "value": pl.Series(range(31), dtype=pl.Int32),
+        }
+    )
 
     forecaster = PointReductionForecaster(estimator=LinearRegression())
     forecaster.fit(y[:20], forecasting_horizon=3)
@@ -468,11 +470,13 @@ def test_dtype_preservation_multiple_columns():
         interval="1d",
         eager=True,
     )
-    y = pl.DataFrame({
-        "time": time,
-        "sales": pl.Series(range(len(time)), dtype=pl.Int8),
-        "revenue": pl.Series([x * 10.5 for x in range(len(time))], dtype=pl.Float32),
-    })
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "sales": pl.Series(range(len(time)), dtype=pl.Int8),
+            "revenue": pl.Series([x * 10.5 for x in range(len(time))], dtype=pl.Float32),
+        }
+    )
 
     forecaster = PointReductionForecaster(estimator=LinearRegression())
     forecaster.fit(y[:45], forecasting_horizon=5)
@@ -500,10 +504,12 @@ def test_dtype_preservation_with_transformer():
         interval="1d",
         eager=True,
     )
-    y = pl.DataFrame({
-        "time": time,
-        "value": pl.Series(range(41), dtype=pl.Int16),
-    })
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "value": pl.Series(range(41), dtype=pl.Int16),
+        }
+    )
 
     forecaster = PointReductionForecaster(
         estimator=LinearRegression(),
@@ -531,11 +537,13 @@ def test_dtype_preservation_int16_to_int64():
         interval="1d",
         eager=True,
     )
-    y = pl.DataFrame({
-        "time": time,
-        "small": pl.Series(range(20), dtype=pl.Int16),
-        "large": pl.Series(range(1000, 1020), dtype=pl.Int64),
-    })
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "small": pl.Series(range(20), dtype=pl.Int16),
+            "large": pl.Series(range(1000, 1020), dtype=pl.Int64),
+        }
+    )
 
     forecaster = PointReductionForecaster(estimator=LinearRegression())
     forecaster.fit(y[:15], forecasting_horizon=3)
@@ -546,80 +554,3 @@ def test_dtype_preservation_int16_to_int64():
     assert y_pred.schema["small"] == pl.Int16
     assert y_pred.schema["large"] == pl.Int64
 
-
-def test_y_pred_local_columns_global_data():
-    """Test y_pred_local_columns_ is set correctly for global data."""
-    time = pl.datetime_range(
-        start=datetime(2020, 1, 1),
-        end=datetime(2020, 1, 31),
-        interval="1d",
-        eager=True,
-    )
-    y = pl.DataFrame({"time": time, "value": range(31)})
-
-    forecaster = PointReductionForecaster()
-    forecaster.fit(y[:20], forecasting_horizon=3)
-
-    # Should match local_y_t_schema_ keys
-    assert hasattr(forecaster, "y_pred_local_columns_")
-    assert forecaster.y_pred_local_columns_ == ["value"]
-    assert forecaster.y_pred_local_columns_ == list(forecaster.local_y_t_schema_.keys())
-
-
-def test_y_pred_local_columns_panel_data(panel_time_series_factory):
-    """Test y_pred_local_columns_ is set correctly for panel data."""
-    y = panel_time_series_factory(length=50, n_series=3, seed=42)
-
-    forecaster = PointReductionForecaster()
-    forecaster.fit(y[:30], forecasting_horizon=3)
-
-    # Should match local_y_t_schema_ keys
-    assert hasattr(forecaster, "y_pred_local_columns_")
-    assert set(forecaster.y_pred_local_columns_) == set(forecaster.local_y_t_schema_.keys())
-
-
-def test_y_pred_local_columns_with_transformer():
-    """Test y_pred_local_columns_ uses transformed schema not original."""
-    from yohou.preprocessing import SeasonalDifferencing
-
-    time = pl.datetime_range(
-        start=datetime(2020, 1, 1),
-        end=datetime(2020, 2, 28),
-        interval="1d",
-        eager=True,
-    )
-    y = pl.DataFrame({"time": time, "value": range(59)})
-
-    forecaster = PointReductionForecaster(
-        target_transformer=SeasonalDifferencing(seasonality=7)
-    )
-    forecaster.fit(y[:40], forecasting_horizon=3)
-
-    # Should use local_y_t_schema_ (transformed) not local_y_schema_ (original)
-    assert forecaster.local_y_schema_ == {"value": pl.Int64}
-    assert forecaster.local_y_t_schema_ == {"diff_s_7_value": pl.Int64}
-    assert forecaster.y_pred_local_columns_ == ["diff_s_7_value"]
-    assert forecaster.y_pred_local_columns_ == list(forecaster.local_y_t_schema_.keys())
-
-
-def test_y_pred_local_columns_multiple_targets():
-    """Test y_pred_local_columns_ with multiple target columns."""
-    time = pl.datetime_range(
-        start=datetime(2020, 1, 1),
-        end=datetime(2020, 1, 31),
-        interval="1d",
-        eager=True,
-    )
-    y = pl.DataFrame({
-        "time": time,
-        "sales": range(31),
-        "revenue": [x * 10 for x in range(31)],
-    })
-
-    forecaster = PointReductionForecaster()
-    forecaster.fit(y[:20], forecasting_horizon=3)
-
-    # Should include all target columns
-    assert hasattr(forecaster, "y_pred_local_columns_")
-    assert set(forecaster.y_pred_local_columns_) == {"sales", "revenue"}
-    assert set(forecaster.y_pred_local_columns_) == set(forecaster.local_y_t_schema_.keys())

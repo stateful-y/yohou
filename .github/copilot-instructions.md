@@ -20,7 +20,10 @@ All data uses **polars DataFrames** with a mandatory `"time"` column (datetime t
 - Transformers: Input/output have "time" column
 - Forecasters: Predictions add "observed_time" and "predicted_time" columns for alignment
 
-### Class Hierarchy (`src/yohou/base.py`)
+### Class Hierarchy
+
+**Core Base Classes** (`src/yohou/base.py`):
+
 1. **BaseTransformer** (extends `sklearn.base.TransformerMixin`)
    - Must implement: `fit`, `transform`, `update`, `reset`, `get_feature_names_out`
    - Maintains stateful `_X_observed` for windowing operations (last `observation_horizon` rows)
@@ -31,23 +34,42 @@ All data uses **polars DataFrames** with a mandatory `"time"` column (datetime t
 2. **BaseForecaster** (base for all forecasters)
    - Handles `target_transformer` and `feature_transformer` composition
    - `_set_input_attributes()` enables panel data (local vs. global time series)
-   - Stores `_y_observed`, `_X_observed` for recursive prediction
+   - Stores `_y_observed`, `_X_observed`, `_X_t_observed` for recursive prediction
    - Signature: `fit(y, X, forecasting_horizon)` - note horizon at fit time
+   - Provides `input_features` parameter: "X" | "y_t|X" | "y|X" to control feature_transformer input
 
-3. **BaseReductionForecaster** (forecasting via sklearn regressors)
+3. **BaseReductionForecaster** (forecasting via sklearn regressors, in `base.py`)
    - Converts time series to supervised learning via `tabularize()` (creates lag features)
    - `_estimator_fit_one()`: Single-horizon supervised learning fit
    - `_estimator_predict_one()`: Generates one-step predictions (recursive for multi-step)
-   - Supports panel data via struct columns (see "Locality" below)
+   - Supports panel data with prefixed columns (e.g., "sales__store_1", "sales__store_2")
    - Must provide `estimator` param (any sklearn regressor)
    - Supports `reduction_strategy`: "direct" (separate model per step) or "multi-output" (single model)
 
-4. **Point vs Interval Forecasters**
-   - `BasePointForecaster` → `PointReductionForecaster` (standard forecasting)
-   - `BaseIntervalForecaster` → `SplitConformalForecaster` (conformal prediction intervals)
-   - Both extend `BaseForecaster` but handle different `prediction_types`
+4. **BaseWrapper** (wraps classes into sklearn estimators, in `base.py`)
+   - Base class for wrapping any class into a sklearn-compatible estimator
+   - Provides `get_params()` and `set_params()` for sklearn compatibility
+   - Used for wrapping similarity measures and other non-sklearn components
 
-5. **Decomposer** (meta-forecaster for sequential decomposition)
+**Forecaster Type Hierarchy**:
+
+5. **BasePointForecaster** (`src/yohou/point_forecaster/base.py`)
+   - Base for all point forecasters
+   - `prediction_types` property returns `{"point"}`
+   - Provides `predict()` with `predict_transformed` parameter
+   - Concrete implementations: `SeasonalNaive`, `PointReductionForecaster`
+
+6. **BaseIntervalForecaster** (`src/yohou/interval_forecaster/base.py`)
+   - Base for all interval forecasters
+   - `prediction_types` property returns `{"interval"}` or `{"point", "interval"}`
+   - Handles `coverage_rates` parameter for prediction intervals
+   - Includes `BaseSimilarity` base class for similarity-weighted conformal prediction
+   - Concrete implementations: `SplitConformalForecaster`, `IntervalReductionForecaster`
+
+**Meta-Forecasters** (not reorganized):
+
+7. **Decomposer** (`src/yohou/decomposition/decomposer.py`)
+   - Meta-forecaster for sequential decomposition
    - Decomposes time series into additive components (trend + seasonality + residual)
    - Fits forecasters sequentially: each models residuals from previous components
    - Final prediction = sum of all component predictions
@@ -57,64 +79,85 @@ All data uses **polars DataFrames** with a mandatory `"time"` column (datetime t
    - Example: `Decomposer([("trend", PolynomialTrend()), ("season", SeasonalNaive())])`
    - `store_residuals=True` enables inspection of intermediate residuals in `self.residuals_`
 
+8. **ColumnForecaster** (`src/yohou/forecaster/composition.py`)
+   - Applies different forecasters to different columns of the target time series
+   - Takes list of `(name, forecaster, columns)` tuples
+   - Supports parallel execution via `n_jobs` parameter
+   - Useful for heterogeneous multi-variate forecasting
+   - Example: Different models for different product categories
+
 ### Time Series-Specific Methods
 **Standard sklearn lifecycle extended:**
 - `fit(y, X, forecasting_horizon)`: Train on historical data
   - Forecasters: Horizon is required at fit time (unlike sklearn's predict-time horizon)
   - Transformers: `fit(X, y)` follows sklearn convention (`y` optional)
-- `update(y, X)`: Add new observations **without full retrain** (incremental learning)
+- `update(y, X, panel_group_names)`: Add new observations **without full retrain** (incremental learning)
   - Updates internal memory buffers (`_X_observed`, `_y_observed`, etc.)
   - Does NOT refit models - use for streaming/online scenarios
-- `predict(forecasting_horizon, X)`: Generate forecasts
+  - `panel_group_names`: Optional list of group prefixes to update (for panel data)
+- `predict(forecasting_horizon, X, panel_group_names)`: Generate forecasts
   - Can predict different horizon than fit (applies model recursively)
-- `update_predict()`: Combined update + predict (atomic operation, common in rolling evaluation)
-- `reset(X)`: Reset memory/observation horizon to last `observation_horizon` rows
-  - Used to "rewind" transformer state without refitting
+  - `panel_group_names`: Optional list of group prefixes to predict (for panel data)
+- `update_predict(y, X, panel_group_names)`: Combined update + predict (atomic operation, common in rolling evaluation)
+- `reset(y, X, panel_group_names)`: Reset memory/observation horizon to last `observation_horizon` rows
+  - Used to "rewind" forecaster state without refitting
+  - `panel_group_names`: Optional list of group prefixes to reset (for panel data)
 
 **Memory management pattern**: `update()` appends then calls `reset()` to maintain fixed-size window.
 
-### Pipeline (`src/yohou/pipeline.py`)
-Custom sklearn Pipeline/FeatureUnion/ColumnTransformer supporting time series operations:
+### FeaturePipeline (`src/yohou/pipeline.py`)
+Custom sklearn FeaturePipeline/FeatureUnion/ColumnTransformer supporting time series operations:
 ```python
-from yohou.pipeline import Pipeline
-Pipeline([
+from yohou.pipeline import FeaturePipeline
+FeaturePipeline([
     ('lag', LagTransformer(lag=[1, 2, 3])),
     ('forecaster', PointReductionForecaster())
 ])
 ```
 **Key differences from sklearn**:
-- `observation_horizon` computed as sum (Pipeline) or max (FeatureUnion) of steps
+- `observation_horizon` computed as sum (FeaturePipeline) or max (FeatureUnion) of steps
 - All components must implement `update()` and `reset()`
 - Handles struct columns (panel data) in concat operations
 
-### Panel Data & Locality (`src/yohou/utils/polars.py`)
-**Critical concept**: `inspect_locality()` distinguishes global vs. local (panel) time series.
-- **Global**: Columns apply to all time series (e.g., single univariate series, shared features)
-- **Local**: Struct columns containing different series (e.g., sales per store)
+### Panel Data & Locality (`src/yohou/utils/panel.py`)
+**Critical concept**: `inspect_locality()` distinguishes global vs. local (panel) time series using **prefixed column names**.
+
+- **Global**: Regular columns apply to all time series (e.g., single univariate series, shared features)
+- **Local/Panel**: Columns with group prefixes separated by `__` (double underscore)
   ```python
-  # Panel data example: pl.Struct with field per store
+  # Panel data example: Prefixed columns for multiple stores
   y = pl.DataFrame({
       "time": [...],
-      "sales": pl.Series([
-          {"store_1": 100, "store_2": 150},
-          {"store_1": 110, "store_2": 160},
-          ...
-      ])
+      "sales__store_1": [100, 110, 120, ...],
+      "sales__store_2": [150, 160, 170, ...],
+      "sales__store_3": [200, 210, 220, ...],
   })
-  global_names, local_groups = inspect_locality(y)
-  # Returns: ([], {"sales": ["store_1", "store_2"]})
+  global_names, panel_groups = inspect_locality(y)
+  # Returns: ([], {"sales": ["sales__store_1", "sales__store_2", "sales__store_3"]})
   ```
-- Forecasters automatically handle both via `local_group_names_` and `local_y_columns_`
-- Use `concat_struct()` for vertical/horizontal concatenation preserving struct columns
-- Access panel data: `df.unnest("sales")` flattens struct to separate columns
 
-**Why structs?** Polars structs enable efficient panel data storage while maintaining type consistency and allowing vectorized operations across groups.
+**Naming Convention**: `{group_name}__{suffix}` pattern for panel columns
+- Group name: Common prefix identifying the time series group (e.g., "sales", "inventory")
+- Suffix: Unique identifier for each series in the group (e.g., "store_1", "store_2")
+- All columns in a group must have the **same set of suffixes**
 
-**Critical naming convention**: Forecasters maintain separate attributes for untransformed vs. transformed column names:
-- `local_y_columns_`, `local_X_columns_`: Column names in **original space** (before transformers)
-- `local_y_t_columns_`, `local_X_t_columns_`: Column names in **transformed space** (after transformers applied)
-- This distinction is crucial for BaseReductionForecaster where tabularization happens on transformed data
-- Example: If `target_transformer=SeasonalDifferencing()` creates new columns, `local_y_t_columns_` reflects those
+**Key Utilities**:
+- `inspect_locality(df)`: Returns `(global_columns, panel_groups_dict)`
+- `get_group_df(df, group_name, schema)`: Extracts a single group's data with unprefixed columns
+- Example: `get_group_df(y, "sales", schema)` returns DataFrame with columns `["time", "store_1", "store_2", "store_3"]`
+
+**Forecaster Panel Data Attributes**:
+- `panel_group_names_`: List of group prefixes (e.g., `["sales", "inventory"]`) or `None` for global data
+- `local_y_schema_`, `local_X_schema_`: Schemas with **unprefixed** column names (after group extraction)
+- `local_y_t_schema_`, `local_X_t_schema_`: Schemas for **transformed** data (unprefixed)
+- `global_X_schema_`: Schema for global X columns that appear alongside panel groups
+
+**Internal Representation**:
+- During fit/predict, panel data is stored as `dict[str, pl.DataFrame]` internally
+- Each dict entry has unprefixed columns for easier processing
+- Predictions are reconstructed with prefixed columns for output consistency
+
+**Why prefixed columns?** Maintains polars' native column model while enabling clear grouping semantics. Avoids complexity of nested struct columns while preserving vectorized operations.
 
 ### Metrics & Scoring (`src/yohou/metrics/base.py`)
 All metrics extend `BaseScorer`:
@@ -131,12 +174,35 @@ All metrics extend `BaseScorer`:
 - Wraps any `BaseForecaster` with Optuna's trial-based optimization
 - Uses time series CV splits (via `cv` parameter)
 - Supports multi-metric evaluation and custom scoring functions
+- **Dynamic method availability**: Methods like `predict()`, `predict_interval()`, `update_predict()`, etc. are only available after fitting when `refit=True`
 
 **Key components**:
 - `Sampler`: Wrapper for Optuna samplers (default: `TPESampler`)
 - `Storage`: Optional persistent storage for optimization history (e.g., `RDBStorage`)
 - `n_warmup_trials`: Random search trials before sampler kicks in
 - `n_trials`: Number of Optuna optimization trials
+- `_search_forecaster_has(attr)`: Helper function following sklearn's `_estimator_has` pattern for conditional method availability
+
+**Method Availability Pattern**:
+```python
+from sklearn.utils.metaestimators import available_if
+
+# Methods only available if best_forecaster_ supports them
+@available_if(_search_forecaster_has("point"))  # Checks prediction_types
+def predict(self, forecasting_horizon=None, X=None, **params):
+    return self.best_forecaster_.predict(forecasting_horizon, X, **params)
+
+@available_if(_search_forecaster_has("interval"))  # Checks prediction_types
+def predict_interval(self, forecasting_horizon=None, X=None, **params):
+    return self.best_forecaster_.predict_interval(forecasting_horizon, X, **params)
+```
+
+**Critical implementation details**:
+- `_search_forecaster_has(attr)` checks both `refit=True` and `best_forecaster_` existence
+- For "point" or "interval" attributes, checks `best_forecaster_.prediction_types`
+- For other attributes, checks `hasattr(best_forecaster_, attr)`
+- Pattern matches sklearn's `GridSearchCV`/`RandomizedSearchCV` approach
+- Enables proper support for point, interval, and hybrid forecasters (both point+interval)
 
 **Usage pattern**:
 ```python
@@ -157,12 +223,28 @@ search = SearchCV(
 )
 search.fit(y, X, forecasting_horizon=3)
 y_pred = search.predict(forecasting_horizon=3, X=X_future)
+
+# Panel data support with panel_group_names (list of group prefixes)
+y_panel = pl.DataFrame({
+    "time": [...],
+    "sales__store_1": [...],
+    "sales__store_2": [...],
+})
+search.fit(y_panel, X, forecasting_horizon=3)
+# Predict specific groups only
+y_pred = search.predict(forecasting_horizon=3, X=X_future, 
+                        panel_group_names=["sales"])  # List of groups
+# Or predict all groups (default)
+y_pred_all = search.predict(forecasting_horizon=3, X=X_future)  # panel_group_names=None
 ```
 
 **Critical notes**:
 - Param names follow sklearn convention: `step__param` for pipelines
 - Always returns `best_forecaster_`, `best_params_`, `cv_results_`
 - Integrates with sklearn's metadata routing for CV splits
+- `panel_group_names` parameter is a **list of strings** (e.g., `["sales", "inventory"]`) or `None` for all groups
+- All methods (`predict`, `predict_interval`, `update`, `update_predict`, `update_predict_interval`, `reset`) accept `panel_group_names`
+- Methods delegate directly to `best_forecaster_` after optimization completes
 
 ### Metadata Routing (`src/yohou/__init__.py`, detailed in `.github/copilot_plans/`)
 **Critical infrastructure**: Yohou uses sklearn's metadata routing system to propagate auxiliary parameters through pipelines and nested estimators.
@@ -187,11 +269,42 @@ COMPOSITE_METHODS["update_predict"] = ["update", "predict"]      # Metadata rout
 
 **Implementation pattern**:
 - All forecasters/transformers have `**params` in method signatures (`fit`, `transform`, `predict`)
-- Routers (Pipeline, forecasters with transformers) implement `get_metadata_routing()` → returns `MetadataRouter`
+- Routers (FeaturePipeline, forecasters with transformers) implement `get_metadata_routing()` → returns `MetadataRouter`
 - Consumers (simple transformers, scorers) just accept `**params` for future extensibility
 - Use `@_fit_context` decorator on `fit()` methods for automatic routing
 
 **Current status**: Infrastructure 100% complete. Actual metadata consumption (e.g., `time_weight` → `sample_weight` conversion) not yet implemented. See `.github/copilot_plans/sklearn-metadata-routing-implementation.md` for full details.
+
+## Composition Classes (`src/yohou/forecaster/composition.py`)
+
+### ColumnForecaster
+Applies different forecasters to different columns of the target time series.
+
+**Use Cases**:
+- Different modeling strategies for different products/categories
+- Heterogeneous multi-variate forecasting
+- Ensemble approaches with column-specific models
+
+**Usage Pattern**:
+```python
+from yohou.forecaster.composition import ColumnForecaster
+from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
+from sklearn.linear_model import Ridge
+
+forecaster = ColumnForecaster([
+    ("sales_model", PointReductionForecaster(estimator=Ridge()), ["sales"]),
+    ("inventory_model", SeasonalNaive(seasonality=7), ["inventory"])
+], n_jobs=-1)  # Parallel execution
+
+forecaster.fit(y, X, forecasting_horizon=3)
+y_pred = forecaster.predict(forecasting_horizon=3, X=X_future)
+```
+
+**Key Features**:
+- Column selectors: `str`, `list[str]`, `slice`, or `callable`
+- Parallel execution with `n_jobs` parameter
+- Preserves column order in predictions
+- Extends `_BaseComposition` for sklearn compatibility
 
 ## Developer Workflow
 
@@ -266,19 +379,19 @@ from .base import BasePointForecaster  # Or BaseIntervalForecaster
 
 class MyForecaster(BasePointForecaster):
     """Class docstring with NumPy-style documentation.
-    
+
     Parameters
     ----------
     param1 : type
         Description of parameter.
     target_transformer : BaseTransformer, optional
         Transformer for target variable (standard across forecasters).
-    
+
     Attributes
     ----------
     fitted_attr_ : type
         Fitted attributes end with underscore (sklearn convention).
-    
+
     Examples
     --------
     >>> import polars as pl
@@ -299,41 +412,41 @@ class MyForecaster(BasePointForecaster):
     >>> forecaster.fit(y, forecasting_horizon=5)
     MyForecaster(param1=10)
     >>> y_pred = forecaster.predict(forecasting_horizon=5)
-    
+
     Notes
     -----
     - Implementation notes, limitations, assumptions
     - References to papers/algorithms if applicable
-    
+
     """
-    
+
     # sklearn parameter validation - REQUIRED for all forecasters
     _parameter_constraints: dict = {
         **BasePointForecaster._parameter_constraints,  # Inherit parent constraints
         "param1": [Interval(numbers.Integral, 1, None, closed="left")],  # Integer ≥ 1
         # Use Interval for range validation (min, max, closed="left|right|both|neither")
     }
-    
+
     def __init__(
         self,
         param1: int,
         target_transformer: BaseTransformer | None = None,
     ):
         """Initialize forecaster.
-        
+
         Parameters
         ----------
         param1 : int
             Description.
         target_transformer : BaseTransformer, optional
             Transformer for target variable.
-        
+
         """
         super().__init__(target_transformer=target_transformer)
         self.param1 = param1
         # DO NOT validate parameters here - validation happens at fit time via @_fit_context
         # Only store parameters in __init__
-    
+
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
@@ -343,7 +456,7 @@ class MyForecaster(BasePointForecaster):
         **params,  # For metadata routing (always include)
     ) -> "MyForecaster":
         """Fit forecaster to historical data.
-        
+
         Parameters
         ----------
         y : pl.DataFrame
@@ -354,31 +467,31 @@ class MyForecaster(BasePointForecaster):
             Number of steps ahead to forecast.
         **params : dict
             Additional metadata (routed via sklearn's metadata routing).
-        
+
         Returns
         -------
         self
             Fitted forecaster.
-        
+
         """
         # ALWAYS call _pre_fit first - handles transformers, validation, panel data
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
-        
+
         # Domain-specific validation (after automatic validation from @_fit_context)
         # Example: Check relationships between parameters that aren't expressible in _parameter_constraints
         # if self.param1 > len(y_t):
         #     raise ValueError(f"param1 ({self.param1}) cannot exceed data length ({len(y_t)})")
-        
+
         # Your fitting logic here
         # - y_t, X_t are already transformed via target_transformer/feature_transformer
         # - self._y_observed, self._X_observed are set by _pre_fit
-        # - self.local_group_names_, self.local_y_columns_ set if panel data
-        
+        # - self.panel_group_names_, self.local_y_columns_ set if panel data
+
         # Store fitted parameters with trailing underscore
         self.fitted_attr_ = self._compute_something(y_t)
-        
+
         return self
-    
+
     def predict(
         self,
         forecasting_horizon: StrictInt | None = None,
@@ -386,7 +499,7 @@ class MyForecaster(BasePointForecaster):
         **params,
     ) -> pl.DataFrame:
         """Generate forecasts.
-        
+
         Parameters
         ----------
         forecasting_horizon : int, optional
@@ -395,33 +508,33 @@ class MyForecaster(BasePointForecaster):
             Future exogenous features (must have forecasting_horizon rows).
         **params : dict
             Additional metadata.
-        
+
         Returns
         -------
         pl.DataFrame
             Predictions with columns: "observed_time", "time", <target_columns>
             - "observed_time": Last observation time used for prediction
             - "time": Predicted time steps
-        
+
         """
         # Handle horizon (use fit horizon if not specified)
         if forecasting_horizon is None:
             forecasting_horizon = self._forecasting_horizon
-        
+
         # Your prediction logic here
         # Use self._y_observed, self._X_observed for context
         y_pred = self._generate_predictions(forecasting_horizon)
-        
+
         # CRITICAL: Always add time columns before returning
         return self._add_time_columns(y_pred)
-    
+
     def _add_time_columns(self, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Add observed_time and time columns to predictions.
-        
+
         This is inherited from BaseForecaster - handles:
         - observed_time: Last time in self._y_observed
         - time: Future time steps based on forecasting_horizon
-        
+
         """
         return super()._add_time_columns(y_pred)
 ```
@@ -458,7 +571,7 @@ _parameter_constraints: dict = {
 - `[str]`: String parameters (sklearn validates type only)
 - Inherit parent constraints: `**BasePointForecaster._parameter_constraints`
 
-**Validation timing**: 
+**Validation timing**:
 - **Automatic validation** at fit time via `@_fit_context` decorator (type + range checks)
 - **Domain-specific validation** in `fit()` body after automatic validation (e.g., data-dependent checks)
 - **NO validation in `__init__`** - only store parameters there
@@ -508,9 +621,9 @@ If your forecaster should support panel data (multiple time series in struct col
 ```python
 def fit(self, y, X, forecasting_horizon, **params):
     y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
-    
+
     # Check if panel data
-    if self.local_group_names_ is not None:
+    if self.panel_group_names_ is not None:
         # Panel data: self.local_y_columns_ has field names
         # Process each series separately or vectorize
         for col_name in self.local_y_columns_:
@@ -549,12 +662,12 @@ def test_my_forecaster_basic_fit_predict():
         eager=True,
     )
     y = pl.DataFrame({"time": time, "value": range(50)})
-    
+
     forecaster = MyForecaster(param1=10)
     forecaster.fit(y[:30], forecasting_horizon=5)
-    
+
     y_pred = forecaster.predict(forecasting_horizon=5)
-    
+
     # Validate output structure
     assert len(y_pred) == 5
     assert "observed_time" in y_pred.columns
@@ -576,10 +689,10 @@ def test_my_forecaster_different_horizons():
 def test_my_forecaster_panel_data(panel_time_series_factory):
     """Test with panel data."""
     y_panel = panel_time_series_factory(length=50, n_series=3, seed=42)
-    
+
     forecaster = MyForecaster(param1=10)
     forecaster.fit(y_panel[:30], forecasting_horizon=5)
-    
+
     y_pred = forecaster.predict(forecasting_horizon=5)
     # Validate panel structure preserved
 
@@ -598,7 +711,7 @@ def test_my_forecaster_update_predict():
 ```python
 def predict(self, forecasting_horizon=None, X=None, **params):
     """Generate forecasts.
-    
+
     Examples
     --------
     >>> # Setup
@@ -620,7 +733,7 @@ def predict(self, forecasting_horizon=None, X=None, **params):
     >>> y_pred = forecaster.predict(forecasting_horizon=3)
     >>> len(y_pred)
     3
-    
+
     """
 ```
 
@@ -677,7 +790,7 @@ Before committing, ensure:
 - **Solution**: Always call `self._add_time_columns(y_pred)` before returning
 
 **Problem**: Panel data not handled
-- **Solution**: Check `self.local_group_names_` and iterate over `self.local_y_columns_`
+- **Solution**: Check `self.panel_group_names_` and iterate over `self.local_y_columns_`
 
 **Problem**: Transformers not applied
 - **Solution**: Use `_pre_fit()` to get transformed data (`y_t`, `X_t`)
@@ -892,7 +1005,7 @@ Key fixtures:
 1. **Trend Forecasters**:
    - `PolynomialTrendForecaster`: Fits polynomial trend via `numpy.polyfit()`, extrapolates with `numpy.polyval()`
    - `ExponentialTrendForecaster`: Exponential growth/decay patterns
-   
+
 2. **Seasonality Forecasters**:
    - `SeasonalityForecaster`: Pattern-based seasonality (naive, average, median methods)
    - `FourierSeasonalityForecaster`: Fourier basis functions with ElasticNet fitting
@@ -1156,22 +1269,27 @@ scorer = MAE()
 y_truth, y_pred_aligned = scorer._validate_inputs(y_test, y_pred)
 ```
 
-**3. Panel Data Struct Access**
+**3. Panel Data Column Access**
 ```python
 # Problem: Can't access individual series in panel data
 y_panel = pl.DataFrame({
     "time": [...],
-    "sales": [{"store_1": 100, "store_2": 150}, ...]  # Struct column
+    "sales__store_1": [100, 110, ...],  # Prefixed columns
+    "sales__store_2": [150, 160, ...],
 })
 
-# Solution: Unnest struct to separate columns
-y_unnested = y_panel.unnest("sales")
-# Now has columns: time, store_1, store_2
+# Solution 1: Use get_group_df to extract a single group with unprefixed columns
+from yohou.utils.panel import get_group_df
+y_store1 = get_group_df(y_panel, group_name="sales", schema={"store_1": pl.Float64, "store_2": pl.Float64})
+# Returns DataFrame with columns: time, store_1, store_2
 
-# Or inspect locality
-from yohou.utils.polars import inspect_locality
-global_cols, local_groups = inspect_locality(y_panel)
-print(local_groups)  # {'sales': ['store_1', 'store_2']}
+# Solution 2: Inspect locality to understand structure
+from yohou.utils.panel import inspect_locality
+global_cols, panel_groups = inspect_locality(y_panel)
+print(panel_groups)  # {'sales': ['sales__store_1', 'sales__store_2']}
+
+# Solution 3: Direct column selection if you know the names
+y_store1_only = y_panel.select(["time", "sales__store_1"])
 ```
 
 **4. Memory Management in Streaming**
@@ -1232,23 +1350,27 @@ print(df.lazy().select(pl.col("value").mean()).explain())
 ## Performance & Optimization
 
 ### Panel Data Performance
-**Polars structs are optimized for panel data** - avoid unnesting unless necessary:
+**Prefixed columns are efficient for panel data** - use column selection wisely:
 ```python
-# ❌ Slow: Unnest then process
-y_panel = df.unnest("sales")  # Expands to many columns
-result = y_panel.select([...])  # Processes all columns
-
-# ✅ Fast: Operate on struct directly
+# ❌ Slow: Select all panel columns individually
 result = df.select([
-    pl.col("time"),
-    pl.col("sales").struct.field("store_1"),  # Access single field
+    "time",
+    "sales__store_1",
+    "sales__store_2",
+    # ... hundreds more
 ])
 
-# ✅ Faster: Batch operations on structs
+# ✅ Fast: Use regex or column selectors
+import polars.selectors as cs
 result = df.select([
-    pl.col("time"),
-    pl.col("sales").struct.rename_fields(["s1", "s2"]),  # Rename all fields at once
+    cs.by_name("time"),
+    cs.matches("^sales__.*"),  # Select all sales columns
 ])
+
+# ✅ Efficient: Use get_group_df for processing a single group
+from yohou.utils.panel import get_group_df
+sales_data = get_group_df(df, "sales", local_y_schema)
+# Returns unprefixed columns for easier manipulation
 ```
 
 ### Memory Optimization
@@ -1276,10 +1398,11 @@ result = df.select([
    ```
 
 ### Parallel Execution
-SearchCV and pipelines support parallel execution via `n_jobs`:
+SearchCV, ColumnForecaster and pipelines support parallel execution via `n_jobs`:
 ```python
 from yohou.model_selection import SearchCV
 from yohou.pipeline import FeatureUnion
+from yohou.forecaster.composition import ColumnForecaster
 
 # Parallel hyperparameter search (across CV folds)
 search = SearchCV(forecaster=model, n_jobs=-1, ...)  # Use all cores
@@ -1289,6 +1412,12 @@ features = FeatureUnion([
     ('lags', LagTransformer([1, 2, 3])),
     ('rolling', RollingMeanTransformer(window=12)),
 ], n_jobs=2)  # Compute both transformers in parallel
+
+# Parallel column forecasting
+forecaster = ColumnForecaster([
+    ("sales", PointReductionForecaster(), ["sales"]),
+    ("inventory", SeasonalNaive(), ["inventory"]),
+], n_jobs=-1)  # Forecast columns in parallel
 ```
 
 **Notes**:
@@ -1313,12 +1442,13 @@ df.lazy().select([...]).show_graph()  # Visual query graph
 ```
 
 ### Optimization Checklist
-- ✅ Use polars structs for panel data (avoid unnecessary unnesting)
+- ✅ Use prefixed column names for panel data (natural polars column model)
 - ✅ Keep `observation_horizon` as small as possible
 - ✅ Use lazy polars API for large files (`scan_csv`, `scan_parquet`)
-- ✅ Enable `n_jobs` for SearchCV and FeatureUnion (if dataset is large)
+- ✅ Enable `n_jobs` for SearchCV, FeatureUnion, and ColumnForecaster (if dataset is large)
 - ✅ Profile before optimizing - measure actual bottlenecks
 - ✅ Consider data types: use `pl.Int32` vs `pl.Int64` when appropriate
-- ❌ Don't unnest panel data unless you need all series
+- ✅ Use column selectors (`cs.matches()`, `cs.starts_with()`) for panel data
+- ❌ Don't select panel columns one-by-one (use regex patterns)
 - ❌ Don't parallelize small datasets (overhead > benefit)
 - ❌ Don't load entire dataset into memory if streaming is possible

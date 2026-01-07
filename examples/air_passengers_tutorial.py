@@ -53,7 +53,7 @@ def _():
 
     from yohou.metrics import MAE
     from yohou.model_selection import SearchCV, Splitter
-    from yohou.pipeline import Pipeline
+    from yohou.pipeline import FeaturePipeline
 
     # Yohou imports
     from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
@@ -63,7 +63,7 @@ def _():
         LagTransformer,
         LogTransform,
         MAE,
-        Pipeline,
+        FeaturePipeline,
         PointReductionForecaster,
         Ridge,
         SearchCV,
@@ -369,7 +369,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Preprocessing Pipeline with Stationarization
+    ## Preprocessing FeaturePipeline with Stationarization
 
     **The Problem**: Our time series is non-stationary (trend + multiplicative seasonality), making it hard for linear models to learn patterns.
 
@@ -389,7 +389,7 @@ def _(mo):
 def _(
     LagTransformer,
     LogTransform,
-    Pipeline,
+    FeaturePipeline,
     PointReductionForecaster,
     Ridge,
     SeasonalDifferencing,
@@ -400,14 +400,14 @@ def _(
     y_train,
 ):
     # Build preprocessing pipeline (reactive to slider values)
-    pipeline_target = Pipeline(
+    pipeline_target = FeaturePipeline(
         [
             ("log", LogTransform(offset=1.0)),  # Add offset to handle zero values
             ("diff", SeasonalDifferencing(seasonality=12)),  # Remove yearly seasonality
         ]
     )
 
-    pipeline_feature = Pipeline(
+    pipeline_feature = FeaturePipeline(
         [
             ("log", LogTransform(offset=1.0)),  # Add offset to handle zero values
             ("diff", SeasonalDifferencing(seasonality=12)),  # Remove yearly seasonality
@@ -501,7 +501,7 @@ def _(
         )
     )
 
-    # Pipeline predictions
+    # FeaturePipeline predictions
     fig_reduction_forecaster.add_trace(
         go.Scatter(
             x=y_pred_reduction_forecaster["time"].to_list(),
@@ -535,7 +535,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Pipeline Results Interpretation
+    ### FeaturePipeline Results Interpretation
 
     The preprocessing pipeline typically improves forecast accuracy by:
     - ✅ **Capturing trend continuation**: Differencing helps model learn growth rate

@@ -49,11 +49,7 @@ def test_seasonality_forecaster_checks(forecaster, tags, expected_failures, y_X_
     # Add repeating seasonal pattern
     pattern = list(range(seasonality))
     y = y.with_columns(
-        [
-            pl.Series(col, pattern * 3).alias(col)
-            for col in y.columns
-            if col != "time"
-        ]
+        [pl.Series(col, pattern * 3).alias(col) for col in y.columns if col != "time"]
     )
 
     train_size = int(2.5 * seasonality)
@@ -85,8 +81,12 @@ def test_seasonality_naive_exact_repetition():
     # Create perfect seasonal pattern
     pattern = [10, 15, 12, 8, 9, 11]
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=17), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=17),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": pattern * 3})  # 3 cycles
 
@@ -100,9 +100,7 @@ def test_seasonality_naive_exact_repetition():
     expected_values = pattern * 2
     pred_values = y_pred["value"].to_list()
 
-    assert (
-        pred_values == expected_values
-    ), "Naive seasonality should repeat last cycle exactly"
+    assert pred_values == expected_values, "Naive seasonality should repeat last cycle exactly"
 
 
 def test_seasonality_average_aggregates_cycles():
@@ -114,8 +112,12 @@ def test_seasonality_average_aggregates_cycles():
     cycle3 = [x - 1 for x in base_pattern]
 
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=17), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=17),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": cycle1 + cycle2 + cycle3})
 
@@ -128,9 +130,7 @@ def test_seasonality_average_aggregates_cycles():
     # Should be average of three cycles (which equals base_pattern)
     pred_values = y_pred["value"].to_list()
 
-    assert (
-        pred_values == base_pattern
-    ), "Average seasonality should aggregate across cycles"
+    assert pred_values == base_pattern, "Average seasonality should aggregate across cycles"
 
 
 def test_seasonality_median_robustness():
@@ -142,8 +142,12 @@ def test_seasonality_median_robustness():
     cycle3 = [100, 15, 12, 8, 9, 11]  # Outlier in first position
 
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=17), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=17),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": cycle1 + cycle2 + cycle3})
 
@@ -164,8 +168,12 @@ def test_seasonality_insufficient_data_naive():
     """Test error handling for insufficient data (naive method)."""
     # Only 1 cycle but need at least 1 complete cycle - this should work
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=11), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=11),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": list(range(12))})
 
@@ -184,8 +192,12 @@ def test_seasonality_insufficient_data_average():
     """Test error handling for insufficient data (average method)."""
     # Only 1 cycle for average method (need 2)
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=11), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=11),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": list(range(12))})
 
@@ -199,8 +211,12 @@ def test_seasonality_wraps_around_correctly():
     """Test that predictions wrap around seasonal cycle correctly."""
     pattern = [1, 2, 3, 4]
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=11), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=11),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": pattern * 3})
 
@@ -221,8 +237,12 @@ def test_seasonality_different_horizons():
     """Test that different forecasting horizons work correctly."""
     pattern = [10, 15, 12, 8, 9, 11]
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=17), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=17),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": pattern * 3})
 
@@ -241,9 +261,7 @@ def test_seasonality_panel_data(panel_time_series_factory):
     """Test SeasonalityForecaster with panel data."""
     # Create panel data with different seasonal patterns per series
     seasonality = 12
-    y_panel = panel_time_series_factory(
-        length=3 * seasonality, n_series=3, seed=42
-    )
+    y_panel = panel_time_series_factory(length=3 * seasonality, n_series=3, seed=42)
 
     # Add seasonal patterns
     pattern1 = list(range(seasonality))
@@ -268,8 +286,12 @@ def test_seasonality_update_predict():
     """Test update_predict method."""
     pattern = [10, 15, 12, 8, 9, 11]
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=23), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=23),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": pattern * 4})
 
@@ -280,7 +302,7 @@ def test_seasonality_update_predict():
     # Update with new data and predict
     n_new = 6
     predict_forecasting_horizon = 6
-    y_new = y[12:12 + n_new]
+    y_new = y[12 : 12 + n_new]
     y_pred = forecaster.update_predict(y_new, forecasting_horizon=predict_forecasting_horizon)
 
     assert len(y_pred) == predict_forecasting_horizon * (1 + n_new // fit_forecasting_horizon)

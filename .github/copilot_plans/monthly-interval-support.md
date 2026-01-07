@@ -684,7 +684,7 @@ def test_add_interval_roundtrip(start_seed, interval_str, n_periods):
 **Integration tests:**
 - Air passengers tutorial end-to-end
 - Forecasting with monthly data (fit + predict)
-- Pipeline with monthly transformers
+- FeaturePipeline with monthly transformers
 - Cross-validation with monthly splits
 
 **Regression tests:**

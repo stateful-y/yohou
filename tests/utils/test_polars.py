@@ -59,11 +59,13 @@ class TestCast:
 
     def test_cast_multiple_columns(self):
         """Test casting multiple columns with different target types."""
-        df = pl.DataFrame({
-            "sales": [10.7, 20.3, 30.9],
-            "revenue": [100.5, 200.5, 300.5],
-            "name": ["A", "B", "C"],
-        })
+        df = pl.DataFrame(
+            {
+                "sales": [10.7, 20.3, 30.9],
+                "revenue": [100.5, 200.5, 300.5],
+                "name": ["A", "B", "C"],
+            }
+        )
         schema = {"sales": pl.Int32, "revenue": pl.Float32}
         result = cast(df, schema)
 
@@ -75,12 +77,14 @@ class TestCast:
 
     def test_cast_preserves_columns_not_in_schema(self):
         """Test that columns not in schema are preserved unchanged."""
-        df = pl.DataFrame({
-            "a": [1.0, 2.0],
-            "b": [10, 20],
-            "c": ["x", "y"],
-            "d": [True, False],
-        })
+        df = pl.DataFrame(
+            {
+                "a": [1.0, 2.0],
+                "b": [10, 20],
+                "c": ["x", "y"],
+                "d": [True, False],
+            }
+        )
         schema = {"a": pl.Int32}
         result = cast(df, schema)
 
@@ -111,10 +115,12 @@ class TestCast:
 
     def test_cast_with_datetime_column(self):
         """Test casting preserves datetime columns not in schema."""
-        df = pl.DataFrame({
-            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
-            "value": [10.5, 20.7],
-        })
+        df = pl.DataFrame(
+            {
+                "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+                "value": [10.5, 20.7],
+            }
+        )
         schema = {"value": pl.Int32}
         result = cast(df, schema)
 
@@ -161,11 +167,13 @@ class TestCast:
 
     def test_cast_preserves_column_order(self):
         """Test that column order is preserved."""
-        df = pl.DataFrame({
-            "z": [1.0, 2.0],
-            "y": [10.0, 20.0],
-            "x": [100.0, 200.0],
-        })
+        df = pl.DataFrame(
+            {
+                "z": [1.0, 2.0],
+                "y": [10.0, 20.0],
+                "x": [100.0, 200.0],
+            }
+        )
         schema = {"x": pl.Int32, "y": pl.Int32, "z": pl.Int32}
         result = cast(df, schema)
 
@@ -177,10 +185,12 @@ class TestCast:
     def test_cast_use_case_forecaster_dtype_preservation(self):
         """Test realistic use case: preserving dtypes after sklearn prediction."""
         # Simulate sklearn returning Float64, need to cast back to original Int32
-        df = pl.DataFrame({
-            "sales": [45.0, 46.0, 47.0],
-            "revenue": [472.5, 483.0, 493.5],
-        })
+        df = pl.DataFrame(
+            {
+                "sales": [45.0, 46.0, 47.0],
+                "revenue": [472.5, 483.0, 493.5],
+            }
+        )
         schema = {"sales": pl.Int32, "revenue": pl.Float32}
         result = cast(df, schema)
 
@@ -190,11 +200,13 @@ class TestCast:
 
     def test_cast_with_time_columns(self):
         """Test casting works alongside time columns (common in forecasting)."""
-        df = pl.DataFrame({
-            "time": [datetime(2020, 1, i) for i in range(1, 4)],
-            "observed_time": [datetime(2020, 1, 1)] * 3,
-            "value": [10.5, 20.7, 30.9],
-        })
+        df = pl.DataFrame(
+            {
+                "time": [datetime(2020, 1, i) for i in range(1, 4)],
+                "observed_time": [datetime(2020, 1, 1)] * 3,
+                "value": [10.5, 20.7, 30.9],
+            }
+        )
         schema = {"value": pl.Int16}
         result = cast(df, schema)
 

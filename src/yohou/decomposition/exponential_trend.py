@@ -95,7 +95,9 @@ class ExponentialTrendForecaster(_BaseTrendForecaster):
             Predictions for next forecasting_horizon steps (without time columns).
 
         """
-        time_indices = self._get_time_indices(self.fit_forecasting_horizon_).to_numpy().reshape(-1, 1)
+        time_indices = (
+            self._get_time_indices(self.fit_forecasting_horizon_).to_numpy().reshape(-1, 1)
+        )
 
         # Predict in log space
         log_y_pred = self.model_.predict(time_indices)
@@ -108,9 +110,7 @@ class ExponentialTrendForecaster(_BaseTrendForecaster):
         y_pred_array = np.exp(log_y_pred)
 
         # Convert to polars DataFrame with correct column names
-        y_pred = pl.DataFrame(
-            {col: y_pred_array[:, i] for i, col in enumerate(self._column_names)}
-        )
+        y_pred = pl.DataFrame({col: y_pred_array[:, i] for i, col in enumerate(self._column_names)})
 
         return self._add_time_columns(y_pred)
 

@@ -41,10 +41,10 @@ tests/
 ├── point_forecaster/
 │   ├── test_naive.py                   # Tests for SeasonalNaive
 │   ├── test_reduction.py               # Tests for PointReductionForecaster + analytical tests
-│   └── test_cross_learning.py          # Cross-learning tests for point forecasters
+│   └── test_panel.py          # Cross-learning tests for point forecasters
 └── interval_forecaster/
     ├── test_reduction.py               # Tests for IntervalReductionForecaster
-    └── test_cross_learning.py          # Cross-learning tests for interval forecasters
+    └── test_panel.py          # Cross-learning tests for interval forecasters
 ```
 
 **Organization Principles**:
@@ -62,20 +62,21 @@ The testing infrastructure consists of three main components that work together 
 
 ### 1. Check Functions Library (`tests/estimator_checks.py`)
 
-**Purpose**: Reusable library of 28 validation functions that test forecaster contracts
+**Purpose**: Reusable library of 28+ validation functions that test forecaster contracts
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
 - Comprehensive docstrings with parameters and error conditions
 - Functions accept `(forecaster, y, X, **kwargs)` signature
 - Handle single X DataFrame (exogenous features) with "time" column
+- Support both global data and panel data with prefixed columns (e.g., "sales__store_1")
 
 **Check Categories**:
 
 **Common Forecaster Checks (8 functions)**:
-1. **`check_fit_sets_forecaster_attributes`** - Validates fit() sets required attributes (fit_forecasting_horizon_, interval_, local_group_names_, local_y_columns_, local_X_columns_, _y_observed, _X_observed)
+1. **`check_fit_sets_forecaster_attributes`** - Validates fit() sets required attributes (fit_forecasting_horizon_, interval_, panel_group_names_, local_y_schema_, local_X_schema_, global_X_schema_, _y_observed, _X_observed, _X_t_observed)
 2. **`check_forecaster_not_fitted_error`** - Ensures NotFittedError before fit() when accessing fitted attributes
-3. **`check_predict_time_columns`** - Validates predictions have "observed_time" and "predicted_time" columns
+3. **`check_predict_time_columns`** - Validates predictions have "observed_time" and "time" columns (note: "predicted_time" was renamed to "time")
 4. **`check_update_extends_observations`** - Tests update() properly extends _y_observed, _X_observed buffers
 5. **`check_reset_replaces_observations`** - Tests reset() replaces observation buffers correctly (_y_observed, _X_observed)
 6. **`check_forecasting_horizon_validation`** - Ensures forecasting_horizon < 1 raises ValueError
@@ -87,8 +88,8 @@ The testing infrastructure consists of three main components that work together 
 11. **`check_point_prediction_types`** - Ensures prediction_types == {"point"}
 
 **Interval Forecaster Checks (4 functions)**:
-12. **`check_interval_prediction_columns`** - Validates {col}_lower_{rate} and {col}_upper_{rate} format (handles both global and panel data with struct columns)
-13. **`check_interval_bounds`** - Ensures upper >= lower for all coverage rates and time steps (handles struct columns by unnesting)
+12. **`check_interval_prediction_columns`** - Validates {col}_lower_{rate} and {col}_upper_{rate} format (handles both global and panel data with prefixed columns)
+13. **`check_interval_bounds`** - Ensures upper >= lower for all coverage rates and time steps (handles panel data with prefixed columns)
 14. **`check_interval_prediction_types`** - Validates prediction_types contains "interval"
 15. **`check_coverage_rates_parameter`** - Validates coverage_rates is list of floats in (0, 1)
 
@@ -96,20 +97,20 @@ The testing infrastructure consists of three main components that work together 
 16. **`check_estimator_parameter`** - Validates estimator is sklearn BaseEstimator
 17. **`check_reduction_strategy`** - Validates reduction_strategy parameter exists
 
-**Cross-Learning Forecaster Checks (3 functions)**:
-18. **`check_cross_learning_panel_data`** - Validates panel_group=None predicts all groups in panel data
-19. **`check_cross_learning_single_group`** - Validates panel_group filters to specified struct column
-20. **`check_cross_learning_invalid_group_raises`** - Validates ValueError raised for invalid panel_group
+**Panel Data Forecaster Checks (3 functions)**:
+18. **`check_panel_data`** - Validates panel_group_names=None predicts all groups in panel data
+19. **`check_panel_single_group`** - Validates panel_group_names filters to specified list of group prefixes
+20. **`check_panel_invalid_group_raises`** - Validates ValueError raised for invalid panel_group_names (list containing invalid groups)
 
 **Composition Class Checks (8 functions)**:
-21. **`check_column_forecaster_column_selection`** - Validates column selectors (str, list, slice, callable) work correctly
-22. **`check_column_forecaster_remainder_drop`** - Tests remainder='drop' excludes unspecified columns
-23. **`check_column_forecaster_remainder_passthrough`** - Tests remainder='passthrough' uses default forecaster
-24. **`check_column_forecaster_remainder_custom`** - Tests custom remainder forecaster
+21. **`check_column_forecaster_column_selection`** - Validates column selectors (str, list, slice, callable) work correctly for target columns
+22. **`check_column_forecaster_remainder_drop`** - Tests remainder='drop' excludes unspecified columns (not yet implemented)
+23. **`check_column_forecaster_remainder_passthrough`** - Tests remainder='passthrough' uses default forecaster (not yet implemented)
+24. **`check_column_forecaster_remainder_custom`** - Tests custom remainder forecaster (not yet implemented)
 25. **`check_column_forecaster_parallel_execution`** - Validates n_jobs parameter works correctly
-26. **`check_column_forecaster_column_order_preserved`** - Ensures prediction columns match input X column order
-27. **`check_target_transformed_forecaster_inverse`** - Tests inverse transformation round-trip
-28. **`check_target_transformed_forecaster_check_inverse_warning`** - Validates check_inverse warns when transformation isn't reversible
+26. **`check_column_forecaster_column_order_preserved`** - Ensures prediction columns match input target column order
+27. **`check_target_transformed_forecaster_inverse`** - Tests inverse transformation round-trip (not yet implemented)
+28. **`check_target_transformed_forecaster_check_inverse_warning`** - Validates check_inverse warns when transformation isn't reversible (not yet implemented)
 
 ### 2. Check Generator (`tests/estimator_checks.py`)
 
@@ -258,40 +259,69 @@ def test_my_forecaster_specific_behavior(y_X_factory):
 
 ## Test Results & Status
 
-### Current State
+### Current State (After API Reorganization)
 
-**Forecaster Tests**:
-- `tests/point_forecaster/test_naive.py`: 11/11 passing (2 check generator + 9 seasonality-specific)
-- `tests/point_forecaster/test_reduction.py`: 13/13 passing (2 check generator + 9 existing + 2 analytical)
-- `tests/point_forecaster/test_cross_learning.py`: 5/5 passing (1 check generator + 4 behavior-specific)
-- `tests/interval_forecaster/test_reduction.py`: 9/9 passing
-- `tests/interval_forecaster/test_cross_learning.py`: 5/5 passing (1 check generator with 1 expected failure + 4 behavior-specific)
+**Forecaster Tests** (as of reorganization):
+- `tests/point_forecaster/test_naive.py`: Tests for SeasonalNaive (pattern-based forecaster)
+- `tests/point_forecaster/test_reduction.py`: Tests for PointReductionForecaster (reduction-based)
+- `tests/point_forecaster/test_panel.py`: Cross-learning tests for panel data
+- `tests/interval_forecaster/test_reduction.py`: Tests for IntervalReductionForecaster
+- `tests/interval_forecaster/test_panel.py`: Cross-learning tests for interval forecasters
+- `tests/decomposition/test_*.py`: Tests for decomposition forecasters (PolynomialTrend, Seasonality, FourierSeasonality, ExponentialTrend, Decomposer)
+- `tests/forecaster/test_composition.py`: Tests for ColumnForecaster (not yet implemented)
+
+**Note**: After the API reorganization, tests need to be re-run to verify compatibility with the new structure.
 
 ### Validated Forecasters
 
-**SeasonalNaive** (Point Forecaster):
-- Check generator validates 9 checks automatically
+**SeasonalNaive** (`src/yohou/point_forecaster/naive.py`):
+- Extends `BasePointForecaster` directly
+- Check generator validates 9+ checks automatically
 - Seasonality-specific tests validate correct seasonal predictions
-- No expected failures - all checks pass
+- Supports panel data with prefixed columns
 
-**PointReductionForecaster** (Reduction + Point Forecaster):
-- Check generator validates 11 checks automatically
+**PointReductionForecaster** (`src/yohou/point_forecaster/reduction.py`):
+- Extends both `BaseReductionForecaster` and `BasePointForecaster`
+- Check generator validates 11+ checks automatically
 - Analytical tests with LinearRegression validate exact numerical behavior
-- Cross-learning tests validate panel data handling with `supports_panel_data=True` tag
-- No expected failures - all checks pass
+- Cross-learning tests validate panel data handling with prefixed columns
+- Supports `time_weight` parameter for sample weighting
 
-**IntervalReductionForecaster** (Reduction + Interval Forecaster):
+**IntervalReductionForecaster** (`src/yohou/interval_forecaster/reduction.py`):
+- Extends both `BaseReductionForecaster` and `BaseIntervalForecaster`
 - Check generator validates 15+ checks automatically
-- Cross-learning tests validate panel data handling with struct columns
-- Expected failure: `check_interval_bounds` with default QuantileRegressor (known issue - doesn't guarantee monotonic bounds)
+- Cross-learning tests validate panel data handling with prefixed columns
+- Supports quantile regression for prediction intervals
 
-**Decomposition Forecasters** (yohou.decomposition):
-- **PolynomialTrendForecaster**: Check generator + analytical tests (linear/quadratic trend recovery)
-- **ExponentialTrendForecaster**: Check generator + validation tests (positive values required)
-- **SeasonalityForecaster**: Check generator + pattern-based tests (naive/average/median methods)
-- **FourierSeasonalityForecaster**: Check generator + harmonic analysis tests (sine wave recovery)
-- **Decomposer** (Meta-Forecaster): Check generator with special handling for list-of-tuples parameters
-  - Expected failures: `check_update_extends_observations`, `check_reset_replaces_observations` (complex residual-based update logic)
+**SplitConformalForecaster** (`src/yohou/interval_forecaster/split_conformal.py`):
+- Extends `BaseIntervalForecaster` directly
+- NOT yet reorganized - still uses old API patterns
+- Provides conformal prediction intervals with calibration
+- Supports similarity-weighted conformal prediction
+
+**Decomposition Forecasters** (`yohou.decomposition`):
+- **PolynomialTrendForecaster**: Extends `BasePointForecaster`, fits polynomial trends
+- **ExponentialTrendForecaster**: Extends `BasePointForecaster`, models exponential growth/decay
+- **SeasonalityForecaster**: Extends `BasePointForecaster`, pattern-based seasonality (naive/average/median)
+- **FourierSeasonalityForecaster**: Extends `BasePointForecaster`, Fourier basis with ElasticNet
+- **Decomposer** (Meta-Forecaster): Extends `BasePointForecaster` and `_BaseComposition`
+  - Sequential decomposition into trend + seasonality + residual components
+  - NOT reorganized - remains in decomposition module as a meta-forecaster
+  - Supports `store_residuals=True` for inspecting intermediate residuals
+
+**ColumnForecaster** (`src/yohou/forecaster/composition.py`):
+- Extends `BaseForecaster` and `_BaseComposition`
+- Applies different forecasters to different target columns
+- Supports parallel execution via `n_jobs`
+- NOT yet fully tested - composition checks need implementation
+
+**SearchCV** (`src/yohou/model_selection/search.py`):
+- Meta-forecaster wrapper extending `BaseForecaster`
+- Implements dynamic method availability via `_search_forecaster_has(attr)` pattern
+- Conditionally exposes `predict()`, `predict_interval()`, `update_predict()`, `update_predict_interval()` based on `best_forecaster_.prediction_types`
+- All methods accept `panel_group_names` parameter (list of group prefixes or None for all)
+- Follows sklearn's `GridSearchCV`/`RandomizedSearchCV` pattern for meta-estimator method delegation
+- Systematic tests validate: method availability before/after fit, delegation to best_forecaster_, panel data support
 
 ---
 
@@ -301,7 +331,31 @@ def test_my_forecaster_specific_behavior(y_X_factory):
 
 **Fitted Attributes**:
 - **Transformers**: `feature_names_in_`, `n_features_in_`, `_observation_horizon`, `_X_observed`
-- **Forecasters**: `fit_forecasting_horizon_`, `interval_`, `local_group_names_`, `local_y_columns_`, `local_X_columns_`, `_y_observed`, `_X_observed`, `_X_t_observed`
+- **Forecasters**: `fit_forecasting_horizon_`, `interval_`, `panel_group_names_`, `local_y_schema_`, `local_X_schema_`, `global_X_schema_`, `local_y_t_schema_`, `local_X_t_schema_`, `_y_observed`, `_X_observed`, `_X_t_observed`, `target_transformer_`, `feature_transformer_`
+
+**Schema Attributes**:
+- `local_y_schema_`, `local_X_schema_`: Schemas with **unprefixed** column names for original data
+- `local_y_t_schema_`, `local_X_t_schema_`: Schemas with **unprefixed** column names for transformed data
+- `global_X_schema_`: Schema for global X columns (appear alongside panel groups)
+
+**Lifecycle Methods**:
+- **Transformers**: `fit(X, y=None)`, `transform(X)`, `update(X)`, `reset(X)`
+- **Forecasters**: `fit(y, X, forecasting_horizon)`, `predict(X, forecasting_horizon, panel_group_names)`, `update(y, X, panel_group_names)`, `reset(y, X, panel_group_names)`
+  - Note: `panel_group_names` is a **list of strings** (e.g., `["sales", "inventory"]`) or `None` for all groups
+
+**Time Columns**:
+- **Transformers**: Input/output both have "time" column
+- **Forecasters**: Predictions add "observed_time" (when forecast was made) and "time" (time step being predicted)
+
+**Panel Data Representation**:
+- Internal: `dict[str, pl.DataFrame]` with unprefixed column names (e.g., {"sales": df_with_cols["time", "store_1", "store_2"]})
+- External (predictions): Prefixed column names (e.g., "sales__store_1", "sales__store_2")
+
+**Note**: All features in `X` are expected to be known ex-ante (in advance). For ex-post features (observed after the fact), use `ColumnForecaster` to forecast them first.
+
+**Composition Classes**:
+- **ColumnForecaster** (`src/yohou/forecaster/composition.py`): Applies different forecasters to different target columns, concatenates predictions horizontally
+- **Decomposer** (`src/yohou/decomposition/decomposer.py`): Applies forecasters sequentially to residuals, sums predictions vertically
 
 **Lifecycle Methods**:
 - **Transformers**: `fit(X, y=None)`, `transform(X)`, `update(X)`, `reset(X)`
@@ -312,7 +366,12 @@ def test_my_forecaster_specific_behavior(y_X_factory):
 - **Forecasters**: Predictions add "observed_time" (when forecast was made) and "predicted_time" (time step being predicted)
 
 **Composition Classes**:
-- **ColumnForecaster**: Applies different forecasters to different X columns, concatenates predictions
+- **ColumnForecaster**: Applies different forecasters to different target columns, concatenates predictions
+- **SearchCV** (`src/yohou/model_selection/search.py`): Meta-forecaster wrapper for hyperparameter optimization
+  - Uses `_search_forecaster_has(attr)` pattern following sklearn's `_estimator_has` for conditional method availability
+  - Methods only available when `refit=True` and after fitting
+  - Supports both point and interval forecasters through `prediction_types` checking
+  - All methods accept `panel_group_names` parameter (list of group prefixes)
 
 ### Analytical Testing Pattern
 
@@ -346,6 +405,41 @@ def test_linear_regression_ar1_process():
     np.testing.assert_allclose(fitted_estimator.intercept_, c, rtol=1e-10, atol=1e-10)
 ```
 
+### Meta-Forecaster Testing Pattern
+
+**Meta-forecasters** like SearchCV and Decomposer wrap other forecasters and delegate method calls. They require special testing considerations:
+
+**SearchCV Testing Pattern**:
+```python
+def test_search_cv_method_availability():
+    """Test methods only available after fit with refit=True."""
+    search = SearchCV(forecaster=PointReductionForecaster(), refit=True)
+    
+    # Before fit: methods should not be available
+    assert not hasattr(search, 'predict')
+    
+    # After fit: methods available based on prediction_types
+    search.fit(y, X, forecasting_horizon=3)
+    assert hasattr(search, 'predict')  # Point forecaster
+    assert not hasattr(search, 'predict_interval')  # Not interval forecaster
+
+def test_search_cv_interval_forecaster():
+    """Test interval-specific methods with interval forecaster."""
+    search = SearchCV(forecaster=IntervalReductionForecaster(), refit=True)
+    search.fit(y, X, forecasting_horizon=3)
+    
+    # Should have interval methods
+    assert hasattr(search, 'predict_interval')
+    assert hasattr(search, 'update_predict_interval')
+```
+
+**Key testing principles**:
+- Test method availability before/after fit
+- Test delegation to `best_forecaster_` with correct parameters
+- Test `panel_group_names` parameter propagation (list of strings)
+- Test both point and interval forecasters
+- Verify `_search_forecaster_has(attr)` logic with different forecaster types
+
 ### Clone Parameter Validation
 
 The `check_clone_preserves_forecaster_params` function handles nested estimators correctly, including special handling for meta-estimators:
@@ -358,15 +452,15 @@ if hasattr(orig_val, "get_params"):
     assert orig_val.get_params() == cloned_val.get_params(), \
         f"Parameter {key}: different estimator params"
 
-# For list of (name, estimator) tuples (meta-estimators like Decomposer, Pipeline)
+# For list of (name, estimator) tuples (meta-estimators like Decomposer, FeaturePipeline)
 elif isinstance(orig_val, list) and len(orig_val) > 0 and isinstance(orig_val[0], tuple):
     for i, (orig_item, cloned_item) in enumerate(zip(orig_val, cloned_val)):
         orig_name, orig_est = orig_item
         cloned_name, cloned_est = cloned_item
-        
+
         # Names should match exactly
         assert orig_name == cloned_name
-        
+
         # Estimators should be different instances but same type
         assert type(orig_est) == type(cloned_est)
         assert orig_est is not cloned_est  # Verify cloning happened
@@ -385,21 +479,24 @@ This prevents false failures when comparing meta-estimator instances like Decomp
 **Validation**:
 - `fit_forecasting_horizon_` matches input parameter
 - `interval_` is a timedelta object
-- `local_group_names_`, `local_y_columns_`, `local_X_columns_` are set
+- `panel_group_names_`, `local_y_columns_`, `local_X_columns_` are set
 - `_y_observed` and `_X_observed` buffers exist
-
-**Note**: All features in `X` are expected to be known ex-ante. For ex-post features, use `ColumnForecaster`.
 
 ### Composition Class Validation
 
-**Purpose**: Verify ColumnForecaster implement composition patterns correctly
+**Purpose**: Verify ColumnForecaster and Decomposer implement composition patterns correctly
 
 **ColumnForecaster Validation**:
-- Column selectors (str, list, slice, callable) properly index X columns
-- Remainder strategies ('drop', 'passthrough', custom forecaster) work as expected
+- Column selectors (str, list, slice, callable) properly index target columns
 - Parallel execution with `n_jobs` produces same results as sequential
-- Prediction column order matches input X column order
-- Panel data (struct columns) handled correctly
+- Prediction column order matches input target column order
+- Panel data (prefixed columns) handled correctly across different forecasters
+
+**Decomposer Validation**:
+- Sequential residual modeling: each component models residuals from previous components
+- Final prediction equals sum of all component predictions
+- `store_residuals=True` captures intermediate residuals for inspection
+- Supports both additive (default) and multiplicative (via LogTransform) decomposition
 
 ### Time Column Validation
 
@@ -407,7 +504,7 @@ This prevents false failures when comparing meta-estimator instances like Decomp
 
 **Validation**:
 - "observed_time" column exists (when forecast was made)
-- "predicted_time" column exists (time step being predicted)
+- "time" column exists (time step being predicted - note: renamed from "predicted_time")
 - Both columns have datetime dtype
 - Number of rows matches forecasting_horizon
 
@@ -534,7 +631,7 @@ def test_my_forecaster_checks(forecaster, tags, expected_failures, y_X_factory):
         ),
     ],
 )
-def test_point_reduction_cross_learning_checks(forecaster, tags, expected_failures, panel_data):
+def test_point_reduction_panel_checks(forecaster, tags, expected_failures, panel_data):
     """Run systematic cross-learning checks on PointReductionForecaster with panel data."""
     y = panel_data["y"]
     y_train, y_test = y[:80], y[80:]
@@ -553,9 +650,9 @@ def test_point_reduction_cross_learning_checks(forecaster, tags, expected_failur
 ```
 
 **Cross-Learning Check Functions**:
-1. **`check_cross_learning_panel_data`**: Validates `panel_group=None` predicts all groups
-2. **`check_cross_learning_single_group`**: Validates filtering to specific struct column
-3. **`check_cross_learning_invalid_group_raises`**: Validates error handling for invalid groups
+1. **`check_panel_data`**: Validates `panel_group_names=None` predicts all groups
+2. **`check_panel_single_group`**: Validates filtering to specific struct column
+3. **`check_panel_invalid_group_raises`**: Validates error handling for invalid groups
 
 **Panel Data Structure**:
 - Single struct column: `{"time": ..., "stores": pl.DataFrame({"store_0": ..., "store_1": ..., ...})}`
@@ -563,7 +660,7 @@ def test_point_reduction_cross_learning_checks(forecaster, tags, expected_failur
 - Interval forecasters nest interval bounds within structs: `store_0_lower_0.1` inside `"stores"` struct
 
 **Key Considerations**:
-- `panel_group` operates on struct column level, not field level (e.g., `"stores"` not `"store_0"`)
+- `panel_group_names` operates on group prefix level using list of strings (e.g., `["sales", "inventory"]`), not individual series suffixes
 - For interval forecasters, unnest struct columns to access interval bounds
 - Expected failure for `IntervalReductionForecaster` with default estimator: `check_interval_bounds` (QuantileRegressor doesn't guarantee monotonic bounds)
 

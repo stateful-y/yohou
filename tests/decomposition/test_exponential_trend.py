@@ -67,8 +67,12 @@ def test_exponential_analytical():
     """Test exponential trend on known exponential process."""
     # Create perfect exponential: y = 10 * exp(0.05*t)
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": [10 * np.exp(0.05 * i) for i in range(50)]})
 
@@ -84,16 +88,20 @@ def test_exponential_analytical():
 
     # Exponential fitting may have small numerical errors
     pred_values = y_pred["value"].to_numpy().flatten()
-    assert np.allclose(
-        pred_values, expected_values, rtol=0.01
-    ), "Exponential trend should match exponential process closely"
+    assert np.allclose(pred_values, expected_values, rtol=0.01), (
+        "Exponential trend should match exponential process closely"
+    )
 
 
 def test_exponential_positive_values_required():
     """Test that exponential trend raises error for non-positive values."""
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": [-1 * i for i in range(50)]})  # Negative values
 
@@ -106,8 +114,12 @@ def test_exponential_positive_values_required():
 def test_exponential_zero_values_error():
     """Test that exponential trend raises error for zero values."""
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": [0] * 50})  # Zero values
 
@@ -120,8 +132,12 @@ def test_exponential_zero_values_error():
 def test_exponential_mixed_signs_error():
     """Test that exponential trend raises error for mixed positive/negative."""
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     # Some positive, some negative
     y = pl.DataFrame({"time": time, "value": [10 if i % 2 == 0 else -5 for i in range(50)]})
@@ -135,8 +151,12 @@ def test_exponential_mixed_signs_error():
 def test_exponential_different_horizons():
     """Test that different forecasting horizons work correctly."""
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": [10 * np.exp(0.05 * i) for i in range(50)]})
 
@@ -160,7 +180,10 @@ def test_exponential_trend_panel_data(panel_time_series_factory):
     for i in range(3):
         col_name = f"panel__series_{i}"
         y_panel = y_panel.with_columns(
-            (pl.col(col_name).abs() + 10 * pl.Series([np.exp(0.02 * (i + 1) * j) for j in range(100)])).alias(col_name)
+            (
+                pl.col(col_name).abs()
+                + 10 * pl.Series([np.exp(0.02 * (i + 1) * j) for j in range(100)])
+            ).alias(col_name)
         )
 
     forecaster = ExponentialTrendForecaster()
@@ -179,8 +202,12 @@ def test_exponential_trend_panel_data(panel_time_series_factory):
 def test_exponential_update_predict():
     """Test update_predict method."""
     from datetime import timedelta
+
     time = pl.datetime_range(
-        start=datetime(2020, 1, 1), end=datetime(2020, 1, 1) + timedelta(days=49), interval="1d", eager=True
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=49),
+        interval="1d",
+        eager=True,
     )
     y = pl.DataFrame({"time": time, "value": [10 * np.exp(0.05 * i) for i in range(50)]})
 
@@ -191,7 +218,7 @@ def test_exponential_update_predict():
     # Update with new data and predict
     n_new = 10
     predict_forecasting_horizon = 5
-    y_new = y[30:30 + n_new]
+    y_new = y[30 : 30 + n_new]
     y_pred = forecaster.update_predict(y_new, forecasting_horizon=predict_forecasting_horizon)
 
     assert len(y_pred) == predict_forecasting_horizon * (1 + n_new // fit_forecasting_horizon)

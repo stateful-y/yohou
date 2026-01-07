@@ -1,4 +1,4 @@
-"""Tests for composition classes (Pipeline, FeatureUnion, ColumnTransformer).
+"""Tests for composition classes (FeaturePipeline, FeatureUnion, ColumnTransformer).
 
 Tests both the existing specific behavior and systematic validation
 using dummy transformers.
@@ -15,7 +15,7 @@ from sklearn.base import clone
 sys.path.insert(0, str(Path(__file__).parent))
 from conftest import SimpleTransformer
 
-from yohou.pipeline import ColumnTransformer, FeatureUnion, Pipeline
+from yohou.pipeline import ColumnTransformer, FeatureUnion, FeaturePipeline
 
 # ============================================================================
 # COMPOSITION-SPECIFIC TESTS WITH DUMMY TRANSFORMERS
@@ -23,14 +23,14 @@ from yohou.pipeline import ColumnTransformer, FeatureUnion, Pipeline
 
 
 def test_pipeline_observation_horizon_sum(dummy_transformers, time_series_factory):
-    """Test Pipeline observation_horizon is sum of component horizons."""
+    """Test FeaturePipeline observation_horizon is sum of component horizons."""
     X = time_series_factory(length=50)
 
     # Create pipeline with known horizons - use fresh instances
     step1 = SimpleTransformer(observation_horizon=1)
     step2 = SimpleTransformer(observation_horizon=2)
 
-    pipeline = Pipeline(
+    pipeline = FeaturePipeline(
         [
             ("step1", step1),
             ("step2", step2),
@@ -39,7 +39,7 @@ def test_pipeline_observation_horizon_sum(dummy_transformers, time_series_factor
 
     pipeline.fit(X)
 
-    # Pipeline horizon should be sum: 1 + 2 = 3
+    # FeaturePipeline horizon should be sum: 1 + 2 = 3
     expected_horizon = 1 + 2
     assert pipeline.observation_horizon == expected_horizon, (
         f"Expected horizon {expected_horizon}, got {pipeline.observation_horizon}"
@@ -47,14 +47,14 @@ def test_pipeline_observation_horizon_sum(dummy_transformers, time_series_factor
 
 
 def test_pipeline_sequential_execution(dummy_transformers, time_series_factory):
-    """Test Pipeline executes transformers sequentially."""
+    """Test FeaturePipeline executes transformers sequentially."""
     X = time_series_factory(length=50)
 
     # Create pipeline that adds constants sequentially
     step1 = SimpleTransformer(observation_horizon=1, add_constant=10.0)
     step2 = SimpleTransformer(observation_horizon=1, add_constant=5.0)
 
-    pipeline = Pipeline([("step1", step1), ("step2", step2)])
+    pipeline = FeaturePipeline([("step1", step1), ("step2", step2)])
     pipeline.fit(X)
 
     X_trans = pipeline.transform(X)
@@ -67,13 +67,13 @@ def test_pipeline_sequential_execution(dummy_transformers, time_series_factory):
 
 
 def test_pipeline_named_access(dummy_transformers, time_series_factory):
-    """Test Pipeline allows access to named steps."""
+    """Test FeaturePipeline allows access to named steps."""
     X = time_series_factory(length=50)
 
     step1 = SimpleTransformer(observation_horizon=1)
     step2 = SimpleTransformer(observation_horizon=2)
 
-    pipeline = Pipeline(
+    pipeline = FeaturePipeline(
         [
             ("first", step1),
             ("second", step2),
@@ -182,10 +182,10 @@ def test_columntransformer_column_selection(time_series_factory):
 
 
 def test_pipeline_with_clone(dummy_transformers, time_series_factory):
-    """Test Pipeline works with cloned transformers."""
+    """Test FeaturePipeline works with cloned transformers."""
     X = time_series_factory(length=50)
 
-    pipeline = Pipeline(
+    pipeline = FeaturePipeline(
         [
             ("step1", dummy_transformers["simple"]),
             ("step2", dummy_transformers["invertible"]),
@@ -207,10 +207,10 @@ def test_pipeline_with_clone(dummy_transformers, time_series_factory):
 
 
 def test_pipeline_get_set_params(dummy_transformers, time_series_factory):
-    """Test Pipeline get_params and set_params work correctly."""
+    """Test FeaturePipeline get_params and set_params work correctly."""
     X = time_series_factory(length=50)
 
-    pipeline = Pipeline(
+    pipeline = FeaturePipeline(
         [
             ("step1", SimpleTransformer(observation_horizon=1, add_constant=5.0)),
         ]

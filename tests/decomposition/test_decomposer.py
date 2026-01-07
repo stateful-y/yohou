@@ -21,35 +21,56 @@ from estimator_checks import _yield_yohou_forecaster_checks
     "forecaster,tags,expected_failures",
     [
         (
-            Decomposer([
-                ("trend", PolynomialTrendForecaster(degree=1)),
-                ("seasonality", SeasonalNaive(seasonality=7)),
-            ]),
+            Decomposer(
+                [
+                    ("trend", PolynomialTrendForecaster(degree=1)),
+                    ("seasonality", SeasonalNaive(seasonality=7)),
+                ]
+            ),
             {"forecaster_type": "point", "is_meta_forecaster": True},
-            ["check_update_extends_observations", "check_reset_replaces_observations"],  # Decomposer has complex residual-based update logic
+            [
+                "check_update_extends_observations",
+                "check_reset_replaces_observations",
+            ],  # Decomposer has complex residual-based update logic
         ),
         (
-            Decomposer([
-                ("trend", PolynomialTrendForecaster(degree=2)),
-                ("seasonality", SeasonalityForecaster(seasonality=12, method="average")),
-            ]),
+            Decomposer(
+                [
+                    ("trend", PolynomialTrendForecaster(degree=2)),
+                    ("seasonality", SeasonalityForecaster(seasonality=12, method="average")),
+                ]
+            ),
             {"forecaster_type": "point", "is_meta_forecaster": True},
-            ["check_update_extends_observations", "check_reset_replaces_observations"],  # Decomposer has complex residual-based update logic
+            [
+                "check_update_extends_observations",
+                "check_reset_replaces_observations",
+            ],  # Decomposer has complex residual-based update logic
         ),
         (
-            Decomposer([
-                ("trend", PolynomialTrendForecaster(degree=1)),
-                ("seasonality", SeasonalNaive(seasonality=7)),
-            ], target_transformer=LogTransform()),
+            Decomposer(
+                [
+                    ("trend", PolynomialTrendForecaster(degree=1)),
+                    ("seasonality", SeasonalNaive(seasonality=7)),
+                ],
+                target_transformer=LogTransform(),
+            ),
             {"forecaster_type": "point", "is_meta_forecaster": True, "uses_transformers": True},
-            ["check_update_extends_observations", "check_reset_replaces_observations"],  # Decomposer has complex residual-based update logic
+            [
+                "check_update_extends_observations",
+                "check_reset_replaces_observations",
+            ],  # Decomposer has complex residual-based update logic
         ),
         (
-            Decomposer([
-                ("trend", PolynomialTrendForecaster(degree=1)),
-            ]),
+            Decomposer(
+                [
+                    ("trend", PolynomialTrendForecaster(degree=1)),
+                ]
+            ),
             {"forecaster_type": "point", "is_meta_forecaster": True},
-            ["check_update_extends_observations", "check_reset_replaces_observations"],  # Decomposer has complex residual-based update logic
+            [
+                "check_update_extends_observations",
+                "check_reset_replaces_observations",
+            ],  # Decomposer has complex residual-based update logic
         ),
     ],
 )
@@ -57,11 +78,9 @@ def test_decomposer_checks(forecaster, tags, expected_failures, y_X_factory):
     """Run systematic checks on Decomposer meta-forecaster."""
     # Generate data with sufficient length for seasonality
     y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-    
+
     # Make values positive for LogTransform compatibility
-    y = y.with_columns(
-        [(pl.col(col).abs() + 1).alias(col) for col in y.columns if col != "time"]
-    )
+    y = y.with_columns([(pl.col(col).abs() + 1).alias(col) for col in y.columns if col != "time"])
 
     y_train, y_test = y[:80], y[80:]
     X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
@@ -216,7 +235,9 @@ def test_decomposer_update_predict():
     # Update with new data
     n_new = 10
     predict_forecasting_horizon = 5
-    y_pred = forecaster.update_predict(y[30:30 + n_new], forecasting_horizon=predict_forecasting_horizon)
+    y_pred = forecaster.update_predict(
+        y[30 : 30 + n_new], forecasting_horizon=predict_forecasting_horizon
+    )
 
     assert len(y_pred) == predict_forecasting_horizon * (1 + n_new // fit_forecasting_horizon)
     assert "observed_time" in y_pred.columns
@@ -295,7 +316,6 @@ def test_decomposer_validates_forecaster_names():
 
     with pytest.raises(ValueError, match="Names provided are not unique"):
         forecaster.fit(y[:30], forecasting_horizon=5)
-
 
 
 def test_decomposer_panel_data(panel_time_series_factory):
@@ -377,9 +397,10 @@ def test_decomposer_with_exogenous_features():
     y = pl.DataFrame({"time": time, "value": range(50)})
     X = pl.DataFrame({"time": time, "feature": range(50, 100)})
 
+    from sklearn.linear_model import Ridge
+
     from yohou.point_forecaster import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
-    from sklearn.linear_model import Ridge
 
     forecaster = Decomposer(
         [
@@ -397,7 +418,9 @@ def test_decomposer_with_exogenous_features():
 
     # Predict with future features
     predict_forecasting_horizon = 5
-    y_pred = forecaster.predict(X=X[30:30 + predict_forecasting_horizon], forecasting_horizon=predict_forecasting_horizon)
+    y_pred = forecaster.predict(
+        X=X[30 : 30 + predict_forecasting_horizon], forecasting_horizon=predict_forecasting_horizon
+    )
 
     assert len(y_pred) == predict_forecasting_horizon
 

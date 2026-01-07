@@ -1,5 +1,4 @@
 """Implementation of seasonal naive forecaster."""
-from packaging.utils import _
 
 import polars as pl
 import polars.selectors as cs
@@ -78,15 +77,17 @@ class SeasonalNaive(BasePointForecaster):
             for group_name in sorted(self._y_observed.keys()):
                 y_group = self._y_observed[group_name]
                 y_pred_group = y_group.select(~cs.by_name("time"))
-                
+
                 if self.fit_forecasting_horizon_ > self.seasonality:
                     # Number of full repetitions needed
-                    n_repeats = (self.fit_forecasting_horizon_ + self.seasonality - 1) // self.seasonality
+                    n_repeats = (
+                        self.fit_forecasting_horizon_ + self.seasonality - 1
+                    ) // self.seasonality
                     y_pred_group = pl.concat([y_pred_group] * n_repeats)
-                
+
                 y_pred_group = y_pred_group.head(self.fit_forecasting_horizon_)
                 y_pred_parts.append(y_pred_group)
-            
+
             # Concatenate horizontally (side by side)
             y_pred = pl.concat(y_pred_parts, how="horizontal")
         else:
@@ -94,11 +95,13 @@ class SeasonalNaive(BasePointForecaster):
             y_pred = self._y_observed.select(~cs.by_name("time"))
             if self.fit_forecasting_horizon_ > self.seasonality:
                 # Number of full repetitions needed
-                n_repeats = (self.fit_forecasting_horizon_ + self.seasonality - 1) // self.seasonality
+                n_repeats = (
+                    self.fit_forecasting_horizon_ + self.seasonality - 1
+                ) // self.seasonality
                 y_pred = pl.concat([y_pred] * n_repeats)
-            
+
             y_pred = y_pred.head(self.fit_forecasting_horizon_)
-        
+
         y_pred = self._add_time_columns(y_pred)
 
         return y_pred

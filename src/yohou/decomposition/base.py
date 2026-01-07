@@ -1,4 +1,5 @@
 """Abstract base class for trend and seasonality forecasters."""
+
 import numbers
 from abc import abstractmethod
 
@@ -306,7 +307,5 @@ class _BaseSeasonalityForecaster(_BaseTrendForecaster):
             Predictions with time columns added.
 
         """
-        y_pred = self._predict_from_pattern(
-            forecasting_horizon=self.fit_forecasting_horizon_
-        )
+        y_pred = self._predict_from_pattern(forecasting_horizon=self.fit_forecasting_horizon_)
         return y_pred

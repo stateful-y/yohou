@@ -8,7 +8,7 @@ import time
 import warnings
 from collections import defaultdict
 from functools import partial
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import optuna
@@ -39,7 +39,6 @@ from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
     _raise_for_params,
-    _routing_enabled,
     process_routing,
 )
 from sklearn.utils.metaestimators import available_if
@@ -62,22 +61,39 @@ from .utils import (
 )
 
 
-def _best_forecaster_has(attr):
-    """Check if best_forecaster_ has the given attribute.
+def _search_forecaster_has(attr):
+    """Check if SearchCV.best_forecaster_ has a given attribute or prediction type.
 
     This is used as the check for available_if decorator to ensure
     predict/update methods are only available when refit=True and
-    the best_forecaster_ has been fitted.
+    the best_forecaster_ supports the required functionality.
+
+    For special attributes like "point" or "interval", checks if the prediction type
+    is supported. Otherwise, checks if the attribute exists on best_forecaster_.
 
     Parameters
     ----------
     attr : str
-        The name of the attribute to check.
+        The name of the attribute or prediction type to check.
+        Special values: "point", "interval" check prediction_types.
+        Other values check hasattr(best_forecaster_, attr).
 
     Returns
     -------
     callable
         A function that checks if the best_forecaster_ has the attribute.
+
+    Examples
+    --------
+    >>> # Check for point prediction support
+    >>> @available_if(_search_forecaster_has("point"))
+    >>> def predict(self, ...):
+    ...     pass
+    >>>
+    >>> # Check for specific method
+    >>> @available_if(_search_forecaster_has("reset"))
+    >>> def reset(self, ...):
+    ...     pass
     """
 
     def check(self):
@@ -86,7 +102,12 @@ def _best_forecaster_has(attr):
             return False
         if not hasattr(self, "best_forecaster_"):
             return False
-        # Check if best_forecaster_ has the attribute
+
+        # Special handling for prediction types
+        if attr in {"point", "interval"}:
+            return attr in self.best_forecaster_.prediction_types
+
+        # Otherwise check if the attribute exists
         return hasattr(self.best_forecaster_, attr)
 
     return check
@@ -106,7 +127,6 @@ class SearchCV(BaseForecaster):
     ----------
     forecaster : forecaster object
         This is assumed to implement the yohou forecaster interface.
-
     param_distributions : dict or list of dicts
         Dictionary with parameters names (`str`) as keys and distributions
         or lists of parameters to try. Distributions must provide a ``rvs``
@@ -114,7 +134,6 @@ class SearchCV(BaseForecaster):
         If a list is given, it is sampled uniformly.
         If a list of dicts is given, first a dict is sampled uniformly, and
         then a parameter is sampled using that dict as above.
-
     scoring : str, callable, list, tuple or dict, default=None
         Strategy to evaluate the performance of the cross-validated model on
         the test set.
@@ -124,18 +143,15 @@ class SearchCV(BaseForecaster):
 
         If `scoring` represents multiple scores, one can use:
         - a dictionary with metric names as keys and callables a values.
-
-    sampler : instance of optuna sampler
-
-
-    storage : instance of optuna storage
-
+    sampler : instance of Sampler
+        Sampler to use for parameter sampling.
+    storage : instance of Storage or None, default=None
+        Storage to use to store the results of the trials. If None,
+        an in-memory storage is used.
     n_warmup_trials : int >= 0, default=0
         Number of warmup trials for which to run a randomized search.
-
     n_trials : int >= 0, default=5
         Number of trials for which to run the search defined by `sampler`.
-
     scoring : str, callable, list, tuple or dict
         Strategy to evaluate the performance of the cross-validated model on
         the test set.
@@ -145,13 +161,11 @@ class SearchCV(BaseForecaster):
 
         If `scoring` represents multiple scores, one can use:
         - a dictionary with metric names as keys and callables a values.
-
     n_jobs : int, default=None
         Number of jobs to run in parallel.
         ``None`` means 1 unless in a :obj:`joblib.parallel_backend` context.
         ``-1`` means using all processors. See :term:`Glossary <n_jobs>`
         for more details.
-
     refit : bool, str, or callable, default=True
         Refit a forecaster using the best found parameters on the whole
         dataset.
@@ -175,7 +189,6 @@ class SearchCV(BaseForecaster):
         ``best_score_`` and ``best_params_`` will only be available if
         ``refit`` is set and all of them will be determined w.r.t this specific
         scorer.
-
     cv : int, cross-validation generator or an iterable, default=None
         Determines the cross-validation splitting strategy.
         Possible inputs for cv are:
@@ -184,7 +197,6 @@ class SearchCV(BaseForecaster):
         - integer, to specify the number of folds in a time series `Splitter`,
         - :class:`yohou.model_selection.Splitter` instance,
         - An iterable yielding (train, test) splits as arrays of indices.
-
     verbose : int
         Controls the verbosity: the higher, the more messages.
 
@@ -193,7 +205,6 @@ class SearchCV(BaseForecaster):
         - >2 : the score is also displayed;
         - >3 : the fold and candidate parameter indexes are also displayed
           together with the starting time of the computation.
-
     pre_dispatch : int, or str, default='2*n_jobs'
         Controls the number of jobs that get dispatched during parallel
         execution. Reducing this number can be useful to avoid an
@@ -210,7 +221,6 @@ class SearchCV(BaseForecaster):
 
             - A str, giving an expression as a function of n_jobs,
               as in '2*n_jobs'
-
     error_score : 'raise' or numeric, default=np.nan
         Value to assign to the score if an error occurs in forecaster fitting.
         If set to 'raise', the error is raised. If a numeric value is given,
@@ -222,14 +232,12 @@ class SearchCV(BaseForecaster):
     cv_results_ : dict of numpy (masked) ndarrays
         A dict with keys as column headers and values as columns, that can be
         imported into a polars ``DataFrame``.
-
     best_forecaster_ : forecaster
         Estimator that was chosen by the search, i.e. forecaster
         which gave highest score (or smallest loss if specified)
         on the left out data. Not available if ``refit=False``.
 
         See ``refit`` parameter for more information on allowed values.
-
     best_score_ : float
         Mean cross-validated score of the best_forecaster
 
@@ -243,7 +251,6 @@ class SearchCV(BaseForecaster):
 
         For multi-metric evaluation, this is present only if ``refit`` is
         specified.
-
     best_index_ : int
         The index (of the ``cv_results_`` arrays) which corresponds to the best
         candidate parameter setting.
@@ -254,31 +261,24 @@ class SearchCV(BaseForecaster):
 
         For multi-metric evaluation, this is present only if ``refit`` is
         specified.
-
     scorer_ : function or a dict
         Scorer function used on the held out data to choose the best
         parameters for the model.
 
         For multi-metric evaluation, this attribute holds the validated
         ``scoring`` dict which maps the scorer key to the scorer callable.
-
     n_splits_ : int
         The number of cross-validation splits (folds/iterations).
-
     refit_time_ : float
         Seconds used for refitting the best model on the whole dataset.
-
         This is present only if ``refit`` is not False.
-
     multimetric_ : bool
         Whether or not the scorers compute several metrics.
-
     n_features_in_ : int
         Number of features seen during :term:`fit`. Only defined if
         `best_forecaster_` is defined (see the documentation for the `refit`
         parameter for more details) and that `best_forecaster_` exposes
         `n_features_in_` when fit.
-
     feature_names_in_ : ndarray of shape (`n_features_in_`,)
         Names of features seen during :term:`fit`. Only defined if
         `best_forecaster_` is defined (see the documentation for the `refit`
@@ -339,7 +339,7 @@ class SearchCV(BaseForecaster):
         self.return_train_score = return_train_score
 
     @property
-    def prediction_types(self) -> set[str]:
+    def prediction_types(self) -> set[Literal["point", "interval"]]:
         """Get the types of predictions this forecaster produces.
 
         Returns
@@ -362,12 +362,10 @@ class SearchCV(BaseForecaster):
         X : array-like of shape (n_samples, n_features)
             Input data, where `n_samples` is the number of samples and
             `n_features` is the number of features.
-
         y : array-like of shape (n_samples, n_output) \
             or (n_samples,), default=None
             Target relative to X for classification or regression;
             None for unsupervised learning.
-
         **params : dict
             Parameters to be passed to the underlying scorer(s).
 
@@ -381,11 +379,7 @@ class SearchCV(BaseForecaster):
         check_is_fitted(self)
 
         _raise_for_params(params, self, "score")
-
-        if _routing_enabled():
-            score_params = process_routing(self, "score", **params).scorer["score"]
-        else:
-            score_params = dict()
+        score_params = process_routing(self, "score", **params).scorer["score"]
 
         if self.scorer_ is None:
             raise ValueError(
@@ -405,36 +399,36 @@ class SearchCV(BaseForecaster):
             score = score[self.refit]
         return score
 
-    @available_if(_best_forecaster_has("predict"))  # type: ignore[untyped-decorator]
+    @available_if(_search_forecaster_has("point"))
     def predict(
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group: str | None = None,
+        panel_group_names: list[str] | None = None,
         predict_transformed: bool = False,
+        **params,
     ) -> pl.DataFrame:
         """Call predict on the forecaster with the best found parameters.
 
         Only available if ``refit=True`` and the underlying forecaster supports
-        ``predict``.
+        point prediction (has "point" in prediction_types).
 
         Parameters
         ----------
         X : pl.DataFrame or None, default=None
             Exogenous feature time series.
-
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses the fitted forecaster's
             ``fit_forecasting_horizon_``.
-
-        panel_group : str or None, default=None
-            For panel data (local_group_names_ is not None):
-            - If None: predict for all groups (default behavior)
-            - If str: predict only for the specified group (cross-learning)
-            For global data: parameter is ignored.
-
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
         predict_transformed : bool, default=False
             If ``True``, the predictions are returned in the transformed space.
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
@@ -447,15 +441,71 @@ class SearchCV(BaseForecaster):
         return self.best_forecaster_.predict(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group=panel_group,
+            panel_group_names=panel_group_names,
             predict_transformed=predict_transformed,
+            **params,
         )
 
-    @available_if(_best_forecaster_has("update"))  # type: ignore[untyped-decorator]
+    @available_if(_search_forecaster_has("interval"))
+    def predict_interval(
+        self,
+        X: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        coverage_rates: list[float] | None = None,
+        strategy: Literal["mean", "median", "point"] | None = None,
+        panel_group_names: list[str] | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Call predict_interval on the forecaster with the best found parameters.
+
+        Only available if ``refit=True`` and the underlying forecaster supports
+        interval prediction (has "interval" in prediction_types).
+
+        Parameters
+        ----------
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast. If None, uses the fitted forecaster's
+            ``fit_forecasting_horizon_``.
+        coverage_rates : list of floats or None, default=None
+            Coverage rates for the prediction intervals. If None, uses
+            the fitted forecaster's ``fit_coverage_rates_``.
+        strategy : {"mean", "median", "point"} or None, default=None
+            Strategy for updating with new point observations:
+            - "mean": use the mean of the interval bounds as point observation
+            - "median": use the median of the interval bounds as point observation
+            - "point": use the point forecast directly (if available)
+            If None, defaults to "mean".
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: predict for all groups
+            - If list of str: predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted time series with interval bounds.
+
+        """
+        check_is_fitted(self)
+        return self.best_forecaster_.predict_interval(
+            X=X,
+            forecasting_horizon=forecasting_horizon,
+            coverage_rates=coverage_rates,
+            strategy=strategy,
+            panel_group_names=panel_group_names,
+            **params,
+        )
+
     def update(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
     ) -> "SearchCV":
         """Call update on the forecaster with the best found parameters.
 
@@ -466,9 +516,13 @@ class SearchCV(BaseForecaster):
         ----------
         y : pl.DataFrame
             Target time series for updates.
-
         X : pl.DataFrame or None, default=None
             Exogenous feature time series for updates.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: update for all groups
+            - If list of str: update only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
 
         Returns
         -------
@@ -477,15 +531,16 @@ class SearchCV(BaseForecaster):
         """
         check_is_fitted(self)
 
-        self.best_forecaster_.update(y, X)
+        self.best_forecaster_.update(y, X, panel_group_names=panel_group_names)
         return self
 
-    @available_if(_best_forecaster_has("update_predict"))  # type: ignore[untyped-decorator]
+    @available_if(_search_forecaster_has("point"))
     def update_predict(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
+        panel_group_names: list[str] | None = None,
         stride: StrictInt | None = None,
         predict_transformed: bool = False,
         **params,
@@ -493,27 +548,27 @@ class SearchCV(BaseForecaster):
         """Call update_predict on the forecaster with the best found parameters.
 
         Only available if ``refit=True`` and the underlying forecaster supports
-        ``update_predict``.
+        point prediction (has "point" in prediction_types).
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series for updates.
-
         X : pl.DataFrame or None, default=None
             Exogenous feature time series for updates.
-
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast recursively. If None, uses the fitted forecaster's
             ``fit_forecasting_horizon_``.
-
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: update and predict for all groups
+            - If list of str: update and predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
         stride : int >= 1 or None, default=None
             Stride in between two predictions. If None, uses the fitted forecaster's
             ``fit_forecasting_horizon_``.
-
         predict_transformed : bool, default=False
             Whether to output prediction in the transformed space.
-
         **params : dict
             Metadata to route to `predict()`.
 
@@ -527,14 +582,80 @@ class SearchCV(BaseForecaster):
         check_is_fitted(self)
 
         return self.best_forecaster_.update_predict(
-            y, X, forecasting_horizon, stride, predict_transformed, **params
+            y=y,
+            X=X,
+            forecasting_horizon=forecasting_horizon,
+            panel_group_names=panel_group_names,
+            stride=stride,
+            predict_transformed=predict_transformed,
+            **params,
         )
 
-    @available_if(_best_forecaster_has("reset"))  # type: ignore[untyped-decorator]
+    @available_if(_search_forecaster_has("interval"))
+    def update_predict_interval(
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        strategy: Literal["mean", "median", "point"] | None = None,
+        panel_group_names: list[str] | None = None,
+        stride: StrictInt | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Call update_predict_interval on the forecaster with the best found parameters.
+
+        Only available if ``refit=True`` and the underlying forecaster supports
+        interval prediction (has "interval" in prediction_types).
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series for updates.
+        X : pl.DataFrame or None, default=None
+            Exogenous feature time series for updates.
+        forecasting_horizon : int >= 1 or None, default=None
+            Horizon to forecast recursively. If None, uses the fitted forecaster's
+            ``fit_forecasting_horizon_``.
+        strategy : {"mean", "median", "point"} or None, default=None
+            Strategy for updating with new point observations:
+            - "mean": use the mean of the interval bounds as point observation
+            - "median": use the median of the interval bounds as point observation
+            - "point": use the point forecast directly (if available)
+            If None, defaults to "mean".
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: update and predict for all groups
+            - If list of str: update and predict only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
+        stride : int >= 1 or None, default=None
+            Number of new observations to use for each update. If None, uses
+            the fitted forecaster's ``fit_forecasting_horizon_``.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted time series with interval bounds.
+
+        """
+        check_is_fitted(self)
+
+        return self.best_forecaster_.update_predict_interval(
+            y=y,
+            X=X,
+            forecasting_horizon=forecasting_horizon,
+            strategy=strategy,
+            panel_group_names=panel_group_names,
+            stride=stride,
+            **params,
+        )
+
     def reset(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
     ) -> "SearchCV":
         """Call reset on the forecaster with the best found parameters.
 
@@ -545,9 +666,13 @@ class SearchCV(BaseForecaster):
         ----------
         y : pl.DataFrame
             Target time series.
-
         X : pl.DataFrame or None, default=None
             Exogenous feature time series.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data:
+            - If None: reset for all groups
+            - If list of str: reset only for the specified panel groups
+            Parameter is ignored if the forecaster was not fitted on panel data.
 
         Returns
         -------
@@ -556,7 +681,7 @@ class SearchCV(BaseForecaster):
         """
         check_is_fitted(self)
 
-        self.best_forecaster_.reset(y, X)
+        self.best_forecaster_.reset(y, X, panel_group_names=panel_group_names)
         return self
 
     @property
@@ -790,15 +915,7 @@ class SearchCV(BaseForecaster):
         This is a method instead of a snippet in ``fit`` since it's used twice,
         here in ``fit``, and in ``HalvingRandomSearchCV.fit``.
         """
-        if _routing_enabled():
-            routed_params = process_routing(self, "fit", **params)
-        else:
-            params = params.copy()
-            routed_params = Bunch(
-                forecaster=Bunch(fit=params),
-                splitter=Bunch(split={}),
-                scorer=Bunch(score={}),
-            )
+        routed_params = process_routing(self, "fit", **params)
         return routed_params  # type: ignore[no-any-return]
 
     @_fit_context(  # type: ignore[untyped-decorator]
@@ -1173,7 +1290,10 @@ class SearchCV(BaseForecaster):
             forecaster=self.forecaster,
             method_mapping=MethodMapping()
             .add(caller="fit", callee="fit")
-            .add(caller="predict", callee="predict"),
+            .add(caller="predict", callee="predict")
+            .add(caller="predict_interval", callee="predict_interval")
+            .add(caller="update_predict", callee="update_predict")
+            .add(caller="update_predict_interval", callee="update_predict_interval"),
         )
 
         scorer, _ = self._get_scorers()
