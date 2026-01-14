@@ -1119,7 +1119,12 @@ def check_predict_time_columns(forecaster, y_test, X_test=None):
         If predictions lack required time columns
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+
+    # Check if forecaster is an interval forecaster
+    if hasattr(forecaster, "predict_interval"):
+        y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon, X=X_test)
+    else:
+        y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
     assert "observed_time" in y_pred.columns, "Predictions must have 'observed_time' column"
     assert "time" in y_pred.columns, "Predictions must have 'time' column"
@@ -1162,19 +1167,38 @@ def check_update_extends_observations(
     # Store original buffer length
     original_observed_time = forecaster.observed_time_
 
+    # Handle both panel (dict) and non-panel (DataFrame or scalar) data
     if forecaster._y_observed is not None:
-        original_y_observed_last_time = forecaster._y_observed["time"][-1]
-
-        assert original_observed_time == original_y_observed_last_time, (
-            "observed_time_ should match last time in _y_observed before update()"
-        )
+        if isinstance(forecaster._y_observed, dict):
+            # Panel data: observed_time_ is a dict
+            # Check the first group as a representative
+            first_group = next(iter(forecaster._y_observed.keys()))
+            original_y_observed_last_time = forecaster._y_observed[first_group]["time"][-1]
+            assert original_observed_time[first_group] == original_y_observed_last_time, (
+                "observed_time_ should match last time in _y_observed before update()"
+            )
+        else:
+            # Non-panel data: observed_time_ is a scalar
+            original_y_observed_last_time = forecaster._y_observed["time"][-1]
+            assert original_observed_time == original_y_observed_last_time, (
+                "observed_time_ should match last time in _y_observed before update()"
+            )
 
     if forecaster._X_t_observed is not None:
-        original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
-
-        assert original_observed_time == original_X_t_observed_last_time, (
-            "observed_time_ should match last time in _X_t_observed before update()"
-        )
+        if isinstance(forecaster._X_t_observed, dict):
+            # Panel data
+            first_group = next(iter(forecaster._X_t_observed.keys()))
+            if forecaster._X_t_observed[first_group] is not None:
+                original_X_t_observed_last_time = forecaster._X_t_observed[first_group]["time"][-1]
+                assert original_observed_time[first_group] == original_X_t_observed_last_time, (
+                    "observed_time_ should match last time in _X_t_observed before update()"
+                )
+        else:
+            # Non-panel data
+            original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
+            assert original_observed_time == original_X_t_observed_last_time, (
+                "observed_time_ should match last time in _X_t_observed before update()"
+            )
 
     # Update with new data
     forecaster.update(y_update, X_update)
@@ -1182,23 +1206,49 @@ def check_update_extends_observations(
     # Check buffers were extended
     updated_observed_time = forecaster.observed_time_
 
-    assert updated_observed_time >= original_observed_time, (
-        "observed_time_ should be updated to at least the last time in update data"
-    )
+    # Handle both panel and non-panel data for comparison
+    if isinstance(updated_observed_time, dict):
+        # Panel data: check all groups were updated
+        for group_name in updated_observed_time:
+            assert updated_observed_time[group_name] >= original_observed_time[group_name], (
+                f"observed_time_ for group {group_name} should be updated"
+            )
+    else:
+        # Non-panel data
+        assert updated_observed_time >= original_observed_time, (
+            "observed_time_ should be updated to at least the last time in update data"
+        )
 
     if forecaster._y_observed is not None:
-        updated_y_observed_last_time = forecaster._y_observed["time"][-1]
-
-        assert updated_y_observed_last_time == updated_observed_time, (
-            "Last time in _y_observed should match updated observed_time_ after update()"
-        )
+        if isinstance(forecaster._y_observed, dict):
+            # Panel data
+            for group_name, y_obs in forecaster._y_observed.items():
+                updated_y_observed_last_time = y_obs["time"][-1]
+                assert updated_y_observed_last_time == updated_observed_time[group_name], (
+                    f"Last time in _y_observed['{group_name}'] should match updated observed_time_"
+                )
+        else:
+            # Non-panel data
+            updated_y_observed_last_time = forecaster._y_observed["time"][-1]
+            assert updated_y_observed_last_time == updated_observed_time, (
+                "Last time in _y_observed should match updated observed_time_ after update()"
+            )
 
     if forecaster._X_t_observed is not None:
-        updated_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
-
-        assert updated_X_t_observed_last_time == updated_observed_time, (
-            "Last time in _X_t_observed should match updated observed_time_ after update()"
-        )
+        if isinstance(forecaster._X_t_observed, dict):
+            # Panel data
+            for group_name, X_t_obs in forecaster._X_t_observed.items():
+                if X_t_obs is not None:
+                    updated_X_t_observed_last_time = X_t_obs["time"][-1]
+                    assert updated_X_t_observed_last_time == updated_observed_time[group_name], (
+                        f"Last time in _X_t_observed['{group_name}'] should match updated observed_time_"
+                    )
+        else:
+            # Non-panel data
+            updated_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
+            assert updated_X_t_observed_last_time == updated_observed_time, (
+                "Last time in _X_t_observed should match updated observed_time_ after update()"
+            )
 
 
 def check_reset_replaces_observations(
@@ -1229,19 +1279,37 @@ def check_reset_replaces_observations(
     # Store original buffer length
     original_observed_time = forecaster.observed_time_
 
+    # Handle both panel (dict) and non-panel (DataFrame or scalar) data
     if forecaster._y_observed is not None:
-        original_y_observed_last_time = forecaster._y_observed["time"][-1]
-
-        assert original_observed_time == original_y_observed_last_time, (
-            "observed_time_ should match last time in _y_observed before update()"
-        )
+        if isinstance(forecaster._y_observed, dict):
+            # Panel data
+            first_group = next(iter(forecaster._y_observed.keys()))
+            original_y_observed_last_time = forecaster._y_observed[first_group]["time"][-1]
+            assert original_observed_time[first_group] == original_y_observed_last_time, (
+                "observed_time_ should match last time in _y_observed before update()"
+            )
+        else:
+            # Non-panel data
+            original_y_observed_last_time = forecaster._y_observed["time"][-1]
+            assert original_observed_time == original_y_observed_last_time, (
+                "observed_time_ should match last time in _y_observed before update()"
+            )
 
     if forecaster._X_t_observed is not None:
-        original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
-
-        assert original_observed_time == original_X_t_observed_last_time, (
-            "observed_time_ should match last time in _X_t_observed before update()"
-        )
+        if isinstance(forecaster._X_t_observed, dict):
+            # Panel data
+            first_group = next(iter(forecaster._X_t_observed.keys()))
+            if forecaster._X_t_observed[first_group] is not None:
+                original_X_t_observed_last_time = forecaster._X_t_observed[first_group]["time"][-1]
+                assert original_observed_time[first_group] == original_X_t_observed_last_time, (
+                    "observed_time_ should match last time in _X_t_observed before update()"
+                )
+        else:
+            # Non-panel data
+            original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
+            assert original_observed_time == original_X_t_observed_last_time, (
+                "observed_time_ should match last time in _X_t_observed before update()"
+            )
 
     # Reset to new data
     forecaster.reset(y_reset, X_reset)
@@ -1249,23 +1317,50 @@ def check_reset_replaces_observations(
     # Check buffers were replaced
     reset_observed_time = forecaster.observed_time_
 
-    assert reset_observed_time == y_reset["time"][-1], (
-        "observed_time_ should be reset to last time in reset data"
-    )
+    # Handle both panel and non-panel data
+    if isinstance(reset_observed_time, dict):
+        # Panel data: check each group's observed_time matches
+        for group_name in reset_observed_time:
+            # Get expected time from y_reset (last row for this group's column)
+            assert reset_observed_time[group_name] == y_reset["time"][-1], (
+                f"observed_time_['{group_name}'] should be reset to last time in reset data"
+            )
+    else:
+        # Non-panel data
+        assert reset_observed_time == y_reset["time"][-1], (
+            "observed_time_ should be reset to last time in reset data"
+        )
 
     if forecaster._y_observed is not None:
-        reset_y_observed_last_time = forecaster._y_observed["time"][-1]
-
-        assert reset_y_observed_last_time == reset_observed_time, (
-            "Last time in _y_observed should match reset observed_time_ after reset()"
-        )
+        if isinstance(forecaster._y_observed, dict):
+            # Panel data
+            for group_name, y_obs in forecaster._y_observed.items():
+                reset_y_observed_last_time = y_obs["time"][-1]
+                assert reset_y_observed_last_time == reset_observed_time[group_name], (
+                    f"Last time in _y_observed['{group_name}'] should match reset observed_time_"
+                )
+        else:
+            # Non-panel data
+            reset_y_observed_last_time = forecaster._y_observed["time"][-1]
+            assert reset_y_observed_last_time == reset_observed_time, (
+                "Last time in _y_observed should match reset observed_time_ after reset()"
+            )
 
     if forecaster._X_t_observed is not None:
-        reset_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
-
-        assert reset_X_t_observed_last_time == reset_observed_time, (
-            "Last time in _X_t_observed should match reset observed_time_ after reset()"
-        )
+        if isinstance(forecaster._X_t_observed, dict):
+            # Panel data
+            for group_name, X_t_obs in forecaster._X_t_observed.items():
+                if X_t_obs is not None:
+                    reset_X_t_observed_last_time = X_t_obs["time"][-1]
+                    assert reset_X_t_observed_last_time == reset_observed_time[group_name], (
+                        f"Last time in _X_t_observed['{group_name}'] should match reset observed_time_"
+                    )
+        else:
+            # Non-panel data
+            reset_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
+            assert reset_X_t_observed_last_time == reset_observed_time, (
+                "Last time in _X_t_observed should match reset observed_time_ after reset()"
+            )
 
 
 def check_forecasting_horizon_validation(forecaster, y, X=None):
@@ -1536,10 +1631,12 @@ def check_interval_prediction_columns(forecaster, y_test, X_test=None):
     from yohou.utils.panel import inspect_locality
 
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
-    # Get coverage rates
-    coverage_rates = forecaster.coverage_rates
+    # Call predict_interval for interval forecasters
+    y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon, X=X_test)
+
+    # Get coverage rates - use fit_coverage_rates_ (set during fit)
+    coverage_rates = forecaster.fit_coverage_rates_
 
     # Check if we have panel data (columns with __ separator)
     _, y_panel_groups = inspect_locality(y_test)
@@ -1850,7 +1947,9 @@ def check_panel_invalid_group_raises(forecaster, y_panel, X_panel=None):
     if len(y_panel_groups) > 0:
         # Try to predict with invalid group name
         try:
-            forecaster.predict(X=X_panel, forecasting_horizon=3, panel_group="invalid_group")
+            forecaster.predict(
+                X=X_panel, forecasting_horizon=3, panel_group_names=["invalid_group"]
+            )
             raise AssertionError(
                 "predict() should raise ValueError for invalid panel_group, but didn't"
             )

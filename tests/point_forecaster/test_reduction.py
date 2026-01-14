@@ -553,4 +553,3 @@ def test_dtype_preservation_int16_to_int64():
     # Verify both integer dtypes are preserved
     assert y_pred.schema["small"] == pl.Int16
     assert y_pred.schema["large"] == pl.Int64
-

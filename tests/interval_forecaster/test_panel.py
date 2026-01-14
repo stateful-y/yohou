@@ -102,7 +102,9 @@ def test_panel_interval_invalid_group(panel_time_series_factory):
 
     # Try to predict with invalid group name
     with pytest.raises(ValueError, match="not found in fitted forecaster"):
-        forecaster.predict_interval(X=None, forecasting_horizon=3, panel_group_names=["invalid_group"])
+        forecaster.predict_interval(
+            X=None, forecasting_horizon=3, panel_group_names=["invalid_group"]
+        )
 
 
 def test_panel_interval_global_data(time_series_factory):
@@ -115,8 +117,12 @@ def test_panel_interval_global_data(time_series_factory):
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
 
     # Should work the same with or without panel_group_names
-    y_pred_default = forecaster.predict_interval(X=None, forecasting_horizon=3, panel_group_names=None)
-    y_pred_explicit = forecaster.predict_interval(X=None, forecasting_horizon=3, panel_group_names=None)
+    y_pred_default = forecaster.predict_interval(
+        X=None, forecasting_horizon=3, panel_group_names=None
+    )
+    y_pred_explicit = forecaster.predict_interval(
+        X=None, forecasting_horizon=3, panel_group_names=None
+    )
 
     assert y_pred_default.equals(y_pred_explicit)
     assert "feature_0_lower_0.1" in y_pred_default.columns

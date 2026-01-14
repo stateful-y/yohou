@@ -13,7 +13,7 @@ Yohou integrates with scikit-learn's metadata routing system to enable flexible 
 All core metadata routing infrastructure has been implemented and tested:
 
 1. **MetadataRouter owner parameter fixed** (6 files)
-   - Changed from `owner=self.__class__.__name__` to `owner=self` 
+   - Changed from `owner=self.__class__.__name__` to `owner=self`
    - Files: BaseForecaster, Decomposer, ColumnForecaster, FeaturePipeline, FeatureUnion, ColumnTransformer, CVScorer
    - Aligns with sklearn convention for better introspection
 
@@ -717,10 +717,10 @@ Yohou follows sklearn's standardized 3-step pattern for metadata routing:
 def method(self, ..., **params):
     # 1. Validate - catch parameter typos early
     _raise_for_params(params, self, "method_name")
-    
+
     # 2. Route - distribute params to nested estimators
     routed_params = process_routing(self, "method_name", **params)
-    
+
     # 3. Execute - call nested estimators with routed params
     for name, estimator in self.estimators:
         estimator.method(..., **routed_params[name].method_name)

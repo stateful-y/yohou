@@ -5,7 +5,7 @@ from yohou.utils.discovery import all_displays, all_estimators, all_functions
 
 def test_all_estimators():
     estimators = all_estimators()
-    assert len(estimators) == 27
+    assert len(estimators) == 26
 
     estimators = all_estimators(type_filter="classifier")
     assert len(estimators) == 0
@@ -25,4 +25,4 @@ def test_all_displays():
 
 def test_all_functions():
     functions = all_functions()
-    assert len(functions) == 20
+    assert len(functions) == 22

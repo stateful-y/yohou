@@ -45,8 +45,8 @@ def _():
     from yohou.decomposition import (
         Decomposer,
         FourierSeasonalityForecaster,
+        PatternSeasonalityForecaster,
         PolynomialTrendForecaster,
-        SeasonalityForecaster,
     )
     from yohou.metrics import MAE
     from yohou.point_forecaster import (
@@ -66,7 +66,7 @@ def _():
         PointReductionForecaster,
         PolynomialTrendForecaster,
         Ridge,
-        SeasonalityForecaster,
+        PatternSeasonalityForecaster,
         datetime,
         go,
         make_subplots,
@@ -131,7 +131,7 @@ def _(
     LogTransform,
     MAE,
     PolynomialTrendForecaster,
-    SeasonalityForecaster,
+    PatternSeasonalityForecaster,
     forecasting_horizon,
     y_test,
     y_train,
@@ -149,7 +149,7 @@ def _(
             ],
             target_transformer=LogTransform(offset=1),
         ),
-        "Baseline (Seasonal Naive)": SeasonalityForecaster(seasonality=12, method="naive"),
+        "Baseline (Seasonal Naive)": PatternSeasonalityForecaster(seasonality=12, method="naive"),
     }
 
     ordering_results = {}
@@ -278,14 +278,15 @@ def _(
     decomp_viz.fit(y_train, forecasting_horizon=forecasting_horizon)
 
     # Get predictions from each component
-    trend_pred = decomp_viz.forecasters_["trend"].predict(forecasting_horizon=forecasting_horizon)
-    season_pred = decomp_viz.forecasters_["seasonality"].predict(
-        forecasting_horizon=forecasting_horizon
-    )
+    # forecasters_ is a list of (name, forecaster) tuples, convert to dict for easy access
+    forecasters_dict = dict(decomp_viz.forecasters_)
+    trend_pred = forecasters_dict["trend"].predict(forecasting_horizon=forecasting_horizon)
+    season_pred = forecasters_dict["seasonality"].predict(forecasting_horizon=forecasting_horizon)
     final_pred = decomp_viz.predict(forecasting_horizon=forecasting_horizon)
 
     # Inverse transform to original scale (components are in log space)
-    trend_pred_original = decomp_viz.target_transformer_.inverse_transform(trend_pred)
+    # LogTransform has observation_horizon=0, so X_p can be None
+    trend_pred_original = decomp_viz.target_transformer_.inverse_transform(trend_pred, X_p=None)
     # Seasonality is additive in log space, need special handling
     # Just use final prediction for visualization
     return final_pred, trend_pred, trend_pred_original
@@ -361,10 +362,12 @@ def _(
     )
 
     # Bottom plot: Components in log space (additive)
+    # trend_pred has transformed column names, get the first non-time column
+    trend_col = [col for col in trend_pred.columns if col != "time" and col != "observed_time"][0]
     fig_components.add_trace(
         go.Scatter(
             x=trend_pred["time"].to_list(),
-            y=trend_pred["passengers"].to_list(),
+            y=trend_pred[trend_col].to_list(),
             mode="lines",
             name="Trend (log)",
             line=dict(color="red", width=2),
@@ -434,7 +437,7 @@ def _(
                     "residual",
                     PointReductionForecaster(
                         estimator=Ridge(alpha=1.0),
-                        feature_transformer=LagTransformer(lags=[1, 2, 3, 12]),
+                        feature_transformer=LagTransformer(lag=[1, 2, 3, 12]),
                         reduction_strategy="direct",
                     ),
                 ),
@@ -581,7 +584,7 @@ def _(
                     "residual",
                     PointReductionForecaster(
                         estimator=Ridge(alpha=1.0),
-                        feature_transformer=LagTransformer(lags=[1, 2, 3]),
+                        feature_transformer=LagTransformer(lag=[1, 2, 3]),
                         reduction_strategy="direct",
                     ),
                 ),
@@ -806,7 +809,7 @@ def _(mo):
     # Pattern 1: Simple 2-component
     Decomposer([
         ("trend", TrendForecaster(...)),
-        ("seasonality", SeasonalityForecaster(...))
+        ("seasonality", PatternSeasonalityForecaster(...))
     ], target_transformer=LogTransform())
 
     # Pattern 2: Hybrid statistical + ML

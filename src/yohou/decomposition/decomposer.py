@@ -17,7 +17,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.point_forecaster.base import BasePointForecaster
-from yohou.utils import add_interval
+from yohou.utils import add_interval, cast, dict_to_panel, get_group_df
 
 
 class Decomposer(BasePointForecaster, _BaseComposition):
@@ -150,24 +150,6 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         self.forecasters = forecasters
         self.store_residuals = store_residuals
 
-    # @property
-    # def observation_horizon(self) -> int:
-    #     """Get the maximum observation horizon across all component forecasters.
-
-    #     Returns
-    #     -------
-    #     int
-    #         Maximum observation horizon needed by any component.
-
-    #     Raises
-    #     ------
-    #     NotFittedError
-    #         If the decomposer has not been fitted yet.
-
-    #     """
-    #     check_is_fitted(self, "forecasters_")
-    #     return sum(forecaster.observation_horizon for _, forecaster in self.forecasters_)
-
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
@@ -212,6 +194,10 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         # Apply transformers and get transformed data
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
 
+        y_t = dict_to_panel(y_t)
+        if X_t is not None:
+            X_t = dict_to_panel(X_t)
+
         # Process metadata routing
         routed_params = process_routing(self, "fit", **params)
 
@@ -221,7 +207,6 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             self.residuals_ = {}
 
         residuals = y_t
-
         for name, forecaster in self.forecasters:
             # Clone and fit forecaster on current residuals
             forecaster_clone = clone(forecaster)
@@ -254,10 +239,16 @@ class Decomposer(BasePointForecaster, _BaseComposition):
                 reset_time = add_interval(
                     residuals["time"][0], interval=forecaster_clone_pred.interval_, n=-1
                 )
-                y_reset = pl.DataFrame({"time": [reset_time]})
+                y_reset = pl.DataFrame(
+                    {col: [reset_time] if col == "time" else [None] for col in y_t.columns},
+                    schema=y_t.schema,
+                )
                 X_reset, X_pred = None, None
                 if X_t is not None:
-                    X_reset = pl.DataFrame({"time": [reset_time]})
+                    X_reset = pl.DataFrame(
+                        {col: [reset_time] if col == "time" else [None] for col in X_t.columns},
+                        schema=X_t.schema,
+                    )
                     X_pred = X_t
             else:
                 y_reset = residuals[:forecaster_observation_horizon]
@@ -320,7 +311,6 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         **params : dict
             Metadata to route to nested estimators.
 
-
         Returns
         -------
         pl.DataFrame
@@ -337,8 +327,6 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         # Process metadata routing
         routed_params = process_routing(self, "predict", **params)
 
-        X_t = X
-
         # Get predictions from all forecasters and sum them
         y_pred_sum = None
         time_cols = None
@@ -348,7 +336,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             step_params = routed_params[name]
 
             y_pred = forecaster.predict(
-                X=X_t,
+                X=X,
                 forecasting_horizon=forecasting_horizon,
                 predict_transformed=True,
                 **step_params.predict,
@@ -369,15 +357,82 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         # Combine time columns with summed values
         y_pred = pl.concat([time_cols, y_pred_sum], how="horizontal")
 
-        # Apply inverse target transform if needed
-        if not predict_transformed and self.target_transformer_ is not None:
+        if not predict_transformed and self.target_transformer is not None:
+            # Apply inverse target transform
+
             # Remove observed_time before inverse transform
             observed_time = y_pred.select("observed_time")
             y_pred_no_obs = y_pred.select(~cs.by_name("observed_time"))
 
-            y_pred_inv = self.target_transformer_.inverse_transform(
-                X_t=y_pred_no_obs, X_p=self._y_observed
-            )
+            # Handle panel data (target_transformer_ and _y_observed are dicts)
+            if self.panel_group_names_ is None:
+                # Non-panel data
+                y_pred_inv = self.target_transformer_.inverse_transform(
+                    X_t=y_pred_no_obs, X_p=self._y_observed
+                )
+
+            else:
+                # Panel data
+                y_pred_inv_dict = {}
+                for panel_group_name in panel_group_names or self.panel_group_names_:
+                    transformer = self.target_transformer_[panel_group_name]
+
+                    # Skip if no transformer for this group
+                    if transformer is None:
+                        # No transformation, just rename with prefix
+                        y_pred_group = get_group_df(
+                            df=y_pred_no_obs,
+                            group_name=panel_group_name,
+                            schema=self.local_y_schema_,
+                        )
+                        # Rename to add prefix
+                        rename_map = {
+                            col: f"{panel_group_name}__{col}"
+                            for col in y_pred_group.columns
+                            if col != "time"
+                        }
+                        y_pred_group = y_pred_group.rename(rename_map)
+                        y_pred_inv_dict[panel_group_name] = y_pred_group.select(~cs.by_name("time"))
+                        continue
+
+                    y_observed_local = self._y_observed[panel_group_name]
+
+                    # Extract group data (unprefixed)
+                    y_pred_group = get_group_df(
+                        df=y_pred_no_obs,
+                        group_name=panel_group_name,
+                        schema=self.local_y_schema_,
+                    )
+
+                    # Inverse transform (works with unprefixed columns)
+                    y_pred_group_inv = transformer.inverse_transform(
+                        X_t=y_pred_group, X_p=y_observed_local
+                    )
+
+                    # Cast to restore original dtypes
+                    y_pred_group_inv_cast = cast(
+                        y_pred_group_inv.select(~cs.by_name("time")), self.local_y_schema_
+                    )
+
+                    # Rename to add prefix
+                    rename_map = {
+                        col: f"{panel_group_name}__{col}" for col in y_pred_group_inv_cast.columns
+                    }
+                    y_pred_group_inv_cast = y_pred_group_inv_cast.rename(rename_map)
+
+                    # Reconstruct with time column
+                    y_pred_group_inv = pl.concat(
+                        [y_pred_group_inv.select(cs.by_name("time")), y_pred_group_inv_cast],
+                        how="horizontal",
+                    )
+
+                    # Store in dict (without time)
+                    y_pred_inv_dict[panel_group_name] = y_pred_group_inv.select(~cs.by_name("time"))
+
+                # Reconstruct full dataframe
+                times = y_pred_no_obs.select(cs.by_name("time"))
+                y_pred_inv_cols = pl.concat(list(y_pred_inv_dict.values()), how="horizontal")
+                y_pred_inv = pl.concat([times, y_pred_inv_cols], how="horizontal")
 
             # Add observed_time back
             y_pred = pl.concat([observed_time, y_pred_inv], how="horizontal")
@@ -385,7 +440,10 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         return y_pred
 
     def update(
-        self, y: pl.DataFrame, X: pl.DataFrame | None = None, panel_group_names: list[str] | None = None
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
     ) -> "Decomposer":
         """Update all component forecasters with new observations.
 
@@ -459,7 +517,10 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         return self
 
     def reset(
-        self, y: pl.DataFrame, X: pl.DataFrame | None = None, panel_group_names: list[str] | None = None
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
     ) -> "Decomposer":
         """Reset all component forecasters to new observation window.
 

@@ -121,21 +121,9 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 if panel_group not in self.panel_group_names_:
                     raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
 
-        # Handle panel data: predict all panel groups if panel_group=None
-        # For now, just predict all groups together (default behavior)
-        # TODO: Implement individual group predictions if needed
-
         forecaster = deepcopy(self)
 
         if panel_group_names is not None:
-            # Filter _y_observed
-            if forecaster._y_observed is not None:
-                forecaster._y_observed = select_panel_columns(
-                    forecaster._y_observed,
-                    panel_group_names,
-                    include_global=False,
-                )
-
             # Filter X
             if X is not None:
                 X = select_panel_columns(

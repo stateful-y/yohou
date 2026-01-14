@@ -17,10 +17,10 @@ from sklearn.compose._column_transformer import (
     _check_X,
 )
 from sklearn.pipeline import (
-    Pipeline as sklearn_Pipeline,
+    FeatureUnion as sklearn_FeatureUnion,
 )
 from sklearn.pipeline import (
-    FeatureUnion as sklearn_FeatureUnion,
+    Pipeline as sklearn_Pipeline,
 )
 from sklearn.pipeline import (
     _fit_one,
@@ -551,7 +551,9 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         # estimators in FeaturePipeline.steps are not validated yet
         prefer_skip_nested_validation=False
     )
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: Any) -> "FeaturePipeline":
+    def fit(
+        self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: Any
+    ) -> "FeaturePipeline":
         """Fit the model.
 
         Fit all the transformers one after the other and sequentially transform the

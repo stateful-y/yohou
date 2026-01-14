@@ -2,17 +2,18 @@
 
 import abc
 from copy import deepcopy
-from typing import Any, Literal
+from typing import Any, Literal, override
 
 import numpy as np
 import polars as pl
 import polars.selectors as cs
-from pydantic import StrictInt
+from pydantic import StrictFloat, StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, BaseTransformer
 from yohou.utils import select_panel_columns
+from yohou.utils.polars import cast
 
 
 class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
@@ -120,6 +121,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
          if passed is built.
 
     """
+
     _parameter_constraints: dict = {
         **BaseForecaster._parameter_constraints,
     }
@@ -293,6 +295,19 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
                 y = pl.DataFrame(y_data)
 
+                # Cast to match expected schema (mean/median returns Float64)
+                # Build prefixed schema for panel data
+                if panel_group_names is not None:
+                    cast_schema = {}
+                    for group_name in panel_group_names:
+                        for col, dtype in forecaster.local_y_schema_.items():
+                            cast_schema[f"{group_name}__{col}"] = dtype
+                else:
+                    cast_schema = forecaster.local_y_schema_
+
+                y = cast(y.select(~cs.by_name("time")), cast_schema)
+                y = pl.concat([y_data["time"].to_frame(), y], how="horizontal")
+
                 X_slice = None
                 if X is not None:
                     X_slice = X.join(y.select("time"), on="time", how="semi")
@@ -410,3 +425,26 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             y_pred = pl.concat([y_pred, y_pred_i])
 
         return y_pred
+
+    @override
+    def _predict_one(
+        self,
+        panel_group_names: list[str],
+        coverage_rates: list[StrictFloat],
+    ) -> pl.DataFrame:
+        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+
+        Parameters
+        ----------
+        panel_group_names : list of str
+            Panel group names to predict for.
+        coverage_rates : list of float
+            Coverage rates for the prediction intervals.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted time series.
+
+        """
+        raise NotImplementedError()

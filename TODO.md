@@ -1,16 +1,15 @@
-- Check panel forecasting works
 - Implement proper check_dataframe
 - Make use of sklearn Tags
-- Clarify _predict_one + _predict API
 - Enable time_weight for forecaster and scorer
-- Refactor reducers to enable direct and multi-output strategies
-- Refactor estimator_check into a separate testing module
 - Add splitter to testing infrastructure
-- Implement variety of splitters
+- Implement an interval scorer
 - Add scorer to testing infrastructure
-- Implement variety of scorers
 - Simplify SearchCV, make sure it follows BaseSearchCV as closely as possible
 - Make sure we can predict and score in transformed space as well as that we can access predictions
+- Implement variety of splitters
+- Implement variety of scorers
+- Refactor reducers to enable direct and multi-output strategies
+- Refactor estimator_check into a separate testing module
 - Can we use skore/skrub to visualize CV results?
 - Implement NestedCV
 - Implement SkTimeTransformer

@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.18.4"
+__generated_with = "0.19.2"
 app = marimo.App(width="medium")
 
 
@@ -60,10 +60,10 @@ def _():
     from yohou.preprocessing import LagTransformer, LogTransform, SeasonalDifferencing
 
     return (
+        FeaturePipeline,
         LagTransformer,
         LogTransform,
         MAE,
-        FeaturePipeline,
         PointReductionForecaster,
         Ridge,
         SearchCV,
@@ -387,9 +387,9 @@ def _(mo):
 
 @app.cell
 def _(
+    FeaturePipeline,
     LagTransformer,
     LogTransform,
-    FeaturePipeline,
     PointReductionForecaster,
     Ridge,
     SeasonalDifferencing,
@@ -573,11 +573,15 @@ def _(mo):
     ### Hyperparameter Search with Optuna
 
     We'll use `SearchCV` to optimize:
-    - **Lag windows**: Which historical values to use as features
-    - **Ridge alpha**: Regularization strength
-    - **Differencing period**: Seasonal period to remove (around 12 for monthly data)
+    - **Ridge alpha**: Regularization strength (prevents overfitting)
+    - **Lag window**: Number of past months to use as features
 
-    ⚠️ **Note**: This cell may take 1-2 minutes to run (20 trials × 3 CV folds).
+    **⚠️ Important CV Constraints**:
+    - With 115 training samples and forecasting_horizon=12, CV folds must be carefully sized
+    - Each fold needs enough data for: `lag + forecasting_horizon + buffer`
+    - We use 2 splits to ensure adequate training data in each fold
+
+    ⚠️ **Note**: This will take ~30 seconds (10 trials × 2 CV folds × 4 parallel jobs).
     """)
     return
 
@@ -589,17 +593,21 @@ def _(
     Splitter,
     clone,
     forecasting_horizon,
+    mae_baseline,
     optuna,
     reduction_forecaster,
     y_train,
 ):
-    # Set up cross-validation
-    cv_splitter = Splitter(n_splits=3, test_size=12)
+    # Set up cross-validation with carefully chosen parameters
+    # With 115 samples: 2 splits gives folds of ~57 and ~77 training samples
+    # Each fold must support: lag (max 6) + horizon (12) + reset buffer
+    cv_splitter = Splitter(n_splits=2, test_size=forecasting_horizon)
 
-    # Define search space
+    # Define search space (constrained to work with available data)
     param_distributions = {
         "estimator__alpha": optuna.distributions.FloatDistribution(0.01, 10.0, log=True),
-        "feature_transformer__lag__lag": optuna.distributions.IntDistribution(1, 24),
+        # Keep lag small (1-6) to work with CV fold sizes
+        "feature_transformer__lag__lag": optuna.distributions.IntDistribution(1, 6),
     }
 
     # Set up hyperparameter search
@@ -608,15 +616,14 @@ def _(
         param_distributions=param_distributions,
         scoring=MAE(),
         cv=cv_splitter,
-        n_trials=50,
-        n_warmup_trials=25,
+        n_trials=10,  # Reduced for faster execution
         refit=True,
-        return_train_score=True,
+        return_train_score=False,  # Disable to avoid extra data requirements
         n_jobs=4,
     )
 
-    # Run search (this takes time!)
-    print("Running hyperparameter search... (this may take 1-2 minutes)")
+    # Run search
+    print("Running hyperparameter search...")
     search.fit(y_train, X=None, forecasting_horizon=forecasting_horizon)
 
     print("\n✅ Search complete!")
@@ -624,6 +631,7 @@ def _(
     for param, value in search.best_params_.items():
         print(f"  {param}: {value}")
     print(f"\nBest cross-validation MAE: {search.best_score_:.2f}")
+    print(f"Baseline MAE (for comparison): {mae_baseline:.2f}")
     return (search,)
 
 
@@ -750,15 +758,20 @@ def _(mo):
     3. **Optimized Reducer**: Best performance with tuned hyperparameters
 
     **Key insights**:
-    - The search explored different combinations of lag patterns and regularization strength
-    - Optuna uses TPE (Tree-structured Parzen Estimator) to efficiently explore the space
-    - Cross-validation provides robust performance estimates
+    - The search efficiently explored lag windows (1-6 months) and regularization strengths
+    - Optuna's TPE sampler focuses on promising regions of the parameter space
+    - 2-fold CV provides reliable performance estimates while working within data constraints
     - Best parameters balance model complexity with predictive accuracy
 
+    **Data constraints matter**:
+    - Small datasets require careful CV configuration (we have 115 training samples)
+    - Lag values must fit within CV fold sizes: `first_fold_train_size - test_size ≥ lag + horizon`
+    - With our setup: ~57 - 12 = 45 > 6 + 12 ✓
+
     **In practice**:
-    - Use `SearchCV` during initial model development
-    - Re-run periodically as new data arrives
-    - Consider computational cost vs. accuracy gains (20 trials × 3 folds = 60 model fits!)
+    - Start with conservative CV parameters for small datasets
+    - Increase n_trials and n_splits as more data becomes available
+    - Monitor trial failures - they indicate parameter/data mismatches
     """)
     return
 

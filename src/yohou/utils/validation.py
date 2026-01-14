@@ -211,12 +211,11 @@ def validate_column_names(df: pl.DataFrame) -> None:
     check_inputs : Validates time intervals and calls this function
 
     """
-    import re
 
-    # Pattern: one or more non-underscore chars, then __, then one or more chars
-    # This ensures __ appears exactly once and separates non-empty parts
-    group_pattern = re.compile(r"^([^_]+)__(.+)$")
-
+    # Pattern: allows underscores in group/series names, but not adjacent to __
+    # Valid: store_1__sales, my_store__my_sales
+    # Invalid: store___sales (underscore adjacent to __), _store__sales, store__sales_
+    # Strategy: split on __, check parts don't start/end with _ and are non-empty
     for col_name in df.columns:
         if col_name == "time":
             continue
@@ -225,35 +224,147 @@ def validate_column_names(df: pl.DataFrame) -> None:
             # No __ separator - valid global column
             continue
 
-        # Column contains __ - must match group pattern
-        match = group_pattern.match(col_name)
-        if not match:
-            # Check for common issues to provide helpful error messages
-            underscore_count = col_name.count("__")
-            if underscore_count > 1:
-                raise ValueError(
-                    f"Column '{col_name}' contains multiple __ separators. "
-                    f"The __ separator is reserved for panel data groups and must appear "
-                    f"exactly once, following the pattern '<GROUP>__<SERIES>' "
-                    f"(e.g., 'sales__store_1'). Please rename columns to avoid using __ "
-                    f"or use it only for panel data groups."
-                )
-            elif col_name.startswith("__") or col_name.endswith("__"):
-                raise ValueError(
-                    f"Column '{col_name}' has __ at the beginning or end. "
-                    f"The __ separator must separate a non-empty group prefix from a "
-                    f"non-empty series suffix (e.g., 'sales__store_1')."
-                )
-            else:
-                raise ValueError(
-                    f"Column '{col_name}' contains __ but doesn't follow the required "
-                    f"pattern '<GROUP>__<SERIES>'. The group and series parts must not "
-                    f"contain underscores adjacent to the __ separator."
-                )
+        # Column contains __ - validate it follows the pattern
+        parts = col_name.split("__")
+
+        # Check for common issues to provide helpful error messages
+        if len(parts) != 2:
+            raise ValueError(
+                f"Column '{col_name}' contains multiple __ separators. "
+                f"The __ separator is reserved for panel data groups and must appear "
+                f"exactly once, following the pattern '<GROUP>__<SERIES>' "
+                f"(e.g., 'sales__store_1'). Please rename columns to avoid using __ "
+                f"or use it only for panel data groups."
+            )
+
+        group, series = parts
+
+        # Check for empty parts
+        if not group or not series:
+            raise ValueError(
+                f"Column '{col_name}' has __ at the beginning or end. "
+                f"The __ separator must separate a non-empty group prefix from a "
+                f"non-empty series suffix (e.g., 'sales__store_1')."
+            )
+
+        # Check for underscores adjacent to __
+        if group.endswith("_") or series.startswith("_"):
+            raise ValueError(
+                f"Column '{col_name}' has underscores adjacent to the __ separator. "
+                f"The pattern '<GROUP>__<SERIES>' requires that the group part doesn't "
+                f"end with _ and the series part doesn't start with _ "
+                f"(e.g., 'store_1__sales' is valid, but 'store_1___sales' or 'store1_"
+                "__sales' are not)."
+            )
+
+
+def check_schema(
+    df: pl.DataFrame,
+    expected_schema: dict[str, pl.DataType],
+    panel_group_names: list[str] | None = None,
+) -> pl.DataFrame:
+    """Validate DataFrame schema and return with proper column ordering.
+
+    Ensures that data has the same column names and dtypes as expected,
+    and returns the DataFrame with columns in the correct order (time column first,
+    followed by schema columns in order).
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        DataFrame to validate (should include "time" column).
+    expected_schema : dict[str, pl.DataType]
+        Expected schema for non-time columns.
+        For panel data, this should contain unprefixed column names.
+    panel_group_names : list[str] or None, default=None
+        Group prefixes for panel data. If provided, constructs expected
+        schema with prefixes (e.g., "panel__series_0"). None for global data.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns in proper order: ["time"] + schema columns.
+
+    Raises
+    ------
+    ValueError
+        If incoming schema doesn't match expected schema.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> # Non-panel data validation
+    >>> df = pl.DataFrame({"value": [10, 20], "time": [1, 2]})
+    >>> expected_schema = {"value": pl.Int64}
+    >>> result = check_schema(df, expected_schema)
+    >>> list(result.columns)
+    ['time', 'value']
+
+    >>> # Schema mismatch raises error
+    >>> df_wrong = pl.DataFrame({"time": [1, 2], "value": [10.0, 20.0]})  # Float64
+    >>> check_schema(df_wrong, expected_schema)  # doctest: +SKIP
+    Traceback (most recent call last):
+        ...
+    ValueError: Schema mismatch. Expected: {'value': Int64}, got: {'value': Float64}
+
+    >>> # Panel data validation (constructs prefixed schema automatically)
+    >>> df_panel = pl.DataFrame({
+    ...     "panel__s1": [15, 25],
+    ...     "time": [1, 2],
+    ...     "panel__s0": [10, 20]
+    ... })
+    >>> expected_schema = {"s0": pl.Int64, "s1": pl.Int64}
+    >>> result = check_schema(df_panel, expected_schema, panel_group_names=["panel"])
+    >>> list(result.columns)
+    ['time', 'panel__s0', 'panel__s1']
+
+    See Also
+    --------
+    check_inputs : Validates time intervals
+    BaseForecaster.update : Uses this function to validate incoming data
+
+    Notes
+    -----
+    For panel data, this function automatically constructs the expected schema
+    with prefixes (e.g., "sales__store_1") from the unprefixed expected_schema.
+    The returned DataFrame has columns ordered consistently with the schema.
+
+    """
+    # Construct expected column list based on panel_group_names
+    if panel_group_names is None:
+        # Non-panel data: use schema as-is
+        expected_columns = ["time"] + list(expected_schema.keys())
+        expected_full_schema = expected_schema
+    else:
+        # Panel data: construct prefixed schema
+        expected_columns = ["time"]
+        expected_full_schema = {}
+        for group_name in panel_group_names:
+            for col, dtype in expected_schema.items():
+                prefixed_col = f"{group_name}__{col}"
+                expected_columns.append(prefixed_col)
+                expected_full_schema[prefixed_col] = dtype
+
+    # Select columns in proper order (also validates presence)
+    df = df.select(expected_columns)
+
+    # Extract actual schema (excluding time column) for validation
+    incoming_schema = dict(df.select(~cs.by_name("time")).schema)
+
+    # Validate dtypes
+    if incoming_schema != expected_full_schema:
+        raise ValueError(
+            f"Schema mismatch. Expected: {expected_full_schema}, got: {incoming_schema}"
+        )
+
+    return df
 
 
 def check_continuity(
-    df_p: pl.DataFrame, df_n: pl.DataFrame, expected_interval: str, check_intervals: bool = True
+    df_p: pl.DataFrame,
+    df_n: pl.DataFrame,
+    expected_interval: str | None,
+    check_intervals: bool = True,
 ) -> None:
     """Validate temporal continuity between consecutive DataFrames.
 
@@ -269,9 +380,10 @@ def check_continuity(
     df_n : pl.DataFrame
         Next (later) time series DataFrame with "time" column.
 
-    expected_interval : str
+    expected_interval : str | None
         Expected time interval between consecutive observations.
         Examples: "1d", "1h", "1mo", "3mo", "1y"
+        If None, skip interval validation (used for single-step predictions).
 
     check_intervals : bool, default=True
         If True, validates that both DataFrames have consistent internal intervals.
@@ -306,6 +418,10 @@ def check_continuity(
     check_interval_consistency : Validates uniform time spacing
 
     """
+    # Skip validation if expected_interval is None (e.g., single-step prediction)
+    if expected_interval is None:
+        return
+
     if check_intervals:
         if len(df_p) > 1:
             interval_p = check_interval_consistency(df_p)
@@ -453,8 +569,12 @@ def check_inverse_transform(
             "Provide the necessary previous untransformed data."
         )
 
-    # Check interval consistency for X_t
-    X_t_interval = check_interval_consistency(X_t)
+    # Check interval consistency for X_t (skip if only 1 row - single-step prediction)
+    if len(X_t) >= 2:
+        X_t_interval = check_interval_consistency(X_t)
+    else:
+        # Single-step prediction: interval cannot be inferred, skip validation
+        X_t_interval = None
 
     # If X_p is provided, validate it and check continuity with X_t
     if X_p is not None and len(X_p) > 0:
@@ -469,15 +589,18 @@ def check_inverse_transform(
         if len(X_p) > 1:
             X_p_interval = check_interval_consistency(X_p)
 
-            # Ensure intervals match
-            if X_p_interval != X_t_interval:
+            # Ensure intervals match (only if X_t_interval was inferred)
+            if X_t_interval is not None and X_p_interval != X_t_interval:
                 raise ValueError(
                     f"Time intervals do not match: X_p has interval {X_p_interval}, "
                     f"but X_t has interval {X_t_interval}."
                 )
 
         # Check temporal continuity: X_p should end right before X_t begins
-        check_continuity(X_p, X_t, expected_interval=X_t_interval, check_intervals=True)
+        # Only check intervals if X_t_interval was successfully inferred
+        check_continuity(
+            X_p, X_t, expected_interval=X_t_interval, check_intervals=(X_t_interval is not None)
+        )
 
 
 def _timedelta_to_string(td: timedelta) -> str:

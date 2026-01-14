@@ -15,19 +15,23 @@ set_config(enable_metadata_routing=True)
 from sklearn.utils._metadata_requests import COMPOSITE_METHODS, METHODS, SIMPLE_METHODS
 
 if "update_transform" not in SIMPLE_METHODS:
-    SIMPLE_METHODS.extend([
-        "update_transform",
-        "update_predict",
-        "predict_interval",
-        "update_predict_interval",
-    ])
+    SIMPLE_METHODS.extend(
+        [
+            "update_transform",
+            "update_predict",
+            "predict_interval",
+            "update_predict_interval",
+        ]
+    )
     # Also extend METHODS (used by MethodMapping validation)
-    METHODS.extend([
-        "update_transform",
-        "update_predict",
-        "predict_interval",
-        "update_predict_interval",
-    ])
+    METHODS.extend(
+        [
+            "update_transform",
+            "update_predict",
+            "predict_interval",
+            "update_predict_interval",
+        ]
+    )
     # Mark as composite methods (params route to constituent methods)
     COMPOSITE_METHODS["update_transform"] = ["update", "transform"]
     COMPOSITE_METHODS["update_predict"] = ["update", "predict"]

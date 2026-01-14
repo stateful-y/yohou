@@ -10,6 +10,7 @@ import pytest
 from yohou.utils.validation import (
     add_interval,
     check_interval_consistency,
+    check_schema,
     interval_to_timedelta,
     parse_interval,
 )
@@ -361,3 +362,281 @@ def test_multi_year_interval():
     start = datetime(1998, 6, 30)
     result = add_interval(start, "5y", 1)
     assert result == datetime(2003, 6, 30)
+
+
+# ===========================================================================================
+# Tests for check_schema
+# ===========================================================================================
+
+
+def test_check_schema_non_panel_correct_order():
+    """Test check_schema with non-panel data and correct column order."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "value": [10, 20, 30],
+        }
+    )
+    expected_schema = {"value": pl.Int64}
+
+    result = check_schema(df, expected_schema)
+
+    assert result.columns == ["time", "value"]
+    assert result.equals(df)
+
+
+def test_check_schema_non_panel_wrong_order():
+    """Test check_schema reorders columns when they're in wrong order."""
+    df = pl.DataFrame(
+        {
+            "value": [10, 20, 30],
+            "time": [1, 2, 3],
+        }
+    )
+    expected_schema = {"value": pl.Int64}
+
+    result = check_schema(df, expected_schema)
+
+    assert result.columns == ["time", "value"]
+    assert result["value"].to_list() == [10, 20, 30]
+    assert result["time"].to_list() == [1, 2, 3]
+
+
+def test_check_schema_non_panel_multiple_columns():
+    """Test check_schema with multiple columns in non-panel data."""
+    df = pl.DataFrame(
+        {
+            "col_b": [1.5, 2.5, 3.5],
+            "time": [1, 2, 3],
+            "col_a": [10, 20, 30],
+        }
+    )
+    expected_schema = {"col_a": pl.Int64, "col_b": pl.Float64}
+
+    result = check_schema(df, expected_schema)
+
+    # Should preserve schema dict order
+    assert result.columns == ["time", "col_a", "col_b"]
+
+
+def test_check_schema_non_panel_schema_mismatch_dtype():
+    """Test check_schema raises error when dtypes don't match."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "value": [10.0, 20.0, 30.0],  # Float64 instead of Int64
+        }
+    )
+    expected_schema = {"value": pl.Int64}
+
+    with pytest.raises(ValueError, match="Schema mismatch"):
+        check_schema(df, expected_schema)
+
+
+def test_check_schema_non_panel_missing_column():
+    """Test check_schema raises error when column is missing."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "value": [10, 20, 30],
+        }
+    )
+    expected_schema = {"value": pl.Int64, "extra_col": pl.Float64}
+
+    with pytest.raises(Exception):  # polars raises exception for missing column in select
+        check_schema(df, expected_schema)
+
+
+def test_check_schema_non_panel_missing_time():
+    """Test check_schema raises error when time column is missing."""
+    df = pl.DataFrame(
+        {
+            "value": [10, 20, 30],
+        }
+    )
+    expected_schema = {"value": pl.Int64}
+
+    with pytest.raises(Exception):  # polars raises exception for missing column in select
+        check_schema(df, expected_schema)
+
+
+def test_check_schema_panel_correct_order():
+    """Test check_schema with panel data and correct column order."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "sales__store_1": [100, 110, 120],
+            "sales__store_2": [150, 160, 170],
+        }
+    )
+    expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+
+    result = check_schema(df, expected_schema, panel_group_names=["sales"])
+
+    assert result.columns == ["time", "sales__store_1", "sales__store_2"]
+    assert result.equals(df)
+
+
+def test_check_schema_panel_wrong_order():
+    """Test check_schema reorders panel columns when they're in wrong order."""
+    df = pl.DataFrame(
+        {
+            "sales__store_2": [150, 160, 170],
+            "time": [1, 2, 3],
+            "sales__store_1": [100, 110, 120],
+        }
+    )
+    expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+
+    result = check_schema(df, expected_schema, panel_group_names=["sales"])
+
+    # Should reorder according to schema dict order
+    assert result.columns == ["time", "sales__store_1", "sales__store_2"]
+    assert result["sales__store_1"].to_list() == [100, 110, 120]
+    assert result["sales__store_2"].to_list() == [150, 160, 170]
+
+
+def test_check_schema_panel_multiple_groups():
+    """Test check_schema with multiple panel groups."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "sales__store_1": [100, 110, 120],
+            "sales__store_2": [150, 160, 170],
+            "inventory__store_1": [50, 55, 60],
+            "inventory__store_2": [75, 80, 85],
+        }
+    )
+    expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+
+    result = check_schema(df, expected_schema, panel_group_names=["sales", "inventory"])
+
+    # Should construct prefixes for all groups in order
+    assert result.columns == [
+        "time",
+        "sales__store_1",
+        "sales__store_2",
+        "inventory__store_1",
+        "inventory__store_2",
+    ]
+
+
+def test_check_schema_panel_schema_mismatch():
+    """Test check_schema raises error when panel data has wrong dtype."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "sales__store_1": [100.0, 110.0, 120.0],  # Float64 instead of Int64
+            "sales__store_2": [150, 160, 170],
+        }
+    )
+    expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+
+    with pytest.raises(ValueError, match="Schema mismatch"):
+        check_schema(df, expected_schema, panel_group_names=["sales"])
+
+
+def test_check_schema_panel_missing_prefixed_column():
+    """Test check_schema raises error when prefixed column is missing."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "sales__store_1": [100, 110, 120],
+            # Missing sales__store_2
+        }
+    )
+    expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+
+    with pytest.raises(Exception):  # polars raises exception for missing column
+        check_schema(df, expected_schema, panel_group_names=["sales"])
+
+
+def test_check_schema_panel_empty_group_names():
+    """Test check_schema with empty panel_group_names list behaves like non-panel."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "value": [10, 20, 30],
+        }
+    )
+    expected_schema = {"value": pl.Int64}
+
+    # Empty list should behave like None (non-panel)
+    result = check_schema(df, expected_schema, panel_group_names=[])
+
+    assert result.columns == ["time"]  # Only time because empty group list means no columns
+
+
+def test_check_schema_panel_selects_only_specified_columns():
+    """Test check_schema selects only columns matching the schema with prefixes."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "sales__store_1": [100, 110, 120],
+            "sales__store_2": [150, 160, 170],
+            "extra_column": [999, 888, 777],  # Should be excluded
+        }
+    )
+    expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+
+    result = check_schema(df, expected_schema, panel_group_names=["sales"])
+
+    # Should only include time and the two prefixed columns from schema
+    assert result.columns == ["time", "sales__store_1", "sales__store_2"]
+    assert "extra_column" not in result.columns
+
+
+def test_check_schema_non_panel_selects_only_specified_columns():
+    """Test check_schema selects only columns in the schema (non-panel)."""
+    df = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "value": [10, 20, 30],
+            "extra_column": [999, 888, 777],  # Should be excluded
+        }
+    )
+    expected_schema = {"value": pl.Int64}
+
+    result = check_schema(df, expected_schema)
+
+    # Should only include time and value
+    assert result.columns == ["time", "value"]
+    assert "extra_column" not in result.columns
+
+
+def test_check_schema_preserves_data():
+    """Test that check_schema preserves the actual data values."""
+    df = pl.DataFrame(
+        {
+            "col_b": [1.5, 2.5, 3.5],
+            "time": [10, 20, 30],
+            "col_a": [100, 200, 300],
+        }
+    )
+    expected_schema = {"col_a": pl.Int64, "col_b": pl.Float64}
+
+    result = check_schema(df, expected_schema)
+
+    # Verify data is preserved
+    assert result["time"].to_list() == [10, 20, 30]
+    assert result["col_a"].to_list() == [100, 200, 300]
+    assert result["col_b"].to_list() == [1.5, 2.5, 3.5]
+
+
+def test_check_schema_panel_preserves_data():
+    """Test that check_schema preserves data values in panel data."""
+    df = pl.DataFrame(
+        {
+            "sales__store_2": [250, 260, 270],
+            "time": [10, 20, 30],
+            "sales__store_1": [100, 110, 120],
+        }
+    )
+    expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+
+    result = check_schema(df, expected_schema, panel_group_names=["sales"])
+
+    # Verify data is preserved after reordering
+    assert result["time"].to_list() == [10, 20, 30]
+    assert result["sales__store_1"].to_list() == [100, 110, 120]
+    assert result["sales__store_2"].to_list() == [250, 260, 270]

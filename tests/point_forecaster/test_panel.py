@@ -118,8 +118,8 @@ def test_panel_invalid_group_raises_error(panel_time_series_factory):
     forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
 
     # Try to predict with invalid group name
-    with pytest.raises(ValueError, match="not found in local groups"):
-        forecaster.predict(X=None, forecasting_horizon=3, panel_group="invalid_group")
+    with pytest.raises(ValueError, match="not found in fitted forecaster"):
+        forecaster.predict(X=None, forecasting_horizon=3, panel_group_names=["invalid_group"])
 
 
 def test_panel_global_data_no_groups(time_series_factory):

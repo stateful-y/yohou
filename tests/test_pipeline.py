@@ -15,7 +15,7 @@ from sklearn.base import clone
 sys.path.insert(0, str(Path(__file__).parent))
 from conftest import SimpleTransformer
 
-from yohou.pipeline import ColumnTransformer, FeatureUnion, FeaturePipeline
+from yohou.pipeline import ColumnTransformer, FeaturePipeline, FeatureUnion
 
 # ============================================================================
 # COMPOSITION-SPECIFIC TESTS WITH DUMMY TRANSFORMERS

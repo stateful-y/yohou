@@ -301,8 +301,7 @@ def test_my_forecaster_specific_behavior(y_X_factory):
 
 **Decomposition Forecasters** (`yohou.decomposition`):
 - **PolynomialTrendForecaster**: Extends `BasePointForecaster`, fits polynomial trends
-- **ExponentialTrendForecaster**: Extends `BasePointForecaster`, models exponential growth/decay
-- **SeasonalityForecaster**: Extends `BasePointForecaster`, pattern-based seasonality (naive/average/median)
+- **PatternSeasonalityForecaster**: Extends `BasePointForecaster`, pattern-based seasonality (naive/average/median)
 - **FourierSeasonalityForecaster**: Extends `BasePointForecaster`, Fourier basis with ElasticNet
 - **Decomposer** (Meta-Forecaster): Extends `BasePointForecaster` and `_BaseComposition`
   - Sequential decomposition into trend + seasonality + residual components
@@ -414,10 +413,10 @@ def test_linear_regression_ar1_process():
 def test_search_cv_method_availability():
     """Test methods only available after fit with refit=True."""
     search = SearchCV(forecaster=PointReductionForecaster(), refit=True)
-    
+
     # Before fit: methods should not be available
     assert not hasattr(search, 'predict')
-    
+
     # After fit: methods available based on prediction_types
     search.fit(y, X, forecasting_horizon=3)
     assert hasattr(search, 'predict')  # Point forecaster
@@ -427,7 +426,7 @@ def test_search_cv_interval_forecaster():
     """Test interval-specific methods with interval forecaster."""
     search = SearchCV(forecaster=IntervalReductionForecaster(), refit=True)
     search.fit(y, X, forecasting_horizon=3)
-    
+
     # Should have interval methods
     assert hasattr(search, 'predict_interval')
     assert hasattr(search, 'update_predict_interval')

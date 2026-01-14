@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 from sklearn.base import clone
 
-from yohou.decomposition import Decomposer, PolynomialTrendForecaster, SeasonalityForecaster
+from yohou.decomposition import Decomposer, PatternSeasonalityForecaster, PolynomialTrendForecaster
 from yohou.point_forecaster import SeasonalNaive
 from yohou.preprocessing import LogTransform
 
@@ -37,7 +37,7 @@ from estimator_checks import _yield_yohou_forecaster_checks
             Decomposer(
                 [
                     ("trend", PolynomialTrendForecaster(degree=2)),
-                    ("seasonality", SeasonalityForecaster(seasonality=12, method="average")),
+                    ("seasonality", PatternSeasonalityForecaster(seasonality=12, method="average")),
                 ]
             ),
             {"forecaster_type": "point", "is_meta_forecaster": True},

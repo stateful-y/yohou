@@ -25,7 +25,7 @@ from sklearn.utils.metadata_routing import MetadataRequest, MetadataRouter
 
 from yohou.metrics import MAE
 from yohou.model_selection import SearchCV
-from yohou.pipeline import ColumnTransformer, FeatureUnion, FeaturePipeline
+from yohou.pipeline import ColumnTransformer, FeaturePipeline, FeatureUnion
 from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
 from yohou.preprocessing import SeasonalDifferencing
 

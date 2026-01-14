@@ -286,7 +286,7 @@ def select_panel_columns(
             if col.startswith(f"{group_prefix}__"):
                 is_panel = True
                 break
-        
+
         if is_panel:
             cols_to_keep.append(col)
         elif include_global:
@@ -294,3 +294,96 @@ def select_panel_columns(
             cols_to_keep.append(col)
 
     return df.select(cols_to_keep)
+
+
+def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.DataFrame | None:
+    """Convert a dict of group DataFrames to a single DataFrame with prefixed columns.
+
+    Takes a dictionary mapping group names to DataFrames and combines them into
+    a single DataFrame where each group's columns are prefixed with the group name
+    using the __ separator pattern (<group_name>__<column>). If the input is already
+    a DataFrame, returns it unchanged.
+
+    Parameters
+    ----------
+    data : dict of str to pl.DataFrame or pl.DataFrame
+        Either a dictionary mapping group names to DataFrames, or an already
+        combined DataFrame. Each DataFrame in the dict must have a "time" column
+        and additional feature columns.
+
+    Returns
+    -------
+    pl.DataFrame or None
+        Combined DataFrame with prefixed columns. The "time" column is shared
+        across all groups. Other columns are prefixed as <group_name>__<column>.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> # Dictionary of group DataFrames
+    >>> data_dict = {
+    ...     "sales": pl.DataFrame({
+    ...         "time": [1, 2, 3],
+    ...         "store_1": [100, 110, 120],
+    ...         "store_2": [150, 160, 170]
+    ...     }),
+    ...     "inventory": pl.DataFrame({
+    ...         "time": [1, 2, 3],
+    ...         "warehouse_1": [50, 55, 60],
+    ...         "warehouse_2": [75, 80, 85]
+    ...     })
+    ... }
+    >>> df_panel = dict_to_panel(data_dict)
+    >>> sorted(df_panel.columns)
+    ['inventory__warehouse_1', 'inventory__warehouse_2', 'sales__store_1', 'sales__store_2', 'time']
+
+    >>> # Already a DataFrame - returns unchanged
+    >>> df_existing = pl.DataFrame({
+    ...     "time": [1, 2, 3],
+    ...     "sales__store_1": [100, 110, 120]
+    ... })
+    >>> result = dict_to_panel(df_existing)
+    >>> result.equals(df_existing)
+    True
+
+    See Also
+    --------
+    inspect_locality : Inspect DataFrame to identify global and local columns
+    get_group_df : Extract a single panel group from a combined DataFrame
+
+    Notes
+    -----
+    This function is the inverse operation of extracting groups with get_group_df.
+    It's commonly used internally by forecasters to convert between the dict
+    representation (easier for per-group processing) and the prefixed column
+    representation (polars-native format).
+    """
+    # If already a DataFrame, return as-is
+    if data is None or isinstance(data, pl.DataFrame):
+        return data
+
+    if all(v is None for v in data.values()):
+        return None
+
+    # Convert dict of DataFrames to single DataFrame with prefixed columns
+    if not data:
+        raise ValueError("Cannot convert empty dict to panel DataFrame")
+
+    # Start with the first group to get the time column
+    first_group_name = next(iter(data))
+    result = data[first_group_name].select("time")
+
+    # Add each group's columns with prefixes
+    for group_name, group_df in data.items():
+        # Get all columns except time
+        feature_cols = [col for col in group_df.columns if col != "time"]
+
+        # Rename columns with group prefix
+        renamed_df = group_df.select(
+            ["time"] + [pl.col(col).alias(f"{group_name}__{col}") for col in feature_cols]
+        )
+
+        # Join with result (on time)
+        result = result.join(renamed_df, on="time", how="inner")
+
+    return result

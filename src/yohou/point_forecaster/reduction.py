@@ -22,13 +22,10 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     ----------
     estimator : BaseEstimator, default=LinearRegression()
         Point estimator used to fit the tabularized data.
-
     reduction_strategy : {"direct", "multi-output"}, default="multi-output"
         Strategy for multi-step forecasting.
-
     target_transformer : BaseTransformer or None, default=None
         Transformer for target preprocessing.
-
     feature_transformer : BaseTransformer or None, default=None
         Transformer for feature engineering (typically LagTransformer).
 
@@ -115,18 +112,14 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         ----------
         y : pl.DataFrame
             Target time series.
-
         X : pl.DataFrame or None, default=None
             Exogenous feature time series.
-
         forecasting_horizon : int >= 1, default=1
             Horizon to forecast.
-
         time_weight : callable or pl.DataFrame or None, default=None
             Time-based weights for training samples. If callable, it should take
             a time column and return a dataframe with added corresponding weights.
             If DataFrame, it should align with y.
-
         **params : dict
             Metadata to route to nested estimators.
 
@@ -150,9 +143,14 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 
     def _predict_one(
         self,
+        panel_group_names: list[str],
     ) -> pl.DataFrame:
-        """Predicts the model forecasting horizon from the
-        observation horizon.
+        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+
+        Parameters
+        ----------
+        panel_group_names : list of str
+            Panel group names to predict for.
 
         Returns
         -------
@@ -160,7 +158,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             Predicted time series.
 
         """
-        y_pred = self._estimator_predict_one(self.estimator_)
+        y_pred = self._estimator_predict_one(self.estimator_, panel_group_names=panel_group_names)
         y_pred = self._add_time_columns(y_pred)
 
         return y_pred

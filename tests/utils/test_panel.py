@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 
-from yohou.utils.panel import select_panel_columns, inspect_locality
+from yohou.utils.panel import dict_to_panel, inspect_locality, select_panel_columns
 
 
 def test_inspect_locality_global_data_single_column():
@@ -411,3 +411,285 @@ def test_inspect_locality_no_conflict_different_names():
 
     assert set(global_names) == {"temperature", "holiday"}
     assert panel_groups == {"x": ["x__sales", "x__inventory"]}
+
+
+# ============================================================================
+# Tests for dict_to_panel
+# ============================================================================
+
+
+def test_dict_to_panel_single_group_single_column():
+    """Test dict_to_panel with single group and single column."""
+    data_dict = {"sales": pl.DataFrame({"time": [1, 2, 3], "store_1": [100, 110, 120]})}
+
+    result = dict_to_panel(data_dict)
+
+    assert set(result.columns) == {"time", "sales__store_1"}
+    assert result["time"].to_list() == [1, 2, 3]
+    assert result["sales__store_1"].to_list() == [100, 110, 120]
+
+
+def test_dict_to_panel_single_group_multiple_columns():
+    """Test dict_to_panel with single group and multiple columns."""
+    data_dict = {
+        "sales": pl.DataFrame(
+            {
+                "time": [1, 2, 3],
+                "store_1": [100, 110, 120],
+                "store_2": [150, 160, 170],
+            }
+        )
+    }
+
+    result = dict_to_panel(data_dict)
+
+    assert set(result.columns) == {"time", "sales__store_1", "sales__store_2"}
+    assert result["time"].to_list() == [1, 2, 3]
+    assert result["sales__store_1"].to_list() == [100, 110, 120]
+    assert result["sales__store_2"].to_list() == [150, 160, 170]
+
+
+def test_dict_to_panel_multiple_groups():
+    """Test dict_to_panel with multiple groups."""
+    data_dict = {
+        "sales": pl.DataFrame(
+            {
+                "time": [1, 2, 3],
+                "store_1": [100, 110, 120],
+                "store_2": [150, 160, 170],
+            }
+        ),
+        "inventory": pl.DataFrame(
+            {"time": [1, 2, 3], "warehouse_1": [50, 55, 60], "warehouse_2": [75, 80, 85]}
+        ),
+    }
+
+    result = dict_to_panel(data_dict)
+
+    assert set(result.columns) == {
+        "time",
+        "sales__store_1",
+        "sales__store_2",
+        "inventory__warehouse_1",
+        "inventory__warehouse_2",
+    }
+    assert result["time"].to_list() == [1, 2, 3]
+    assert result["sales__store_1"].to_list() == [100, 110, 120]
+    assert result["inventory__warehouse_1"].to_list() == [50, 55, 60]
+
+
+def test_dict_to_panel_dataframe_passthrough():
+    """Test dict_to_panel returns DataFrame unchanged when given a DataFrame."""
+    df = pl.DataFrame(
+        {"time": [1, 2, 3], "sales__store_1": [100, 110, 120], "sales__store_2": [150, 160, 170]}
+    )
+
+    result = dict_to_panel(df)
+
+    # Should return the exact same DataFrame
+    assert result.equals(df)
+    assert result is df  # Same object
+
+
+def test_dict_to_panel_global_data_passthrough():
+    """Test dict_to_panel with global data (non-prefixed columns)."""
+    df = pl.DataFrame({"time": [1, 2, 3], "value": [10, 20, 30], "feature": [100, 200, 300]})
+
+    result = dict_to_panel(df)
+
+    # Should return unchanged
+    assert result.equals(df)
+
+
+def test_dict_to_panel_preserves_data_types():
+    """Test dict_to_panel preserves column data types."""
+    data_dict = {
+        "sales": pl.DataFrame(
+            {
+                "time": pl.Series([1, 2, 3], dtype=pl.Int64),
+                "store_1": pl.Series([100.5, 110.5, 120.5], dtype=pl.Float64),
+                "store_2": pl.Series([150, 160, 170], dtype=pl.Int32),
+            }
+        )
+    }
+
+    result = dict_to_panel(data_dict)
+
+    assert result["time"].dtype == pl.Int64
+    assert result["sales__store_1"].dtype == pl.Float64
+    assert result["sales__store_2"].dtype == pl.Int32
+
+
+def test_dict_to_panel_datetime_time_column():
+    """Test dict_to_panel with datetime time column."""
+    time = pl.datetime_range(
+        start=datetime(2021, 1, 1),
+        end=datetime(2021, 1, 3),
+        interval="1d",
+        eager=True,
+    )
+    data_dict = {
+        "sales": pl.DataFrame(
+            {"time": time, "store_1": [100, 110, 120], "store_2": [150, 160, 170]}
+        )
+    }
+
+    result = dict_to_panel(data_dict)
+
+    assert result["time"].dtype == pl.Datetime
+    assert result["time"].to_list() == time.to_list()
+
+
+def test_dict_to_panel_empty_dict_returns_none():
+    """Test dict_to_panel returns None for empty dict (vacuous truth in all())."""
+    result = dict_to_panel({})
+    assert result is None
+
+
+def test_dict_to_panel_none_input_returns_none():
+    """Test dict_to_panel returns None when input is None."""
+    result = dict_to_panel(None)
+    assert result is None
+
+
+def test_dict_to_panel_dict_with_none_values_returns_none():
+    """Test dict_to_panel returns None when all dict values are None."""
+    result = dict_to_panel({"sales": None, "inventory": None})
+    assert result is None
+
+
+def test_dict_to_panel_time_alignment():
+    """Test dict_to_panel correctly joins on time column."""
+    data_dict = {
+        "sales": pl.DataFrame({"time": [1, 2, 3, 4], "store_1": [100, 110, 120, 130]}),
+        "inventory": pl.DataFrame({"time": [1, 2, 3, 4], "warehouse_1": [50, 55, 60, 65]}),
+    }
+
+    result = dict_to_panel(data_dict)
+
+    # Should have inner join on time (all 4 rows)
+    assert len(result) == 4
+    assert result["time"].to_list() == [1, 2, 3, 4]
+
+
+def test_dict_to_panel_inverse_of_get_group_df():
+    """Test dict_to_panel is inverse operation of get_group_df pattern."""
+    from yohou.utils.panel import get_group_df
+
+    # Start with panel DataFrame
+    original_panel = pl.DataFrame(
+        {
+            "time": [1, 2, 3],
+            "sales__store_1": [100, 110, 120],
+            "sales__store_2": [150, 160, 170],
+        }
+    )
+
+    # Extract group
+    schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+    group_df = get_group_df(original_panel, "sales", schema)
+
+    # Convert back to panel
+    data_dict = {"sales": group_df}
+    result = dict_to_panel(data_dict)
+
+    # Should match original (column order may differ)
+    assert set(result.columns) == set(original_panel.columns)
+    assert result["time"].to_list() == original_panel["time"].to_list()
+    assert result["sales__store_1"].to_list() == original_panel["sales__store_1"].to_list()
+    assert result["sales__store_2"].to_list() == original_panel["sales__store_2"].to_list()
+
+
+def test_dict_to_panel_complex_multi_group_scenario():
+    """Test dict_to_panel with realistic multi-group scenario."""
+    data_dict = {
+        "store_sales": pl.DataFrame(
+            {
+                "time": [1, 2, 3],
+                "location_1": [100, 110, 120],
+                "location_2": [150, 160, 170],
+                "location_3": [200, 210, 220],
+            }
+        ),
+        "online_sales": pl.DataFrame({"time": [1, 2, 3], "web": [50, 55, 60], "app": [30, 35, 40]}),
+        "inventory": pl.DataFrame({"time": [1, 2, 3], "warehouse": [500, 510, 520]}),
+    }
+
+    result = dict_to_panel(data_dict)
+
+    assert set(result.columns) == {
+        "time",
+        "store_sales__location_1",
+        "store_sales__location_2",
+        "store_sales__location_3",
+        "online_sales__web",
+        "online_sales__app",
+        "inventory__warehouse",
+    }
+    assert len(result) == 3
+
+
+def test_dict_to_panel_handles_different_dtypes_across_groups():
+    """Test dict_to_panel with different data types in different groups."""
+    data_dict = {
+        "sales": pl.DataFrame(
+            {"time": [1, 2, 3], "amount": pl.Series([100.5, 110.5, 120.5], dtype=pl.Float64)}
+        ),
+        "inventory": pl.DataFrame(
+            {"time": [1, 2, 3], "count": pl.Series([50, 55, 60], dtype=pl.Int32)}
+        ),
+    }
+
+    result = dict_to_panel(data_dict)
+
+    assert result["sales__amount"].dtype == pl.Float64
+    assert result["inventory__count"].dtype == pl.Int32
+
+
+def test_dict_to_panel_use_case_from_decomposer():
+    """Test dict_to_panel with exact pattern from decomposer.py fit() method."""
+    # Simulate y_t from _pre_fit (could be dict or DataFrame)
+
+    # Scenario 1: Panel data (dict from _pre_fit)
+    y_t_dict = {
+        "sales": pl.DataFrame(
+            {"time": [1, 2, 3], "store_1": [100, 110, 120], "store_2": [150, 160, 170]}
+        )
+    }
+    y_t_panel = dict_to_panel(y_t_dict)
+    assert set(y_t_panel.columns) == {"time", "sales__store_1", "sales__store_2"}
+
+    # Scenario 2: Global data (DataFrame from _pre_fit)
+    y_t_global = pl.DataFrame({"time": [1, 2, 3], "value": [10, 20, 30]})
+    y_t_result = dict_to_panel(y_t_global)
+    assert y_t_result.equals(y_t_global)
+
+
+def test_dict_to_panel_column_order_deterministic():
+    """Test dict_to_panel produces consistent column order within groups."""
+    data_dict = {
+        "sales": pl.DataFrame({"time": [1, 2, 3], "a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]})
+    }
+
+    result1 = dict_to_panel(data_dict)
+    result2 = dict_to_panel(data_dict)
+
+    # Column order should be deterministic
+    assert result1.columns == result2.columns
+
+
+def test_dict_to_panel_empty_dataframe_in_dict():
+    """Test dict_to_panel with empty DataFrame in dict."""
+    data_dict = {
+        "sales": pl.DataFrame(
+            {
+                "time": pl.Series([], dtype=pl.Int64),
+                "store_1": pl.Series([], dtype=pl.Int64),
+            }
+        )
+    }
+
+    result = dict_to_panel(data_dict)
+
+    assert set(result.columns) == {"time", "sales__store_1"}
+    assert len(result) == 0

@@ -60,7 +60,12 @@ def test_predict(fit_forecasting_horizon, predict_forecasting_horizon, expected_
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     forecaster = IntervalReductionForecaster()
 
-    forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon, coverage_rates=coverage_rates)
+    forecaster.fit(
+        y=y_train,
+        X=X_train,
+        forecasting_horizon=fit_forecasting_horizon,
+        coverage_rates=coverage_rates,
+    )
 
     y_pred = forecaster.predict_interval(
         forecasting_horizon=predict_forecasting_horizon,
@@ -91,7 +96,12 @@ def test_update_predict(fit_forecasting_horizon, predict_forecasting_horizon, st
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     forecaster = IntervalReductionForecaster()
 
-    forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon, coverage_rates=coverage_rates)
+    forecaster.fit(
+        y=y_train,
+        X=X_train,
+        forecasting_horizon=fit_forecasting_horizon,
+        coverage_rates=coverage_rates,
+    )
 
     # Truncate y_test to ensure X_test covers the future horizon
     y_test_truncated = y_test[:-predict_forecasting_horizon]
@@ -185,4 +195,3 @@ def test_update_predict_global(
                     assert all(y_pred[col] + 1e-13 >= y_pred[lower_col]), (
                         f"Upper bound {col} should be >= lower bound {lower_col}"
                     )
-

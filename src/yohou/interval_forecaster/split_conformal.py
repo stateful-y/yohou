@@ -1,5 +1,4 @@
 """Implementation of conformal forecasters."""
-from yohou.base import BaseTransformer
 
 from typing import List, Literal
 
@@ -238,9 +237,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             else self.fit_forecasting_horizon_
         )
 
-        coverage_rates = (
-            coverage_rates if coverage_rates is not None else self.fit_coverage_rates_
-        )
+        coverage_rates = coverage_rates if coverage_rates is not None else self.fit_coverage_rates_
 
         y_pred = self.point_forecaster_.predict(X=X).drop("observed_time")
 

@@ -1,15 +1,12 @@
 """Time series decomposition forecasters."""
 
 from .decomposer import Decomposer
-from .exponential_trend import ExponentialTrendForecaster
-from .fourier_seasonality import FourierSeasonalityForecaster
-from .polynomial_trend import PolynomialTrendForecaster
-from .seasonality import SeasonalityForecaster
+from .seasonality import FourierSeasonalityForecaster, PatternSeasonalityForecaster
+from .trend import PolynomialTrendForecaster
 
 __all__ = [
     "Decomposer",
-    "ExponentialTrendForecaster",
     "FourierSeasonalityForecaster",
     "PolynomialTrendForecaster",
-    "SeasonalityForecaster",
+    "PatternSeasonalityForecaster",
 ]

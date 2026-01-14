@@ -24,7 +24,6 @@ from optuna.study._optimize import (
 from optuna.study._tell import STUDY_TELL_WARNING_KEY, _tell_with_warning
 from optuna.trial import TrialState
 from sklearn.base import clone
-from sklearn.utils import Bunch
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     process_routing,
@@ -149,9 +148,7 @@ class _MultimetricScorer:
             A :class:`~utils.metadata_routing.MetadataRouter` encapsulating
             routing information.
         """
-        return MetadataRouter(owner=self).add(
-            **self._scorers, method_mapping="score"
-        )
+        return MetadataRouter(owner=self).add(**self._scorers, method_mapping="score")
 
 
 def _fit_and_score(

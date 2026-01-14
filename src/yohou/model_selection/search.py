@@ -33,7 +33,6 @@ from sklearn.model_selection._validation import (
     _normalize_score_results,
     _warn_or_raise_about_fit_failures,
 )
-from sklearn.utils import Bunch
 from sklearn.utils._param_validation import HasMethods, StrOptions
 from sklearn.utils.metadata_routing import (
     MetadataRouter,

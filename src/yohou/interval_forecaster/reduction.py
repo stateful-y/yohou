@@ -194,13 +194,15 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     def _predict_one(
         self,
+        panel_group_names: list[str],
         coverage_rates: List[StrictFloat],
     ) -> pl.DataFrame:
-        """Predicts the model forecasting horizon from the
-        observation horizon.
+        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
 
         Parameters
         ----------
+        panel_group_names : list of str
+            Panel group names to predict for.
         coverage_rates : list of float
             Coverage rates for the prediction intervals.
 
@@ -215,11 +217,13 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             estimator_lower = self.estimator_[f"coverage_rate_{coverage_rate}_lower"]
             estimator_upper = self.estimator_[f"coverage_rate_{coverage_rate}_upper"]
 
-            # Predict lower bounds
-            y_pred_lower = self._estimator_predict_one(estimator_lower)
-
-            # Predict upper bounds
-            y_pred_upper = self._estimator_predict_one(estimator_upper)
+            # Predict lower and upper bounds
+            y_pred_lower = self._estimator_predict_one(
+                estimator_lower, panel_group_names=panel_group_names
+            )
+            y_pred_upper = self._estimator_predict_one(
+                estimator_upper, panel_group_names=panel_group_names
+            )
 
             # Rename columns to include coverage rate
             # Use actual column names (prefixed for panel data, unprefixed for global)
