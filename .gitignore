@@ -71,7 +71,7 @@ yohou/_version.py
 .ruff_cache/
 
 # GitHub Copilot
-# .github/copilot_plans/
+# .github/copilot/
 
 # Marimo
 examples/__marimo__/

@@ -1,8 +1,6 @@
 """Tests for Decomposer meta-forecaster."""
 
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import polars as pl
 import pytest
@@ -13,8 +11,7 @@ from yohou.point_forecaster import SeasonalNaive
 from yohou.preprocessing import LogTransform
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_forecaster_checks
+from yohou.testing import _yield_yohou_forecaster_checks
 
 
 @pytest.mark.parametrize(

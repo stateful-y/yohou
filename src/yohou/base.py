@@ -628,213 +628,6 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             self._y_observed = y_observed
             self._X_t_observed = X_t_observed
 
-    def _build_feature_input(
-        self,
-        y: pl.DataFrame,
-        y_t: pl.DataFrame,
-        X: pl.DataFrame | None,
-    ) -> pl.DataFrame | None:
-        """Build feature input based on input_features parameter.
-
-        Constructs the input to the feature_transformer by combining original y,
-        transformed y_t, and exogenous features X according to the input_features
-        configuration.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Original target time series (untransformed).
-        y_t : pl.DataFrame
-            Transformed target time series.
-        X : pl.DataFrame or None
-            Exogenous feature time series.
-
-        Returns
-        -------
-        pl.DataFrame or None
-            Feature input for feature_transformer.
-
-        Notes
-        -----
-        The input_features parameter controls what features are available:
-        - "y_t|X": Transformed target + exogenous features (default)
-        - "y|X": Original target + exogenous features
-        - "X": Only exogenous features (no target)
-
-        For "y|X", the original y is aligned with y_t by taking rows from
-        target_observation_horizon onwards to match the transformed data.
-
-        """
-        if self.input_features == "y_t|X":
-            # Default: use transformed target
-            X_feat_in = y_t
-            if X is not None:
-                X_feat_in = pl.concat(
-                    [y_t, X.select(~cs.by_name("time"))],
-                    how="horizontal",
-                )
-        elif self.input_features == "y|X":
-            # Use original target (aligned with transformed data)
-            X_feat_in = y
-            if X is not None:
-                X_feat_in = pl.concat(
-                    [y, X.select(~cs.by_name("time"))],
-                    how="horizontal",
-                )
-        elif self.input_features == "X":
-            # Only exogenous features
-            if X is None:
-                if self.feature_transformer is not None:
-                    # TODO: Raise error in fit
-                    raise ValueError("input_features='X' requires X to be provided, but X is None.")
-                else:
-                    X_feat_in = None
-
-            X_feat_in = X
-        else:
-            raise ValueError(
-                f"Invalid input_features='{self.input_features}'. "
-                "Must be one of: 'y_t|X', 'y|X', 'X'."
-            )
-
-        return X_feat_in
-
-    def _fit_transform_transformers(
-        self, y: pl.DataFrame, X: pl.DataFrame | None
-    ) -> tuple[pl.DataFrame, pl.DataFrame | None, BaseTransformer | None, BaseTransformer | None]:
-        """Fit and apply target and feature transformers to a single time series.
-
-        Orchestrates the transformation pipeline: target transformer first (if any),
-        then feature transformer (if any). Handles observation horizon alignment to
-        ensure transformed data matches temporally.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series with "time" column.
-        X : pl.DataFrame or None
-            Feature time series with "time" column.
-
-        Returns
-        -------
-        y_t : pl.DataFrame or None
-            Transformed target time series.
-        X_t : pl.DataFrame or None
-            Transformed feature matrix (includes transformed y if no separate X provided).
-
-        Notes
-        -----
-        Transformation order matters:
-        1. Apply target_transformer to y → y_t
-        2. Concatenate y_t with X (aligned by observation horizon)
-        3. Apply feature_transformer to combined → X_t
-        4. Trim y_t if feature transformer has its own observation horizon
-
-        This ensures features can include lagged versions of the transformed target.
-
-        See Also
-        --------
-        :class:`BaseTransformer` : Base class for transformers
-
-        """
-        y_t = y
-        target_transformer = None
-        if self.target_transformer is not None:
-            target_transformer = clone(self.target_transformer)
-            y_t = target_transformer.fit_transform(y)
-
-        X_feat_in = self._build_feature_input(y, y_t, X)
-
-        X_t = X_feat_in
-        feature_transformer = None
-        if self.feature_transformer is not None and X_feat_in is not None:
-            feature_transformer = clone(self.feature_transformer)
-            X_t = feature_transformer.fit_transform(X_feat_in)
-            feature_observation_horizon = feature_transformer.observation_horizon
-            # TODO: Alignment
-            y_t = y_t[feature_observation_horizon:]
-
-        return y_t, X_t, target_transformer, feature_transformer
-
-    def _update_transformers(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None,
-        target_transformer: BaseTransformer | None,
-        feature_transformer: BaseTransformer | None,
-    ) -> pl.DataFrame | None:
-        """Update transformers with new observations.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            New target observations.
-        X : pl.DataFrame or None
-            New features.
-        target_transformer : BaseTransformer or None
-            Target transformer to update.
-        feature_transformer : BaseTransformer or None
-            Feature transformer to update.
-
-        Returns
-        -------
-        pl.DataFrame or None
-            Transformed new observations.
-
-        """
-        y_t = y
-        if target_transformer is not None:
-            y_t = target_transformer.update_transform(y)
-
-        X_feat_in = self._build_feature_input(y, y_t, X)
-
-        X_t = X_feat_in
-        if feature_transformer is not None and X_feat_in is not None:
-            X_t = feature_transformer.update_transform(X_feat_in)
-
-        return X_t
-
-    def _reset_transformers(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None,
-        target_transformer: BaseTransformer | None,
-        feature_transformer: BaseTransformer | None,
-    ) -> pl.DataFrame | None:
-        """Reset transformers.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            New target observations.
-        X : pl.DataFrame or None
-            New features.
-        target_transformer : BaseTransformer or None
-            Target transformer to reset.
-        feature_transformer : BaseTransformer or None
-            Feature transformer to reset.
-
-        Returns
-        -------
-        pl.DataFrame or None
-            Transformed new observations.
-
-        """
-        y_t = y
-        if target_transformer is not None:
-            target_transformer.reset(X=y[: -self.observation_horizon])
-            y_t = target_transformer.update_transform(y[-self.observation_horizon :])
-
-        X_feat_in = self._build_feature_input(y, y_t, X)
-
-        X_t = X_feat_in
-        if feature_transformer is not None and X_feat_in is not None:
-            feature_observation_horizon = feature_transformer.observation_horizon
-            feature_transformer.reset(X=X_feat_in[-feature_observation_horizon - 1 : -1])
-            X_t = feature_transformer.update_transform(X_feat_in[[-1]])
-
-        return X_t
-
     def _pre_fit(
         self,
         y: pl.DataFrame,
@@ -864,14 +657,8 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         """
         y, X, _ = validate_data(self, y, X, reset=True)
 
-        self._set_input_attributes(y, X)
-
-        if forecasting_horizon < 1:
-            raise ValueError(
-                f"`forecasting_horizon` should be a positive int. It is: {forecasting_horizon}"
-            )
-
         self.fit_forecasting_horizon_ = forecasting_horizon
+        self._set_input_attributes(y, X)
 
         y_t, X_t = self._fit_transform_inputs(y, X)
 
@@ -919,8 +706,12 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             if X is not None:
                 X = X.select(["time"] + list(self.local_X_schema_.keys()))
 
-            y_t, X_t, target_transformer, feature_transformer = self._fit_transform_transformers(
-                y, X
+            y_t, X_t, target_transformer, feature_transformer = _fit_transform_transformers_one(
+                y=y,
+                X=X,
+                target_transformer=self.target_transformer,
+                feature_transformer=self.feature_transformer,
+                input_features=self.input_features,
             )
 
         # Panel data
@@ -945,7 +736,13 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                     X_t[group_name],
                     target_transformer_local,
                     feature_transformer_local,
-                ) = self._fit_transform_transformers(y_local, X_local)
+                ) = _fit_transform_transformers_one(
+                    y=y_local,
+                    X=X_local,
+                    target_transformer=self.target_transformer,
+                    feature_transformer=self.feature_transformer,
+                    input_features=self.input_features,
+                )
 
                 target_transformer[group_name] = target_transformer_local
                 feature_transformer[group_name] = feature_transformer_local
@@ -1026,9 +823,14 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
         # Non-panel data
         if self.panel_group_names_ is None:
-            # Global data: use _reset_transformers
-            X_t = self._reset_transformers(
-                y, X, self.target_transformer_, self.feature_transformer_
+            # Global data: use _reset_transformers_one
+            X_t = _reset_transformers_one(
+                y,
+                X,
+                self.target_transformer_,
+                self.feature_transformer_,
+                self.observation_horizon,
+                self.input_features,
             )
 
         # Panel data
@@ -1061,11 +863,13 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                 ):
                     local_feature_transformer = self.feature_transformer_[panel_group_name]
 
-                X_t_local = self._reset_transformers(
+                X_t_local = _reset_transformers_one(
                     y_local,
                     X_local,
                     local_target_transformer,
                     local_feature_transformer,
+                    self.observation_horizon,
+                    self.input_features,
                 )
 
                 # Store transformed X with unprefixed columns for this group
@@ -1121,8 +925,8 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
 
             # Update transformers
             y_updated = y
-            X_t_updated = self._update_transformers(
-                y, X, self.target_transformer_, self.feature_transformer_
+            X_t_updated = _update_transformers_one(
+                y, X, self.target_transformer_, self.feature_transformer_, self.input_features
             )
 
         # Panel data
@@ -1155,11 +959,12 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                     local_feature_transformer = self.feature_transformer_[panel_group_name]
 
                 # Update transformers with new data only
-                X_t_updated[panel_group_name] = self._update_transformers(
+                X_t_updated[panel_group_name] = _update_transformers_one(
                     y_local,
                     X_local,
                     local_target_transformer,
                     local_feature_transformer,
+                    self.input_features,
                 )
 
                 # For y_updated, concatenate stored observations with new observations
@@ -1945,3 +1750,239 @@ class BaseWrapper(BaseEstimator, metaclass=abc.ABCMeta):
         self.params = self._validate_estimator_params(params)
 
         return self
+
+
+def _fit_transform_transformers_one(
+    y: pl.DataFrame,
+    X: pl.DataFrame | None,
+    target_transformer: BaseTransformer | None,
+    feature_transformer: BaseTransformer | None,
+    input_features: str,
+) -> tuple[pl.DataFrame, pl.DataFrame | None, BaseTransformer | None, BaseTransformer | None]:
+    """Fit and apply target and feature transformers to a single time series.
+
+    Orchestrates the transformation pipeline: target transformer first (if any),
+    then feature transformer (if any). Handles observation horizon alignment to
+    ensure transformed data matches temporally.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        Target time series with "time" column.
+    X : pl.DataFrame or None
+        Feature time series with "time" column.
+    target_transformer : BaseTransformer or None
+        Target transformer to apply.
+    feature_transformer : BaseTransformer or None
+        Feature transformer to apply.
+    input_features : str
+        Configuration for building features ("y_t|X", "y|X", or "X").
+
+    Returns
+    -------
+    y_t : pl.DataFrame
+        Transformed target time series.
+    X_t : pl.DataFrame or None
+        Transformed feature matrix (includes transformed y if no separate X provided).
+    target_transformer : BaseTransformer or None
+        Fitted target transformer.
+    feature_transformer : BaseTransformer or None
+        Fitted feature transformer.
+
+    Notes
+    -----
+    Transformation order matters:
+    1. Apply target_transformer to y → y_t
+    2. Concatenate y_t with X (aligned by observation horizon)
+    3. Apply feature_transformer to combined → X_t
+    4. Trim y_t if feature transformer has its own observation horizon
+
+    This ensures features can include lagged versions of the transformed target.
+
+    See Also
+    --------
+    :class:`BaseTransformer` : Base class for transformers
+
+    """
+    y_t = y
+    target_transformer_fitted = None
+    if target_transformer is not None:
+        target_transformer_fitted = clone(target_transformer)
+        y_t = target_transformer_fitted.fit_transform(y)
+
+    X_feat_in = _build_feature_input(y, y_t, X, input_features, feature_transformer)
+
+    X_t = X_feat_in
+    feature_transformer_fitted = None
+    if feature_transformer is not None and X_feat_in is not None:
+        feature_transformer_fitted = clone(feature_transformer)
+        X_t = feature_transformer_fitted.fit_transform(X_feat_in)
+        feature_observation_horizon = feature_transformer_fitted.observation_horizon
+        # TODO: Alignment
+        y_t = y_t[feature_observation_horizon:]
+
+    return y_t, X_t, target_transformer_fitted, feature_transformer_fitted
+
+
+def _build_feature_input(
+    y: pl.DataFrame,
+    y_t: pl.DataFrame,
+    X: pl.DataFrame | None,
+    input_features: str,
+    feature_transformer: BaseTransformer | None,
+) -> pl.DataFrame | None:
+    """Build feature input based on input_features parameter.
+
+    Constructs the input to the feature_transformer by combining original y,
+    transformed y_t, and exogenous features X according to the input_features
+    configuration.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        Original target time series (untransformed).
+    y_t : pl.DataFrame
+        Transformed target time series.
+    X : pl.DataFrame or None
+        Exogenous feature time series.
+    input_features : str
+        Configuration for building features ("y_t|X", "y|X", or "X").
+    feature_transformer : BaseTransformer or None
+        Feature transformer (used for validation when input_features="X").
+
+    Returns
+    -------
+    pl.DataFrame or None
+        Feature input for feature_transformer.
+
+    Notes
+    -----
+    The input_features parameter controls what features are available:
+    - "y_t|X": Transformed target + exogenous features (default)
+    - "y|X": Original target + exogenous features
+    - "X": Only exogenous features (no target)
+
+    For "y|X", the original y is aligned with y_t by taking rows from
+    target_observation_horizon onwards to match the transformed data.
+
+    """
+    if input_features == "y_t|X":
+        # Default: use transformed target
+        X_feat_in = y_t
+        if X is not None:
+            X_feat_in = pl.concat(
+                [y_t, X.select(~cs.by_name("time"))],
+                how="horizontal",
+            )
+    elif input_features == "y|X":
+        # Use original target (aligned with transformed data)
+        X_feat_in = y
+        if X is not None:
+            X_feat_in = pl.concat(
+                [y, X.select(~cs.by_name("time"))],
+                how="horizontal",
+            )
+    elif input_features == "X":
+        # Only exogenous features
+        if X is None:
+            if feature_transformer is not None:
+                # TODO: Raise error in fit
+                raise ValueError("input_features='X' requires X to be provided, but X is None.")
+            else:
+                X_feat_in = None
+
+        X_feat_in = X
+    else:
+        raise ValueError(
+            f"Invalid input_features='{input_features}'. Must be one of: 'y_t|X', 'y|X', 'X'."
+        )
+
+    return X_feat_in
+
+
+def _update_transformers_one(
+    y: pl.DataFrame,
+    X: pl.DataFrame | None,
+    target_transformer: BaseTransformer | None,
+    feature_transformer: BaseTransformer | None,
+    input_features: str,
+) -> pl.DataFrame | None:
+    """Update transformers with new observations.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        New target observations.
+    X : pl.DataFrame or None
+        New features.
+    target_transformer : BaseTransformer or None
+        Target transformer to update.
+    feature_transformer : BaseTransformer or None
+        Feature transformer to update.
+    input_features : str
+        Configuration for building features ("y_t|X", "y|X", or "X").
+
+    Returns
+    -------
+    pl.DataFrame or None
+        Transformed new observations.
+
+    """
+    y_t = y
+    if target_transformer is not None:
+        y_t = target_transformer.update_transform(y)
+
+    X_feat_in = _build_feature_input(y, y_t, X, input_features, feature_transformer)
+
+    X_t = X_feat_in
+    if feature_transformer is not None and X_feat_in is not None:
+        X_t = feature_transformer.update_transform(X_feat_in)
+
+    return X_t
+
+
+def _reset_transformers_one(
+    y: pl.DataFrame,
+    X: pl.DataFrame | None,
+    target_transformer: BaseTransformer | None,
+    feature_transformer: BaseTransformer | None,
+    observation_horizon: int,
+    input_features: str,
+) -> pl.DataFrame | None:
+    """Reset transformers.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        New target observations.
+    X : pl.DataFrame or None
+        New features.
+    target_transformer : BaseTransformer or None
+        Target transformer to reset.
+    feature_transformer : BaseTransformer or None
+        Feature transformer to reset.
+    observation_horizon : int
+        Number of time steps to retain in observation horizon.
+    input_features : str
+        Configuration for building features ("y_t|X", "y|X", or "X").
+
+    Returns
+    -------
+    pl.DataFrame or None
+        Transformed new observations.
+
+    """
+    y_t = y
+    if target_transformer is not None:
+        target_transformer.reset(X=y[:-observation_horizon])
+        y_t = target_transformer.update_transform(y[-observation_horizon:])
+
+    X_feat_in = _build_feature_input(y, y_t, X, input_features, feature_transformer)
+
+    X_t = X_feat_in
+    if feature_transformer is not None and X_feat_in is not None:
+        feature_observation_horizon = feature_transformer.observation_horizon
+        feature_transformer.reset(X=X_feat_in[-feature_observation_horizon - 1 : -1])
+        X_t = feature_transformer.update_transform(X_feat_in[[-1]])
+
+    return X_t

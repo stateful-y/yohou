@@ -3,16 +3,11 @@
 Tests LagTransformer using the check generator pattern for systematic validation.
 """
 
-import sys
-from pathlib import Path
-
 import pytest
 from sklearn.base import clone
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_transformer_checks
-
 from yohou.preprocessing.window import LagTransformer
+from yohou.testing import _yield_yohou_transformer_checks
 
 
 @pytest.mark.parametrize(
@@ -35,7 +30,7 @@ def test_lag_transformer_checks(lag, time_series_train_test_factory):
 
     expected_failures_set = set(expected_failures)
     for check_name, check_func, check_kwargs in _yield_yohou_transformer_checks(
-        transformer_fitted, X_train, X_test
+        transformer_fitted, X_train, None, X_test
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

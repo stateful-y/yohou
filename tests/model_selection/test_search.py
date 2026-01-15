@@ -1,8 +1,6 @@
 """Tests for SearchCV forecaster."""
 
-import sys
 from datetime import datetime
-from pathlib import Path
 
 import optuna
 import polars as pl
@@ -10,13 +8,12 @@ import pytest
 from sklearn.base import clone
 from sklearn.linear_model import Ridge
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_forecaster_checks
-
 from yohou.metrics import MAE
 from yohou.model_selection import SearchCV
 from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
+
+# Add parent directory to path for imports
+from yohou.testing import _yield_yohou_forecaster_checks
 
 length = 52
 

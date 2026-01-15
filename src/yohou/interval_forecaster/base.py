@@ -199,6 +199,75 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError()
 
+    def _validate_fit_params(
+        self,
+        forecasting_horizon: StrictInt,
+        coverage_rates: list[StrictFloat] | None = None,
+    ) -> tuple[StrictInt, list[StrictFloat]]:
+        """Validate fit parameters.
+
+        Parameters
+        ----------
+        forecasting_horizon : int
+            Forecasting horizon to validate.
+        coverage_rates : list of float or None
+            Coverage rates to validate. If None, uses [0.95].
+
+        Returns
+        -------
+        tuple of (int, list of float)
+            Validated forecasting horizon and coverage rates.
+
+        Raises
+        ------
+        ValueError
+            If forecasting_horizon < 1 or coverage_rates not in (0, 1].
+
+        """
+        if forecasting_horizon < 1:
+            raise ValueError(f"forecasting_horizon must be >= 1, got {forecasting_horizon}")
+
+        if coverage_rates is None:
+            coverage_rates = [0.95]
+
+        # Validate coverage rates
+        for rate in coverage_rates:
+            if not (0 < rate <= 1):
+                raise ValueError(f"All coverage_rates must be in (0, 1], got {rate}")
+
+        return forecasting_horizon, coverage_rates
+
+    def _validate_predict_params(
+        self,
+        forecasting_horizon: StrictInt | None,
+        coverage_rates: list[StrictFloat] | None = None,
+    ) -> tuple[StrictInt, list[StrictFloat]]:
+        """Validate and return predict parameters.
+
+        Parameters
+        ----------
+        forecasting_horizon : int or None
+            Forecasting horizon to validate. If None, uses fit_forecasting_horizon_.
+        coverage_rates : list of float or None
+            Coverage rates to validate. If None, uses fit_coverage_rates_.
+
+        Returns
+        -------
+        tuple of (int, list of float)
+            Validated forecasting horizon and coverage rates.
+
+        Raises
+        ------
+        ValueError
+            If forecasting_horizon < 1 or coverage_rates not in (0, 1].
+
+        """
+        if forecasting_horizon is None:
+            forecasting_horizon = self.fit_forecasting_horizon_
+        if coverage_rates is None:
+            coverage_rates = self.fit_coverage_rates_
+        return self._validate_fit_params(forecasting_horizon, coverage_rates)
+
     def predict_interval(
         self,
         X: pl.DataFrame | None = None,
@@ -247,12 +316,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             check_continuity=False,
         )
 
-        # Use fit_forecasting_horizon_ as default
-        if forecasting_horizon is None:
-            forecasting_horizon = self.fit_forecasting_horizon_
-
-        if coverage_rates is None:
-            coverage_rates = self.fit_coverage_rates_
+        forecasting_horizon, coverage_rates = self._validate_predict_params(
+            forecasting_horizon, coverage_rates
+        )
 
         forecaster = deepcopy(self)
 
@@ -398,8 +464,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             check_continuity=True,
         )
 
-        if forecasting_horizon is None:
-            forecasting_horizon = self.fit_forecasting_horizon_
+        forecasting_horizon, _ = self._validate_predict_params(forecasting_horizon, coverage_rates)
+
         if stride is None:
             stride = self.fit_forecasting_horizon_
 

@@ -62,6 +62,8 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self
 
         """
+        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
+
         BaseForecaster._pre_fit(
             self,
             y=y,
@@ -70,6 +72,52 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         )
 
         return self
+
+    def _validate_fit_params(self, forecasting_horizon: StrictInt) -> StrictInt:
+        """Validate fit parameters.
+
+        Parameters
+        ----------
+        forecasting_horizon : int
+            Forecasting horizon to validate.
+
+        Returns
+        -------
+        int
+            Validated forecasting horizon.
+
+        Raises
+        ------
+        ValueError
+            If forecasting_horizon < 1.
+
+        """
+        if forecasting_horizon < 1:
+            raise ValueError(f"forecasting_horizon must be >= 1, got {forecasting_horizon}")
+        return forecasting_horizon
+
+    def _validate_predict_params(self, forecasting_horizon: StrictInt | None) -> StrictInt:
+        """Validate and return predict parameters.
+
+        Parameters
+        ----------
+        forecasting_horizon : int or None
+            Forecasting horizon to validate. If None, uses fit_forecasting_horizon_.
+
+        Returns
+        -------
+        int
+            Validated forecasting horizon.
+
+        Raises
+        ------
+        ValueError
+            If forecasting_horizon < 1.
+
+        """
+        if forecasting_horizon is None:
+            forecasting_horizon = self.fit_forecasting_horizon_
+        return self._validate_fit_params(forecasting_horizon)
 
     def predict(
         self,
@@ -112,9 +160,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             check_continuity=False,
         )
 
-        # Use fit_forecasting_horizon_ as default
-        if forecasting_horizon is None:
-            forecasting_horizon = self.fit_forecasting_horizon_
+        forecasting_horizon = self._validate_predict_params(forecasting_horizon)
 
         forecaster = deepcopy(self)
 
@@ -225,9 +271,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             check_continuity=True,
         )
 
-        # Use fit_forecasting_horizon_ as default for both parameters
-        if forecasting_horizon is None:
-            forecasting_horizon = self.fit_forecasting_horizon_
+        forecasting_horizon = self._validate_predict_params(forecasting_horizon)
         if stride is None:
             stride = self.fit_forecasting_horizon_
 

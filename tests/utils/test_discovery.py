@@ -25,4 +25,5 @@ def test_all_displays():
 
 def test_all_functions():
     functions = all_functions()
-    assert len(functions) == 28
+    # Updated count includes 55 new functions from yohou.testing module (49 checks + 2 generators + 4 utilities)
+    assert len(functions) == 78

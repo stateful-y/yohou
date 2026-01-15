@@ -124,6 +124,8 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
             Fitted forecaster.
 
         """
+        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
+
         # Pre-fit: validate inputs, apply target transformer, set attributes
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
 

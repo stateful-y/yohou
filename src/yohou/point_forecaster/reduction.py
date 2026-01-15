@@ -128,6 +128,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         self
 
         """
+        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
+
         y_t, X_t = BasePointForecaster._pre_fit(
             self,
             y=y,

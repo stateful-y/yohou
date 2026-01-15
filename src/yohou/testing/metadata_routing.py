@@ -1,4 +1,4 @@
-"""Common utilities for metadata routing tests.
+"""Metadata routing utilities for testing Yohou estimators.
 
 This module provides test utilities for verifying metadata routing behavior
 in Yohou estimators, following sklearn's testing patterns.
@@ -9,10 +9,17 @@ from collections import defaultdict
 from functools import partial
 
 import numpy as np
-import polars as pl
 from numpy.testing import assert_array_equal
 from sklearn.utils._metadata_requests import SIMPLE_METHODS
 from sklearn.utils.metadata_routing import MetadataRouter
+
+try:
+    import polars as pl
+except ImportError as e:
+    raise ImportError(
+        "polars.testing is required for yohou.testing module. "
+        "Install with: uv sync --group tests"
+    ) from e
 
 
 class _Registry(list):
@@ -24,15 +31,34 @@ class _Registry(list):
     """
 
     def __deepcopy__(self, memo):
-        """Deep copy returns self to preserve registry reference."""
+        """Deep copy returns self to preserve registry reference.
+
+        Parameters
+        ----------
+        memo : dict
+            Memoization dictionary
+
+        Returns
+        -------
+        self : _Registry
+            The same registry instance
+
+        """
         return self
 
     def __copy__(self):
-        """Shallow copy returns self to preserve registry reference."""
+        """Shallow copy returns self to preserve registry reference.
+
+        Returns
+        -------
+        self : _Registry
+            The same registry instance
+
+        """
         return self
 
 
-def record_metadata(obj, record_default=True, **kwargs):
+def record_metadata(obj, record_default: bool = True, **kwargs) -> None:
     """Utility function to store passed metadata to a method of obj.
 
     If record_default is False, kwargs whose values are "default" are skipped.
@@ -42,11 +68,11 @@ def record_metadata(obj, record_default=True, **kwargs):
     Parameters
     ----------
     obj : object
-        Object to record metadata on (usually has a registry attribute).
+        Object to record metadata on (usually has a registry attribute)
     record_default : bool, default=True
-        Whether to record kwargs with "default" values.
+        Whether to record kwargs with "default" values
     **kwargs : dict
-        Metadata to record.
+        Metadata to record
 
     """
     stack = inspect.stack()
@@ -63,25 +89,33 @@ def record_metadata(obj, record_default=True, **kwargs):
     obj._records[callee][caller].append(kwargs)
 
 
+# Partial application for common use case
 record_metadata_not_default = partial(record_metadata, record_default=False)
 
 
-def check_recorded_metadata(obj, method, parent, split_params=tuple(), **kwargs):
+def check_recorded_metadata(
+    obj, method: str, parent: str, split_params: tuple = (), **kwargs
+) -> None:
     """Check whether the expected metadata is passed to the object's method.
 
     Parameters
     ----------
     obj : estimator object
-        Sub-estimator to check routed params for.
+        Sub-estimator to check routed params for
     method : str
-        Sub-estimator's method where metadata is routed to (callee).
+        Sub-estimator's method where metadata is routed to (callee)
     parent : str
-        The parent method which called `method` (caller).
+        The parent method which called `method` (caller)
     split_params : tuple, default=empty
         Parameters which should be checked as subsets of the original values
-        (used for CV splits where each fold gets a subset).
+        (used for CV splits where each fold gets a subset)
     **kwargs : dict
-        Expected metadata that should have been passed.
+        Expected metadata that should have been passed
+
+    Raises
+    ------
+    AssertionError
+        If recorded metadata doesn't match expected metadata
 
     """
     all_records = getattr(obj, "_records", dict()).get(method, dict()).get(parent, list())
@@ -110,7 +144,7 @@ def check_recorded_metadata(obj, method, parent, split_params=tuple(), **kwargs)
                     )
 
 
-def assert_request_is_empty(metadata_request, exclude=None):
+def assert_request_is_empty(metadata_request, exclude=None) -> None:
     """Check if a metadata request dict is empty.
 
     One can exclude a method or a list of methods from the check using the
@@ -119,10 +153,15 @@ def assert_request_is_empty(metadata_request, exclude=None):
 
     Parameters
     ----------
-    metadata_request : MetadataRequest or MetadataRouter
-        The request object to check.
-    exclude : str, list of str, or dict, optional
-        Methods or objects to exclude from the check.
+    metadata_request : MetadataRequest | MetadataRouter
+        The request object to check
+    exclude : str | list[str] | dict, optional
+        Methods or objects to exclude from the check
+
+    Raises
+    ------
+    AssertionError
+        If metadata request is not empty
 
     """
     if isinstance(metadata_request, MetadataRouter):
@@ -160,15 +199,20 @@ def assert_request_is_empty(metadata_request, exclude=None):
         assert not props, f"Method {method} has non-empty requests: {props}"
 
 
-def assert_request_equal(request, dictionary):
+def assert_request_equal(request, dictionary: dict) -> None:
     """Assert metadata request matches expected dictionary.
 
     Parameters
     ----------
     request : MetadataRequest
-        The request object to check.
+        The request object to check
     dictionary : dict
-        Expected requests in the form {"method": {"param": value}}.
+        Expected requests in the form {"method": {"param": value}}
+
+    Raises
+    ------
+    AssertionError
+        If request doesn't match expected dictionary
 
     """
     for method, requests in dictionary.items():

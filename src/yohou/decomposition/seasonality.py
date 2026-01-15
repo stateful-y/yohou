@@ -136,6 +136,8 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
             If insufficient data for specified method.
 
         """
+        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
+
         # Pre-fit: validate inputs, apply target transformer, set attributes
         y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
 
@@ -487,6 +489,8 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
             Fitted forecaster.
 
         """
+        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
+
         # Domain-specific validation: harmonics must be positive and not exceed
         # seasonality/2 (Nyquist limit)
         if not self.harmonics:

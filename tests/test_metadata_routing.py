@@ -18,7 +18,6 @@ Test Categories:
 import inspect
 
 import pytest
-from metadata_routing_common import _Registry, assert_request_is_empty
 from sklearn.base import clone
 from sklearn.linear_model import Ridge
 from sklearn.utils.metadata_routing import MetadataRequest, MetadataRouter
@@ -28,6 +27,7 @@ from yohou.model_selection import SearchCV
 from yohou.pipeline import ColumnTransformer, FeaturePipeline, FeatureUnion
 from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
 from yohou.preprocessing import SeasonalDifferencing
+from yohou.testing.metadata_routing import _Registry, assert_request_is_empty
 
 # ============================================================================
 # FIXTURES

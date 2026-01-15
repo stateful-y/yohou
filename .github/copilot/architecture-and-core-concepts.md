@@ -431,7 +431,7 @@ COMPOSITE_METHODS["update_predict"] = ["update", "predict"]      # Routes only t
 **Consumers** (simple transformers, scorers):
 - Just accept `**params` for future extensibility
 
-**Current Status**: Infrastructure 100% complete. Actual metadata consumption (e.g., `time_weight` → `sample_weight` conversion) not yet implemented. See `.github/copilot_plans/sklearn-metadata-routing-implementation.md` for full details.
+**Current Status**: Infrastructure 100% complete. Actual metadata consumption (e.g., `time_weight` → `sample_weight` conversion) not yet implemented. See `.github/copilot/sklearn-metadata-routing-implementation.md` for full details.
 
 ---
 

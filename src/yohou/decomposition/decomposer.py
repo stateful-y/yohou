@@ -221,6 +221,8 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Fitted decomposer.
 
         """
+        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
+
         # Validate params before routing
         _raise_for_params(params, self, "fit")
 

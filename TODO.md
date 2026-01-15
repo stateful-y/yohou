@@ -7,6 +7,7 @@
 - Make sure we can predict and score in transformed space as well as that we can access predictions
 - Implement variety of splitters
 - Implement variety of scorers
+- Add target_forecaster to ColumnForecaster? What was the plan without it?
 - Implement NestedCV (making sure we avoid retraining on splits already handled in a previous outer cv)
 - Implement SkLearnTransformer
 - Implement SkTimeTransformer

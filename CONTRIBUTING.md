@@ -42,11 +42,24 @@ Working on your first pull request? You can learn how from these resources:
 Our code is designed to be compatible with Python 3.12 onwards and our style guidelines are (in cascading order):
 
 * [PEP 8 conventions](https://www.python.org/dev/peps/pep-0008/) for all Python code
-* [Google docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) for code comments
+* [NumPy docstrings](https://numpydoc.readthedocs.io/en/latest/format.html) for code comments (enforced at 100% coverage by `interrogate`)
 * [PEP 484 type hints](https://www.python.org/dev/peps/pep-0484/) for all user-facing functions / class methods e.g.
 
 ```python
 def count_truthy(elements: List[Any]) -> int:
+    """Count truthy elements in a list.
+
+    Parameters
+    ----------
+    elements : List[Any]
+        List of elements to count.
+
+    Returns
+    -------
+    int
+        Number of truthy elements.
+
+    """
     return sum(1 for elem in elements if elem)
 ```
 

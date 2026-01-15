@@ -4,9 +4,7 @@ Tests SeasonalDifferencing and SeasonalLogDifferencing transformers
 using both the check generator pattern and transformer-specific tests.
 """
 
-import sys
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -18,9 +16,7 @@ from yohou.preprocessing.stationarization import (
     SeasonalDifferencing,
     SeasonalLogDifferencing,
 )
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_transformer_checks
+from yohou.testing import _yield_yohou_transformer_checks
 
 length = 52
 
@@ -105,7 +101,7 @@ def test_stationarization_transformer_checks(
     expected_failures_set = set(expected_failures)
 
     for check_name, check_func, check_kwargs in _yield_yohou_transformer_checks(
-        transformer_fitted, X_train, X_test
+        transformer_fitted, X_train, None, X_test
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

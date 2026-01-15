@@ -1,8 +1,6 @@
 """Tests for cross-learning functionality in point forecasters."""
 
-import sys
 from copy import deepcopy
-from pathlib import Path
 
 import pytest
 from sklearn.base import clone
@@ -12,8 +10,7 @@ from yohou.point_forecaster import PointReductionForecaster
 from yohou.preprocessing import LagTransformer
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_forecaster_checks
+from yohou.testing import _yield_yohou_forecaster_checks
 
 # ============================================================================
 # Check generator tests with panel data

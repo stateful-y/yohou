@@ -17,11 +17,13 @@ Yohou's forecaster testing infrastructure provides comprehensive, reusable testi
 
 3. **Point vs Interval Forecasters**: Distinct validation for point predictions vs interval predictions with coverage rates
 
-4. **Comprehensive Validation**: 30+ check functions covering fit/predict contracts, time column validation, observation buffer management, tag system validation, and composition patterns
+4. **Comprehensive Validation**: 31+ check functions covering fit/predict contracts, time column validation, observation buffer management, tag system validation, composition patterns, and parameter validation
 
-5. **Analytical Tests**: Exact numerical validation for PointReductionForecaster with LinearRegression on known processes (linear trends, AR(1))
+5. **Parameter Validation Tests**: Dedicated tests ensure `forecasting_horizon` and `coverage_rates` are always validated in fit(), predict(), and update methods
 
-6. **Composition Classes**: Dedicated testing for ColumnForecaster composition patterns
+6. **Analytical Tests**: Exact numerical validation for PointReductionForecaster with LinearRegression on known processes (linear trends, AR(1))
+
+7. **Composition Classes**: Dedicated testing for ColumnForecaster composition patterns
 
 ---
 
@@ -32,8 +34,9 @@ Yohou's forecaster testing infrastructure provides comprehensive, reusable testi
 The testing infrastructure is organized following pytest conventions:
 
 ```
-tests/
-├── conftest.py                         # Global fixtures (y_X_factory, forecaster_registry)
+tests/31 functions + generator)
+├── test_estimator_checks.py            # Meta-tests for check functions
+├── test_parameter_validation.py        # Tests for forecasting_horizon and coverage_rates validationforecaster_registry)
 ├── estimator_checks.py                 # Check function library (28 functions + generator)
 ├── test_estimator_checks.py            # Meta-tests for check functions
 ├── forecaster/
@@ -69,6 +72,7 @@ The testing infrastructure consists of three main components that work together 
 - Comprehensive docstrings with parameters and error conditions
 - Functions accept `(forecaster, y, X, **kwargs)` signature
 - Handle single X DataFrame (exogenous features) with "time" column
+- Parameter validation checks ensure `forecasting_horizon >= 1` and `coverage_rates in (0, 1]` are enforced
 - Support both global data and panel data with prefixed columns (e.g., "sales__store_1")
 
 **Check Categories**:
@@ -79,7 +83,7 @@ The testing infrastructure consists of three main components that work together 
 3. **`check_predict_time_columns`** - Validates predictions have "observed_time" and "time" columns (note: "predicted_time" was renamed to "time")
 4. **`check_update_extends_observations`** - Tests update() properly extends _y_observed, _X_observed buffers
 5. **`check_reset_replaces_observations`** - Tests reset() replaces observation buffers correctly (_y_observed, _X_observed)
-6. **`check_forecasting_horizon_validation`** - Ensures forecasting_horizon < 1 raises ValueError
+6. **`check_forecasting_horizon_validation`** - Ensures forecasting_horizon < 1 raises ValueError in fit() and predict()
 7. **`check_prediction_types_property`** - Validates prediction_types returns correct set ({"point"}, {"interval"}, or both)
 8. **`check_clone_preserves_forecaster_params`** - sklearn's clone() preserves init parameters (enhanced to handle deeply nested estimators)
 9. **`check_forecaster_tags_accessible_before_fit`** - Validates __sklearn_tags__() is accessible before fit() (tags are static capabilities)
@@ -87,33 +91,34 @@ The testing infrastructure consists of three main components that work together 
 11. **`check_forecaster_tags_match_capabilities`** - Verifies tags accurately reflect actual behavior (forecaster_type vs prediction_types, uses_reduction vs estimator, transformer usage)
 
 **Point Forecaster Checks (2 functions)**:
-10. **`check_point_prediction_structure`** - Validates output has observed_time, predicted_time, and target columns only (no interval columns)
-11. **`check_point_prediction_types`** - Ensures prediction_types == {"point"}
+12. **`check_point_prediction_structure`** - Validates output has observed_time, predicted_time, and target columns only (no interval columns)
+13. **`check_point_prediction_types`** - Ensures prediction_types == {"point"}
 
-**Interval Forecaster Checks (4 functions)**:
-12. **`check_interval_prediction_columns`** - Validates {col}_lower_{rate} and {col}_upper_{rate} format (handles both global and panel data with prefixed columns)
-13. **`check_interval_bounds`** - Ensures upper >= lower for all coverage rates and time steps (handles panel data with prefixed columns)
-14. **`check_interval_prediction_types`** - Validates prediction_types contains "interval"
-15. **`check_coverage_rates_parameter`** - Validates coverage_rates is list of floats in (0, 1)
+**Interval Forecaster Checks (5 functions)**:
+14. **`check_interval_prediction_columns`** - Validates {col}_lower_{rate} and {col}_upper_{rate} format (handles both global and panel data with prefixed columns)
+15. **`check_interval_bounds`** - Ensures upper >= lower for all coverage rates and time steps (handles panel data with prefixed columns)
+16. **`check_interval_prediction_types`** - Validates prediction_types contains "interval"
+17. **`check_coverage_rates_parameter`** - Validates coverage_rates is list of floats in (0, 1)
+18. **`check_coverage_rates_validation`** - Ensures invalid coverage_rates (≤0, >1) raise ValueError in fit() and predict_interval()
 
 **Reduction Forecaster Checks (2 functions)**:
-16. **`check_estimator_parameter`** - Validates estimator is sklearn BaseEstimator
-17. **`check_reduction_strategy`** - Validates reduction_strategy parameter exists
+19. **`check_estimator_parameter`** - Validates estimator is sklearn BaseEstimator
+20. **`check_reduction_strategy`** - Validates reduction_strategy parameter exists
 
 **Panel Data Forecaster Checks (3 functions)**:
-18. **`check_panel_data`** - Validates panel_group_names=None predicts all groups in panel data
-19. **`check_panel_single_group`** - Validates panel_group_names filters to specified list of group prefixes
-20. **`check_panel_invalid_group_raises`** - Validates ValueError raised for invalid panel_group_names (list containing invalid groups)
+21. **`check_panel_data`** - Validates panel_group_names=None predicts all groups in panel data
+22. **`check_panel_single_group`** - Validates panel_group_names filters to specified list of group prefixes
+23. **`check_panel_invalid_group_raises`** - Validates ValueError raised for invalid panel_group_names (list containing invalid groups)
 
 **Composition Class Checks (8 functions)**:
-21. **`check_column_forecaster_column_selection`** - Validates column selectors (str, list, slice, callable) work correctly for target columns
-22. **`check_column_forecaster_remainder_drop`** - Tests remainder='drop' excludes unspecified columns (not yet implemented)
-23. **`check_column_forecaster_remainder_passthrough`** - Tests remainder='passthrough' uses default forecaster (not yet implemented)
-24. **`check_column_forecaster_remainder_custom`** - Tests custom remainder forecaster (not yet implemented)
-25. **`check_column_forecaster_parallel_execution`** - Validates n_jobs parameter works correctly
-26. **`check_column_forecaster_column_order_preserved`** - Ensures prediction columns match input target column order
-27. **`check_target_transformed_forecaster_inverse`** - Tests inverse transformation round-trip (not yet implemented)
-28. **`check_target_transformed_forecaster_check_inverse_warning`** - Validates check_inverse warns when transformation isn't reversible (not yet implemented)
+24. **`check_column_forecaster_column_selection`** - Validates column selectors (str, list, slice, callable) work correctly for target columns
+25. **`check_column_forecaster_remainder_drop`** - Tests remainder='drop' excludes unspecified columns (not yet implemented)
+26. **`check_column_forecaster_remainder_passthrough`** - Tests remainder='passthrough' uses default forecaster (not yet implemented)
+27. **`check_column_forecaster_remainder_custom`** - Tests custom remainder forecaster (not yet implemented)
+28. **`check_column_forecaster_parallel_execution`** - Validates n_jobs parameter works correctly
+29. **`check_column_forecaster_column_order_preserved`** - Ensures prediction columns match input target column order
+30. **`check_target_transformed_forecaster_inverse`** - Tests inverse transformation round-trip (not yet implemented)
+31. **`check_target_transformed_forecaster_check_inverse_warning`** - Validates check_inverse warns when transformation isn't reversible (not yet implemented)
 
 ### 2. Check Generator (`tests/estimator_checks.py`)
 
@@ -515,6 +520,39 @@ This prevents false failures when comparing meta-estimator instances like Decomp
 - Aligning predictions with actual observations for scoring
 - Rolling window evaluation patterns
 
+### Forecasting Horizon and Coverage Rates Validation
+
+**Purpose**: Ensure all forecasters validate parameters at fit/predict time
+
+**Checks**:
+- **`check_forecasting_horizon_validation`**: Tests that `forecasting_horizon < 1` raises ValueError during fit()
+  - Validates error message mentions "forecasting_horizon" or "positive"
+  - Tests both `forecasting_horizon=0` and `forecasting_horizon=-1`
+  
+- **`check_coverage_rates_validation`**: Tests that invalid coverage_rates raise ValueError during fit() and predict_interval()
+  - Validates `coverage_rates=[0.0]` (boundary - invalid)
+  - Validates `coverage_rates=[1.5]` (above 1 - invalid)
+  - Validates `coverage_rates=[-0.5]` (negative - invalid)
+  - Tests both fit() and predict_interval() enforce validation
+
+**Implementation Details**:
+- Base classes (`BasePointForecaster`, `BaseIntervalForecaster`) implement `_validate_fit_params()` and `_validate_predict_params()`
+- `_validate_predict_params()` resolves None defaults then delegates to `_validate_fit_params()` for DRY
+- All concrete forecasters call validation at start of fit() method
+- predict() and update_predict() methods in base classes automatically call `_validate_predict_params()`
+
+**Test Coverage** (`tests/test_parameter_validation.py`):
+- `test_point_forecaster_horizon_validation`: Tests PointReductionForecaster and SeasonalNaive
+- `test_interval_forecaster_horizon_validation`: Tests IntervalReductionForecaster and SplitConformalForecaster  
+- `test_interval_forecaster_coverage_rates_validation`: Tests IntervalReductionForecaster
+- `test_predict_validates_horizon`: Verifies predict() enforces validation
+- `test_predict_interval_validates_coverage_rates`: Verifies predict_interval() enforces validation
+
+**Validation Rules**:
+- `forecasting_horizon`: Must be integer `>= 1`
+- `coverage_rates`: List of floats, each in `(0, 1]` (exclusive 0, inclusive 1)
+  - Default: `[0.95]` for interval forecasters
+
 ### Reduction Strategy Validation
 
 **Purpose**: Check reduction forecasters properly handle sklearn estimators
@@ -672,5 +710,5 @@ def test_point_reduction_panel_checks(forecaster, tags, expected_failures, panel
 
 - sklearn source: `sklearn/utils/estimator_checks.py` (regressor/classifier checks)
 - sklearn patterns: `sklearn/tests/test_common.py` (parametrize_with_checks)
-- Transformer testing: `.github/copilot_plans/transformer-testing-infrastructure.md`
+- Transformer testing: `.github/copilot/transformer-testing-infrastructure.md`
 - yohou architecture: `.github/copilot-instructions.md` (base classes, data flow)

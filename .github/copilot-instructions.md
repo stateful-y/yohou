@@ -10,13 +10,13 @@ Yohou is a scikit-learn-compatible time series forecasting framework built on **
 
 | Guide | Purpose | Size |
 |-------|---------|------|
-| [Architecture & Core Concepts](.github/copilot_plans/architecture-and-core-concepts.md) | Class hierarchy, data flow, panel data, metadata routing | 560 lines |
-| [Creating New Forecasters](.github/copilot_plans/creating-new-forecasters.md) | Step-by-step guide with real examples | 596 lines |
-| [Developer Workflow & Tools](.github/copilot_plans/developer-workflow-and-tools.md) | Commands, testing, debugging, CI/CD | 602 lines |
-| [Forecaster Testing Infrastructure](.github/copilot_plans/forecaster-testing-infrastructure.md) | Comprehensive testing guide with check functions | 673 lines |
-| [Transformer Testing Infrastructure](.github/copilot_plans/transformer-testing-infrastructure.md) | Testing patterns for transformers | 391 lines |
-| [sklearn Metadata Routing Implementation](.github/copilot_plans/sklearn-metadata-routing-implementation.md) | Complete metadata routing infrastructure | 814 lines |
-| [Monthly Interval Support](.github/copilot_plans/monthly-interval-support.md) | Variable-length time intervals (monthly, quarterly, yearly) | 715 lines |
+| [Architecture & Core Concepts](.github/copilot/architecture-and-core-concepts.md) | Class hierarchy, data flow, panel data, metadata routing | 560 lines |
+| [Creating New Forecasters](.github/copilot/creating-new-forecasters.md) | Step-by-step guide with real examples | 596 lines |
+| [Developer Workflow & Tools](.github/copilot/developer-workflow-and-tools.md) | Commands, testing, debugging, CI/CD | 602 lines |
+| [Forecaster Testing Infrastructure](.github/copilot/forecaster-testing-infrastructure.md) | Comprehensive testing guide with check functions | 673 lines |
+| [Transformer Testing Infrastructure](.github/copilot/transformer-testing-infrastructure.md) | Testing patterns for transformers | 391 lines |
+| [sklearn Metadata Routing Implementation](.github/copilot/sklearn-metadata-routing-implementation.md) | Complete metadata routing infrastructure | 814 lines |
+| [Monthly Interval Support](.github/copilot/monthly-interval-support.md) | Variable-length time intervals (monthly, quarterly, yearly) | 715 lines |
 
 ---
 
@@ -30,10 +30,11 @@ Yohou is a scikit-learn-compatible time series forecasting framework built on **
 from sklearn import set_config
 set_config(enable_metadata_routing=True)  # Global state change
 
-# Registers custom composite methods
-SIMPLE_METHODS.extend(["update_transform", "update_predict"])
+# Registers custom composite methods for metadata routing
+SIMPLE_METHODS.extend(["update_transform", "update_predict", "predict_interval", "update_predict_interval"])
 COMPOSITE_METHODS["update_transform"] = ["update", "transform"]
 COMPOSITE_METHODS["update_predict"] = ["update", "predict"]
+COMPOSITE_METHODS["update_predict_interval"] = ["update", "predict_interval"]
 ```
 
 ### Data Flow
@@ -46,7 +47,7 @@ All data uses **polars DataFrames** with mandatory `"time"` column (datetime typ
 - Transformers: Input/output have `"time"` column
 - Forecasters: Predictions have `"observed_time"` and `"time"` columns
 
-**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot_plans/architecture-and-core-concepts.md)
+**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot/architecture-and-core-concepts.md)
 
 ### Class Hierarchy (Simplified)
 
@@ -63,7 +64,7 @@ All data uses **polars DataFrames** with mandatory `"time"` column (datetime typ
 - **Decomposer**: Sequential decomposition (trend + season + residual)
 - **ColumnForecaster**: Different forecasters per column (parallel execution)
 
-**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot_plans/architecture-and-core-concepts.md)
+**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot/architecture-and-core-concepts.md)
 
 ### Time Series Methods
 
@@ -75,10 +76,14 @@ Standard sklearn lifecycle extended:
   - Updates internal memory buffers (`_X_observed`, `_y_observed`, etc.)
   - Does NOT refit models - use for streaming/online scenarios
   - `panel_group_names`: Optional list of group prefixes to update (for panel data)
-- `predict(forecasting_horizon, X, panel_group_names)`: Generate forecasts
+- `predict(forecasting_horizon, X, panel_group_names)`: Generate point forecasts
   - Can predict different horizon than fit (applies model recursively)
   - `panel_group_names`: Optional list of group prefixes to predict (for panel data)
+- `predict_interval(forecasting_horizon, X, coverage_rates, panel_group_names)`: Generate interval forecasts
+  - Available on interval forecasters (BaseIntervalForecaster subclasses)
+  - `coverage_rates`: List of coverage levels (e.g., [0.9, 0.95] for 90% and 95% intervals)
 - `update_predict(y, X, panel_group_names)`: Combined update + predict (atomic operation, common in rolling evaluation)
+- `update_predict_interval(y, X, coverage_rates, panel_group_names)`: Combined update + predict_interval for intervals
 - `reset(y, X, panel_group_names)`: Reset memory/observation horizon to last `observation_horizon` rows
   - Used to "rewind" forecaster state without refitting
   - `panel_group_names`: Optional list of group prefixes to reset (for panel data)
@@ -102,13 +107,13 @@ y = pl.DataFrame({
 - `inspect_locality(df)`: Returns `(global_columns, panel_groups_dict)`
 - `get_group_df(df, group_name, schema)`: Extracts group with unprefixed columns
 
-**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot_plans/architecture-and-core-concepts.md) - Panel Data section
+**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot/architecture-and-core-concepts.md) - Panel Data section
 
 ### Metrics & Scoring
 
 All metrics extend `BaseScorer` with `prediction_types` property and `score(y_truth, y_pred)` method.
 
-**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot_plans/architecture-and-core-concepts.md) - Metrics section
+**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot/architecture-and-core-concepts.md) - Metrics section
 
 ### Hyperparameter Search
 
@@ -128,19 +133,19 @@ search.fit(y, X, forecasting_horizon=3)
 y_pred = search.predict(forecasting_horizon=3)
 ```
 
-**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot_plans/architecture-and-core-concepts.md) - Hyperparameter Search section
+**📖 Full Details**: See [Architecture & Core Concepts](.github/copilot/architecture-and-core-concepts.md) - Hyperparameter Search section
 
 ### Metadata Routing
 
 **Critical**: sklearn metadata routing enabled automatically on import. All methods accept `**params`.
 
-**📖 Full Details**: [sklearn Metadata Routing Implementation](.github/copilot_plans/sklearn-metadata-routing-implementation.md)
+**📖 Full Details**: [sklearn Metadata Routing Implementation](.github/copilot/sklearn-metadata-routing-implementation.md)
 
 ---
 
 ## Developer Workflow
 
-**📖 Complete Guide**: [Developer Workflow & Tools](.github/copilot_plans/developer-workflow-and-tools.md)
+**📖 Complete Guide**: [Developer Workflow & Tools](.github/copilot/developer-workflow-and-tools.md)
 
 ### Quick Commands
 
@@ -245,7 +250,7 @@ uv run python examples/air_passengers_tutorial.py
 
 ## Creating New Forecasters
 
-**📖 Complete Guide**: [Creating New Forecasters](.github/copilot_plans/creating-new-forecasters.md)
+**📖 Complete Guide**: [Creating New Forecasters](.github/copilot/creating-new-forecasters.md)
 
 ### Quick Checklist
 
@@ -294,8 +299,8 @@ class MyForecaster(BasePointForecaster):
 ## Testing Patterns
 
 **📖 Complete Guides**:
-- [Forecaster Testing Infrastructure](.github/copilot_plans/forecaster-testing-infrastructure.md)
-- [Transformer Testing Infrastructure](.github/copilot_plans/transformer-testing-infrastructure.md)
+- [Forecaster Testing Infrastructure](.github/copilot/forecaster-testing-infrastructure.md)
+- [Transformer Testing Infrastructure](.github/copilot/transformer-testing-infrastructure.md)
 
 ### Systematic Check Functions
 
@@ -436,6 +441,53 @@ if len(X) < self.observation_horizon:
 - `.github/workflows/`: CI/CD workflows
 
 **Documentation**:
-- `.github/copilot_plans/`: Detailed implementation plans and guides
+- `.github/copilot/`: Detailed implementation plans and guides
 - `docs/`: MkDocs documentation source
 - `examples/`: Marimo notebooks (reactive examples)
+---
+
+## CI/CD Workflows
+
+**Critical**: All workflows use `uv` for dependency management and run via `nox` sessions.
+
+### Automated Checks on Push/PR
+
+**Lint Workflow** (`.github/workflows/lint.yml`):
+- Runs: `nox -s fix` (ruff, ty, interrogate)
+- Python: 3.12 on ubuntu-latest
+- Triggers: Push to main, all PRs
+- Concurrency: Cancels previous runs on new push
+
+**Test Workflow** (`.github/workflows/tests-os-coverage.yml`):
+- Runs: `nox -s test` with full coverage
+- Matrix: Python 3.12 on [ubuntu, macos, windows]
+- Coverage: Uploaded to Codecov (optional)
+- Triggers: Push to main, all PRs
+- Uses `covdefaults` for coverage config
+
+**Release Workflow** (`.github/workflows/release.yml`):
+- Trigger: Git tags matching `v*.*.*` pattern
+- Steps:
+  1. Build: `uv build --sdist --wheel`
+  2. Validation: `uvx twine check dist/*`
+  3. PyPI publish: Trusted publishing (OIDC, no tokens)
+- Environment: `pypi` (requires repository secrets)
+
+### Local Pre-commit
+
+**Before committing**:
+```bash
+uvx nox -s fix  # Runs all quality checks (same as CI)
+```
+
+Pre-commit hooks (`.pre-commit-config.yaml`):
+- `ruff check --fix`: Linting
+- `ruff format`: Code formatting
+- `ty check src`: Type checking (NOT mypy)
+- `interrogate`: Docstring coverage (100% required)
+
+**Critical Patterns**:
+- All CI uses `uv python install --python-preference only-managed` for reproducibility
+- Nox sessions use `uv sync` with dependency groups
+- Windows requires special PATH setup for `.local/bin`
+- Coverage combines parallel runs via `coverage combine`

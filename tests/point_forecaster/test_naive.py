@@ -1,6 +1,4 @@
-import sys
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -10,10 +8,7 @@ from sklearn.base import clone
 from sklearn.model_selection import train_test_split
 
 from yohou.point_forecaster import SeasonalNaive
-
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_forecaster_checks
+from yohou.testing import _yield_yohou_forecaster_checks
 
 length = 22
 

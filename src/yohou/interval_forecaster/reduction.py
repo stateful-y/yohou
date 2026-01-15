@@ -139,14 +139,16 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         self
 
         """
+        forecasting_horizon, self.fit_coverage_rates_ = self._validate_fit_params(
+            forecasting_horizon, coverage_rates
+        )
+
         y_t, X_t = BaseIntervalForecaster._pre_fit(
             self,
             y=y,
             X=X,
             forecasting_horizon=forecasting_horizon,
         )
-
-        self.fit_coverage_rates_ = coverage_rates if coverage_rates is not None else [0.95]
 
         estimator_param_names = list(self.estimator.get_params(deep=True))
         quantile_param_names = [

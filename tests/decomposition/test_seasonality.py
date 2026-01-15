@@ -1,8 +1,6 @@
 """Tests for PatternSeasonalityForecaster."""
 
-import sys
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -14,8 +12,7 @@ from sklearn.pipeline import Pipeline
 from yohou.decomposition import FourierSeasonalityForecaster, PatternSeasonalityForecaster
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_forecaster_checks
+from yohou.testing import _yield_yohou_forecaster_checks
 
 
 @pytest.mark.parametrize(

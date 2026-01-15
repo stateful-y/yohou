@@ -88,8 +88,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self
 
         """
+        forecasting_horizon, self.fit_coverage_rates_ = self._validate_fit_params(
+            forecasting_horizon, coverage_rates
+        )
 
-        self.fit_coverage_rates_ = coverage_rates if coverage_rates is not None else [0.95]
+        # TODO: No _pre_fit call?
+        self.fit_forecasting_horizon_ = forecasting_horizon
 
         y_train, y_calib, X_train, X_calib = train_test_split(
             y, X, test_size=self.calibration_size, shuffle=False
@@ -249,11 +253,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             check_continuity=False,
         )
 
-        if forecasting_horizon is None:
-            forecasting_horizon = self.fit_forecasting_horizon_
-
-        if coverage_rates is None:
-            coverage_rates = self.fit_coverage_rates_
+        forecasting_horizon, coverage_rates = self._validate_predict_params(
+            forecasting_horizon, coverage_rates
+        )
 
         y_pred = self.point_forecaster_.predict(X=X).drop("observed_time")
 
