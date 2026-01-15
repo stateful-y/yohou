@@ -13,11 +13,10 @@ from sklearn.utils.metadata_routing import (
     process_routing,
 )
 from sklearn.utils.metaestimators import _BaseComposition
-from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseTransformer, Tags
 from yohou.point_forecaster.base import BasePointForecaster
-from yohou.utils import add_interval, cast, dict_to_panel, get_group_df
+from yohou.utils import add_interval, cast, dict_to_panel, get_group_df, validate_data
 
 
 class Decomposer(BasePointForecaster, _BaseComposition):
@@ -34,15 +33,14 @@ class Decomposer(BasePointForecaster, _BaseComposition):
     ----------
     forecasters : list of (str, BaseForecaster) tuples
         List of (name, forecaster) tuples specifying the forecaster objects
-        to be applied sequentially. All forecasters must have "point" in
-        their prediction_types.
+        to be applied sequentially. All forecasters must be point forecasters.
 
         Typical ordering: trend → seasonality → residual
 
         name : str
             Unique name for the forecaster component.
         forecaster : BaseForecaster
-            Forecaster object with "point" in prediction_types.
+            Point forecaster object.
 
     store_residuals : bool, default=False
         If True, stores residuals after each component in `self.residuals_`
@@ -72,8 +70,8 @@ class Decomposer(BasePointForecaster, _BaseComposition):
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.decomposition import Decomposer
-    >>> from yohou.point_forecaster import PolynomialTrendForecaster, SeasonalNaive
+    >>> from yohou.decomposition import Decomposer, PolynomialTrendForecaster
+    >>> from yohou.point_forecaster import SeasonalNaive
     >>> from yohou.preprocessing import LogTransform
     >>>
     >>> # Create example time series
@@ -85,7 +83,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
     ... )
     >>> y = pl.DataFrame({
     ...     "time": time,
-    ...     "value": range(len(time))
+    ...     "value": range(1, len(time) + 1)
     ... })
     >>>
     >>> # Additive decomposition: trend + seasonality
@@ -93,7 +91,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
     ...     ("trend", PolynomialTrendForecaster(degree=1)),
     ...     ("seasonality", SeasonalNaive(seasonality=7))
     ... ])
-    >>> forecaster.fit(y, forecasting_horizon=7)
+    >>> forecaster.fit(y, forecasting_horizon=7)  # doctest: +ELLIPSIS
     Decomposer(...)
     >>> y_pred = forecaster.predict(forecasting_horizon=7)
     >>>
@@ -105,7 +103,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
     ...     ],
     ...     target_transformer=LogTransform()
     ... )
-    >>> forecaster_mult.fit(y, forecasting_horizon=7)
+    >>> forecaster_mult.fit(y, forecasting_horizon=7)  # doctest: +ELLIPSIS
     Decomposer(...)
     >>>
     >>> # Inspect residuals
@@ -116,7 +114,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
     ...     ],
     ...     store_residuals=True
     ... )
-    >>> forecaster_inspect.fit(y, forecasting_horizon=7)
+    >>> forecaster_inspect.fit(y, forecasting_horizon=7)  # doctest: +ELLIPSIS
     Decomposer(...)
     >>> trend_residuals = forecaster_inspect.residuals_["trend"]
 
@@ -149,6 +147,52 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         )
         self.forecasters = forecasters
         self.store_residuals = store_residuals
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+
+        # Check stateful from forecasters
+        stateful = False
+        for _, f in self.forecasters:
+            f_tags = f.__sklearn_tags__()
+            if f_tags.forecaster_tags and f_tags.forecaster_tags.stateful:
+                stateful = True
+                break
+
+        # Also check target transformer
+        if not stateful:
+            if self.target_transformer is not None:
+                stateful = self.target_transformer.__sklearn_tags__().transformer_tags.stateful
+
+        tags.forecaster_tags.stateful = stateful
+
+        # Determine forecaster_type from nested forecasters' tags
+        if self.forecasters:
+            _, last_forecaster = self.forecasters[-1]
+            last_tags = last_forecaster.__sklearn_tags__()
+            tags.forecaster_tags.forecaster_type = "point"
+            if last_tags.forecaster_tags and last_tags.forecaster_tags.forecaster_type == "both":
+                tags.forecaster_tags.forecaster_type = "both"
+
+        # Aggregate other tags
+        tags.forecaster_tags.uses_reduction = any(
+            getattr(f.__sklearn_tags__().forecaster_tags, "uses_reduction", False)
+            for _, f in self.forecasters
+        )
+        tags.forecaster_tags.supports_panel_data = all(
+            getattr(f.__sklearn_tags__().forecaster_tags, "supports_panel_data", True)
+            for _, f in self.forecasters
+        )
+
+        return tags
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -227,7 +271,8 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             forecaster_clone_pred = deepcopy(forecaster_clone)
             forecaster_observation_horizon = forecaster_clone_pred.observation_horizon
             if forecaster_clone_pred.feature_transformer is not None:
-                # If there is a feature transformer, we need enough data to reset it and update_transform for the last point
+                # If there is a feature transformer, we need enough data to
+                # reset it and update_transform for the last point
                 feature_observation_horizon = (
                     forecaster_clone_pred.feature_transformer_.observation_horizon
                 ) + 1
@@ -317,12 +362,21 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Predictions with columns: "observed_time", "time", <target_columns>
 
         """
-        _raise_for_params(params, self, "predict")
-        check_is_fitted(self, "forecasters_")
+        _, X, panel_group_names = validate_data(
+            self,
+            y=None,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=False,
+        )
 
         # Use fit horizon if not specified
         if forecasting_horizon is None:
             forecasting_horizon = self.fit_forecasting_horizon_
+
+        # Validate params before routing
+        _raise_for_params(params, self, "predict")
 
         # Process metadata routing
         routed_params = process_routing(self, "predict", **params)
@@ -463,9 +517,15 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Updated decomposer.
 
         """
-        check_is_fitted(self, "forecasters_")
+        y, X, panel_group_names = validate_data(
+            self,
+            y=y,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=True,
+        )
 
-        # TODO: Use base class func valid or panel data
         # Update transformers first
         if self.target_transformer_ is not None:
             self.target_transformer_.update(y)
@@ -522,7 +582,7 @@ class Decomposer(BasePointForecaster, _BaseComposition):
         X: pl.DataFrame | None = None,
         panel_group_names: list[str] | None = None,
     ) -> "Decomposer":
-        """Reset all component forecasters to new observation window.
+        """Reset all component forecasters to a new observation horizon.
 
         Parameters
         ----------
@@ -540,7 +600,14 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Reset decomposer.
 
         """
-        check_is_fitted(self, "forecasters_")
+        y, X, panel_group_names = validate_data(
+            self,
+            y=y,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=False,
+        )
 
         # Reset transformers first
         if self.target_transformer_ is not None:
@@ -565,32 +632,6 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             self._X_observed = X_t
 
         return self
-
-    @property
-    def prediction_types(self) -> set[str]:
-        """Return union of prediction types from all forecasters.
-
-        Returns
-        -------
-        set[str]
-            Set of prediction types supported. Returns intersection of
-            prediction types from all fitted forecasters, defaulting to
-            {"point"} if not fitted.
-
-        """
-        if not hasattr(self, "forecasters_"):
-            return {"point"}
-
-        # Return the intersection of prediction types from all forecasters
-        # since all forecasters need to support a prediction type for Decomposer to support it
-        if not self.forecasters_:
-            return {"point"}
-
-        types = set(self.forecasters_[0][1].prediction_types)
-        for _, forecaster in self.forecasters_[1:]:
-            types = types.intersection(forecaster.prediction_types)
-
-        return types
 
     def get_metadata_routing(self):
         """Get metadata routing for this estimator.

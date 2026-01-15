@@ -7,6 +7,8 @@ from sklearn.utils.validation import _check_feature_names_in
 
 from yohou.base import BaseTransformer
 from yohou.utils.tabularization import tabularize
+from yohou.utils.tags import Tags
+from yohou.utils.validation import validate_data
 
 
 class LagTransformer(BaseTransformer):
@@ -26,6 +28,20 @@ class LagTransformer(BaseTransformer):
 
     def __init__(self, lag: StrictInt | list[StrictInt] = 1):
         self.lag = lag
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+        # LagTransformer always sets _observation_horizon in fit(), so it's always stateful
+        tags.transformer_tags.stateful = True
+        return tags
 
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "LagTransformer":
         """Fits the transformer and returns it.
@@ -66,6 +82,8 @@ class LagTransformer(BaseTransformer):
             Transformed time series.
 
         """
+        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=False)
+
         X_t = tabularize(X, self.lags_)
 
         return X_t

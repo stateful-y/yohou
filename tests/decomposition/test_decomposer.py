@@ -18,7 +18,7 @@ from estimator_checks import _yield_yohou_forecaster_checks
 
 
 @pytest.mark.parametrize(
-    "forecaster,tags,expected_failures",
+    "forecaster,expected_failures",
     [
         (
             Decomposer(
@@ -27,7 +27,6 @@ from estimator_checks import _yield_yohou_forecaster_checks
                     ("seasonality", SeasonalNaive(seasonality=7)),
                 ]
             ),
-            {"forecaster_type": "point", "is_meta_forecaster": True},
             [
                 "check_update_extends_observations",
                 "check_reset_replaces_observations",
@@ -40,7 +39,6 @@ from estimator_checks import _yield_yohou_forecaster_checks
                     ("seasonality", PatternSeasonalityForecaster(seasonality=12, method="average")),
                 ]
             ),
-            {"forecaster_type": "point", "is_meta_forecaster": True},
             [
                 "check_update_extends_observations",
                 "check_reset_replaces_observations",
@@ -54,7 +52,6 @@ from estimator_checks import _yield_yohou_forecaster_checks
                 ],
                 target_transformer=LogTransform(),
             ),
-            {"forecaster_type": "point", "is_meta_forecaster": True, "uses_transformers": True},
             [
                 "check_update_extends_observations",
                 "check_reset_replaces_observations",
@@ -66,7 +63,6 @@ from estimator_checks import _yield_yohou_forecaster_checks
                     ("trend", PolynomialTrendForecaster(degree=1)),
                 ]
             ),
-            {"forecaster_type": "point", "is_meta_forecaster": True},
             [
                 "check_update_extends_observations",
                 "check_reset_replaces_observations",
@@ -74,7 +70,7 @@ from estimator_checks import _yield_yohou_forecaster_checks
         ),
     ],
 )
-def test_decomposer_checks(forecaster, tags, expected_failures, y_X_factory):
+def test_decomposer_checks(forecaster, expected_failures, y_X_factory):
     """Run systematic checks on Decomposer meta-forecaster."""
     # Generate data with sufficient length for seasonality
     y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
@@ -97,7 +93,6 @@ def test_decomposer_checks(forecaster, tags, expected_failures, y_X_factory):
         X_train,
         y_test,
         X_test,
-        tags=tags,
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")
@@ -426,7 +421,7 @@ def test_decomposer_with_exogenous_features():
 
 
 def test_decomposer_prediction_types():
-    """Test that Decomposer has correct prediction_types."""
+    """Test that Decomposer has correct forecaster_type in tags."""
     forecaster = Decomposer(
         [
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -434,4 +429,5 @@ def test_decomposer_prediction_types():
         ]
     )
 
-    assert forecaster.prediction_types == {"point"}
+    tags = forecaster.__sklearn_tags__()
+    assert tags.forecaster_tags.forecaster_type == "point"

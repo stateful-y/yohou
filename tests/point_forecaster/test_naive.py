@@ -46,21 +46,19 @@ X = pl.DataFrame(
 
 
 @pytest.mark.parametrize(
-    "forecaster,tags,expected_failures",
+    "forecaster,expected_failures",
     [
         (
             SeasonalNaive(seasonality=1),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             SeasonalNaive(seasonality=7),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
     ],
 )
-def test_seasonal_naive_checks(forecaster, tags, expected_failures, y_X_factory):
+def test_seasonal_naive_checks(forecaster, expected_failures, y_X_factory):
     """Run systematic checks on SeasonalNaive forecaster."""
     # Generate data
     y, X = y_X_factory(length=200, seed=42)
@@ -79,7 +77,6 @@ def test_seasonal_naive_checks(forecaster, tags, expected_failures, y_X_factory)
         X_train,
         y_test,
         X_test,
-        tags=tags,
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

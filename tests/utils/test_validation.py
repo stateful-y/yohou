@@ -10,6 +10,7 @@ import pytest
 from yohou.utils.validation import (
     add_interval,
     check_interval_consistency,
+    check_panel_group_names,
     check_schema,
     interval_to_timedelta,
     parse_interval,
@@ -640,3 +641,238 @@ def test_check_schema_panel_preserves_data():
     assert result["time"].to_list() == [10, 20, 30]
     assert result["sales__store_1"].to_list() == [100, 110, 120]
     assert result["sales__store_2"].to_list() == [250, 260, 270]
+
+
+def test_check_time_column_valid():
+    """Test check_time_column with valid DataFrame."""
+    from yohou.utils.validation import check_time_column
+
+    df = pl.DataFrame(
+        {
+            "time": pl.datetime_range(
+                datetime(2023, 1, 1), datetime(2023, 1, 10), "1d", eager=True
+            ),
+            "value": range(10),
+        }
+    )
+    # Should not raise
+    check_time_column(df)
+
+
+def test_check_time_column_missing():
+    """Test check_time_column raises error when time column is missing."""
+    from yohou.utils.validation import check_time_column
+
+    df = pl.DataFrame({"value": [1, 2, 3]})
+
+    with pytest.raises(ValueError, match="DataFrame must contain a 'time' column"):
+        check_time_column(df)
+
+
+def test_check_time_column_wrong_type():
+    """Test check_time_column raises error when time column is not Datetime."""
+    from yohou.utils.validation import check_time_column
+
+    # String type
+    df = pl.DataFrame({"time": ["2023-01-01", "2023-01-02"], "value": [1, 2]})
+
+    with pytest.raises(ValueError, match="'time' column must be Datetime type, got String"):
+        check_time_column(df)
+
+
+def test_check_time_column_int_type():
+    """Test check_time_column raises error when time column is Int64."""
+    from yohou.utils.validation import check_time_column
+
+    df = pl.DataFrame({"time": [1, 2, 3], "value": [10, 20, 30]})
+
+    with pytest.raises(ValueError, match="'time' column must be Datetime type, got Int64"):
+        check_time_column(df)
+
+
+def test_check_time_column_custom_name():
+    """Test check_time_column with custom DataFrame name in error message."""
+    from yohou.utils.validation import check_time_column
+
+    df = pl.DataFrame({"value": [1, 2, 3]})
+
+    with pytest.raises(ValueError, match="X must contain a 'time' column"):
+        check_time_column(df, df_name="X")
+
+
+# ===========================================================================================
+# Tests for check_panel_group_names
+# ===========================================================================================
+
+
+def test_check_panel_group_names_global_data_no_request():
+    """Test check_panel_group_names with global data and no requested groups."""
+    result = check_panel_group_names(fitted_panel_groups=None, requested_panel_groups=None)
+
+    assert result is None
+
+
+def test_check_panel_group_names_global_data_with_request():
+    """Test check_panel_group_names raises error when requesting groups on global data."""
+    with pytest.raises(
+        ValueError,
+        match="The forecaster was fitted on global data, but `panel_group_names` were provided",
+    ):
+        check_panel_group_names(fitted_panel_groups=None, requested_panel_groups=["sales"])
+
+
+def test_check_panel_group_names_panel_data_no_request():
+    """Test check_panel_group_names returns all fitted groups when none requested."""
+    fitted = ["sales", "inventory"]
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=None)
+
+    assert result == fitted
+    assert result is fitted  # Should return the same object
+
+
+def test_check_panel_group_names_panel_data_single_request():
+    """Test check_panel_group_names validates single requested group."""
+    fitted = ["sales", "inventory", "revenue"]
+    requested = ["sales"]
+
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+    assert result == requested
+
+
+def test_check_panel_group_names_panel_data_multiple_requests():
+    """Test check_panel_group_names validates multiple requested groups."""
+    fitted = ["sales", "inventory", "revenue", "profit"]
+    requested = ["sales", "revenue"]
+
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+    assert result == requested
+
+
+def test_check_panel_group_names_panel_data_all_requests():
+    """Test check_panel_group_names when requesting all fitted groups explicitly."""
+    fitted = ["sales", "inventory"]
+    requested = ["sales", "inventory"]
+
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+    assert result == requested
+
+
+def test_check_panel_group_names_missing_single_group():
+    """Test check_panel_group_names raises error for single missing group."""
+    fitted = ["sales", "inventory"]
+    requested = ["revenue"]
+
+    with pytest.raises(
+        ValueError,
+        match=r"Panel group\(s\) \['revenue'\] not found in fitted forecaster\. "
+        r"Available groups: \['inventory', 'sales'\]\.",
+    ):
+        check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+
+def test_check_panel_group_names_missing_multiple_groups():
+    """Test check_panel_group_names raises error for multiple missing groups."""
+    fitted = ["sales", "inventory"]
+    requested = ["revenue", "profit", "margin"]
+
+    with pytest.raises(
+        ValueError,
+        match=r"Panel group\(s\) \['margin', 'profit', 'revenue'\] not found in fitted "
+        r"forecaster\. Available groups: \['inventory', 'sales'\]\.",
+    ):
+        check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+
+def test_check_panel_group_names_partial_missing():
+    """Test check_panel_group_names raises error when some groups are valid but others missing."""
+    fitted = ["sales", "inventory", "revenue"]
+    requested = ["sales", "profit", "inventory"]  # profit is missing
+
+    with pytest.raises(
+        ValueError,
+        match=r"Panel group\(s\) \['profit'\] not found in fitted forecaster\. "
+        r"Available groups: \['inventory', 'revenue', 'sales'\]\.",
+    ):
+        check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+
+def test_check_panel_group_names_empty_fitted_list():
+    """Test check_panel_group_names with empty fitted groups list."""
+    fitted = []
+    requested = None
+
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+    assert result == []
+
+
+def test_check_panel_group_names_empty_request_list():
+    """Test check_panel_group_names with empty requested groups list."""
+    fitted = ["sales", "inventory"]
+    requested = []
+
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+    # Empty request is valid - returns empty list
+    assert result == []
+
+
+def test_check_panel_group_names_order_preserved():
+    """Test check_panel_group_names preserves order of requested groups."""
+    fitted = ["a", "b", "c", "d"]
+    requested = ["d", "a", "c"]  # Non-alphabetical order
+
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+    # Should preserve the order in requested_panel_groups
+    assert result == ["d", "a", "c"]
+
+
+def test_check_panel_group_names_duplicate_requests():
+    """Test check_panel_group_names with duplicate requested groups."""
+    fitted = ["sales", "inventory"]
+    requested = ["sales", "sales", "inventory"]
+
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+    # Should preserve duplicates as provided (validation only checks existence)
+    assert result == ["sales", "sales", "inventory"]
+
+
+def test_check_panel_group_names_case_sensitive():
+    """Test check_panel_group_names is case-sensitive."""
+    fitted = ["sales", "inventory"]
+    requested = ["Sales"]  # Different case
+
+    with pytest.raises(
+        ValueError,
+        match=r"Panel group\(s\) \['Sales'\] not found in fitted forecaster\. "
+        r"Available groups: \['inventory', 'sales'\]\.",
+    ):
+        check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+
+def test_check_panel_group_names_single_fitted_group():
+    """Test check_panel_group_names with only one fitted group."""
+    fitted = ["sales"]
+    requested = ["sales"]
+
+    result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+    assert result == ["sales"]
+
+
+def test_check_panel_group_names_single_fitted_group_wrong_request():
+    """Test check_panel_group_names with one fitted group but different request."""
+    fitted = ["sales"]
+    requested = ["inventory"]
+
+    with pytest.raises(
+        ValueError,
+        match=r"Panel group\(s\) \['inventory'\] not found in fitted forecaster\. "
+        r"Available groups: \['sales'\]\.",
+    ):
+        check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)

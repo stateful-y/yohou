@@ -50,7 +50,7 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.point_forecaster import PolynomialTrendForecaster
+    >>> from yohou.decomposition import PolynomialTrendForecaster
     >>>
     >>> # Create time series with linear trend
     >>> y = pl.DataFrame({

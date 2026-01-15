@@ -22,7 +22,6 @@ from sklearn.base import (
     _fit_context,
     clone,
 )
-from sklearn.exceptions import NotFittedError
 from sklearn.metrics._scorer import (
     _MultimetricScorer,
 )
@@ -50,6 +49,7 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseForecaster
 from yohou.metrics.base import BaseScorer
+from yohou.utils.validation import validate_data
 
 from .optuna import Sampler, Storage
 from .split import check_cv
@@ -68,13 +68,13 @@ def _search_forecaster_has(attr):
     the best_forecaster_ supports the required functionality.
 
     For special attributes like "point" or "interval", checks if the prediction type
-    is supported. Otherwise, checks if the attribute exists on best_forecaster_.
+    is supported via tags. Otherwise, checks if the attribute exists on best_forecaster_.
 
     Parameters
     ----------
     attr : str
         The name of the attribute or prediction type to check.
-        Special values: "point", "interval" check prediction_types.
+        Special values: "point", "interval" check forecaster_type in tags.
         Other values check hasattr(best_forecaster_, attr).
 
     Returns
@@ -85,14 +85,14 @@ def _search_forecaster_has(attr):
     Examples
     --------
     >>> # Check for point prediction support
-    >>> @available_if(_search_forecaster_has("point"))
-    >>> def predict(self, ...):
-    ...     pass
+    >>> def predict(self, forecasting_horizon=1):
+    ...     return self.best_forecaster_.predict(forecasting_horizon)
+    >>> predict = available_if(_search_forecaster_has("predict"))(predict)
     >>>
     >>> # Check for specific method
-    >>> @available_if(_search_forecaster_has("reset"))
-    >>> def reset(self, ...):
-    ...     pass
+    >>> def reset(self, y, X=None):
+    ...     return self.best_forecaster_.reset(y, X)
+    >>> reset = available_if(_search_forecaster_has("reset"))(reset)
     """
 
     def check(self):
@@ -104,7 +104,10 @@ def _search_forecaster_has(attr):
 
         # Special handling for prediction types
         if attr in {"point", "interval"}:
-            return attr in self.best_forecaster_.prediction_types
+            tags = self.best_forecaster_.__sklearn_tags__()
+            forecaster_type = tags.forecaster_tags.forecaster_type
+            # Support if forecaster_type is "both" or matches the requested type
+            return forecaster_type == "both" or forecaster_type == attr
 
         # Otherwise check if the attribute exists
         return hasattr(self.best_forecaster_, attr)
@@ -322,6 +325,8 @@ class SearchCV(BaseForecaster):
         error_score: float | str = np.nan,
         return_train_score: bool = False,
     ) -> None:
+        super().__init__(target_transformer=None, feature_transformer=None)
+
         self.forecaster = forecaster
         self.param_distributions = param_distributions
         self.scoring = scoring
@@ -337,19 +342,23 @@ class SearchCV(BaseForecaster):
         self.error_score = error_score
         self.return_train_score = return_train_score
 
-    @property
-    def prediction_types(self) -> set[Literal["point", "interval"]]:
-        """Get the types of predictions this forecaster produces.
+    def __sklearn_tags__(self):
+        """Get estimator tags.
+
+        SearchCV delegates tag computation to the best fitted forecaster if available,
+        otherwise falls back to the base forecaster.
 
         Returns
         -------
-        set of {"point", "interval"}
-            Set of prediction types produced by the implicit forecaster.
-            Point forecasters return {"point"}, interval forecasters return {"interval"},
-            and forecasters producing both return {"point", "interval"}.
+        Tags
+            Estimator tags with yohou-specific attributes.
 
         """
-        return self.forecaster.prediction_types
+        # After fitting, delegate to best_forecaster_, otherwise delegate to base forecaster
+        if hasattr(self, "best_forecaster_") and self.best_forecaster_ is not None:
+            return self.best_forecaster_.__sklearn_tags__()
+        else:
+            return self.forecaster.__sklearn_tags__()
 
     def score(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params: object) -> object:
         """Return the score on the given data, if the forecaster has been refit.
@@ -375,7 +384,7 @@ class SearchCV(BaseForecaster):
             ``best_forecaster_.score`` method otherwise.
         """
         _check_refit(self, "score")
-        check_is_fitted(self)
+        check_is_fitted(self, "best_forecaster_")
 
         _raise_for_params(params, self, "score")
         score_params = process_routing(self, "score", **params).scorer["score"]
@@ -436,7 +445,7 @@ class SearchCV(BaseForecaster):
             the best found parameters.
 
         """
-        check_is_fitted(self)
+        check_is_fitted(self, "best_forecaster_")
         return self.best_forecaster_.predict(
             X=X,
             forecasting_horizon=forecasting_horizon,
@@ -490,7 +499,7 @@ class SearchCV(BaseForecaster):
             Predicted time series with interval bounds.
 
         """
-        check_is_fitted(self)
+        check_is_fitted(self, "best_forecaster_")
         return self.best_forecaster_.predict_interval(
             X=X,
             forecasting_horizon=forecasting_horizon,
@@ -528,7 +537,7 @@ class SearchCV(BaseForecaster):
         self
 
         """
-        check_is_fitted(self)
+        check_is_fitted(self, "best_forecaster_")
 
         self.best_forecaster_.update(y, X, panel_group_names=panel_group_names)
         return self
@@ -578,7 +587,7 @@ class SearchCV(BaseForecaster):
             the best found parameters.
 
         """
-        check_is_fitted(self)
+        check_is_fitted(self, "best_forecaster_")
 
         return self.best_forecaster_.update_predict(
             y=y,
@@ -638,7 +647,7 @@ class SearchCV(BaseForecaster):
             Predicted time series with interval bounds.
 
         """
-        check_is_fitted(self)
+        check_is_fitted(self, "best_forecaster_")
 
         return self.best_forecaster_.update_predict_interval(
             y=y,
@@ -678,27 +687,10 @@ class SearchCV(BaseForecaster):
         self
 
         """
-        check_is_fitted(self)
+        check_is_fitted(self, "best_forecaster_")
 
         self.best_forecaster_.reset(y, X, panel_group_names=panel_group_names)
         return self
-
-    @property
-    def n_features_in_(self) -> object:
-        """Number of features seen during :term:`fit`.
-
-        Only available when `refit=True`.
-        """
-        # For consistency with other estimators we raise a AttributeError so
-        # that hasattr() fails if the search estimator isn't fitted.
-        try:
-            check_is_fitted(self)
-        except NotFittedError as nfe:
-            raise AttributeError(
-                "{} object has no n_features_in_ attribute.".format(self.__class__.__name__)
-            ) from nfe
-
-        return self.best_forecaster_.n_features_in_
 
     def _get_candidate_params(self, trial: optuna.Trial, i_trial: int) -> dict[str, object]:
         """Generate candidate parameters for a trial."""
@@ -955,8 +947,10 @@ class SearchCV(BaseForecaster):
         self : object
             Instance of fitted forecaster.
         """
-        # Import here to avoid circular dependency
-        from yohou.utils.validation import check_inputs
+        # Validate inputs and set forecaster attributes
+        # Note: SearchCV is a meta-estimator that delegates to wrapped forecaster,
+        # so it uses validate_data directly rather than _pre_fit (which handles transformations)
+        y, X, _ = validate_data(self, y=y, X=X, reset=True)
 
         # Set forecasting horizon attribute (required by forecaster interface)
         if forecasting_horizon < 1:
@@ -964,12 +958,6 @@ class SearchCV(BaseForecaster):
                 f"`forecasting_horizon` should be a positive int. It is: {forecasting_horizon}"
             )
         self.fit_forecasting_horizon_ = forecasting_horizon
-
-        # Set interval attribute (required by forecaster interface)
-        self.interval_ = check_inputs(y, X)
-
-        # Set panel data structure attributes (required by forecaster interface)
-        self._set_input_attributes(y, X)
 
         self.sampler_ = clone(self.sampler).instantiate().instance_
         self.warmup_sampler_ = optuna.samplers.RandomSampler()
@@ -1136,11 +1124,6 @@ class SearchCV(BaseForecaster):
             )
             refit_end_time = time.time()
             self.refit_time_ = refit_end_time - refit_start_time
-
-            if hasattr(self.best_forecaster_, "feature_names_in_"):
-                self.feature_names_in_ = self.best_forecaster_.feature_names_in_
-            if hasattr(self.best_forecaster_, "n_features_in_"):
-                self.n_features_in_ = self.best_forecaster_.n_features_in_
 
         # Store the only scorer not as a dict for single metric evaluation
         if isinstance(scorers, _MultimetricScorer):

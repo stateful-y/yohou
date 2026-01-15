@@ -36,7 +36,7 @@ def cast(
     ... })
     >>> schema = {"a": pl.Int32, "b": pl.Float32}
     >>> result = cast(df, schema)
-    >>> result.schema
+    >>> dict(result.schema)
     {'a': Int32, 'b': Float32, 'c': String}
     >>> result["a"].to_list()
     [2, 2, 4]

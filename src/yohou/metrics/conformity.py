@@ -13,17 +13,11 @@ class Residual(BaseConformityScorer):
     Computes conformity scores as $y - \hat{y}$ for asymmetric intervals.
     """
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this scorer handles.
-
-        Returns
-        -------
-        set of str
-            {"point"}
-
-        """
-        return {"point"}
+    def __sklearn_tags__(self):
+        """Get the tags for this estimator."""
+        tags = super().__sklearn_tags__()
+        tags.scorer_tags.prediction_type = "point"
+        return tags
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
         """Compute signed residual conformity scores.
@@ -151,17 +145,11 @@ class GammaResidual(BaseConformityScorer):
 
     """
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this scorer handles.
-
-        Returns
-        -------
-        set of str
-            {"point"}
-
-        """
-        return {"point"}
+    def __sklearn_tags__(self):
+        """Get the tags for this estimator."""
+        tags = super().__sklearn_tags__()
+        tags.scorer_tags.prediction_type = "point"
+        return tags
 
     def __init__(self, epsilon: float = 1e-8) -> None:
         BaseConformityScorer.__init__(self)
@@ -223,17 +211,11 @@ class AbsoluteGammaResidual(GammaResidual):
 class QuantileResidual(BaseConformityScorer):
     """Quantile residual scorer for interval forecasts."""
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this scorer handles.
-
-        Returns
-        -------
-        set of str
-            {"interval"}
-
-        """
-        return {"interval"}
+    def __sklearn_tags__(self):
+        """Get the tags for this estimator."""
+        tags = super().__sklearn_tags__()
+        tags.scorer_tags.prediction_type = "interval"
+        return tags
 
     @abc.abstractmethod
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
@@ -244,17 +226,11 @@ class QuantileResidual(BaseConformityScorer):
 class AbsoluteQuantileResidual(BaseConformityScorer):
     """Absolute quantile residual scorer for interval forecasts."""
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this scorer handles.
-
-        Returns
-        -------
-        set of str
-            {"interval"}
-
-        """
-        return {"interval"}
+    def __sklearn_tags__(self):
+        """Get the tags for this estimator."""
+        tags = super().__sklearn_tags__()
+        tags.scorer_tags.prediction_type = "interval"
+        return tags
 
     @abc.abstractmethod
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:

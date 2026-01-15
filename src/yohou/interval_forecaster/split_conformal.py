@@ -6,10 +6,11 @@ import polars as pl
 from pydantic import StrictFloat, StrictInt
 from sklearn.base import clone
 from sklearn.model_selection import train_test_split
-from sklearn.utils.validation import check_is_fitted
 
+from yohou.base import Tags
 from yohou.metrics import BaseConformityScorer, Residual
 from yohou.point_forecaster import BasePointForecaster, SeasonalNaive
+from yohou.utils import validate_data
 
 from .base import BaseIntervalForecaster, BaseSimilarity
 
@@ -30,17 +31,20 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     """
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get prediction types produced by this forecaster.
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
 
         Returns
         -------
-        set of str
-            {"point", "interval"} - produces both point predictions and intervals.
+        Tags
+            Estimator tags with forecaster_type set to "both" since this
+            forecaster produces both point predictions and intervals.
 
         """
-        return {"point", "interval"}
+        tags = super().__sklearn_tags__()
+        # SplitConformal wraps a point forecaster and adds intervals
+        tags.forecaster_tags.forecaster_type = "both"
+        return tags
 
     def __init__(
         self,
@@ -181,7 +185,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Predicted time series.
 
         """
-        check_is_fitted(self, "fit_forecasting_horizon_")
+        _, X, panel_group_names = validate_data(
+            self,
+            y=None,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=False,
+        )
 
         return self.point_forecaster_.predict(
             X=X,
@@ -229,15 +240,20 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Predicted time series with interval bounds.
 
         """
-        check_is_fitted(self, "fit_forecasting_horizon_")
-
-        forecasting_horizon = (
-            forecasting_horizon
-            if forecasting_horizon is not None
-            else self.fit_forecasting_horizon_
+        _, X, panel_group_names = validate_data(
+            self,
+            y=None,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=False,
         )
 
-        coverage_rates = coverage_rates if coverage_rates is not None else self.fit_coverage_rates_
+        if forecasting_horizon is None:
+            forecasting_horizon = self.fit_forecasting_horizon_
+
+        if coverage_rates is None:
+            coverage_rates = self.fit_coverage_rates_
 
         y_pred = self.point_forecaster_.predict(X=X).drop("observed_time")
 

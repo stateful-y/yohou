@@ -10,10 +10,13 @@ from joblib import Parallel, delayed
 from sklearn.base import clone
 from sklearn.utils.metadata_routing import _raise_for_params, process_routing
 from sklearn.utils.metaestimators import _BaseComposition
+from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseForecaster
+from yohou.base import BaseForecaster, Tags
+from yohou.utils import validate_data
 
 
+# TODO: Does this even make sense? How is this supposed to be used?
 # TODO: Add target and feature transformers?
 class ColumnForecaster(BaseForecaster, _BaseComposition):
     """Applies forecasters to columns of the target time series.
@@ -84,9 +87,65 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         n_jobs: int | None = None,
         verbose: bool = False,
     ):
+        super().__init__(target_transformer=None, feature_transformer=None)
         self.forecasters = forecasters
         self.n_jobs = n_jobs
         self.verbose = verbose
+
+    # TODO: Check
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+
+        # Aggregate tags from fitted forecasters
+        if hasattr(self, "forecasters_") and self.forecasters_:
+            # Stateful if any forecaster is stateful
+            tags.forecaster_tags.stateful = any(
+                f.__sklearn_tags__().forecaster_tags.stateful for f in self.forecasters_
+            )
+
+            # Determine forecaster_type from nested forecasters' tags
+            all_types = set()
+            for f in self.forecasters_:
+                f_tags = f.__sklearn_tags__()
+                if f_tags.forecaster_tags and f_tags.forecaster_tags.forecaster_type:
+                    all_types.add(f_tags.forecaster_tags.forecaster_type)
+
+            # Aggregate types: if any forecaster is "both", result is "both"
+            # Otherwise, if we have both "point" and "interval", result is "both"
+            if "both" in all_types or all_types == {"point", "interval"}:
+                tags.forecaster_tags.forecaster_type = "both"
+            elif "point" in all_types:
+                tags.forecaster_tags.forecaster_type = "point"
+            elif "interval" in all_types:
+                tags.forecaster_tags.forecaster_type = "interval"
+
+            # Aggregate other tags from nested forecasters
+            tags.forecaster_tags.uses_reduction = any(
+                getattr(f.__sklearn_tags__().forecaster_tags, "uses_reduction", False)
+                for f in self.forecasters_
+            )
+            tags.forecaster_tags.uses_target_transformer = any(
+                getattr(f.__sklearn_tags__().forecaster_tags, "uses_target_transformer", False)
+                for f in self.forecasters_
+            )
+            tags.forecaster_tags.uses_feature_transformer = any(
+                getattr(f.__sklearn_tags__().forecaster_tags, "uses_feature_transformer", False)
+                for f in self.forecasters_
+            )
+            tags.forecaster_tags.supports_panel_data = all(
+                getattr(f.__sklearn_tags__().forecaster_tags, "supports_panel_data", True)
+                for f in self.forecasters_
+            )
+
+        return tags
 
     def fit(
         self,
@@ -141,6 +200,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             for idx, (name, forecaster, cols) in enumerate(self.forecasters)
         )
 
+        # TODO: SHould use _pre_fit to set these through validate_data
         # Set attributes from first fitted forecaster
         if self.forecasters_:
             self.interval_ = self.forecasters_[0].interval_
@@ -181,6 +241,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         pl.DataFrame
             Concatenated predictions.
         """
+        check_is_fitted(self, ["forecasters_", "interval_"])
+
         # Validate params before routing
         _raise_for_params(params, self, "predict")
 
@@ -241,6 +303,15 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         -------
         self
         """
+        y, X, panel_group_names = validate_data(
+            self,
+            y=y,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=True,
+        )
+
         Parallel(n_jobs=self.n_jobs)(
             delayed(forecaster.update)(
                 y=y.select(["time"] + (cols if isinstance(cols, list) else [cols])),
@@ -283,6 +354,15 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         -------
         self
         """
+        y, X, panel_group_names = validate_data(
+            self,
+            y=y,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=False,
+        )
+
         Parallel(n_jobs=self.n_jobs)(
             delayed(forecaster.reset)(
                 y=y.select(["time"] + (cols if isinstance(cols, list) else [cols])),
@@ -297,21 +377,6 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         self._X_observed = X
 
         return self
-
-    @property
-    def prediction_types(self) -> set[str]:
-        """Return union of prediction types from all forecasters.
-
-        Returns
-        -------
-        set[str]
-            Set of prediction types.
-        """
-        types = set()
-        if hasattr(self, "forecasters_"):
-            for f in self.forecasters_:
-                types.update(f.prediction_types)
-        return types
 
     def _log_message(self, name: str, idx: int, total: int) -> str | None:
         """Generate progress message for verbose logging.

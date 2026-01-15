@@ -42,10 +42,9 @@ def check_observation_horizon_property(estimator, time_series_factory):
     assert horizon >= 0, f"observation_horizon must be non-negative, got {horizon}"
 
 
-def check_update_reset_contract(estimator, time_series_factory):
+def check_update_reset_contract(estimator, time_series_train_test_factory):
     """Check update() and reset() methods exist and work."""
-    X = time_series_factory(length=20)
-    X_new = time_series_factory(length=10, seed=99)
+    X, X_new = time_series_train_test_factory(train_length=20, test_length=10)
 
     estimator_clone = clone(estimator)
     estimator_clone.fit(X)
@@ -92,6 +91,7 @@ def test_yohou_specific_checks(
     transformer_name,
     transformer_registry,
     time_series_factory,
+    time_series_train_test_factory,
 ):
     """Run time series-specific checks for all transformers."""
     config = transformer_registry[transformer_name]
@@ -100,7 +100,7 @@ def test_yohou_specific_checks(
     # Run all time series-specific checks
     check_time_column_required(estimator, time_series_factory)
     check_observation_horizon_property(estimator, time_series_factory)
-    check_update_reset_contract(estimator, time_series_factory)
+    check_update_reset_contract(estimator, time_series_train_test_factory)
     check_polars_dataframe_io(estimator, time_series_factory)
 
 
@@ -129,10 +129,12 @@ def test_all_transformers_fit_transform(transformer_registry, time_series_factor
         transformer = clone(config["transformer"])
         tags = config.get("tags", {})
 
-        # Make data positive for log transforms
-        if tags.get("requires_positive_X", False):
-            X_pos = X.select([pl.col("time"), (pl.all().exclude("time") + 100.0)])
-            X_test = X_pos
+        # Adjust data for transformers with min_value constraints
+        sklearn_tags = transformer.__sklearn_tags__()
+        if sklearn_tags.input_tags and sklearn_tags.input_tags.min_value is not None:
+            # Make data satisfy min_value constraint by adding offset
+            offset = max(0.0, sklearn_tags.input_tags.min_value + 1.0)
+            X_test = X.select([pl.col("time"), (pl.all().exclude("time") + offset)])
         else:
             X_test = X
 
@@ -152,9 +154,12 @@ def test_all_transformers_get_feature_names_out(transformer_registry, time_serie
         transformer = clone(config["transformer"])
         tags = config.get("tags", {})
 
-        # Make data positive for log transforms
-        if tags.get("requires_positive_X", False):
-            X_test = X.select([pl.col("time"), (pl.all().exclude("time") + 100.0)])
+        # Adjust data for transformers with min_value constraints
+        sklearn_tags = transformer.__sklearn_tags__()
+        if sklearn_tags.input_tags and sklearn_tags.input_tags.min_value is not None:
+            # Make data satisfy min_value constraint by adding offset
+            offset = max(0.0, sklearn_tags.input_tags.min_value + 1.0)
+            X_test = X.select([pl.col("time"), (pl.all().exclude("time") + offset)])
         else:
             X_test = X
 

@@ -4,6 +4,7 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
 
+from ..utils.tags import Tags
 from .base import BasePointForecaster
 
 
@@ -22,6 +23,20 @@ class SeasonalNaive(BasePointForecaster):
         BasePointForecaster.__init__(self)
 
         self.seasonality = seasonality
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+        # SeasonalNaive always sets _observation_horizon in fit(), so it's always stateful
+        tags.forecaster_tags.stateful = True
+        return tags
 
     def fit(
         self,

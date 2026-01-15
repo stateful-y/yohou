@@ -16,6 +16,7 @@ import polars.selectors as cs
 from polars.testing import assert_frame_equal
 from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
+from sklearn.model_selection import train_test_split
 
 # ============================================================================
 # CORE YOHOU CHECKS
@@ -195,12 +196,14 @@ def check_update_concatenates_memory(transformer, X, y=None):
         If update() doesn't properly maintain memory
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+
+    # Split data: fit on first 80%, update with next 10 rows
+    X_train, X_temp = train_test_split(X, test_size=0.2, shuffle=False)
+    X_update = X_temp.head(10)  # Take first 10 rows from remaining 20%
+
+    transformer_clone.fit(X_train, y)
 
     horizon = transformer_clone.observation_horizon
-
-    # Create update data (10 new rows)
-    X_update = X.tail(10)
     initial_memory_len = len(transformer_clone._X_observed)
 
     transformer_clone.update(X_update)
@@ -238,9 +241,7 @@ def check_update_transform_equivalence(transformer, X, y=None):
         If update and fit paths produce different results
     """
     # Split data
-    split_point = len(X) // 2
-    X_first = X.head(split_point)
-    X_second = X.tail(len(X) - split_point)
+    X_first, X_second = train_test_split(X, test_size=0.5, shuffle=False)
 
     # Path 1: fit on first, update with second
     transformer1 = clone(transformer)
@@ -781,7 +782,7 @@ def check_fit_transform_equivalence(transformer, X, y=None):
     assert_frame_equal(X_trans1, X_trans2, rel_tol=1e-7, abs_tol=1e-10)
 
 
-def check_memory_bounded(transformer, X, y=None, n_updates=5):
+def check_memory_bounded(transformer, X_train, X_test, y=None, n_updates=5):
     """Check memory doesn't grow unbounded with sequential updates.
 
     Important for production time series applications with continuous
@@ -791,8 +792,10 @@ def check_memory_bounded(transformer, X, y=None, n_updates=5):
     ----------
     transformer : BaseTransformer
         Unfitted transformer
-    X : pl.DataFrame
-        Training data
+    X_train : pl.DataFrame
+        Training data (used for fit)
+    X_test : pl.DataFrame
+        Test data (used for updates - non-overlapping with training)
     y : pl.DataFrame, optional
         Target data
     n_updates : int
@@ -804,22 +807,21 @@ def check_memory_bounded(transformer, X, y=None, n_updates=5):
         If memory grows beyond expected bounds
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    transformer_clone.fit(X_train, y)
 
     horizon = transformer_clone.observation_horizon
     max_memory_factor = 2.0
     expected_max_rows = int(horizon * max_memory_factor)
 
-    # Create update chunks
-    chunk_size = max(1, len(X) // (n_updates * 2))
+    # Create update chunks from test data (non-overlapping with training)
+    chunk_size = max(1, len(X_test) // n_updates)
 
     for i in range(n_updates):
         start_idx = i * chunk_size
-        end_idx = min(start_idx + chunk_size, len(X))
-        if start_idx >= len(X):
+        if start_idx >= len(X_test):
             break
 
-        X_chunk = X.slice(start_idx, chunk_size)
+        X_chunk = X_test.slice(start_idx, chunk_size)
         transformer_clone.update(X_chunk)
 
         actual_rows = len(transformer_clone._X_observed)
@@ -830,44 +832,152 @@ def check_memory_bounded(transformer, X, y=None, n_updates=5):
 
 
 # ============================================================================
-# CHECK GENERATOR
+# TAG SYSTEM CHECKS
 # ============================================================================
 
 
-def _get_transformer_tags(transformer) -> Dict[str, Any]:
-    """Extract tags from transformer for check generation.
+def check_tags_accessible_before_fit(transformer, X=None):
+    """Check __sklearn_tags__() is accessible before fit().
+
+    Tags should be static class capabilities, not fitted state.
+    They must be accessible before calling fit().
 
     Parameters
     ----------
     transformer : BaseTransformer
-        Transformer instance (fitted or unfitted)
+        Unfitted transformer instance
+    X : pl.DataFrame, optional
+        Not used, included for signature consistency
 
-    Returns
-    -------
-    tags : dict
-        Dictionary of transformer properties
+    Raises
+    ------
+    AssertionError
+        If __sklearn_tags__() raises error or is not callable
     """
-    tags = {
-        "stateful": True,
-        "invertible": hasattr(transformer, "inverse_transform"),
-        "requires_positive_X": False,
-        "no_panel_data": False,
-    }
+    transformer_clone = clone(transformer)
 
-    # Check if stateless (observation_horizon = 0)
+    assert hasattr(transformer_clone, "__sklearn_tags__"), (
+        f"{transformer_clone.__class__.__name__} must implement __sklearn_tags__() method"
+    )
+
     try:
-        if hasattr(transformer, "_observation_horizon"):
-            tags["stateful"] = transformer._observation_horizon > 0
-        elif hasattr(transformer, "observation_horizon"):
-            try:
-                horizon = transformer.observation_horizon
-                tags["stateful"] = horizon > 0
-            except NotFittedError:
-                tags["stateful"] = True
-    except:
-        pass
+        tags = transformer_clone.__sklearn_tags__()
+    except Exception as e:
+        raise AssertionError(
+            f"{transformer_clone.__class__.__name__}.__sklearn_tags__() raised {type(e).__name__}: {e}"
+        ) from e
 
-    return tags
+    # Validate tag structure
+    assert hasattr(tags, "transformer_tags"), "Tags must have transformer_tags attribute"
+    assert hasattr(tags, "input_tags"), "Tags must have input_tags attribute"
+
+
+def check_tags_static_after_fit(transformer, X, y=None):
+    """Check tags remain static (don't change) after fit().
+
+    Tags represent capabilities, not fitted state. They should have
+    the same values before and after fit().
+
+    Parameters
+    ----------
+    transformer : BaseTransformer
+        Unfitted transformer instance
+    X : pl.DataFrame
+        Training data
+    y : pl.DataFrame, optional
+        Target data
+
+    Raises
+    ------
+    AssertionError
+        If tags change after fit()
+    """
+    transformer_clone = clone(transformer)
+
+    # Get tags before fit
+    tags_before = transformer_clone.__sklearn_tags__()
+    stateful_before = (
+        tags_before.transformer_tags.stateful if tags_before.transformer_tags else None
+    )
+    invertible_before = (
+        tags_before.transformer_tags.invertible if tags_before.transformer_tags else None
+    )
+    min_value_before = tags_before.input_tags.min_value if tags_before.input_tags else None
+
+    # Fit the transformer
+    transformer_clone.fit(X, y)
+
+    # Get tags after fit
+    tags_after = transformer_clone.__sklearn_tags__()
+    stateful_after = tags_after.transformer_tags.stateful if tags_after.transformer_tags else None
+    invertible_after = (
+        tags_after.transformer_tags.invertible if tags_after.transformer_tags else None
+    )
+    min_value_after = tags_after.input_tags.min_value if tags_after.input_tags else None
+
+    # Verify tags didn't change
+    assert stateful_before == stateful_after, (
+        f"stateful tag changed after fit: {stateful_before} -> {stateful_after}"
+    )
+    assert invertible_before == invertible_after, (
+        f"invertible tag changed after fit: {invertible_before} -> {invertible_after}"
+    )
+    assert min_value_before == min_value_after, (
+        f"min_value tag changed after fit: {min_value_before} -> {min_value_after}"
+    )
+
+
+def check_tags_match_capabilities(transformer, X, y=None):
+    """Check tags accurately reflect transformer capabilities.
+
+    Validates that tag values match actual transformer behavior:
+    - stateful tag matches presence of _observation_horizon attribute
+    - invertible tag matches presence of inverse_transform method
+
+    Parameters
+    ----------
+    transformer : BaseTransformer
+        Fitted transformer instance
+    X : pl.DataFrame
+        Training data (not used, for consistency)
+    y : pl.DataFrame, optional
+        Target data (not used, for consistency)
+
+    Raises
+    ------
+    AssertionError
+        If tags don't match actual capabilities
+    """
+    tags = transformer.__sklearn_tags__()
+
+    # Check stateful tag
+    if tags.transformer_tags:
+        has_observation_horizon = hasattr(transformer, "_observation_horizon")
+        is_stateful = tags.transformer_tags.stateful
+
+        # If transformer has observation_horizon attribute, it should be tagged as stateful
+        if has_observation_horizon and not is_stateful:
+            raise AssertionError(
+                f"{transformer.__class__.__name__} has _observation_horizon attribute "
+                f"but stateful tag is False"
+            )
+
+        # Check invertible tag
+        has_inverse_transform = hasattr(transformer, "inverse_transform") and callable(
+            getattr(transformer, "inverse_transform")
+        )
+        is_invertible = tags.transformer_tags.invertible
+
+        if has_inverse_transform != is_invertible:
+            raise AssertionError(
+                f"{transformer.__class__.__name__} inverse_transform existence ({has_inverse_transform}) "
+                f"doesn't match invertible tag ({is_invertible})"
+            )
+
+
+# ============================================================================
+# CHECK GENERATOR
+# ============================================================================
 
 
 def _yield_yohou_transformer_checks(
@@ -890,7 +1000,7 @@ def _yield_yohou_transformer_checks(
     y : pl.DataFrame, optional
         Target data (for supervised transformers)
     tags : dict, optional
-        Transformer tags (if None, will be auto-detected)
+        Transformer tags (if None, will be auto-detected from __sklearn_tags__)
 
     Yields
     ------
@@ -898,7 +1008,17 @@ def _yield_yohou_transformer_checks(
         Test identifier, callable check function, and kwargs dict
     """
     if tags is None:
-        tags = _get_transformer_tags(transformer)
+        # Get tags from __sklearn_tags__ method
+        sklearn_tags = transformer.__sklearn_tags__()
+        tags = {
+            "stateful": sklearn_tags.transformer_tags.stateful
+            if sklearn_tags.transformer_tags
+            else False,
+            "invertible": sklearn_tags.transformer_tags.invertible
+            if sklearn_tags.transformer_tags
+            else False,
+            "no_panel_data": False,  # Panel data support is at forecaster level, not transformer level
+        }
 
     # Core checks (always run)
     yield "check_fit_sets_attributes", check_fit_sets_attributes, {"X": X_train, "y": y}
@@ -909,6 +1029,11 @@ def _yield_yohou_transformer_checks(
     )
     yield "check_feature_names_out_match", check_feature_names_out_match, {"X": X_train, "y": y}
     yield "check_clone_preserves_params", check_clone_preserves_params, {}
+
+    # Tag system checks (always run)
+    yield "check_tags_accessible_before_fit", check_tags_accessible_before_fit, {"X": X_train}
+    yield "check_tags_static_after_fit", check_tags_static_after_fit, {"X": X_train, "y": y}
+    yield "check_tags_match_capabilities", check_tags_match_capabilities, {"X": X_train, "y": y}
 
     # Stateful transformer checks
     if tags.get("stateful", True):
@@ -938,7 +1063,11 @@ def _yield_yohou_transformer_checks(
             check_insufficient_data_raises,
             {"X": X_train, "y": y},
         )
-        yield "check_memory_bounded", check_memory_bounded, {"X": X_train, "y": y}
+        yield (
+            "check_memory_bounded",
+            check_memory_bounded,
+            {"X_train": X_train, "X_test": X_test, "y": y},
+        )
     else:
         # Stateless checks
         yield (
@@ -1363,6 +1492,83 @@ def check_reset_replaces_observations(
             )
 
 
+def check_reset_propagates_to_transformers(
+    forecaster,
+    y_train,
+    y_reset,
+    X_train=None,
+    X_reset=None,
+):
+    """Check reset() propagates to transformers in forecaster.
+
+    When a forecaster with transformers calls reset(), the transformers
+    should also have their observation buffers reset accordingly.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Fitted forecaster instance with transformers
+    y_train : pl.DataFrame
+        Original training data
+    y_reset : pl.DataFrame
+        New data for reset
+    X_train, X_reset : pl.DataFrame, optional
+        Features for training and reset
+
+    Raises
+    ------
+    AssertionError
+        If transformers are not properly reset
+    """
+    # Check if forecaster has transformers (target_transformer or feature_transformer)
+    if not hasattr(forecaster, "target_transformer_") and not hasattr(
+        forecaster, "feature_transformer_"
+    ):
+        return  # Nothing to check
+
+    # Reset the forecaster
+    forecaster.reset(y_reset, X=X_reset)
+
+    # Check target transformer is reset
+    if hasattr(forecaster, "target_transformer_") and forecaster.target_transformer_ is not None:
+        if isinstance(forecaster.target_transformer_, dict):
+            # Panel data - check each transformer
+            for group_name, transformer in forecaster.target_transformer_.items():
+                if hasattr(transformer, "_X_observed") and transformer._X_observed is not None:
+                    # Transformer should have observation data matching reset data
+                    assert len(transformer._X_observed) > 0, (
+                        f"Target transformer for group '{group_name}' should have observations after reset"
+                    )
+        else:
+            # Non-panel data
+            if (
+                hasattr(forecaster.target_transformer_, "_X_observed")
+                and forecaster.target_transformer_._X_observed is not None
+            ):
+                assert len(forecaster.target_transformer_._X_observed) > 0, (
+                    "Target transformer should have observations after reset"
+                )
+
+    # Check feature transformer is reset (if exists)
+    if hasattr(forecaster, "feature_transformer_") and forecaster.feature_transformer_ is not None:
+        if isinstance(forecaster.feature_transformer_, dict):
+            # Panel data - check each transformer
+            for group_name, transformer in forecaster.feature_transformer_.items():
+                if hasattr(transformer, "_X_observed") and transformer._X_observed is not None:
+                    assert len(transformer._X_observed) > 0, (
+                        f"Feature transformer for group '{group_name}' should have observations after reset"
+                    )
+        else:
+            # Non-panel data
+            if (
+                hasattr(forecaster.feature_transformer_, "_X_observed")
+                and forecaster.feature_transformer_._X_observed is not None
+            ):
+                assert len(forecaster.feature_transformer_._X_observed) > 0, (
+                    "Feature transformer should have observations after reset"
+                )
+
+
 def check_forecasting_horizon_validation(forecaster, y, X=None):
     """Check forecasting_horizon < 1 raises ValueError.
 
@@ -1409,7 +1615,7 @@ def check_forecasting_horizon_validation(forecaster, y, X=None):
 
 
 def check_prediction_types_property(forecaster):
-    """Check prediction_types property returns correct set.
+    """Check forecaster_type tag is set correctly.
 
     Parameters
     ----------
@@ -1419,20 +1625,15 @@ def check_prediction_types_property(forecaster):
     Raises
     ------
     AssertionError
-        If prediction_types doesn't return valid set
+        If forecaster_type tag is not valid
     """
-    pred_types = forecaster.prediction_types
+    tags = forecaster.__sklearn_tags__()
+    forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    assert isinstance(pred_types, set), (
-        f"prediction_types should return set, got {type(pred_types)}"
+    valid_types = {"point", "interval", "both", None}
+    assert forecaster_type in valid_types, (
+        f"forecaster_type tag should be one of {valid_types}, got {forecaster_type}"
     )
-
-    valid_types = {"point", "interval"}
-    assert pred_types.issubset(valid_types), (
-        f"prediction_types should be subset of {valid_types}, got {pred_types}"
-    )
-
-    assert len(pred_types) > 0, "prediction_types should not be empty"
 
 
 def check_clone_preserves_forecaster_params(forecaster):
@@ -1587,7 +1788,7 @@ def check_point_prediction_structure(forecaster, y_test, X_test=None):
 
 
 def check_point_prediction_types(forecaster):
-    """Check point forecaster returns prediction_types == {"point"}.
+    """Check point forecaster has forecaster_type='point' in tags.
 
     Parameters
     ----------
@@ -1597,12 +1798,13 @@ def check_point_prediction_types(forecaster):
     Raises
     ------
     AssertionError
-        If prediction_types is not {"point"}
+        If forecaster_type is not 'point'
     """
-    pred_types = forecaster.prediction_types
+    tags = forecaster.__sklearn_tags__()
+    forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    assert pred_types == {"point"}, (
-        f"Point forecaster should return prediction_types={{'point'}}, got {pred_types}"
+    assert forecaster_type == "point", (
+        f"Point forecaster should have forecaster_type='point' in tags, got {forecaster_type}"
     )
 
 
@@ -1737,7 +1939,7 @@ def check_interval_bounds(forecaster, y_test, X_test=None):
 
 
 def check_interval_prediction_types(forecaster):
-    """Check interval forecaster returns prediction_types containing "interval".
+    """Check interval forecaster has forecaster_type='interval' or 'both' in tags.
 
     Parameters
     ----------
@@ -1747,12 +1949,13 @@ def check_interval_prediction_types(forecaster):
     Raises
     ------
     AssertionError
-        If prediction_types doesn't contain "interval"
+        If forecaster_type doesn't indicate interval support
     """
-    pred_types = forecaster.prediction_types
+    tags = forecaster.__sklearn_tags__()
+    forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    assert "interval" in pred_types, (
-        f"Interval forecaster should include 'interval' in prediction_types, got {pred_types}"
+    assert forecaster_type in {"interval", "both"}, (
+        f"Interval forecaster should have forecaster_type='interval' or 'both', got {forecaster_type}"
     )
 
 
@@ -1960,6 +2163,196 @@ def check_panel_invalid_group_raises(forecaster, y_panel, X_panel=None):
             )
 
 
+def check_forecaster_tags_accessible_before_fit(forecaster, y=None, X=None):
+    """Check __sklearn_tags__() is accessible before fit().
+
+    Tags should be static class capabilities, not fitted state.
+    They must be accessible before calling fit().
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance
+    y : pl.DataFrame, optional
+        Not used, included for signature consistency
+    X : pl.DataFrame, optional
+        Not used, included for signature consistency
+
+    Raises
+    ------
+    AssertionError
+        If __sklearn_tags__() raises error or is not callable
+    """
+    forecaster_clone = clone(forecaster)
+
+    assert hasattr(forecaster_clone, "__sklearn_tags__"), (
+        f"{forecaster_clone.__class__.__name__} must implement __sklearn_tags__() method"
+    )
+
+    try:
+        tags = forecaster_clone.__sklearn_tags__()
+    except Exception as e:
+        raise AssertionError(
+            f"{forecaster_clone.__class__.__name__}.__sklearn_tags__() raised {type(e).__name__}: {e}"
+        ) from e
+
+    # Validate tag structure
+    assert hasattr(tags, "forecaster_tags"), "Tags must have forecaster_tags attribute"
+    assert hasattr(tags, "input_tags"), "Tags must have input_tags attribute"
+
+
+def check_forecaster_tags_static_after_fit(forecaster, y, X=None, forecasting_horizon=3):
+    """Check forecaster tags remain static after fit().
+
+    Tags represent capabilities, not fitted state. They should have
+    the same values before and after fit().
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance
+    y : pl.DataFrame
+        Training target data
+    X : pl.DataFrame, optional
+        Training features
+    forecasting_horizon : int, default=3
+        Forecasting horizon
+
+    Raises
+    ------
+    AssertionError
+        If tags change after fit()
+    """
+    forecaster_clone = clone(forecaster)
+
+    # Get tags before fit
+    tags_before = forecaster_clone.__sklearn_tags__()
+    forecaster_type_before = (
+        tags_before.forecaster_tags.forecaster_type if tags_before.forecaster_tags else None
+    )
+    stateful_before = tags_before.forecaster_tags.stateful if tags_before.forecaster_tags else None
+    uses_reduction_before = (
+        tags_before.forecaster_tags.uses_reduction if tags_before.forecaster_tags else None
+    )
+    supports_panel_data_before = (
+        tags_before.forecaster_tags.supports_panel_data if tags_before.forecaster_tags else None
+    )
+
+    # Fit the forecaster
+    forecaster_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+
+    # Get tags after fit
+    tags_after = forecaster_clone.__sklearn_tags__()
+    forecaster_type_after = (
+        tags_after.forecaster_tags.forecaster_type if tags_after.forecaster_tags else None
+    )
+    stateful_after = tags_after.forecaster_tags.stateful if tags_after.forecaster_tags else None
+    uses_reduction_after = (
+        tags_after.forecaster_tags.uses_reduction if tags_after.forecaster_tags else None
+    )
+    supports_panel_data_after = (
+        tags_after.forecaster_tags.supports_panel_data if tags_after.forecaster_tags else None
+    )
+
+    # Verify tags didn't change
+    assert forecaster_type_before == forecaster_type_after, (
+        f"forecaster_type tag changed after fit: {forecaster_type_before} -> {forecaster_type_after}"
+    )
+    assert stateful_before == stateful_after, (
+        f"stateful tag changed after fit: {stateful_before} -> {stateful_after}"
+    )
+    assert uses_reduction_before == uses_reduction_after, (
+        f"uses_reduction tag changed after fit: {uses_reduction_before} -> {uses_reduction_after}"
+    )
+    assert supports_panel_data_before == supports_panel_data_after, (
+        f"supports_panel_data tag changed after fit: {supports_panel_data_before} -> {supports_panel_data_after}"
+    )
+
+
+def check_forecaster_tags_match_capabilities(forecaster, y=None, X=None):
+    """Check forecaster tags accurately reflect capabilities.
+
+    Validates that tag values match actual forecaster behavior:
+    - forecaster_type matches prediction_types property
+    - stateful tag matches observation horizon or transformer statefulness
+    - uses_reduction tag matches estimator attribute
+    - uses_target_transformer matches target_transformer parameter
+    - uses_feature_transformer matches feature_transformer parameter
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Fitted forecaster instance
+    y : pl.DataFrame, optional
+        Not used, for consistency
+    X : pl.DataFrame, optional
+        Not used, for consistency
+
+    Raises
+    ------
+    AssertionError
+        If tags don't match actual capabilities
+    """
+    tags = forecaster.__sklearn_tags__()
+
+    if not tags.forecaster_tags:
+        return
+
+    # Check forecaster_type matches prediction_types
+    if hasattr(forecaster, "prediction_types"):
+        pred_types = forecaster.prediction_types
+        forecaster_type = tags.forecaster_tags.forecaster_type
+
+        if "point" in pred_types and "interval" in pred_types:
+            assert forecaster_type in ["point", "interval"], (
+                f"forecaster_type should be 'point' or 'interval' for dual forecaster, got {forecaster_type}"
+            )
+        elif "point" in pred_types:
+            assert forecaster_type == "point", (
+                f"forecaster_type should be 'point', got {forecaster_type}"
+            )
+        elif "interval" in pred_types:
+            assert forecaster_type == "interval", (
+                f"forecaster_type should be 'interval', got {forecaster_type}"
+            )
+
+    # Check uses_reduction matches estimator attribute
+    # Note: Some forecasters have estimator for internal use but don't follow reduction pattern
+    # (e.g., FourierSeasonalityForecaster, PolynomialTrendForecaster fit sklearn model directly)
+    # Only check if uses_reduction=True implies estimator exists
+    uses_reduction = tags.forecaster_tags.uses_reduction
+
+    if uses_reduction:
+        has_estimator = hasattr(forecaster, "estimator")
+        if not has_estimator:
+            raise AssertionError(
+                f"{forecaster.__class__.__name__} has uses_reduction=True "
+                f"but no estimator attribute"
+            )
+
+    # Check uses_target_transformer matches parameter
+    if hasattr(forecaster, "target_transformer"):
+        has_target_transformer = forecaster.target_transformer is not None
+        uses_target_transformer = tags.forecaster_tags.uses_target_transformer
+
+        if has_target_transformer != uses_target_transformer:
+            raise AssertionError(
+                f"{forecaster.__class__.__name__} target_transformer parameter ({has_target_transformer}) "
+                f"doesn't match uses_target_transformer tag ({uses_target_transformer})"
+            )
+
+    # Check uses_feature_transformer matches parameter
+    if hasattr(forecaster, "feature_transformer"):
+        has_feature_transformer = forecaster.feature_transformer is not None
+        uses_feature_transformer = tags.forecaster_tags.uses_feature_transformer
+
+        if has_feature_transformer != uses_feature_transformer:
+            raise AssertionError(
+                f"{forecaster.__class__.__name__} feature_transformer parameter ({has_feature_transformer}) "
+                f"doesn't match uses_feature_transformer tag ({uses_feature_transformer})"
+            )
+
+
 # ============================================================================
 # FORECASTER CHECK GENERATOR
 # ============================================================================
@@ -1988,11 +2381,12 @@ def _yield_yohou_forecaster_checks(
     X_test : pl.DataFrame or None
         Test features
     tags : dict or None
-        Forecaster metadata tags:
+        Forecaster metadata tags (if None, auto-detected from __sklearn_tags__):
         - forecaster_type: "point" | "interval" | "both"
         - uses_reduction: bool
         - supports_panel_data: bool
-        - uses_transformers: bool
+        - uses_target_transformer: bool
+        - uses_feature_transformer: bool
         - supports_scoring: bool
 
     Yields
@@ -2005,7 +2399,26 @@ def _yield_yohou_forecaster_checks(
         Keyword arguments for check function (bundled data)
     """
     if tags is None:
-        tags = {}
+        # Get tags from __sklearn_tags__ method
+        sklearn_tags = forecaster.__sklearn_tags__()
+        tags = {
+            "forecaster_type": sklearn_tags.forecaster_tags.forecaster_type
+            if sklearn_tags.forecaster_tags
+            else None,
+            "uses_reduction": sklearn_tags.forecaster_tags.uses_reduction
+            if sklearn_tags.forecaster_tags
+            else False,
+            "supports_panel_data": sklearn_tags.forecaster_tags.supports_panel_data
+            if sklearn_tags.forecaster_tags
+            else True,
+            "uses_target_transformer": sklearn_tags.forecaster_tags.uses_target_transformer
+            if sklearn_tags.forecaster_tags
+            else False,
+            "uses_feature_transformer": sklearn_tags.forecaster_tags.uses_feature_transformer
+            if sklearn_tags.forecaster_tags
+            else False,
+            "supports_scoring": True,  # Default assumption
+        }
 
     # Bundle data for check functions
     check_kwargs = {
@@ -2039,6 +2452,23 @@ def _yield_yohou_forecaster_checks(
     yield "check_prediction_types_property", check_prediction_types_property, {}
     yield "check_clone_preserves_forecaster_params", check_clone_preserves_forecaster_params, {}
 
+    # Tag system checks (always run)
+    yield (
+        "check_forecaster_tags_accessible_before_fit",
+        check_forecaster_tags_accessible_before_fit,
+        {"y": y_train, "X": X_train},
+    )
+    yield (
+        "check_forecaster_tags_static_after_fit",
+        check_forecaster_tags_static_after_fit,
+        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+    )
+    yield (
+        "check_forecaster_tags_match_capabilities",
+        check_forecaster_tags_match_capabilities,
+        {"y": y_train, "X": X_train},
+    )
+
     # Update/reset checks (if enough data)
     if len(y_test) >= 10:
         y_update = y_test[:3]
@@ -2068,7 +2498,7 @@ def _yield_yohou_forecaster_checks(
         )
 
     # Transformer composition checks
-    if tags.get("uses_transformers", False):
+    if tags.get("uses_target_transformer", False) or tags.get("uses_feature_transformer", False):
         if len(y_test) >= 5:
             yield (
                 "check_reset_propagates_to_transformers",

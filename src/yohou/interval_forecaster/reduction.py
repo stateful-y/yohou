@@ -53,11 +53,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     >>> train = df[:8]
     >>>
     >>> # Create and fit interval forecaster
-    >>> forecaster = IntervalReductionForecaster(coverage_rates=[0.1, 0.5, 0.9])
-    >>> _ = forecaster.fit(y=train, forecasting_horizon=1)
+    >>> forecaster = IntervalReductionForecaster()
+    >>> _ = forecaster.fit(y=train, forecasting_horizon=1, coverage_rates=[0.1, 0.5, 0.9])
     >>>
     >>> # Generate prediction intervals
-    >>> y_pred = forecaster.predict(forecasting_horizon=1)
+    >>> y_pred = forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.1, 0.5, 0.9])
     >>> len(y_pred)
     1
     >>> # Check that prediction has lower and upper bounds for each coverage rate
@@ -156,7 +156,18 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         ]
 
         if len(quantile_param_names) > 1:
-            raise ValueError()
+            raise ValueError(
+                f"Found multiple quantile parameters in estimator: {quantile_param_names}. "
+                f"IntervalReductionForecaster requires exactly one quantile parameter. "
+                f"Please use an estimator with a single quantile parameter."
+            )
+
+        if len(quantile_param_names) == 0:
+            raise ValueError(
+                f"No quantile parameter found in estimator. "
+                f"IntervalReductionForecaster requires an estimator with a 'quantile' parameter "
+                f"(e.g., QuantileRegressor). Available parameters: {estimator_param_names}"
+            )
 
         quantile_param_name = quantile_param_names[0]
 

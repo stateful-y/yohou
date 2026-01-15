@@ -187,6 +187,53 @@ def base_time_series():
 
 
 @pytest.fixture
+def time_series_train_test_factory():
+    """Factory for generating continuous train/test splits.
+
+    Returns a function that creates X_train and X_test where X_test
+    continues chronologically from where X_train ends (no overlap, no gap).
+
+    Parameters
+    ----------
+    train_length : int
+        Number of observations in training set
+    test_length : int
+        Number of observations in test set
+    n_components : int, default=2
+        Number of feature columns
+    seed : int, default=42
+        Random seed (currently unused, but kept for API consistency)
+
+    Returns
+    -------
+    X_train, X_test : tuple of pl.DataFrame
+        Continuous train and test time series
+    """
+
+    def _make(train_length, test_length, n_components=2, seed=42):
+        total_length = train_length + test_length
+
+        # Generate continuous time series
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1) + timedelta(seconds=total_length - 1),
+            interval="1s",
+            eager=True,
+        )
+        rng = pl.Series(range(total_length)).cast(pl.Float64)
+        features = {f"feature_{i}": rng + (i * 100) for i in range(n_components)}
+        df = pl.DataFrame({"time": time, **features})
+
+        # Split into train and test
+        X_train = df.head(train_length)
+        X_test = df.tail(test_length)
+
+        return X_train, X_test
+
+    return _make
+
+
+@pytest.fixture
 def panel_time_series_factory():
     """Factory for panel data with both global and local columns.
 
@@ -289,7 +336,6 @@ def transformer_registry():
     containing:
     - transformer: An instance of the transformer
     - expected_failed_checks: List of check names expected to fail
-    - tags: Dictionary of transformer properties
     """
     from yohou.preprocessing import (
         LagTransformer,
@@ -303,14 +349,12 @@ def transformer_registry():
                 seasonality=1
             ),  # seasonality=1 for first difference
             "expected_failed_checks": [],
-            "tags": {"invertible": True, "stateful": True},
         },
         "SeasonalLogDifferencing": {
             "transformer": SeasonalLogDifferencing(
                 seasonality=1
             ),  # seasonality=1 for first difference
             "expected_failed_checks": [],
-            "tags": {"invertible": True, "requires_positive_X": True, "stateful": True},
         },
         "LagTransformer": {
             "transformer": LagTransformer(lag=[1, 2]),
@@ -318,7 +362,6 @@ def transformer_registry():
                 "check_inverse_transform_identity",
                 "check_inverse_transform_round_trip",
             ],
-            "tags": {"invertible": False, "stateful": True},
         },
     }
 
@@ -403,22 +446,10 @@ def forecaster_registry():
     return {
         "NaiveForecaster": {
             "forecaster": NaiveForecaster(seasonality=1),
-            "tags": {
-                "forecaster_type": "point",
-                "uses_reduction": False,
-                "supports_panel_data": True,
-                "uses_transformers": False,
-            },
             "expected_failed_checks": [],
         },
         "PointReductionForecaster": {
             "forecaster": PointReductionForecaster(estimator=Ridge()),
-            "tags": {
-                "forecaster_type": "point",
-                "uses_reduction": True,
-                "supports_panel_data": True,
-                "uses_transformers": True,
-            },
             "expected_failed_checks": [],
         },
         "SplitConformalForecaster": {
@@ -426,12 +457,6 @@ def forecaster_registry():
                 point_forecaster=NaiveForecaster(seasonality=1),
                 calibration_size=0.2,
             ),
-            "tags": {
-                "forecaster_type": "interval",
-                "uses_reduction": False,
-                "supports_panel_data": True,
-                "uses_transformers": False,
-            },
             "expected_failed_checks": ["check_reset_propagates_to_transformers"],
         },
     }

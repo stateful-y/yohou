@@ -20,22 +20,22 @@ from yohou.preprocessing.window import LagTransformer
     [[1], [1, 2], [1, 2, 3, 5]],
     ids=["lag_1", "lag_1_2", "lag_1_2_3_5"],
 )
-def test_lag_transformer_checks(lag, time_series_factory):
+def test_lag_transformer_checks(lag, time_series_train_test_factory):
     """Run all checks for LagTransformer with different lag configurations."""
     transformer = LagTransformer(lag=lag)
-    tags = {"invertible": False, "stateful": True}
     expected_failures = []  # Empty since invertible=False prevents inverse checks
 
     min_horizon = max(lag) + 10
-    X_train = time_series_factory(length=min_horizon + 50, seed=42)
-    X_test = time_series_factory(length=min_horizon + 20, seed=123)
+    X_train, X_test = time_series_train_test_factory(
+        train_length=min_horizon + 50, test_length=min_horizon + 20
+    )
 
     transformer_fitted = clone(transformer)
     transformer_fitted.fit(X_train)
 
     expected_failures_set = set(expected_failures)
     for check_name, check_func, check_kwargs in _yield_yohou_transformer_checks(
-        transformer_fitted, X_train, X_test, tags=tags
+        transformer_fitted, X_train, X_test
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

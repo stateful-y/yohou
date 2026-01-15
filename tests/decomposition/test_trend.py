@@ -19,26 +19,23 @@ from estimator_checks import _yield_yohou_forecaster_checks
 
 
 @pytest.mark.parametrize(
-    "forecaster,tags,expected_failures",
+    "forecaster,expected_failures",
     [
         (
             PolynomialTrendForecaster(degree=1),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             PolynomialTrendForecaster(degree=2),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             PolynomialTrendForecaster(degree=3),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
     ],
 )
-def test_polynomial_trend_checks(forecaster, tags, expected_failures, y_X_factory):
+def test_polynomial_trend_checks(forecaster, expected_failures, y_X_factory):
     """Run systematic checks on PolynomialTrendForecaster."""
     # Generate data with trend
     y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
@@ -63,7 +60,6 @@ def test_polynomial_trend_checks(forecaster, tags, expected_failures, y_X_factor
         X_train,
         y_test,
         X_test,
-        tags=tags,
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

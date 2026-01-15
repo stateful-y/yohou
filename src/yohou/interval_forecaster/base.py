@@ -9,15 +9,33 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
 from sklearn.base import BaseEstimator
-from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseForecaster, BaseTransformer
+from yohou.base import BaseForecaster, BaseTransformer, Tags
 from yohou.utils import select_panel_columns
 from yohou.utils.polars import cast
+from yohou.utils.validation import validate_data
 
 
 class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     """Base class for similarity measures used in interval forecasting."""
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with similarity-specific attributes.
+
+        """
+        tags = Tags(estimator_type="similarity", requires_fit=True)
+
+        # Most similarity measures are symmetric and require predictions
+        tags.similarity_tags.symmetric = True
+        tags.similarity_tags.requires_predictions = True
+        tags.similarity_tags.produces_weights = True
+
+        return tags
 
     @property
     def discarded_time_stamps(self) -> None:
@@ -126,17 +144,18 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         **BaseForecaster._parameter_constraints,
     }
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this forecaster produces.
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
 
         Returns
         -------
-        set of str
-            {"interval"}
+        Tags
+            Estimator tags with yohou-specific attributes.
 
         """
-        return {"interval"}
+        tags = super().__sklearn_tags__()
+        tags.forecaster_tags.forecaster_type = "interval"
+        return tags
 
     def __init__(
         self,
@@ -219,7 +238,14 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predicted time series with interval bounds.
 
         """
-        check_is_fitted(self, "fit_forecasting_horizon_")
+        _, X, panel_group_names = validate_data(
+            self,
+            y=None,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=False,
+        )
 
         # Use fit_forecasting_horizon_ as default
         if forecasting_horizon is None:
@@ -227,19 +253,6 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         if coverage_rates is None:
             coverage_rates = self.fit_coverage_rates_
-
-        if panel_group_names is None:
-            panel_group_names = self.panel_group_names_
-        else:
-            # Validate specified panel groups
-            if self.panel_group_names_ is None:
-                raise ValueError(
-                    "The forecaster was fitted on global data, but `panel_group_names` "
-                    "were provided for update."
-                )
-            for panel_group in panel_group_names:
-                if panel_group not in self.panel_group_names_:
-                    raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
 
         forecaster = deepcopy(self)
 
@@ -376,9 +389,15 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predicted time series.
 
         """
-        check_is_fitted(self, "fit_forecasting_horizon_")
+        y, X, panel_group_names = validate_data(
+            self,
+            y=y,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=True,
+        )
 
-        # Use fit_forecasting_horizon_ as default for both parameters
         if forecasting_horizon is None:
             forecasting_horizon = self.fit_forecasting_horizon_
         if stride is None:

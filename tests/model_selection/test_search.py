@@ -63,15 +63,10 @@ def test_search():
 
 
 @pytest.mark.parametrize(
-    "base_forecaster,tags,expected_failures",
+    "base_forecaster,expected_failures",
     [
         (
             PointReductionForecaster(estimator=Ridge(alpha=1.0)),
-            {
-                "forecaster_type": "point",
-                "uses_reduction": False,  # SearchCV itself doesn't use reduction
-                "uses_transformers": False,  # SearchCV itself doesn't use transformers
-            },
             [
                 # SearchCV is a meta-forecaster that delegates to best_forecaster_
                 # so it doesn't maintain its own observation buffers
@@ -81,7 +76,7 @@ def test_search():
         ),
     ],
 )
-def test_search_cv_forecaster_checks(base_forecaster, tags, expected_failures, y_X_factory):
+def test_search_cv_forecaster_checks(base_forecaster, expected_failures, y_X_factory):
     """Run systematic forecaster checks on SearchCV.
 
     SearchCV is a fully-fledged forecaster that delegates to best_forecaster_
@@ -117,7 +112,6 @@ def test_search_cv_forecaster_checks(base_forecaster, tags, expected_failures, y
         X_train,
         y_test,
         X_test,
-        tags=tags,
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

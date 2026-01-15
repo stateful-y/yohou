@@ -6,6 +6,8 @@ import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator, _fit_context
 
+from yohou.utils import Tags
+
 
 class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
     """Base class for all forecasting metrics.
@@ -14,27 +16,26 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
     the :meth:`score` method and can optionally override :meth:`fit` for metrics
     that require training data statistics.
 
-    Attributes
-    ----------
-    prediction_types : set of str
-        Types of predictions this scorer evaluates ({"point"} or {"interval"}).
-
     """
 
     _parameter_constraints: dict = {}
 
-    @property
-    @abc.abstractmethod
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this scorer handles.
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
 
         Returns
         -------
-        set of str
-            Either {"point"} or {"interval"}.
+        Tags
+            Estimator tags with scorer-specific attributes.
 
         """
-        raise NotImplementedError()
+        tags = Tags(estimator_type="scorer", requires_fit=False)
+
+        # Subclasses set prediction_type in their __sklearn_tags__() method
+        # Most scorers don't require calibration (fit is optional)
+        tags.scorer_tags.requires_calibration = False
+
+        return tags
 
     def _validate_inputs(
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame
@@ -152,17 +153,18 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     """
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this scorer handles.
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
 
         Returns
         -------
-        set of str
-            {"point"}
+        Tags
+            Estimator tags with scorer-specific attributes.
 
         """
-        return {"point"}
+        tags = super().__sklearn_tags__()
+        tags.scorer_tags.prediction_type = "point"
+        return tags
 
 
 class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
@@ -178,17 +180,18 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     """
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this scorer handles.
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
 
         Returns
         -------
-        set of str
-            {"interval"}
+        Tags
+            Estimator tags with scorer-specific attributes.
 
         """
-        return {"interval"}
+        tags = super().__sklearn_tags__()
+        tags.scorer_tags.prediction_type = "interval"
+        return tags
 
 
 class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):

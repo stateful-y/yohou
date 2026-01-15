@@ -3,9 +3,539 @@
 import calendar
 import re
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 import polars as pl
 import polars.selectors as cs
+from sklearn.utils.validation import check_is_fitted
+
+if TYPE_CHECKING:
+    from yohou.base import BaseEstimator
+
+
+def validate_data(
+    estimator: "BaseEstimator",
+    y: pl.DataFrame | None = None,
+    X: pl.DataFrame | None = None,
+    *,
+    X_t: pl.DataFrame | None = None,
+    X_p: pl.DataFrame | None = None,
+    reset: bool = True,
+    panel_group_names: list[str] | None = None,
+    observation_horizon: int | None = None,
+    **check_params,
+) -> tuple[pl.DataFrame | None, pl.DataFrame | None, list[str] | None]:
+    """Validate and prepare polars DataFrames for estimator methods.
+
+    This is the central validation orchestrator following sklearn's validate_data() pattern.
+    It handles schema validation, fitted attribute management, and delegates to atomic
+    validation functions based on estimator tags and context.
+
+    Parameters
+    ----------
+    estimator : BaseEstimator
+        The estimator instance being validated.
+    y : pl.DataFrame or None, default=None
+        Target time series DataFrame.
+    X : pl.DataFrame or None, default=None
+        Feature time series DataFrame (untransformed).
+    X_t : pl.DataFrame or None, default=None
+        Transformed time series for inverse_transform validation.
+        Mutually exclusive with X (use X_t for inverse_transform, X otherwise).
+    X_p : pl.DataFrame or None, default=None
+        Previous untransformed time series for inverse_transform validation.
+        When provided with observation_horizon, validates inverse_transform requirements.
+    reset : bool, default=True
+        Whether to set fitted attributes (True for fit context) or validate against
+        them (False for transform/predict context). When True, sets interval_,
+        local_y_schema_, local_X_schema_, panel_group_names_, n_features_in_.
+    panel_group_names : list of str or None, default=None
+        Panel group names to validate/predict for. Only used for forecasters.
+        If None, uses all fitted panel groups.
+    observation_horizon : int or None, default=None
+        Number of previous observations required for inverse transformation.
+        When provided with X_p, performs inverse_transform validation.
+    **check_params : dict
+        Additional validation parameters passed to atomic check functions.
+
+    Returns
+    -------
+    y_validated : pl.DataFrame or None
+        Validated target DataFrame with columns ordered according to schema.
+    X_validated : pl.DataFrame or None
+        Validated feature DataFrame with columns ordered according to schema.
+    panel_group_names : list of str or None
+        Validated panel group names (either from parameter or from estimator's fitted state).
+
+    Notes
+    -----
+    This function implements sklearn's validation philosophy adapted for polars DataFrames
+    and time series forecasting. The reset parameter mirrors sklearn's usage:
+    - reset=True in fit(): establish the core fitted attributes
+    - reset=False in predict/transform(): validate consistency against cache
+
+    For inverse_transform validation, pass both X_p and observation_horizon to validate:
+    - X_p is provided when observation_horizon > 0
+    - X_p has sufficient length
+    - X_p and X are temporally continuous
+
+    Examples
+    --------
+    In fit method (reset=True)::
+
+        y_val, X_val, _ = validate_data(self, y, X, reset=True)  # Sets fitted attributes
+
+    In predict method (reset=False)::
+
+        y_val, X_val, _ = validate_data(self, y, X, reset=False)  # Checks consistency
+
+    In inverse_transform method::
+
+        _, X_t_val, _ = validate_data(
+            self, X_t=X_t, reset=False,
+            X_p=X_p, observation_horizon=self.observation_horizon
+        )  # Validates inverse_transform requirements
+
+    """
+    # Check if this is a transformer based on estimator_type tag
+    estimator_type = estimator.__sklearn_tags__().estimator_type
+
+    # Validate X and X_t are mutually exclusive
+    if X is not None and X_t is not None:
+        raise ValueError(
+            "X and X_t are mutually exclusive. Use X for normal transform/predict "
+            "and X_t for inverse_transform."
+        )
+
+    if reset:
+        # Fit context: validate and set interval
+        # For transformers, we set fitted attributes here (feature_names_in_, n_features_in_, X_schema_)
+        # Note: For forecasters, schema and panel group attributes are set by _set_input_attributes()
+        if y is not None:
+            interval = check_inputs(y, X)
+            estimator.interval_ = interval
+        elif X is not None:
+            # Transformer-only scenario: validate X and set fitted attributes
+            interval = check_inputs(X, None)
+            estimator.interval_ = interval
+
+            # Set transformer fitted attributes
+            estimator.feature_names_in_ = X.select(~cs.by_name("time")).columns
+            estimator.n_features_in_ = len(estimator.feature_names_in_)
+
+            if estimator_type == "transformer":
+                estimator.X_schema_ = dict(X.select(~cs.by_name("time")).schema)
+
+        return y, X, None
+
+    if estimator_type == "transformer":
+        # Transformer validation: check against X_schema_
+        check_is_fitted(estimator, ["X_schema_", "feature_names_in_", "n_features_in_"])
+
+        # Handle inverse_transform validation if X_t is provided
+        if X_t is not None:
+            # Validate observation_horizon requirement
+            if observation_horizon is not None and observation_horizon > 0 and X_p is None:
+                raise ValueError(
+                    "X_p cannot be None to invert a transform that has observation_horizon > 0. "
+                    "Provide the necessary previous untransformed data."
+                )
+
+            # Check interval consistency for X_t (transformed data)
+            if len(X_t) >= 2:
+                X_t_interval = check_interval_consistency(X_t)
+            else:
+                # Single-step prediction: interval cannot be inferred, skip validation
+                X_t_interval = None
+
+            # If X_p is provided, validate it and check intervals match
+            if X_p is not None and len(X_p) > 0 and observation_horizon is not None:
+                # Validate X_p has sufficient length
+                if len(X_p) < observation_horizon:
+                    raise ValueError(
+                        f"X_p must have at least {observation_horizon} rows (observation_horizon), "
+                        f"but has only {len(X_p)} rows."
+                    )
+
+                # Check interval consistency for X_p (only if it has more than 1 row)
+                if len(X_p) > 1:
+                    X_p_interval = check_interval_consistency(X_p)
+
+                    # Ensure intervals match (only if X_t_interval was inferred)
+                    if X_t_interval is not None and X_p_interval != X_t_interval:
+                        raise ValueError(
+                            f"Time intervals do not match: X_p has interval {X_p_interval}, "
+                            f"but X_t has interval {X_t_interval}."
+                        )
+
+                # Note: We do NOT check temporal continuity between X_p and X_t for inverse_transform
+                # X_p is context data from before transformation, not necessarily continuous with X_t
+
+        if X is not None:
+            # Normal transform/predict context: validate schema
+            X = check_schema(X, estimator.X_schema_)
+
+            # Check interval consistency if requested
+            if check_params.get("check_intervals", True) and len(X) >= 2:
+                check_interval_consistency(X)
+
+            # Check continuity if _X_observed exists, is non-empty, and check_continuity is not False
+            if (
+                check_params.get("check_continuity", True)
+                and hasattr(estimator, "_X_observed")
+                and len(estimator._X_observed) > 0
+            ):
+                interval = None
+                if len(X) >= 2:
+                    interval = check_interval_consistency(X)
+                check_continuity(
+                    estimator._X_observed,
+                    X,
+                    expected_interval=interval,
+                    check_intervals=(interval is not None),
+                )
+
+        # For inverse_transform, X_t has transformed column names so we skip schema validation
+        # Return X_t if provided (inverse_transform), otherwise X
+        return y, X_t if X_t is not None else X, None
+
+    # Forecaster validation: check against local schemas
+    check_is_fitted(
+        estimator,
+        ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+    )
+
+    # Validate and normalize panel_group_names parameter
+    panel_group_names = check_panel_group_names(
+        fitted_panel_groups=estimator.panel_group_names_,
+        requested_panel_groups=panel_group_names,
+    )
+
+    # Validate schema and enforce column order
+    if y is not None:
+        y = check_schema(
+            y,
+            estimator.local_y_schema_,
+            panel_group_names=panel_group_names,
+        )
+
+    if X is not None:
+        # Handle panel data X (local + global schemas)
+        if estimator.panel_group_names_ is not None:
+            # Validate local X columns (with panel prefixes)
+            if hasattr(estimator, "local_X_schema_") and estimator.local_X_schema_:
+                X_local = check_schema(
+                    X,
+                    estimator.local_X_schema_,
+                    panel_group_names=estimator.panel_group_names_,
+                )
+
+            # Validate global X columns (no prefixes)
+            X_global = None
+            if hasattr(estimator, "global_X_schema_") and estimator.global_X_schema_:
+                X_global = check_schema(X, estimator.global_X_schema_)
+
+            # Reconstruct X with both local and global columns
+            if (
+                hasattr(estimator, "local_X_schema_")
+                and estimator.local_X_schema_
+                and hasattr(estimator, "global_X_schema_")
+                and estimator.global_X_schema_
+            ):
+                X = pl.concat(
+                    [X_local, X_global.select(~cs.by_name("time"))],
+                    how="horizontal",
+                )
+            elif hasattr(estimator, "local_X_schema_") and estimator.local_X_schema_:
+                X = X_local
+            elif hasattr(estimator, "global_X_schema_") and estimator.global_X_schema_:
+                X = X_global
+        else:
+            # Non-panel data: simple schema check
+            X = check_schema(X, estimator.local_X_schema_)
+
+    return y, X, panel_group_names
+
+
+def check_time_column(df: pl.DataFrame) -> None:
+    """Validate that time column exists, has proper dtype, no nulls, and is sorted.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        DataFrame to validate.
+
+    Raises
+    ------
+    ValueError
+        If time column is missing, has wrong dtype, contains nulls, or is not sorted.
+
+    """
+    if "time" not in df.columns:
+        raise ValueError(f"DataFrame must contain 'time' column. Found columns: {list(df.columns)}")
+
+    time_col = df["time"]
+    # Check dtype
+    if not isinstance(time_col.dtype, (pl.Datetime, pl.Date)):
+        raise ValueError(
+            f"'time' column must have dtype pl.Datetime or pl.Date, but got {time_col.dtype}"
+        )
+
+    # Check for nulls
+    if time_col.null_count() > 0:
+        raise ValueError(
+            f"'time' column contains {time_col.null_count()} null values. "
+            "'time' column must not have missing values."
+        )
+
+    # Check sorting (ascending)
+    if not time_col.is_sorted():
+        raise ValueError(
+            "'time' column must be sorted in ascending order. Call df.sort('time') to fix."
+        )
+
+
+def check_sufficient_rows(
+    df: pl.DataFrame,
+    min_rows: int,
+    context: str,
+    df_name: str = "DataFrame",
+) -> None:
+    """Validate DataFrame has sufficient rows for operation.
+
+    Generic validation consolidating observation horizon, seasonality cycle,
+    and interval inference checks.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        DataFrame to validate.
+    min_rows : int
+        Minimum number of rows required.
+    context : str
+        Description of why rows are needed (for error message).
+        Examples: "for memory buffer", "for seasonal decomposition",
+        "to compute time intervals"
+    df_name : str, default="DataFrame"
+        Name of DataFrame in error message.
+
+    Raises
+    ------
+    ValueError
+        If DataFrame has fewer rows than required.
+
+    """
+    actual_rows = len(df)
+    if actual_rows < min_rows:
+        raise ValueError(
+            f"{df_name} has {actual_rows} rows but requires at least {min_rows} rows {context}."
+        )
+
+
+def check_panel_group_names(
+    fitted_panel_groups: list[str] | None,
+    requested_panel_groups: list[str] | None,
+) -> list[str] | None:
+    """Validate and normalize panel group names for forecaster operations.
+
+    Validates that requested panel groups exist in the fitted forecaster and
+    returns the normalized list of groups to use.
+
+    Parameters
+    ----------
+    fitted_panel_groups : list of str or None
+        Panel group names from fitted forecaster (panel_group_names_).
+        None indicates the forecaster was fitted on global (non-panel) data.
+
+    requested_panel_groups : list of str or None
+        Panel group names requested for operation.
+        If None, all fitted panel groups will be used.
+
+    Returns
+    -------
+    list of str or None
+        Validated panel group names to use for the operation.
+        None for global (non-panel) data.
+
+    Raises
+    ------
+    ValueError
+        If requested_panel_groups is provided but forecaster was fitted on global data,
+        or if any requested panel group was not present during fit.
+
+    Examples
+    --------
+    >>> # Global data: no panel groups
+    >>> result = check_panel_group_names(fitted_panel_groups=None, requested_panel_groups=None)
+    >>> result is None
+    True
+
+    >>> # Panel data: use all fitted groups
+    >>> check_panel_group_names(
+    ...     fitted_panel_groups=["sales", "inventory"],
+    ...     requested_panel_groups=None
+    ... )
+    ['sales', 'inventory']
+
+    >>> # Panel data: validate specific groups
+    >>> check_panel_group_names(
+    ...     fitted_panel_groups=["sales", "inventory"],
+    ...     requested_panel_groups=["sales"]
+    ... )
+    ['sales']
+
+    """
+    # If no groups requested, use all fitted groups
+    if requested_panel_groups is None:
+        return fitted_panel_groups
+
+    # Validate that requested groups are compatible with fitted state
+    if fitted_panel_groups is None:
+        raise ValueError(
+            "The forecaster was fitted on global data, but `panel_group_names` were provided."
+        )
+
+    # Check that all requested groups exist in fitted groups
+    missing_groups = set(requested_panel_groups) - set(fitted_panel_groups)
+    if missing_groups:
+        raise ValueError(
+            f"Panel group(s) {sorted(missing_groups)} not found in fitted forecaster. "
+            f"Available groups: {sorted(fitted_panel_groups)}."
+        )
+
+    return requested_panel_groups
+
+
+def check_panel_group_names_exist(
+    fitted_panel_groups: list[str],
+    requested_panel_groups: list[str] | None,
+    context: str,
+) -> None:
+    """Validate all requested panel groups exist in fitted forecaster.
+
+    .. deprecated::
+        Use :func:`check_panel_group_names` instead.
+
+    Consolidates duplicated validation in predict, update, reset methods.
+
+    Parameters
+    ----------
+    fitted_panel_groups : list of str
+        Panel group names from fitted forecaster (panel_group_names_).
+    requested_panel_groups : list of str or None
+        Panel group names requested for operation.
+    context : str
+        Method name for error message (e.g., "predict", "update", "reset").
+
+    Raises
+    ------
+    ValueError
+        If any requested panel group was not present during fit.
+
+    """
+    if requested_panel_groups is None:
+        return
+
+    missing_groups = set(requested_panel_groups) - set(fitted_panel_groups)
+    if missing_groups:
+        raise ValueError(
+            f"Panel groups {sorted(missing_groups)} not found in fitted forecaster. "
+            f"Available groups: {sorted(fitted_panel_groups)}. "
+            f"Cannot {context} for groups that were not present during fit."
+        )
+
+
+def check_forecasting_horizon_positive(
+    horizon: int | None,
+    allow_none: bool = False,
+) -> None:
+    """Validate forecasting horizon is positive.
+
+    Parameters
+    ----------
+    horizon : int or None
+        Forecasting horizon value.
+    allow_none : bool, default=False
+        Whether None is acceptable (for predict with optional horizon override).
+
+    Raises
+    ------
+    ValueError
+        If horizon is not positive or is None when not allowed.
+
+    """
+    if horizon is None:
+        if not allow_none:
+            raise ValueError("forecasting_horizon cannot be None")
+        return
+
+    if horizon < 1:
+        raise ValueError(f"forecasting_horizon must be >= 1, got {horizon}")
+
+
+def check_time_column(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
+    """Validate DataFrame has a 'time' column with Datetime type.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        DataFrame to validate.
+    df_name : str, default="DataFrame"
+        Name of DataFrame in error message.
+
+    Raises
+    ------
+    ValueError
+        If 'time' column is missing or not Datetime type.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from yohou.utils.validation import check_time_column
+    >>> df = pl.DataFrame({"time": ["2023-01-01"], "value": [1]})
+    >>> check_time_column(df)  # doctest: +SKIP
+    Traceback (most recent call last):
+        ...
+    ValueError: 'time' column must be Datetime type, got String.
+
+    """
+    if "time" not in df.columns:
+        raise ValueError(f"{df_name} must contain a 'time' column.")
+
+    if df["time"].dtype != pl.Datetime:
+        raise ValueError(f"'time' column must be Datetime type, got {df['time'].dtype}.")
+
+
+def check_exogenous_required(
+    X: pl.DataFrame | None,
+    observation_horizon: int,
+    context: str,
+) -> None:
+    """Validate X is provided when required for recursive prediction.
+
+    Consolidates duplicated validation in point and interval forecasters.
+
+    Parameters
+    ----------
+    X : pl.DataFrame or None
+        Exogenous features.
+    observation_horizon : int
+        Observation horizon value.
+    context : str
+        Context for error message (e.g., "predict", "predict_interval").
+
+    Raises
+    ------
+    ValueError
+        If X is None but observation_horizon > 0 (recursive prediction needs X).
+
+    """
+    if observation_horizon > 0 and X is None:
+        raise ValueError(
+            f"For recursive predictions with observation_horizon > 0, "
+            f"X must be provided for {context}. "
+            f"Got observation_horizon={observation_horizon} but X=None."
+        )
 
 
 def check_interval_consistency(df: pl.DataFrame) -> str:
@@ -496,111 +1026,6 @@ def check_continuity(
                     f"{last_time_p}, next DataFrame starts at {first_time_n}, with interval "
                     f"{interval_td} (expected {expected_interval})."
                 )
-
-
-def check_inverse_transform(
-    X_t: pl.DataFrame, X_p: pl.DataFrame | None, observation_horizon: int
-) -> None:
-    """Validate inputs for inverse_transform operations.
-
-    Ensures that the transformed time series (X_t) and previous untransformed
-    time series (X_p) meet requirements for inverse transformation:
-    - Both have consistent time intervals
-    - X_p is provided when observation_horizon > 0 and is at least that long
-    - X_p and X_t are temporally continuous (no gaps or overlaps)
-
-    Parameters
-    ----------
-    X_t : pl.DataFrame
-        Transformed time series with "time" column to be inverted.
-
-    X_p : pl.DataFrame or None
-        Untransformed time series corresponding to at least `observation_horizon`
-        immediately previous time stamps. Required when observation_horizon > 0.
-
-    observation_horizon : int
-        Number of previous observations required for inverse transformation.
-        If 0, X_p can be None. If > 0, X_p must be provided.
-
-    Raises
-    ------
-    ValueError
-        If X_p is None when observation_horizon > 0, if time intervals are
-        inconsistent, or if X_p and X_t are not temporally continuous.
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> from datetime import datetime
-    >>> # Valid: observation_horizon = 0, X_p can be None
-    >>> X_t = pl.DataFrame({
-    ...     "time": pl.datetime_range(
-    ...         datetime(2020, 1, 1), datetime(2020, 1, 3), "1d", eager=True
-    ...     ),
-    ...     "value": [1.0, 2.0, 3.0]
-    ... })
-    >>> check_inverse_transform(X_t, None, observation_horizon=0)  # No error
-
-    >>> # Valid: observation_horizon > 0 with continuous X_p
-    >>> X_p = pl.DataFrame({
-    ...     "time": pl.datetime_range(
-    ...         datetime(2019, 12, 30), datetime(2019, 12, 31), "1d", eager=True
-    ...     ),
-    ...     "value": [8.0, 9.0]
-    ... })
-    >>> X_t = pl.DataFrame({
-    ...     "time": pl.datetime_range(
-    ...         datetime(2020, 1, 1), datetime(2020, 1, 3), "1d", eager=True
-    ...     ),
-    ...     "value": [1.0, 2.0, 3.0]
-    ... })
-    >>> check_inverse_transform(X_t, X_p, observation_horizon=2)  # No error
-
-    See Also
-    --------
-    check_interval_consistency : Validates uniform time spacing
-    check_continuity : Validates temporal continuity between DataFrames
-
-    """
-    # Validate observation_horizon requirement
-    if observation_horizon > 0 and X_p is None:
-        raise ValueError(
-            "X_p cannot be None to invert a transform that has observation_horizon > 0. "
-            "Provide the necessary previous untransformed data."
-        )
-
-    # Check interval consistency for X_t (skip if only 1 row - single-step prediction)
-    if len(X_t) >= 2:
-        X_t_interval = check_interval_consistency(X_t)
-    else:
-        # Single-step prediction: interval cannot be inferred, skip validation
-        X_t_interval = None
-
-    # If X_p is provided, validate it and check continuity with X_t
-    if X_p is not None and len(X_p) > 0:
-        # Validate X_p has sufficient length
-        if len(X_p) < observation_horizon:
-            raise ValueError(
-                f"X_p must have at least {observation_horizon} rows (observation_horizon), "
-                f"but has only {len(X_p)} rows."
-            )
-
-        # Check interval consistency for X_p (only if it has more than 1 row)
-        if len(X_p) > 1:
-            X_p_interval = check_interval_consistency(X_p)
-
-            # Ensure intervals match (only if X_t_interval was inferred)
-            if X_t_interval is not None and X_p_interval != X_t_interval:
-                raise ValueError(
-                    f"Time intervals do not match: X_p has interval {X_p_interval}, "
-                    f"but X_t has interval {X_t_interval}."
-                )
-
-        # Check temporal continuity: X_p should end right before X_t begins
-        # Only check intervals if X_t_interval was successfully inferred
-        check_continuity(
-            X_p, X_t, expected_interval=X_t_interval, check_intervals=(X_t_interval is not None)
-        )
 
 
 def _timedelta_to_string(td: timedelta) -> str:

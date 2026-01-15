@@ -62,16 +62,14 @@ def test_identity(transformer):
 
 
 @pytest.mark.parametrize(
-    "transformer,tags,expected_failures",
+    "transformer,expected_failures",
     [
         (
             SeasonalDifferencing(seasonality=1),
-            {"invertible": True, "stateful": True},
             [],
         ),
         (
             SeasonalLogDifferencing(seasonality=1),
-            {"invertible": True, "requires_positive_X": True, "stateful": True},
             [],
         ),
     ],
@@ -79,20 +77,25 @@ def test_identity(transformer):
 )
 def test_stationarization_transformer_checks(
     transformer,
-    tags,
     expected_failures,
-    time_series_factory,
+    time_series_train_test_factory,
 ):
     """Run all applicable checks for stationarization transformers."""
-    # Generate test data using fixture factory
+    # Generate continuous train/test data
     min_horizon = 10
-    X_train = time_series_factory(length=min_horizon + 50, seed=42)
-    X_test = time_series_factory(length=min_horizon + 20, seed=123)
+    X_train, X_test = time_series_train_test_factory(
+        train_length=min_horizon + 50, test_length=min_horizon + 20
+    )
 
-    # Make data positive for log transforms
-    if "requires_positive_X" in tags and tags["requires_positive_X"]:
-        X_train = X_train.select([pl.col("time"), (pl.all().exclude("time") + 100.0)])
-        X_test = X_test.select([pl.col("time"), (pl.all().exclude("time") + 100.0)])
+    # Get tags from transformer
+    tags = transformer.__sklearn_tags__()
+
+    # Adjust data for transformers with min_value constraints
+    if tags.input_tags and tags.input_tags.min_value is not None:
+        # Make data satisfy min_value constraint by adding offset
+        offset = max(0.0, tags.input_tags.min_value + 1.0)
+        X_train = X_train.select([pl.col("time"), (pl.all().exclude("time") + offset)])
+        X_test = X_test.select([pl.col("time"), (pl.all().exclude("time") + offset)])
 
     # Fit transformer
     transformer_fitted = clone(transformer)
@@ -102,7 +105,7 @@ def test_stationarization_transformer_checks(
     expected_failures_set = set(expected_failures)
 
     for check_name, check_func, check_kwargs in _yield_yohou_transformer_checks(
-        transformer_fitted, X_train, X_test, tags=tags
+        transformer_fitted, X_train, X_test
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

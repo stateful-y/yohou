@@ -19,31 +19,27 @@ from estimator_checks import _yield_yohou_forecaster_checks
 
 
 @pytest.mark.parametrize(
-    "forecaster,tags,expected_failures",
+    "forecaster,expected_failures",
     [
         (
             PatternSeasonalityForecaster(seasonality=12, method="naive"),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             PatternSeasonalityForecaster(seasonality=12, method="average"),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             PatternSeasonalityForecaster(seasonality=12, method="median"),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             PatternSeasonalityForecaster(seasonality=7, method="average"),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
     ],
 )
-def test_seasonality_forecaster_checks(forecaster, tags, expected_failures, y_X_factory):
+def test_seasonality_forecaster_checks(forecaster, expected_failures, y_X_factory):
     """Run systematic checks on PatternSeasonalityForecaster variants."""
     # Generate data with sufficient length for 2+ cycles
     seasonality = forecaster.seasonality
@@ -71,7 +67,6 @@ def test_seasonality_forecaster_checks(forecaster, tags, expected_failures, y_X_
         X_train,
         y_test,
         X_test,
-        tags=tags,
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")
@@ -313,31 +308,27 @@ def test_seasonality_update_predict():
 
 
 @pytest.mark.parametrize(
-    "forecaster,tags,expected_failures",
+    "forecaster,expected_failures",
     [
         (
             FourierSeasonalityForecaster(seasonality=12, harmonics=[1]),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3]),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             FourierSeasonalityForecaster(seasonality=24, harmonics=[1, 2, 3, 4, 5]),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
         (
             FourierSeasonalityForecaster(seasonality=7, harmonics=[1, 2]),
-            {"forecaster_type": "point", "uses_reduction": False},
             [],
         ),
     ],
 )
-def test_fourier_seasonality_forecaster_checks(forecaster, tags, expected_failures, y_X_factory):
+def test_fourier_seasonality_forecaster_checks(forecaster, expected_failures, y_X_factory):
     """Run systematic checks on FourierSeasonalityForecaster variants."""
     # Generate data with sufficient length
     seasonality = forecaster.seasonality
@@ -366,7 +357,6 @@ def test_fourier_seasonality_forecaster_checks(forecaster, tags, expected_failur
         X_train,
         y_test,
         X_test,
-        tags=tags,
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

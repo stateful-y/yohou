@@ -146,14 +146,13 @@ def test_transformer_accepts_params_in_transform(time_series_factory):
     assert len(y_t) > 0
 
 
-def test_transformer_update_transform_routes_to_transform_only(time_series_factory):
+def test_transformer_update_transform_routes_to_transform_only(time_series_train_test_factory):
     """update_transform should route params to transform, not update."""
-    y = time_series_factory(length=50, n_components=1)
+    y, y_new = time_series_train_test_factory(train_length=50, test_length=5, n_components=1)
     transformer = SeasonalDifferencing(seasonality=3)
     transformer.fit(y)
 
     # update_transform should work (routes to transform)
-    y_new = y[-5:]
     y_t = transformer.update_transform(y_new)
     assert len(y_t) > 0
 

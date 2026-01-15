@@ -56,7 +56,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.point_forecaster import PatternSeasonalityForecaster
+    >>> from yohou.decomposition import PatternSeasonalityForecaster
     >>>
     >>> # Create time series with monthly seasonality
     >>> pattern = [10, 12, 15, 13, 11, 9, 8, 10, 12, 15, 13, 11]
@@ -383,7 +383,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     >>> import polars as pl
     >>> import numpy as np
     >>> from datetime import datetime
-    >>> from yohou.point_forecaster import FourierSeasonalityForecaster
+    >>> from yohou.decomposition import FourierSeasonalityForecaster
     >>>
     >>> # Create time series with sinusoidal seasonality
     >>> time_range = pl.datetime_range(
@@ -399,8 +399,8 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     >>>
     >>> # Fit Fourier seasonality forecaster
     >>> forecaster = FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])
-    >>> forecaster.fit(y, forecasting_horizon=30)
-    FourierSeasonalityForecaster(seasonality=12)
+    >>> forecaster.fit(y, forecasting_horizon=30)  # doctest: +ELLIPSIS
+    FourierSeasonalityForecaster(...)
     >>>
     >>> # Forecast next 30 days
     >>> y_pred = forecaster.predict(forecasting_horizon=30)

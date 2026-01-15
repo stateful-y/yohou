@@ -5,10 +5,10 @@ from copy import deepcopy
 
 import polars as pl
 from pydantic import StrictInt
-from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseForecaster
+from yohou.base import BaseForecaster, Tags
 from yohou.utils import select_panel_columns
+from yohou.utils.validation import validate_data
 
 
 class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
@@ -24,17 +24,18 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Defines how the input to the ``feature_transformer`` is built.
     """
 
-    @property
-    def prediction_types(self) -> set[str]:
-        """Get the prediction types this forecaster produces.
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
 
         Returns
         -------
-        set of str
-            {"point"}
+        Tags
+            Estimator tags with yohou-specific attributes.
 
         """
-        return {"point"}
+        tags = super().__sklearn_tags__()
+        tags.forecaster_tags.forecaster_type = "point"
+        return tags
 
     def fit(
         self,
@@ -102,24 +103,18 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predicted time series.
 
         """
-        check_is_fitted(self, "fit_forecasting_horizon_")
+        _, X, panel_group_names = validate_data(
+            self,
+            y=None,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=False,
+        )
 
         # Use fit_forecasting_horizon_ as default
         if forecasting_horizon is None:
             forecasting_horizon = self.fit_forecasting_horizon_
-
-        if panel_group_names is None:
-            panel_group_names = self.panel_group_names_
-        else:
-            # Validate specified panel groups
-            if self.panel_group_names_ is None:
-                raise ValueError(
-                    "The forecaster was fitted on global data, but `panel_group_names` "
-                    "were provided for update."
-                )
-            for panel_group in panel_group_names:
-                if panel_group not in self.panel_group_names_:
-                    raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
 
         forecaster = deepcopy(self)
 
@@ -221,7 +216,14 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predicted time series.
 
         """
-        check_is_fitted(self, "fit_forecasting_horizon_")
+        y, X, panel_group_names = validate_data(
+            self,
+            y=y,
+            X=X,
+            reset=False,
+            panel_group_names=panel_group_names,
+            check_continuity=True,
+        )
 
         # Use fit_forecasting_horizon_ as default for both parameters
         if forecasting_horizon is None:

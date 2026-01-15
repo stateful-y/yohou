@@ -283,21 +283,19 @@ def test_update_predict_global(
 
 
 @pytest.mark.parametrize(
-    "forecaster,tags,expected_failures",
+    "forecaster,expected_failures",
     [
         (
             PointReductionForecaster(),
-            {"forecaster_type": "point", "uses_reduction": True},
             [],
         ),
         (
             PointReductionForecaster(estimator=LinearRegression()),
-            {"forecaster_type": "point", "uses_reduction": True},
             [],
         ),
     ],
 )
-def test_point_reduction_checks(forecaster, tags, expected_failures, y_X_factory):
+def test_point_reduction_checks(forecaster, expected_failures, y_X_factory):
     """Run systematic checks on PointReductionForecaster."""
     # Generate data
     y, X = y_X_factory(length=100, seed=42)
@@ -316,7 +314,6 @@ def test_point_reduction_checks(forecaster, tags, expected_failures, y_X_factory
         X_train,
         y_test,
         X_test,
-        tags=tags,
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

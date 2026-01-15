@@ -6,8 +6,8 @@ import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
 from sklearn.utils.validation import _check_feature_names_in
 
-from yohou.base import BaseTransformer
-from yohou.utils.validation import check_inverse_transform
+from yohou.base import BaseTransformer, Tags
+from yohou.utils.validation import validate_data
 
 
 class LogTransform(BaseTransformer):
@@ -22,6 +22,19 @@ class LogTransform(BaseTransformer):
 
     def __init__(self, offset: StrictFloat = 0.0):
         self.offset = offset
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+        tags.input_tags.min_value = -self.offset if self.offset > 0.0 else 0.0
+        return tags
 
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "LogTransform":
         """Fits the transformer and returns it.
@@ -60,6 +73,7 @@ class LogTransform(BaseTransformer):
             Transformed time series.
 
         """
+
         time = X.select(cs.by_name("time"))
         X_t = (X.select(~cs.by_name("time")) + self.offset).with_columns(pl.all().log())
         feature_names = self.get_feature_names_out()
@@ -86,7 +100,9 @@ class LogTransform(BaseTransformer):
             Inverted transformed time series.
 
         """
-        check_inverse_transform(X_t, X_p, self.observation_horizon)
+        _, X_t, _ = validate_data(
+            self, X_t=X_t, X_p=X_p, reset=False, observation_horizon=self.observation_horizon
+        )
 
         time = X_t.select(cs.by_name("time"))
         X = X_t.select(~cs.by_name("time")).with_columns(pl.all().exp()) - self.offset
@@ -128,6 +144,20 @@ class SeasonalDifferencing(BaseTransformer):
     def __init__(self, seasonality: StrictInt = 1):
         self.seasonality = seasonality
 
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+        # SeasonalDifferencing is always stateful (uses observation horizon)
+        tags.transformer_tags.stateful = True
+        return tags
+
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "SeasonalDifferencing":
         """Fits the transformer and returns it.
 
@@ -165,6 +195,8 @@ class SeasonalDifferencing(BaseTransformer):
             Transformed time series.
 
         """
+        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=False)
+
         time = X.select(cs.by_name("time"))[self.seasonality :]
         X_t = X.select(~cs.by_name("time")).select(pl.all().diff(self.seasonality))[
             self.seasonality :
@@ -193,9 +225,9 @@ class SeasonalDifferencing(BaseTransformer):
             Inverted transformed time series.
 
         """
-        check_inverse_transform(X_t, X_p, self.observation_horizon)
-
-        assert X_p is not None  # for ty
+        _, X_t, _ = validate_data(
+            self, X_t=X_t, X_p=X_p, reset=False, observation_horizon=self.observation_horizon
+        )
 
         time = X_t.select(cs.by_name("time"))
         X_t.columns = X_p.columns
@@ -302,8 +334,19 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
             Transformed time series.
 
         """
+        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=False)
+
+        # Apply log transform
         X_t = LogTransform.transform(self, X=X)
-        X_t = SeasonalDifferencing.transform(self, X=X_t)
+
+        # Apply seasonal differencing manually (skip validate_data since columns are transformed)
+        time = X_t.select(cs.by_name("time"))[self.seasonality :]
+        X_diff = X_t.select(~cs.by_name("time")).select(pl.all().diff(self.seasonality))[
+            self.seasonality :
+        ]
+        feature_names = self.get_feature_names_out()
+        X_diff = X_diff.rename(dict(zip(X_diff.columns, feature_names)))
+        X_t = pl.concat([time, X_diff], how="horizontal")
 
         return X_t
 
@@ -324,7 +367,9 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
         pl.DataFrame
             Inverted transformed time series.
         """
-        check_inverse_transform(X_t, X_p, self.observation_horizon)
+        _, X_t, _ = validate_data(
+            self, X_t=X_t, X_p=X_p, reset=False, observation_horizon=self.observation_horizon
+        )
 
         assert X_p is not None  # for ty
         X_p = self.log_transform_.transform(X=X_p)

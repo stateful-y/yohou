@@ -17,7 +17,7 @@ Yohou's forecaster testing infrastructure provides comprehensive, reusable testi
 
 3. **Point vs Interval Forecasters**: Distinct validation for point predictions vs interval predictions with coverage rates
 
-4. **Comprehensive Validation**: 20+ check functions covering fit/predict contracts, time column validation, observation buffer management, and composition patterns
+4. **Comprehensive Validation**: 30+ check functions covering fit/predict contracts, time column validation, observation buffer management, tag system validation, and composition patterns
 
 5. **Analytical Tests**: Exact numerical validation for PointReductionForecaster with LinearRegression on known processes (linear trends, AR(1))
 
@@ -62,7 +62,7 @@ The testing infrastructure consists of three main components that work together 
 
 ### 1. Check Functions Library (`tests/estimator_checks.py`)
 
-**Purpose**: Reusable library of 28+ validation functions that test forecaster contracts
+**Purpose**: Reusable library of 30+ validation functions that test forecaster contracts
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
@@ -73,7 +73,7 @@ The testing infrastructure consists of three main components that work together 
 
 **Check Categories**:
 
-**Common Forecaster Checks (8 functions)**:
+**Common Forecaster Checks (11 functions)**:
 1. **`check_fit_sets_forecaster_attributes`** - Validates fit() sets required attributes (fit_forecasting_horizon_, interval_, panel_group_names_, local_y_schema_, local_X_schema_, global_X_schema_, _y_observed, _X_observed, _X_t_observed)
 2. **`check_forecaster_not_fitted_error`** - Ensures NotFittedError before fit() when accessing fitted attributes
 3. **`check_predict_time_columns`** - Validates predictions have "observed_time" and "time" columns (note: "predicted_time" was renamed to "time")
@@ -82,6 +82,9 @@ The testing infrastructure consists of three main components that work together 
 6. **`check_forecasting_horizon_validation`** - Ensures forecasting_horizon < 1 raises ValueError
 7. **`check_prediction_types_property`** - Validates prediction_types returns correct set ({"point"}, {"interval"}, or both)
 8. **`check_clone_preserves_forecaster_params`** - sklearn's clone() preserves init parameters (enhanced to handle deeply nested estimators)
+9. **`check_forecaster_tags_accessible_before_fit`** - Validates __sklearn_tags__() is accessible before fit() (tags are static capabilities)
+10. **`check_forecaster_tags_static_after_fit`** - Ensures tag values don't change after fit() (forecaster_type, stateful, uses_reduction, supports_panel_data)
+11. **`check_forecaster_tags_match_capabilities`** - Verifies tags accurately reflect actual behavior (forecaster_type vs prediction_types, uses_reduction vs estimator, transformer usage)
 
 **Point Forecaster Checks (2 functions)**:
 10. **`check_point_prediction_structure`** - Validates output has observed_time, predicted_time, and target columns only (no interval columns)

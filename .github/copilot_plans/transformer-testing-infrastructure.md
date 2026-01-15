@@ -17,7 +17,7 @@ Yohou's transformer testing infrastructure provides comprehensive, reusable test
 
 3. **Stateless vs Stateful Transformers**: Distinct handling for transformers with observation_horizon = 0 vs > 0
 
-4. **Comprehensive Validation**: 18 check functions covering fit/transform contracts, dtype preservation, inverse transforms, memory management, and panel data
+4. **Comprehensive Validation**: 21 check functions covering fit/transform contracts, dtype preservation, inverse transforms, memory management, tag system validation, and panel data
 
 5. **Dummy Transformers**: Minimal test fixtures for composition testing (SimpleTransformer, StatelessTransformer, etc.)
 
@@ -59,7 +59,7 @@ The testing infrastructure consists of three main components that work together 
 
 ### 1. Check Functions Library (`tests/estimator_checks.py`)
 
-**Purpose**: Reusable library of 18 validation functions that test transformer contracts
+**Purpose**: Reusable library of 21 validation functions that test transformer contracts
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
@@ -69,7 +69,7 @@ The testing infrastructure consists of three main components that work together 
 
 **Check Categories**:
 
-**Core Yohou Checks (12 functions)**:
+**Core Yohou Checks (15 functions)**:
 1. **`check_fit_sets_attributes`** - Validates fit() sets required attributes (feature_names_in_, n_features_in_, _observation_horizon)
 2. **`check_observation_horizon_not_fitted`** - Ensures accessing observation_horizon before fit() raises NotFittedError
 3. **`check_observation_horizon_after_fit`** - Validates observation_horizon is a non-negative integer after fit()
@@ -82,6 +82,9 @@ The testing infrastructure consists of three main components that work together 
 10. **`check_inverse_transform_identity`** - Basic round-trip test: inverse_transform(transform(X)) ≈ X
 11. **`check_panel_data_support`** - Tests transformers handle struct columns (panel data) correctly
 12. **`check_clone_preserves_params`** - Ensures sklearn's clone() preserves init parameters
+13. **`check_tags_accessible_before_fit`** - Validates __sklearn_tags__() is accessible before fit() (tags are static capabilities)
+14. **`check_tags_static_after_fit`** - Ensures tag values don't change after fit() (stateful, invertible, min_value)
+15. **`check_tags_match_capabilities`** - Verifies tags accurately reflect actual capabilities (stateful vs _observation_horizon, invertible vs inverse_transform)
 
 **Enhanced Checks from sklearn (6 functions)**:
 13. **`check_transformers_unfitted_stateless`** - Stateless transformers (observation_horizon=0) work without fit()
@@ -98,7 +101,7 @@ The testing infrastructure consists of three main components that work together 
 **Purpose**: Dynamically generates applicable checks based on transformer properties, eliminating boilerplate test code
 
 **How It Works**:
-1. Examines transformer attributes (stateful, invertible, requires_positive_X, etc.)
+1. Examines transformer attributes (stateful, invertible, min_value, etc.)
 2. Yields core checks that apply to all transformers
 3. Conditionally yields checks based on transformer capabilities
 4. Skips checks for known incompatibilities

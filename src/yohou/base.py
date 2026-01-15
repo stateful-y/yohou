@@ -20,13 +20,13 @@ from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.utils import (
+    Tags,
     add_interval,
     cast,
-    check_inputs,
-    check_schema,
     get_group_df,
     inspect_locality,
     tabularize,
+    validate_data,
 )
 
 PredictionType = Literal["point", "interval"]
@@ -41,6 +41,27 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
     """Base class for time series transformers."""
 
     _parameter_constraints: dict = {}
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        # Create Tags with transformer-specific defaults
+        tags = Tags(estimator_type="transformer", requires_fit=True)
+
+        # Auto-detect stateful: check if class has _observation_horizon attribute
+        # This is a capability check, not a runtime value check
+        tags.transformer_tags.stateful = hasattr(self, "_observation_horizon")
+
+        # Auto-detect invertible: check if inverse_transform method exists
+        tags.transformer_tags.invertible = hasattr(self, "inverse_transform")
+
+        return tags
 
     @property
     def observation_horizon(self) -> int:
@@ -103,16 +124,18 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         -------
         self
 
+        Raises
+        ------
+        ValueError
+            If X does not have a "time" column, or if time intervals are inconsistent.
+
         """
+        # Validate inputs and set fitted attributes (feature_names_in_, n_features_in_, X_schema_, interval_)
+        _, X, _ = validate_data(self, y=None, X=X, reset=True)
+
         # Router transformers would call process_routing() in their fit function
 
         self._update_X_observed(X)
-
-        self.feature_names_in_ = X.select(~cs.by_name("time")).columns
-        self.n_features_in_ = len(self.feature_names_in_)
-
-        # Store input schema for dtype preservation
-        self.input_schema_ = dict(X.select(~cs.by_name("time")).schema)
 
         return self
 
@@ -129,7 +152,8 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         self
 
         """
-        check_is_fitted(self, ["n_features_in_"])
+        # Validate against fitted state (no continuity check - reset sets new window)
+        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=False)
 
         self._update_X_observed(X)
 
@@ -144,13 +168,21 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series.
+            Input time series with new observations.
 
         Returns
         -------
         self
 
+        Raises
+        ------
+        ValueError
+            If X contains overlapping data with existing observations.
+
         """
+        # Validate against fitted state (includes continuity check)
+        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=True)
+
         self.reset(pl.concat([self._X_observed, X]))
 
         return self
@@ -175,30 +207,6 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         """
         raise NotImplementedError()
 
-    def inverse_transform(
-        self, X_t: pl.DataFrame, X_p: pl.DataFrame | None, **params
-    ) -> pl.DataFrame:
-        """Inverts the input transformed time series.
-
-        Parameters
-        ----------
-        X_t : pl.DataFrame
-            Transformed time series.
-
-        X_p : pl.DataFrame or None
-            Untransformed time series corresponding to at least `observation_horizon` immediately
-            previous time stamps. Can be None if `observation_horizon == 0`.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Inverted transformed time series.
-        """
-        raise NotImplementedError("This transformer is not invertible.")
-
     def update_transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
         """Transforms the input, updates the transformer and returns
         the transformed input.
@@ -217,7 +225,8 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
             Transformed input time series.
 
         """
-        check_is_fitted(self, ["n_features_in_"])
+        # Validate against fitted state (includes continuity check)
+        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=True)
 
         # Route all params to transform only (update is memory management)
         if self.observation_horizon > 0:
@@ -278,6 +287,41 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         self.target_transformer = target_transformer
         self.input_features = input_features
 
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        # Create Tags with forecaster-specific defaults
+        tags = Tags(estimator_type="forecaster", requires_fit=True)
+
+        # Set transformer usage flags (static - based on __init__ params)
+        tags.forecaster_tags.uses_target_transformer = self.target_transformer is not None
+        tags.forecaster_tags.uses_feature_transformer = self.feature_transformer is not None
+
+        # Stateful is a static capability, not fitted state
+        # A forecaster is stateful if:
+        # 1. It has its own observation horizon mechanism, OR
+        # 2. It uses a stateful target transformer, OR
+        # 3. It uses a stateful feature transformer
+        stateful = hasattr(self, "_observation_horizon")
+
+        if not stateful and self.target_transformer is not None:
+            stateful = self.target_transformer.__sklearn_tags__().transformer_tags.stateful
+
+        if not stateful and self.feature_transformer is not None:
+            stateful = self.feature_transformer.__sklearn_tags__().transformer_tags.stateful
+
+        tags.forecaster_tags.stateful = stateful
+
+        # forecaster_type is set by subclasses in their __sklearn_tags__() method
+
+        return tags
+
     @property
     def observation_horizon(self) -> int:
         """Get the number of time steps needed for stateful operations.
@@ -316,21 +360,6 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         return max(
             self_observation_horizon, target_observation_horizon, feature_observation_horizon
         )
-
-    @property
-    @abc.abstractmethod
-    def prediction_types(self) -> set[PredictionType]:
-        """Get the types of predictions this forecaster produces.
-
-        Returns
-        -------
-        set of {"point", "interval"}
-            Set of prediction types produced by this forecaster.
-            Point forecasters return {"point"}, interval forecasters return {"interval"},
-            and forecasters producing both return {"point", "interval"}.
-
-        """
-        raise NotImplementedError()
 
     def _set_input_attributes(self, y: pl.DataFrame, X: pl.DataFrame | None) -> None:
         """Detect and validate panel data structure across target and features.
@@ -512,6 +541,15 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
                         self.local_X_t_schema_ = dict(
                             X_t_first_group.select(~cs.by_name("time")).schema
                         )
+
+        # Store n_features_in_ and feature_names_in_ for sklearn compatibility
+        # Based on transformed features (X_t), which respects input_features configuration
+        if self.local_X_t_schema_:
+            self.n_features_in_ = len(self.local_X_t_schema_)
+            self.feature_names_in_ = list(self.local_X_t_schema_.keys())
+        else:
+            self.n_features_in_ = 0
+            self.feature_names_in_ = []
 
     def _update_y_X_t_observed(
         self, y: pl.DataFrame, X_t: pl.DataFrame | None, panel_group_names: list[str]
@@ -824,7 +862,8 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             Transformed features.
 
         """
-        self.interval_ = check_inputs(y, X)
+        y, X, _ = validate_data(self, y, X, reset=True)
+
         self._set_input_attributes(y, X)
 
         if forecasting_horizon < 1:
@@ -972,44 +1011,13 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         """
         check_is_fitted(self, "fit_forecasting_horizon_")
 
-        if panel_group_names is None:
-            panel_group_names = self.panel_group_names_
-        else:
-            # Validate specified panel groups
-            if self.panel_group_names_ is None:
-                raise ValueError(
-                    "The forecaster was fitted on global data, but `panel_group_names` "
-                    "were provided for reset."
-                )
-            for panel_group in panel_group_names:
-                if panel_group not in self.panel_group_names_:
-                    raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
+        # Validate schema, enforce column order, and validate panel_group_names (no continuity check - reset sets new window)
+        y, X, panel_group_names = validate_data(
+            self, y, X, reset=False, panel_group_names=panel_group_names, check_continuity=False
+        )
 
-        # TODO: Turn this into a check_inputs call
-        if self.observation_horizon > 0:
-            # Select columns based on schema
-            if self.panel_group_names_ is None:
-                # Global data: schemas contain actual column names
-                y = y.select(["time"] + list(self.local_y_schema_.keys()))
-                if X is not None:
-                    X = X.select(["time"] + list(self.local_X_schema_.keys()))
-            else:
-                # Panel data: schemas contain unprefixed names, need to reconstruct prefixed columns
-                y_cols = ["time"]
-                for group_name in self.panel_group_names_:
-                    y_cols.extend([f"{group_name}__{col}" for col in self.local_y_schema_.keys()])
-                y = y.select(y_cols)
-
-                if X is not None:
-                    X_cols = ["time"]
-                    for group_name in self.panel_group_names_:
-                        X_cols.extend(
-                            [f"{group_name}__{col}" for col in self.local_X_schema_.keys()]
-                        )
-                    X_cols.extend(list(self.global_X_schema_.keys()))  # Add global columns
-                    X = X.select(X_cols)
-
-        else:  # TODO: This should only be useful for trend/seasonality forecasters - Use tags?
+        # Special handling for forecasters with no observation horizon
+        if self.observation_horizon == 0:
             # If there is no observation horizon, only check for time column presence
             if "time" not in y.columns:
                 raise ValueError("y must contain 'time' column.")
@@ -1101,57 +1109,17 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         """
         check_is_fitted(self, "fit_forecasting_horizon_")
 
-        if panel_group_names is None:
-            panel_group_names = self.panel_group_names_
-        else:
-            # Validate specified panel groups
-            if self.panel_group_names_ is None:
-                raise ValueError(
-                    "The forecaster was fitted on global data, but `panel_group_names` "
-                    "were provided for update."
-                )
-            for panel_group in panel_group_names:
-                if panel_group not in self.panel_group_names_:
-                    raise ValueError(f"Panel group '{panel_group}' not found in fitted forecaster.")
+        # Validate schema, enforce column order, and validate panel_group_names (includes continuity check)
+        y, X, panel_group_names = validate_data(
+            self, y, X, reset=False, panel_group_names=panel_group_names, check_continuity=True
+        )
 
-        # Validate schema and enforce column order
+        # Non-panel data: concatenate stored observations
         if self.panel_group_names_ is None:
-            # Non-panel data
-            y = check_schema(y, self.local_y_schema_)
-
             if self._y_observed is not None:
                 y = pl.concat([self._y_observed, y], how="vertical")
 
-            if X is not None:
-                X = check_schema(X, self.local_X_schema_)
-
-        else:
-            # Panel data
-            y = check_schema(y, self.local_y_schema_, panel_group_names=panel_group_names)
-
-            # Validate and prepare X if needed
-            if X is not None:
-                # Validate local X columns (with panel prefixes)
-                if self.local_X_schema_:
-                    X_local = check_schema(
-                        X, self.local_X_schema_, panel_group_names=self.panel_group_names_
-                    )
-
-                # Validate global X columns (no prefixes)
-                if self.global_X_schema_:
-                    X_global = check_schema(X, self.global_X_schema_)
-
-                # Reconstruct X_selected with both local and global columns
-                if self.local_X_schema_ and self.global_X_schema_:
-                    X = pl.concat([X_local, X_global.select(~cs.by_name("time"))], how="horizontal")
-                elif self.local_X_schema_:
-                    X = X_local
-                elif self.global_X_schema_:
-                    X = X_global
-
-        # Non-panel data
-        if self.panel_group_names_ is None:
-            # Global data: use BaseForecaster._update_transformers
+            # Update transformers
             y_updated = y
             X_t_updated = self._update_transformers(
                 y, X, self.target_transformer_, self.feature_transformer_
@@ -1514,6 +1482,22 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         self.estimator = estimator
         self.reduction_strategy = reduction_strategy
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+
+        # Mark as using reduction
+        tags.forecaster_tags.uses_reduction = True
+
+        return tags
 
     def _get_tabularized_dataset(
         self,

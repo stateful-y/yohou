@@ -46,7 +46,7 @@ def test_point_reduction_panel_checks(
     # Run all generated checks (including cross-learning checks)
     expected_failures_set = set(expected_failures)
     for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
-        forecaster_fitted, y_train, None, y_test, None, tags=tags
+        forecaster_fitted, y_train, None, y_test, None
     ):
         if check_name in expected_failures_set:
             pytest.skip(f"Expected failure: {check_name}")

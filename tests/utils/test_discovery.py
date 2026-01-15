@@ -25,4 +25,4 @@ def test_all_displays():
 
 def test_all_functions():
     functions = all_functions()
-    assert len(functions) == 22
+    assert len(functions) == 28

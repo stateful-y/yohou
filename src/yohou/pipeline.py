@@ -1,4 +1,4 @@
-"""FeaturePipeline utilities for chaining transformers and forecasters."""
+"""FeaturePipeline and FeatureUnion utilities for chaining transformers."""
 
 from collections import Counter
 from copy import deepcopy
@@ -54,7 +54,7 @@ from sklearn.utils.validation import (
     check_is_fitted,
 )
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseTransformer, Tags
 
 __all__ = ["FeaturePipeline", "FeatureUnion", "ColumnTransformer"]
 
@@ -473,6 +473,40 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         """
         return sklearn_Pipeline._get_metadata_for_step(self, **kwargs)
 
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+
+        # Aggregate tags from steps (static capability check)
+        if hasattr(self, "steps") and self.steps is not None:
+            transformers = [t for _, t in self.steps if t != "passthrough" and t is not None]
+            if transformers:
+                # Stateful if any step is stateful
+                tags.transformer_tags.stateful = any(
+                    t.__sklearn_tags__().transformer_tags.stateful for t in transformers
+                )
+
+                # Invertible if all steps are invertible
+                tags.transformer_tags.invertible = all(
+                    t.__sklearn_tags__().transformer_tags.invertible for t in transformers
+                )
+                tags.transformer_tags.invertible = all(
+                    hasattr(t, "inverse_transform") and callable(getattr(t, "inverse_transform"))
+                    for t in transformers
+                )
+
+                # min_value is the one of the first transformer
+                tags.input_tags.min_value = transformers[0].__sklearn_tags__().input_tags.min_value
+
+        return tags
+
     @property
     def observation_horizon(self) -> int:
         """Get cumulative observation horizon across all steps.
@@ -797,7 +831,8 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             offset = sum(t.observation_horizon for _, _, t in steps_list[1:])
             X_p_iter_list.append(X_p[offset : offset + first_transform.observation_horizon])
 
-            # NOTE: Do NOT reverse! X_p_iter_list is built as: [X_p for last step's inverse, ..., X_p for first step's inverse]
+            # NOTE: Do NOT reverse! X_p_iter_list is built as:
+            # [X_p for last step's inverse, ..., X_p for first step's inverse]
             # which matches reverse_iter: [last step, ..., first step]
             # X_p_iter_list.reverse()
 
@@ -1256,6 +1291,46 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         """
         return sklearn_FeatureUnion._add_prefix_for_feature_names_out(self, feature_names_out)  # type: ignore[arg-type]
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+
+        # Aggregate tags from transformers (static capability check)
+        if hasattr(self, "transformer_list") and self.transformer_list is not None:
+            transformers = [
+                t
+                for _, t in self.transformer_list
+                if t not in ("drop", "passthrough") and t is not None
+            ]
+            if transformers:
+                # Stateful if any transformer is stateful
+                tags.transformer_tags.stateful = any(
+                    t.__sklearn_tags__().transformer_tags.stateful for t in transformers
+                )
+
+                # Not invertible unless there is only one transformer and it is invertible
+                tags.transformer_tags.invertible = (
+                    len(transformers) == 1
+                    and transformers[0].__sklearn_tags__().transformer_tags.invertible
+                )
+
+                # Aggregate min_value: take the maximum (most restrictive)
+                # All transformers receive the same input, so we need to satisfy all constraints
+                min_values = [t.__sklearn_tags__().input_tags.min_value for t in transformers]
+                non_none_min_values = [v for v in min_values if v is not None]
+                tags.input_tags.min_value = (
+                    max(non_none_min_values) if non_none_min_values else None
+                )
+
+        return tags
 
     def __sklearn_is_fitted__(self) -> bool:
         """Check if fitted.
