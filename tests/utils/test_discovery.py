@@ -5,12 +5,12 @@ from yohou.utils.discovery import all_displays, all_estimators, all_functions
 
 def test_all_estimators():
     estimators = all_estimators()
-    assert len(estimators) == 26
+    assert len(estimators) == 36
 
-    estimators = all_estimators(type_filter="classifier")
+    estimators = all_estimators(type_filter="foreaster")
     assert len(estimators) == 0
 
-    estimators = all_estimators(type_filter=["classifier", "transformer"])
+    estimators = all_estimators(type_filter=["forecaster", "transformer"])
     assert len(estimators) == 7
 
     err_msg = "Parameter type_filter must be"
@@ -25,5 +25,4 @@ def test_all_displays():
 
 def test_all_functions():
     functions = all_functions()
-    # Updated count includes 55 new functions from yohou.testing module (49 checks + 2 generators + 4 utilities)
     assert len(functions) == 78

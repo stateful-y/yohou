@@ -1,9 +1,13 @@
 """Implementation of invertible transformations for stationarization."""
 
+import numbers
+
 import numpy as np
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
+from sklearn.base import _fit_context
+from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import _check_feature_names_in
 
 from yohou.base import BaseTransformer, Tags
@@ -19,6 +23,11 @@ class LogTransform(BaseTransformer):
         Offset to apply to the input time series before the log transform.
 
     """
+
+    _parameter_constraints: dict = {
+        **BaseTransformer._parameter_constraints,
+        "offset": [Interval(numbers.Real, 0, None, closed="left")],
+    }
 
     def __init__(self, offset: StrictFloat = 0.0):
         self.offset = offset
@@ -36,6 +45,7 @@ class LogTransform(BaseTransformer):
         tags.input_tags.min_value = -self.offset if self.offset > 0.0 else 0.0
         return tags
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "LogTransform":
         """Fits the transformer and returns it.
 
@@ -141,6 +151,11 @@ class SeasonalDifferencing(BaseTransformer):
 
     """
 
+    _parameter_constraints: dict = {
+        **BaseTransformer._parameter_constraints,
+        "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
+    }
+
     def __init__(self, seasonality: StrictInt = 1):
         self.seasonality = seasonality
 
@@ -158,6 +173,7 @@ class SeasonalDifferencing(BaseTransformer):
         tags.transformer_tags.stateful = True
         return tags
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "SeasonalDifferencing":
         """Fits the transformer and returns it.
 

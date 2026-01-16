@@ -1,8 +1,12 @@
 """Implementation of window transformations."""
 
+import numbers
+
 import numpy as np
 import polars as pl
 from pydantic import StrictInt
+from sklearn.base import _fit_context
+from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import _check_feature_names_in
 
 from yohou.base import BaseTransformer
@@ -26,6 +30,11 @@ class LagTransformer(BaseTransformer):
 
     """
 
+    _parameter_constraints: dict = {
+        **BaseTransformer._parameter_constraints,
+        "lag": [Interval(numbers.Integral, 1, None, closed="left"), list],
+    }
+
     def __init__(self, lag: StrictInt | list[StrictInt] = 1):
         self.lag = lag
 
@@ -43,6 +52,7 @@ class LagTransformer(BaseTransformer):
         tags.transformer_tags.stateful = True
         return tags
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "LagTransformer":
         """Fits the transformer and returns it.
 

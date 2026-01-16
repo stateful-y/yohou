@@ -1,11 +1,13 @@
 """Implementation of conformal forecasters."""
 
+import numbers
 from typing import List, Literal
 
 import polars as pl
 from pydantic import StrictFloat, StrictInt
-from sklearn.base import clone
+from sklearn.base import _fit_context, clone
 from sklearn.model_selection import train_test_split
+from sklearn.utils._param_validation import Interval
 
 from yohou.base import Tags
 from yohou.metrics import BaseConformityScorer, Residual
@@ -30,6 +32,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Similarity measure to weight conformity scores.
 
     """
+
+    _parameter_constraints: dict = {
+        **BaseIntervalForecaster._parameter_constraints,
+        "point_forecaster": [BasePointForecaster],
+        "calibration_size": [Interval(numbers.Integral, 1, None, closed="left")],
+        "conformity_scorer": [BaseConformityScorer],
+        "similarity": [BaseSimilarity, None],
+    }
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -60,6 +70,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self.similarity = similarity
         self.calibration_size = calibration_size
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
@@ -114,15 +125,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             predict_transformed=False,
         )
 
-        y_pred_calib = y_pred_calib.drop("observed_time")
-
         conformity_scorers = {}
         conformity_scores = pl.DataFrame()
         for step in range(1, 1 + forecasting_horizon):
             y_pred_calib_step = y_pred_calib[step::forecasting_horizon]
-            y_truth_step = y.filter(pl.col("time") == y["time"])
+            y_truth_step = y_calib
 
-            conformity_scorer_step = clone(self.conformity_scorer).fit()
+            conformity_scorer_step = clone(self.conformity_scorer).fit(y_calib)
             conformity_scores_step = conformity_scorer_step.score(
                 y_truth=y_truth_step, y_pred=y_pred_calib_step
             )

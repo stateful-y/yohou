@@ -34,26 +34,37 @@ Yohou's forecaster testing infrastructure provides comprehensive, reusable testi
 The testing infrastructure is organized following pytest conventions:
 
 ```
-tests/31 functions + generator)
-├── test_estimator_checks.py            # Meta-tests for check functions
-├── test_parameter_validation.py        # Tests for forecasting_horizon and coverage_rates validationforecaster_registry)
-├── estimator_checks.py                 # Check function library (28 functions + generator)
-├── test_estimator_checks.py            # Meta-tests for check functions
+tests/
+├── conftest.py                         # Global fixtures (y_X_factory, data generators, forecaster_registry)
+├── test_estimator_checks.py            # sklearn compatibility tests
+├── test_parameter_validation.py        # Tests for forecasting_horizon and coverage_rates validation
 ├── forecaster/
 │   └── test_composition.py             # Tests for composition classes
 ├── point_forecaster/
 │   ├── test_naive.py                   # Tests for SeasonalNaive
 │   ├── test_reduction.py               # Tests for PointReductionForecaster + analytical tests
-│   └── test_panel.py          # Cross-learning tests for point forecasters
+│   └── test_panel.py                   # Cross-learning tests for point forecasters
 └── interval_forecaster/
     ├── test_reduction.py               # Tests for IntervalReductionForecaster
-    └── test_panel.py          # Cross-learning tests for interval forecasters
+    └── test_panel.py                   # Cross-learning tests for interval forecasters
+
+src/yohou/testing/                       # Check function library
+├── __init__.py                          # Exports all check functions
+├── generators.py                        # Check generators (_yield_yohou_forecaster_checks, _yield_yohou_transformer_checks)
+├── common.py                            # Metadata routing checks (2 functions)
+├── forecaster.py                        # Common forecaster checks (12 functions)
+├── point.py                             # Point forecaster checks (2 functions)
+├── interval.py                          # Interval forecaster checks (5 functions)
+├── reduction.py                         # Reduction forecaster checks (2 functions)
+├── panel.py                             # Panel data checks (3 functions)
+├── transformer.py                       # Transformer checks (21 functions)
+└── metadata_routing.py                  # Metadata routing test utilities
 ```
 
 **Organization Principles**:
 - Test files mirror source structure: `tests/{module}/test_{file}.py` for `src/yohou/{module}/{file}.py`
 - Example: `src/yohou/point_forecaster/naive.py` → `tests/point_forecaster/test_naive.py`
-- Check functions in `estimator_checks.py` are validated by actual usage in forecaster tests
+- Check functions organized in `src/yohou/testing/` as a reusable library
 - Shared testing infrastructure lives at `tests/` root
 - Single global `conftest.py` sufficient - module-specific fixtures not needed
 
@@ -63,9 +74,9 @@ tests/31 functions + generator)
 
 The testing infrastructure consists of three main components that work together to provide comprehensive forecaster validation.
 
-### 1. Check Functions Library (`tests/estimator_checks.py`)
+### 1. Check Functions Library (`src/yohou/testing/`)
 
-**Purpose**: Reusable library of 30+ validation functions that test forecaster contracts
+**Purpose**: Reusable library of 30+ validation functions that test forecaster contracts organized by module (forecaster.py, point.py, interval.py, reduction.py, panel.py, common.py)
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
@@ -120,7 +131,7 @@ The testing infrastructure consists of three main components that work together 
 30. **`check_target_transformed_forecaster_inverse`** - Tests inverse transformation round-trip (not yet implemented)
 31. **`check_target_transformed_forecaster_check_inverse_warning`** - Validates check_inverse warns when transformation isn't reversible (not yet implemented)
 
-### 2. Check Generator (`tests/estimator_checks.py`)
+### 2. Check Generator (`src/yohou/testing/generators.py`)
 
 **Function**: `_yield_yohou_forecaster_checks(forecaster, y_train, X_train, y_test, X_test, tags=None)`
 
@@ -198,16 +209,12 @@ Create `tests/{module}/test_{file}.py` mirroring the source file location.
 Use the check generator pattern:
 
 ```python
-import sys
-from pathlib import Path
 import pytest
 from sklearn.base import clone
 
 from yohou.{module} import MyForecaster
-
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_forecaster_checks
+# Import from yohou.testing module
+from yohou.testing import _yield_yohou_forecaster_checks
 
 @pytest.mark.parametrize(
     "forecaster,tags,expected_failures",
@@ -528,7 +535,7 @@ This prevents false failures when comparing meta-estimator instances like Decomp
 - **`check_forecasting_horizon_validation`**: Tests that `forecasting_horizon < 1` raises ValueError during fit()
   - Validates error message mentions "forecasting_horizon" or "positive"
   - Tests both `forecasting_horizon=0` and `forecasting_horizon=-1`
-  
+
 - **`check_coverage_rates_validation`**: Tests that invalid coverage_rates raise ValueError during fit() and predict_interval()
   - Validates `coverage_rates=[0.0]` (boundary - invalid)
   - Validates `coverage_rates=[1.5]` (above 1 - invalid)
@@ -543,7 +550,7 @@ This prevents false failures when comparing meta-estimator instances like Decomp
 
 **Test Coverage** (`tests/test_parameter_validation.py`):
 - `test_point_forecaster_horizon_validation`: Tests PointReductionForecaster and SeasonalNaive
-- `test_interval_forecaster_horizon_validation`: Tests IntervalReductionForecaster and SplitConformalForecaster  
+- `test_interval_forecaster_horizon_validation`: Tests IntervalReductionForecaster and SplitConformalForecaster
 - `test_interval_forecaster_coverage_rates_validation`: Tests IntervalReductionForecaster
 - `test_predict_validates_horizon`: Verifies predict() enforces validation
 - `test_predict_interval_validates_coverage_rates`: Verifies predict_interval() enforces validation
@@ -603,15 +610,10 @@ This prevents false failures when comparing meta-estimator instances like Decomp
 ### Import Pattern for Test Files
 
 ```python
-import sys
-from pathlib import Path
-
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from estimator_checks import _yield_yohou_forecaster_checks
+from yohou.testing import _yield_yohou_forecaster_checks
 ```
 
-**Why**: Tests are in subdirectories (`point_forecaster/`, `interval_forecaster/`) but need to import from `tests/estimator_checks.py`.
+**Why**: Check functions are organized in `src/yohou/testing/` and exported through the module's `__init__.py` for easy access.
 
 ### Data Splitting Pattern
 

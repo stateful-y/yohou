@@ -110,9 +110,7 @@ def test_build_feature_input_y_X_with_exog(time_series_factory):
     y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
     X = make_exog_data(50, 3)
 
-    result = _build_feature_input(
-        y=y, y_t=y_t, X=X, input_features="y|X", feature_transformer=None
-    )
+    result = _build_feature_input(y=y, y_t=y_t, X=X, input_features="y|X", feature_transformer=None)
 
     # Should have time + y columns (2) + X columns (3)
     assert len(result.columns) == 1 + 2 + 3  # time + 2 from y + 3 from X
@@ -124,9 +122,7 @@ def test_build_feature_input_X_only_with_exog(time_series_factory):
     y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
     X = make_exog_data(50, 3)
 
-    result = _build_feature_input(
-        y=y, y_t=y_t, X=X, input_features="X", feature_transformer=None
-    )
+    result = _build_feature_input(y=y, y_t=y_t, X=X, input_features="X", feature_transformer=None)
 
     # Should return X only
     assert result.equals(X)
@@ -145,7 +141,9 @@ def test_build_feature_input_X_only_no_exog_no_transformer(time_series_factory):
     assert result is None
 
 
-def test_build_feature_input_X_only_no_exog_with_transformer(time_series_factory, SimpleTransformer):
+def test_build_feature_input_X_only_no_exog_with_transformer(
+    time_series_factory, SimpleTransformer
+):
     """Test _build_feature_input with input_features='X', no exog, but has transformer."""
     y = time_series_factory(length=50, n_components=2)
     y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
@@ -197,7 +195,11 @@ def test_fit_transform_transformers_one_target_only(time_series_factory, SimpleT
     target_transformer = SimpleTransformer(observation_horizon=5, add_constant=10.0)
 
     y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
-        y=y, X=X, target_transformer=target_transformer, feature_transformer=None, input_features="y_t|X"
+        y=y,
+        X=X,
+        target_transformer=target_transformer,
+        feature_transformer=None,
+        input_features="y_t|X",
     )
 
     # y_t should be transformed (y + 10)
@@ -217,7 +219,11 @@ def test_fit_transform_transformers_one_feature_only(time_series_factory, Simple
     feature_transformer = SimpleTransformer(observation_horizon=3, add_constant=5.0)
 
     y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
-        y=y, X=X, target_transformer=None, feature_transformer=feature_transformer, input_features="y_t|X"
+        y=y,
+        X=X,
+        target_transformer=None,
+        feature_transformer=feature_transformer,
+        input_features="y_t|X",
     )
 
     # y_t not transformed by target transformer
@@ -267,7 +273,11 @@ def test_fit_transform_transformers_one_clones_transformers(time_series_factory,
         _ = target_transformer.feature_names_in_
 
     y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
-        y=y, X=None, target_transformer=target_transformer, feature_transformer=None, input_features="y_t|X"
+        y=y,
+        X=None,
+        target_transformer=target_transformer,
+        feature_transformer=None,
+        input_features="y_t|X",
     )
 
     # Returned transformer fitted
@@ -353,7 +363,11 @@ def test_update_transformers_one_target_only(time_series_factory, SimpleTransfor
     X_new = X[40:45]
 
     X_t = _update_transformers_one(
-        y=y_new, X=X_new, target_transformer=target_transformer, feature_transformer=None, input_features="y_t|X"
+        y=y_new,
+        X=X_new,
+        target_transformer=target_transformer,
+        feature_transformer=None,
+        input_features="y_t|X",
     )
 
     # Should return transformed features
@@ -375,7 +389,11 @@ def test_update_transformers_one_feature_only(time_series_factory, SimpleTransfo
     X_new = X[40:45]
 
     X_t = _update_transformers_one(
-        y=y_new, X=X_new, target_transformer=None, feature_transformer=feature_transformer, input_features="y_t|X"
+        y=y_new,
+        X=X_new,
+        target_transformer=None,
+        feature_transformer=feature_transformer,
+        input_features="y_t|X",
     )
 
     # Should return transformed features
@@ -490,15 +508,14 @@ def test_reset_transformers_one_feature_only(time_series_factory, SimpleTransfor
     assert len(X_t) == 1  # Feature transformer processes only last row after reset
 
 
-@pytest.mark.skip(reason="Known issue: _reset_transformers_one creates null values when y_t and X have mismatched lengths")
 def test_reset_transformers_one_both_transformers(time_series_factory, SimpleTransformer):
     """Test _reset_transformers_one with both transformers.
-    
+
     NOTE: This test currently fails due to a bug in _reset_transformers_one.
     The function calls _build_feature_input with full y, but y_t (transformed y)
     has only observation_horizon rows. When concatenating y_t with X (which has full length),
     polars fills missing rows with null values, causing check_interval_consistency to fail.
-    
+
     Potential fix: Pass y[-observation_horizon:] to _build_feature_input instead of full y.
     """
     # Use smaller dataset to avoid mismatched lengths

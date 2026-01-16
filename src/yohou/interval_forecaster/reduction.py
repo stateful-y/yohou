@@ -4,9 +4,10 @@ from typing import List, Literal
 
 import polars as pl
 from pydantic import StrictFloat, StrictInt
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, _fit_context
 from sklearn.linear_model import QuantileRegressor
 from sklearn.multioutput import MultiOutputRegressor
+from sklearn.utils._param_validation import HasMethods, StrOptions
 
 from yohou.base import BaseReductionForecaster, BaseTransformer
 
@@ -91,6 +92,13 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     """
 
+    _parameter_constraints: dict = {
+        **BaseReductionForecaster._parameter_constraints,
+        **BaseIntervalForecaster._parameter_constraints,
+        "estimator": [HasMethods(["fit", "predict"])],
+        "reduction_strategy": [StrOptions({"direct", "multi-output"})],
+    }
+
     def __init__(
         self,
         estimator: BaseEstimator = MultiOutputRegressor(QuantileRegressor()),
@@ -111,6 +119,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             feature_transformer=feature_transformer,
         )
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,

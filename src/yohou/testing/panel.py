@@ -8,12 +8,13 @@ try:
     import polars as pl
 except ImportError as e:
     raise ImportError(
-        "polars.testing is required for yohou.testing module. "
-        "Install with: uv sync --group tests"
+        "polars.testing is required for yohou.testing module. Install with: uv sync --group tests"
     ) from e
 
 
-def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
+def check_panel_data(
+    forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None
+) -> None:
     """Check cross-learning with panel data predicts all groups by default.
 
     Validates that when panel_group=None (default), predictions are
@@ -52,7 +53,9 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | 
                 )
 
 
-def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
+def check_panel_single_group(
+    forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None
+) -> None:
     """Check cross-learning filters to specified panel group.
 
     Validates that when panel_group is specified, predictions are
@@ -93,7 +96,9 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.Data
             )
 
 
-def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
+def check_panel_invalid_group_raises(
+    forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None
+) -> None:
     """Check that invalid panel_group raises ValueError.
 
     Validates error handling when panel_group specifies a panel group

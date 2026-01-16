@@ -2,14 +2,33 @@
 
 from .base import BaseConformityScorer, BaseIntervalScorer, BasePointScorer
 from .conformity import AbsoluteResidual, Residual
-from .point import MAE, MSE
+from .interval import (
+    CalibrationError,
+    EmpiricalCoverage,
+    IntervalScore,
+    MeanIntervalWidth,
+    PinballLoss,
+)
+from .point import (
+    MeanAbsoluteError,
+    MeanSquaredError,
+    RootMeanSquaredError,
+    RootMeanSquaredScaledError,
+)
 
 __all__ = [
     "BaseConformityScorer",
     "BaseIntervalScorer",
     "BasePointScorer",
-    "MAE",
-    "MSE",
+    "MeanAbsoluteError",
+    "MeanSquaredError",
+    "RootMeanSquaredError",
+    "RootMeanSquaredScaledError",
     "AbsoluteResidual",
     "Residual",
+    "EmpiricalCoverage",
+    "MeanIntervalWidth",
+    "IntervalScore",
+    "PinballLoss",
+    "CalibrationError",
 ]

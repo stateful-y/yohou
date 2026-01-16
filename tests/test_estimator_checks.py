@@ -184,21 +184,3 @@ def test_transformers_with_edge_cases(
         # Empty data should raise
         with pytest.raises((ValueError, Exception)):
             transformer.fit(edge_cases["empty"])
-
-
-# ============================================================================
-# SKLEARN COMPATIBILITY NOTES
-# ============================================================================
-
-# Note: We don't use sklearn's parametrize_with_checks here because:
-# 1. Yohou transformers use polars DataFrames, not numpy arrays
-# 2. Time series-specific requirements (time column, observation_horizon)
-# 3. update/reset methods are not part of sklearn's API
-#
-# Known sklearn check incompatibilities:
-# - check_transformer_data_not_an_array: We require polars DataFrames
-# - check_methods_subset_invariance: Time series order matters
-# - check_fit2d_1sample: Time series need minimum length > observation_horizon
-# - check_fit2d_1feature: We require 'time' column + at least one feature
-#
-# These incompatibilities are by design and reflect time series requirements.

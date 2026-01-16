@@ -15,7 +15,7 @@ from sklearn.base import (
     clone,
 )
 from sklearn.linear_model import LinearRegression
-from sklearn.utils._param_validation import InvalidParameterError
+from sklearn.utils._param_validation import InvalidParameterError, StrOptions
 from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.validation import check_is_fitted
 
@@ -205,7 +205,6 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
             Transformed time series.
 
         """
-        raise NotImplementedError()
 
     def update_transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
         """Transforms the input, updates the transformer and returns
@@ -254,7 +253,6 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         feature_names_out : ndarray of str objects
             Transformed feature names.
         """
-        raise NotImplementedError()
 
 
 class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
@@ -274,7 +272,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
     _parameter_constraints: dict = {
         "target_transformer": [BaseTransformer, None],
         "feature_transformer": [BaseTransformer, None],
-        "input_features": [str],
+        "input_features": [StrOptions({"X", "y_t|X", "y|X"})],
     }
 
     def __init__(
@@ -779,7 +777,6 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         self
 
         """
-        raise NotImplementedError()
 
     def reset(
         self,

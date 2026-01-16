@@ -55,7 +55,7 @@ def _():
     from plotly.subplots import make_subplots
     from sklearn.linear_model import Ridge
 
-    from yohou.metrics import MAE, MSE
+    from yohou.metrics import MeanAbsoluteError, MeanSquaredError
     from yohou.model_selection import SearchCV, Splitter
     from yohou.pipeline import FeaturePipeline
     from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
@@ -64,8 +64,8 @@ def _():
     return (
         LagTransformer,
         LogTransform,
-        MAE,
-        MSE,
+        MeanAbsoluteError,
+        MeanSquaredError,
         FeaturePipeline,
         PointReductionForecaster,
         Ridge,
@@ -235,7 +235,7 @@ def _(mo):
 
 
 @app.cell
-def _(MAE, MSE, SeasonalNaive, X_test, X_train, y_test, y_train):
+def _(MeanAbsoluteError, MeanSquaredError, SeasonalNaive, X_test, X_train, y_test, y_train):
     # Baseline: Seasonal Naive (repeat last week)
     baseline = SeasonalNaive(seasonality=7)
 
@@ -246,8 +246,8 @@ def _(MAE, MSE, SeasonalNaive, X_test, X_train, y_test, y_train):
     y_pred_baseline = baseline.predict(forecasting_horizon=len(y_test), X=X_test)
 
     # Evaluate
-    _mae_baseline = MAE()
-    _mse_baseline = MSE()
+    _mae_baseline = MeanAbsoluteError()
+    _mse_baseline = MeanSquaredError()
 
     # Align predictions with actual test data for scoring
     y_test_aligned = y_test.join(
@@ -451,7 +451,7 @@ def _(mo):
 def _(
     LagTransformer,
     LogTransform,
-    MAE,
+    MeanAbsoluteError,
     FeaturePipeline,
     PointReductionForecaster,
     Ridge,
@@ -489,7 +489,7 @@ def _(
     search = SearchCV(
         forecaster=forecaster_to_optimize,
         param_distributions=param_distributions,
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_trials=n_trials_slider.value,
         n_warmup_trials=5,
         cv=Splitter(n_splits=2, test_size=50),  # Limited by 292 train samples

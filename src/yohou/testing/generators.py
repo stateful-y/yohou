@@ -11,8 +11,7 @@ try:
     import polars as pl
 except ImportError as e:
     raise ImportError(
-        "polars.testing is required for yohou.testing module. "
-        "Install with: uv sync --group tests"
+        "polars.testing is required for yohou.testing module. Install with: uv sync --group tests"
     ) from e
 
 from .common import (
@@ -121,7 +120,9 @@ def _yield_yohou_transformer_checks(
             if sklearn_tags.transformer_tags
             else False,
             "observation_horizon": (
-                transformer.observation_horizon if hasattr(transformer, "observation_horizon") else None
+                transformer.observation_horizon
+                if hasattr(transformer, "observation_horizon")
+                else None
             ),
             "preserves_dtype": sklearn_tags.transformer_tags.preserves_dtype
             if sklearn_tags.transformer_tags

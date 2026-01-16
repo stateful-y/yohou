@@ -8,8 +8,7 @@ try:
     import polars as pl
 except ImportError as e:
     raise ImportError(
-        "polars.testing is required for yohou.testing module. "
-        "Install with: uv sync --group tests"
+        "polars.testing is required for yohou.testing module. Install with: uv sync --group tests"
     ) from e
 
 

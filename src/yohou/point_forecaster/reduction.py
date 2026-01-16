@@ -6,6 +6,7 @@ import polars as pl
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator, _fit_context
 from sklearn.linear_model import LinearRegression
+from sklearn.utils._param_validation import HasMethods, StrOptions
 from typing_extensions import Literal
 
 from yohou.base import BaseReductionForecaster, BaseTransformer
@@ -75,6 +76,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     LagTransformer : Create lagged features for reduction strategies
 
     """
+
+    _parameter_constraints: dict = {
+        **BaseReductionForecaster._parameter_constraints,
+        **BasePointForecaster._parameter_constraints,
+        "estimator": [HasMethods(["fit", "predict"])],
+        "reduction_strategy": [StrOptions({"direct", "multi-output"})],
+    }
 
     _supports_panel = True
 

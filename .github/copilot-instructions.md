@@ -6,6 +6,10 @@ Yohou is a scikit-learn-compatible time series forecasting framework built on **
 
 **Philosophy**: Bridge sklearn's tabular ML ecosystem with time series forecasting by treating forecasting as a supervised learning reduction problem while maintaining temporal structure.
 
+**Python Support**: 3.12, 3.13, 3.14 (per pyproject.toml)
+
+**Note**: While README mentions multi-DataFrame support via Narwhals, this is planned but not yet implemented (see TODO.md).
+
 **Quick Links to Detailed Guides**:
 
 | Guide | Purpose | Size |
@@ -17,6 +21,7 @@ Yohou is a scikit-learn-compatible time series forecasting framework built on **
 | [Transformer Testing Infrastructure](.github/copilot/transformer-testing-infrastructure.md) | Testing patterns for transformers | 391 lines |
 | [sklearn Metadata Routing Implementation](.github/copilot/sklearn-metadata-routing-implementation.md) | Complete metadata routing infrastructure | 814 lines |
 | [Monthly Interval Support](.github/copilot/monthly-interval-support.md) | Variable-length time intervals (monthly, quarterly, yearly) | 715 lines |
+| [Time Weighting Implementation](.github/copilot/time-weighting-implementation.md) | Time-based weighting for scorers and forecasters (planned) | 893 lines |
 
 ---
 
@@ -126,7 +131,7 @@ import optuna
 search = SearchCV(
     forecaster=PointReductionForecaster(),
     param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.01, 1.0)},
-    scoring=MAE(),
+    scoring=MeanAbsoluteError(),
     n_trials=20
 )
 search.fit(y, X, forecasting_horizon=3)
@@ -156,6 +161,8 @@ uv run pytest tests/path/test.py -v   # Run specific test file
 uv run pytest --pdb tests/...          # Debug with pdb
 uvx nox -s test                        # Full test suite with coverage
 ```
+
+**Note**: Test suite may have failures during active development. Check terminal history for latest test results.
 
 **Code Quality**:
 ```bash
@@ -205,46 +212,125 @@ uv run pytest -k "test_pattern"
 **Critical**: Examples in `examples/*.py` are **Marimo reactive notebooks**, NOT regular Python scripts.
 
 **Marimo notebooks**:
-- Stored as `.py` files (e.g., `air_passengers_tutorial.py`, `decomposition_tutorial.py`)
+- Stored as `.py` files (e.g., `air_passengers_tutorial.py`, `decomposition_tutorial.py`, `panel_data_tutorial.py`)
 - Contain special `marimo.App()` structure with `@app.cell` decorators
 - Reactive execution: cells automatically re-run when dependencies change
+- Each cell has unique ID (e.g., `#VSC-a7628b23`) and language tag (`mo-python`, `markdown`)
 
 **Running notebooks**:
 ```bash
-# Launch interactive notebook in browser
+# Launch interactive notebook in browser (primary workflow)
 uv run marimo edit examples/air_passengers_tutorial.py
 
-# Run as script (non-interactive)
+# Run as script (non-interactive, executes all cells)
 uv run marimo run examples/air_passengers_tutorial.py
 
-# Run as regular Python file (for debugging)
+# Run as regular Python file (for debugging/testing)
 uv run python examples/air_passengers_tutorial.py
 ```
 
-**Debugging marimo notebooks**:
-```bash
-# Use Python debugger (NOT marimo edit)
-uv run python -m pdb examples/air_passengers_tutorial.py
+**Debugging patterns**:
 
-# Or add breakpoint() in the notebook code and run as Python
-uv run python examples/air_passengers_tutorial.py
-```
+1. **Interactive debugging in browser** (preferred for reactive issues):
+   ```bash
+   # Launch with debug mode
+   uv run marimo edit examples/air_passengers_tutorial.py
+
+   # In notebook: Add print statements or mo.output.append() to cells
+   # Use mo.debug() to inspect reactive dependencies
+   # Check cell execution order in UI (numbers show dependency graph)
+   ```
+
+2. **Python debugger** (for logic errors):
+   ```bash
+   # Run with pdb
+   uv run python -m pdb examples/air_passengers_tutorial.py
+
+   # Or add breakpoint() inside @app.cell decorator:
+   @app.cell
+   def __():
+       forecaster = PointReductionForecaster()
+       breakpoint()  # Execution will pause here
+       return forecaster,
+   ```
+
+3. **Isolate failing cells**:
+   ```python
+   # Copy failing cell code to a separate test.py file
+   # Run without reactive framework:
+   uv run python test.py
+
+   # Or create minimal reproduction in pytest:
+   def test_marimo_issue(y_X_factory):
+       y, X = y_X_factory(length=100)
+       # Paste cell logic here
+   ```
+
+4. **Check reactive dependencies**:
+   ```bash
+   # In marimo edit UI:
+   # - Hover over variable names to see which cells define/use them
+   # - Click cell IDs to navigate dependency graph
+   # - Use "Show graph" button to visualize execution flow
+
+   # Common issue: Circular dependencies (marimo will error)
+   # Fix: Refactor to one-way data flow
+   ```
+
+5. **Session state debugging**:
+   ```bash
+   # Session files stored in examples/__marimo__/session/
+   # Delete if notebook behaves unexpectedly:
+   rm -rf examples/__marimo__/session/air_passengers_tutorial.py.json
+
+   # Then relaunch:
+   uv run marimo edit examples/air_passengers_tutorial.py
+   ```
+
+6. **Polars/Yohou specific debugging**:
+   ```python
+   # Add these debug cells to inspect data:
+   @app.cell
+   def __(y):
+       # Check DataFrame structure
+       mo.output.append(y.head())
+       mo.output.append(y.schema)
+       return
+
+   @app.cell
+   def __(forecaster):
+       # Inspect fitted forecaster state
+       from sklearn.utils.validation import check_is_fitted
+       check_is_fitted(forecaster)
+       mo.output.append(f"Observation horizon: {forecaster._observation_horizon}")
+       return
+   ```
+
+7. **Common pitfalls**:
+   - **Forgetting return statement**: Cells must `return variable,` to expose to other cells
+   - **Name collisions**: Variables from different cells with same name cause conflicts
+   - **Non-deterministic code**: Random seeds should be set in cell that uses them
+   - **Side effects**: Avoid mutating shared state (use pure functions)
 
 **Key differences from Jupyter**:
 - No hidden state: cell order doesn't matter, only dependencies
-- Deterministic execution: same inputs → same outputs
+- Deterministic execution: same inputs → same outputs always
 - Git-friendly: plain Python files, not JSON
 - Session files in `__marimo__/session/` store runtime state (gitignored)
+- Auto-save: Changes persist immediately
+- No cell output stored in file: Only code is versioned
 
 **When to use**:
 - Interactive demonstrations and tutorials
 - Exploratory data analysis with yohou
 - Testing forecaster behavior with visualizations
+- Rapid prototyping with immediate feedback
 
 **When NOT to use**:
 - Unit tests (use pytest in `tests/`)
 - Production code (use regular Python modules)
 - CI/CD scripts (notebooks are for interactive exploration)
+- Performance benchmarks (reactive overhead affects timing)
 
 ---
 
@@ -305,7 +391,7 @@ class MyForecaster(BasePointForecaster):
 ### Systematic Check Functions
 
 ```python
-from estimator_checks import _yield_yohou_forecaster_checks
+from yohou.testing import _yield_yohou_forecaster_checks
 
 for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
     forecaster_fitted, y_train, X_train, y_test, X_test,
@@ -369,7 +455,6 @@ def fit(self, X: pl.DataFrame) -> "MyClass":
 ```
 
 **Critical**: All docstrings MUST use **NumPy style** (NOT Google style), enforced by `interrogate` at 100% coverage.
-**Note**: CONTRIBUTING.md mentions Google style but this is outdated - always use NumPy style for consistency with the codebase.
 - Coverage requirements in `pyproject.toml`: `fail-under = 100`
 - Excludes: tests, examples, `_version.py`, private/magic/init methods
 - Ignores nested classes but NOT nested functions
@@ -431,7 +516,9 @@ if len(X) < self.observation_horizon:
 
 **Tests**:
 - `tests/conftest.py`: Global fixtures (y_X_factory, data generators)
-- `tests/estimator_checks.py`: Reusable check functions for systematic testing
+- `src/yohou/testing/`: Reusable check functions for systematic testing
+  - `generators.py`: `_yield_yohou_forecaster_checks()`, `_yield_yohou_transformer_checks()`
+  - `forecaster.py`, `point.py`, `interval.py`, `reduction.py`, `panel.py`: Specific check functions
 - `tests/<module>/test_<file>.py`: Test files mirror source structure
 
 **Configuration**:

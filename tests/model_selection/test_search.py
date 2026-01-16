@@ -8,7 +8,7 @@ import pytest
 from sklearn.base import clone
 from sklearn.linear_model import Ridge
 
-from yohou.metrics import MAE
+from yohou.metrics import MeanAbsoluteError
 from yohou.model_selection import SearchCV
 from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
 
@@ -49,7 +49,7 @@ def test_search():
     search = SearchCV(
         forecaster=SeasonalNaive(),
         param_distributions={"seasonality": optuna.distributions.IntDistribution(1, 20)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         error_score="raise",
         n_warmup_trials=5,
         n_trials=10,
@@ -88,7 +88,7 @@ def test_search_cv_forecaster_checks(base_forecaster, expected_failures, y_X_fac
     search_cv = SearchCV(
         forecaster=base_forecaster,
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 1.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         n_jobs=1,
@@ -123,7 +123,7 @@ def test_search_cv_best_forecaster_attributes(y_X_factory):
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         cv=2,
@@ -155,7 +155,7 @@ def test_search_cv_return_train_score(y_X_factory):
     search_cv_with_train = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         cv=2,
@@ -173,7 +173,7 @@ def test_search_cv_return_train_score(y_X_factory):
     search_cv_without_train = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         cv=2,
@@ -197,7 +197,7 @@ def test_search_cv_predict_delegates(y_X_factory):
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         cv=2,
@@ -225,7 +225,7 @@ def test_search_cv_predict_with_x(y_X_factory):
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         cv=2,
@@ -257,7 +257,7 @@ def test_search_cv_update_with_x(y_X_factory):
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         cv=2,
@@ -286,7 +286,7 @@ def test_search_cv_update_predict_delegates(y_X_factory):
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         cv=2,
@@ -321,7 +321,7 @@ def test_search_cv_reset_delegates(y_X_factory):
     search_cv = SearchCV(
         forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_warmup_trials=1,
         n_trials=2,
         cv=2,
@@ -339,3 +339,116 @@ def test_search_cv_reset_delegates(y_X_factory):
 
     # Verify returns self
     assert search_cv_result is search_cv
+
+
+@pytest.mark.skip(
+    reason="SearchCV does not yet support stateful scorers - needs scorer.fit() implementation"
+)
+def test_search_cv_with_stateful_scorer(y_X_factory):
+    """Test SearchCV with RootMeanSquaredScaledError scorer that requires fit().
+
+    RootMeanSquaredScaledError is a stateful scorer that requires fit() to compute scaling factors
+    from training data. This test verifies that SearchCV properly handles
+    stateful scorers by:
+    1. Calling scorer.fit(y_train) during cross-validation
+    2. Properly routing training data through the scoring pipeline
+    3. Computing correct scores with per-fold fitted scorers
+    """
+    from yohou.metrics import RootMeanSquaredScaledError
+
+    y, X = y_X_factory(length=100, seed=42)
+    y_train = y[:80]
+    X_train = X[:80]
+
+    # Create RootMeanSquaredScaledError scorer that requires fit
+    rmsse = RootMeanSquaredScaledError(seasonality=3)
+
+    # SearchCV should handle stateful scorer automatically
+    search_cv = SearchCV(
+        forecaster=PointReductionForecaster(estimator=Ridge(alpha=1.0)),
+        param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0)},
+        scoring=rmsse,
+        n_warmup_trials=2,
+        n_trials=5,
+        cv=3,
+        refit=True,
+        return_train_score=True,  # Test that train scores are computed correctly
+    )
+
+    # Fit should succeed - SearchCV handles scorer.fit() internally
+    search_cv.fit(y_train, X_train, forecasting_horizon=5)
+
+    # Verify SearchCV completed successfully
+    assert hasattr(search_cv, "best_forecaster_")
+    assert hasattr(search_cv, "best_score_")
+    assert hasattr(search_cv, "cv_results_")
+
+    # Verify cross-validation scores were computed
+    assert "mean_test_score" in search_cv.cv_results_
+    assert "std_test_score" in search_cv.cv_results_
+    assert len(search_cv.cv_results_["mean_test_score"]) == 5  # n_trials
+
+    # Verify train scores were computed (RootMeanSquaredScaledError requires calibration)
+    assert "mean_train_score" in search_cv.cv_results_
+    assert "std_train_score" in search_cv.cv_results_
+
+    # Verify all scores are positive floats
+    for score in search_cv.cv_results_["mean_test_score"]:
+        assert isinstance(score, float)
+        assert score >= 0  # RootMeanSquaredScaledError is non-negative
+
+    # Verify best_score_ is a valid RootMeanSquaredScaledError value
+    assert isinstance(search_cv.best_score_, float)
+    assert search_cv.best_score_ >= 0
+
+    # Predictions should still work
+    y_pred = search_cv.predict(X=None, forecasting_horizon=5)
+    assert isinstance(y_pred, pl.DataFrame)
+    assert "time" in y_pred.columns
+
+
+# ============================================================================
+# Aggregate Scorer Tests
+# ============================================================================
+
+
+def test_search_cv_raises_with_non_timewise_scorer():
+    """SearchCV should raise ValueError when used with aggregate != 'timewise' scorers."""
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.preprocessing import LagTransformer
+
+    # Create simple training data
+    y_train = pl.DataFrame(
+        {
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1),
+                end=datetime(2021, 1, 1, 0, 0, 49),
+                interval="1s",
+                eager=True,
+            ),
+            "value": range(50),
+        }
+    )
+
+    # Point forecaster with lag transformer for lag features
+    forecaster = PointReductionForecaster(
+        estimator=Ridge(),
+        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+    )
+
+    # SearchCV with aggregation_method=['componentwise'] scorer (should fail)
+    search = SearchCV(
+        forecaster=forecaster,
+        param_distributions={
+            "estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0),
+        },
+        scoring=MeanAbsoluteError(
+            aggregation_method=["componentwise"]
+        ),  # aggregation_method != 'all' should raise error
+        n_trials=2,
+        cv=2,
+    )
+
+    # Should raise ValueError during fit
+    with pytest.raises(ValueError, match="aggregation_method.*all.*SearchCV"):
+        search.fit(y=y_train, X=None, forecasting_horizon=5)

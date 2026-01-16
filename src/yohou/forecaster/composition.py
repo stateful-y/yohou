@@ -1,13 +1,11 @@
-"""Composition classes for forecaster transformer pipelines.
+"""Composition classes for forecasting exogenous features."""
 
-This module provides composition-based forecaster wrappers that apply
-transformers to targets or features before/after forecasting.
-"""
+import numbers
 
 import polars as pl
 import polars.selectors as cs
 from joblib import Parallel, delayed
-from sklearn.base import clone
+from sklearn.base import _fit_context, clone
 from sklearn.utils.metadata_routing import _raise_for_params, process_routing
 from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.validation import check_is_fitted
@@ -81,6 +79,13 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     >>> y_pred = forecaster.predict(forecasting_horizon=3)
     """
 
+    _parameter_constraints: dict = {
+        **BaseForecaster._parameter_constraints,
+        "forecasters": [list],
+        "n_jobs": [numbers.Integral, None],
+        "verbose": ["boolean"],
+    }
+
     def __init__(
         self,
         forecasters: list[tuple[str, BaseForecaster, str | list[str]]],
@@ -147,6 +152,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
         return tags
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,

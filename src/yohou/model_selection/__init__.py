@@ -2,11 +2,19 @@
 
 from .optuna import Sampler, Storage
 from .search import SearchCV
-from .split import Splitter
+from .split import (
+    BaseSplitter,
+    ExpandingWindowSplitter,
+    GapSplitter,
+    SlidingWindowSplitter,
+)
 
 __all__ = [
+    "BaseSplitter",
+    "ExpandingWindowSplitter",
+    "GapSplitter",
     "Sampler",
-    "Storage",
     "SearchCV",
-    "Splitter",
+    "SlidingWindowSplitter",
+    "Storage",
 ]

@@ -8,12 +8,13 @@ try:
     import polars as pl
 except ImportError as e:
     raise ImportError(
-        "polars.testing is required for yohou.testing module. "
-        "Install with: uv sync --group tests"
+        "polars.testing is required for yohou.testing module. Install with: uv sync --group tests"
     ) from e
 
 
-def check_point_prediction_structure(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
+def check_point_prediction_structure(
+    forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None
+) -> None:
     """Check point predictions have correct column structure.
 
     Parameters

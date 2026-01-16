@@ -22,7 +22,7 @@ from sklearn.base import clone
 from sklearn.linear_model import Ridge
 from sklearn.utils.metadata_routing import MetadataRequest, MetadataRouter
 
-from yohou.metrics import MAE
+from yohou.metrics import MeanAbsoluteError
 from yohou.model_selection import SearchCV
 from yohou.pipeline import ColumnTransformer, FeaturePipeline, FeatureUnion
 from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
@@ -430,7 +430,7 @@ def test_searchcv_get_metadata_routing(y_X_factory):
     search = SearchCV(
         forecaster=SeasonalNaive(),
         param_distributions={"seasonality": optuna.distributions.IntDistribution(1, 5)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_trials=2,
         n_warmup_trials=1,
     )
@@ -448,7 +448,7 @@ def test_searchcv_fits_with_metadata(y_X_factory):
     search = SearchCV(
         forecaster=SeasonalNaive(),
         param_distributions={"seasonality": optuna.distributions.IntDistribution(1, 5)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_trials=2,
         n_warmup_trials=1,
     )
@@ -473,7 +473,7 @@ def test_searchcv_update_predict(y_X_factory):
     search = SearchCV(
         forecaster=SeasonalNaive(),
         param_distributions={"seasonality": optuna.distributions.IntDistribution(1, 5)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_trials=2,
         n_warmup_trials=1,
     )
@@ -554,7 +554,7 @@ def test_nested_pipeline_with_searchcv(y_X_factory):
     search = SearchCV(
         forecaster=forecaster,
         param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.01, 1.0)},
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         n_trials=2,
         n_warmup_trials=1,
     )

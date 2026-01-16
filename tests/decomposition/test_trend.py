@@ -247,7 +247,6 @@ def test_polynomial_model_panel_behaviors(panel_time_series_factory, model_panel
     # assert "panel__series_2" in y_pred.columns
 
 
-@pytest.mark.skip(reason="Decomposition forecasters don't yet handle dict _y_observed in predict()")
 def test_polynomial_model_panel_prediction_differences(panel_time_series_factory):
     """Test that pooled vs per-group strategies produce different predictions on heterogeneous data."""
     y_panel = panel_time_series_factory(length=100, n_series=3, seed=42)

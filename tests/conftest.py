@@ -164,6 +164,21 @@ def time_series_factory():
     return _make
 
 
+@pytest.fixture
+def X_factory(time_series_factory):
+    """Alias for time_series_factory for consistency with y_X_factory naming.
+
+    This fixture generates exogenous features (X) for time series models.
+    Use this when you need only X data without y targets.
+
+    .. note::
+        This is the preferred name for consistency. time_series_factory
+        is maintained for backward compatibility.
+
+    """
+    return time_series_factory
+
+
 @pytest.fixture(scope="session")
 def base_time_series():
     """Session-scoped base time_series (immutable, reused for performance).
@@ -381,7 +396,7 @@ def y_X_factory():
 
     import numpy as np
 
-    def _factory(length=100, n_targets=2, n_features=3, seed=42, panel=False):
+    def _factory(length=100, n_targets=2, n_features=3, seed=42, panel=False, n_groups=2):
         """Generate forecaster test data.
 
         Parameters
@@ -396,6 +411,9 @@ def y_X_factory():
             Random seed
         panel : bool
             Whether to create panel data with columns using __ separator
+        n_groups : int, default=2
+            Number of panel groups when panel=True. Each target/feature will
+            be replicated with group suffixes: y_0__group_0, y_0__group_1, etc.
 
         Returns
         -------
@@ -413,22 +431,38 @@ def y_X_factory():
             eager=True,
         )
 
-        # Generate y
-        y = pl.DataFrame({"time": time})
-        for i in range(n_targets):
-            y = y.with_columns(pl.Series(f"y_{i}", rng.random(length)))
-
-        # Generate X
-        X = None
-        if n_features > 0:
-            X = pl.DataFrame({"time": time})
-            for i in range(n_features):
-                X = X.with_columns(pl.Series(f"X_{i}", rng.random(length)))
-
         if panel:
-            # TODO: Convert to columns with __ separator for panel data
-            # This would require implementing panel data conversion
-            pass
+            # Generate panel data with __ separator
+            y = pl.DataFrame({"time": time})
+            for i in range(n_targets):
+                base_values = rng.random(length)
+                for group_idx in range(n_groups):
+                    # Add slight variation per group
+                    variation = group_idx * 0.1
+                    col_name = f"y_{i}__group_{group_idx}"
+                    y = y.with_columns(pl.Series(col_name, base_values + variation))
+
+            X = None
+            if n_features > 0:
+                X = pl.DataFrame({"time": time})
+                for i in range(n_features):
+                    base_values = rng.random(length)
+                    for group_idx in range(n_groups):
+                        # Add slight variation per group
+                        variation = group_idx * 0.05
+                        col_name = f"X_{i}__group_{group_idx}"
+                        X = X.with_columns(pl.Series(col_name, base_values + variation))
+        else:
+            # Generate regular (non-panel) data
+            y = pl.DataFrame({"time": time})
+            for i in range(n_targets):
+                y = y.with_columns(pl.Series(f"y_{i}", rng.random(length)))
+
+            X = None
+            if n_features > 0:
+                X = pl.DataFrame({"time": time})
+                for i in range(n_features):
+                    X = X.with_columns(pl.Series(f"X_{i}", rng.random(length)))
 
         return y, X
 
@@ -488,6 +522,78 @@ def panel_X_factory():
         return pl.concat([pl.DataFrame({"time": time}), panel_df], how="horizontal")
 
     return _make
+
+
+@pytest.fixture
+def pattern_factory():
+    """Generate time series with specific patterns for testing.
+
+    Returns
+    -------
+    callable
+        Factory function with signature:
+        pattern_factory(pattern_type, length, **kwargs) -> pl.DataFrame
+
+    """
+    from datetime import datetime, timedelta
+
+    import numpy as np
+
+    def _factory(
+        pattern_type: str,
+        length: int = 100,
+        amplitude: float = 1.0,
+        noise_level: float = 0.1,
+        seed: int | None = None,
+    ) -> pl.DataFrame:
+        """Generate time series with specific pattern.
+
+        Parameters
+        ----------
+        pattern_type : str
+            One of: "linear_trend", "exponential_trend", "seasonal",
+            "trend_seasonal", "step_change", "random_walk"
+        length : int
+            Number of time steps
+        amplitude : float
+            Pattern amplitude
+        noise_level : float
+            Amount of random noise (std dev)
+        seed : int | None
+            Random seed for reproducibility
+
+        Returns
+        -------
+        pl.DataFrame
+            Time series with "time" and "target" columns
+
+        """
+        rng = np.random.default_rng(seed)
+        t = np.arange(length)
+        time = [datetime(2020, 1, 1) + timedelta(days=int(i)) for i in t]
+
+        if pattern_type == "linear_trend":
+            values = amplitude * t
+        elif pattern_type == "exponential_trend":
+            values = amplitude * np.exp(0.01 * t)
+        elif pattern_type == "seasonal":
+            values = amplitude * np.sin(2 * np.pi * t / 12)
+        elif pattern_type == "trend_seasonal":
+            values = amplitude * t + amplitude * np.sin(2 * np.pi * t / 12)
+        elif pattern_type == "step_change":
+            values = np.where(t < length // 2, 0, amplitude)
+        elif pattern_type == "random_walk":
+            values = np.cumsum(rng.normal(0, amplitude, length))
+        else:
+            raise ValueError(f"Unknown pattern_type: {pattern_type}")
+
+        # Add noise
+        if noise_level > 0:
+            values += rng.normal(0, noise_level * amplitude, length)
+
+        return pl.DataFrame({"time": time, "target": values})
+
+    return _factory
 
 
 class DummyPointForecaster(BasePointForecaster):

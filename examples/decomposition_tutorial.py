@@ -48,7 +48,7 @@ def _():
         PatternSeasonalityForecaster,
         PolynomialTrendForecaster,
     )
-    from yohou.metrics import MAE
+    from yohou.metrics import MeanAbsoluteError
     from yohou.point_forecaster import (
         PointReductionForecaster,
     )
@@ -62,7 +62,7 @@ def _():
         FourierSeasonalityForecaster,
         LagTransformer,
         LogTransform,
-        MAE,
+        MeanAbsoluteError,
         PointReductionForecaster,
         PolynomialTrendForecaster,
         Ridge,
@@ -129,7 +129,7 @@ def _(
     Decomposer,
     FourierSeasonalityForecaster,
     LogTransform,
-    MAE,
+    MeanAbsoluteError,
     PolynomialTrendForecaster,
     PatternSeasonalityForecaster,
     forecasting_horizon,
@@ -156,7 +156,7 @@ def _(
     for name_ord, model_ord in ordering_models.items():
         model_ord.fit(y_train, forecasting_horizon=forecasting_horizon)
         y_pred_ord = model_ord.predict(forecasting_horizon=forecasting_horizon)
-        mae_ord = MAE().score(y_test, y_pred_ord)
+        mae_ord = MeanAbsoluteError().score(y_test, y_pred_ord)
         ordering_results[name_ord] = {
             "predictions": y_pred_ord,
             "mae": mae_ord,
@@ -412,7 +412,7 @@ def _(
     FourierSeasonalityForecaster,
     LagTransformer,
     LogTransform,
-    MAE,
+    MeanAbsoluteError,
     PointReductionForecaster,
     PolynomialTrendForecaster,
     Ridge,
@@ -450,7 +450,7 @@ def _(
     for name_multi, model_multi in multi_comp_models.items():
         model_multi.fit(y_train, forecasting_horizon=forecasting_horizon)
         y_pred_multi = model_multi.predict(forecasting_horizon=forecasting_horizon)
-        mae_multi = MAE().score(y_test, y_pred_multi)
+        mae_multi = MeanAbsoluteError().score(y_test, y_pred_multi)
         multi_comp_results[name_multi] = {
             "predictions": y_pred_multi,
             "mae": mae_multi,
@@ -556,7 +556,7 @@ def _(
     FourierSeasonalityForecaster,
     LagTransformer,
     LogTransform,
-    MAE,
+    MeanAbsoluteError,
     PointReductionForecaster,
     PolynomialTrendForecaster,
     Ridge,
@@ -597,7 +597,7 @@ def _(
     for name_abl, model_abl in ablation_models.items():
         model_abl.fit(y_train, forecasting_horizon=forecasting_horizon)
         y_pred_abl = model_abl.predict(forecasting_horizon=forecasting_horizon)
-        mae_abl = MAE().score(y_test, y_pred_abl)
+        mae_abl = MeanAbsoluteError().score(y_test, y_pred_abl)
         ablation_results[name_abl] = {"predictions": y_pred_abl, "mae": mae_abl}
 
     print("Ablation Study: Incremental Component Value\n")

@@ -51,7 +51,7 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
-    from yohou.metrics import MAE
+    from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import SearchCV, Splitter
     from yohou.pipeline import FeaturePipeline
 
@@ -63,7 +63,7 @@ def _():
         FeaturePipeline,
         LagTransformer,
         LogTransform,
-        MAE,
+        MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
         SearchCV,
@@ -227,7 +227,7 @@ def _(mo):
 
 
 @app.cell
-def _(MAE, SeasonalNaive, forecasting_horizon, y_test, y_train):
+def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
     # Create and fit baseline model
     baseline = SeasonalNaive(seasonality=12)
     baseline.fit(y_train, X=None, forecasting_horizon=forecasting_horizon)
@@ -236,7 +236,7 @@ def _(MAE, SeasonalNaive, forecasting_horizon, y_test, y_train):
     y_pred_baseline = baseline.predict(forecasting_horizon=forecasting_horizon)
 
     # Evaluate
-    mae_scorer = MAE()
+    mae_scorer = MeanAbsoluteError()
     mae_baseline = mae_scorer.score(y_test, y_pred_baseline)
 
     print(f"Baseline (Seasonal Naive) MAE: {mae_baseline:.2f} thousand passengers")
@@ -588,7 +588,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(
-    MAE,
+    MeanAbsoluteError,
     SearchCV,
     Splitter,
     clone,
@@ -614,7 +614,7 @@ def _(
     search = SearchCV(
         forecaster=clone(reduction_forecaster),
         param_distributions=param_distributions,
-        scoring=MAE(),
+        scoring=MeanAbsoluteError(),
         cv=cv_splitter,
         n_trials=10,  # Reduced for faster execution
         refit=True,

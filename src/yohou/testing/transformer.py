@@ -15,8 +15,7 @@ try:
     from polars.testing import assert_frame_equal
 except ImportError as e:
     raise ImportError(
-        "polars.testing is required for yohou.testing module. "
-        "Install with: uv sync --group tests"
+        "polars.testing is required for yohou.testing module. Install with: uv sync --group tests"
     ) from e
 
 from sklearn.base import clone
@@ -141,9 +140,7 @@ def check_observation_horizon_after_fit(
     assert horizon >= 0, f"observation_horizon must be non-negative, got {horizon}"
 
 
-def check_reset_updates_memory(
-    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None
-) -> None:
+def check_reset_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
     """Check reset() updates _X_observed to last observation_horizon rows.
 
     The reset() method should update the transformer's memory to contain
@@ -810,7 +807,11 @@ def check_fit_transform_equivalence(
 
 
 def check_memory_bounded(
-    transformer, X_train: pl.DataFrame, X_test: pl.DataFrame, y: pl.DataFrame | None = None, n_updates: int = 5
+    transformer,
+    X_train: pl.DataFrame,
+    X_test: pl.DataFrame,
+    y: pl.DataFrame | None = None,
+    n_updates: int = 5,
 ) -> None:
     """Check memory doesn't grow unbounded with sequential updates.
 
@@ -903,7 +904,9 @@ def check_tags_accessible_before_fit(transformer, X: pl.DataFrame | None = None)
     assert hasattr(tags, "input_tags"), "Tags must have input_tags attribute"
 
 
-def check_tags_static_after_fit(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_tags_static_after_fit(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None
+) -> None:
     """Check tags remain static (don't change) after fit().
 
     Tags represent capabilities, not fitted state. They should have
@@ -959,7 +962,9 @@ def check_tags_static_after_fit(transformer, X: pl.DataFrame, y: pl.DataFrame | 
     )
 
 
-def check_tags_match_capabilities(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_tags_match_capabilities(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None
+) -> None:
     """Check tags accurately reflect transformer capabilities.
 
     Validates that tag values match actual transformer behavior:

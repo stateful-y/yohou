@@ -465,10 +465,30 @@ def _score(
                     UserWarning,
                 )
     error_msg = "scoring must return a number, got %s (%s) instead. (scorer=%s)"
+
+    # Check for DataFrame return (aggregation_method != "all" scorers)
+    import polars as pl
+
+    if isinstance(scores, pl.DataFrame):
+        msg = (
+            "Scorers with aggregation_method != 'all' cannot be used with SearchCV. "
+            "SearchCV requires scalar scores for optimization. "
+            "Please set aggregation_method='all' on your scorer."
+        )
+        raise ValueError(msg)
+
     if isinstance(scores, dict):
         for name, score in scores.items():
             if isinstance(score, str):
                 continue  # Already error string
+            # Check for DataFrame in dict values
+            if isinstance(score, pl.DataFrame):
+                msg = (
+                    f"Scorer '{name}' with aggregation_method != 'all' cannot be used with SearchCV. "
+                    "SearchCV requires scalar scores for optimization. "
+                    f"Please set aggregation_method='all' on scorer '{name}'."
+                )
+                raise ValueError(msg)
             score_val: float | str = score
             if hasattr(score_val, "item"):
                 with suppress(ValueError):

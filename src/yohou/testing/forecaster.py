@@ -9,8 +9,7 @@ try:
     from polars.testing import assert_frame_equal
 except ImportError as e:
     raise ImportError(
-        "polars.testing is required for yohou.testing module. "
-        "Install with: uv sync --group tests"
+        "polars.testing is required for yohou.testing module. Install with: uv sync --group tests"
     ) from e
 
 from sklearn.base import clone
@@ -92,7 +91,9 @@ def check_fit_sets_forecaster_attributes(
         )
 
 
-def check_forecaster_not_fitted_error(forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_forecaster_not_fitted_error(
+    forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None
+) -> None:
     """Check accessing fitted attributes before fit() raises NotFittedError.
 
     Parameters
@@ -124,7 +125,9 @@ def check_forecaster_not_fitted_error(forecaster, y: pl.DataFrame, X: pl.DataFra
         pass
 
 
-def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
+def check_predict_time_columns(
+    forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None
+) -> None:
     """Check predictions have observed_time and time columns.
 
     Parameters
@@ -473,7 +476,9 @@ def check_reset_propagates_to_transformers(
                 )
 
 
-def check_forecasting_horizon_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_forecasting_horizon_validation(
+    forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None
+) -> None:
     """Check forecasting_horizon < 1 raises ValueError.
 
     Parameters

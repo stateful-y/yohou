@@ -103,11 +103,13 @@ def test_validate_data_panel_fit():
         interval="1d",
         eager=True,
     )
-    y = pl.DataFrame({
-        "time": time,
-        "sales__store_1": range(10),
-        "sales__store_2": range(10, 20),
-    })
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+        }
+    )
 
     forecaster = SeasonalNaive(seasonality=2)
     forecaster.fit(y, forecasting_horizon=2)
@@ -126,11 +128,13 @@ def test_validate_data_panel_update():
         interval="1d",
         eager=True,
     )
-    y = pl.DataFrame({
-        "time": time,
-        "sales__store_1": range(15),
-        "sales__store_2": range(15, 30),
-    })
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(15),
+            "sales__store_2": range(15, 30),
+        }
+    )
 
     forecaster = SeasonalNaive(seasonality=2)
     forecaster.fit(y[:10], forecasting_horizon=2)
@@ -170,10 +174,12 @@ def test_validate_data_preserves_column_order():
         eager=True,
     )
     # Create with columns in expected order
-    y = pl.DataFrame({
-        "time": time,
-        "target": range(10),
-    })
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "target": range(10),
+        }
+    )
 
     forecaster = SeasonalNaive(seasonality=2)
     forecaster.fit(y, forecasting_horizon=2)

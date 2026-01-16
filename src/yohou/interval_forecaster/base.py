@@ -73,7 +73,6 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self
 
         """
-        raise NotImplementedError()
 
     @abc.abstractmethod
     def update(
@@ -100,7 +99,6 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self
 
         """
-        raise NotImplementedError()
 
     @abc.abstractmethod
     def predict(
@@ -124,7 +122,6 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
             Similarity weights.
 
         """
-        raise NotImplementedError()
 
 
 class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
@@ -197,7 +194,6 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self
 
         """
-        raise NotImplementedError()
 
     def _validate_fit_params(
         self,

@@ -11,7 +11,7 @@ from sklearn.base import RegressorMixin, _fit_context, clone
 from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
-from sklearn.utils._param_validation import Interval
+from sklearn.utils._param_validation import Interval, StrOptions
 
 from .base import _BaseSeasonalityForecaster
 
@@ -88,8 +88,8 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
 
     _parameter_constraints: dict = {
         **_BaseSeasonalityForecaster._parameter_constraints,
-        "method": [str],
-        "model_panel": [bool],
+        "method": [StrOptions({"naive", "average", "median"})],
+        "model_panel": ["boolean"],
     }
 
     def __init__(

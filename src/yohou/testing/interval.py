@@ -8,14 +8,15 @@ try:
     import polars as pl
 except ImportError as e:
     raise ImportError(
-        "polars.testing is required for yohou.testing module. "
-        "Install with: uv sync --group tests"
+        "polars.testing is required for yohou.testing module. Install with: uv sync --group tests"
     ) from e
 
 from sklearn.base import clone
 
 
-def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
+def check_interval_prediction_columns(
+    forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None
+) -> None:
     """Check interval predictions have {col}_lower_{rate} and {col}_upper_{rate} format.
 
     Parameters
@@ -74,7 +75,9 @@ def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame, X_test: 
                 assert upper_col in y_pred.columns, f"Missing upper bound column: {upper_col}"
 
 
-def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
+def check_interval_bounds(
+    forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None
+) -> None:
     """Check upper >= lower for all coverage rates and time steps.
 
     Parameters
@@ -97,7 +100,7 @@ def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame
     forecasting_horizon = min(3, len(y_test))
     y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
-    coverage_rates = forecaster.coverage_rates
+    coverage_rates = forecaster.fit_coverage_rates_
 
     # Check if we have panel data (columns with __ separator)
     _, y_panel_groups = inspect_locality(y_test)
@@ -178,7 +181,7 @@ def check_coverage_rates_parameter(forecaster) -> None:
         If coverage_rates is invalid
 
     """
-    coverage_rates = forecaster.coverage_rates
+    coverage_rates = forecaster.fit_coverage_rates_
 
     assert isinstance(coverage_rates, list), (
         f"coverage_rates should be list, got {type(coverage_rates)}"
@@ -193,7 +196,9 @@ def check_coverage_rates_parameter(forecaster) -> None:
         assert 0 < rate < 1, f"Coverage rates should be in (0, 1), got {rate}"
 
 
-def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_coverage_rates_validation(
+    forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None
+) -> None:
     """Check invalid coverage_rates raise ValueError during fit and predict.
 
     Parameters
@@ -261,6 +266,4 @@ def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame
             f"for coverage_rates=[0.0]"
         )
     except ValueError as e:
-        assert "coverage" in str(e).lower(), (
-            f"ValueError should mention coverage_rates, got: {e}"
-        )
+        assert "coverage" in str(e).lower(), f"ValueError should mention coverage_rates, got: {e}"

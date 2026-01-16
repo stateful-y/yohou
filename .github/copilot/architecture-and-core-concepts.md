@@ -451,13 +451,13 @@ All metrics extend `BaseScorer`:
 
 **Usage in SearchCV**:
 ```python
-from yohou.metrics import MAE
+from yohou.metrics import MeanAbsoluteError
 from yohou.model_selection import SearchCV
 
 search = SearchCV(
     forecaster=PointReductionForecaster(),
-    scoring=MAE(),  # Single metric
-    # Or multi-metric: scoring={"mae": MAE(), "rmse": RMSE()}
+    scoring=MeanAbsoluteError(),  # Single metric
+    # Or multi-metric: scoring={"mae": MeanAbsoluteError(), "rmse": RMSE()}
     ...
 )
 ```
@@ -513,7 +513,7 @@ def predict_interval(self, forecasting_horizon=None, X=None, **params):
 
 ```python
 from yohou.model_selection import SearchCV
-from yohou.metrics import MAE
+from yohou.metrics import MeanAbsoluteError
 import optuna
 
 search = SearchCV(
@@ -522,7 +522,7 @@ search = SearchCV(
         "estimator__alpha": optuna.distributions.FloatDistribution(0.01, 1.0),
         "feature_transformer__lag": optuna.distributions.IntDistribution(1, 10)
     },
-    scoring=MAE(),
+    scoring=MeanAbsoluteError(),
     n_warmup_trials=5,
     n_trials=20,
     refit=True  # Refits on full data with best params

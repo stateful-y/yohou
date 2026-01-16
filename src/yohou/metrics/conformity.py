@@ -220,7 +220,6 @@ class QuantileResidual(BaseConformityScorer):
     @abc.abstractmethod
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
         """Compute quantile residual scores."""
-        raise NotImplementedError()
 
 
 class AbsoluteQuantileResidual(BaseConformityScorer):
@@ -235,4 +234,3 @@ class AbsoluteQuantileResidual(BaseConformityScorer):
     @abc.abstractmethod
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
         """Compute absolute quantile residual scores."""
-        raise NotImplementedError()

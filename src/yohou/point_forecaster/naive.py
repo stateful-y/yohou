@@ -1,8 +1,12 @@
 """Implementation of seasonal naive forecaster."""
 
+import numbers
+
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
+from sklearn.base import _fit_context
+from sklearn.utils._param_validation import Interval
 
 from ..utils.tags import Tags
 from .base import BasePointForecaster
@@ -18,6 +22,11 @@ class SeasonalNaive(BasePointForecaster):
         in daily data, or 12 for monthly seasonality in monthly data.
 
     """
+
+    _parameter_constraints: dict = {
+        **BasePointForecaster._parameter_constraints,
+        "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
+    }
 
     def __init__(self, seasonality: StrictInt = 1):
         BasePointForecaster.__init__(self)
@@ -38,6 +47,7 @@ class SeasonalNaive(BasePointForecaster):
         tags.forecaster_tags.stateful = True
         return tags
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,

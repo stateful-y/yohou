@@ -377,11 +377,11 @@ class BasePointScorer(BaseScorer):
         # Compute score
         ...
 
-class MAE(BasePointScorer):
+class MeanAbsoluteErrorBasePointScorer):
     """Mean Absolute Error metric."""
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float:
-        """Compute MAE."""
+        """Compute MeanAbsoluteError."""
         y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
         return float(np.nanmean((y_truth - y_pred).select(pl.all().abs().mean()).to_numpy()))
 ```
@@ -569,7 +569,7 @@ y_pred = pipeline.predict(forecasting_horizon=3)
 
 ```python
 from yohou.model_selection import SearchCV
-from yohou.metrics import MAE
+from yohou.metrics import MeanAbsoluteError
 import optuna
 
 # Hyperparameter search with metadata
@@ -578,7 +578,7 @@ search = SearchCV(
     param_distributions={
         "estimator__alpha": optuna.distributions.FloatDistribution(0.01, 1.0)
     },
-    scoring=MAE(),
+    scoring=MeanAbsoluteError(),
     n_trials=20
 )
 

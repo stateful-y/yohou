@@ -125,7 +125,7 @@ class ScorerTags:
         - "interval": Evaluates prediction intervals
         - None: Not determined or not applicable
     lower_is_better : bool, default=True
-        Whether lower scores indicate better performance (e.g., MAE, MSE).
+        Whether lower scores indicate better performance (e.g., MeanAbsoluteError, MSE).
         False for metrics where higher is better (e.g., R²).
     requires_calibration : bool, default=False
         Whether the scorer requires calibration data from fit().

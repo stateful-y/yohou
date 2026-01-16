@@ -34,20 +34,25 @@ The testing infrastructure is organized following pytest conventions:
 ```
 tests/
 ├── conftest.py                         # Global fixtures (data, dummy transformers, registry)
-├── estimator_checks.py                 # Check function library (18 functions + generator)
 ├── test_estimator_checks.py            # sklearn compatibility tests
 ├── test_pipeline.py                    # Tests for src/yohou/pipeline.py (FeaturePipeline, FeatureUnion, ColumnTransformer)
 └── preprocessing/
-    ├── conftest.py                     # (Not needed - using global conftest only)
     ├── test_stationarization.py        # Tests for src/yohou/preprocessing/stationarization.py
     └── test_window.py                  # Tests for src/yohou/preprocessing/window.py
+
+src/yohou/testing/                       # Check function library
+├── __init__.py                          # Exports all check functions
+├── generators.py                        # Check generators (_yield_yohou_transformer_checks, _yield_yohou_forecaster_checks)
+├── transformer.py                       # Transformer checks (21 functions)
+├── common.py                            # Metadata routing checks (2 functions)
+└── metadata_routing.py                  # Metadata routing test utilities
 ```
 
 **Organization Principles**:
 - Test files mirror source structure: `tests/test_{file}.py` for `src/yohou/{file}.py`
 - Test files mirror source structure: `tests/{module}/test_{file}.py` for `src/yohou/{module}/{file}.py`
 - Example: `src/yohou/pipeline.py` → `tests/test_pipeline.py`
-- Check functions in `estimator_checks.py` are validated by actual usage in transformer tests
+- Check functions organized in `src/yohou/testing/` as a reusable library
 - Shared testing infrastructure lives at `tests/` root
 - Single global `conftest.py` sufficient - module-specific fixtures not needed
 
@@ -57,9 +62,9 @@ tests/
 
 The testing infrastructure consists of three main components that work together to provide comprehensive transformer validation.
 
-### 1. Check Functions Library (`tests/estimator_checks.py`)
+### 1. Check Functions Library (`src/yohou/testing/`)
 
-**Purpose**: Reusable library of 21 validation functions that test transformer contracts
+**Purpose**: Reusable library of 21 validation functions that test transformer contracts organized in transformer.py module
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
@@ -94,7 +99,7 @@ The testing infrastructure consists of three main components that work together 
 17. **`check_fit_transform_equivalence`** - fit_transform(X) == fit(X).transform(X)
 18. **`check_memory_bounded`** - Memory (_X_observed) doesn't grow unbounded with sequential updates
 
-### 2. Check Generator (`tests/estimator_checks.py`)
+### 2. Check Generator (`src/yohou/testing/generators.py`)
 
 **Function**: `_yield_yohou_transformer_checks(transformer, X_train, X_test, y=None)`
 
@@ -163,7 +168,7 @@ Use the check generator pattern:
 import pytest
 from sklearn.base import clone
 from yohou.{module} import MyTransformer
-from tests.estimator_checks import _yield_yohou_transformer_checks
+from yohou.testing import _yield_yohou_transformer_checks
 
 @pytest.mark.parametrize("transformer,tags,expected_failures", [...])
 def test_my_transformer_checks(transformer, tags, expected_failures, time_series_factory):

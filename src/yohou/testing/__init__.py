@@ -21,10 +21,10 @@ Using the generator functions for systematic testing::
 
     from yohou.testing import _yield_yohou_forecaster_checks
     from yohou.point_forecaster import SeasonalNaive
-    
+
     forecaster = SeasonalNaive(seasonality=12)
     forecaster.fit(y_train, X_train, forecasting_horizon=3)
-    
+
     for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
         forecaster, y_train, X_train, y_test, X_test
     ):
@@ -33,7 +33,7 @@ Using the generator functions for systematic testing::
 Using individual check functions::
 
     from yohou.testing import check_fit_sets_forecaster_attributes
-    
+
     check_fit_sets_forecaster_attributes(forecaster, y_train, X_train, forecasting_horizon=3)
 
 """

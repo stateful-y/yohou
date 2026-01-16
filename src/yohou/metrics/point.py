@@ -1,12 +1,17 @@
 """Point forecasting metrics for evaluating prediction accuracy."""
 
+import numbers
+
 import numpy as np
 import polars as pl
+from sklearn.base import _fit_context
+from sklearn.utils._param_validation import Interval
+from sklearn.utils.validation import check_is_fitted
 
 from .base import BasePointScorer
 
 
-class MAE(BasePointScorer):
+class MeanAbsoluteError(BasePointScorer):
     """Mean Absolute Error metric for point forecasts.
 
     Computes the average of absolute differences between predictions and actual values.
@@ -20,6 +25,24 @@ class MAE(BasePointScorer):
     where $y_i$ is the actual value, $\\hat{y}_i$ is the predicted value, and
     $n$ is the number of observations.
 
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "timewise": Aggregate across time, return per-component DataFrame
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["timewise", "componentwise", "groupwise"].
+        Example outputs:
+        - "timewise" or ["timewise"]: Per-component (and per-group) DataFrame.
+        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
+        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
+        - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
+        - "all": Scalar float (hierarchically aggregated for panel data).
+    panel_group_weights : dict or None, default=None
+        Weights for panel groups. See BaseScorer for details.
+
     Attributes
     ----------
     lower_is_better : bool
@@ -29,7 +52,7 @@ class MAE(BasePointScorer):
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.metrics import MAE
+    >>> from yohou.metrics import MeanAbsoluteError
     >>> y_true = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [10.0, 20.0, 30.0]
@@ -39,7 +62,7 @@ class MAE(BasePointScorer):
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0]
     ... })
-    >>> mae = MAE()
+    >>> mae = MeanAbsoluteError()
     >>> mae.score(y_true, y_pred)  # doctest: +ELLIPSIS
     1.666...
 
@@ -52,42 +75,73 @@ class MAE(BasePointScorer):
 
     See Also
     --------
-    MSE : Mean Squared Error, more sensitive to large errors
-    RMSE : Root Mean Squared Error, MSE in original units
+    MeanSquaredError : Mean Squared Error, more sensitive to large errors
+    RootMeanSquaredError : Root Mean Squared Error, MeanSquaredError in original units
+    RootMeanSquaredScaledError : Root Mean Squared Scaled Error, scale-independent version
     MAPE : Mean Absolute Percentage Error, scale-independent
 
     """
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float:
+    _parameter_constraints: dict = {
+        **BasePointScorer._parameter_constraints,
+    }
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        panel_group_weights: dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method, panel_group_weights=panel_group_weights
+        )
+
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
         """Compute mean absolute error.
 
         Parameters
         ----------
         y_truth : pl.DataFrame
             True values.
-
         y_pred : pl.DataFrame
             Predicted values.
-
         **params : dict
             Metadata to route to nested estimators.
 
         Returns
         -------
-        float
-            Mean absolute error.
+        float or pl.DataFrame
+            If aggregation_method=["timewise"], returns DataFrame with per-component MAE values.
+            If aggregation_method=["componentwise"], returns DataFrame with "time" and "mae" columns.
+            If aggregation_method="all", returns scalar float.
 
         """
         y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
 
-        score = (y_truth - y_pred).select(pl.all().abs().mean())
+        # Compute raw per-timestep per-component absolute errors
+        scores = (y_truth - y_pred).select(pl.all().abs())
 
-        score_value: float = float(np.nanmean(score.to_numpy()))
+        # Apply aggregation strategy from base class
+        result = self._aggregate_scores(scores)
 
-        return score_value
+        # Customize column name for componentwise aggregation
+        if "componentwise" in (
+            self.aggregation_method if isinstance(self.aggregation_method, list) else []
+        ) and isinstance(result, pl.DataFrame):
+            # Rename global and panel columns
+            rename_map = {}
+            if "score" in result.columns:
+                rename_map["score"] = "mae"
+            for col in result.columns:
+                if col.endswith("__score"):
+                    rename_map[col] = col.replace("__score", "__mae")
+
+            if rename_map:
+                result = result.rename(rename_map)
+
+        return result
 
 
-class MSE(BasePointScorer):
+class MeanSquaredError(BasePointScorer):
     """Mean Squared Error metric for point forecasts.
 
     Computes the average of squared differences between predictions and actual values.
@@ -95,21 +149,39 @@ class MSE(BasePointScorer):
 
     The MSE is defined as:
 
-    $$\text{MSE} = \frac{1}{n}\\sum_{i=1}^{n}(y_i - \\hat{y}_i)^2$$
+    $$\\text{MSE} = \\frac{1}{n}\\sum_{i=1}^{n}(y_i - \\hat{y}_i)^2$$
 
     where $y_i$ is the actual value, $\\hat{y}_i$ is the predicted value, and
     $n$ is the number of observations.
 
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "timewise": Aggregate across time, return per-component DataFrame
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["timewise", "componentwise", "groupwise"].
+        Example outputs:
+        - "timewise" or ["timewise"]: Per-component (and per-group) DataFrame.
+        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
+        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
+        - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
+        - "all": Scalar float (hierarchically aggregated for panel data).
+    panel_group_weights : dict or None, default=None
+        Weights for panel groups. See BaseScorer for details.
+
     Attributes
     ----------
     lower_is_better : bool
-        Always True for MSE.
+        Always True for MeanSquaredError.
 
     Examples
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.metrics import MSE
+    >>> from yohou.metrics import MeanSquaredError
     >>> y_true = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [10.0, 20.0, 30.0]
@@ -119,7 +191,7 @@ class MSE(BasePointScorer):
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0]
     ... })
-    >>> mse = MSE()
+    >>> mse = MeanSquaredError()
     >>> mse.score(y_true, y_pred)  # doctest: +ELLIPSIS
     3.0
 
@@ -132,35 +204,455 @@ class MSE(BasePointScorer):
 
     See Also
     --------
-    MAE : Mean Absolute Error, less sensitive to outliers
-    RMSE : Root Mean Squared Error, MSE in original units
+    MeanAbsoluteError : Mean Absolute Error, less sensitive to outliers
+    RootMeanSquaredError : Root Mean Squared Error, MeanSquaredError in original units
+    RootMeanSquaredScaledError : Root Mean Squared Scaled Error, scale-independent version
 
     """
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float:
+    _parameter_constraints: dict = {
+        **BasePointScorer._parameter_constraints,
+    }
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        panel_group_weights: dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method, panel_group_weights=panel_group_weights
+        )
+
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
         """Compute mean squared error.
 
         Parameters
         ----------
         y_truth : pl.DataFrame
             True values.
-
         y_pred : pl.DataFrame
             Predicted values.
-
         **params : dict
             Metadata to route to nested estimators.
 
         Returns
         -------
-        float
-            Mean squared error.
+        float or pl.DataFrame
+            If aggregation_method=["timewise"], returns DataFrame with per-component MSE values.
+            If aggregation_method=["componentwise"], returns DataFrame with "time" and "mse" columns.
+            If aggregation_method="all", returns scalar float.
 
         """
         y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
 
-        score = (y_truth - y_pred).select(pl.all().pow(2).mean())
+        # Compute raw per-timestep per-component squared errors
+        scores = (y_truth - y_pred).select(pl.all().pow(2))
 
-        score_value: float = float(np.mean(score.rows()))
+        # Apply aggregation strategy from base class
+        result = self._aggregate_scores(scores)
 
-        return score_value
+        # Customize column name for componentwise aggregation
+        if "componentwise" in (
+            self.aggregation_method if isinstance(self.aggregation_method, list) else []
+        ) and isinstance(result, pl.DataFrame):
+            # Rename global and panel columns
+            rename_map = {}
+            if "score" in result.columns:
+                rename_map["score"] = "mse"
+            for col in result.columns:
+                if col.endswith("__score"):
+                    rename_map[col] = col.replace("__score", "__mse")
+
+            if rename_map:
+                result = result.rename(rename_map)
+
+        return result
+
+
+class RootMeanSquaredError(BasePointScorer):
+    """Root Mean Squared Error metric for point forecasts.
+
+    Computes the square root of the average of squared differences between predictions
+    and actual values. This metric penalizes large errors while maintaining the same
+    units as the target variable, making it more interpretable than MeanSquaredError.
+
+    The RMSE is defined as:
+
+    $$\\text{RMSE} = \\sqrt{\\frac{1}{n}\\sum_{i=1}^{n}(y_i - \\hat{y}_i)^2}$$
+
+    where $y_i$ is the actual value, $\\hat{y}_i$ is the predicted value, and
+    $n$ is the number of observations.
+
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "timewise": Aggregate across time, return per-component DataFrame
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["timewise", "componentwise", "groupwise"].
+        Example outputs:
+        - "timewise" or ["timewise"]: Per-component (and per-group) DataFrame.
+        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
+        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
+        - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
+        - "all": Scalar float (hierarchically aggregated for panel data).
+    panel_group_weights : dict or None, default=None
+        Weights for panel groups. See BaseScorer for details.
+
+    Attributes
+    ----------
+    lower_is_better : bool
+        Always True for RMSE.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import RootMeanSquaredError
+    >>> y_true = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [10.0, 20.0, 30.0]
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [12.0, 19.0, 28.0]
+    ... })
+    >>> rmse = RootMeanSquaredError()
+    >>> rmse.score(y_true, y_pred)  # doctest: +ELLIPSIS
+    1.732...
+
+    Notes
+    -----
+    - RMSE is the square root of MSE, providing errors in original units
+    - More sensitive to outliers compared to MeanAbsoluteError but less than MSE
+    - Commonly used when large errors are particularly undesirable
+    - Interpretable in the same units as the target variable
+
+    See Also
+    --------
+    MeanAbsoluteError : Mean Absolute Error, less sensitive to outliers
+    MeanSquaredError : Mean Squared Error, RMSE squared
+    RootMeanSquaredScaledError : Root Mean Squared Scaled Error, scale-independent version
+
+    """
+
+    _parameter_constraints: dict = {
+        **BasePointScorer._parameter_constraints,
+    }
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        panel_group_weights: dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method, panel_group_weights=panel_group_weights
+        )
+
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+        """Compute root mean squared error.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True values.
+        y_pred : pl.DataFrame
+            Predicted values.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        float or pl.DataFrame
+            If aggregate="timewise", returns DataFrame with per-component RMSE values.
+            If aggregate="componentwise", returns DataFrame with "time" and "rmse" columns.
+            If aggregate="both", returns scalar float.
+
+        """
+        y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
+
+        # Compute raw per-timestep per-component squared errors
+        squared_errors = (y_truth - y_pred).select(pl.all().pow(2))
+
+        # Apply aggregation strategy from base class
+        result = self._aggregate_scores(squared_errors)
+
+        # Take square root of the aggregated values
+        if isinstance(result, pl.DataFrame):
+            if "timewise" in (
+                self.aggregation_method if isinstance(self.aggregation_method, list) else []
+            ):
+                # Per-component: sqrt each component's mean
+                result = result.select(pl.all().sqrt())
+            elif "componentwise" in (
+                self.aggregation_method if isinstance(self.aggregation_method, list) else []
+            ):
+                # Per-timestep: sqrt each timestep's score, rename column
+                target_cols = [
+                    col for col in result.columns if col == "score" or col.endswith("__score")
+                ]
+                if target_cols:
+                    result = result.with_columns([pl.col(c).sqrt() for c in target_cols])
+
+                    rename_map = {}
+                    if "score" in result.columns:
+                        rename_map["score"] = "rmse"
+                    for col in result.columns:
+                        if col.endswith("__score"):
+                            rename_map[col] = col.replace("__score", "__rmse")
+
+                    if rename_map:
+                        result = result.rename(rename_map)
+        else:
+            # Scalar: sqrt the overall mean
+            result = float(np.sqrt(result))
+
+        return result
+
+
+class RootMeanSquaredScaledError(BasePointScorer):
+    """Root Mean Squared Scaled Error metric for point forecasts.
+
+    Computes RMSE scaled by the in-sample naive seasonal forecast error. This provides
+    a scale-independent metric that enables comparison across time series with different
+    magnitudes. Requires training data to compute scaling factors.
+
+    The RootMeanSquaredScaledError is defined as:
+
+    $$\\text{RMSSE} = \\sqrt{\\frac{1}{h}\\sum_{t=1}^{h}\\left(\\frac{y_t - \\hat{y}_t}{\\text{scale}}\\right)^2}$$
+
+    where the scale is computed from training data as:
+
+    $$\\text{scale}_j = \\frac{1}{T-m}\\sum_{t=m+1}^{T}(y_{t,j} - y_{t-m,j})^2$$
+
+    with $m$ = seasonality, $T$ = training length, $h$ = forecast horizon, and $j$ = column index.
+    Per-column RootMeanSquaredScaledError values are averaged to produce the final score.
+
+    Parameters
+    ----------
+    seasonality : int, default=1
+        Seasonal period for computing scaling factors. Must be at least 1.
+        Common values: 1 (non-seasonal), 7 (weekly), 12 (monthly), 24 (hourly daily pattern).
+
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "timewise": Aggregate across time, return per-component DataFrame
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["timewise", "componentwise", "groupwise"].
+        Example outputs:
+        - "timewise" or ["timewise"]: Per-component (and per-group) DataFrame.
+        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
+        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
+        - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
+        - "all": Scalar float (hierarchically aggregated for panel data).
+    panel_group_weights : dict or None, default=None
+        Weights for panel groups. See BaseScorer for details.
+
+    Attributes
+    ----------
+    lower_is_better : bool
+        Always True for RootMeanSquaredScaledError.
+    scales_ : dict[str, float]
+        Fitted per-column scaling factors. Computed during fit() from training data
+        naive seasonal forecast errors.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime, timedelta
+    >>> from yohou.metrics import RootMeanSquaredScaledError
+    >>> # Training data
+    >>> y_train = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
+    ...     "value": [10.0, 12.0, 11.0, 13.0, 12.0, 14.0, 13.0, 15.0, 14.0, 16.0]
+    ... })
+    >>> # Test predictions
+    >>> y_true = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
+    ...     "value": [15.0, 17.0]
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "observed_time": [datetime(2020, 1, 10)] * 2,
+    ...     "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
+    ...     "value": [15.5, 16.5]
+    ... })
+    >>> rmsse = RootMeanSquaredScaledError(seasonality=2)
+    >>> rmsse.fit(y_train)
+    RootMeanSquaredScaledError(seasonality=2)
+    >>> rmsse.score(y_true, y_pred)
+    0.5
+
+    Notes
+    -----
+    - RootMeanSquaredScaledError values are scale-independent, enabling comparison across different time series
+    - Values < 1 indicate better performance than naive seasonal forecast on training data
+    - Values > 1 indicate worse performance than naive seasonal baseline
+    - Requires training data with length > seasonality
+    - Per-column scaling factors are stored and applied independently
+
+    See Also
+    --------
+    RootMeanSquaredError : Root Mean Squared Error, non-scaled version
+    MeanAbsoluteError : Mean Absolute Error, non-scaled alternative
+    MeanSquaredError : Mean Squared Error, squared version
+
+    """
+
+    _parameter_constraints: dict = {
+        **BasePointScorer._parameter_constraints,
+        "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
+    }
+
+    def __init__(
+        self,
+        seasonality: int = 1,
+        aggregation_method: list[str] | str = "all",
+        panel_group_weights: dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method, panel_group_weights=panel_group_weights
+        )
+        self.seasonality = seasonality
+
+    def __sklearn_tags__(self):
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with requires_calibration=True.
+
+        """
+        tags = super().__sklearn_tags__()
+        tags.scorer_tags.requires_calibration = True
+        return tags
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, y_train: pl.DataFrame | None, **params) -> "RootMeanSquaredScaledError":
+        """Fit the scorer by computing per-column scaling factors.
+
+        Parameters
+        ----------
+        y_train : pl.DataFrame
+            Training set target values with "time" column.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        self
+
+        Raises
+        ------
+        ValueError
+            If y_train is None or seasonality > len(y_train) - 1.
+
+        """
+        super().fit(y_train)
+
+        if y_train is None:
+            msg = "RootMeanSquaredScaledError requires training data to compute scaling factors. Pass y_train to fit()."
+            raise ValueError(msg)
+
+        # Remove time column for computation
+        y_train_values = y_train.drop("time")
+
+        if len(y_train_values) <= self.seasonality:
+            msg = (
+                f"Training data length ({len(y_train_values)}) must be greater than "
+                f"seasonality ({self.seasonality}). Cannot compute seasonal naive forecast errors."
+            )
+            raise ValueError(msg)
+
+        # Compute per-column scaling factors using seasonal naive forecast errors
+        self.scales_ = {}
+        for col in y_train_values.columns:
+            # Compute seasonal differences: y_t - y_{t-seasonality}
+            col_data = y_train_values[col].to_numpy()
+            seasonal_errors = col_data[self.seasonality :] - col_data[: -self.seasonality]
+
+            # Scale is mean squared error of seasonal naive forecast
+            scale = float(np.mean(seasonal_errors**2))
+
+            # Store non-zero scale (avoid division by zero in score())
+            self.scales_[col] = max(scale, 1e-10)
+
+        return self
+
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+        """Compute root mean squared scaled error.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True values.
+        y_pred : pl.DataFrame
+            Predicted values.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        float or pl.DataFrame
+            If aggregate="timewise", returns DataFrame with per-component RootMeanSquaredScaledError values.
+            If aggregate="componentwise", returns DataFrame with "time" and "rmsse" columns.
+            If aggregate="both", returns scalar float.
+
+        Raises
+        ------
+        NotFittedError
+            If fit() has not been called.
+
+        """
+        check_is_fitted(self, ["scales_"])
+
+        y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
+
+        # Compute raw per-timestep per-component squared scaled errors
+        scaled_squared_errors_data = {}
+        for col in y_truth.columns:
+            errors = (y_truth[col] - y_pred[col]).to_numpy()
+            scale = self.scales_[col]
+            # Compute squared scaled errors per timestep
+            scaled_squared_errors_data[col] = (errors / np.sqrt(scale)) ** 2
+        scaled_squared_errors = pl.DataFrame(scaled_squared_errors_data)
+
+        # Apply aggregation strategy from base class
+        result = self._aggregate_scores(scaled_squared_errors)
+
+        # Take square root of the aggregated values
+        if isinstance(result, pl.DataFrame):
+            if "timewise" in (
+                self.aggregation_method if isinstance(self.aggregation_method, list) else []
+            ):
+                # Per-component: sqrt each component's mean
+                result = result.select(pl.all().sqrt())
+            elif "componentwise" in (
+                self.aggregation_method if isinstance(self.aggregation_method, list) else []
+            ):
+                # Per-timestep: sqrt each timestep's score, rename column
+                target_cols = [
+                    col for col in result.columns if col == "score" or col.endswith("__score")
+                ]
+                if target_cols:
+                    result = result.with_columns([pl.col(c).sqrt() for c in target_cols])
+
+                    rename_map = {}
+                    if "score" in result.columns:
+                        rename_map["score"] = "rmsse"
+                    for col in result.columns:
+                        if col.endswith("__score"):
+                            rename_map[col] = col.replace("__score", "__rmsse")
+
+                    if rename_map:
+                        result = result.rename(rename_map)
+        else:
+            # Scalar: sqrt the overall mean
+            result = float(np.sqrt(result))
+
+        return result

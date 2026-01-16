@@ -1,10 +1,12 @@
 ## Pre-publishing
 - Enable time_weight for forecaster and scorer
-- Implement an interval scorer
+- Enable selection of coverage rates as interval scorer class param
+- Validation of split, score, and inverse_score methods
 - Add scorer to testing infrastructure
 - Add splitter to testing infrastructure
 - Simplify SearchCV, make sure it follows BaseSearchCV as closely as possible
 - Make sure we can predict and score in transformed space as well as that we can access predictions
+- Check scorers and splitters
 - Implement variety of splitters
 - Implement variety of scorers
 - Add target_forecaster to ColumnForecaster? What was the plan without it?
@@ -12,8 +14,8 @@
 - Implement SkLearnTransformer
 - Implement SkTimeTransformer
 - Implement SkTimeForecaster
-- Check hyperparameter validation and docstring consistency
-- Check inline
+- Check docstring consistency
+- Check inline TODOs
 - Make sure pre-commit is happy on all files
 - Rename yohou class functions
 - Decide on LICENSE
@@ -25,6 +27,7 @@
 - Implement new conformal prediction approaches
 - Implement ensembling
 - Implement divine intervention
+- Create PanelForecaster that acts like ColumnForecaster but per panel group in parallel
 - Ensure feature naming works accross transformers and meta transformers
 - Implement visualizations (get inspiration from pytimetk)
 - Implement variety of tutorials
