@@ -17,7 +17,7 @@ Yohou's forecaster testing infrastructure provides comprehensive, reusable testi
 
 3. **Point vs Interval Forecasters**: Distinct validation for point predictions vs interval predictions with coverage rates
 
-4. **Comprehensive Validation**: 24 core check functions covering fit/predict contracts, time column validation, observation buffer management, tag system validation, plus 2 metadata routing checks
+4. **Comprehensive Validation**: 25 total check functions covering fit/predict contracts, time column validation, observation buffer management, tag system validation (13 common + 2 point + 5 interval + 2 reduction + 3 panel), plus 2 metadata routing checks
 
 5. **Parameter Validation Tests**: Dedicated tests ensure `forecasting_horizon` and `coverage_rates` are always validated in fit(), predict(), and update methods
 
@@ -82,7 +82,7 @@ The testing infrastructure consists of three main components that work together 
 
 ### 1. Check Functions Library (`src/yohou/testing/`)
 
-**Purpose**: Reusable library of 24 core validation functions that test forecaster contracts organized by module (forecaster.py, point.py, interval.py, reduction.py, panel.py, common.py)
+**Purpose**: Reusable library of 25 validation functions that test forecaster contracts organized by module (forecaster.py, point.py, interval.py, reduction.py, panel.py, common.py)
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
@@ -94,40 +94,40 @@ The testing infrastructure consists of three main components that work together 
 
 **Check Categories**:
 
-**Common Forecaster Checks (12 functions)**:
+**Common Forecaster Checks (13 functions)**:
 1. **`check_fit_sets_forecaster_attributes`** - Validates fit() sets required attributes (fit_forecasting_horizon_, interval_, panel_group_names_, local_y_schema_, local_X_schema_, global_X_schema_, _y_observed, _X_observed, _X_t_observed)
 2. **`check_forecaster_not_fitted_error`** - Ensures NotFittedError before fit() when accessing fitted attributes
 3. **`check_predict_time_columns`** - Validates predictions have "observed_time" and "time" columns (note: "predicted_time" was renamed to "time")
 4. **`check_update_extends_observations`** - Tests update() properly extends _y_observed, _X_observed buffers
 5. **`check_reset_replaces_observations`** - Tests reset() replaces observation buffers correctly (_y_observed, _X_observed)
-6. **`check_forecasting_horizon_validation`** - Ensures forecasting_horizon < 1 raises ValueError in fit() and predict()
-7. **`check_prediction_types_property`** - Validates prediction_types returns correct set ({"point"}, {"interval"}, or both)
-8. **`check_clone_preserves_forecaster_params`** - sklearn's clone() preserves init parameters (enhanced to handle deeply nested estimators)
-9. **`check_forecaster_tags_accessible_before_fit`** - Validates __sklearn_tags__() is accessible before fit() (tags are static capabilities)
-10. **`check_forecaster_tags_static_after_fit`** - Ensures tag values don't change after fit() (forecaster_type, stateful, uses_reduction, supports_panel_data)
-11. **`check_forecaster_tags_match_capabilities`** - Verifies tags accurately reflect actual behavior (forecaster_type vs prediction_types, uses_reduction vs estimator, transformer usage)
+6. **`check_reset_propagates_to_transformers`** - Tests reset() cascades to nested transformers
+7. **`check_forecasting_horizon_validation`** - Ensures forecasting_horizon < 1 raises ValueError in fit() and predict()
+8. **`check_prediction_types_property`** - Validates prediction_types returns correct set ({"point"}, {"interval"}, or both)
+9. **`check_clone_preserves_forecaster_params`** - sklearn's clone() preserves init parameters (enhanced to handle deeply nested estimators)
+10. **`check_forecaster_tags_accessible_before_fit`** - Validates __sklearn_tags__() is accessible before fit() (tags are static capabilities)
+11. **`check_forecaster_tags_static_after_fit`** - Ensures tag values don't change after fit() (forecaster_type, stateful, uses_reduction, supports_panel_data)
+12. **`check_forecaster_tags_match_capabilities`** - Verifies tags accurately reflect actual behavior (forecaster_type vs prediction_types, uses_reduction vs estimator, transformer usage)
+13. **`check_forecaster_methods_call_check_is_fitted`** - Validates methods (predict, update, reset) call check_is_fitted()
 
 **Point Forecaster Checks (2 functions)**:
-12. **`check_point_prediction_structure`** - Validates output has observed_time, predicted_time, and target columns only (no interval columns)
-13. **`check_point_prediction_types`** - Ensures prediction_types == {"point"}
+14. **`check_point_prediction_structure`** - Validates output has observed_time, predicted_time, and target columns only (no interval columns)
+15. **`check_point_prediction_types`** - Ensures prediction_types == {"point"}
 
 **Interval Forecaster Checks (5 functions)**:
-14. **`check_interval_prediction_columns`** - Validates {col}_lower_{rate} and {col}_upper_{rate} format (handles both global and panel data with prefixed columns)
-15. **`check_interval_bounds`** - Ensures upper >= lower for all coverage rates and time steps (handles panel data with prefixed columns)
-16. **`check_interval_prediction_types`** - Validates prediction_types contains "interval"
-17. **`check_coverage_rates_parameter`** - Validates coverage_rates is list of floats in (0, 1)
-18. **`check_coverage_rates_validation`** - Ensures invalid coverage_rates (≤0, >1) raise ValueError in fit() and predict_interval()
+16. **`check_interval_prediction_columns`** - Validates {col}_lower_{rate} and {col}_upper_{rate} format (handles both global and panel data with prefixed columns)
+17. **`check_interval_bounds`** - Ensures upper >= lower for all coverage rates and time steps (handles panel data with prefixed columns)
+18. **`check_interval_prediction_types`** - Validates prediction_types contains "interval"
+19. **`check_coverage_rates_parameter`** - Validates coverage_rates is list of floats in (0, 1)
+20. **`check_coverage_rates_validation`** - Ensures invalid coverage_rates (≤0, >1) raise ValueError in fit() and predict_interval()
 
 **Reduction Forecaster Checks (2 functions)**:
-19. **`check_estimator_parameter`** - Validates estimator is sklearn BaseEstimator
-20. **`check_reduction_strategy`** - Validates reduction_strategy parameter exists
+21. **`check_estimator_parameter`** - Validates estimator is sklearn BaseEstimator
+22. **`check_reduction_strategy`** - Validates reduction_strategy parameter exists
 
 **Panel Data Forecaster Checks (3 functions)**:
-21. **`check_panel_data`** - Validates panel_group_names=None predicts all groups in panel data
-22. **`check_panel_single_group`** - Validates panel_group_names filters to specified list of group prefixes
-23. **`check_panel_invalid_group_raises`** - Validates ValueError raised for invalid panel_group_names (list containing invalid groups)
-
-**Composition Class Checks (8 functions)**:
+23. **`check_panel_data`** - Validates panel_group_names=None predicts all groups in panel data
+24. **`check_panel_single_group`** - Validates panel_group_names filters to specified list of group prefixes
+25. **`check_panel_invalid_group_raises`** - Validates ValueError raised for invalid panel_group_names (list containing invalid groups)
 24. **`check_column_forecaster_column_selection`** - Validates column selectors (str, list, slice, callable) work correctly for target columns
 25. **`check_column_forecaster_remainder_drop`** - Tests remainder='drop' excludes unspecified columns (not yet implemented)
 26. **`check_column_forecaster_remainder_passthrough`** - Tests remainder='passthrough' uses default forecaster (not yet implemented)

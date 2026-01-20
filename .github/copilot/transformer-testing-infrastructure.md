@@ -17,7 +17,7 @@ Yohou's transformer testing infrastructure provides comprehensive, reusable test
 
 3. **Stateless vs Stateful Transformers**: Distinct handling for transformers with observation_horizon = 0 vs > 0
 
-4. **Comprehensive Validation**: 20 check functions covering fit/transform contracts, dtype preservation, inverse transforms, memory management, tag system validation, and panel data
+4. **Comprehensive Validation**: 21 check functions covering fit/transform contracts, dtype preservation, inverse transforms, memory management, tag system validation, and panel data
 
 5. **Dummy Transformers**: Minimal test fixtures for composition testing (SimpleTransformer, StatelessTransformer, etc.)
 
@@ -70,7 +70,7 @@ The testing infrastructure consists of three main components that work together 
 
 ### 1. Check Functions Library (`src/yohou/testing/`)
 
-**Purpose**: Reusable library of 20 validation functions that test transformer contracts organized in transformer.py module
+**Purpose**: Reusable library of 21 validation functions that test transformer contracts organized in transformer.py module
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
@@ -98,13 +98,14 @@ The testing infrastructure consists of three main components that work together 
 13. **`check_tags_static_after_fit`** - Ensures tag values don't change after fit() (stateful, invertible, min_value)
 14. **`check_tags_match_capabilities`** - Verifies tags accurately reflect actual capabilities (stateful vs _observation_horizon, invertible vs inverse_transform)
 
-**Enhanced sklearn Checks (6 functions)**:
+**Enhanced sklearn Checks (7 functions)**:
 15. **`check_transformers_unfitted_stateless`** - Stateless transformers (observation_horizon=0) work without fit()
-14. **`check_transformer_preserve_dtypes`** - Transform/inverse_transform preserve input dtypes
-15. **`check_fit_idempotent`** - Calling fit() multiple times yields consistent results
-16. **`check_inverse_transform_round_trip`** - Enhanced round-trip with shape, dtype, and numerical validation
-17. **`check_fit_transform_equivalence`** - fit_transform(X) == fit(X).transform(X)
-18. **`check_memory_bounded`** - Memory (_X_observed) doesn't grow unbounded with sequential updates
+16. **`check_transformer_preserve_dtypes`** - Transform/inverse_transform preserve input dtypes
+17. **`check_fit_idempotent`** - Calling fit() multiple times yields consistent results
+18. **`check_inverse_transform_round_trip`** - Enhanced round-trip with shape, dtype, and numerical validation
+19. **`check_fit_transform_equivalence`** - fit_transform(X) == fit(X).transform(X)
+20. **`check_memory_bounded`** - Memory (_X_observed) doesn't grow unbounded with sequential updates
+21. **`check_transformer_methods_call_check_is_fitted`** - Validates methods (transform, inverse_transform) call check_is_fitted()
 
 ### 2. Check Generator (`src/yohou/testing/generators.py`)
 
