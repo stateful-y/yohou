@@ -9,11 +9,11 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
 from sklearn.base import BaseEstimator
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, BaseTransformer, Tags
-from yohou.utils import select_panel_columns
+from yohou.utils import select_panel_columns, validate_forecaster_data
 from yohou.utils.polars import cast
-from yohou.utils.validation import validate_data
 
 
 class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
@@ -303,13 +303,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predicted time series with interval bounds.
 
         """
-        _, X, panel_group_names = validate_data(
+        check_is_fitted(self, ["panel_group_names_", "local_y_schema_", "fit_forecasting_horizon_"])
+        _, X, panel_group_names = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=False,
         )
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(
@@ -451,13 +451,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predicted time series.
 
         """
-        y, X, panel_group_names = validate_data(
+        check_is_fitted(self, ["panel_group_names_", "local_y_schema_", "fit_forecasting_horizon_"])
+        y, X, panel_group_names = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=True,
         )
 
         forecasting_horizon, _ = self._validate_predict_params(forecasting_horizon, coverage_rates)

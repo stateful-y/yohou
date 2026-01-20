@@ -26,7 +26,8 @@ from yohou.utils import (
     get_group_df,
     inspect_locality,
     tabularize,
-    validate_data,
+    validate_forecaster_data,
+    validate_transformer_data,
 )
 
 PredictionType = Literal["point", "interval"]
@@ -131,7 +132,7 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
 
         """
         # Validate inputs and set fitted attributes (feature_names_in_, n_features_in_, X_schema_, interval_)
-        _, X, _ = validate_data(self, y=None, X=X, reset=True)
+        X = validate_transformer_data(self, X=X, reset=True)
 
         # Router transformers would call process_routing() in their fit function
 
@@ -152,8 +153,9 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
         self
 
         """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
         # Validate against fitted state (no continuity check - reset sets new window)
-        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=False)
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
 
         self._update_X_observed(X)
 
@@ -180,8 +182,9 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
             If X contains overlapping data with existing observations.
 
         """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
         # Validate against fitted state (includes continuity check)
-        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=True)
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
 
         self.reset(pl.concat([self._X_observed, X]))
 
@@ -224,8 +227,9 @@ class BaseTransformer(BaseEstimator, TransformerMixin, metaclass=abc.ABCMeta):
             Transformed input time series.
 
         """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
         # Validate against fitted state (includes continuity check)
-        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=True)
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
 
         # Route all params to transform only (update is memory management)
         if self.observation_horizon > 0:
@@ -653,7 +657,7 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
             Transformed features.
 
         """
-        y, X, _ = validate_data(self, y, X, reset=True)
+        y, X, _ = validate_forecaster_data(self, y, X, reset=True)
 
         self.fit_forecasting_horizon_ = forecasting_horizon
         self._set_input_attributes(y, X)
@@ -803,11 +807,14 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         self
 
         """
-        check_is_fitted(self, "fit_forecasting_horizon_")
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
 
         # Validate schema, enforce column order, and validate panel_group_names (no continuity check - reset sets new window)
-        y, X, panel_group_names = validate_data(
-            self, y, X, reset=False, panel_group_names=panel_group_names, check_continuity=False
+        y, X, panel_group_names = validate_forecaster_data(
+            self, y, X, reset=False, panel_group_names=panel_group_names
         )
 
         # Special handling for forecasters with no observation horizon
@@ -908,11 +915,14 @@ class BaseForecaster(BaseEstimator, metaclass=abc.ABCMeta):
         self
 
         """
-        check_is_fitted(self, "fit_forecasting_horizon_")
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
 
         # Validate schema, enforce column order, and validate panel_group_names (includes continuity check)
-        y, X, panel_group_names = validate_data(
-            self, y, X, reset=False, panel_group_names=panel_group_names, check_continuity=True
+        y, X, panel_group_names = validate_forecaster_data(
+            self, y, X, reset=False, panel_group_names=panel_group_names
         )
 
         # Non-panel data: concatenate stored observations
@@ -1970,11 +1980,24 @@ def _reset_transformers_one(
 
     """
     y_t = y
+
+    # Align inputs for feature building
+    y_for_feat = y
+    X_for_feat = X
+
     if target_transformer is not None:
         target_transformer.reset(X=y[:-observation_horizon])
         y_t = target_transformer.update_transform(y[-observation_horizon:])
 
-    X_feat_in = _build_feature_input(y, y_t, X, input_features, feature_transformer)
+        # When target_transformer is used, y_t corresponds to the last observation_horizon steps.
+        # We must align y and X to match this length to avoid shape mismatches in _build_feature_input.
+        y_for_feat = y[-observation_horizon:]
+        if X is not None:
+            X_for_feat = X[-observation_horizon:]
+
+    X_feat_in = _build_feature_input(
+        y_for_feat, y_t, X_for_feat, input_features, feature_transformer
+    )
 
     X_t = X_feat_in
     if feature_transformer is not None and X_feat_in is not None:

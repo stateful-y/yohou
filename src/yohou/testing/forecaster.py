@@ -443,14 +443,16 @@ def check_reset_propagates_to_transformers(
             for group_name, transformer in forecaster.target_transformer_.items():
                 if hasattr(transformer, "_X_observed") and transformer._X_observed is not None:
                     # Transformer should have observation data matching reset data
-                    assert len(transformer._X_observed) > 0, (
-                        f"Target transformer for group '{group_name}' should have observations after reset"
-                    )
+                    if getattr(transformer, "observation_horizon", 0) > 0:
+                        assert len(transformer._X_observed) > 0, (
+                            f"Target transformer for group '{group_name}' should have observations after reset"
+                        )
         else:
             # Non-panel data
             if (
                 hasattr(forecaster.target_transformer_, "_X_observed")
                 and forecaster.target_transformer_._X_observed is not None
+                and getattr(forecaster.target_transformer_, "observation_horizon", 0) > 0
             ):
                 assert len(forecaster.target_transformer_._X_observed) > 0, (
                     "Target transformer should have observations after reset"
@@ -462,14 +464,16 @@ def check_reset_propagates_to_transformers(
             # Panel data - check each transformer
             for group_name, transformer in forecaster.feature_transformer_.items():
                 if hasattr(transformer, "_X_observed") and transformer._X_observed is not None:
-                    assert len(transformer._X_observed) > 0, (
-                        f"Feature transformer for group '{group_name}' should have observations after reset"
-                    )
+                    if getattr(transformer, "observation_horizon", 0) > 0:
+                        assert len(transformer._X_observed) > 0, (
+                            f"Feature transformer for group '{group_name}' should have observations after reset"
+                        )
         else:
             # Non-panel data
             if (
                 hasattr(forecaster.feature_transformer_, "_X_observed")
                 and forecaster.feature_transformer_._X_observed is not None
+                and getattr(forecaster.feature_transformer_, "observation_horizon", 0) > 0
             ):
                 assert len(forecaster.feature_transformer_._X_observed) > 0, (
                     "Feature transformer should have observations after reset"
@@ -859,3 +863,91 @@ def check_forecaster_tags_match_capabilities(
                 f"{forecaster.__class__.__name__} feature_transformer parameter ({has_feature_transformer}) "
                 f"doesn't match uses_feature_transformer tag ({uses_feature_transformer})"
             )
+
+
+def check_forecaster_methods_call_check_is_fitted(
+    forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+) -> None:
+    """Check all forecaster methods (except fit) raise NotFittedError when unfitted.
+
+    Validates that predict()/predict_interval(), update(), reset(), and
+    update_predict()/update_predict_interval() methods all check fitted state
+    and raise NotFittedError before operating on an unfitted forecaster.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance
+    y : pl.DataFrame
+        Training/test target data with "time" column
+    X : pl.DataFrame, optional
+        Training/test features with "time" column
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast
+
+    Raises
+    ------
+    AssertionError
+        If any method fails to raise NotFittedError when called on unfitted forecaster
+
+    """
+    forecaster_clone = clone(forecaster)
+
+    # Determine if this is a point or interval forecaster
+    is_interval = hasattr(forecaster_clone, "predict_interval") and not hasattr(
+        forecaster_clone, "predict"
+    )
+
+    # Test that predict() or predict_interval() raises NotFittedError when unfitted
+    try:
+        if is_interval:
+            forecaster_clone.predict_interval(
+                forecasting_horizon=forecasting_horizon,
+                X=X[50:53] if X is not None else None,
+                coverage_rates=[0.9],
+            )
+            method_name = "predict_interval"
+        else:
+            forecaster_clone.predict(
+                forecasting_horizon=forecasting_horizon, X=X[50:53] if X is not None else None
+            )
+            method_name = "predict"
+        raise AssertionError(
+            f"{forecaster_clone.__class__.__name__}.{method_name}() must raise NotFittedError when called on unfitted forecaster"
+        )
+    except NotFittedError:
+        pass  # Expected
+
+    # Test that update() raises NotFittedError when unfitted
+    try:
+        forecaster_clone.update(y[50:53], X[50:53] if X is not None else None)
+        raise AssertionError(
+            f"{forecaster_clone.__class__.__name__}.update() must raise NotFittedError when called on unfitted forecaster"
+        )
+    except NotFittedError:
+        pass  # Expected
+
+    # Test that reset() raises NotFittedError when unfitted
+    try:
+        forecaster_clone.reset(y[40:50], X[40:50] if X is not None else None)
+        raise AssertionError(
+            f"{forecaster_clone.__class__.__name__}.reset() must raise NotFittedError when called on unfitted forecaster"
+        )
+    except NotFittedError:
+        pass  # Expected
+
+    # Test that update_predict() or update_predict_interval() raises NotFittedError when unfitted
+    try:
+        if is_interval:
+            forecaster_clone.update_predict_interval(
+                y[50:53], X[50:53] if X is not None else None, coverage_rates=[0.9]
+            )
+            method_name = "update_predict_interval"
+        else:
+            forecaster_clone.update_predict(y[50:53], X[50:53] if X is not None else None)
+            method_name = "update_predict"
+        raise AssertionError(
+            f"{forecaster_clone.__class__.__name__}.{method_name}() must raise NotFittedError when called on unfitted forecaster"
+        )
+    except NotFittedError:
+        pass  # Expected

@@ -7,7 +7,7 @@ import polars as pl
 from sklearn.base import BaseEstimator, _fit_context
 from sklearn.utils._param_validation import StrOptions
 
-from yohou.utils import Tags
+from yohou.utils import Tags, validate_scorer_data
 
 
 class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
@@ -19,21 +19,33 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    panel_group_weights : dict or None, default=None
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+    panel_group_weight : dict or None, default=None
         Dictionary mapping panel group names to weights for weighted aggregation.
         If None, all panel groups weighted equally. Only applicable for panel data.
 
     """
 
     _parameter_constraints: dict = {
-        "panel_group_weights": [dict, None],
+        "panel_group_names": [list, None],
+        "component_names": [list, None],
+        "panel_group_weight": [dict, None],
     }
 
     def __init__(
         self,
-        panel_group_weights: dict[str, float] | None = None,
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
     ):
-        self.panel_group_weights = panel_group_weights
+        self.panel_group_names = panel_group_names
+        self.component_names = component_names
+        self.panel_group_weight = panel_group_weight
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -52,53 +64,23 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return tags
 
-    def _validate_inputs(
-        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame
-    ) -> tuple[pl.DataFrame, pl.DataFrame]:
-        """Align ground truth and predictions by matching time indices.
-
-        Ensures that predictions and actuals are properly aligned. Subclasses
-        override this to add prediction-type-specific validation.
-
-        Parameters
-        ----------
-        y_truth : pl.DataFrame
-            Ground truth values with "time" column.
-
-        y_pred : pl.DataFrame
-            Predicted values with "observed_time" and "time" columns.
-
-        Returns
-        -------
-        y_truth : pl.DataFrame
-            Aligned ground truth with time column removed.
-
-        y_pred : pl.DataFrame
-            Aligned predictions with time columns removed.
-
-        Raises
-        ------
-        ValueError
-            If validation fails.
-
-        """
-        # Align by time
-        y_truth = y_truth.join(y_pred[["time"]], on="time")
-        y_pred = y_pred.filter(pl.col("time").is_in(y_truth["time"].implode()))
-
-        # Store aligned time values as instance attribute for later use in aggregate modes
-        self._time_values_ = y_pred["time"].to_list()
-
-        y_truth = y_truth.drop("time")
-        y_pred = y_pred.drop("observed_time", "time")
-
-        return y_truth, y_pred
-
-    @abc.abstractmethod
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, y_train: pl.DataFrame | None, **params) -> "BaseScorer":
-        """Fit the scorer on training data if needed."""
-        ...
+    def fit(self, y_train: pl.DataFrame, **params) -> "BaseScorer":
+        """Fit the scorer on training data if needed.
+
+        Validates panel_group_names and component_names against training data.
+        Subclasses should override to add type-specific parameter validation.
+        """
+        # Validate base parameters (panel_group_names, component_names)
+        self._validate_parameters(y_train=y_train)
+
+        # Validate input structure without aligning (single dataframe)
+        validate_scorer_data(self, y_true=y_train, y_pred=None, reset=True)
+
+        # Mark as fitted
+        self._is_fitted = True
+
+        return self
 
     def _apply_panel_weights(self, scores: dict[str, float], panel_group_names: list[str]) -> float:
         """Apply panel group weights to aggregate scores.
@@ -117,7 +99,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             Weighted average score.
 
         """
-        if self.panel_group_weights is None:
+        if self.panel_group_weight is None:
             # Equal weighting
             return float(np.mean(list(scores.values())))
 
@@ -127,7 +109,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         for group in panel_group_names:
             if group in scores:
-                weight = self.panel_group_weights.get(group, 1.0)
+                weight = self.panel_group_weight.get(group, 1.0)
                 weighted_sum += scores[group] * weight
                 total_weight += weight
 
@@ -136,9 +118,141 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return weighted_sum / total_weight
 
+    def _validate_parameters(
+        self,
+        y_train: pl.DataFrame | None = None,
+        aggregation_method: list[str] | str | None = None,
+        valid_aggregation_methods: set[str] | None = None,
+    ) -> None:
+        """Validate scorer parameters.
+
+        Parameters
+        ----------
+        y_train : pl.DataFrame or None
+            Training data to validate against. If None, only type validation is performed.
+        aggregation_method : list of str or str or None
+            Aggregation method to validate. If None, aggregation validation is skipped.
+        valid_aggregation_methods : set of str or None
+            Set of valid aggregation method strings. Required if aggregation_method is provided.
+
+        Raises
+        ------
+        ValueError
+            If validation fails.
+
+        """
+        # Validate aggregation_method if provided
+        if aggregation_method is not None:
+            if valid_aggregation_methods is None:
+                raise ValueError(
+                    "valid_aggregation_methods must be provided when validating aggregation_method"
+                )
+
+            # Handle single string
+            if isinstance(aggregation_method, str):
+                # "all" is a special value that means aggregate across all dimensions
+                if (
+                    aggregation_method != "all"
+                    and aggregation_method not in valid_aggregation_methods
+                ):
+                    raise ValueError(
+                        f"Invalid aggregation_method '{aggregation_method}'. "
+                        f"Valid options are: 'all' or {sorted(valid_aggregation_methods)}"
+                    )
+            # Handle list
+            elif isinstance(aggregation_method, list):
+                # Check all elements are strings
+                if not all(isinstance(method, str) for method in aggregation_method):
+                    raise ValueError(
+                        f"All elements in aggregation_method must be strings, got: {aggregation_method}"
+                    )
+                if len(aggregation_method) == 0:
+                    raise ValueError(
+                        f"aggregation_method list cannot be empty. "
+                        f"Use 'all' or provide at least one method: {sorted(valid_aggregation_methods)}"
+                    )
+                for method in aggregation_method:
+                    if method not in valid_aggregation_methods:
+                        raise ValueError(
+                            f"Invalid aggregation_method '{method}' in list. "
+                            f"Valid list elements are: {sorted(valid_aggregation_methods)}"
+                        )
+            else:
+                raise ValueError(
+                    f"aggregation_method must be a string or list of strings, got {type(aggregation_method)}"
+                )
+
+        # Validate panel_group_names type
+        if self.panel_group_names is not None:
+            if not isinstance(self.panel_group_names, list):
+                raise ValueError(
+                    f"panel_group_names must be a list or None, got {type(self.panel_group_names)}"
+                )
+            if not all(isinstance(name, str) for name in self.panel_group_names):
+                raise ValueError("All elements in panel_group_names must be strings")
+            if len(self.panel_group_names) == 0:
+                raise ValueError("panel_group_names cannot be an empty list")
+
+        # Validate component_names type
+        if self.component_names is not None:
+            if not isinstance(self.component_names, list):
+                raise ValueError(
+                    f"component_names must be a list or None, got {type(self.component_names)}"
+                )
+            if not all(isinstance(name, str) for name in self.component_names):
+                raise ValueError("All elements in component_names must be strings")
+            if len(self.component_names) == 0:
+                raise ValueError("component_names cannot be an empty list")
+
+        # If y_train is provided, validate against actual data
+        if y_train is not None:
+            from yohou.utils.panel import inspect_locality
+
+            _, panel_groups = inspect_locality(y_train)
+            available_groups = set(panel_groups.keys())
+
+            # Validate panel_group_names exist in data
+            if self.panel_group_names is not None:
+                if len(available_groups) == 0:
+                    # No panel data, but user specified panel_group_names
+                    raise ValueError(
+                        f"panel_group_names specified but data contains no panel groups. "
+                        f"Data has only global columns: {sorted(set(y_train.columns) - {'time'})}"
+                    )
+                requested_groups = set(self.panel_group_names)
+                missing_groups = requested_groups - available_groups
+                if missing_groups:
+                    raise ValueError(
+                        f"Requested panel_group_names {sorted(missing_groups)} not found in data. "
+                        f"Available groups: {sorted(available_groups)}"
+                    )
+
+            # Validate component_names exist in data
+            if self.component_names is not None:
+                if len(panel_groups) > 0:
+                    # Panel data: check unprefixed column names
+                    available_components = set()
+                    for group_cols in panel_groups.values():
+                        for col in group_cols:
+                            # Extract unprefixed column name
+                            available_components.add(col.split("__", 1)[1])
+                else:
+                    # Global data: check column names directly
+                    available_components = set(y_train.columns) - {"time"}
+
+                requested_components = set(self.component_names)
+                missing_components = requested_components - available_components
+                if missing_components:
+                    raise ValueError(
+                        f"Requested component_names {sorted(missing_components)} "
+                        f"not found in data. Available components: {sorted(available_components)}"
+                    )
+
     @abc.abstractmethod
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> pl.DataFrame:
         """Compute the metric score.
+
+        Implementations should validate parameters before validating inputs.
 
         Parameters
         ----------
@@ -204,12 +318,21 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    panel_group_weights : dict or None, default=None
-        Weights for panel groups. See BaseScorer for details.
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data. Validated at fit time.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+        Validated at fit time.
+    panel_group_weight : dict or None, default=None
+        Dictionary mapping panel group names to weights for weighted aggregation.
+        If None, all panel groups weighted equally. Only applicable for panel data.
 
     See Also
     --------
-    :mod:`yohou.metrics.point` : Concrete implementations (MeanAbsoluteError, MeanSquaredError, RootMeanSquaredError, MAPE)
+    :mod:`yohou.metrics.point` : Concrete implementations (MeanAbsoluteError,
+        MeanSquaredError, RootMeanSquaredError, MeanAbsolutePercentageError, etc.)
     :class:`yohou.point_forecaster.base.BasePointForecaster` : Produces point forecasts
 
     """
@@ -222,111 +345,32 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        panel_group_weights: dict[str, float] | None = None,
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
     ):
-        super().__init__(panel_group_weights=panel_group_weights)
+        super().__init__(
+            panel_group_names=panel_group_names,
+            component_names=component_names,
+            panel_group_weight=panel_group_weight,
+        )
         self.aggregation_method = aggregation_method
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, y_train: pl.DataFrame | None, **params) -> "BasePointScorer":
-        """Fit the scorer on training data if needed."""
-        # Validate list elements
-        if isinstance(self.aggregation_method, list):
-            valid_methods = {"timewise", "componentwise", "groupwise"}
-            for method in self.aggregation_method:
-                if method not in valid_methods:
-                    raise ValueError(
-                        f"Invalid aggregation_method '{method}' in list. "
-                        f"Valid list elements are: {valid_methods}"
-                    )
-            if len(self.aggregation_method) == 0:
-                raise ValueError(
-                    "aggregation_method list cannot be empty. "
-                    "Use 'all' or provide at least one method: "
-                    "{'timewise', 'componentwise', 'groupwise'}"
-                )
-        return super().fit(y_train, **params)
+    def fit(self, y_train: pl.DataFrame, **params) -> "BasePointScorer":
+        """Fit the scorer on training data if needed.
 
-    def _validate_inputs(
-        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame
-    ) -> tuple[pl.DataFrame, pl.DataFrame]:
-        """Validate point prediction inputs.
-
-        Validates panel data consistency for point predictions where column names
-        match directly between y_truth and y_pred.
-
-        Parameters
-        ----------
-        y_truth : pl.DataFrame
-            Ground truth values with "time" column.
-
-        y_pred : pl.DataFrame
-            Predicted values with "observed_time" and "time" columns.
-
-        Returns
-        -------
-        y_truth : pl.DataFrame
-            Aligned ground truth with time column removed.
-
-        y_pred : pl.DataFrame
-            Aligned predictions with time columns removed.
-
-        Raises
-        ------
-        ValueError
-            If panel data validation fails.
-
+        Validates aggregation_method, panel_group_names, and component_names.
         """
-        from yohou.utils.panel import inspect_locality
-        from yohou.utils.validation import check_schema
+        # Validate point-specific parameters (aggregation_method)
+        valid_methods = {"timewise", "componentwise", "groupwise"}
+        self._validate_parameters(
+            y_train=y_train,
+            aggregation_method=self.aggregation_method,
+            valid_aggregation_methods=valid_methods,
+        )
 
-        # Check if data is panel (has prefixed columns)
-        _, y_truth_groups = inspect_locality(y_truth)
-        _, y_pred_groups = inspect_locality(y_pred)
-
-        is_panel = len(y_truth_groups) > 0 or len(y_pred_groups) > 0
-
-        if is_panel:
-            # Validate panel data consistency
-            y_truth_group_names = set(y_truth_groups.keys())
-            y_pred_group_names = set(y_pred_groups.keys())
-
-            # Check that all y_pred groups exist in y_truth
-            missing_groups = y_pred_group_names - y_truth_group_names
-            if missing_groups:
-                raise ValueError(
-                    f"Prediction contains panel groups not in ground truth: {missing_groups}. "
-                    f"y_truth groups: {y_truth_group_names}, y_pred groups: {y_pred_group_names}"
-                )
-
-            # For point predictions, column names match directly
-            for group_name in y_pred_group_names:
-                # Extract unprefixed column names (suffixes after __)
-                y_truth_cols = sorted([col.split("__", 1)[1] for col in y_truth_groups[group_name]])
-                y_pred_cols = sorted([col.split("__", 1)[1] for col in y_pred_groups[group_name]])
-
-                if y_truth_cols != y_pred_cols:
-                    raise ValueError(
-                        f"Column mismatch for panel group '{group_name}'. "
-                        f"y_truth has: {y_truth_cols}, y_pred has: {y_pred_cols}"
-                    )
-
-            # Validate schemas match using check_schema utility
-            # Build expected schema from y_truth structure
-            for group_name in y_pred_group_names:
-                # Extract schema for this panel group from y_truth (unprefixed column names)
-                group_cols = {
-                    col.split("__", 1)[1]: y_truth[col].dtype for col in y_truth_groups[group_name]
-                }
-
-                # Validate y_pred has matching schema for this group
-                try:
-                    check_schema(y_pred, group_cols, panel_group_names=[group_name])
-                except ValueError as e:
-                    raise ValueError(f"Schema mismatch for panel group '{group_name}': {e}") from e
-
-        # Call parent for common validation (time alignment, etc.)
-        return super()._validate_inputs(y_truth, y_pred)
+        return super().fit(y_train, **params)
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -341,13 +385,18 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         tags.scorer_tags.prediction_type = "point"
         return tags
 
-    def _aggregate_scores(self, raw_scores: pl.DataFrame) -> float | pl.DataFrame:
+    def _aggregate_scores(
+        self, raw_scores: pl.DataFrame, time_values: list | None = None
+    ) -> float | pl.DataFrame:
         """Apply aggregation strategy to raw per-timestep per-component scores.
 
         Parameters
         ----------
         raw_scores : pl.DataFrame
-            DataFrame with shape (n_timesteps, n_components) containing raw scores.
+            DataFrame with per-timestep (rows) per-component (columns) scores.
+        time_values : list or None, default=None
+            Time values for componentwise aggregation. Required if aggregation_method
+            includes "componentwise".
 
         Returns
         -------
@@ -394,7 +443,6 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
             # Aggregate across components, return per-timestep scores
             from yohou.utils.panel import inspect_locality
 
-            time_values = self._time_values_
             _, panel_groups = inspect_locality(raw_scores)
 
             if len(panel_groups) > 0:
@@ -411,7 +459,6 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
                 return pl.DataFrame(step_data)
             else:
                 # Global data: Aggregate across all components
-                time_values = self._time_values_
                 step_scores = []
 
                 for step in range(len(raw_scores)):
@@ -446,7 +493,17 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    panel_group_weights : dict or None, default=None
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data. Validated at fit time.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+        Validated at fit time.
+    coverage_rates : list of float or None, default=None
+        List of coverage rates to include in scoring. If None, all coverage rates
+        are included. Rates are validated against actual prediction columns during scoring.
+    panel_group_weight : dict or None, default=None
         Weights for panel groups. See BaseScorer for details.
 
     See Also
@@ -462,135 +519,86 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             list,
             StrOptions({"all", "timewise", "componentwise", "groupwise", "coveragewise"}),
         ],
+        "coverage_rates": [list, None],
     }
 
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        panel_group_weights: dict[str, float] | None = None,
+        coverage_rates: list[float] | None = None,
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
     ):
-        super().__init__(panel_group_weights=panel_group_weights)
+        super().__init__(
+            panel_group_names=panel_group_names,
+            component_names=component_names,
+            panel_group_weight=panel_group_weight,
+        )
         self.aggregation_method = aggregation_method
+        self.coverage_rates = coverage_rates
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, y_train: pl.DataFrame | None, **params) -> "BaseIntervalScorer":
-        """Fit the scorer on training data if needed."""
-        # Validate list elements
-        if isinstance(self.aggregation_method, list):
-            valid_methods = {"timewise", "componentwise", "groupwise", "coveragewise"}
-            for method in self.aggregation_method:
-                if method not in valid_methods:
-                    raise ValueError(
-                        f"Invalid aggregation_method '{method}' in list. "
-                        f"Valid list elements are: {valid_methods}"
-                    )
-            if len(self.aggregation_method) == 0:
-                raise ValueError(
-                    "aggregation_method list cannot be empty. "
-                    "Use 'all' or provide at least one method: "
-                    "{'timewise', 'componentwise', 'groupwise', 'coveragewise'}"
-                )
-        return super().fit(y_train, **params)
-
-    def _validate_inputs(
-        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame
-    ) -> tuple[pl.DataFrame, pl.DataFrame]:
-        """Validate interval prediction inputs.
-
-        Validates panel data consistency for interval predictions where y_pred
-        column names have _lower_* and _upper_* suffixes that need to be stripped
-        before comparison with y_truth.
-
-        Parameters
-        ----------
-        y_truth : pl.DataFrame
-            Ground truth values with "time" column.
-        y_pred : pl.DataFrame
-            Predicted intervals with "observed_time" and "time" columns.
-
-        Returns
-        -------
-        y_truth : pl.DataFrame
-            Aligned ground truth with time column removed.
-        y_pred : pl.DataFrame
-            Aligned predictions with time columns removed.
+    def _validate_coverage_rates(self) -> None:
+        """Validate coverage_rates parameter.
 
         Raises
         ------
         ValueError
-            If panel data validation fails.
+            If coverage_rates validation fails.
+        TypeError
+            If coverage_rates contains non-hashable types.
 
         """
-        import re
-
-        from yohou.utils.panel import inspect_locality
-
-        # Check if data is panel (has prefixed columns)
-        _, y_truth_groups = inspect_locality(y_truth)
-        _, y_pred_groups = inspect_locality(y_pred)
-
-        is_panel = len(y_truth_groups) > 0 or len(y_pred_groups) > 0
-
-        if is_panel:
-            # Validate panel data consistency
-            y_truth_group_names = set(y_truth_groups.keys())
-            y_pred_group_names = set(y_pred_groups.keys())
-
-            # Check that all y_pred groups exist in y_truth
-            missing_groups = y_pred_group_names - y_truth_group_names
-            if missing_groups:
+        if self.coverage_rates is not None:
+            if not isinstance(self.coverage_rates, list):
                 raise ValueError(
-                    f"Prediction contains panel groups not in ground truth: {missing_groups}. "
-                    f"y_truth groups: {y_truth_group_names}, y_pred groups: {y_pred_group_names}"
+                    f"coverage_rates must be a list or None, got {type(self.coverage_rates)}"
                 )
+            if len(self.coverage_rates) == 0:
+                raise ValueError("coverage_rates cannot be an empty list")
 
-            # For interval predictions, strip _lower_* and _upper_* suffixes
-            for group_name in y_pred_group_names:
-                # Extract unprefixed column names (suffixes after __)
-                y_truth_cols = sorted([col.split("__", 1)[1] for col in y_truth_groups[group_name]])
-                y_pred_cols_raw = sorted(
-                    [col.split("__", 1)[1] for col in y_pred_groups[group_name]]
-                )
-
-                # Extract base column names from interval predictions
-                # Pattern: col_lower_0.9 or col_upper_0.95 -> col
-                y_pred_cols_base = set()
-                for col in y_pred_cols_raw:
-                    # Remove _lower_XXX or _upper_XXX suffixes
-                    base_col = re.sub(r"_(lower|upper)_[\d.]+$", "", col)
-                    y_pred_cols_base.add(base_col)
-
-                y_pred_cols = sorted(y_pred_cols_base)
-
-                if y_truth_cols != y_pred_cols:
-                    raise ValueError(
-                        f"Column mismatch for panel group '{group_name}'. "
-                        f"y_truth has: {y_truth_cols}, y_pred has: {y_pred_cols}"
+            # Check for hashable types (catch lists, dicts, etc.)
+            for i, rate in enumerate(self.coverage_rates):
+                try:
+                    hash(rate)
+                except TypeError:
+                    raise TypeError(
+                        f"coverage_rates[{i}] is not hashable (got {type(rate).__name__}). "
+                        f"All elements must be numeric (int or float)."
                     )
 
-                # Validate schemas match
-                # For interval predictions, manually validate dtypes since y_pred has _lower_*/_upper_* suffixes
-                for truth_col_full in y_truth_groups[group_name]:
-                    # Extract unprefixed column name
-                    col = truth_col_full.split("__", 1)[1]
-                    truth_dtype = y_truth[truth_col_full].dtype
+            # Check all elements are numeric
+            if not all(isinstance(rate, (int, float)) for rate in self.coverage_rates):
+                raise ValueError(
+                    f"All elements in coverage_rates must be numeric (int or float), "
+                    f"got types: {[type(r).__name__ for r in self.coverage_rates]}"
+                )
 
-                    # Check that all interval bounds have compatible types
-                    for pred_col_full in y_pred_groups[group_name]:
-                        # Extract unprefixed column name
-                        pred_col = pred_col_full.split("__", 1)[1]
-                        # Check if this is a bound for our target column
-                        base_col = re.sub(r"_(lower|upper)_[\d.]+$", "", pred_col)
-                        if base_col == col:
-                            pred_dtype = y_pred[pred_col_full].dtype
-                            if truth_dtype != pred_dtype:
-                                raise ValueError(
-                                    f"Schema mismatch for column '{pred_col_full}': "
-                                    f"expected dtype {truth_dtype} (from y_truth), got {pred_dtype}"
-                                )
+            # Check range
+            for rate in self.coverage_rates:
+                if not 0 < rate < 1:
+                    raise ValueError(
+                        f"All coverage_rates must be between 0 and 1 (exclusive), got {rate}"
+                    )
 
-        # Call parent for common validation (time alignment, etc.)
-        return super()._validate_inputs(y_truth, y_pred)
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, y_train: pl.DataFrame, **params) -> "BaseIntervalScorer":
+        """Fit the scorer on training data if needed.
+
+        Validates coverage_rates, aggregation_method, panel_group_names, and component_names.
+        """
+        # Validate coverage_rates
+        self._validate_coverage_rates()
+
+        # Validate interval-specific parameters (aggregation_method with coveragewise)
+        valid_methods = {"timewise", "componentwise", "groupwise", "coveragewise"}
+        self._validate_parameters(
+            y_train=y_train,
+            aggregation_method=self.aggregation_method,
+            valid_aggregation_methods=valid_methods,
+        )
+
+        return super().fit(y_train, **params)
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -608,6 +616,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
     def _aggregate_scores(
         self,
         raw_scores: dict[float, pl.DataFrame],
+        time_values: list | None = None,
     ) -> float | dict[float, float] | pl.DataFrame:
         """Apply aggregation strategy to raw per-timestep per-component per-rate scores.
 
@@ -615,6 +624,9 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         ----------
         raw_scores : dict[float, pl.DataFrame]
             Dict mapping coverage_rate -> DataFrame(n_timesteps, n_components) with raw scores.
+        time_values : list or None, default=None
+            Time values for componentwise aggregation. Required if aggregation_method
+            includes "componentwise".
 
         Returns
         -------
@@ -689,7 +701,6 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             # Aggregate across components, return per-timestep scores
             from yohou.utils.panel import inspect_locality
 
-            time_values = self._time_values_
             step_data = {"time": time_values}
 
             n_steps = len(time_values)
@@ -775,7 +786,8 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             return pl.DataFrame(result_data)
 
         else:
-            # No aggregation or unhandled combination, aggregate both time and components to scalar/dict
+            # No aggregation or unhandled combination,
+            # aggregate both time and components to scalar/dict
             if not aggregate_rates:
                 # Return score per rate
                 score_by_rate = {}
@@ -861,8 +873,21 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     """
 
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with conformity scorer attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+        tags.scorer_tags.prediction_type = "conformity"
+        return tags
+
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, y_train: pl.DataFrame | None, **params) -> "BaseConformityScorer":
+    def fit(self, y_train: pl.DataFrame, **params) -> "BaseConformityScorer":
         """Fit the scorer on training data if needed."""
         # Conformity scorers typically don't aggregate results in the same way,
         # so they don't use aggregation_method, but they must implement fit.
@@ -894,7 +919,7 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         lower_quantile: float = np.quantile(conformity_scores, coverage_rate / 2.0, method="lower")  # type: ignore[call-overload]
 
         upper_quantile: float = np.quantile(
-            conformity_scores, 1 - coverage_rate / 2.0, method="upper"
+            conformity_scores, 1 - coverage_rate / 2.0, method="higher"
         )  # type: ignore[call-overload]
 
         return lower_quantile, upper_quantile
@@ -916,8 +941,24 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         float
             Quantile value for symmetric intervals.
 
+        Raises
+        ------
+        ValueError
+            If conformity_scores is empty.
+
         """
-        quantile: float = np.quantile(conformity_scores, 1 - coverage_rate, method="lower")  # type: ignore[call-overload]
+        # Convert to numpy array for quantile computation
+        conformity_array = conformity_scores.to_numpy()
+
+        # Check if array is empty
+        if conformity_array.size == 0:
+            raise ValueError(
+                "Cannot compute quantile: conformity_scores is empty. "
+                "This typically happens when the calibration set is too small. "
+                "Increase calibration_size or reduce forecasting_horizon."
+            )
+
+        quantile: float = np.quantile(conformity_array, 1 - coverage_rate, method="lower")  # type: ignore[call-overload]
 
         return quantile
 

@@ -1011,3 +1011,82 @@ def check_tags_match_capabilities(
                 f"{transformer.__class__.__name__} inverse_transform existence ({has_inverse_transform}) "
                 f"doesn't match invertible tag ({is_invertible})"
             )
+
+
+def check_transformer_methods_call_check_is_fitted(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None
+) -> None:
+    """Check all transformer methods (except fit) raise NotFittedError when unfitted.
+
+    Validates that transform(), reset(), update(), update_transform(), and
+    inverse_transform() methods all check fitted state and raise NotFittedError
+    before operating on an unfitted transformer.
+
+    Parameters
+    ----------
+    transformer : BaseTransformer
+        Unfitted transformer instance
+    X : pl.DataFrame
+        Training/test data with "time" column (should have at least 100 rows for slicing)
+    y : pl.DataFrame, optional
+        Target data for supervised transformers
+
+    Raises
+    ------
+    AssertionError
+        If any method fails to raise NotFittedError when called on unfitted transformer
+
+    """
+    transformer_clone = clone(transformer)
+
+    # Test that transform() raises NotFittedError when unfitted
+    try:
+        transformer_clone.transform(X)
+        raise AssertionError(
+            f"{transformer_clone.__class__.__name__}.transform() must raise NotFittedError when called on unfitted transformer"
+        )
+    except NotFittedError:
+        pass  # Expected
+
+    # Test that update() raises NotFittedError when unfitted
+    try:
+        transformer_clone.update(X)
+        raise AssertionError(
+            f"{transformer_clone.__class__.__name__}.update() must raise NotFittedError when called on unfitted transformer"
+        )
+    except NotFittedError:
+        pass  # Expected
+
+    # Test that reset() raises NotFittedError when unfitted
+    try:
+        transformer_clone.reset(X)
+        raise AssertionError(
+            f"{transformer_clone.__class__.__name__}.reset() must raise NotFittedError when called on unfitted transformer"
+        )
+    except NotFittedError:
+        pass  # Expected
+
+    # Test that update_transform() raises NotFittedError when unfitted
+    try:
+        transformer_clone.update_transform(X)
+        raise AssertionError(
+            f"{transformer_clone.__class__.__name__}.update_transform() must raise NotFittedError when called on unfitted transformer"
+        )
+    except NotFittedError:
+        pass  # Expected
+
+    # Test inverse_transform() if implemented
+    if hasattr(transformer_clone, "inverse_transform"):
+        # Need to fit the transformer first to be able to call transform and get X_t
+        transformer_clone.fit(X, y)
+        X_t = transformer_clone.transform(X)
+
+        # Create a fresh unfitted clone
+        transformer_clone2 = clone(transformer)
+        try:
+            transformer_clone2.inverse_transform(X_t, X_p=X)
+            raise AssertionError(
+                f"{transformer.__class__.__name__}.inverse_transform() must raise NotFittedError when called on unfitted transformer"
+            )
+        except NotFittedError:
+            pass  # Expected

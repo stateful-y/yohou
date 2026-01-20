@@ -17,8 +17,11 @@ Yohou is a scikit-learn-compatible time series forecasting framework built on **
 | [Architecture & Core Concepts](.github/copilot/architecture-and-core-concepts.md) | Class hierarchy, data flow, panel data, metadata routing | 560 lines |
 | [Creating New Forecasters](.github/copilot/creating-new-forecasters.md) | Step-by-step guide with real examples | 596 lines |
 | [Developer Workflow & Tools](.github/copilot/developer-workflow-and-tools.md) | Commands, testing, debugging, CI/CD | 602 lines |
-| [Forecaster Testing Infrastructure](.github/copilot/forecaster-testing-infrastructure.md) | Comprehensive testing guide with check functions | 673 lines |
-| [Transformer Testing Infrastructure](.github/copilot/transformer-testing-infrastructure.md) | Testing patterns for transformers | 391 lines |
+| [Testing Infrastructure Overview](.github/copilot/testing-infrastructure-overview.md) | Complete testing system (65 checks, 4 generators, 6 utilities) | 580 lines |
+| [Forecaster Testing Infrastructure](.github/copilot/forecaster-testing-infrastructure.md) | Comprehensive testing guide with check functions | 717 lines |
+| [Transformer Testing Infrastructure](.github/copilot/transformer-testing-infrastructure.md) | Testing patterns for transformers | 400 lines |
+| [Splitter Testing Infrastructure](.github/copilot/splitter-testing-infrastructure.md) | Cross-validation splitter testing patterns | 733 lines |
+| [Scorer Testing Infrastructure](.github/copilot/scorer-testing-infrastructure.md) | Metrics/scorer testing patterns | 803 lines |
 | [sklearn Metadata Routing Implementation](.github/copilot/sklearn-metadata-routing-implementation.md) | Complete metadata routing infrastructure | 814 lines |
 | [Monthly Interval Support](.github/copilot/monthly-interval-support.md) | Variable-length time intervals (monthly, quarterly, yearly) | 715 lines |
 | [Time Weighting Implementation](.github/copilot/time-weighting-implementation.md) | Time-based weighting for scorers and forecasters (planned) | 893 lines |
@@ -65,7 +68,7 @@ All data uses **polars DataFrames** with mandatory `"time"` column (datetime typ
 - **BasePointForecaster**: `prediction_types = {"point"}`
 - **BaseIntervalForecaster**: `prediction_types = {"interval"}` or both
 
-**Meta-Forecasters**:
+**Meta-Forecasters** (`src/yohou/forecaster/composition.py`, `src/yohou/decomposition/`):
 - **Decomposer**: Sequential decomposition (trend + season + residual)
 - **ColumnForecaster**: Different forecasters per column (parallel execution)
 
@@ -385,8 +388,11 @@ class MyForecaster(BasePointForecaster):
 ## Testing Patterns
 
 **📖 Complete Guides**:
+- [Testing Infrastructure Overview](.github/copilot/testing-infrastructure-overview.md) - **Start here**: Complete system with 65 checks
 - [Forecaster Testing Infrastructure](.github/copilot/forecaster-testing-infrastructure.md)
 - [Transformer Testing Infrastructure](.github/copilot/transformer-testing-infrastructure.md)
+- [Splitter Testing Infrastructure](.github/copilot/splitter-testing-infrastructure.md)
+- [Scorer Testing Infrastructure](.github/copilot/scorer-testing-infrastructure.md)
 
 ### Systematic Check Functions
 
@@ -396,7 +402,7 @@ from yohou.testing import _yield_yohou_forecaster_checks
 for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
     forecaster_fitted, y_train, X_train, y_test, X_test,
     tags={"forecaster_type": "point", "uses_reduction": False}
-):
+)::
     if check_name not in expected_failures:
         check_func(forecaster_fitted, **check_kwargs)
 ```
@@ -506,13 +512,15 @@ if len(X) < self.observation_horizon:
 
 **Source Code**:
 - `src/yohou/base.py`: Core base classes (BaseTransformer, BaseForecaster, BaseReductionForecaster)
-- `src/yohou/point_forecaster/`: Point forecasters (naive, reduction, decomposition)
+- `src/yohou/point_forecaster/`: Point forecasters (naive, reduction)
 - `src/yohou/interval_forecaster/`: Interval forecasters (conformal, reduction)
-- `src/yohou/decomposition/`: Decomposition forecasters (trend, seasonality, decomposer)
+- `src/yohou/decomposition/`: Decomposition components (trend, seasonality, decomposer)
+- `src/yohou/forecaster/`: Composition forecasters (ColumnForecaster)
 - `src/yohou/preprocessing/`: Transformers (stationarization, windowing)
 - `src/yohou/pipeline.py`: FeaturePipeline, FeatureUnion, ColumnTransformer
 - `src/yohou/metrics/`: Scorers (point, interval, conformity)
 - `src/yohou/model_selection/`: SearchCV, cross-validation utilities
+- `src/yohou/analysis/`: Visualization tools (plotly-based)
 
 **Tests**:
 - `tests/conftest.py`: Global fixtures (y_X_factory, data generators)

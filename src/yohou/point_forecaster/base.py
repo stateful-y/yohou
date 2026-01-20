@@ -5,10 +5,10 @@ from copy import deepcopy
 
 import polars as pl
 from pydantic import StrictInt
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, Tags
-from yohou.utils import select_panel_columns
-from yohou.utils.validation import validate_data
+from yohou.utils import select_panel_columns, validate_forecaster_data
 
 
 class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
@@ -151,13 +151,17 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predicted time series.
 
         """
-        _, X, panel_group_names = validate_data(
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
+
+        _, X, panel_group_names = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=False,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
@@ -262,13 +266,17 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predicted time series.
 
         """
-        y, X, panel_group_names = validate_data(
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
+
+        y, X, panel_group_names = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=True,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)

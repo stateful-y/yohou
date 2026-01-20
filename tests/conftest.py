@@ -255,12 +255,37 @@ def panel_time_series_factory():
     Creates a DataFrame with:
     - "time" column (datetime)
     - Global columns (shared across all panels)
-    - Panel-specific columns with `__` separator (e.g., "panel__series_0")
+    - Panel-specific columns with `__` separator
 
-    This tests transformers handling mixed global/local data.
+    Parameters
+    ----------
+    length : int, default=50
+        Number of time steps.
+    n_series : int, default=3
+        Number of series per group.
+    n_groups : int, default=1
+        Number of distinct panel groups.
+        - If n_groups=1: Creates "panel__series_0", "panel__series_1", ... (backward compatible)
+        - If n_groups>1: Creates "group0__series_0", "group1__series_0", ... (distinct groups)
+    n_global : int, default=0
+        Number of global features (shared across all panels).
+    seed : int, default=42
+        Random seed for reproducibility.
+
+    Examples
+    --------
+    Single group (backward compatible):
+        y = panel_time_series_factory(length=100, n_series=3)
+        # columns: ["time", "panel__series_0", "panel__series_1", "panel__series_2"]
+
+    Multiple distinct groups:
+        y = panel_time_series_factory(length=100, n_series=2, n_groups=3)
+        # columns: ["time", "group0__series_0", "group0__series_1",
+        #           "group1__series_0", "group1__series_1",
+        #           "group2__series_0", "group2__series_1"]
     """
 
-    def _make(length=50, n_series=3, n_global=0, seed=42):
+    def _make(length=50, n_series=3, n_groups=1, n_global=0, seed=42):
         time = pl.datetime_range(
             start=datetime(2021, 1, 1),
             end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
@@ -270,8 +295,19 @@ def panel_time_series_factory():
 
         # Build panel data (columns with __ separator)
         panel_data = {}
-        for i in range(n_series):
-            panel_data[f"panel__series_{i}"] = range(i * 10, length + (i * 10))
+        if n_groups == 1:
+            # Backward compatible: single "panel" group
+            for i in range(n_series):
+                panel_data[f"panel__series_{i}"] = range(i * 10, length + (i * 10))
+        else:
+            # Multiple distinct groups
+            for group_idx in range(n_groups):
+                for series_idx in range(n_series):
+                    col_name = f"group{group_idx}__series_{series_idx}"
+                    panel_data[col_name] = range(
+                        (group_idx * n_series + series_idx) * 10,
+                        length + (group_idx * n_series + series_idx) * 10,
+                    )
 
         # Add global columns (shared features across all panels)
         global_features = {}

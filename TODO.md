@@ -1,26 +1,32 @@
 ## Pre-publishing
+- Check scorers by a making tutorial
+
 - Enable time_weight for forecaster and scorer
-- Enable selection of coverage rates as interval scorer class param
-- Validation of split, score, and inverse_score methods
-- Add scorer to testing infrastructure
-- Add splitter to testing infrastructure
+- Check metadata routing
+
 - Simplify SearchCV, make sure it follows BaseSearchCV as closely as possible
 - Make sure we can predict and score in transformed space as well as that we can access predictions
-- Check scorers and splitters
-- Implement variety of splitters
-- Implement variety of scorers
+
 - Add target_forecaster to ColumnForecaster? What was the plan without it?
+
 - Implement NestedCV (making sure we avoid retraining on splits already handled in a previous outer cv)
+
 - Implement SkLearnTransformer
-- Implement SkTimeTransformer
-- Implement SkTimeForecaster
+- Implement SkTimeTransformer (Nixtla?)
+- Implement SkTimeForecaster (Nixtla?)
+
 - Check docstring consistency
 - Check inline TODOs
 - Make sure pre-commit is happy on all files
+
 - Rename yohou class functions
 - Decide on LICENSE
 
 ## Post-publishing
+
+- Only if we have/want stateful scorers? Make sure scorer define an obsevred_time and ensure continuity between fit and score (and inverse_score?)
+- Check skore for CV reporting
+- Make scorers fit method take forecasting_horizon for raw score to include the forecasting step it corresponds to. Allows scorers to have a forecasting_steps class parameter to subselect the forecasting steps to score on.
 - Can we use skore/skrub to visualize CV results?
 - Refactor estimator_check into a separate testing module
 - Refactor reducers to enable direct and multi-output strategies
@@ -37,6 +43,3 @@
 - Improve set up of documentation
 - Create sklearn-inspired user guide
 - Recreate repository and release
-
-## Prompts
-### validation

@@ -160,6 +160,39 @@ class SimilarityTags:
 
 
 @dataclass
+class SplitterTags:
+    """Tags specific to cross-validation splitters.
+
+    Parameters
+    ----------
+    splitter_type : {"expanding", "sliding", "gap"} or None, default=None
+        Type of cross-validation splitter:
+        - "expanding": Expanding window (train set grows over time)
+        - "sliding": Sliding window (fixed train set size)
+        - "gap": Wraps another splitter to add gap between train and test
+        - None: Not determined or not applicable
+    supports_panel_data : bool, default=False
+        Whether the splitter can handle panel data (multiple time series
+        with prefixed column names).
+    requires_data_for_n_splits : bool, default=False
+        Whether the splitter requires data to determine the number of splits.
+        True for splitters where n_splits depends on data length.
+    produces_non_overlapping_tests : bool, default=True
+        Whether test sets from different splits are guaranteed not to overlap.
+        True for expanding/sliding windows, may be False for custom splitters.
+    stateful : bool, default=False
+        Whether the splitter maintains state across split() calls.
+
+    """
+
+    splitter_type: Literal["expanding", "sliding", "gap"] | None = None
+    supports_panel_data: bool = False
+    requires_data_for_n_splits: bool = False
+    produces_non_overlapping_tests: bool = True
+    stateful: bool = False
+
+
+@dataclass
 class Tags:
     """Metadata tags for yohou estimators.
 
@@ -169,7 +202,7 @@ class Tags:
 
     Parameters
     ----------
-    estimator_type : {"transformer", "forecaster", "scorer", "similarity"} or None, default=None
+    estimator_type : {"transformer", "forecaster", "scorer", "similarity", "splitter"} or None, default=None
         Type of estimator. Determines which specialized tags are relevant.
     requires_fit : bool, default=True
         Whether the estimator needs to be fitted before use.
@@ -192,15 +225,21 @@ class Tags:
     similarity_tags : SimilarityTags or None, default=None
         Tags specific to similarity measures. Only relevant when estimator_type="similarity".
         Automatically initialized if None and estimator_type="similarity".
+    splitter_tags : SplitterTags or None, default=None
+        Tags specific to cross-validation splitters. Only relevant when estimator_type="splitter".
+        Automatically initialized if None and estimator_type="splitter".
 
     """
 
-    estimator_type: Literal["transformer", "forecaster", "scorer", "similarity"] | None = None
+    estimator_type: (
+        Literal["transformer", "forecaster", "scorer", "similarity", "splitter"] | None
+    ) = None
     requires_fit: bool = True
     non_deterministic: bool = False
     input_tags: InputTags | None = None
     target_tags: TargetTags | None = None
     transformer_tags: TransformerTags | None = None
+    splitter_tags: SplitterTags | None = None
     forecaster_tags: ForecasterTags | None = None
     scorer_tags: ScorerTags | None = None
     similarity_tags: SimilarityTags | None = None
@@ -222,3 +261,5 @@ class Tags:
             self.scorer_tags = ScorerTags()
         elif self.estimator_type == "similarity" and self.similarity_tags is None:
             self.similarity_tags = SimilarityTags()
+        elif self.estimator_type == "splitter" and self.splitter_tags is None:
+            self.splitter_tags = SplitterTags()

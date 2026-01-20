@@ -11,7 +11,7 @@ from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, Tags
-from yohou.utils import validate_data
+from yohou.utils import validate_forecaster_data
 
 
 # TODO: Does this even make sense? How is this supposed to be used?
@@ -247,7 +247,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         pl.DataFrame
             Concatenated predictions.
         """
-        check_is_fitted(self, ["forecasters_", "interval_"])
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
 
         # Validate params before routing
         _raise_for_params(params, self, "predict")
@@ -309,7 +312,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         -------
         self
         """
-        y, X, panel_group_names = validate_data(
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
+
+        y, X, panel_group_names = validate_forecaster_data(
             self,
             y=y,
             X=X,
@@ -360,7 +368,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         -------
         self
         """
-        y, X, panel_group_names = validate_data(
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
+
+        y, X, panel_group_names = validate_forecaster_data(
             self,
             y=y,
             X=X,

@@ -7,263 +7,20 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 import polars.selectors as cs
-from sklearn.utils.validation import check_is_fitted
 
 if TYPE_CHECKING:
-    from yohou.base import BaseEstimator
+    from yohou.metrics.base import BaseScorer
 
 
-def validate_data(
-    estimator: "BaseEstimator",
-    y: pl.DataFrame | None = None,
-    X: pl.DataFrame | None = None,
-    *,
-    X_t: pl.DataFrame | None = None,
-    X_p: pl.DataFrame | None = None,
-    reset: bool = True,
-    panel_group_names: list[str] | None = None,
-    observation_horizon: int | None = None,
-    **check_params,
-) -> tuple[pl.DataFrame | None, pl.DataFrame | None, list[str] | None]:
-    """Validate and prepare polars DataFrames for estimator methods.
-
-    This is the central validation orchestrator following sklearn's validate_data() pattern.
-    It handles schema validation, fitted attribute management, and delegates to atomic
-    validation functions based on estimator tags and context.
-
-    Parameters
-    ----------
-    estimator : BaseEstimator
-        The estimator instance being validated.
-    y : pl.DataFrame or None, default=None
-        Target time series DataFrame.
-    X : pl.DataFrame or None, default=None
-        Feature time series DataFrame (untransformed).
-    X_t : pl.DataFrame or None, default=None
-        Transformed time series for inverse_transform validation.
-        Mutually exclusive with X (use X_t for inverse_transform, X otherwise).
-    X_p : pl.DataFrame or None, default=None
-        Previous untransformed time series for inverse_transform validation.
-        When provided with observation_horizon, validates inverse_transform requirements.
-    reset : bool, default=True
-        Whether to set fitted attributes (True for fit context) or validate against
-        them (False for transform/predict context). When True, sets interval_,
-        local_y_schema_, local_X_schema_, panel_group_names_, n_features_in_.
-    panel_group_names : list of str or None, default=None
-        Panel group names to validate/predict for. Only used for forecasters.
-        If None, uses all fitted panel groups.
-    observation_horizon : int or None, default=None
-        Number of previous observations required for inverse transformation.
-        When provided with X_p, performs inverse_transform validation.
-    **check_params : dict
-        Additional validation parameters passed to atomic check functions.
-
-    Returns
-    -------
-    y_validated : pl.DataFrame or None
-        Validated target DataFrame with columns ordered according to schema.
-    X_validated : pl.DataFrame or None
-        Validated feature DataFrame with columns ordered according to schema.
-    panel_group_names : list of str or None
-        Validated panel group names (either from parameter or from estimator's fitted state).
-
-    Notes
-    -----
-    This function implements sklearn's validation philosophy adapted for polars DataFrames
-    and time series forecasting. The reset parameter mirrors sklearn's usage:
-    - reset=True in fit(): establish the core fitted attributes
-    - reset=False in predict/transform(): validate consistency against cache
-
-    For inverse_transform validation, pass both X_p and observation_horizon to validate:
-    - X_p is provided when observation_horizon > 0
-    - X_p has sufficient length
-    - X_p and X are temporally continuous
-
-    Examples
-    --------
-    In fit method (reset=True)::
-
-        y_val, X_val, _ = validate_data(self, y, X, reset=True)  # Sets fitted attributes
-
-    In predict method (reset=False)::
-
-        y_val, X_val, _ = validate_data(self, y, X, reset=False)  # Checks consistency
-
-    In inverse_transform method::
-
-        _, X_t_val, _ = validate_data(
-            self, X_t=X_t, reset=False,
-            X_p=X_p, observation_horizon=self.observation_horizon
-        )  # Validates inverse_transform requirements
-
-    """
-    # Check if this is a transformer based on estimator_type tag
-    estimator_type = estimator.__sklearn_tags__().estimator_type
-
-    # Validate X and X_t are mutually exclusive
-    if X is not None and X_t is not None:
-        raise ValueError(
-            "X and X_t are mutually exclusive. Use X for normal transform/predict "
-            "and X_t for inverse_transform."
-        )
-
-    if reset:
-        # Fit context: validate and set interval
-        # For transformers, we set fitted attributes here (feature_names_in_, n_features_in_, X_schema_)
-        # Note: For forecasters, schema and panel group attributes are set by _set_input_attributes()
-        if y is not None:
-            interval = check_inputs(y, X)
-            estimator.interval_ = interval
-        elif X is not None:
-            # Transformer-only scenario: validate X and set fitted attributes
-            interval = check_inputs(X, None)
-            estimator.interval_ = interval
-
-            # Set transformer fitted attributes
-            estimator.feature_names_in_ = X.select(~cs.by_name("time")).columns
-            estimator.n_features_in_ = len(estimator.feature_names_in_)
-
-            if estimator_type == "transformer":
-                estimator.X_schema_ = dict(X.select(~cs.by_name("time")).schema)
-
-        return y, X, None
-
-    if estimator_type == "transformer":
-        # Transformer validation: check against X_schema_
-        check_is_fitted(estimator, ["X_schema_", "feature_names_in_", "n_features_in_"])
-
-        # Handle inverse_transform validation if X_t is provided
-        if X_t is not None:
-            # Validate observation_horizon requirement
-            if observation_horizon is not None and observation_horizon > 0 and X_p is None:
-                raise ValueError(
-                    "X_p cannot be None to invert a transform that has observation_horizon > 0. "
-                    "Provide the necessary previous untransformed data."
-                )
-
-            # Check interval consistency for X_t (transformed data)
-            if len(X_t) >= 2:
-                X_t_interval = check_interval_consistency(X_t)
-            else:
-                # Single-step prediction: interval cannot be inferred, skip validation
-                X_t_interval = None
-
-            # If X_p is provided, validate it and check intervals match
-            if X_p is not None and len(X_p) > 0 and observation_horizon is not None:
-                # Validate X_p has sufficient length
-                if len(X_p) < observation_horizon:
-                    raise ValueError(
-                        f"X_p must have at least {observation_horizon} rows (observation_horizon), "
-                        f"but has only {len(X_p)} rows."
-                    )
-
-                # Check interval consistency for X_p (only if it has more than 1 row)
-                if len(X_p) > 1:
-                    X_p_interval = check_interval_consistency(X_p)
-
-                    # Ensure intervals match (only if X_t_interval was inferred)
-                    if X_t_interval is not None and X_p_interval != X_t_interval:
-                        raise ValueError(
-                            f"Time intervals do not match: X_p has interval {X_p_interval}, "
-                            f"but X_t has interval {X_t_interval}."
-                        )
-
-                # Note: We do NOT check temporal continuity between X_p and X_t for inverse_transform
-                # X_p is context data from before transformation, not necessarily continuous with X_t
-
-        if X is not None:
-            # Normal transform/predict context: validate schema
-            X = check_schema(X, estimator.X_schema_)
-
-            # Check interval consistency if requested
-            if check_params.get("check_intervals", True) and len(X) >= 2:
-                check_interval_consistency(X)
-
-            # Check continuity if _X_observed exists, is non-empty, and check_continuity is not False
-            if (
-                check_params.get("check_continuity", True)
-                and hasattr(estimator, "_X_observed")
-                and len(estimator._X_observed) > 0
-            ):
-                interval = None
-                if len(X) >= 2:
-                    interval = check_interval_consistency(X)
-                check_continuity(
-                    estimator._X_observed,
-                    X,
-                    expected_interval=interval,
-                    check_intervals=(interval is not None),
-                )
-
-        # For inverse_transform, X_t has transformed column names so we skip schema validation
-        # Return X_t if provided (inverse_transform), otherwise X
-        return y, X_t if X_t is not None else X, None
-
-    # Forecaster validation: check against local schemas
-    check_is_fitted(
-        estimator,
-        ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
-    )
-
-    # Validate and normalize panel_group_names parameter
-    panel_group_names = check_panel_group_names(
-        fitted_panel_groups=estimator.panel_group_names_,
-        requested_panel_groups=panel_group_names,
-    )
-
-    # Validate schema and enforce column order
-    if y is not None:
-        y = check_schema(
-            y,
-            estimator.local_y_schema_,
-            panel_group_names=panel_group_names,
-        )
-
-    if X is not None:
-        # Handle panel data X (local + global schemas)
-        if estimator.panel_group_names_ is not None:
-            # Validate local X columns (with panel prefixes)
-            if hasattr(estimator, "local_X_schema_") and estimator.local_X_schema_:
-                X_local = check_schema(
-                    X,
-                    estimator.local_X_schema_,
-                    panel_group_names=estimator.panel_group_names_,
-                )
-
-            # Validate global X columns (no prefixes)
-            X_global = None
-            if hasattr(estimator, "global_X_schema_") and estimator.global_X_schema_:
-                X_global = check_schema(X, estimator.global_X_schema_)
-
-            # Reconstruct X with both local and global columns
-            if (
-                hasattr(estimator, "local_X_schema_")
-                and estimator.local_X_schema_
-                and hasattr(estimator, "global_X_schema_")
-                and estimator.global_X_schema_
-            ):
-                X = pl.concat(
-                    [X_local, X_global.select(~cs.by_name("time"))],
-                    how="horizontal",
-                )
-            elif hasattr(estimator, "local_X_schema_") and estimator.local_X_schema_:
-                X = X_local
-            elif hasattr(estimator, "global_X_schema_") and estimator.global_X_schema_:
-                X = X_global
-        else:
-            # Non-panel data: simple schema check
-            X = check_schema(X, estimator.local_X_schema_)
-
-    return y, X, panel_group_names
-
-
-def check_time_column(df: pl.DataFrame) -> None:
+def check_time_column(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
     """Validate that time column exists, has proper dtype, no nulls, and is sorted.
 
     Parameters
     ----------
     df : pl.DataFrame
         DataFrame to validate.
+    df_name : str, default="DataFrame"
+        Name of DataFrame in error message.
 
     Raises
     ------
@@ -272,27 +29,236 @@ def check_time_column(df: pl.DataFrame) -> None:
 
     """
     if "time" not in df.columns:
-        raise ValueError(f"DataFrame must contain 'time' column. Found columns: {list(df.columns)}")
+        raise ValueError(
+            f"{df_name} must contain a 'time' column. Found columns: {list(df.columns)}"
+        )
 
     time_col = df["time"]
     # Check dtype
     if not isinstance(time_col.dtype, (pl.Datetime, pl.Date)):
         raise ValueError(
-            f"'time' column must have dtype pl.Datetime or pl.Date, but got {time_col.dtype}"
+            f"'time' column in {df_name} must have dtype pl.Datetime or pl.Date, but got {time_col.dtype}"
         )
 
     # Check for nulls
     if time_col.null_count() > 0:
         raise ValueError(
-            f"'time' column contains {time_col.null_count()} null values. "
+            f"'time' column in {df_name} contains {time_col.null_count()} null values. "
             "'time' column must not have missing values."
         )
 
     # Check sorting (ascending)
     if not time_col.is_sorted():
         raise ValueError(
-            "'time' column must be sorted in ascending order. Call df.sort('time') to fix."
+            f"'time' column in {df_name} must be sorted in ascending order. Call df.sort('time') to fix."
         )
+
+
+def check_scorer_column_selection(
+    scorer: "BaseScorer",
+    y_true: pl.DataFrame,
+    y_pred: pl.DataFrame,
+    pred_type: str,
+    coverage_rates: list[float] | None = None,
+    interval_pattern: re.Pattern | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Subselect columns based on scorer configuration.
+
+    Parameters
+    ----------
+    scorer : BaseScorer
+        Scorer instance with panel_group_names and component_names attributes.
+    y_true : pl.DataFrame
+        True values DataFrame.
+    y_pred : pl.DataFrame
+        Predicted values DataFrame.
+    pred_type : str
+        Prediction type ('point', 'interval', 'conformity').
+    coverage_rates : list[float], optional
+        Coverage rates for interval forecasts.
+    interval_pattern : re.Pattern, optional
+        Regex pattern for matching interval column names.
+
+    Returns
+    -------
+    tuple[pl.DataFrame, pl.DataFrame]
+        Filtered (y_true, y_pred) DataFrames.
+
+    Raises
+    ------
+    ValueError
+        If panel_group_names or component_names are invalid.
+
+    """
+    from yohou.utils.panel import inspect_locality
+
+    has_panel_specs = hasattr(scorer, "panel_group_names") and scorer.panel_group_names is not None
+    has_component_specs = hasattr(scorer, "component_names") and scorer.component_names is not None
+
+    if not (has_panel_specs or has_component_specs or coverage_rates is not None):
+        return y_true, y_pred
+
+    # Validate coverage_rates if present (interval scorers)
+    if coverage_rates is not None and pred_type == "interval" and interval_pattern is not None:
+        available_rates = set()
+        for col in y_pred.columns:
+            if col in ("time", "observed_time"):
+                continue
+            match = interval_pattern.match(col)
+            if match:
+                available_rates.add(float(match.group(3)))
+
+        missing_rates = set(coverage_rates) - available_rates
+        if missing_rates:
+            raise ValueError(
+                f"Requested coverage_rates {sorted(missing_rates)} not found in predictions. "
+                f"Available rates: {sorted(available_rates)}"
+            )
+
+    _, y_groups = inspect_locality(y_true)
+
+    # Validate panel groups if specified (must exist in data)
+    if has_panel_specs:
+        missing_groups = set(scorer.panel_group_names) - set(y_groups.keys())
+        if missing_groups:
+            raise ValueError(
+                f"Invalid panel_group_names: {sorted(missing_groups)} not found in data. "
+                f"Available groups: {sorted(y_groups.keys())}"
+            )
+
+    is_panel = len(y_groups) > 0
+
+    if is_panel:
+        # Panel data: filter by panel_group_names and/or component_names
+        selected_cols = []
+
+        # Determine which groups to include
+        if has_panel_specs:
+            groups_to_include = scorer.panel_group_names
+        else:
+            groups_to_include = list(y_groups.keys())
+
+        for group_name in groups_to_include:
+            if group_name in y_groups:
+                group_cols = y_groups[group_name]
+
+                # Filter by component_names if specified
+                if has_component_specs:
+                    # Extract unprefixed column names and check against component_names
+                    filtered_cols = [
+                        col for col in group_cols if col.split("__", 1)[1] in scorer.component_names
+                    ]
+                    selected_cols.extend(filtered_cols)
+                else:
+                    selected_cols.extend(group_cols)
+
+        # Filter DataFrames
+        if selected_cols:
+            # Always preserve time column during subselection
+            if "time" not in selected_cols:
+                selected_cols = ["time"] + selected_cols
+
+            # Check for interval columns in y_pred if prediction_type is interval
+            if pred_type == "interval":
+                # For interval, y_pred has _lower_ and _upper_ columns corresponding to y_true columns
+                y_pred_selected_cols = ["time"]
+
+                for col in selected_cols:
+                    if col == "time":
+                        continue
+                    # Find matching columns in y_pred
+                    matches = [
+                        c
+                        for c in y_pred.columns
+                        if c.startswith(f"{col}_lower_") or c.startswith(f"{col}_upper_")
+                    ]
+
+                    # Filter by coverage rates
+                    if coverage_rates is not None and interval_pattern is not None:
+                        rate_filtered = []
+                        for m in matches:
+                            match = interval_pattern.match(m)
+                            if match and float(match.group(3)) in coverage_rates:
+                                rate_filtered.append(m)
+                        matches = rate_filtered
+
+                    y_pred_selected_cols.extend(matches)
+
+                y_true = y_true.select(selected_cols)
+                y_pred = y_pred.select(y_pred_selected_cols)
+            else:
+                # Point forecast: columns should match directly
+                y_pred_cols = set(y_pred.columns)
+                valid_y_pred_cols = [c for c in selected_cols if c in y_pred_cols]
+
+                y_true = y_true.select(selected_cols)
+                y_pred = y_pred.select(valid_y_pred_cols)
+
+    else:
+        # Global data: filter by component_names only
+        if has_component_specs:
+            # Validate component names exist in data
+            available_components = [col for col in y_true.columns if col != "time"]
+            missing_components = set(scorer.component_names) - set(available_components)
+            if missing_components:
+                raise ValueError(
+                    f"Invalid component_names: {sorted(missing_components)} not found in data. "
+                    f"Available components: {sorted(available_components)}"
+                )
+
+            selected_cols = [col for col in y_true.columns if col in scorer.component_names]
+            if selected_cols:
+                # Always preserve time column during subselection
+                if "time" not in selected_cols:
+                    selected_cols = ["time"] + selected_cols
+
+                # For global data, logic is simpler
+                if pred_type == "interval":
+                    y_pred_selected_cols = ["time"]
+                    for col in selected_cols:
+                        if col == "time":
+                            continue
+                        matches = [
+                            c
+                            for c in y_pred.columns
+                            if c.startswith(f"{col}_lower_") or c.startswith(f"{col}_upper_")
+                        ]
+
+                        # Filter by coverage rates
+                        if coverage_rates is not None and interval_pattern is not None:
+                            rate_filtered = []
+                            for m in matches:
+                                match = interval_pattern.match(m)
+                                if match and float(match.group(3)) in coverage_rates:
+                                    rate_filtered.append(m)
+                            matches = rate_filtered
+
+                        y_pred_selected_cols.extend(matches)
+                    y_true = y_true.select(selected_cols)
+                    y_pred = y_pred.select(y_pred_selected_cols)
+                else:
+                    y_pred_cols = set(y_pred.columns)
+                    valid_y_pred_cols = [c for c in selected_cols if c in y_pred_cols]
+
+                    y_true = y_true.select(selected_cols)
+                    y_pred = y_pred.select(valid_y_pred_cols)
+        elif (
+            coverage_rates is not None and pred_type == "interval" and interval_pattern is not None
+        ):
+            # No component filter, but coverage rate filter
+            y_pred_selected_cols = ["time"]
+
+            # Filter y_pred columns to only those matching requested rates
+            for col in y_pred.columns:
+                if col in ("time", "observed_time"):
+                    continue
+                match = interval_pattern.match(col)
+                if match and float(match.group(3)) in coverage_rates:
+                    y_pred_selected_cols.append(col)
+
+            y_pred = y_pred.select(y_pred_selected_cols)
+
+    return y_true, y_pred
 
 
 def check_sufficient_rows(
@@ -445,6 +411,134 @@ def check_panel_group_names_exist(
         )
 
 
+def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
+    """Validate that all panel groups in a DataFrame have the same local column structure.
+
+    For panel data with multiple groups (e.g., sales__store_1, sales__store_2),
+    this checks that all groups within the same prefix have identical local column names.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        DataFrame to validate. Must have "time" column.
+    df_name : str, default="DataFrame"
+        Name of DataFrame in error message (e.g., "y", "X", "y_pred").
+
+    Raises
+    ------
+    ValueError
+        If panel groups have mismatched local column structures.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> # Valid panel data - both groups have same local columns
+    >>> df = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+    ...     "sales__store_1": [10, 20],
+    ...     "sales__store_2": [30, 40],
+    ... })
+    >>> check_panel_internal_consistency(df, "y")  # No error
+
+    >>> # Invalid - store_2 missing in second group
+    >>> df_bad = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1)],
+    ...     "sales__store_1": [10],
+    ...     "revenue__store_1": [100],
+    ... })
+    >>> check_panel_internal_consistency(df_bad, "y")  # doctest: +SKIP
+    Traceback (most recent call last):
+        ...
+    ValueError: Panel structure mismatch in y...
+
+    """
+    from yohou.utils.panel import inspect_locality
+
+    _, groups = inspect_locality(df)
+    if not groups:
+        return  # No panel data, nothing to check
+
+    # Get reference group (first one)
+    ref_grp = next(iter(groups))
+    ref_cols = sorted(c.split("__", 1)[1] for c in groups[ref_grp])
+
+    # Check all other groups match reference
+    for grp, cols in groups.items():
+        curr_cols = sorted(c.split("__", 1)[1] for c in cols)
+        if curr_cols != ref_cols:
+            raise ValueError(
+                f"Panel structure mismatch in `{df_name}`. Group '{ref_grp}' has local "
+                f"columns {ref_cols}, but group '{grp}' has {curr_cols}."
+            )
+
+
+def check_panel_groups_match(
+    y: pl.DataFrame | None,
+    X: pl.DataFrame | None,
+) -> None:
+    """Validate that y and X have matching panel group structures.
+
+    Both DataFrames must have the same panel group prefixes. For example,
+    if y has "sales__store_1" and "sales__store_2", then X must also have
+    panel columns with "sales__" prefix (or both can be global data).
+
+    Parameters
+    ----------
+    y : pl.DataFrame or None
+        Target DataFrame. Can be None.
+    X : pl.DataFrame or None
+        Feature DataFrame. Can be None.
+
+    Raises
+    ------
+    ValueError
+        If y and X have different panel group structures.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> # Valid - both have same panel groups
+    >>> y = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1)],
+    ...     "sales__store_1": [10],
+    ...     "sales__store_2": [20],
+    ... })
+    >>> X = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1)],
+    ...     "sales__store_1": [100],
+    ...     "sales__store_2": [200],
+    ... })
+    >>> check_panel_groups_match(y, X)  # No error
+
+    >>> # Invalid - different panel groups
+    >>> X_bad = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1)],
+    ...     "temp__sensor_1": [25.0],
+    ... })
+    >>> check_panel_groups_match(y, X_bad)  # doctest: +SKIP
+    Traceback (most recent call last):
+        ...
+    ValueError: Panel groups mismatch between y and X...
+
+    """
+    if y is None or X is None:
+        return  # Can't check if one is missing
+
+    from yohou.utils.panel import inspect_locality
+
+    _, y_groups = inspect_locality(y)
+    _, X_groups = inspect_locality(X)
+
+    if set(y_groups.keys()) != set(X_groups.keys()):
+        raise ValueError(
+            f"Panel groups mismatch between `y` and `X`. "
+            f"`y` groups: {sorted(y_groups.keys())}, "
+            f"`X` groups: {sorted(X_groups.keys())}."
+        )
+
+
 def check_forecasting_horizon_positive(
     horizon: int | None,
     allow_none: bool = False,
@@ -471,39 +565,6 @@ def check_forecasting_horizon_positive(
 
     if horizon < 1:
         raise ValueError(f"forecasting_horizon must be >= 1, got {horizon}")
-
-
-def check_time_column(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
-    """Validate DataFrame has a 'time' column with Datetime type.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        DataFrame to validate.
-    df_name : str, default="DataFrame"
-        Name of DataFrame in error message.
-
-    Raises
-    ------
-    ValueError
-        If 'time' column is missing or not Datetime type.
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> from yohou.utils.validation import check_time_column
-    >>> df = pl.DataFrame({"time": ["2023-01-01"], "value": [1]})
-    >>> check_time_column(df)  # doctest: +SKIP
-    Traceback (most recent call last):
-        ...
-    ValueError: 'time' column must be Datetime type, got String.
-
-    """
-    if "time" not in df.columns:
-        raise ValueError(f"{df_name} must contain a 'time' column.")
-
-    if df["time"].dtype != pl.Datetime:
-        raise ValueError(f"'time' column must be Datetime type, got {df['time'].dtype}.")
 
 
 def check_exogenous_required(

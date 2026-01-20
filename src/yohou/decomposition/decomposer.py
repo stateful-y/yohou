@@ -13,10 +13,11 @@ from sklearn.utils.metadata_routing import (
     process_routing,
 )
 from sklearn.utils.metaestimators import _BaseComposition
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer, Tags
 from yohou.point_forecaster.base import BasePointForecaster
-from yohou.utils import add_interval, cast, dict_to_panel, get_group_df, validate_data
+from yohou.utils import add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
 
 
 class Decomposer(BasePointForecaster, _BaseComposition):
@@ -364,13 +365,13 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Predictions with columns: "observed_time", "time", <target_columns>
 
         """
-        _, X, panel_group_names = validate_data(
+        check_is_fitted(self, ["forecasters_", "panel_group_names_"])
+        _, X, panel_group_names = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=False,
         )
 
         # Use fit horizon if not specified
@@ -519,13 +520,13 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Updated decomposer.
 
         """
-        y, X, panel_group_names = validate_data(
+        check_is_fitted(self, ["forecasters_", "panel_group_names_"])
+        y, X, panel_group_names = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=True,
         )
 
         # Update transformers first
@@ -602,13 +603,13 @@ class Decomposer(BasePointForecaster, _BaseComposition):
             Reset decomposer.
 
         """
-        y, X, panel_group_names = validate_data(
+        check_is_fitted(self, ["forecasters_", "panel_group_names_"])
+        y, X, panel_group_names = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=False,
         )
 
         # Reset transformers first

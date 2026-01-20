@@ -419,8 +419,8 @@ class _BaseSeasonalityForecaster(_BaseTrendForecaster):
             for group_name, group_df in y.items():
                 if len(group_df) < self.seasonality:
                     raise ValueError(
-                        f"Insufficient data for group '{group_name}': need at least {self.seasonality} observations "
-                        f"(one seasonal cycle), got {len(group_df)}"
+                        f"Insufficient data for group '{group_name}': need at least "
+                        f"{self.seasonality} observations (one seasonal cycle), got {len(group_df)}"
                     )
         # Handle global data (single DataFrame)
         else:

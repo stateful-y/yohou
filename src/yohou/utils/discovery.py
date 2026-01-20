@@ -10,13 +10,7 @@ from importlib import import_module
 from operator import itemgetter
 from pathlib import Path
 
-from sklearn.base import (
-    BaseEstimator,
-    ClassifierMixin,
-    ClusterMixin,
-    RegressorMixin,
-    TransformerMixin,
-)
+from sklearn.base import BaseEstimator
 from sklearn.utils._testing import ignore_warnings
 
 _MODULE_TO_IGNORE = {"tests"}
@@ -31,13 +25,21 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
 
     Parameters
     ----------
-    type_filter : {"classifier", "regressor", "cluster", "transformer"} \
-            or list of such str, default=None
+type_filter : {"forecaster", "point_forecaster", "interval_forecaster", \
+        "transformer", "splitter", "scorer", "point_scorer", \
+        "interval_scorer", "conformity_scorer"} or list of such str, default=None
         Which kind of estimators should be returned. If None, no filter is
-        applied and all estimators are returned.  Possible values are
-        'classifier', 'regressor', 'cluster' and 'transformer' to get
-        estimators only of these specific types, or a list of these to
-        get the estimators that fit at least one of the types.
+        applied and all estimators are returned. Possible values are:
+
+        - 'forecaster': All forecasters (point, interval, or both)
+        - 'point_forecaster': Only point forecasters
+        - 'interval_forecaster': Only interval forecasters
+        - 'transformer': Transformers
+        - 'splitter': Cross-validation splitters
+        - 'scorer': All scorers
+        - 'point_scorer': Only point scorers
+        - 'interval_scorer': Only interval scorers
+        - 'conformity_scorer': Only conformity scorers
 
     Returns
     -------
@@ -51,6 +53,8 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
     >>> estimators = all_estimators()
     >>> type(estimators)
     <class 'list'>
+    >>> forecasters = all_estimators(type_filter='forecaster')
+    >>> point_forecasters = all_estimators(type_filter='point_forecaster')
     """
 
     def is_abstract(c: type) -> bool:
@@ -93,25 +97,84 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
             type_filter = [type_filter]
         else:
             type_filter = list(type_filter)  # copy
+
         filtered_estimators = []
-        filters = {
-            "classifier": ClassifierMixin,
-            "regressor": RegressorMixin,
-            "transformer": TransformerMixin,
-            "cluster": ClusterMixin,
+
+        # Define valid filter types
+        valid_filters = {
+            "forecaster",
+            "point_forecaster",
+            "interval_forecaster",
+            "transformer",
+            "splitter",
+            "scorer",
+            "point_scorer",
+            "interval_scorer",
+            "conformity_scorer",
         }
-        for name, mixin in filters.items():
-            if name in type_filter:
-                type_filter.remove(name)
-                filtered_estimators.extend([est for est in estimators if issubclass(est[1], mixin)])
-        estimators = filtered_estimators
-        if type_filter:
+
+        # Check for invalid filters
+        invalid_filters = set(type_filter) - valid_filters
+        if invalid_filters:
             raise ValueError(
-                "Parameter type_filter must be 'classifier', "
-                "'regressor', 'transformer', 'cluster' or "
-                "None, got"
-                f" {repr(type_filter)}."
+                f"Invalid type_filter values: {sorted(invalid_filters)}. "
+                f"Valid options are: {sorted(valid_filters)}"
             )
+
+        # Filter estimators by tags
+        for name, est_cls in estimators:
+            try:
+                # Get tags from instance (tags may be instance-dependent)
+                # Try default initialization
+                try:
+                    instance = est_cls()
+                except TypeError:
+                    # Skip estimators that require constructor arguments
+                    continue
+
+                tags = instance.__sklearn_tags__()
+                est_type = tags.estimator_type
+
+                # Check base estimator type
+                if est_type in type_filter:
+                    filtered_estimators.append((name, est_cls))
+                    continue
+
+                # Check forecaster sub-types
+                if est_type == "forecaster" and hasattr(tags, "forecaster_tags"):
+                    forecaster_type = tags.forecaster_tags.forecaster_type
+                    if forecaster_type == "point" and "point_forecaster" in type_filter:
+                        filtered_estimators.append((name, est_cls))
+                    elif forecaster_type == "interval" and "interval_forecaster" in type_filter:
+                        filtered_estimators.append((name, est_cls))
+                    elif forecaster_type == "both":
+                        if (
+                            "point_forecaster" in type_filter
+                            or "interval_forecaster" in type_filter
+                        ):
+                            filtered_estimators.append((name, est_cls))
+                    elif "forecaster" in type_filter:
+                        # Generic forecaster filter matches all forecasters
+                        filtered_estimators.append((name, est_cls))
+
+                # Check scorer sub-types
+                elif est_type == "scorer" and hasattr(tags, "scorer_tags"):
+                    prediction_type = tags.scorer_tags.prediction_type
+                    if prediction_type == "point" and "point_scorer" in type_filter:
+                        filtered_estimators.append((name, est_cls))
+                    elif prediction_type == "interval" and "interval_scorer" in type_filter:
+                        filtered_estimators.append((name, est_cls))
+                    elif prediction_type == "conformity" and "conformity_scorer" in type_filter:
+                        filtered_estimators.append((name, est_cls))
+                    elif "scorer" in type_filter:
+                        # Generic scorer filter matches all scorers
+                        filtered_estimators.append((name, est_cls))
+
+            except Exception:
+                # Skip estimators that can't be instantiated or don't have proper tags
+                continue
+
+        estimators = filtered_estimators
 
     # drop duplicates, sort for reproducibility
     # itemgetter is used to ensure the sort does not extend to the 2nd item of

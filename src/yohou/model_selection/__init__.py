@@ -5,14 +5,12 @@ from .search import SearchCV
 from .split import (
     BaseSplitter,
     ExpandingWindowSplitter,
-    GapSplitter,
     SlidingWindowSplitter,
 )
 
 __all__ = [
     "BaseSplitter",
     "ExpandingWindowSplitter",
-    "GapSplitter",
     "Sampler",
     "SearchCV",
     "SlidingWindowSplitter",

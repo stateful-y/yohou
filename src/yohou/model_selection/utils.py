@@ -338,6 +338,7 @@ def _fit_and_score(
         fit_time = time.time() - start_time
         test_scores = _score(
             forecaster,
+            y_train,
             y_test,
             X_test,
             predict_params,
@@ -359,6 +360,7 @@ def _fit_and_score(
             forecaster.reset(y_train_reset, X_train_reset)
             train_scores = _score(
                 forecaster,
+                y_train_reset,
                 y_train_test,
                 X_train_test,
                 predict_params,
@@ -403,6 +405,7 @@ def _fit_and_score(
 
 def _score(
     forecaster: "BaseForecaster",
+    y_train: pl.DataFrame,
     y_test: pl.DataFrame,
     X_test: pl.DataFrame | None,
     predict_params: dict[str, object] | None,
@@ -421,6 +424,7 @@ def _score(
     scores: float | dict[str, float | str] | str
     try:
         y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+        scorer.fit(y_train)
         scores = scorer(y_truth=y_test, y_pred=y_pred, **score_params)
 
     except Exception:

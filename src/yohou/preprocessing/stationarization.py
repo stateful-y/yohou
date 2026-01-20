@@ -8,10 +8,10 @@ import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
 from sklearn.base import _fit_context
 from sklearn.utils._param_validation import Interval
-from sklearn.utils.validation import _check_feature_names_in
+from sklearn.utils.validation import _check_feature_names_in, check_is_fitted
 
 from yohou.base import BaseTransformer, Tags
-from yohou.utils.validation import validate_data
+from yohou.utils import validate_transformer_data
 
 
 class LogTransform(BaseTransformer):
@@ -83,6 +83,7 @@ class LogTransform(BaseTransformer):
             Transformed time series.
 
         """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
 
         time = X.select(cs.by_name("time"))
         X_t = (X.select(~cs.by_name("time")) + self.offset).with_columns(pl.all().log())
@@ -110,8 +111,15 @@ class LogTransform(BaseTransformer):
             Inverted transformed time series.
 
         """
-        _, X_t, _ = validate_data(
-            self, X_t=X_t, X_p=X_p, reset=False, observation_horizon=self.observation_horizon
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+
+        X_t = validate_transformer_data(
+            self,
+            X=X_t,
+            reset=False,
+            inverse=True,
+            X_p=X_p,
+            observation_horizon=self.observation_horizon,
         )
 
         time = X_t.select(cs.by_name("time"))
@@ -211,7 +219,8 @@ class SeasonalDifferencing(BaseTransformer):
             Transformed time series.
 
         """
-        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=False)
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
 
         time = X.select(cs.by_name("time"))[self.seasonality :]
         X_t = X.select(~cs.by_name("time")).select(pl.all().diff(self.seasonality))[
@@ -241,8 +250,14 @@ class SeasonalDifferencing(BaseTransformer):
             Inverted transformed time series.
 
         """
-        _, X_t, _ = validate_data(
-            self, X_t=X_t, X_p=X_p, reset=False, observation_horizon=self.observation_horizon
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        X_t = validate_transformer_data(
+            self,
+            X=X_t,
+            reset=False,
+            inverse=True,
+            X_p=X_p,
+            observation_horizon=self.observation_horizon,
         )
 
         time = X_t.select(cs.by_name("time"))
@@ -350,7 +365,8 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
             Transformed time series.
 
         """
-        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=False)
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
 
         # Apply log transform
         X_t = LogTransform.transform(self, X=X)
@@ -383,8 +399,14 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransform):
         pl.DataFrame
             Inverted transformed time series.
         """
-        _, X_t, _ = validate_data(
-            self, X_t=X_t, X_p=X_p, reset=False, observation_horizon=self.observation_horizon
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        X_t = validate_transformer_data(
+            self,
+            X=X_t,
+            reset=False,
+            inverse=True,
+            X_p=X_p,
+            observation_horizon=self.observation_horizon,
         )
 
         assert X_p is not None  # for ty

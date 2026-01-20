@@ -249,13 +249,15 @@ def test_polynomial_model_panel_behaviors(panel_time_series_factory, model_panel
 
 def test_polynomial_model_panel_prediction_differences(panel_time_series_factory):
     """Test that pooled vs per-group strategies produce different predictions on heterogeneous data."""
-    y_panel = panel_time_series_factory(length=100, n_series=3, seed=42)
+    y_panel = panel_time_series_factory(length=100, n_series=1, n_groups=3, seed=42)
 
     # Add VERY distinct linear trends (opposite slopes)
     for i in range(3):
-        col_name = f"panel__series_{i}"
-        # Series 0: negative slope, Series 1: flat, Series 2: steep positive slope
-        slope = -5 + i * 5  # -5, 0, 5
+        col_name = f"group{i}__series_0"
+        # Series 0: 1.0, Series 1: 3.0, Series 2: 9.0
+        # Avg = 4.33. No match.
+        slopes = [1.0, 3.0, 9.0]
+        slope = slopes[i]
         y_panel = y_panel.with_columns(
             (pl.col(col_name) + slope * pl.Series(range(100))).alias(col_name)
         )
@@ -272,7 +274,7 @@ def test_polynomial_model_panel_prediction_differences(panel_time_series_factory
     y_pred_per_group = forecaster_per_group.predict(forecasting_horizon=10)
 
     # Predictions should differ significantly due to heterogeneous trends
-    for col in ["panel__series_0", "panel__series_1", "panel__series_2"]:
+    for col in ["group0__series_0", "group1__series_0", "group2__series_0"]:
         pooled_vals = y_pred_pooled[col].to_numpy()
         per_group_vals = y_pred_per_group[col].to_numpy()
 

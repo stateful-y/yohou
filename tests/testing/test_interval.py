@@ -19,21 +19,17 @@ def test_check_interval_prediction_columns(y_X_factory):
     forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
     # Should not raise
-    check_interval_prediction_columns(
-        forecaster, y[:80], X[:80], forecasting_horizon=3, coverage_rates=[0.9, 0.95]
-    )
+    check_interval_prediction_columns(forecaster, y[:80], X[:80])
 
 
 def test_check_interval_prediction_columns_single_coverage(y_X_factory):
     """Test check validates single coverage rate."""
     y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
     forecaster = SplitConformalForecaster(calibration_size=50)
-    forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+    forecaster.fit(y[:80], X[:80], forecasting_horizon=3, coverage_rates=[0.95])
 
     # Should not raise
-    check_interval_prediction_columns(
-        forecaster, y[:80], X[:80], forecasting_horizon=3, coverage_rates=[0.95]
-    )
+    check_interval_prediction_columns(forecaster, y[:80], X[:80])
 
 
 def test_check_interval_bounds(y_X_factory):
@@ -43,19 +39,17 @@ def test_check_interval_bounds(y_X_factory):
     forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
     # Should not raise
-    check_interval_bounds(
-        forecaster, y[:80], X[:80], forecasting_horizon=3, coverage_rates=[0.9, 0.95]
-    )
+    check_interval_bounds(forecaster, y[:80], X[:80])
 
 
 def test_check_interval_bounds_single_target(y_X_factory):
     """Test check validates single target intervals."""
     y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
     forecaster = SplitConformalForecaster(calibration_size=50)
-    forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+    forecaster.fit(y[:80], X[:80], forecasting_horizon=3, coverage_rates=[0.9])
 
     # Should not raise
-    check_interval_bounds(forecaster, y[:80], X[:80], forecasting_horizon=3, coverage_rates=[0.9])
+    check_interval_bounds(forecaster, y[:80], X[:80])
 
 
 def test_check_interval_prediction_types():

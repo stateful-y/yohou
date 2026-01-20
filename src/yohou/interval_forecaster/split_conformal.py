@@ -8,11 +8,12 @@ from pydantic import StrictFloat, StrictInt
 from sklearn.base import _fit_context, clone
 from sklearn.model_selection import train_test_split
 from sklearn.utils._param_validation import Interval
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import Tags
 from yohou.metrics import BaseConformityScorer, Residual
 from yohou.point_forecaster import BasePointForecaster, SeasonalNaive
-from yohou.utils import validate_data
+from yohou.utils import validate_forecaster_data
 
 from .base import BaseIntervalForecaster, BaseSimilarity
 
@@ -99,6 +100,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self
 
         """
+        # Validate data and set interval
+        y, X, _ = validate_forecaster_data(self, y, X, reset=True)
+
+        # Set schemas and panel attributes
+        self._set_input_attributes(y, X)
+
         forecasting_horizon, self.fit_coverage_rates_ = self._validate_fit_params(
             forecasting_horizon, coverage_rates
         )
@@ -106,9 +113,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # TODO: No _pre_fit call?
         self.fit_forecasting_horizon_ = forecasting_horizon
 
-        y_train, y_calib, X_train, X_calib = train_test_split(
-            y, X, test_size=self.calibration_size, shuffle=False
-        )
+        # Handle splitting with optional X
+        if X is None:
+            y_train, y_calib = train_test_split(y, test_size=self.calibration_size, shuffle=False)
+            X_train, X_calib = None, None
+        else:
+            y_train, y_calib, X_train, X_calib = train_test_split(
+                y, X, test_size=self.calibration_size, shuffle=False
+            )
 
         self.point_forecaster_ = clone(self.point_forecaster).fit(
             y=y_train,
@@ -128,7 +140,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         conformity_scorers = {}
         conformity_scores = pl.DataFrame()
         for step in range(1, 1 + forecasting_horizon):
-            y_pred_calib_step = y_pred_calib[step::forecasting_horizon]
+            y_pred_calib_step = y_pred_calib[step - 1 :: forecasting_horizon]
             y_truth_step = y_calib
 
             conformity_scorer_step = clone(self.conformity_scorer).fit(y_calib)
@@ -136,7 +148,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 y_truth=y_truth_step, y_pred=y_pred_calib_step
             )
 
-            conformity_scores_step = conformity_scores_step.with_columns(step=1 + step)
+            conformity_scores_step = conformity_scores_step.with_columns(step=step)
             conformity_scores = pl.concat([conformity_scores, conformity_scores_step])
 
             conformity_scorers[f"step_{step}"] = conformity_scorer_step
@@ -148,7 +160,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         weights = pl.DataFrame()
         if self.similarity is not None:
             for step in range(1, 1 + forecasting_horizon):
-                y_pred_calib_step = y_pred_calib[step::forecasting_horizon]
+                y_pred_calib_step = y_pred_calib[step - 1 :: forecasting_horizon]
                 y_truth_step = y.filter(pl.col("time") == y["time"])
 
                 similarity_step = clone(self.similarity)
@@ -156,7 +168,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
                 weights_step = similarity_step.predict()
 
-                weights_step = weights_step.with_columns(step=1 + step)
+                weights_step = weights_step.with_columns(step=step)
                 weights = pl.concat([weights, weights_step])
 
                 similarities[f"step_{step}"] = similarity_step
@@ -198,13 +210,17 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Predicted time series.
 
         """
-        _, X, panel_group_names = validate_data(
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
+
+        _, X, panel_group_names = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=False,
         )
 
         return self.point_forecaster_.predict(
@@ -253,13 +269,17 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Predicted time series with interval bounds.
 
         """
-        _, X, panel_group_names = validate_data(
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_schema_", "global_X_schema_", "panel_group_names_"],
+        )
+
+        _, X, panel_group_names = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
             panel_group_names=panel_group_names,
-            check_continuity=False,
         )
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(
@@ -268,11 +288,23 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         y_pred = self.point_forecaster_.predict(X=X).drop("observed_time")
 
+        # Extract time for later reconstruction
+        y_pred_time = y_pred.select("time")
+        y_pred_values = y_pred.drop("time")
+
         y_pred_intervals = pl.DataFrame()
         for step in range(1, 1 + forecasting_horizon):
-            y_pred_step = y_pred[[step]]
+            # Get step predictions
+            y_pred_step_values = y_pred_values[[step - 1]]
+            y_pred_step_time = y_pred_time[[step - 1]]
+
+            # Combine time and values for inverse_score (conformity scorers need time)
+            y_pred_step = y_pred_step_time.hstack(y_pred_step_values)
+
             conformity_scorer_step = self.conformity_scorers_[f"step_{step}"]
-            conformity_scores_step = self.conformity_scores_.filter(pl.col("step") == step)
+            conformity_scores_step = self.conformity_scores_.filter(pl.col("step") == step).drop(
+                "step"
+            )
 
             y_pred_intervals_step = pl.DataFrame()
             for coverage_rate in coverage_rates:
@@ -285,6 +317,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 y_pred_intervals_step = pl.concat(
                     [y_pred_intervals_step, y_pred_interval_rate_step],
                     how="horizontal",
+                )
+
+            # Add time column back (should already be there from inverse_score, but ensure correct position)
+            if "time" not in y_pred_intervals_step.columns:
+                y_pred_intervals_step = pl.concat(
+                    [y_pred_step_time, y_pred_intervals_step], how="horizontal"
                 )
 
             y_pred_intervals = pl.concat([y_pred_intervals, y_pred_intervals_step])

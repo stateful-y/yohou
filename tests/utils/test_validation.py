@@ -12,6 +12,7 @@ from yohou.utils.validation import (
     check_interval_consistency,
     check_panel_group_names,
     check_schema,
+    check_scorer_column_selection,
     interval_to_timedelta,
     parse_interval,
 )
@@ -676,7 +677,9 @@ def test_check_time_column_wrong_type():
     # String type
     df = pl.DataFrame({"time": ["2023-01-01", "2023-01-02"], "value": [1, 2]})
 
-    with pytest.raises(ValueError, match="'time' column must be Datetime type, got String"):
+    with pytest.raises(
+        ValueError, match="'time' column in DataFrame must have dtype pl.Datetime or pl.Date"
+    ):
         check_time_column(df)
 
 
@@ -686,7 +689,9 @@ def test_check_time_column_int_type():
 
     df = pl.DataFrame({"time": [1, 2, 3], "value": [10, 20, 30]})
 
-    with pytest.raises(ValueError, match="'time' column must be Datetime type, got Int64"):
+    with pytest.raises(
+        ValueError, match="'time' column in DataFrame must have dtype pl.Datetime or pl.Date"
+    ):
         check_time_column(df)
 
 
@@ -876,3 +881,619 @@ def test_check_panel_group_names_single_fitted_group_wrong_request():
         r"Available groups: \['sales'\]\.",
     ):
         check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+
+
+# ==================== Panel Internal Consistency Tests ====================
+
+
+def test_check_panel_internal_consistency_no_panel():
+    """Test check_panel_internal_consistency with global data (no panel)."""
+    from yohou.utils.validation import check_panel_internal_consistency
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    df = pl.DataFrame({"time": time, "value": range(10)})
+
+    # Should not raise (no panel data)
+    check_panel_internal_consistency(df, "y")
+
+
+def test_check_panel_internal_consistency_valid():
+    """Test check_panel_internal_consistency with valid panel data."""
+    from yohou.utils.validation import check_panel_internal_consistency
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    df = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+        }
+    )
+
+    # Should not raise (consistent structure)
+    check_panel_internal_consistency(df, "y")
+
+
+def test_check_panel_internal_consistency_invalid():
+    """Test check_panel_internal_consistency with mismatched columns."""
+    from yohou.utils.validation import check_panel_internal_consistency
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    df = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+            "revenue__store_1": range(20, 30),
+            # Missing revenue__store_2 - inconsistent!
+        }
+    )
+
+    with pytest.raises(ValueError, match="Panel structure mismatch in `y`"):
+        check_panel_internal_consistency(df, "y")
+
+
+def test_check_panel_internal_consistency_multiple_groups():
+    """Test check_panel_internal_consistency with multiple valid groups."""
+    from yohou.utils.validation import check_panel_internal_consistency
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    df = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+            "revenue__store_1": range(20, 30),
+            "revenue__store_2": range(30, 40),
+        }
+    )
+
+    # Should not raise (both groups have same local columns)
+    check_panel_internal_consistency(df, "y")
+
+
+def test_check_panel_internal_consistency_custom_name():
+    """Test check_panel_internal_consistency with custom DataFrame name."""
+    from yohou.utils.validation import check_panel_internal_consistency
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    df = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "revenue__store_2": range(10, 20),
+        }
+    )
+
+    with pytest.raises(ValueError, match="Panel structure mismatch"):
+        check_panel_internal_consistency(df, "X_pred")
+
+
+# ==================== Panel Groups Match Tests ====================
+
+
+def test_check_panel_groups_match_both_none():
+    """Test check_panel_groups_match when both are None."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    # Should not raise
+    check_panel_groups_match(None, None)
+
+
+def test_check_panel_groups_match_y_none():
+    """Test check_panel_groups_match when y is None."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    X = pl.DataFrame({"time": time, "feature": range(10)})
+
+    # Should not raise (can't check if one is None)
+    check_panel_groups_match(None, X)
+
+
+def test_check_panel_groups_match_X_none():
+    """Test check_panel_groups_match when X is None."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    y = pl.DataFrame({"time": time, "target": range(10)})
+
+    # Should not raise (can't check if one is None)
+    check_panel_groups_match(y, None)
+
+
+def test_check_panel_groups_match_both_global():
+    """Test check_panel_groups_match with both global data."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    y = pl.DataFrame({"time": time, "target": range(10)})
+    X = pl.DataFrame({"time": time, "feature": range(10, 20)})
+
+    # Should not raise (both are global)
+    check_panel_groups_match(y, X)
+
+
+def test_check_panel_groups_match_both_panel_same_groups():
+    """Test check_panel_groups_match with matching panel groups."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+        }
+    )
+    X = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(20, 30),
+            "sales__store_2": range(30, 40),
+        }
+    )
+
+    # Should not raise (both have "sales" group)
+    check_panel_groups_match(y, X)
+
+
+def test_check_panel_groups_match_different_groups():
+    """Test check_panel_groups_match with different panel groups."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+        }
+    )
+    X = pl.DataFrame(
+        {
+            "time": time,
+            "temp__sensor_1": range(20, 30),
+            "temp__sensor_2": range(30, 40),
+        }
+    )
+
+    with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X`"):
+        check_panel_groups_match(y, X)
+
+
+def test_check_panel_groups_match_y_panel_X_global():
+    """Test check_panel_groups_match when y is panel but X is global."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+        }
+    )
+    X = pl.DataFrame({"time": time, "feature": range(20, 30)})
+
+    with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X`"):
+        check_panel_groups_match(y, X)
+
+
+def test_check_panel_groups_match_y_global_X_panel():
+    """Test check_panel_groups_match when y is global but X is panel."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    y = pl.DataFrame({"time": time, "target": range(10)})
+    X = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(20, 30),
+            "sales__store_2": range(30, 40),
+        }
+    )
+
+    with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X`"):
+        check_panel_groups_match(y, X)
+
+
+def test_check_panel_groups_match_multiple_groups():
+    """Test check_panel_groups_match with multiple matching groups."""
+    from yohou.utils.validation import check_panel_groups_match
+
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 10),
+        interval="1d",
+        eager=True,
+    )
+    y = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+            "revenue__store_1": range(20, 30),
+            "revenue__store_2": range(30, 40),
+        }
+    )
+    X = pl.DataFrame(
+        {
+            "time": time,
+            "sales__store_1": range(40, 50),
+            "sales__store_2": range(50, 60),
+            "revenue__store_1": range(60, 70),
+            "revenue__store_2": range(70, 80),
+        }
+    )
+
+    # Should not raise (both have "sales" and "revenue" groups)
+    check_panel_groups_match(y, X)
+
+
+# ===========================
+# check_scorer_column_selection Tests
+# ===========================
+
+
+def test_check_scorer_column_selection_no_filtering():
+    """Test that no filtering is applied when scorer has no specifications."""
+
+    from yohou.metrics import MeanAbsoluteError
+
+    scorer = MeanAbsoluteError()
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 10), "1d", eager=True)
+    y_true = pl.DataFrame({"time": times, "value": range(10)})
+    y_pred = pl.DataFrame({"time": times, "value": range(10, 20)})
+
+    y_true_out, y_pred_out = check_scorer_column_selection(
+        scorer=scorer,
+        y_true=y_true,
+        y_pred=y_pred,
+        pred_type="point",
+        coverage_rates=None,
+        interval_pattern=None,
+    )
+
+    # Should return unchanged DataFrames
+    assert y_true_out.equals(y_true)
+    assert y_pred_out.equals(y_pred)
+
+
+def test_check_scorer_column_selection_panel_groups_point():
+    """Test panel group filtering for point forecasts."""
+
+    from yohou.metrics import MeanAbsoluteError
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+    y_true = pl.DataFrame(
+        {
+            "time": times,
+            "sales__store_1": range(5),
+            "sales__store_2": range(5, 10),
+            "revenue__store_1": range(10, 15),
+            "revenue__store_2": range(15, 20),
+        }
+    )
+    y_pred = pl.DataFrame(
+        {
+            "time": times,
+            "sales__store_1": range(100, 105),
+            "sales__store_2": range(105, 110),
+            "revenue__store_1": range(110, 115),
+            "revenue__store_2": range(115, 120),
+        }
+    )
+
+    scorer = MeanAbsoluteError(panel_group_names=["sales"])
+
+    y_true_out, y_pred_out = check_scorer_column_selection(
+        scorer=scorer,
+        y_true=y_true,
+        y_pred=y_pred,
+        pred_type="point",
+        coverage_rates=None,
+        interval_pattern=None,
+    )
+
+    # Should only have sales columns
+    assert set(y_true_out.columns) == {"time", "sales__store_1", "sales__store_2"}
+    assert set(y_pred_out.columns) == {"time", "sales__store_1", "sales__store_2"}
+
+
+def test_check_scorer_column_selection_component_names_panel():
+    """Test component filtering for panel data."""
+
+    from yohou.metrics import MeanAbsoluteError
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+    y_true = pl.DataFrame(
+        {
+            "time": times,
+            "sales__store_1": range(5),
+            "sales__store_2": range(5, 10),
+            "revenue__store_1": range(10, 15),
+            "revenue__store_2": range(15, 20),
+        }
+    )
+    y_pred = pl.DataFrame(
+        {
+            "time": times,
+            "sales__store_1": range(100, 105),
+            "sales__store_2": range(105, 110),
+            "revenue__store_1": range(110, 115),
+            "revenue__store_2": range(115, 120),
+        }
+    )
+
+    scorer = MeanAbsoluteError(component_names=["store_1"])
+
+    y_true_out, y_pred_out = check_scorer_column_selection(
+        scorer=scorer,
+        y_true=y_true,
+        y_pred=y_pred,
+        pred_type="point",
+        coverage_rates=None,
+        interval_pattern=None,
+    )
+
+    # Should only have store_1 columns
+    assert set(y_true_out.columns) == {"time", "sales__store_1", "revenue__store_1"}
+    assert set(y_pred_out.columns) == {"time", "sales__store_1", "revenue__store_1"}
+
+
+def test_check_scorer_column_selection_both_filters_panel():
+    """Test both panel_group_names and component_names filters."""
+
+    from yohou.metrics import MeanAbsoluteError
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+    y_true = pl.DataFrame(
+        {
+            "time": times,
+            "sales__store_1": range(5),
+            "sales__store_2": range(5, 10),
+            "revenue__store_1": range(10, 15),
+            "revenue__store_2": range(15, 20),
+        }
+    )
+    y_pred = pl.DataFrame(
+        {
+            "time": times,
+            "sales__store_1": range(100, 105),
+            "sales__store_2": range(105, 110),
+            "revenue__store_1": range(110, 115),
+            "revenue__store_2": range(115, 120),
+        }
+    )
+
+    scorer = MeanAbsoluteError(panel_group_names=["sales"], component_names=["store_1"])
+
+    y_true_out, y_pred_out = check_scorer_column_selection(
+        scorer=scorer,
+        y_true=y_true,
+        y_pred=y_pred,
+        pred_type="point",
+        coverage_rates=None,
+        interval_pattern=None,
+    )
+
+    # Should only have sales__store_1
+    assert set(y_true_out.columns) == {"time", "sales__store_1"}
+    assert set(y_pred_out.columns) == {"time", "sales__store_1"}
+
+
+def test_check_scorer_column_selection_component_names_global():
+    """Test component filtering for global (non-panel) data."""
+
+    from yohou.metrics import MeanAbsoluteError
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+    y_true = pl.DataFrame({"time": times, "sales": range(5), "revenue": range(5, 10)})
+    y_pred = pl.DataFrame({"time": times, "sales": range(100, 105), "revenue": range(105, 110)})
+
+    scorer = MeanAbsoluteError(component_names=["sales"])
+
+    y_true_out, y_pred_out = check_scorer_column_selection(
+        scorer=scorer,
+        y_true=y_true,
+        y_pred=y_pred,
+        pred_type="point",
+        coverage_rates=None,
+        interval_pattern=None,
+    )
+
+    # Should only have sales column
+    assert set(y_true_out.columns) == {"time", "sales"}
+    assert set(y_pred_out.columns) == {"time", "sales"}
+
+
+def test_check_scorer_column_selection_interval_with_coverage_rates():
+    """Test interval forecast filtering by coverage rates."""
+    import re
+
+    from yohou.metrics import IntervalScore
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+    y_true = pl.DataFrame({"time": times, "value": range(5)})
+    y_pred = pl.DataFrame(
+        {
+            "time": times,
+            "value_lower_0.9": range(10, 15),
+            "value_upper_0.9": range(15, 20),
+            "value_lower_0.95": range(8, 13),
+            "value_upper_0.95": range(17, 22),
+        }
+    )
+
+    scorer = IntervalScore(coverage_rates=[0.9])
+
+    interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
+    y_true_out, y_pred_out = check_scorer_column_selection(
+        scorer=scorer,
+        y_true=y_true,
+        y_pred=y_pred,
+        pred_type="interval",
+        coverage_rates=[0.9],
+        interval_pattern=interval_pattern,
+    )
+
+    # Should only have 0.9 coverage rate columns
+    assert set(y_true_out.columns) == {"time", "value"}
+    assert set(y_pred_out.columns) == {"time", "value_lower_0.9", "value_upper_0.9"}
+
+
+def test_check_scorer_column_selection_interval_panel_with_coverage():
+    """Test interval forecast filtering for panel data with coverage rates."""
+    import re
+
+    from yohou.metrics import IntervalScore
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 3), "1d", eager=True)
+    y_true = pl.DataFrame(
+        {
+            "time": times,
+            "sales__store_1": range(3),
+            "sales__store_2": range(3, 6),
+        }
+    )
+    y_pred = pl.DataFrame(
+        {
+            "time": times,
+            "sales__store_1_lower_0.9": range(10, 13),
+            "sales__store_1_upper_0.9": range(13, 16),
+            "sales__store_1_lower_0.95": range(8, 11),
+            "sales__store_1_upper_0.95": range(15, 18),
+            "sales__store_2_lower_0.9": range(20, 23),
+            "sales__store_2_upper_0.9": range(23, 26),
+            "sales__store_2_lower_0.95": range(18, 21),
+            "sales__store_2_upper_0.95": range(25, 28),
+        }
+    )
+
+    scorer = IntervalScore(
+        panel_group_names=["sales"], component_names=["store_1"], coverage_rates=[0.95]
+    )
+
+    interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
+    y_true_out, y_pred_out = check_scorer_column_selection(
+        scorer=scorer,
+        y_true=y_true,
+        y_pred=y_pred,
+        pred_type="interval",
+        coverage_rates=[0.95],
+        interval_pattern=interval_pattern,
+    )
+
+    # Should only have sales__store_1 with 0.95 coverage
+    assert set(y_true_out.columns) == {"time", "sales__store_1"}
+    assert set(y_pred_out.columns) == {
+        "time",
+        "sales__store_1_lower_0.95",
+        "sales__store_1_upper_0.95",
+    }
+
+
+def test_check_scorer_column_selection_invalid_panel_group():
+    """Test error when requesting non-existent panel group."""
+
+    from yohou.metrics import MeanAbsoluteError
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+    y_true = pl.DataFrame({"time": times, "sales__store_1": range(5)})
+    y_pred = pl.DataFrame({"time": times, "sales__store_1": range(5)})
+
+    scorer = MeanAbsoluteError(panel_group_names=["revenue"])
+
+    with pytest.raises(ValueError, match="Invalid panel_group_names.*revenue.*not found"):
+        check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="point",
+            coverage_rates=None,
+            interval_pattern=None,
+        )
+
+
+def test_check_scorer_column_selection_invalid_component_global():
+    """Test error when requesting non-existent component in global data."""
+
+    from yohou.metrics import MeanAbsoluteError
+
+    times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+    y_true = pl.DataFrame({"time": times, "sales": range(5)})
+    y_pred = pl.DataFrame({"time": times, "sales": range(5)})
+
+    scorer = MeanAbsoluteError(component_names=["revenue"])
+
+    with pytest.raises(ValueError, match="Invalid component_names.*revenue.*not found"):
+        check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="point",
+            coverage_rates=None,
+            interval_pattern=None,
+        )

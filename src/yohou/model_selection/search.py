@@ -49,7 +49,7 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseForecaster
 from yohou.metrics.base import BaseScorer
-from yohou.utils.validation import validate_data
+from yohou.utils import validate_forecaster_data
 
 from .optuna import Sampler, Storage
 from .split import check_cv
@@ -949,8 +949,8 @@ class SearchCV(BaseForecaster):
         """
         # Validate inputs and set forecaster attributes
         # Note: SearchCV is a meta-estimator that delegates to wrapped forecaster,
-        # so it uses validate_data directly rather than _pre_fit (which handles transformations)
-        y, X, _ = validate_data(self, y=y, X=X, reset=True)
+        # so it uses validate_forecaster_data directly rather than _pre_fit (which handles transformations)
+        y, X, _ = validate_forecaster_data(self, y=y, X=X, reset=True)
 
         # Set forecasting horizon attribute (required by forecaster interface)
         if forecasting_horizon < 1:

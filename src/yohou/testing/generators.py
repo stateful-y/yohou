@@ -21,6 +21,7 @@ from .common import (
 from .forecaster import (
     check_clone_preserves_forecaster_params,
     check_fit_sets_forecaster_attributes,
+    check_forecaster_methods_call_check_is_fitted,
     check_forecaster_not_fitted_error,
     check_forecaster_tags_accessible_before_fit,
     check_forecaster_tags_match_capabilities,
@@ -46,6 +47,26 @@ from .panel import (
 )
 from .point import check_point_prediction_structure, check_point_prediction_types
 from .reduction import check_estimator_parameter, check_reduction_strategy
+from .scorer import (
+    check_scorer_aggregation_methods,
+    check_scorer_coverage_rate_subselection,
+    check_scorer_lower_is_better,
+    check_scorer_methods_call_check_is_fitted,
+    check_scorer_parameter_validation,
+    check_scorer_tags_accessible_before_fit,
+    check_scorer_tags_match_capabilities,
+    check_scorer_tags_static_after_fit,
+)
+from .splitter import (
+    check_splitter_n_splits_consistency,
+    check_splitter_non_overlapping_tests,
+    check_splitter_panel_data_support,
+    check_splitter_parameter_constraints,
+    check_splitter_produces_valid_indices,
+    check_splitter_tags_accessible_before_fit,
+    check_splitter_tags_match_capabilities,
+    check_splitter_tags_static_after_fit,
+)
 from .transformer import (
     check_feature_names_out_match,
     check_fit_idempotent,
@@ -63,6 +84,7 @@ from .transformer import (
     check_tags_match_capabilities,
     check_tags_static_after_fit,
     check_transform_output_structure,
+    check_transformer_methods_call_check_is_fitted,
     check_transformer_preserve_dtypes,
     check_transformers_unfitted_stateless,
     check_update_concatenates_memory,
@@ -163,6 +185,11 @@ def _yield_yohou_transformer_checks(
         "check_transformers_unfitted_stateless",
         check_transformers_unfitted_stateless,
         {"X": X_train},
+    )
+    yield (
+        "check_transformer_methods_call_check_is_fitted",
+        check_transformer_methods_call_check_is_fitted,
+        {"X": X_train, "y": y_train},
     )
 
     # Tag system checks
@@ -359,6 +386,11 @@ def _yield_yohou_forecaster_checks(
     )
     yield "check_prediction_types_property", check_prediction_types_property, {}
     yield "check_clone_preserves_forecaster_params", check_clone_preserves_forecaster_params, {}
+    yield (
+        "check_forecaster_methods_call_check_is_fitted",
+        check_forecaster_methods_call_check_is_fitted,
+        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+    )
 
     # Tag system checks (always run)
     yield (
@@ -490,3 +522,269 @@ def _yield_yohou_forecaster_checks(
         check_metadata_routing_get_metadata_routing,
         {},
     )
+
+
+def _yield_yohou_splitter_checks(
+    splitter,
+    y: pl.DataFrame,
+    X: pl.DataFrame | None = None,
+    tags: dict[str, Any] | None = None,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a splitter based on tags.
+
+    Parameters
+    ----------
+    splitter : BaseSplitter
+        Splitter instance
+    y : pl.DataFrame
+        Target time series with "time" column
+    X : pl.DataFrame, optional
+        Exogenous features
+    tags : dict, optional
+        Splitter metadata tags (if None, auto-detected from __sklearn_tags__):
+        - splitter_type: str | None
+        - supports_panel_data: bool
+        - requires_data_for_n_splits: bool
+        - produces_non_overlapping_tests: bool
+        - stateful: bool
+
+    Yields
+    ------
+    check_name : str
+        Name of the check function
+    check_func : callable
+        Check function to execute
+    check_kwargs : dict
+        Keyword arguments for check function (bundled data)
+
+    """
+    if tags is None:
+        # Get tags from __sklearn_tags__ method
+        sklearn_tags = splitter.__sklearn_tags__()
+        tags = {
+            "splitter_type": sklearn_tags.splitter_tags.splitter_type
+            if sklearn_tags.splitter_tags
+            else None,
+            "supports_panel_data": sklearn_tags.splitter_tags.supports_panel_data
+            if sklearn_tags.splitter_tags
+            else False,
+            "requires_data_for_n_splits": sklearn_tags.splitter_tags.requires_data_for_n_splits
+            if sklearn_tags.splitter_tags
+            else False,
+            "produces_non_overlapping_tests": sklearn_tags.splitter_tags.produces_non_overlapping_tests
+            if sklearn_tags.splitter_tags
+            else True,
+            "stateful": sklearn_tags.splitter_tags.stateful
+            if sklearn_tags.splitter_tags
+            else False,
+        }
+
+    # Tag checks (always yield)
+    yield (
+        "check_splitter_tags_accessible_before_fit",
+        check_splitter_tags_accessible_before_fit,
+        {"splitter": splitter},
+    )
+    yield (
+        "check_splitter_tags_static_after_fit",
+        check_splitter_tags_static_after_fit,
+        {"splitter": splitter, "y": y, "X": X},
+    )
+    expected_tags = {
+        k: v for k, v in tags.items() if k != "stateful"
+    }  # stateful not usually tested
+    yield (
+        "check_splitter_tags_match_capabilities",
+        check_splitter_tags_match_capabilities,
+        {"splitter": splitter, "y": y, "X": X, "expected_tags": expected_tags},
+    )
+
+    # Functionality checks (always yield)
+    yield (
+        "check_splitter_produces_valid_indices",
+        check_splitter_produces_valid_indices,
+        {"y": y, "X": X},
+    )
+    yield (
+        "check_splitter_n_splits_consistency",
+        check_splitter_n_splits_consistency,
+        {"y": y, "X": X},
+    )
+    yield (
+        "check_splitter_non_overlapping_tests",
+        check_splitter_non_overlapping_tests,
+        {"y": y, "X": X},
+    )
+
+    # Panel data support check (conditional)
+    if tags.get("supports_panel_data", False):
+        # Generate panel data for testing
+        y_panel = y.rename({col: f"{col}__group1" for col in y.columns if col != "time"})
+        X_panel = (
+            X.rename({col: f"{col}__group1" for col in X.columns if col != "time"})
+            if X is not None
+            else None
+        )
+        yield (
+            "check_splitter_panel_data_support",
+            check_splitter_panel_data_support,
+            {"y_panel": y_panel, "X_panel": X_panel},
+        )
+
+    # Parameter validation checks (yield parametrized invalid values)
+    splitter_class = type(splitter)
+    if hasattr(splitter_class, "_parameter_constraints"):
+        constraints = splitter_class._parameter_constraints
+        param_test_cases = []
+
+        # Generate invalid values based on parameter constraints
+        if "n_splits" in constraints:
+            param_test_cases.append(("n_splits", [1, 0, -1]))  # Must be >= 2
+        if "test_size" in constraints:
+            param_test_cases.append(("test_size", [0, -1]))  # Must be >= 1
+        if "train_size" in constraints:
+            param_test_cases.append(("train_size", [0, -1]))  # Must be >= 1
+        if "gap" in constraints:
+            param_test_cases.append(("gap", [-1]))  # Must be >= 0
+
+        for param_name, invalid_values in param_test_cases:
+            yield (
+                f"check_splitter_parameter_constraints[{param_name}]",
+                check_splitter_parameter_constraints,
+                {
+                    "splitter_class": splitter_class,
+                    "param_name": param_name,
+                    "invalid_values": invalid_values,
+                },
+            )
+
+
+def _yield_yohou_scorer_checks(
+    scorer,
+    y_truth: pl.DataFrame,
+    y_pred: pl.DataFrame,
+    tags: dict[str, Any] | None = None,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a scorer based on tags.
+
+    Parameters
+    ----------
+    scorer : BaseScorer
+        Scorer instance
+    y_truth : pl.DataFrame
+        Ground truth with "time" column
+    y_pred : pl.DataFrame
+        Predictions with "observed_time" and "time" columns
+    tags : dict, optional
+        Scorer metadata tags (if None, auto-detected from __sklearn_tags__):
+        - prediction_type: str | None
+        - lower_is_better: bool
+        - requires_calibration: bool
+
+    Yields
+    ------
+    check_name : str
+        Name of the check function
+    check_func : callable
+        Check function to execute
+    check_kwargs : dict
+        Keyword arguments for check function (bundled data)
+
+    """
+    if tags is None:
+        # Get tags from __sklearn_tags__ method
+        sklearn_tags = scorer.__sklearn_tags__()
+        tags = {
+            "prediction_type": sklearn_tags.scorer_tags.prediction_type
+            if sklearn_tags.scorer_tags
+            else None,
+            "lower_is_better": sklearn_tags.scorer_tags.lower_is_better
+            if sklearn_tags.scorer_tags
+            else True,
+            "requires_calibration": sklearn_tags.scorer_tags.requires_calibration
+            if sklearn_tags.scorer_tags
+            else False,
+        }
+
+    # Tag checks (always yield)
+    yield (
+        "check_scorer_tags_accessible_before_fit",
+        check_scorer_tags_accessible_before_fit,
+        {"scorer": scorer},
+    )
+    yield (
+        "check_scorer_tags_static_after_fit",
+        check_scorer_tags_static_after_fit,
+        {"scorer": scorer, "y_truth": y_truth, "y_pred": y_pred},
+    )
+    expected_tags = {k: v for k, v in tags.items() if v is not None}
+    yield (
+        "check_scorer_tags_match_capabilities",
+        check_scorer_tags_match_capabilities,
+        {"scorer": scorer, "y_truth": y_truth, "y_pred": y_pred, "expected_tags": expected_tags},
+    )
+
+    # Functionality checks (always yield)
+    yield (
+        "check_scorer_lower_is_better",
+        check_scorer_lower_is_better,
+        {},
+    )
+    yield (
+        "check_scorer_methods_call_check_is_fitted",
+        check_scorer_methods_call_check_is_fitted,
+        {"y_train": y_truth, "y_pred": y_pred},
+    )
+
+    # Aggregation methods check (if scorer has aggregation_method parameter)
+    if hasattr(scorer, "aggregation_method"):
+        aggregation_methods = ["timewise", "componentwise"]
+        yield (
+            "check_scorer_aggregation_methods",
+            check_scorer_aggregation_methods,
+            {"y_truth": y_truth, "y_pred": y_pred, "aggregation_methods": aggregation_methods},
+        )
+
+    # Coverage rate subselection (interval scorers only)
+    if tags.get("prediction_type") == "interval" and "coverage_rate" in y_pred.columns:
+        coverage_rates = y_pred["coverage_rate"].unique().to_list()
+        yield (
+            "check_scorer_coverage_rate_subselection",
+            check_scorer_coverage_rate_subselection,
+            {"y_truth": y_truth, "y_pred_interval": y_pred, "coverage_rates": coverage_rates[:1]},
+        )
+
+    # Parameter validation checks
+    scorer_class = type(scorer)
+    validation_test_cases = [
+        ("panel_group_names", ["nonexistent_group"], "panel_group_names"),
+        ("component_names", ["nonexistent_component"], "component_names"),
+    ]
+
+    # Aggregation method validation
+    if hasattr(scorer, "aggregation_method"):
+        validation_test_cases.append(
+            ("aggregation_method", ["invalid_method"], "aggregation_method")
+        )
+
+    # Add coverage_rates validation for interval scorers
+    if tags.get("prediction_type") == "interval":
+        validation_test_cases.extend(
+            [
+                ("coverage_rates", [1.5], "coverage_rates"),  # Out of range
+                ("coverage_rates", [0.0], "coverage_rates"),  # Out of range
+                ("coverage_rates", [[]], "coverage_rates"),  # Invalid type (nested list)
+            ]
+        )
+
+    for param_name, invalid_value, error_match in validation_test_cases:
+        yield (
+            f"check_scorer_parameter_validation[{param_name}={invalid_value}]",
+            check_scorer_parameter_validation,
+            {
+                "scorer_class": scorer_class,
+                "param_name": param_name,
+                "invalid_value": invalid_value,
+                "error_match": error_match,
+            },
+        )

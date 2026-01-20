@@ -11,8 +11,10 @@ point : Point forecaster checks (2 functions)
 interval : Interval forecaster checks (5 functions)
 reduction : Reduction forecaster checks (2 functions)
 panel : Panel data/cross-learning checks (3 functions)
+splitter : Splitter validation checks (8 functions)
+scorer : Scorer validation checks (10 functions)
 common : Shared checks for metadata routing (2 functions)
-generators : Generator functions for systematic testing (2 functions)
+generators : Generator functions for systematic testing (4 functions)
 metadata_routing : Test utilities for metadata routing validation
 
 Examples
@@ -49,6 +51,7 @@ from .common import (
 from .forecaster import (
     check_clone_preserves_forecaster_params,
     check_fit_sets_forecaster_attributes,
+    check_forecaster_methods_call_check_is_fitted,
     check_forecaster_not_fitted_error,
     check_forecaster_tags_accessible_before_fit,
     check_forecaster_tags_match_capabilities,
@@ -64,6 +67,8 @@ from .forecaster import (
 # Generator functions (2 functions)
 from .generators import (
     _yield_yohou_forecaster_checks,
+    _yield_yohou_scorer_checks,
+    _yield_yohou_splitter_checks,
     _yield_yohou_transformer_checks,
 )
 
@@ -98,6 +103,33 @@ from .point import check_point_prediction_structure, check_point_prediction_type
 
 # Reduction forecaster checks (2 functions)
 from .reduction import check_estimator_parameter, check_reduction_strategy
+
+# Scorer checks (10 functions)
+from .scorer import (
+    check_scorer_aggregation_methods,
+    check_scorer_component_subselection,
+    check_scorer_coverage_rate_subselection,
+    check_scorer_lower_is_better,
+    check_scorer_methods_call_check_is_fitted,
+    check_scorer_panel_subselection,
+    check_scorer_parameter_validation,
+    check_scorer_prediction_type_compatibility,
+    check_scorer_tags_accessible_before_fit,
+    check_scorer_tags_match_capabilities,
+    check_scorer_tags_static_after_fit,
+)
+
+# Splitter checks (8 functions)
+from .splitter import (
+    check_splitter_n_splits_consistency,
+    check_splitter_non_overlapping_tests,
+    check_splitter_panel_data_support,
+    check_splitter_parameter_constraints,
+    check_splitter_produces_valid_indices,
+    check_splitter_tags_accessible_before_fit,
+    check_splitter_tags_match_capabilities,
+    check_splitter_tags_static_after_fit,
+)
 from .transformer import (
     check_feature_names_out_match,
     check_fit_idempotent,
@@ -115,6 +147,7 @@ from .transformer import (
     check_tags_match_capabilities,
     check_tags_static_after_fit,
     check_transform_output_structure,
+    check_transformer_methods_call_check_is_fitted,
     check_transformer_preserve_dtypes,
     check_transformers_unfitted_stateless,
     check_update_concatenates_memory,
@@ -139,6 +172,7 @@ __all__ = [
     "check_tags_match_capabilities",
     "check_tags_static_after_fit",
     "check_transform_output_structure",
+    "check_transformer_methods_call_check_is_fitted",
     "check_transformer_preserve_dtypes",
     "check_transformers_unfitted_stateless",
     "check_update_concatenates_memory",
@@ -146,6 +180,7 @@ __all__ = [
     # Forecaster checks (12)
     "check_clone_preserves_forecaster_params",
     "check_fit_sets_forecaster_attributes",
+    "check_forecaster_methods_call_check_is_fitted",
     "check_forecaster_not_fitted_error",
     "check_forecaster_tags_accessible_before_fit",
     "check_forecaster_tags_match_capabilities",
@@ -172,12 +207,35 @@ __all__ = [
     "check_panel_data",
     "check_panel_invalid_group_raises",
     "check_panel_single_group",
+    # Splitter checks (8)
+    "check_splitter_n_splits_consistency",
+    "check_splitter_non_overlapping_tests",
+    "check_splitter_panel_data_support",
+    "check_splitter_parameter_constraints",
+    "check_splitter_produces_valid_indices",
+    "check_splitter_tags_accessible_before_fit",
+    "check_splitter_tags_match_capabilities",
+    "check_splitter_tags_static_after_fit",
+    # Scorer checks (10)
+    "check_scorer_aggregation_methods",
+    "check_scorer_component_subselection",
+    "check_scorer_coverage_rate_subselection",
+    "check_scorer_lower_is_better",
+    "check_scorer_methods_call_check_is_fitted",
+    "check_scorer_panel_subselection",
+    "check_scorer_parameter_validation",
+    "check_scorer_prediction_type_compatibility",
+    "check_scorer_tags_accessible_before_fit",
+    "check_scorer_tags_match_capabilities",
+    "check_scorer_tags_static_after_fit",
     # Common checks (2)
     "check_metadata_routing_default_request",
     "check_metadata_routing_get_metadata_routing",
-    # Generator functions (2)
+    # Generator functions (4)
     "_yield_yohou_forecaster_checks",
     "_yield_yohou_transformer_checks",
+    "_yield_yohou_splitter_checks",
+    "_yield_yohou_scorer_checks",
     # Metadata routing utilities (6)
     "_Registry",
     "assert_request_equal",

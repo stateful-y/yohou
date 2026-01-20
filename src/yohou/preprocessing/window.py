@@ -7,12 +7,12 @@ import polars as pl
 from pydantic import StrictInt
 from sklearn.base import _fit_context
 from sklearn.utils._param_validation import Interval
-from sklearn.utils.validation import _check_feature_names_in
+from sklearn.utils.validation import _check_feature_names_in, check_is_fitted
 
 from yohou.base import BaseTransformer
+from yohou.utils import validate_transformer_data
 from yohou.utils.tabularization import tabularize
 from yohou.utils.tags import Tags
-from yohou.utils.validation import validate_data
 
 
 class LagTransformer(BaseTransformer):
@@ -53,7 +53,7 @@ class LagTransformer(BaseTransformer):
         return tags
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "LagTransformer":
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "LagTransformer":
         """Fits the transformer and returns it.
 
         Parameters
@@ -65,6 +65,9 @@ class LagTransformer(BaseTransformer):
             Target time series. Ignored and only present for
             API consistency.
 
+        **params : dict
+            Metadata to route to nested estimators.
+
         Returns
         -------
         self
@@ -74,7 +77,7 @@ class LagTransformer(BaseTransformer):
 
         self._observation_horizon = max(self.lags_)
 
-        BaseTransformer.fit(self, X, y)
+        BaseTransformer.fit(self, X, y, **params)
 
         return self
 
@@ -92,7 +95,8 @@ class LagTransformer(BaseTransformer):
             Transformed time series.
 
         """
-        _, X, _ = validate_data(self, y=None, X=X, reset=False, check_continuity=False)
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
 
         X_t = tabularize(X, self.lags_)
 

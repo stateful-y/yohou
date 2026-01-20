@@ -1,6 +1,9 @@
 """Metrics for evaluating interval forecast quality."""
 
 import polars as pl
+from sklearn.utils.validation import check_is_fitted
+
+from yohou.utils import validate_scorer_data
 
 from .base import BaseIntervalScorer
 
@@ -35,8 +38,18 @@ class EmpiricalCoverage(BaseIntervalScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    panel_group_weights : dict or None, default=None
-        Weights for panel groups. See BaseScorer for details.
+    coverage_rates : list of float or None, default=None
+        List of coverage rates to include in scoring. If None, all coverage rates
+        are included. Rates are validated against actual prediction columns during scoring.
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+    panel_group_weight : dict or None, default=None
+        Dictionary mapping panel group names to weights for weighted aggregation.
+        If None, all panel groups weighted equally. Only applicable for panel data.
 
     Attributes
     ----------
@@ -84,13 +97,22 @@ class EmpiricalCoverage(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        panel_group_weights: dict[str, float] | None = None,
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        coverage_rates: list[float] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
             agg_list = ["timewise", "componentwise", "groupwise", "coveragewise"]
 
-        super().__init__(aggregation_method=agg_list, panel_group_weights=panel_group_weights)
+        super().__init__(
+            aggregation_method=agg_list,
+            panel_group_names=panel_group_names,
+            component_names=component_names,
+            coverage_rates=coverage_rates,
+            panel_group_weight=panel_group_weight,
+        )
 
     def score(
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
@@ -116,7 +138,13 @@ class EmpiricalCoverage(BaseIntervalScorer):
             If aggregation_method excludes "coveragewise", returns dict {coverage_rate: empirical_coverage}.
 
         """
-        y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, time_values = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
 
         coverage_rates = self._extract_coverage_rates(y_pred)
         target_columns = self._extract_target_columns(y_truth)
@@ -140,7 +168,7 @@ class EmpiricalCoverage(BaseIntervalScorer):
             scores_per_rate[rate] = pl.DataFrame(rate_data)
 
         # Apply aggregation strategy from base class
-        result = self._aggregate_scores(scores_per_rate)
+        result = self._aggregate_scores(scores_per_rate, time_values=time_values)
 
         # Customize column names for componentwise aggregation if needed
         if (
@@ -198,8 +226,18 @@ class MeanIntervalWidth(BaseIntervalScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    panel_group_weights : dict or None, default=None
-        Weights for panel groups. See BaseScorer for details.
+    coverage_rates : list of float or None, default=None
+        List of coverage rates to include in scoring. If None, all coverage rates
+        are included. Rates are validated against actual prediction columns during scoring.
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+    panel_group_weight : dict or None, default=None
+        Dictionary mapping panel group names to weights for weighted aggregation.
+        If None, all panel groups weighted equally. Only applicable for panel data.
 
     Attributes
     ----------
@@ -247,13 +285,22 @@ class MeanIntervalWidth(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        panel_group_weights: dict[str, float] | None = None,
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        coverage_rates: list[float] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
             agg_list = ["timewise", "componentwise", "groupwise", "coveragewise"]
 
-        super().__init__(aggregation_method=agg_list, panel_group_weights=panel_group_weights)
+        super().__init__(
+            aggregation_method=agg_list,
+            panel_group_names=panel_group_names,
+            component_names=component_names,
+            coverage_rates=coverage_rates,
+            panel_group_weight=panel_group_weight,
+        )
 
     def score(
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
@@ -278,7 +325,13 @@ class MeanIntervalWidth(BaseIntervalScorer):
             If aggregation_method excludes "coveragewise", returns dict {coverage_rate: mean_width}.
 
         """
-        y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, time_values = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
 
         coverage_rates = self._extract_coverage_rates(y_pred)
         target_columns = self._extract_target_columns(y_truth)
@@ -299,7 +352,7 @@ class MeanIntervalWidth(BaseIntervalScorer):
             scores_per_rate[rate] = pl.DataFrame(rate_data)
 
         # Apply aggregation strategy from base class
-        result = self._aggregate_scores(scores_per_rate)
+        result = self._aggregate_scores(scores_per_rate, time_values=time_values)
 
         # Customize column names for componentwise aggregation if needed
         if "componentwise" in (
@@ -354,13 +407,23 @@ class IntervalScore(BaseIntervalScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    panel_group_weights : dict or None, default=None
-        Weights for panel groups. See BaseScorer for details.
+    coverage_rates : list of float or None, default=None
+        List of coverage rates to include in scoring. If None, all coverage rates
+        are included. Rates are validated against actual prediction columns during scoring.
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+    panel_group_weight : dict or None, default=None
+        Dictionary mapping panel group names to weights for weighted aggregation.
+        If None, all panel groups weighted equally. Only applicable for panel data.
 
     Attributes
     ----------
     lower_is_better : bool
-        True for interval score (lower indicates better performance).
+        True for interval score (lower is better).
 
     Examples
     --------
@@ -404,13 +467,22 @@ class IntervalScore(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        panel_group_weights: dict[str, float] | None = None,
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        coverage_rates: list[float] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
             agg_list = ["timewise", "componentwise", "groupwise", "coveragewise"]
 
-        super().__init__(aggregation_method=agg_list, panel_group_weights=panel_group_weights)
+        super().__init__(
+            aggregation_method=agg_list,
+            panel_group_names=panel_group_names,
+            component_names=component_names,
+            coverage_rates=coverage_rates,
+            panel_group_weight=panel_group_weight,
+        )
 
     def score(
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
@@ -435,7 +507,13 @@ class IntervalScore(BaseIntervalScorer):
             If aggregation_method excludes "coveragewise", returns dict {coverage_rate: interval_score}.
 
         """
-        y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, time_values = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
 
         coverage_rates = self._extract_coverage_rates(y_pred)
         target_columns = self._extract_target_columns(y_truth)
@@ -479,7 +557,7 @@ class IntervalScore(BaseIntervalScorer):
             scores_per_rate[rate] = pl.DataFrame(rate_data)
 
         # Apply aggregation strategy from base class
-        result = self._aggregate_scores(scores_per_rate)
+        result = self._aggregate_scores(scores_per_rate, time_values=time_values)
 
         # Customize column names if needed
         if "componentwise" in (
@@ -536,13 +614,23 @@ class PinballLoss(BaseIntervalScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    panel_group_weights : dict or None, default=None
-        Weights for panel groups. See BaseScorer for details.
+    coverage_rates : list of float or None, default=None
+        List of coverage rates to include in scoring. If None, all coverage rates
+        are included. Rates are validated against actual prediction columns during scoring.
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+    panel_group_weight : dict or None, default=None
+        Dictionary mapping panel group names to weights for weighted aggregation.
+        If None, all panel groups weighted equally. Only applicable for panel data.
 
     Attributes
     ----------
     lower_is_better : bool
-        True for pinball loss (lower indicates better performance).
+        True for pinball loss (lower is better).
 
     Examples
     --------
@@ -585,13 +673,22 @@ class PinballLoss(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        panel_group_weights: dict[str, float] | None = None,
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        coverage_rates: list[float] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
             agg_list = ["timewise", "componentwise", "groupwise", "coveragewise"]
 
-        super().__init__(aggregation_method=agg_list, panel_group_weights=panel_group_weights)
+        super().__init__(
+            aggregation_method=agg_list,
+            panel_group_names=panel_group_names,
+            component_names=component_names,
+            coverage_rates=coverage_rates,
+            panel_group_weight=panel_group_weight,
+        )
 
     def _pinball(self, tau: float, y: pl.Series | float, q: pl.Series | float) -> pl.Series | float:
         """Compute pinball loss for a single quantile.
@@ -640,7 +737,13 @@ class PinballLoss(BaseIntervalScorer):
             If aggregate excludes coveragewise, returns dict {coverage_rate: pinball_loss}.
 
         """
-        y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, time_values = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
 
         coverage_rates = self._extract_coverage_rates(y_pred)
         target_columns = self._extract_target_columns(y_truth)
@@ -671,7 +774,7 @@ class PinballLoss(BaseIntervalScorer):
             scores_per_rate[rate] = pl.DataFrame(rate_data)
 
         # Apply aggregation strategy from base class
-        result = self._aggregate_scores(scores_per_rate)
+        result = self._aggregate_scores(scores_per_rate, time_values=time_values)
 
         # Customize column names if needed
         if (
@@ -729,13 +832,23 @@ class CalibrationError(BaseIntervalScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    panel_group_weights : dict or None, default=None
-        Weights for panel groups. See BaseScorer for details.
+    coverage_rates : list of float or None, default=None
+        List of coverage rates to include in scoring. If None, all coverage rates
+        are included. Rates are validated against actual prediction columns during scoring.
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+    panel_group_weight : dict or None, default=None
+        Dictionary mapping panel group names to weights for weighted aggregation.
+        If None, all panel groups weighted equally. Only applicable for panel data.
 
     Attributes
     ----------
     lower_is_better : bool
-        True for calibration error (0 = perfect calibration).
+        True for calibration error (lower is better).
 
     Examples
     --------
@@ -780,13 +893,22 @@ class CalibrationError(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        panel_group_weights: dict[str, float] | None = None,
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        coverage_rates: list[float] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
             agg_list = ["timewise", "componentwise", "groupwise", "coveragewise"]
 
-        super().__init__(aggregation_method=agg_list, panel_group_weights=panel_group_weights)
+        super().__init__(
+            aggregation_method=agg_list,
+            panel_group_names=panel_group_names,
+            component_names=component_names,
+            coverage_rates=coverage_rates,
+            panel_group_weight=panel_group_weight,
+        )
 
     def score(
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
@@ -815,7 +937,13 @@ class CalibrationError(BaseIntervalScorer):
             If fewer than 2 coverage rates are provided.
 
         """
-        y_truth, y_pred = self._validate_inputs(y_truth, y_pred)
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, time_values = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
 
         coverage_rates = self._extract_coverage_rates(y_pred)
 
@@ -852,7 +980,7 @@ class CalibrationError(BaseIntervalScorer):
             scores_per_rate[rate] = pl.DataFrame(rate_data)
 
         # Apply aggregation strategy from base class
-        result = self._aggregate_scores(scores_per_rate)
+        result = self._aggregate_scores(scores_per_rate, time_values=time_values)
 
         # Customize column names if needed
         if (

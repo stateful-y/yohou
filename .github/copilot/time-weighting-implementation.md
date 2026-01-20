@@ -753,7 +753,7 @@ def _check_sample_weight_support(estimator: BaseEstimator) -> bool:
 
 2. **Panel data per-group weighting**: Support `dict[str, time_weight]` for forecasters?
    - **Recommendation**: Yes (check `isinstance(time_weight, dict)` in `_estimator_fit_one`)
-   - Scorers: Global only initially (panel group weights already exist via `panel_group_weights` parameter)
+   - Scorers: Global only initially (panel group weights already exist via `panel_group_weight` parameter)
 
 3. **Estimator compatibility checking**: Raise error if sklearn estimator doesn't support `sample_weight`?
    - **Recommendation**: Yes (fail fast with clear message)

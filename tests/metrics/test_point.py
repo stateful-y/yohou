@@ -9,10 +9,15 @@ from sklearn.exceptions import NotFittedError
 
 from yohou.metrics import (
     MeanAbsoluteError,
+    MeanAbsolutePercentageError,
+    MeanAbsoluteScaledError,
     MeanSquaredError,
+    MedianAbsoluteError,
     RootMeanSquaredError,
     RootMeanSquaredScaledError,
+    SymmetricMeanAbsolutePercentageError,
 )
+from yohou.testing import _yield_yohou_scorer_checks
 
 
 @pytest.fixture
@@ -85,6 +90,95 @@ def y_true_y_pred():
     return y_true, y_pred
 
 
+def run_checks(scorer, y_truth, y_pred):
+    """Helper to run all systematic checks for a scorer."""
+    for check_name, check_func, check_kwargs in _yield_yohou_scorer_checks(scorer, y_truth, y_pred):
+        # Handle checks that expect 'scorer' positionally if not in kwargs
+        if "scorer" not in check_kwargs and "scorer_class" not in check_kwargs:
+            check_func(scorer, **check_kwargs)
+        else:
+            check_func(**check_kwargs)
+
+
+# ============================================================================
+# Systematic Checks for All Point Scorers
+# ============================================================================
+
+
+def test_mae_systematic(y_true_y_pred):
+    """Run systematic checks for MeanAbsoluteError."""
+    y_truth, y_pred = y_true_y_pred
+    scorer = MeanAbsoluteError()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_mse_systematic(y_true_y_pred):
+    """Run systematic checks for MeanSquaredError."""
+    y_truth, y_pred = y_true_y_pred
+    scorer = MeanSquaredError()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_rmse_systematic(y_true_y_pred):
+    """Run systematic checks for RootMeanSquaredError."""
+    y_truth, y_pred = y_true_y_pred
+    scorer = RootMeanSquaredError()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_rmsse_systematic(y_X_factory):
+    """Run systematic checks for RootMeanSquaredScaledError."""
+    y, _ = y_X_factory(length=100, n_targets=1, seed=42)
+    y_train = y[:80]
+    y_test = y[80:]
+
+    # Create predictions
+    y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("observed_time"))
+
+    # Fit scorer with training data
+    scorer = RootMeanSquaredScaledError(seasonality=1)
+    scorer.fit(y_train)
+
+    run_checks(scorer, y_test, y_pred)
+
+
+def test_mape_systematic(y_true_y_pred):
+    """Run systematic checks for MeanAbsolutePercentageError."""
+    y_truth, y_pred = y_true_y_pred
+    scorer = MeanAbsolutePercentageError()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_smape_systematic(y_true_y_pred):
+    """Run systematic checks for SymmetricMeanAbsolutePercentageError."""
+    y_truth, y_pred = y_true_y_pred
+    scorer = SymmetricMeanAbsolutePercentageError()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_mase_systematic(y_X_factory):
+    """Run systematic checks for MeanAbsoluteScaledError."""
+    y, _ = y_X_factory(length=100, n_targets=1, seed=42)
+    y_train = y[:80]
+    y_test = y[80:]
+
+    # Create predictions
+    y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("observed_time"))
+
+    # Fit scorer with training data
+    scorer = MeanAbsoluteScaledError(seasonality=1)
+    scorer.fit(y_train)
+
+    run_checks(scorer, y_test, y_pred)
+
+
+def test_median_absolute_error_systematic(y_true_y_pred):
+    """Run systematic checks for MedianAbsoluteError."""
+    y_truth, y_pred = y_true_y_pred
+    scorer = MedianAbsoluteError()
+    run_checks(scorer, y_truth, y_pred)
+
+
 # ============================================================================
 # RMSE Tests
 # ============================================================================
@@ -97,6 +191,8 @@ def test_rmse_equals_sqrt_mse(y_true_y_pred):
     mse = MeanSquaredError()
     rmse = RootMeanSquaredError()
 
+    mse.fit(y_true)
+    rmse.fit(y_true)
     mse_score = mse.score(y_true, y_pred)
     rmse_score = rmse.score(y_true, y_pred)
 
@@ -113,12 +209,16 @@ def test_rmse_units_match_target(y_true_y_pred):
     rmse = RootMeanSquaredError()
     mse = MeanSquaredError()
 
+    mae.fit(y_true)
+    rmse.fit(y_true)
+    mse.fit(y_true)
     mae_score = mae.score(y_true, y_pred)
     rmse_score = rmse.score(y_true, y_pred)
     mse_score = mse.score(y_true, y_pred)
 
     # RMSE should be between MAE and sqrt(MeanSquaredError) for typical errors
     # RMSE should be closer in magnitude to MAE than to MeanSquaredError
+    assert mae_score > 0, "MAE should be positive"
     assert rmse_score > 0, "RMSE should be positive"
     assert rmse_score < mse_score, (
         f"RMSE ({rmse_score}) should be less than MeanSquaredError ({mse_score})"
@@ -143,6 +243,7 @@ def test_rmse_perfect_prediction():
     )
 
     rmse = RootMeanSquaredError()
+    rmse.fit(y_true)
     score = rmse.score(y_true, y_pred)
 
     assert np.isclose(score, 0.0), f"RMSE for perfect prediction should be 0, got {score}"
@@ -160,6 +261,7 @@ def test_rmse_multiple_columns(y_X_factory):
     y_pred = y_pred.with_columns(observed_time=pl.lit(y["time"][0]))
 
     rmse = RootMeanSquaredError()
+    rmse.fit(y)
     score = rmse.score(y, y_pred)
 
     assert isinstance(score, float), "RMSE should return float"
@@ -197,7 +299,7 @@ def test_rmsse_requires_training_data():
     """RootMeanSquaredScaledError fit() should raise error if y_train is None."""
     rmsse = RootMeanSquaredScaledError(seasonality=1)
 
-    with pytest.raises(ValueError, match="RootMeanSquaredScaledError requires training data"):
+    with pytest.raises(ValueError, match="`y_train` is required for scorer.fit"):
         rmsse.fit(y_train=None)
 
 
@@ -424,6 +526,9 @@ def test_point_scorers_comparison(y_X_factory):
     mse = MeanSquaredError()
     rmse = RootMeanSquaredError()
 
+    mae.fit(y_train)
+    mse.fit(y_train)
+    rmse.fit(y_train)
     mae_score = mae.score(y_test, y_pred)
     mse_score = mse.score(y_test, y_pred)
     rmse_score = rmse.score(y_test, y_pred)
@@ -443,6 +548,7 @@ def test_mae_per_step(y_true_y_pred):
     y_true, y_pred = y_true_y_pred
 
     mae = MeanAbsoluteError(aggregation_method=["componentwise"])
+    mae.fit(y_true)
     result = mae.score(y_true, y_pred)
 
     # Check return type and structure
@@ -464,6 +570,7 @@ def test_mae_per_step(y_true_y_pred):
 
     # Verify aggregated mean matches aggregation_method=['timewise']
     mae_default = MeanAbsoluteError()
+    mae_default.fit(y_true)
     default_score = mae_default.score(y_true, y_pred)
     componentwise_mean = result["mae"].mean()
 
@@ -477,6 +584,7 @@ def test_mse_per_step(y_true_y_pred):
     y_true, y_pred = y_true_y_pred
 
     mse = MeanSquaredError(aggregation_method=["componentwise"])
+    mse.fit(y_true)
     result = mse.score(y_true, y_pred)
 
     # Check return type and structure
@@ -498,6 +606,7 @@ def test_mse_per_step(y_true_y_pred):
 
     # Verify aggregated mean matches aggregation_method=['timewise']
     mse_default = MeanSquaredError()
+    mse_default.fit(y_true)
     default_score = mse_default.score(y_true, y_pred)
     componentwise_mean = result["mse"].mean()
 
@@ -511,6 +620,7 @@ def test_rmse_per_step(y_true_y_pred):
     y_true, y_pred = y_true_y_pred
 
     rmse = RootMeanSquaredError(aggregation_method=["componentwise"])
+    rmse.fit(y_true)
     result = rmse.score(y_true, y_pred)
 
     # Check return type and structure
@@ -533,6 +643,7 @@ def test_rmse_per_step(y_true_y_pred):
     # Verify overall RMSE equals sqrt(mean(per_step_RMSE^2))
     # Note: mean(RMSE_per_step) != RMSE_overall due to non-linearity
     rmse_default = RootMeanSquaredError()
+    rmse_default.fit(y_true)
     default_score = rmse_default.score(y_true, y_pred)
 
     # RMSE_overall = sqrt(mean(MSE_per_step)) = sqrt(mean([4, 1, 4])) = sqrt(3)
@@ -614,6 +725,7 @@ def test_per_step_multiple_columns(y_X_factory):
 
     # Test MeanAbsoluteError componentwise with multiple columns
     mae = MeanAbsoluteError(aggregation_method=["componentwise"])
+    mae.fit(y_train)
     result = mae.score(y_test, y_pred)
 
     assert "mae" in result.columns, "Should have mae column"
@@ -649,3 +761,370 @@ def test_aggregate_parameter_validation():
     # Valid: multiple aggregation methods
     mae_multi = MeanAbsoluteError(aggregation_method=["timewise", "componentwise"])
     assert mae_multi.aggregation_method == ["timewise", "componentwise"]
+
+
+# ============================================================================
+# MAPE Tests
+# ============================================================================
+
+
+def test_mape_basic_computation(y_true_y_pred):
+    """MAPE should compute mean absolute percentage error."""
+    y_true, y_pred = y_true_y_pred
+
+    from yohou.metrics import MeanAbsolutePercentageError
+
+    mape = MeanAbsolutePercentageError()
+    mape.fit(y_true)
+    score = mape.score(y_true, y_pred)
+
+    # Expected: mean(abs([(10-12)/10, (20-19)/20, (30-28)/30])) * 100
+    # = mean([0.2, 0.05, 0.0667]) * 100 ≈ 10.56%
+    assert isinstance(score, float)
+    assert 10 < score < 11  # Rough check
+
+
+def test_mape_epsilon_prevents_division_by_zero():
+    """MAPE epsilon should handle zero actuals."""
+    from yohou.metrics import MeanAbsolutePercentageError
+
+    y_true = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1)],
+            "value": [0.0],  # Zero actual
+        }
+    )
+    y_pred = pl.DataFrame(
+        {
+            "observed_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "value": [10.0],
+        }
+    )
+
+    mape = MeanAbsolutePercentageError(epsilon=1e-8)
+    mape.fit(y_true)
+    score = mape.score(y_true, y_pred)
+
+    # Should not raise, should be finite
+    assert np.isfinite(score)
+
+
+def test_mape_default_epsilon():
+    """MAPE should have default epsilon=1e-8."""
+    from yohou.metrics import MeanAbsolutePercentageError
+
+    mape = MeanAbsolutePercentageError()
+    assert mape.epsilon == 1e-8
+
+
+def test_mape_scale_independent():
+    """MAPE should be scale-independent."""
+    from yohou.metrics import MeanAbsolutePercentageError
+
+    y_true_1 = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [100.0, 200.0],
+        }
+    )
+    y_pred_1 = pl.DataFrame(
+        {
+            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [110.0, 210.0],
+        }
+    )
+
+    # Scale by 10x
+    y_true_2 = y_true_1.with_columns(value=pl.col("value") * 10)
+    y_pred_2 = y_pred_1.with_columns((pl.col("value") * 10).alias("value"))
+
+    mape = MeanAbsolutePercentageError()
+    mape.fit(y_true_1)
+    score_1 = mape.score(y_true_1, y_pred_1)
+    score_2 = mape.score(y_true_2, y_pred_2)
+
+    # Scores should be identical (scale-independent)
+    np.testing.assert_allclose(score_1, score_2, rtol=1e-5)
+
+
+# ============================================================================
+# sMAPE Tests
+# ============================================================================
+
+
+def test_smape_basic_computation(y_true_y_pred):
+    """sMAPE should compute symmetric mean absolute percentage error."""
+    y_true, y_pred = y_true_y_pred
+
+    from yohou.metrics import SymmetricMeanAbsolutePercentageError
+
+    smape = SymmetricMeanAbsolutePercentageError()
+    smape.fit(y_true)
+    score = smape.score(y_true, y_pred)
+
+    assert isinstance(score, float)
+    assert 0 <= score <= 200  # sMAPE is bounded [0, 200]
+
+
+def test_smape_bounded():
+    """sMAPE should be bounded between 0 and 200."""
+    from yohou.metrics import SymmetricMeanAbsolutePercentageError
+
+    y_true = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [100.0, 200.0],
+        }
+    )
+    # Perfect predictions
+    y_pred_perfect = pl.DataFrame(
+        {
+            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [100.0, 200.0],
+        }
+    )
+    # Worst case: predict zero
+    y_pred_worst = pl.DataFrame(
+        {
+            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [0.0, 0.0],
+        }
+    )
+
+    smape = SymmetricMeanAbsolutePercentageError()
+    smape.fit(y_true)
+    score_perfect = smape.score(y_true, y_pred_perfect)
+    score_worst = smape.score(y_true, y_pred_worst)
+
+    # Perfect should be 0, worst should be close to 200
+    assert score_perfect == 0.0
+    assert 195 < score_worst <= 200  # Close to theoretical max
+
+
+def test_smape_epsilon_handles_both_zero():
+    """sMAPE epsilon should handle when both actual and predicted are zero."""
+    from yohou.metrics import SymmetricMeanAbsolutePercentageError
+
+    y_true = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1)],
+            "value": [0.0],
+        }
+    )
+    y_pred = pl.DataFrame(
+        {
+            "observed_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "value": [0.0],
+        }
+    )
+
+    smape = SymmetricMeanAbsolutePercentageError(epsilon=1e-8)
+    smape.fit(y_true)
+    score = smape.score(y_true, y_pred)
+
+    # Should not raise, should be finite
+    assert np.isfinite(score)
+
+
+# ============================================================================
+# MASE Tests
+# ============================================================================
+
+
+def test_mase_basic_computation():
+    """MASE should compute mean absolute scaled error."""
+    from yohou.metrics import MeanAbsoluteScaledError
+
+    y_train = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
+            "value": [10.0, 12.0, 11.0, 13.0, 12.0, 14.0, 13.0, 15.0, 14.0, 16.0],
+        }
+    )
+
+    y_true = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
+            "value": [15.0, 17.0],
+        }
+    )
+
+    y_pred = pl.DataFrame(
+        {
+            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
+            "value": [15.5, 16.5],
+        }
+    )
+
+    mase = MeanAbsoluteScaledError(seasonality=2)
+    mase.fit(y_train)
+    score = mase.score(y_true, y_pred)
+
+    assert isinstance(score, float)
+    assert score > 0
+
+
+def test_mase_requires_fit():
+    """MASE should require fit() before score()."""
+    from yohou.metrics import MeanAbsoluteScaledError
+
+    y_true = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1)],
+            "value": [10.0],
+        }
+    )
+    y_pred = pl.DataFrame(
+        {
+            "observed_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "value": [12.0],
+        }
+    )
+
+    mase = MeanAbsoluteScaledError(seasonality=2)
+
+    with pytest.raises(NotFittedError):
+        mase.score(y_true, y_pred)
+
+
+def test_mase_requires_training_data():
+    """MASE should raise error if fit() called with None."""
+    from yohou.metrics import MeanAbsoluteScaledError
+
+    mase = MeanAbsoluteScaledError(seasonality=2)
+
+    with pytest.raises(ValueError, match="`y_train` is required for scorer.fit"):
+        mase.fit(y_train=None)
+
+
+def test_mase_seasonality_too_large_error():
+    """MASE should raise error if seasonality > training length - 1."""
+    from yohou.metrics import MeanAbsoluteScaledError
+
+    y_train = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [10.0, 20.0, 30.0],
+        }
+    )
+
+    mase = MeanAbsoluteScaledError(seasonality=5)
+
+    with pytest.raises(ValueError, match="Training data length.*must be greater than seasonality"):
+        mase.fit(y_train)
+
+
+def test_mase_scale_independent():
+    """MASE should be scale-independent."""
+    from yohou.metrics import MeanAbsoluteScaledError
+
+    y_train_1 = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
+            "value": [10.0, 12.0, 11.0, 13.0, 12.0, 14.0, 13.0, 15.0, 14.0, 16.0],
+        }
+    )
+    y_true_1 = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
+            "value": [15.0, 17.0],
+        }
+    )
+    y_pred_1 = pl.DataFrame(
+        {
+            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
+            "value": [15.5, 16.5],
+        }
+    )
+
+    # Scale by 100x
+    y_train_2 = y_train_1.with_columns(value=pl.col("value") * 100)
+    y_true_2 = y_true_1.with_columns(value=pl.col("value") * 100)
+    y_pred_2 = y_pred_1.with_columns(value=pl.col("value") * 100)
+
+    mase = MeanAbsoluteScaledError(seasonality=2)
+    mase.fit(y_train_1)
+    score_1 = mase.score(y_true_1, y_pred_1)
+
+    mase.fit(y_train_2)
+    score_2 = mase.score(y_true_2, y_pred_2)
+
+    # Scores should be identical (scale-independent)
+    np.testing.assert_allclose(score_1, score_2, rtol=1e-5)
+
+
+# ============================================================================
+# MedianAbsoluteError Tests
+# ============================================================================
+
+
+def test_median_ae_basic_computation():
+    """MedianAbsoluteError should compute median of absolute errors."""
+    from yohou.metrics import MedianAbsoluteError
+
+    y_true = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [10.0, 20.0, 30.0],
+        }
+    )
+    y_pred = pl.DataFrame(
+        {
+            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [12.0, 19.0, 28.0],
+        }
+    )
+
+    medae = MedianAbsoluteError()
+    medae.fit(y_true)
+    score = medae.score(y_true, y_pred)
+
+    # Errors: [2, 1, 2], median = 2
+    assert isinstance(score, float)
+    assert score == 2.0
+
+
+def test_median_ae_robust_to_outliers():
+    """MedianAbsoluteError should be robust to outliers."""
+    from yohou.metrics import MedianAbsoluteError
+
+    y_true = pl.DataFrame(
+        {
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
+            "value": [10.0, 20.0, 30.0, 40.0, 50.0],
+        }
+    )
+    # One large outlier
+    y_pred = pl.DataFrame(
+        {
+            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
+            "value": [11.0, 21.0, 31.0, 41.0, 100.0],  # Last one is outlier
+        }
+    )
+
+    medae = MedianAbsoluteError()
+    medae.fit(y_true)
+    score_median = medae.score(y_true, y_pred)
+
+    mae = MeanAbsoluteError()
+    mae.fit(y_true)
+    score_mean = mae.score(y_true, y_pred)
+
+    # Median should be less affected by outlier than mean
+    # Errors: [1, 1, 1, 1, 50], median=1, mean=10.8
+    assert score_median < score_mean
+
+
+# ============================================================================
+# MedianAbsoluteError Tests Complete
+# ============================================================================

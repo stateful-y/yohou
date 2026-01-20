@@ -76,7 +76,7 @@ def test_check_update_extends_observations(y_X_factory):
     forecaster.fit(y[:30], X[:30], forecasting_horizon=3)
 
     # Should not raise
-    check_update_extends_observations(forecaster, y[30:40], X[30:40])
+    check_update_extends_observations(forecaster, y[:30], y[30:40], X[:30], X[30:40])
 
 
 def test_check_reset_replaces_observations(y_X_factory):
@@ -86,7 +86,7 @@ def test_check_reset_replaces_observations(y_X_factory):
     forecaster.fit(y[:30], X[:30], forecasting_horizon=3)
 
     # Should not raise
-    check_reset_replaces_observations(forecaster, y[20:40], X[20:40])
+    check_reset_replaces_observations(forecaster, y[:30], y[20:40], X[:30], X[20:40])
 
 
 def test_check_reset_propagates_to_transformers(y_X_factory):
@@ -98,7 +98,7 @@ def test_check_reset_propagates_to_transformers(y_X_factory):
     forecaster.fit(y[:30], X[:30], forecasting_horizon=3)
 
     # Should not raise
-    check_reset_propagates_to_transformers(forecaster, y[20:40], X[20:40])
+    check_reset_propagates_to_transformers(forecaster, y[:30], y[20:40], X[:30], X[20:40])
 
 
 def test_check_forecasting_horizon_validation(y_X_factory):

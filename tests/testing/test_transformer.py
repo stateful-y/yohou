@@ -212,7 +212,8 @@ def test_check_memory_bounded(y_X_factory):
     transformer.fit(X[:20], y[:20])
 
     # Should not raise - check validates memory stays bounded
-    check_memory_bounded(transformer, X[20:40], y[20:40])
+    # X_train=X[:20], X_test=X[20:40], y=y[:20]
+    check_memory_bounded(transformer, X[:20], X[20:40], y[:20])
 
 
 def test_check_tags_accessible_before_fit(y_X_factory):

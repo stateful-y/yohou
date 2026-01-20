@@ -17,13 +17,19 @@ Yohou's forecaster testing infrastructure provides comprehensive, reusable testi
 
 3. **Point vs Interval Forecasters**: Distinct validation for point predictions vs interval predictions with coverage rates
 
-4. **Comprehensive Validation**: 31+ check functions covering fit/predict contracts, time column validation, observation buffer management, tag system validation, composition patterns, and parameter validation
+4. **Comprehensive Validation**: 24 core check functions covering fit/predict contracts, time column validation, observation buffer management, tag system validation, plus 2 metadata routing checks
 
 5. **Parameter Validation Tests**: Dedicated tests ensure `forecasting_horizon` and `coverage_rates` are always validated in fit(), predict(), and update methods
 
 6. **Analytical Tests**: Exact numerical validation for PointReductionForecaster with LinearRegression on known processes (linear trends, AR(1))
 
 7. **Composition Classes**: Dedicated testing for ColumnForecaster composition patterns
+
+**Related Guides**:
+- [Splitter Testing Infrastructure](splitter-testing-infrastructure.md): Cross-validation splitter testing
+- [Scorer Testing Infrastructure](scorer-testing-infrastructure.md): Metrics/scorers testing
+- [Transformer Testing Infrastructure](transformer-testing-infrastructure.md): Transform testing
+- [sklearn Metadata Routing Implementation](sklearn-metadata-routing-implementation.md): Metadata routing patterns
 
 ---
 
@@ -76,7 +82,7 @@ The testing infrastructure consists of three main components that work together 
 
 ### 1. Check Functions Library (`src/yohou/testing/`)
 
-**Purpose**: Reusable library of 30+ validation functions that test forecaster contracts organized by module (forecaster.py, point.py, interval.py, reduction.py, panel.py, common.py)
+**Purpose**: Reusable library of 24 core validation functions that test forecaster contracts organized by module (forecaster.py, point.py, interval.py, reduction.py, panel.py, common.py)
 
 **Key Characteristics**:
 - All functions raise `AssertionError` on failure (never return bool)
@@ -88,7 +94,7 @@ The testing infrastructure consists of three main components that work together 
 
 **Check Categories**:
 
-**Common Forecaster Checks (11 functions)**:
+**Common Forecaster Checks (12 functions)**:
 1. **`check_fit_sets_forecaster_attributes`** - Validates fit() sets required attributes (fit_forecasting_horizon_, interval_, panel_group_names_, local_y_schema_, local_X_schema_, global_X_schema_, _y_observed, _X_observed, _X_t_observed)
 2. **`check_forecaster_not_fitted_error`** - Ensures NotFittedError before fit() when accessing fitted attributes
 3. **`check_predict_time_columns`** - Validates predictions have "observed_time" and "time" columns (note: "predicted_time" was renamed to "time")

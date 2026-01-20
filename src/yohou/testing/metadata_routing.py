@@ -193,7 +193,7 @@ def assert_request_is_empty(metadata_request, exclude=None) -> None:
         props = [
             prop
             for prop, alias in mmr.requests.items()
-            if isinstance(alias, str) or alias is not None
+            if (isinstance(alias, str) or alias is not None) and prop not in exclude
         ]
         assert not props, f"Method {method} has non-empty requests: {props}"
 

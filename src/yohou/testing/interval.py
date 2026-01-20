@@ -98,7 +98,7 @@ def check_interval_bounds(
     from yohou.utils.panel import inspect_locality
 
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon, X=X_test)
 
     coverage_rates = forecaster.fit_coverage_rates_
 
