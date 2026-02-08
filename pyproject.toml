@@ -54,7 +54,7 @@ docs = [
   "mkdocstrings-python==2.0",
   "mkdocs-glightbox==0.5",
   "pymdown-extensions==10.17",
-  "black==25.11",
+  "black==26.1.0",
 ]
 examples = [
   "marimo>=0.19.0",
