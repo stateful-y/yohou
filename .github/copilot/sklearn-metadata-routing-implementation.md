@@ -19,7 +19,7 @@ All core metadata routing infrastructure has been implemented and tested:
 
 2. **Validation with `_raise_for_params()` added**
    - Validates metadata before routing to catch typos early
-   - Implemented in: Decomposer (fit/predict), ColumnForecaster (fit/predict), FeaturePipeline (_check_method_params), FeatureUnion (fit/transform/update_transform), ColumnTransformer (fit_transform/transform/update_transform), SearchCV (score/_get_routed_params_for_fit), CVScorer (__call__)
+   - Implemented in: Decomposer (fit/predict), ColumnForecaster (fit/predict), FeaturePipeline (_check_method_params), FeatureUnion (fit/transform/update_transform), ColumnTransformer (fit_transform/transform/update_transform), GridSearchCV/RandomizedSearchCV (score/_get_routed_params_for_fit), CVScorer (__call__)
 
 3. **Standardized parameter extraction**
    - Changed from `.get().get()` pattern to direct Bunch attribute access
@@ -39,7 +39,7 @@ All core metadata routing infrastructure has been implemented and tested:
 
 6. **Comprehensive test coverage**
    - 31 passing tests in `tests/test_metadata_routing.py`
-   - Tests cover: basic routing, transformers, forecasters, pipelines, SearchCV, composite methods
+   - Tests cover: basic routing, transformers, forecasters, pipelines, GridSearchCV/RandomizedSearchCV, composite methods
    - All meta-estimators verified to route metadata correctly
 
 ### ⚠️ Not Implemented (Deferred)
@@ -402,9 +402,9 @@ Tests verify that metadata routing works correctly across all Yohou components:
 2. **Transformer Routing**: `transform()` and `update_transform()` accept `**params`
 3. **Forecaster Routing**: `fit()`, `predict()`, `update_predict()` accept `**params`
 4. **FeaturePipeline Routing**: Metadata flows through all pipeline steps
-5. **SearchCV Routing**: Metadata routes through cross-validation
+5. **GridSearchCV/RandomizedSearchCV Routing**: Metadata routes through cross-validation
 6. **Composite Methods**: `update_transform` and `update_predict` work correctly
-7. **Integration**: Nested routing scenarios (SearchCV → Forecaster → FeaturePipeline)
+7. **Integration**: Nested routing scenarios (GridSearchCV/RandomizedSearchCV → Forecaster → FeaturePipeline)
 
 #### Test Utilities
 
@@ -565,19 +565,20 @@ pipeline.fit(
 y_pred = pipeline.predict(forecasting_horizon=3)
 ```
 
-### SearchCV with Metadata Routing
+### GridSearchCV/RandomizedSearchCV with Metadata Routing
 
 ```python
-from yohou.model_selection import SearchCV
+from yohou.model_selection import RandomizedSearchCV
 from yohou.metrics import MeanAbsoluteError
-import optuna
+from scipy.stats import uniform
 
 # Hyperparameter search with metadata
-search = SearchCV(
+search = RandomizedSearchCV(
     forecaster=PointReductionForecaster(),
     param_distributions={
-        "estimator__alpha": optuna.distributions.FloatDistribution(0.01, 1.0)
+        "estimator__alpha": uniform(0.01, 1.0)
     },
+    n_iter=10,
     scoring=MeanAbsoluteError(),
     n_trials=20
 )
@@ -643,7 +644,7 @@ y_pred = forecaster.predict(
 **What's Implemented (✅)**:
 - Complete metadata routing infrastructure
 - All base classes have `get_metadata_routing()` implementations
-- Pipelines, FeatureUnion, and SearchCV route metadata correctly
+- Pipelines, FeatureUnion, and GridSearchCV/RandomizedSearchCV route metadata correctly
 - Comprehensive test suite (31 passing tests)
 - Composite methods registered with sklearn
 - Panel data utilities for cross-learning
@@ -729,7 +730,7 @@ def method(self, ..., **params):
 **Applied across all meta-estimators:**
 - FeaturePipeline, FeatureUnion, ColumnTransformer (transformers)
 - Decomposer, ColumnForecaster (forecasters)
-- SearchCV (model selection)
+- GridSearchCV/RandomizedSearchCV (model selection)
 - CVScorer (scoring)
 
 ### Key Differences from sklearn
@@ -806,7 +807,7 @@ While Yohou closely follows sklearn patterns, there are intentional differences:
 All routing patterns tested via `tests/test_metadata_routing.py`:
 
 1. **Unit Tests**: Individual components (forecasters, transformers, pipelines)
-2. **Integration Tests**: Nested scenarios (SearchCV → Pipeline → Forecaster)
+2. **Integration Tests**: Nested scenarios (GridSearchCV/RandomizedSearchCV → Pipeline → Forecaster)
 3. **Edge Cases**: Composite methods, panel data, parallel execution
 4. **Regression Tests**: Ensure routing doesn't break existing functionality
 

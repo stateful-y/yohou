@@ -1,13 +1,15 @@
 """Base classes for forecasting metrics and scoring functions."""
 
 import abc
+import inspect
+from typing import Callable
 
 import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator, _fit_context
 from sklearn.utils._param_validation import StrOptions
 
-from yohou.utils import Tags, validate_scorer_data
+from yohou.utils import Tags, validate_callable_signature, validate_scorer_data
 
 
 class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
@@ -117,6 +119,142 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             raise ValueError("Total panel group weight is zero")
 
         return weighted_sum / total_weight
+
+    def _process_time_weights(
+        self,
+        raw_scores: pl.DataFrame,
+        time_weight: Callable | pl.DataFrame | None,
+        time_values: list | None,
+        group_name: str | None = None,
+    ) -> pl.DataFrame:
+        """Apply time-based weights to raw per-timestep scores.
+
+        Parameters
+        ----------
+        raw_scores : pl.DataFrame
+            Per-timestep per-component scores without "time" column.
+        time_weight : callable, pl.DataFrame, or None
+            Time weighting specification.
+        time_values : list or None
+            Time values corresponding to raw_scores rows.
+        group_name : str or None
+            Panel group name for 2-parameter callables. None for global data.
+
+        Returns
+        -------
+        pl.DataFrame
+            Weighted scores with same shape as raw_scores.
+
+        """
+        if time_weight is None:
+            return raw_scores
+
+        if callable(time_weight):
+            # Validate signature (1 or 2 parameters)
+            validate_callable_signature(time_weight)
+
+            if time_values is None:
+                raise ValueError(
+                    "time_values cannot be None when time_weight is callable"
+                )
+
+            # Reconstruct time Series for callable
+            time_series = pl.Series("time", time_values)
+
+            # Call weight function
+            sig = inspect.signature(time_weight)
+            if len(sig.parameters) == 1:
+                # Global weight function
+                weights_series = time_weight(time_series)
+            elif len(sig.parameters) == 2:
+                # Panel-aware weight function
+                weights_series = time_weight(time_series, group_name)
+            else:
+                raise ValueError(
+                    f"time_weight callable must have 1 or 2 parameters, "
+                    f"got {len(sig.parameters)}"
+                )
+
+            # Validate weights
+            if not isinstance(weights_series, pl.Series):
+                raise ValueError(
+                    f"time_weight callable must return pl.Series, "
+                    f"got {type(weights_series).__name__}"
+                )
+
+            if len(weights_series) != len(raw_scores):
+                raise ValueError(
+                    f"time_weight callable returned {len(weights_series)} weights, "
+                    f"but raw_scores has {len(raw_scores)} rows"
+                )
+
+            # Convert to numpy array for multiplication
+            weights_np = weights_series.to_numpy()
+
+        elif isinstance(time_weight, pl.DataFrame):
+            # DataFrame: join on time and extract weight column
+            if time_values is None:
+                raise ValueError(
+                    "time_values cannot be None when time_weight is DataFrame"
+                )
+
+            # Create DataFrame with time column for joining
+            time_df = pl.DataFrame({"time": time_values})
+
+            # Join on time
+            joined = time_df.join(time_weight, on="time", how="left")
+
+            # Determine which weight column to use
+            if group_name is not None:
+                # Panel data: try group-specific column first, fallback to global
+                group_col = f"{group_name}_weight"
+                if group_col in joined.columns:
+                    weights_series = joined[group_col]
+                elif "weight" in joined.columns:
+                    weights_series = joined["weight"]
+                else:
+                    raise ValueError(
+                        f"time_weight DataFrame missing both '{group_col}' and 'weight' columns"
+                    )
+            else:
+                # Global data: use "weight" column
+                if "weight" not in joined.columns:
+                    raise ValueError(
+                        "time_weight DataFrame must have 'weight' column for global data"
+                    )
+                weights_series = joined["weight"]
+
+            # Convert to numpy array
+            weights_np = weights_series.to_numpy()
+
+        else:
+            raise ValueError(
+                f"time_weight must be callable, pl.DataFrame, or None, "
+                f"got {type(time_weight).__name__}"
+            )
+
+        # Validate weights
+        if np.any(np.isnan(weights_np)):
+            raise ValueError("Time weights contain NaN values")
+        if np.any(weights_np < 0):
+            raise ValueError("Time weights contain negative values")
+        if np.any(np.isinf(weights_np)):
+            raise ValueError("Time weights contain infinite values")
+        if np.sum(weights_np) == 0:
+            raise ValueError("Time weights sum to zero")
+
+        # Normalize weights to sum to number of samples (preserves scale)
+        weights_np = weights_np * (len(weights_np) / np.sum(weights_np))
+
+        # Apply weights to each column (multiply each row by its weight)
+        weighted_scores = raw_scores.with_columns(
+            [
+                (pl.col(col) * weights_np).alias(col)
+                for col in raw_scores.columns
+            ]
+        )
+
+        return weighted_scores
 
     def _validate_parameters(
         self,
@@ -249,7 +387,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     )
 
     @abc.abstractmethod
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> pl.DataFrame:
         """Compute the metric score.
 
         Implementations should validate parameters before validating inputs.

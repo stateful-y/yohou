@@ -48,11 +48,13 @@ from yohou import (
     point_forecaster,
     preprocessing,
     utils,
+    datasets,
 )
 
 __all__ = [
     "analysis",
     "base",
+    "datasets",
     "forecaster",
     "interval_forecaster",
     "metrics",

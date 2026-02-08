@@ -110,9 +110,10 @@ class SeasonalNaive(BasePointForecaster):
             y_pred = self._y_observed.select(~cs.by_name("time"))
             if self.fit_forecasting_horizon_ > self.seasonality:
                 # Number of full repetitions needed
-                n_repeats = (
-                    self.fit_forecasting_horizon_ + self.seasonality - 1
-                ) // self.seasonality
+                n_repeats = int(
+                    (self.fit_forecasting_horizon_ + self.seasonality - 1)
+                    // self.seasonality
+                )
                 y_pred = pl.concat([y_pred] * n_repeats)
 
             y_pred = y_pred.head(self.fit_forecasting_horizon_)

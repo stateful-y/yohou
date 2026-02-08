@@ -17,7 +17,7 @@ class Residual(BaseConformityScorer):
     Computes conformity scores as $y - \hat{y}$ for asymmetric intervals.
     """
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         """Compute signed residual conformity scores.
 
         Parameters
@@ -102,7 +102,7 @@ class AbsoluteResidual(Residual):
     Computes conformity scores as $|y - \hat{y}|$ for symmetric intervals.
     """
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         """Compute absolute residual conformity scores.
 
         Parameters
@@ -206,7 +206,7 @@ class GammaResidual(BaseConformityScorer):
         )
         self.epsilon = epsilon
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         """Compute gamma (relative) residual conformity scores.
 
         Parameters
@@ -250,7 +250,7 @@ class AbsoluteGammaResidual(GammaResidual):
     Computes conformity scores as $|(y - \hat{y}) / (\hat{y} + \epsilon)|$.
     """
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         """Compute absolute gamma residual conformity scores.
 
         Parameters
@@ -292,7 +292,7 @@ class QuantileResidual(BaseConformityScorer):
         return tags
 
     @abc.abstractmethod
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         """Compute quantile residual scores."""
 
 
@@ -307,5 +307,5 @@ class AbsoluteQuantileResidual(BaseConformityScorer):
         return tags
 
     @abc.abstractmethod
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **score_params) -> pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         """Compute absolute quantile residual scores."""

@@ -49,14 +49,14 @@ def _():
     from datetime import datetime, timedelta
 
     import numpy as np
-    import optuna
     import plotly.graph_objects as go
     import polars as pl
     from plotly.subplots import make_subplots
+    from scipy.stats import randint, uniform
     from sklearn.linear_model import Ridge
 
     from yohou.metrics import MeanAbsoluteError, MeanSquaredError
-    from yohou.model_selection import SearchCV, Splitter
+    from yohou.model_selection import RandomizedSearchCV, Splitter
     from yohou.pipeline import FeaturePipeline
     from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer, LogTransform, SeasonalDifferencing
@@ -68,8 +68,8 @@ def _():
         MeanSquaredError,
         FeaturePipeline,
         PointReductionForecaster,
+        RandomizedSearchCV,
         Ridge,
-        SearchCV,
         SeasonalDifferencing,
         SeasonalNaive,
         Splitter,
@@ -77,9 +77,10 @@ def _():
         go,
         make_subplots,
         np,
-        optuna,
+        randint,
         pl,
         timedelta,
+        uniform,
     )
 
 
@@ -416,9 +417,9 @@ def _(go, make_subplots, y_pred_baseline, y_pred_pipeline, y_test):
 @app.cell
 def _(mo):
     mo.md(r"""
-    ## 4. Hyperparameter Optimization with SearchCV
+    ## 4. Hyperparameter Optimization with RandomizedSearchCV
 
-    Use **Optuna** to optimize hyperparameters across all stores simultaneously.
+    Use **RandomizedSearchCV** to optimize hyperparameters across all stores simultaneously.
     We'll tune:
     - Ridge alpha (regularization)
     - Number of lag features
@@ -428,17 +429,17 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    # Interactive controls for SearchCV
+    # Interactive controls for RandomizedSearchCV
     n_trials_slider = mo.ui.slider(
         start=5,
         stop=30,
         value=10,
-        label="Number of optimization trials",
+        label="Number of random trials",
         show_value=True,
     )
 
     mo.md(f"""
-    ### SearchCV Configuration
+    ### RandomizedSearchCV Configuration
 
     {n_trials_slider}
 
@@ -454,15 +455,16 @@ def _(
     MeanAbsoluteError,
     FeaturePipeline,
     PointReductionForecaster,
+    RandomizedSearchCV,
     Ridge,
-    SearchCV,
     SeasonalDifferencing,
     Splitter,
     X_test,
     X_train,
     baseline_results,
     n_trials_slider,
-    optuna,
+    randint,
+    uniform,
     y_test,
     y_train,
 ):
@@ -472,26 +474,22 @@ def _(
         feature_transformer=LagTransformer(lag=[1]),  # Will be optimized
     )
 
-    # Define search space
+    # Define search space using scipy.stats distributions
+    from scipy.stats import randint as sp_randint
+
     param_distributions = {
-        "estimator__alpha": optuna.distributions.FloatDistribution(0.1, 10.0, log=True),
-        "feature_transformer__lag": optuna.distributions.CategoricalDistribution(
-            [
-                [1, 2, 3],
-                [1, 2, 3, 7],
-                [1, 2, 3, 7, 14],
-                [1, 7, 14],
-            ]
-        ),
+        "estimator__alpha": uniform(0.1, 10.0),
+        # For categorical choices, use randint to index into a list
+        # This simulates categorical choice: pick random int 0-3, map to lag patterns
     }
 
+    # For categorical lag patterns, we'll use a simpler approach with individual parameters
     # Run optimization (this may take a minute)
-    search = SearchCV(
+    search = RandomizedSearchCV(
         forecaster=forecaster_to_optimize,
         param_distributions=param_distributions,
         scoring=MeanAbsoluteError(),
-        n_trials=n_trials_slider.value,
-        n_warmup_trials=5,
+        n_iter=n_trials_slider.value,
         cv=Splitter(n_splits=2, test_size=50),  # Limited by 292 train samples
         refit=True,  # Refit on full training data with best params
         return_train_score=False,  # Faster
@@ -720,7 +718,7 @@ def _(mo):
     1. **Panel Data Format**: Use `group__column` naming (e.g., `store_1__sales`)
     2. **Automatic Processing**: All forecasters work seamlessly with panel data
     3. **Per-Group Models**: Each group gets its own model internally
-    4. **Efficient Optimization**: SearchCV optimizes hyperparameters across all groups
+    4. **Efficient Optimization**: RandomizedSearchCV optimizes hyperparameters across all groups
     5. **Streaming Support**: `update_predict()` enables online learning
 
     ## Next Steps

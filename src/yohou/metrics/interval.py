@@ -115,7 +115,7 @@ class EmpiricalCoverage(BaseIntervalScorer):
         )
 
     def score(
-        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
+        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params
     ) -> float | dict[float, float] | pl.DataFrame:
         """Compute empirical coverage rate.
 
@@ -303,7 +303,7 @@ class MeanIntervalWidth(BaseIntervalScorer):
         )
 
     def score(
-        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
+        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params
     ) -> float | dict[float, float] | pl.DataFrame:
         """Compute mean interval width.
 
@@ -485,7 +485,7 @@ class IntervalScore(BaseIntervalScorer):
         )
 
     def score(
-        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
+        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params
     ) -> float | dict[float, float] | pl.DataFrame:
         """Compute interval score.
 
@@ -715,7 +715,7 @@ class PinballLoss(BaseIntervalScorer):
         return loss
 
     def score(
-        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
+        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params
     ) -> float | dict[float, float] | pl.DataFrame:
         """Compute pinball loss.
 
@@ -911,7 +911,7 @@ class CalibrationError(BaseIntervalScorer):
         )
 
     def score(
-        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params
+        self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params
     ) -> float | dict[float, float] | pl.DataFrame:
         """Compute calibration error.
 

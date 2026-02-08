@@ -16,7 +16,7 @@
 #             "ColumnTransformer",
 #             "FeatureUnion",
 #             "FeaturePipeline",
-#             "SearchCV",
+#             "OptunaSearchCV",
 #         ]
 #     ]
 # )

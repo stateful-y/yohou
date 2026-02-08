@@ -57,6 +57,27 @@ from .scorer import (
     check_scorer_tags_match_capabilities,
     check_scorer_tags_static_after_fit,
 )
+from .search import (
+    check_grid_search_exhaustive,
+    check_grid_search_param_grid_validation,
+    check_randomized_search_distributions,
+    check_randomized_search_n_iter,
+    check_randomized_search_reproducibility,
+    check_search_clone_preserves_params,
+    check_search_cv_results_structure,
+    check_search_error_score_handling,
+    check_search_fit_sets_attributes,
+    check_search_method_availability,
+    check_search_multimetric_scoring,
+    check_search_not_fitted_error,
+    check_search_panel_data,
+    check_search_predict_delegates,
+    check_search_refit_false_no_forecaster,
+    check_search_reset_delegates,
+    check_search_return_train_score,
+    check_search_score_delegates,
+    check_search_update_delegates,
+)
 from .splitter import (
     check_splitter_n_splits_consistency,
     check_splitter_non_overlapping_tests,
@@ -788,3 +809,199 @@ def _yield_yohou_scorer_checks(
                 "error_match": error_match,
             },
         )
+
+
+def _yield_yohou_search_checks(
+    search_cv,
+    y_train: pl.DataFrame,
+    X_train: pl.DataFrame | None,
+    y_test: pl.DataFrame,
+    X_test: pl.DataFrame | None,
+    tags: dict[str, Any] | None = None,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a search CV instance based on tags.
+
+    Parameters
+    ----------
+    search_cv : BaseSearchCV
+        Fitted search CV instance (GridSearchCV or RandomizedSearchCV)
+    y_train : pl.DataFrame
+        Training target data with "time" column
+    X_train : pl.DataFrame, optional
+        Training features
+    y_test : pl.DataFrame
+        Test target data
+    X_test : pl.DataFrame, optional
+        Test features
+    tags : dict, optional
+        Search CV metadata tags:
+        - search_type: "grid" | "randomized"
+        - refit: bool (default True)
+        - multimetric: bool (default False)
+        - supports_panel_data: bool (default True)
+
+    Yields
+    ------
+    check_name : str
+        Name of the check function
+    check_func : callable
+        Check function to execute
+    check_kwargs : dict
+        Keyword arguments for check function (bundled data)
+
+    """
+    if tags is None:
+        # Infer tags from search CV instance
+        from yohou.model_selection import GridSearchCV, RandomizedSearchCV
+
+        tags = {
+            "search_type": "grid" if isinstance(search_cv, GridSearchCV) else "randomized",
+            "refit": getattr(search_cv, "refit", True),
+            "multimetric": isinstance(getattr(search_cv, "scoring", None), dict),
+            "supports_panel_data": True,  # All search CVs support panel data
+        }
+
+    # Common search CV checks (always yield)
+    yield (
+        "check_search_fit_sets_attributes",
+        check_search_fit_sets_attributes,
+        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+    )
+    yield (
+        "check_search_not_fitted_error",
+        check_search_not_fitted_error,
+        {"y": y_train, "X": X_train},
+    )
+    yield (
+        "check_search_cv_results_structure",
+        check_search_cv_results_structure,
+        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+    )
+    yield (
+        "check_search_clone_preserves_params",
+        check_search_clone_preserves_params,
+        {},
+    )
+    yield (
+        "check_search_error_score_handling",
+        check_search_error_score_handling,
+        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+    )
+
+    # refit checks
+    if tags.get("refit", True):
+        # Delegation checks (only when refit=True)
+        yield (
+            "check_search_predict_delegates",
+            check_search_predict_delegates,
+            {"y_train": y_train, "y_test": y_test, "X_train": X_train, "X_test": X_test},
+        )
+        
+        # Update/reset checks (need enough data)
+        if len(y_test) >= 10:
+            y_update = y_test[:3]
+            X_update = X_test[:3] if X_test is not None else None
+            yield (
+                "check_search_update_delegates",
+                check_search_update_delegates,
+                {"y_train": y_train, "y_update": y_update, "X_train": X_train, "X_update": X_update},
+            )
+            
+            y_reset = y_test[:10]
+            X_reset = X_test[:10] if X_test is not None else None
+            yield (
+                "check_search_reset_delegates",
+                check_search_reset_delegates,
+                {"y_train": y_train, "y_reset": y_reset, "X_train": X_train, "X_reset": X_reset},
+            )
+        
+        yield (
+            "check_search_score_delegates",
+            check_search_score_delegates,
+            {"y_train": y_train, "y_test": y_test, "X_train": X_train, "X_test": X_test},
+        )
+    else:
+        # refit=False checks
+        yield (
+            "check_search_refit_false_no_forecaster",
+            check_search_refit_false_no_forecaster,
+            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        )
+
+    # Method availability checks (always yield)
+    yield (
+        "check_search_method_availability",
+        check_search_method_availability,
+        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+    )
+
+    # Multi-metric checks
+    if tags.get("multimetric", False):
+        yield (
+            "check_search_multimetric_scoring",
+            check_search_multimetric_scoring,
+            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        )
+
+    # Return train score check (parameterized)
+    yield (
+        "check_search_return_train_score",
+        check_search_return_train_score,
+        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+    )
+
+    # GridSearchCV-specific checks
+    if tags.get("search_type") == "grid":
+        yield (
+            "check_grid_search_exhaustive",
+            check_grid_search_exhaustive,
+            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        )
+        yield (
+            "check_grid_search_param_grid_validation",
+            check_grid_search_param_grid_validation,
+            {},
+        )
+
+    # RandomizedSearchCV-specific checks
+    if tags.get("search_type") == "randomized":
+        yield (
+            "check_randomized_search_n_iter",
+            check_randomized_search_n_iter,
+            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        )
+        
+        # Reproducibility check (only if random_state is set)
+        if hasattr(search_cv, "random_state") and search_cv.random_state is not None:
+            yield (
+                "check_randomized_search_reproducibility",
+                check_randomized_search_reproducibility,
+                {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+            )
+        
+        yield (
+            "check_randomized_search_distributions",
+            check_randomized_search_distributions,
+            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        )
+
+    # Panel data checks (if panel data available)
+    if tags.get("supports_panel_data", True):
+        from yohou.utils.panel import inspect_locality
+
+        _, y_panel_groups = inspect_locality(y_train)
+        if len(y_panel_groups) > 0:
+            # Extract first group name for testing
+            panel_group_names = list(y_panel_groups.keys())[:1]
+            yield (
+                "check_search_panel_data",
+                check_search_panel_data,
+                {
+                    "y_train": y_train,
+                    "y_test": y_test,
+                    "X_train": X_train,
+                    "X_test": X_test,
+                    "panel_group_names": panel_group_names,
+                },
+            )
+

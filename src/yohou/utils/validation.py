@@ -807,6 +807,11 @@ def validate_column_names(df: pl.DataFrame) -> None:
     # Valid: store_1__sales, my_store__my_sales
     # Invalid: store___sales (underscore adjacent to __), _store__sales, store__sales_
     # Strategy: split on __, check parts don't start/end with _ and are non-empty
+    
+    # Handle None case
+    if df is None:
+        return
+    
     for col_name in df.columns:
         if col_name == "time":
             continue

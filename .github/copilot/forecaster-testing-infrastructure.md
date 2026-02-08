@@ -335,8 +335,8 @@ def test_my_forecaster_specific_behavior(y_X_factory):
 - Supports parallel execution via `n_jobs`
 - NOT yet fully tested - composition checks need implementation
 
-**SearchCV** (`src/yohou/model_selection/search.py`):
-- Meta-forecaster wrapper extending `BaseForecaster`
+**GridSearchCV/RandomizedSearchCV** (`src/yohou/model_selection/search.py`):
+- Meta-forecaster wrappers extending `BaseForecaster`
 - Implements dynamic method availability via `_search_forecaster_has(attr)` pattern
 - Conditionally exposes `predict()`, `predict_interval()`, `update_predict()`, `update_predict_interval()` based on `best_forecaster_.prediction_types`
 - All methods accept `panel_group_names` parameter (list of group prefixes or None for all)
@@ -387,7 +387,7 @@ def test_my_forecaster_specific_behavior(y_X_factory):
 
 **Composition Classes**:
 - **ColumnForecaster**: Applies different forecasters to different target columns, concatenates predictions
-- **SearchCV** (`src/yohou/model_selection/search.py`): Meta-forecaster wrapper for hyperparameter optimization
+- **GridSearchCV/RandomizedSearchCV** (`src/yohou/model_selection/search.py`): Meta-forecaster wrappers for hyperparameter optimization
   - Uses `_search_forecaster_has(attr)` pattern following sklearn's `_estimator_has` for conditional method availability
   - Methods only available when `refit=True` and after fitting
   - Supports both point and interval forecasters through `prediction_types` checking
@@ -427,13 +427,13 @@ def test_linear_regression_ar1_process():
 
 ### Meta-Forecaster Testing Pattern
 
-**Meta-forecasters** like SearchCV and Decomposer wrap other forecasters and delegate method calls. They require special testing considerations:
+**Meta-forecasters** like GridSearchCV/RandomizedSearchCV and Decomposer wrap other forecasters and delegate method calls. They require special testing considerations:
 
-**SearchCV Testing Pattern**:
+**Search CV Testing Pattern**:
 ```python
 def test_search_cv_method_availability():
     """Test methods only available after fit with refit=True."""
-    search = SearchCV(forecaster=PointReductionForecaster(), refit=True)
+    search = GridSearchCV(forecaster=PointReductionForecaster(), param_grid={}, refit=True)
 
     # Before fit: methods should not be available
     assert not hasattr(search, 'predict')
@@ -445,7 +445,7 @@ def test_search_cv_method_availability():
 
 def test_search_cv_interval_forecaster():
     """Test interval-specific methods with interval forecaster."""
-    search = SearchCV(forecaster=IntervalReductionForecaster(), refit=True)
+    search = GridSearchCV(forecaster=IntervalReductionForecaster(), param_grid={}, refit=True)
     search.fit(y, X, forecasting_horizon=3)
 
     # Should have interval methods

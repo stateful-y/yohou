@@ -28,15 +28,12 @@ classifiers = [
 dependencies = [
     "scikit-learn>=1.6.0",
     "scipy>=1.13",
-    "numpy>=1.26",
     "polars>=0.20",
-    "narwhals",
-    "optuna>=3.5,<4.0",
     "plotly>=5.19",
     "pydantic>=2.6",
     "tables>=3.9",
-    "marimo>=0.19.0",
     "pyzmq>=27.1.0",
+    "pyarrow>=14.0.0",
 ]
 
 [project.urls]
@@ -48,6 +45,7 @@ dev = [
   { include-group = "docs" },
   { include-group = "tests" },
   { include-group = "fix" },
+  { include-group = "examples" },
 ]
 docs = [
   "mkdocs-material==9.7",
@@ -59,7 +57,7 @@ docs = [
   "black==25.11",
 ]
 examples = [
-  "marimo",
+  "marimo>=0.19.0",
 ]
 fix = [
   "pre-commit-uv>=4.1",

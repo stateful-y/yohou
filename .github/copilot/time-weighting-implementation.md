@@ -481,16 +481,16 @@ def test_reduction_forecaster_time_weight_affects_fit():
 
 ```python
 def test_searchcv_with_time_weight_forecaster(y_X_factory):
-    """Test time_weight propagates through SearchCV to forecaster.fit()."""
-    import optuna
-    from yohou.model_selection import SearchCV
+    """Test time_weight propagates through RandomizedSearchCV to forecaster.fit()."""
+    from scipy.stats import uniform
+    from yohou.model_selection import RandomizedSearchCV
     from yohou.utils.weighting import exponential_decay_weight
 
     y, X = y_X_factory(length=100, n_targets=1, seed=42)
 
-    search = SearchCV(
+    search = RandomizedSearchCV(
         forecaster=PointReductionForecaster(),
-        param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.1, 1.0)},
+        param_distributions={"estimator__alpha": uniform(0.1, 1.0)},
         scoring=MeanAbsoluteError(),
         n_trials=5,
         cv=SlidingWindowSplitter(window_size=50, horizon=10, step=10)
@@ -632,16 +632,18 @@ weights = weights / weights.sum() * n_samples  # Sum = n_samples
 - Declare `time_weight` as **explicit parameter** (not in `**params`)
 - Reason: API discoverability, special handling required
 
-**SearchCV routing**:
+**GridSearchCV/RandomizedSearchCV routing**:
 - `time_weight` passed in `fit()` → routed to forecaster's `fit()` (training-time)
 - `time_weight` passed in `score()` → routed to scorer's `score()` (evaluation-time)
 - **Different `time_weight` values can be used for training vs evaluation**
 
 **Example**:
 ```python
-search = SearchCV(
+search = RandomizedSearchCV(
     forecaster=PointReductionForecaster(),
+    param_distributions={"estimator__alpha": uniform(0.01, 1.0)},
     scoring=MeanAbsoluteError(),
+    n_iter=10,
     ...
 )
 
@@ -725,7 +727,7 @@ def _check_sample_weight_support(estimator: BaseEstimator) -> bool:
 ### Phase 3: Testing
 1. Unit tests for scorer weighting (DataFrame/callable/None formats)
 2. Unit tests for forecaster weighting (single series + panel data)
-3. Integration tests for SearchCV routing (both fit and score)
+3. Integration tests for GridSearchCV/RandomizedSearchCV routing (both fit and score)
 4. Tests for weighting utility functions
 5. Effect verification tests (weighted vs unweighted predictions differ)
 
@@ -832,12 +834,13 @@ time_weight = {
 forecaster.fit(y_panel, forecasting_horizon=5, time_weight=time_weight)
 ```
 
-### Unified Workflow (SearchCV)
+### Unified Workflow (RandomizedSearchCV)
 
 ```python
-from yohou.model_selection import SearchCV
+from scipy.stats import uniform
+from yohou.model_selection import RandomizedSearchCV
 
-search = SearchCV(
+search = RandomizedSearchCV(
     forecaster=PointReductionForecaster(),
     scoring=MeanAbsoluteError(),
     ...
@@ -866,7 +869,7 @@ search.score(
 - Metadata routing guide: `.github/copilot/sklearn-metadata-routing-implementation.md`
 - Tabularization utility: [src/yohou/utils/tabularization.py](src/yohou/utils/tabularization.py)
 - Weighting utilities: [src/yohou/utils/weighting.py](src/yohou/utils/weighting.py) (to be created)
-- SearchCV implementation: [src/yohou/model_selection/search.py](src/yohou/model_selection/search.py)
+- GridSearchCV/RandomizedSearchCV implementation: [src/yohou/model_selection/search.py](src/yohou/model_selection/search.py)
 - Cross-validation: [src/yohou/model_selection/split.py](src/yohou/model_selection/split.py)
 
 ---

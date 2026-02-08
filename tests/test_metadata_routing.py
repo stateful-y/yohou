@@ -9,7 +9,7 @@ Test Categories:
 2. Transformer Routing (transform, update_transform)
 3. Forecaster Routing (fit, predict, update_predict)
 4. FeaturePipeline Routing (FeaturePipeline, FeatureUnion, ColumnTransformer)
-5. SearchCV Routing (routing through cross-validation)
+5. GridSearchCV Routing (routing through cross-validation)
 6. Error Handling (UnsetMetadataPassedError, validation)
 7. Integration Tests (nested routing scenarios)
 8. Composite Methods Tests (update_transform, update_predict registration)
@@ -23,7 +23,7 @@ from sklearn.linear_model import Ridge
 from sklearn.utils.metadata_routing import MetadataRequest, MetadataRouter
 
 from yohou.metrics import MeanAbsoluteError
-from yohou.model_selection import SearchCV
+from yohou.model_selection import GridSearchCV
 from yohou.pipeline import ColumnTransformer, FeaturePipeline, FeatureUnion
 from yohou.point_forecaster import PointReductionForecaster, SeasonalNaive
 from yohou.preprocessing import SeasonalDifferencing
@@ -423,16 +423,14 @@ def test_columntransformer_update_transform(y_X_factory):
 
 
 def test_searchcv_get_metadata_routing(y_X_factory):
-    """SearchCV should implement get_metadata_routing."""
+    """GridSearchCV should implement get_metadata_routing."""
     y, X = y_X_factory(length=50, n_targets=1)
-    import optuna
 
-    search = SearchCV(
+    search = GridSearchCV(
         forecaster=SeasonalNaive(),
-        param_distributions={"seasonality": optuna.distributions.IntDistribution(1, 5)},
+        param_grid={"seasonality": [1, 3, 5]},
         scoring=MeanAbsoluteError(),
-        n_trials=2,
-        n_warmup_trials=1,
+        cv=2,
     )
 
     assert hasattr(search, "get_metadata_routing")
@@ -441,16 +439,14 @@ def test_searchcv_get_metadata_routing(y_X_factory):
 
 
 def test_searchcv_fits_with_metadata(y_X_factory):
-    """SearchCV should work with metadata routing enabled."""
+    """GridSearchCV should work with metadata routing enabled."""
     y, X = y_X_factory(length=50, n_targets=1)
-    import optuna
 
-    search = SearchCV(
+    search = GridSearchCV(
         forecaster=SeasonalNaive(),
-        param_distributions={"seasonality": optuna.distributions.IntDistribution(1, 5)},
+        param_grid={"seasonality": [1, 3, 5]},
         scoring=MeanAbsoluteError(),
-        n_trials=2,
-        n_warmup_trials=1,
+        cv=2,
     )
 
     # Should fit successfully
@@ -463,19 +459,16 @@ def test_searchcv_fits_with_metadata(y_X_factory):
 
 
 def test_searchcv_update_predict(y_X_factory):
-    """SearchCV.update_predict should route metadata."""
+    """GridSearchCV.update_predict should route metadata."""
     y, X = y_X_factory(length=50, n_targets=1)
     y_train, y_test = y[:-10], y[-10:]
     X_train, X_test = X[:-10], X[-10:]
 
-    import optuna
-
-    search = SearchCV(
+    search = GridSearchCV(
         forecaster=SeasonalNaive(),
-        param_distributions={"seasonality": optuna.distributions.IntDistribution(1, 5)},
+        param_grid={"seasonality": [1, 3, 5]},
         scoring=MeanAbsoluteError(),
-        n_trials=2,
-        n_warmup_trials=1,
+        cv=2,
     )
     search.fit(y_train, X_train, forecasting_horizon=3)
 
@@ -536,9 +529,8 @@ def test_cloning_preserves_routing_state(y_X_factory):
 
 
 def test_nested_pipeline_with_searchcv(y_X_factory):
-    """Test deeply nested routing: SearchCV -> Reduction Forecaster with FeaturePipeline."""
+    """Test deeply nested routing: GridSearchCV -> Reduction Forecaster with FeaturePipeline."""
     y, X = y_X_factory(length=50, n_targets=1, n_features=1)
-    import optuna
     from sklearn.linear_model import Ridge
 
     # FeaturePipeline as feature transformer
@@ -551,12 +543,11 @@ def test_nested_pipeline_with_searchcv(y_X_factory):
     # Reduction forecaster using pipeline
     forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=feature_pipeline)
 
-    search = SearchCV(
+    search = GridSearchCV(
         forecaster=forecaster,
-        param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.01, 1.0)},
+        param_grid={"estimator__alpha": [0.01, 0.1, 1.0]},
         scoring=MeanAbsoluteError(),
-        n_trials=2,
-        n_warmup_trials=1,
+        cv=2,
     )
 
     # Should fit successfully through nested routing

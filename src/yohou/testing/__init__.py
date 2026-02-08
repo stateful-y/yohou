@@ -13,8 +13,9 @@ reduction : Reduction forecaster checks (2 functions)
 panel : Panel data/cross-learning checks (3 functions)
 splitter : Splitter validation checks (8 functions)
 scorer : Scorer validation checks (10 functions)
+search : Search CV validation checks (19 functions)
 common : Shared checks for metadata routing (2 functions)
-generators : Generator functions for systematic testing (4 functions)
+generators : Generator functions for systematic testing (5 functions)
 metadata_routing : Test utilities for metadata routing validation
 
 Examples
@@ -64,10 +65,11 @@ from .forecaster import (
     check_update_extends_observations,
 )
 
-# Generator functions (2 functions)
+# Generator functions (5 functions)
 from .generators import (
     _yield_yohou_forecaster_checks,
     _yield_yohou_scorer_checks,
+    _yield_yohou_search_checks,
     _yield_yohou_splitter_checks,
     _yield_yohou_transformer_checks,
 )
@@ -117,6 +119,29 @@ from .scorer import (
     check_scorer_tags_accessible_before_fit,
     check_scorer_tags_match_capabilities,
     check_scorer_tags_static_after_fit,
+)
+
+# Search CV checks (19 functions)
+from .search import (
+    check_grid_search_exhaustive,
+    check_grid_search_param_grid_validation,
+    check_randomized_search_distributions,
+    check_randomized_search_n_iter,
+    check_randomized_search_reproducibility,
+    check_search_clone_preserves_params,
+    check_search_cv_results_structure,
+    check_search_error_score_handling,
+    check_search_fit_sets_attributes,
+    check_search_method_availability,
+    check_search_multimetric_scoring,
+    check_search_not_fitted_error,
+    check_search_panel_data,
+    check_search_predict_delegates,
+    check_search_refit_false_no_forecaster,
+    check_search_reset_delegates,
+    check_search_return_train_score,
+    check_search_score_delegates,
+    check_search_update_delegates,
 )
 
 # Splitter checks (8 functions)
@@ -228,14 +253,35 @@ __all__ = [
     "check_scorer_tags_accessible_before_fit",
     "check_scorer_tags_match_capabilities",
     "check_scorer_tags_static_after_fit",
+    # Search CV checks (19)
+    "check_grid_search_exhaustive",
+    "check_grid_search_param_grid_validation",
+    "check_randomized_search_distributions",
+    "check_randomized_search_n_iter",
+    "check_randomized_search_reproducibility",
+    "check_search_clone_preserves_params",
+    "check_search_cv_results_structure",
+    "check_search_error_score_handling",
+    "check_search_fit_sets_attributes",
+    "check_search_method_availability",
+    "check_search_multimetric_scoring",
+    "check_search_not_fitted_error",
+    "check_search_panel_data",
+    "check_search_predict_delegates",
+    "check_search_refit_false_no_forecaster",
+    "check_search_reset_delegates",
+    "check_search_return_train_score",
+    "check_search_score_delegates",
+    "check_search_update_delegates",
     # Common checks (2)
     "check_metadata_routing_default_request",
     "check_metadata_routing_get_metadata_routing",
-    # Generator functions (4)
+    # Generator functions (5)
     "_yield_yohou_forecaster_checks",
     "_yield_yohou_transformer_checks",
     "_yield_yohou_splitter_checks",
     "_yield_yohou_scorer_checks",
+    "_yield_yohou_search_checks",
     # Metadata routing utilities (6)
     "_Registry",
     "assert_request_equal",

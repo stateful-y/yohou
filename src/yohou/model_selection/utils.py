@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numbers
-import sys
 import time
 import warnings
 from contextlib import suppress
@@ -11,18 +10,8 @@ from traceback import format_exc
 from typing import Any
 
 import numpy as np
-import optuna
 import polars as pl
 from joblib import logger
-from optuna import exceptions
-from optuna import trial as trial_module
-from optuna.storages._heartbeat import is_heartbeat_enabled
-from optuna.study._optimize import (
-    _log_failed_trial,
-    _logger,
-)
-from optuna.study._tell import STUDY_TELL_WARNING_KEY, _tell_with_warning
-from optuna.trial import TrialState
 from sklearn.base import clone
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
@@ -83,6 +72,8 @@ def _check_scoring(
             raise ValueError(
                 f"Non-scorer types were found in the values of the given dict. scoring={scoring!r}"
             )
+        
+        scorers = scoring  # Return the dict as-is
 
     else:
         raise ValueError(
@@ -117,7 +108,24 @@ class _MultimetricScorer:
         self._scorers = scorers
         self._raise_exc = raise_exc
 
-    def __call__(self, *args: object, **kwargs: object) -> dict[str, float | str]:
+    def fit(self, y: pl.DataFrame) -> "_MultimetricScorer":
+        """Fit all scorers that have a fit method.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series used for fitting stateful scorers.
+
+        Returns
+        -------
+        self
+        """
+        for scorer in self._scorers.values():
+            if hasattr(scorer, "fit"):
+                scorer.fit(y)
+        return self
+
+    def __call__(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **kwargs: object) -> dict[str, float | str]:
         """Evaluate predicted target values."""
         scores: dict[str, float | str] = {}
 
@@ -128,7 +136,7 @@ class _MultimetricScorer:
                 params = routed_params.get(name)
                 if params is None:
                     raise ValueError(f"Missing routing params for scorer '{name}'")
-                scores[name] = scorer(*args, **params.score)
+                scores[name] = scorer(y_truth, y_pred, **params.score)
             except Exception as e:
                 if self._raise_exc:
                     raise e
@@ -148,7 +156,15 @@ class _MultimetricScorer:
             A :class:`~utils.metadata_routing.MetadataRouter` encapsulating
             routing information.
         """
-        return MetadataRouter(owner=self).add(**self._scorers, method_mapping="score")
+        from sklearn.utils.metadata_routing import MethodMapping
+
+        router = MetadataRouter(owner=self)
+        for name, scorer in self._scorers.items():
+            router.add(
+                **{name: scorer},
+                method_mapping=MethodMapping().add(caller="score", callee="score"),
+            )
+        return router
 
 
 def _fit_and_score(
@@ -424,8 +440,10 @@ def _score(
     scores: float | dict[str, float | str] | str
     try:
         y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
-        scorer.fit(y_train)
-        scores = scorer(y_truth=y_test, y_pred=y_pred, **score_params)
+        # Only fit scorer if it has a fit method (stateful scorers)
+        if hasattr(scorer, "fit"):
+            scorer.fit(y_train)
+        scores = scorer(y_test, y_pred, **score_params)
 
     except Exception:
         if isinstance(scorer, _MultimetricScorer):
@@ -488,7 +506,8 @@ def _score(
             # Check for DataFrame in dict values
             if isinstance(score, pl.DataFrame):
                 msg = (
-                    f"Scorer '{name}' with aggregation_method != 'all' cannot be used with SearchCV. "
+                    f"Scorer '{name}' with aggregation_method != 'all' "
+                    "cannot be used with SearchCV. "
                     "SearchCV requires scalar scores for optimization. "
                     f"Please set aggregation_method='all' on scorer '{name}'."
                 )
@@ -516,86 +535,3 @@ def _score(
             raise ValueError(error_msg % (scores, type(scores), scorer))
         scores = float(scores)
     return scores
-
-
-def _run_trials_batch(
-    study: "optuna.Study",
-    batch_func: "optuna.study.study.ObjectiveFuncType",
-    i_trial: int,
-    n_trials_per_batch: int,
-    catch: tuple[type[Exception], ...],
-) -> trial_module.FrozenTrial:
-    """Run a batch of Optuna trials."""
-    if is_heartbeat_enabled(study._storage):
-        optuna.storages.fail_stale_trials(study)
-
-    trial_batch = [study.ask() for _ in range(n_trials_per_batch)]
-
-    state: TrialState | None = None
-    batch_value_or_values: Any | None = None
-    func_err: Exception | KeyboardInterrupt | None = None
-    func_err_fail_exc_info: Any | None = None
-
-    try:
-        batch_value_or_values, results = batch_func(trial_batch, i_trial)
-
-    except exceptions.TrialPruned as e:
-        state = TrialState.PRUNED
-        func_err = e
-
-    except (Exception, KeyboardInterrupt) as e:
-        state = TrialState.FAIL
-        func_err = e
-        func_err_fail_exc_info = sys.exc_info()
-
-    for i_trial, trial in enumerate(trial_batch):
-        value_or_values = None
-        if batch_value_or_values is not None:
-            value_or_values = batch_value_or_values[i_trial]
-
-        # `_tell_with_warning` may raise during trial post-processing.
-        try:
-            frozen_trial = _tell_with_warning(
-                study=study,
-                trial=trial,
-                value_or_values=value_or_values,
-                state=state,
-                suppress_warning=True,
-            )
-
-        except Exception:
-            frozen_trial = study._storage.get_trial(trial._trial_id)
-            raise
-
-        finally:
-            if frozen_trial.state == TrialState.COMPLETE:
-                study._log_completed_trial(frozen_trial)
-            elif frozen_trial.state == TrialState.PRUNED:
-                _logger.info("Trial {} pruned. {}".format(frozen_trial.number, str(func_err)))
-            elif frozen_trial.state == TrialState.FAIL:
-                if func_err is not None:
-                    _log_failed_trial(
-                        frozen_trial,
-                        repr(func_err),
-                        exc_info=func_err_fail_exc_info,
-                        value_or_values=value_or_values,
-                    )
-                elif STUDY_TELL_WARNING_KEY in frozen_trial.system_attrs:
-                    _log_failed_trial(
-                        frozen_trial,
-                        frozen_trial.system_attrs[STUDY_TELL_WARNING_KEY],
-                        value_or_values=value_or_values,
-                    )
-                else:
-                    assert False, "Should not reach."
-            else:
-                assert False, "Should not reach."
-
-        if (
-            frozen_trial.state == TrialState.FAIL
-            and func_err is not None
-            and not isinstance(func_err, catch)
-        ):
-            raise func_err
-
-    return frozen_trial, results

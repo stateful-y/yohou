@@ -460,7 +460,7 @@ def _(mo):
 - Baseline models (SeasonalNaive)
 - Preprocessing pipelines (LogTransform, SeasonalDifferencing, LagTransformer)
 - Interactive parameter exploration with sliders
-- Hyperparameter optimization with SearchCV + Optuna
+- Hyperparameter optimization with GridSearchCV/RandomizedSearchCV
 - Incremental learning with `update_predict()`
 - Visualization with plotly
 

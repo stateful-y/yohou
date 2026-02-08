@@ -1,7 +1,10 @@
-import optuna
 import pytest
 from sklearn.utils._param_validation import InvalidParameterError
 
+# Skip all tests in this module if optuna is not installed
+pytest.importorskip("optuna")
+
+import optuna
 from yohou.model_selection.optuna import Sampler, Storage
 
 

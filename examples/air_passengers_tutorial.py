@@ -25,7 +25,7 @@ def _(mo):
     - **Basic forecasting workflow**: Load data, create train/test splits, and make predictions
     - **Baseline models**: Start with simple approaches like seasonal naive forecasting
     - **Preprocessing pipelines**: Transform data to improve forecast accuracy
-    - **Hyperparameter tuning**: Use cross-validation and Optuna to optimize models
+    - **Hyperparameter tuning**: Use cross-validation and RandomizedSearchCV to optimize models
     - **Incremental learning**: Update models with new data without full retraining
 
     ## About the Dataset
@@ -44,15 +44,15 @@ def _(mo):
 def _():
     # Import required libraries
 
-    import optuna
     import plotly.graph_objects as go
     import polars as pl
+    from scipy.stats import randint, uniform
     from sklearn.base import clone
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
     from yohou.metrics import MeanAbsoluteError
-    from yohou.model_selection import SearchCV, Splitter
+    from yohou.model_selection import RandomizedSearchCV, Splitter
     from yohou.pipeline import FeaturePipeline
 
     # Yohou imports
@@ -65,16 +65,17 @@ def _():
         LogTransform,
         MeanAbsoluteError,
         PointReductionForecaster,
+        RandomizedSearchCV,
         Ridge,
-        SearchCV,
         SeasonalDifferencing,
         SeasonalNaive,
         Splitter,
         clone,
         go,
-        optuna,
         pl,
+        randint,
         train_test_split,
+        uniform,
     )
 
 
@@ -327,7 +328,7 @@ def _(mo):
 
     1. **Preprocessing pipelines** with stationarization transformations
     2. **Interactive parameter exploration** using marimo's reactive UI
-    3. **Hyperparameter optimization** with cross-validation and Optuna
+    3. **Hyperparameter optimization** with cross-validation and RandomizedSearchCV
     4. **Incremental learning** for production scenarios
 
     These techniques will help us build more accurate and robust forecasting models.
@@ -570,9 +571,9 @@ def _(mo):
     - Test set always comes after training set
     - No data leakage from future to past
 
-    ### Hyperparameter Search with Optuna
+    ### Hyperparameter Search with RandomizedSearchCV
 
-    We'll use `SearchCV` to optimize:
+    We'll use `RandomizedSearchCV` to optimize:
     - **Ridge alpha**: Regularization strength (prevents overfitting)
     - **Lag window**: Number of past months to use as features
 
@@ -589,13 +590,14 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(
     MeanAbsoluteError,
-    SearchCV,
+    RandomizedSearchCV,
     Splitter,
     clone,
     forecasting_horizon,
     mae_baseline,
-    optuna,
+    randint,
     reduction_forecaster,
+    uniform,
     y_train,
 ):
     # Set up cross-validation with carefully chosen parameters
@@ -605,18 +607,18 @@ def _(
 
     # Define search space (constrained to work with available data)
     param_distributions = {
-        "estimator__alpha": optuna.distributions.FloatDistribution(0.01, 10.0, log=True),
+        "estimator__alpha": uniform(0.01, 10.0),  # Uniform distribution from 0.01 to 10.01
         # Keep lag small (1-6) to work with CV fold sizes
-        "feature_transformer__lag__lag": optuna.distributions.IntDistribution(1, 6),
+        "feature_transformer__lag__lag": randint(1, 7),  # Random integers from 1 to 6
     }
 
     # Set up hyperparameter search
-    search = SearchCV(
+    search = RandomizedSearchCV(
         forecaster=clone(reduction_forecaster),
         param_distributions=param_distributions,
         scoring=MeanAbsoluteError(),
         cv=cv_splitter,
-        n_trials=10,  # Reduced for faster execution
+        n_iter=10,  # Number of random trials
         refit=True,
         return_train_score=False,  # Disable to avoid extra data requirements
         n_jobs=4,
@@ -759,7 +761,7 @@ def _(mo):
 
     **Key insights**:
     - The search efficiently explored lag windows (1-6 months) and regularization strengths
-    - Optuna's TPE sampler focuses on promising regions of the parameter space
+    - RandomizedSearchCV samples from continuous and discrete distributions
     - 2-fold CV provides reliable performance estimates while working within data constraints
     - Best parameters balance model complexity with predictive accuracy
 
@@ -978,8 +980,8 @@ def _(mo):
     - Expanding window maintains temporal order
     - No data leakage from future to past
 
-    ✅ **Hyperparameter optimization** with `SearchCV` and Optuna
-    - Efficient search with TPE sampler
+    ✅ **Hyperparameter optimization** with `RandomizedSearchCV`
+    - Efficient random search with scipy.stats distributions
     - Robust evaluation with CV folds
 
     ✅ **Incremental learning** for production scenarios

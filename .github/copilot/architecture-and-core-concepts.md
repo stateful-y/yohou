@@ -449,15 +449,18 @@ All metrics extend `BaseScorer`:
 
 **Time Alignment Pattern**: Forecasters produce predictions with dual time columns for tracking when observation was made vs. predicted time step.
 
-**Usage in SearchCV**:
+**Usage in Search CV**:
 ```python
 from yohou.metrics import MeanAbsoluteError
-from yohou.model_selection import SearchCV
+from yohou.model_selection import RandomizedSearchCV
+from scipy.stats import randint, uniform
 
-search = SearchCV(
+search = RandomizedSearchCV(
     forecaster=PointReductionForecaster(),
     scoring=MeanAbsoluteError(),  # Single metric
     # Or multi-metric: scoring={"mae": MeanAbsoluteError(), "rmse": RMSE()}
+    param_distributions={"alpha": uniform(0.01, 1.0)},
+    n_iter=10,
     ...
 )
 ```
@@ -466,19 +469,20 @@ search = SearchCV(
 
 ## Hyperparameter Search (`src/yohou/model_selection/search.py`)
 
-### SearchCV: Optuna-Based Cross-Validation
+### GridSearchCV and RandomizedSearchCV: sklearn-Compatible Cross-Validation
 
 **Key Features**:
-- Wraps any `BaseForecaster` with Optuna's trial-based optimization
+- Wraps any `BaseForecaster` with sklearn-compatible hyperparameter search
 - Uses time series CV splits (via `cv` parameter)
 - Supports multi-metric evaluation and custom scoring functions
 - **Dynamic method availability**: Methods like `predict()`, `predict_interval()` only available after fitting when `refit=True`
 
-**Key Components**:
-- `Sampler`: Wrapper for Optuna samplers (default: `TPESampler`)
-- `Storage`: Optional persistent storage for optimization history (e.g., `RDBStorage`)
-- `n_warmup_trials`: Random search trials before sampler kicks in
-- `n_trials`: Number of Optuna optimization trials
+**GridSearchCV**: Exhaustive search over parameter grid
+- `param_grid`: Dictionary of parameter lists to try all combinations
+
+**RandomizedSearchCV**: Random sampling from parameter distributions
+- `param_distributions`: Dictionary of scipy.stats distributions
+- `n_iter`: Number of random parameter combinations to try
 
 ### Method Availability Pattern
 
@@ -511,16 +515,42 @@ def predict_interval(self, forecasting_horizon=None, X=None, **params):
 
 ### Usage
 
+**GridSearchCV** (exhaustive search):
 ```python
-from yohou.model_selection import SearchCV
+from yohou.model_selection import GridSearchCV
 from yohou.metrics import MeanAbsoluteError
-import optuna
 
-search = SearchCV(
+search = GridSearchCV(
     forecaster=PointReductionForecaster(),
+    param_grid={"estimator__alpha": [0.1, 1.0, 10.0]},
+    scoring=MeanAbsoluteError(),
+    cv=2,
+)
+search.fit(y, X, forecasting_horizon=3)
+y_pred = search.predict(forecasting_horizon=3)
+```
+
+**RandomizedSearchCV** (random sampling):
+```python
+from yohou.model_selection import RandomizedSearchCV
+from yohou.metrics import MeanAbsoluteError
+from scipy.stats import uniform
+
+search = RandomizedSearchCV(
+    forecaster=PointReductionForecaster(),
+    param_distributions={"estimator__alpha": uniform(0.01, 10.0)},
+    scoring=MeanAbsoluteError(),
+    cv=2,
+    n_iter=10,
+)
+search.fit(y, X, forecasting_horizon=3)
+y_pred = search.predict(forecasting_horizon=3)
+```
     param_distributions={
-        "estimator__alpha": optuna.distributions.FloatDistribution(0.01, 1.0),
-        "feature_transformer__lag": optuna.distributions.IntDistribution(1, 10)
+    param_distributions={
+        "estimator__alpha": uniform(0.01, 1.0),
+        "feature_transformer__lag": randint(1, 11)  # Random integers 1-10
+    },
     },
     scoring=MeanAbsoluteError(),
     n_warmup_trials=5,

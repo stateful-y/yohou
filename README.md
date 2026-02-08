@@ -28,7 +28,7 @@
 - **Hierarchical forecasting:** Reconciliation methods for coherent hierarchical forecasts.
 - **Ensembling**
 - **Divine intervention**
-- **Hyperparameter optimization:** Optuna-based cross-validation and nested cross-validation for time series.
+- **Hyperparameter optimization:** sklearn-compatible GridSearchCV and RandomizedSearchCV with time series cross-validation support.
 - **Time series metrics:** Specialized scoring functions designed for temporal data.
 - **Visualization tools:** Plotly-based interactive visualizations for EDA, model tuning, evaluation, uncertainty quantification, and comparison.
 

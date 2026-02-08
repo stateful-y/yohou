@@ -506,6 +506,77 @@ def y_X_factory():
 
 
 @pytest.fixture
+def y_X_panel_factory():
+    """Factory for generating panel data (y, X) tuples for testing.
+
+    Returns a callable that generates panel time series data with group prefixes.
+    Each target/feature is replicated across groups with naming pattern:
+    <name>__group_0, <name>__group_1, etc.
+    """
+    from datetime import datetime, timedelta
+
+    import numpy as np
+
+    def _factory(n_groups=2, length=100, n_targets=2, n_features=2, seed=42):
+        """Generate panel data for forecaster testing.
+
+        Parameters
+        ----------
+        n_groups : int, default=2
+            Number of panel groups to create
+        length : int, default=100
+            Number of time steps
+        n_targets : int, default=2
+            Number of target variables per group
+        n_features : int, default=2
+            Number of features per group (0 for X=None)
+        seed : int, default=42
+            Random seed for reproducibility
+
+        Returns
+        -------
+        y : pl.DataFrame
+            Panel target data with "time" column and prefixed targets
+        X : pl.DataFrame or None
+            Panel features with "time" column and prefixed features
+        """
+        rng = np.random.default_rng(seed)
+
+        time = pl.datetime_range(
+            start=datetime(2021, 12, 16),
+            end=datetime(2021, 12, 16) + timedelta(seconds=length - 1),
+            interval="1s",
+            eager=True,
+        )
+
+        # Generate panel y data
+        y = pl.DataFrame({"time": time})
+        for i in range(n_targets):
+            base_values = rng.random(length) * 100  # Scale for better visibility
+            for group_idx in range(n_groups):
+                # Add group-specific offset
+                variation = group_idx * 10 + rng.normal(0, 1, length)
+                col_name = f"y_{i}__group_{group_idx}"
+                y = y.with_columns(pl.Series(col_name, base_values + variation))
+
+        # Generate panel X data
+        X = None
+        if n_features > 0:
+            X = pl.DataFrame({"time": time})
+            for i in range(n_features):
+                base_values = rng.random(length) * 50
+                for group_idx in range(n_groups):
+                    # Add group-specific offset
+                    variation = group_idx * 5 + rng.normal(0, 0.5, length)
+                    col_name = f"X_{i}__group_{group_idx}"
+                    X = X.with_columns(pl.Series(col_name, base_values + variation))
+
+        return y, X
+
+    return _factory
+
+
+@pytest.fixture
 def forecaster_registry():
     """Registry of forecasters with metadata and expected failures."""
     from sklearn.linear_model import Ridge

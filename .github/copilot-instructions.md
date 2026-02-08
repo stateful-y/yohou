@@ -10,6 +10,13 @@ Yohou is a scikit-learn-compatible time series forecasting framework built on **
 
 **Note**: While README mentions multi-DataFrame support via Narwhals, this is planned but not yet implemented (see TODO.md).
 
+**Key Dependencies**:
+- **polars** (≥0.20): Primary DataFrame library (via `import polars as pl`)
+- **scikit-learn** (≥1.6.0): ML estimator integration with metadata routing
+- **marimo** (≥0.19.0): Reactive notebook system for examples
+- **pydantic** (≥2.6): Type validation (use `StrictInt`, `StrictFloat` for strict typing)
+- **plotly** (≥5.19): Interactive visualizations
+
 **Quick Links to Detailed Guides**:
 
 | Guide | Purpose | Size |
@@ -17,11 +24,12 @@ Yohou is a scikit-learn-compatible time series forecasting framework built on **
 | [Architecture & Core Concepts](.github/copilot/architecture-and-core-concepts.md) | Class hierarchy, data flow, panel data, metadata routing | 560 lines |
 | [Creating New Forecasters](.github/copilot/creating-new-forecasters.md) | Step-by-step guide with real examples | 596 lines |
 | [Developer Workflow & Tools](.github/copilot/developer-workflow-and-tools.md) | Commands, testing, debugging, CI/CD | 602 lines |
-| [Testing Infrastructure Overview](.github/copilot/testing-infrastructure-overview.md) | Complete testing system (65 checks, 4 generators, 6 utilities) | 580 lines |
+| [Testing Infrastructure Overview](.github/copilot/testing-infrastructure-overview.md) | Complete testing system (86 checks, 5 generators, 6 utilities) | 580 lines |
 | [Forecaster Testing Infrastructure](.github/copilot/forecaster-testing-infrastructure.md) | Comprehensive testing guide with check functions | 717 lines |
 | [Transformer Testing Infrastructure](.github/copilot/transformer-testing-infrastructure.md) | Testing patterns for transformers | 400 lines |
 | [Splitter Testing Infrastructure](.github/copilot/splitter-testing-infrastructure.md) | Cross-validation splitter testing patterns | 733 lines |
 | [Scorer Testing Infrastructure](.github/copilot/scorer-testing-infrastructure.md) | Metrics/scorer testing patterns | 803 lines |
+| [Search Testing Infrastructure](.github/copilot/search-testing-infrastructure.md) | GridSearchCV and RandomizedSearchCV testing | 900 lines |
 | [sklearn Metadata Routing Implementation](.github/copilot/sklearn-metadata-routing-implementation.md) | Complete metadata routing infrastructure | 814 lines |
 | [Monthly Interval Support](.github/copilot/monthly-interval-support.md) | Variable-length time intervals (monthly, quarterly, yearly) | 715 lines |
 | [Time Weighting Implementation](.github/copilot/time-weighting-implementation.md) | Time-based weighting for scorers and forecasters (planned) | 893 lines |
@@ -125,17 +133,17 @@ All metrics extend `BaseScorer` with `prediction_types` property and `score(y_tr
 
 ### Hyperparameter Search
 
-**SearchCV**: Optuna-based cross-validation for time series.
+**GridSearchCV and RandomizedSearchCV**: sklearn-compatible hyperparameter search for time series.
 
 ```python
-from yohou.model_selection import SearchCV
-import optuna
+from yohou.model_selection import RandomizedSearchCV
+from scipy.stats import uniform
 
-search = SearchCV(
+search = RandomizedSearchCV(
     forecaster=PointReductionForecaster(),
-    param_distributions={"estimator__alpha": optuna.distributions.FloatDistribution(0.01, 1.0)},
+    param_distributions={"estimator__alpha": uniform(0.01, 1.0)},
     scoring=MeanAbsoluteError(),
-    n_trials=20
+    n_iter=20
 )
 search.fit(y, X, forecasting_horizon=3)
 y_pred = search.predict(forecasting_horizon=3)
@@ -146,6 +154,8 @@ y_pred = search.predict(forecasting_horizon=3)
 ### Metadata Routing
 
 **Critical**: sklearn metadata routing enabled automatically on import. All methods accept `**params`.
+
+**Planned Feature**: `time_weight` parameter is declared in method signatures but **conversion to `sample_weight` not yet implemented** (see TODO.md, `.github/copilot/time-weighting-implementation.md`).
 
 **📖 Full Details**: [sklearn Metadata Routing Implementation](.github/copilot/sklearn-metadata-routing-implementation.md)
 
@@ -388,11 +398,12 @@ class MyForecaster(BasePointForecaster):
 ## Testing Patterns
 
 **📖 Complete Guides**:
-- [Testing Infrastructure Overview](.github/copilot/testing-infrastructure-overview.md) - **Start here**: Complete system with 65 checks
+- [Testing Infrastructure Overview](.github/copilot/testing-infrastructure-overview.md) - **Start here**: Complete system with 86 checks
 - [Forecaster Testing Infrastructure](.github/copilot/forecaster-testing-infrastructure.md)
 - [Transformer Testing Infrastructure](.github/copilot/transformer-testing-infrastructure.md)
 - [Splitter Testing Infrastructure](.github/copilot/splitter-testing-infrastructure.md)
 - [Scorer Testing Infrastructure](.github/copilot/scorer-testing-infrastructure.md)
+- [Search Testing Infrastructure](.github/copilot/search-testing-infrastructure.md)
 
 ### Systematic Check Functions
 
@@ -519,7 +530,7 @@ if len(X) < self.observation_horizon:
 - `src/yohou/preprocessing/`: Transformers (stationarization, windowing)
 - `src/yohou/pipeline.py`: FeaturePipeline, FeatureUnion, ColumnTransformer
 - `src/yohou/metrics/`: Scorers (point, interval, conformity)
-- `src/yohou/model_selection/`: SearchCV, cross-validation utilities
+- `src/yohou/model_selection/`: GridSearchCV, RandomizedSearchCV, cross-validation utilities
 - `src/yohou/analysis/`: Visualization tools (plotly-based)
 
 **Tests**:

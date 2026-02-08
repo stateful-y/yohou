@@ -1,6 +1,7 @@
 """Point forecasting metrics for evaluating prediction accuracy."""
 
 import numbers
+from typing import Callable
 
 import numpy as np
 import polars as pl
@@ -109,7 +110,14 @@ class MeanAbsoluteError(BasePointScorer):
             panel_group_weight=panel_group_weight,
         )
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+    def score(
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        /,
+        time_weight: Callable | pl.DataFrame | None = None,
+        **params,
+    ) -> float | pl.DataFrame:
         """Compute mean absolute error.
 
         Parameters
@@ -118,6 +126,8 @@ class MeanAbsoluteError(BasePointScorer):
             True values with "time" column.
         y_pred : pl.DataFrame
             Predicted values with "time" column.
+        time_weight : callable, pl.DataFrame, or None, default=None
+            Time-based evaluation weights. See Notes for format details.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -127,6 +137,27 @@ class MeanAbsoluteError(BasePointScorer):
             If aggregation_method=["timewise"], returns DataFrame with per-component MAE values.
             If aggregation_method=["componentwise"], returns DataFrame with "time" and "mae" columns.
             If aggregation_method="all", returns scalar float.
+
+        Notes
+        -----
+        **Time Weight Formats**:
+
+        1. **DataFrame**: Must have "time" column plus weight columns:
+           - Global data: "weight" column
+           - Panel data: "{group}_weight" columns (one per group) or "weight" (applies to all groups)
+
+        2. **Callable (1 parameter)**: `f(time: pl.Series) -> pl.Series`
+           - Returns weights for each time step
+           - Same weights applied to all panel groups
+
+        3. **Callable (2 parameters)**: `f(time: pl.Series, group_name: str | None) -> pl.Series`
+           - Panel-aware: different weights per group
+           - group_name is None for global data
+
+        **Weight Properties**:
+        - Must be non-negative, finite, and sum to positive value
+        - Normalized internally to preserve scale
+        - Applied to per-timestep errors before aggregation
 
         """
         check_is_fitted(self, ["_is_fitted"])
@@ -139,6 +170,28 @@ class MeanAbsoluteError(BasePointScorer):
 
         # Compute raw per-timestep per-component absolute errors
         scores = (y_truth - y_pred).select(pl.all().abs())
+
+        # Apply time weights if provided
+        if time_weight is not None:
+            from yohou.utils.panel import inspect_locality
+
+            _, panel_groups = inspect_locality(scores)
+
+            if len(panel_groups) > 0:
+                # Panel data: apply weights per group
+                weighted_parts = []
+                for group_name, group_cols in panel_groups.items():
+                    group_scores = scores.select(group_cols)
+                    weighted_group = self._process_time_weights(
+                        group_scores, time_weight, time_values, group_name
+                    )
+                    weighted_parts.append(weighted_group)
+                scores = pl.concat(weighted_parts, how="horizontal")
+            else:
+                # Global data: apply weights directly
+                scores = self._process_time_weights(
+                    scores, time_weight, time_values, group_name=None
+                )
 
         # Apply aggregation strategy from base class
         result = self._aggregate_scores(scores, time_values=time_values)
@@ -255,7 +308,7 @@ class MeanSquaredError(BasePointScorer):
             panel_group_weight=panel_group_weight,
         )
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:
         """Compute mean squared error.
 
         Parameters
@@ -402,7 +455,7 @@ class RootMeanSquaredError(BasePointScorer):
             panel_group_weight=panel_group_weight,
         )
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:
         """Compute root mean squared error.
 
         Parameters
@@ -644,7 +697,7 @@ class RootMeanSquaredScaledError(BasePointScorer):
 
         return self
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:
         """Compute root mean squared scaled error.
 
         Parameters
@@ -824,7 +877,7 @@ class MeanAbsolutePercentageError(BasePointScorer):
         )
         self.epsilon = epsilon
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:
         """Compute mean absolute percentage error.
 
         Parameters
@@ -980,7 +1033,7 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
         )
         self.epsilon = epsilon
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:
         """Compute symmetric mean absolute percentage error.
 
         Parameters
@@ -1210,7 +1263,7 @@ class MeanAbsoluteScaledError(BasePointScorer):
 
         return self
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:
         """Compute mean absolute scaled error.
 
         Parameters
@@ -1364,7 +1417,7 @@ class MedianAbsoluteError(BasePointScorer):
             panel_group_weight=panel_group_weight,
         )
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params) -> float | pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:
         """Compute median absolute error.
 
         Parameters

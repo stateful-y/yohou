@@ -8,6 +8,7 @@ from .validate_data import (
     validate_forecaster_data,
     validate_scorer_data,
     validate_splitter_data,
+    validate_time_weight,
     validate_transformer_data,
 )
 from .validation import (
@@ -23,6 +24,13 @@ from .validation import (
     check_sufficient_rows,
     check_time_column,
     parse_interval,
+)
+from .weighting import (
+    compose_weights,
+    exponential_decay_weight,
+    linear_decay_weight,
+    seasonal_emphasis_weight,
+    validate_callable_signature,
 )
 
 __all__ = [
@@ -44,14 +52,20 @@ __all__ = [
     "check_schema",
     "check_sufficient_rows",
     "check_time_column",
+    "compose_weights",
     "dict_to_panel",
+    "exponential_decay_weight",
     "get_group_df",
     "inspect_locality",
+    "linear_decay_weight",
     "parse_interval",
+    "seasonal_emphasis_weight",
     "select_panel_columns",
     "tabularize",
+    "validate_callable_signature",
     "validate_forecaster_data",
     "validate_scorer_data",
     "validate_splitter_data",
+    "validate_time_weight",
     "validate_transformer_data",
 ]

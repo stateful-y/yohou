@@ -26,6 +26,7 @@ from yohou.utils import (
     get_group_df,
     inspect_locality,
     tabularize,
+    validate_callable_signature,
     validate_forecaster_data,
     validate_transformer_data,
 )
@@ -1309,7 +1310,173 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         # Mark as using reduction
         tags.forecaster_tags.uses_reduction = True
 
+        # Mark as supporting time_weight
+        tags.forecaster_tags.supports_time_weight = True
+
         return tags
+
+    def _process_time_weight_to_sample_weight(
+        self,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        time_weight: Callable | pl.DataFrame | None,
+        sample_weight_alignment: str,
+        forecasting_horizon: int,
+    ) -> np.ndarray | None:
+        """Convert time_weight to sklearn sample_weight for tabularized data.
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series (global or panel data).
+        time_weight : callable or pl.DataFrame or None
+            Time weighting specification.
+        sample_weight_alignment : {"first_step", "mid_step", "last_step"}
+            Strategy for aligning time weights to tabularized samples.
+        forecasting_horizon : int
+            Number of forecast steps (determines tabularization window).
+
+        Returns
+        -------
+        np.ndarray or None
+            Sample weights array matching tabularized data rows, or None if
+            time_weight is None.
+
+        """
+        if time_weight is None:
+            return None
+
+        if self.panel_group_names_ is None:
+            # Global data: y_t is DataFrame
+            sample_weights = self._compute_sample_weights_one(
+                y_t=y_t,
+                time_weight=time_weight,
+                sample_weight_alignment=sample_weight_alignment,
+                forecasting_horizon=forecasting_horizon,
+                group_name=None,
+            )
+        else:
+            # Panel data: y_t is dict, stack weights
+            sample_weights_list = []
+            for panel_group_name in self.panel_group_names_:
+                y_t_local = y_t[panel_group_name]
+                weights_local = self._compute_sample_weights_one(
+                    y_t=y_t_local,
+                    time_weight=time_weight,
+                    sample_weight_alignment=sample_weight_alignment,
+                    forecasting_horizon=forecasting_horizon,
+                    group_name=panel_group_name,
+                )
+                sample_weights_list.append(weights_local)
+            sample_weights = np.concatenate(sample_weights_list)
+
+        return sample_weights
+
+    def _compute_sample_weights_one(
+        self,
+        y_t: pl.DataFrame,
+        time_weight: Callable | pl.DataFrame,
+        sample_weight_alignment: str,
+        forecasting_horizon: int,
+        group_name: str | None,
+    ) -> np.ndarray:
+        """Compute sample weights for one time series (global or local).
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame
+            Transformed target time series with "time" column.
+        time_weight : callable or pl.DataFrame
+            Time weighting specification.
+        sample_weight_alignment : {"first_step", "mid_step", "last_step"}
+            Strategy for aligning time weights to tabularized samples.
+        forecasting_horizon : int
+            Number of forecast steps.
+        group_name : str or None
+            Panel group name (for panel-aware callables), or None for global data.
+
+        Returns
+        -------
+        np.ndarray
+            Sample weights for this time series.
+
+        """
+        # Get time column from y_t
+        time_series = y_t["time"]
+
+        # Compute raw time weights
+        if callable(time_weight):
+            # Check signature: 1 param (global) or 2 params (panel-aware)
+            n_params = validate_callable_signature(time_weight)
+            if n_params == 1:
+                weights_series = time_weight(time_series)
+            else:  # n_params == 2
+                weights_series = time_weight(time_series, group_name)
+        else:
+            # DataFrame format
+            # Try group-specific column first, fall back to global "weight"
+            if group_name is not None:
+                weight_col = f"{group_name}_weight"
+                if weight_col in time_weight.columns:
+                    weights_df = time_weight.select(["time", weight_col])
+                    weights_df = weights_df.rename({weight_col: "weight"})
+                elif "weight" in time_weight.columns:
+                    # Silent fallback to global weight
+                    weights_df = time_weight.select(["time", "weight"])
+                else:
+                    raise ValueError(
+                        f"time_weight DataFrame must have either '{weight_col}' or "
+                        f"'weight' column for panel group '{group_name}'"
+                    )
+            else:
+                # Global data: use "weight" column
+                if "weight" not in time_weight.columns:
+                    raise ValueError(
+                        "time_weight DataFrame must have 'weight' column for global data"
+                    )
+                weights_df = time_weight.select(["time", "weight"])
+
+            # Join with y_t to align weights
+            weights_joined = y_t.select(["time"]).join(weights_df, on="time", how="left")
+            weights_series = weights_joined["weight"]
+
+        # Align weights to tabularized samples
+        # Tabularized data has n_samples = len(y_t) - forecasting_horizon
+        # Each sample i corresponds to a window ending at time index i
+        n_samples = len(y_t) - forecasting_horizon
+
+        # Determine time index for each sample based on alignment strategy
+        if sample_weight_alignment == "first_step":
+            # Weight from first prediction target time
+            # Sample i predicts steps [i+1, ..., i+forecasting_horizon]
+            # First step is at index i+1
+            aligned_indices = np.arange(1, n_samples + 1)
+        elif sample_weight_alignment == "mid_step":
+            # Weight from middle of prediction window
+            # Midpoint is at index i + forecasting_horizon // 2
+            aligned_indices = np.arange(
+                forecasting_horizon // 2, n_samples + forecasting_horizon // 2
+            )
+        elif sample_weight_alignment == "last_step":
+            # Weight from last prediction target time
+            # Last step is at index i + forecasting_horizon
+            aligned_indices = np.arange(forecasting_horizon, n_samples + forecasting_horizon)
+        else:
+            raise ValueError(
+                f"Invalid sample_weight_alignment: {sample_weight_alignment}. "
+                f"Must be 'first_step', 'mid_step', or 'last_step'."
+            )
+
+        # Extract weights at aligned indices
+        sample_weights = weights_series[aligned_indices].to_numpy()
+
+        # Normalize to preserve sample count (sklearn convention)
+        # sum(sample_weights) = n_samples
+        weight_sum = sample_weights.sum()
+        if weight_sum == 0:
+            raise ValueError("Sum of time weights is zero, cannot normalize")
+        sample_weights = sample_weights * (n_samples / weight_sum)
+
+        return sample_weights
 
     def _get_tabularized_dataset(
         self,
@@ -1387,6 +1554,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X_t: pl.DataFrame,
         forecasting_horizon: StrictInt,
         time_weight: Callable | pl.DataFrame | None = None,
+        sample_weight_alignment: str = "first_step",
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
     ) -> BaseEstimator:
@@ -1407,6 +1575,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         time_weight : callable or pl.DataFrame or None, default=None
             Time weighting function or DataFrame to weight samples.
             Converted to sample_weight during tabularization.
+        sample_weight_alignment : {"first_step", "mid_step", "last_step"}, default="first_step"
+            Strategy for aligning time weights to tabularized samples.
         estimator_params : dict
             Additional parameters to pass to the estimator's set_params method.
         estimator_fit_params : dict
@@ -1473,7 +1643,29 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             X_tab = np.vstack(X_tab_list)
             y_tab = np.vstack(y_tab_list)
 
-        estimator.fit(X_tab, y_tab, **(estimator_fit_params or {}))
+        # Process time_weight to sample_weight
+        sample_weight = self._process_time_weight_to_sample_weight(
+            y_t=y_t,
+            time_weight=time_weight,
+            sample_weight_alignment=sample_weight_alignment,
+            forecasting_horizon=forecasting_horizon,
+        )
+
+        # Check if estimator supports sample_weight
+        if sample_weight is not None:
+            fit_signature = inspect.signature(estimator.fit)
+            if "sample_weight" not in fit_signature.parameters:
+                raise ValueError(
+                    f"Estimator {estimator.__class__.__name__} does not support "
+                    f"sample_weight parameter. Cannot use time_weight for training."
+                )
+
+        # Fit estimator with sample_weight if provided
+        fit_params = estimator_fit_params or {}
+        if sample_weight is not None:
+            fit_params = {**fit_params, "sample_weight": sample_weight}
+
+        estimator.fit(X_tab, y_tab, **fit_params)
 
         return estimator
 
