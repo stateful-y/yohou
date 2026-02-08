@@ -878,14 +878,14 @@ wheels = [
 
 [[package]]
 name = "mkdocs-glightbox"
-version = "0.5.0"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "selectolax" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f3/9d/9f1483ef35b8db7e8e4219cb91d9263bd1a3971292cf78ac5a22e8425bd0/mkdocs_glightbox-0.5.0.tar.gz", hash = "sha256:8fafe8d9c2b824fb023f17fe76339528aa2ae9b722fc81882e648fcbfcd0d1e3", size = 483262, upload-time = "2025-09-03T13:10:29.01Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8d/26/c793459622da8e31f954c6f5fb51e8f098143fdfc147b1e3c25bf686f4aa/mkdocs_glightbox-0.5.2.tar.gz", hash = "sha256:c7622799347c32310878e01ccf14f70648445561010911c80590cec0353370ac", size = 510586, upload-time = "2025-10-23T14:55:18.909Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/da/fdc3afd0592a0da336f40777ef51e019ab06c43d18dbb30133a6f6e98b18/mkdocs_glightbox-0.5.0-py3-none-any.whl", hash = "sha256:9de472763169a02e6aa96959f7ffa71877469a4a18b34e8a61975fa732a7cc80", size = 26434, upload-time = "2025-09-03T13:10:27.567Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/ca/03624e017e5ee2d7ce8a08d89f81c1e535eb3c30d7b2dc4a435ea3fbbeae/mkdocs_glightbox-0.5.2-py3-none-any.whl", hash = "sha256:23a431ea802b60b1030c73323db2eed6ba859df1a0822ce575afa43e0ea3f47e", size = 26458, upload-time = "2025-10-23T14:55:17.43Z" },
 ]
 
 [[package]]
@@ -2295,7 +2295,7 @@ dev = [
     { name = "interrogate", specifier = ">=1.7.0" },
     { name = "marimo", specifier = ">=0.19.0" },
     { name = "mkdocs-git-revision-date-localized-plugin", specifier = "==1.5" },
-    { name = "mkdocs-glightbox", specifier = "==0.5" },
+    { name = "mkdocs-glightbox", specifier = "==0.5.2" },
     { name = "mkdocs-material", specifier = "==9.7" },
     { name = "mkdocstrings", specifier = "==1.0" },
     { name = "mkdocstrings-python", specifier = "==2.0" },
@@ -2309,7 +2309,7 @@ dev = [
 docs = [
     { name = "black", specifier = "==25.11" },
     { name = "mkdocs-git-revision-date-localized-plugin", specifier = "==1.5" },
-    { name = "mkdocs-glightbox", specifier = "==0.5" },
+    { name = "mkdocs-glightbox", specifier = "==0.5.2" },
     { name = "mkdocs-material", specifier = "==9.7" },
     { name = "mkdocstrings", specifier = "==1.0" },
     { name = "mkdocstrings-python", specifier = "==2.0" },
