@@ -1559,15 +1559,15 @@ wheels = [
 
 [[package]]
 name = "pymdown-extensions"
-version = "10.17"
+version = "10.20.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "markdown" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/21/62/6a5ea1c521372861edc8a27630641d3df8f730583cc2645eeb28399be282/pymdown_extensions-10.17.tar.gz", hash = "sha256:e93862f4f90b1cd19fe276b54373966458cae85643dc66f5eb437fca4725f497", size = 845314, upload-time = "2025-11-11T18:17:17.831Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/6c/9e370934bfa30e889d12e61d0dae009991294f40055c238980066a7fbd83/pymdown_extensions-10.20.1.tar.gz", hash = "sha256:e7e39c865727338d434b55f1dd8da51febcffcaebd6e1a0b9c836243f660740a", size = 852860, upload-time = "2026-01-24T05:56:56.758Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/91/82d6fb0d5dd6ba3ba3c67a4ae28d82bc9c0fa43ac970bb7dc8176d86070f/pymdown_extensions-10.17-py3-none-any.whl", hash = "sha256:04ea928c1b8673bd891d758cd6392c05b45fa49014e4821dbb4c9078dd8ecade", size = 266277, upload-time = "2025-11-11T18:17:16.214Z" },
+    { url = "https://files.pythonhosted.org/packages/40/6d/b6ee155462a0156b94312bdd82d2b92ea56e909740045a87ccb98bf52405/pymdown_extensions-10.20.1-py3-none-any.whl", hash = "sha256:24af7feacbca56504b313b7b418c4f5e1317bb5fea60f03d57be7fcc40912aa0", size = 268768, upload-time = "2026-01-24T05:56:54.537Z" },
 ]
 
 [[package]]
@@ -2300,7 +2300,7 @@ dev = [
     { name = "mkdocstrings", specifier = "==1.0" },
     { name = "mkdocstrings-python", specifier = "==2.0" },
     { name = "pre-commit-uv", specifier = ">=4.1" },
-    { name = "pymdown-extensions", specifier = "==10.17" },
+    { name = "pymdown-extensions", specifier = "==10.20.1" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff", specifier = ">=0.14.10" },
@@ -2313,7 +2313,7 @@ docs = [
     { name = "mkdocs-material", specifier = "==9.7" },
     { name = "mkdocstrings", specifier = "==1.0" },
     { name = "mkdocstrings-python", specifier = "==2.0" },
-    { name = "pymdown-extensions", specifier = "==10.17" },
+    { name = "pymdown-extensions", specifier = "==10.20.1" },
 ]
 examples = [{ name = "marimo", specifier = ">=0.19.0" }]
 fix = [

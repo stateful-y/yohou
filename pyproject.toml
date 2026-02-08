@@ -53,7 +53,7 @@ docs = [
   "mkdocstrings==1.0",
   "mkdocstrings-python==2.0",
   "mkdocs-glightbox==0.5",
-  "pymdown-extensions==10.17",
+  "pymdown-extensions==10.20.1",
   "black==25.11",
 ]
 examples = [
