@@ -1,0 +1,50 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: mixed-line-ending
+
+
+  # Enforce conventional commit messages
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.3.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+
+  - repo: https://github.com/econchick/interrogate
+    rev: 1.7.0
+    hooks:
+    -   id: interrogate
+        types: [python]
+        files: ^src/
+        exclude: .*_version\.py$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.9
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix]
+      # Run the formatter
+      - id: ruff-format
+
+  # Type checking with ty
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty
+        entry: uv run ty check src
+        language: system
+        types: [python]
+        files: ^src/
+        pass_filenames: false
