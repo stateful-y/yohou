@@ -1,0 +1,145 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+*.cover
+*.log
+.hypothesis/
+junit.*.xml
+coverage.*.xml
+coverage.xml
+
+# Type checking
+.ty_cache/
+.pytype/
+.pyre/
+
+# Documentation
+docs/_build/
+site/
+.mkdocs_cache/
+
+# Distribution
+*.whl
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Marimo
+examples/__marimo__/
+examples/**/__marimo__/
+
+# Environment
+.env
+.env.local
+
+# Ruff
+.ruff_cache/
+
+# build
+uv.lock
+src/yohou/_version.py
+
+# Documentation examples
+docs/examples/*/
+
+
+# AI Assistant Instructions
+CLAUDE.md
+CLAUDE_INSTRUCTIONS.md
+.claude.md
+claude-instructions.md
+claude-config.md
+claude-prompt.md
+
+# GitHub Copilot
+COPILOT.md
+COPILOT_INSTRUCTIONS.md
+.copilot.md
+copilot-instructions.md
+copilot-config.md
+copilot-prompt.md
+.github/copilot-instructions.md
+.github/skills
+.github/prompts
+
+# ChatGPT / OpenAI
+CHATGPT.md
+GPT.md
+OPENAI.md
+chatgpt-instructions.md
+gpt-instructions.md
+openai-instructions.md
+
+# Generic AI/LLM instructions
+AI.md
+AI_INSTRUCTIONS.md
+LLM.md
+LLM_INSTRUCTIONS.md
+.ai-instructions.md
+.llm-instructions.md
+ai-prompt.md
+llm-prompt.md
+assistant-instructions.md
+
+# Custom instructions directories
+.ai/
+.llm/
+.copilot/
+.claude/
+ai-instructions/
+llm-instructions/
+
+# Project-specific AI context (that you want to keep private)
+.cursorrules
+.cursor/
+.aider*
+.continue/
+
+# Pytorch-Lightning
+lightning_logs
+
+# CatBoost
+catboost_info

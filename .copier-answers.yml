@@ -1,0 +1,17 @@
+# This file is used by Copier to track the template version
+# and enable template updates in generated projects
+
+_commit: b1350d0e5e9792ccf86faba9ee3899075a622462
+_src_path: gh:stateful-y/python-package-copier
+author_email: gtauzin@stateful-y.io
+author_name: Guillaume Tauzin
+description: A time series forecasting package based on Scikit-Learn and Polars
+github_username: stateful-y
+include_actions: True
+include_examples: True
+license: Apache-2.0
+max_python_version: '3.14'
+min_python_version: '3.11'
+package_name: yohou
+project_name: Yohou
+project_slug: yohou
