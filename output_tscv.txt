@@ -1,0 +1,56 @@
+First 5 rows:
+shape: (5, 2)
+┌─────────────────────┬────────────┐
+│ time                ┆ passengers │
+│ ---                 ┆ ---        │
+│ datetime[μs]        ┆ i64        │
+╞═════════════════════╪════════════╡
+│ 1949-01-01 00:00:00 ┆ 112        │
+│ 1949-02-01 00:00:00 ┆ 118        │
+│ 1949-03-01 00:00:00 ┆ 132        │
+│ 1949-04-01 00:00:00 ┆ 129        │
+│ 1949-05-01 00:00:00 ┆ 121        │
+└─────────────────────┴────────────┘
+
+Last 5 rows:
+shape: (5, 2)
+┌─────────────────────┬────────────┐
+│ time                ┆ passengers │
+│ ---                 ┆ ---        │
+│ datetime[μs]        ┆ i64        │
+╞═════════════════════╪════════════╡
+│ 1960-08-01 00:00:00 ┆ 606        │
+│ 1960-09-01 00:00:00 ┆ 508        │
+│ 1960-10-01 00:00:00 ┆ 461        │
+│ 1960-11-01 00:00:00 ┆ 390        │
+│ 1960-12-01 00:00:00 ┆ 432        │
+└─────────────────────┴────────────┘
+
+Dataset shape: 144 rows, 2 columns
+
+Date range: 1949-01-01 00:00:00 to 1960-12-01 00:00:00
+Training set: 115 observations (1949-01-01 00:00:00 to 1958-07-01 00:00:00)
+Test set: 29 observations (1958-08-01 00:00:00 to 1960-12-01 00:00:00)
+
+Forecasting horizon: 12 months
+Baseline (Seasonal Naive) MAE: 28.58 thousand passengers
+Reducer MAE: 23.67 thousand passengers
+Baseline MAE: 28.58 thousand passengers
+Improvement: 17.2%
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/examples/quickstart.py", line 1217, in <module>
+    app.run()
+    ~~~~~~~^^
+  File "/home/gigi/Workspace/stateful-y/yohou/.venv/lib/python3.13/site-packages/marimo/_ast/app.py", line 750, in run
+    ).run()
+      ~~~^^
+  File "/home/gigi/Workspace/stateful-y/yohou/.venv/lib/python3.13/site-packages/marimo/_runtime/app/script_runner.py", line 240, in run
+    raise e.__cause__ from None  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/.venv/lib/python3.13/site-packages/marimo/_runtime/executor.py", line 138, in execute_cell
+    exec(cell.body, glbls)
+    ~~~~^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/examples/quickstart.py", line 621, in <module>
+    cv_splitter = TimeSeriesSplit(n_splits=2, test_size=forecasting_horizon)
+              ^^^^^^^^^^^^^^^
+NameError: name 'TimeSeriesSplit' is not defined

@@ -1,0 +1,182 @@
+from datetime import datetime, timedelta
+
+import numpy as np
+import polars as pl
+import pytest
+
+from yohou.metrics.conformity import (
+    AbsoluteGammaResidual,
+    AbsoluteQuantileResidual,
+    AbsoluteResidual,
+    GammaResidual,
+    QuantileResidual,
+    Residual,
+)
+from yohou.testing import _yield_yohou_scorer_checks
+
+
+# Define Concrete Subclasses for Abstract Gamma Scorers for testing purposes
+class ConcreteGammaResidual(GammaResidual):
+    def inverse_score(self, y_pred, conformity_scores, coverage_rate):
+        # Dummy implementation to allow instantiation
+        from sklearn.utils.validation import check_is_fitted
+
+        check_is_fitted(self, ["_is_fitted"])
+        return y_pred
+
+
+class ConcreteAbsoluteGammaResidual(AbsoluteGammaResidual):
+    def inverse_score(self, y_pred, conformity_scores, coverage_rate):
+        # Dummy implementation to allow instantiation
+        from sklearn.utils.validation import check_is_fitted
+
+        check_is_fitted(self, ["_is_fitted"])
+        return y_pred
+
+
+@pytest.fixture
+def data():
+    """Return synthetic (y_truth, y_pred) with proper types."""
+    start = datetime(2020, 1, 1)
+    dates = [start + timedelta(days=i) for i in range(3)]
+
+    y_truth = pl.DataFrame({"time": dates, "y": [1.0, 2.0, 3.0]})
+
+    y_pred = pl.DataFrame({"observed_time": [start - timedelta(days=1)] * 3, "time": dates, "y": [1.1, 1.9, 3.2]})
+    return y_truth, y_pred
+
+
+def run_checks(scorer, y_truth, y_pred):
+    for check_name, check_func, check_kwargs in _yield_yohou_scorer_checks(scorer, y_truth, y_pred):
+        # Handle checks that expect 'scorer' positionally if not in kwargs
+        if "scorer" not in check_kwargs and "scorer_class" not in check_kwargs:
+            check_func(scorer, **check_kwargs)
+        else:
+            check_func(**check_kwargs)
+
+
+def test_residual(data):
+    """Test standard checks for Residual scorer."""
+    y_truth, y_pred = data
+    scorer = Residual()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_absolute_residual(data):
+    """Test standard checks for AbsoluteResidual scorer."""
+    y_truth, y_pred = data
+    scorer = AbsoluteResidual()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_gamma_residual(data):
+    """Test standard checks for GammaResidual scorer (using concrete subclass)."""
+    y_truth, y_pred = data
+    scorer = ConcreteGammaResidual()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_absolute_gamma_residual(data):
+    """Test standard checks for AbsoluteGammaResidual scorer (using concrete subclass)."""
+    y_truth, y_pred = data
+    scorer = ConcreteAbsoluteGammaResidual()
+    run_checks(scorer, y_truth, y_pred)
+
+
+def test_residual_values(data):
+    """Test Residual specific value calculation."""
+    y_truth, y_pred = data
+    scorer = Residual()
+    scorer.fit(y_truth)
+    scores = scorer.score(y_truth, y_pred)
+
+    # Residual = y - y_pred
+    expected = y_truth["y"] - y_pred["y"]
+    assert np.allclose(scores["y"].to_numpy(), expected.to_numpy())
+
+
+def test_absolute_residual_values(data):
+    """Test AbsoluteResidual specific value calculation."""
+    y_truth, y_pred = data
+    scorer = AbsoluteResidual()
+    scorer.fit(y_truth)
+    scores = scorer.score(y_truth, y_pred)
+
+    # AbsoluteResidual = |y - y_pred|
+    expected = (y_truth["y"] - y_pred["y"]).abs()
+    assert np.allclose(scores["y"].to_numpy(), expected.to_numpy())
+
+
+def test_gamma_residual_values(data):
+    """Test GammaResidual specific value calculation."""
+    y_truth, y_pred = data
+    eps = 1e-8
+    scorer = ConcreteGammaResidual(epsilon=eps)
+    scorer.fit(y_truth)
+    scores = scorer.score(y_truth, y_pred)
+
+    # GammaResidual = (y - y_pred) / (y_pred + eps)
+    expected = (y_truth["y"] - y_pred["y"]) / (y_pred["y"] + eps)
+    assert np.allclose(scores["y"].to_numpy(), expected.to_numpy())
+
+
+def test_absolute_gamma_residual_values(data):
+    """Test AbsoluteGammaResidual specific value calculation."""
+    y_truth, y_pred = data
+    eps = 1e-8
+    scorer = ConcreteAbsoluteGammaResidual(epsilon=eps)
+    scorer.fit(y_truth)
+    scores = scorer.score(y_truth, y_pred)
+
+    # AbsoluteGammaResidual = |(y - y_pred) / (y_pred + eps)|
+    expected = ((y_truth["y"] - y_pred["y"]) / (y_pred["y"] + eps)).abs()
+    assert np.allclose(scores["y"].to_numpy(), expected.to_numpy())
+
+
+def test_quantile_residual_abstract():
+    """Test that QuantileResidual is abstract."""
+    with pytest.raises(TypeError, match="Can't instantiate abstract class"):
+        QuantileResidual()
+
+
+def test_absolute_quantile_residual_abstract():
+    """Test that AbsoluteQuantileResidual is abstract."""
+    with pytest.raises(TypeError, match="Can't instantiate abstract class"):
+        AbsoluteQuantileResidual()
+
+
+def test_residual_inverse_score():
+    """Test inverse_score mechanism for Residual."""
+    scorer = Residual()
+
+    # Mock data with time columns
+    y_pred = pl.DataFrame({"time": [datetime(2020, 1, 1)], "y": [10.0]})
+    # Conformity scores: errors were -1, 0, 1
+    # Using small dataset.
+    # For coverage=0.5 (50%), we want range between 25th and 75th percentile of errors.
+    # Scores: [-1, 0, 1]
+    conformity_scores = pl.DataFrame({
+        "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+        "y": [-1.0, 0.0, 1.0],
+    })
+    coverage_rate = 0.5
+
+    scorer.fit(conformity_scores)
+    intervals = scorer.inverse_score(y_pred, conformity_scores, coverage_rate)
+
+    # Check time column is preserved
+    assert "time" in intervals.columns
+    assert intervals["time"][0] == datetime(2020, 1, 1)
+
+    cols = intervals.columns
+    lower_col = next(c for c in cols if "lower" in c)
+    upper_col = next(c for c in cols if "upper" in c)
+
+    assert intervals.height == 1
+
+    lower = intervals[lower_col][0]
+    upper = intervals[upper_col][0]
+
+    assert lower > -float("inf")
+    assert upper < float("inf")
+    assert lower <= upper

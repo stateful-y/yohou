@@ -1,0 +1,1572 @@
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/search.py:642: UserWarning:
+
+One or more of the test scores are non-finite: [nan nan nan nan nan nan nan nan nan nan]
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1956-07-01 00:00:00, next DataFrame starts at 1955-08-01 00:00:00, expected 1956-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py:459: UserWarning:
+
+Scoring failed. The score on this train-test partition for these parameters will be set to nan. Details:
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/utils.py", line 444, in _score
+    y_pred = forecaster.update_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1957-07-01 00:00:00, next DataFrame starts at 1956-08-01 00:00:00, expected 1957-08-01 00:00:00 (interval 1mo).
+
+
+/home/gigi/Workspace/stateful-y/yohou/src/yohou/model_selection/search.py:642: UserWarning:
+
+One or more of the test scores are non-finite: [nan nan nan nan nan nan nan nan nan]
+
+y_pred_static_all tail:
+shape: (2, 3)
+┌─────────────────────┬─────────────────────┬────────────┐
+│ observed_time       ┆ time                ┆ passengers │
+│ ---                 ┆ ---                 ┆ ---        │
+│ datetime[μs]        ┆ datetime[μs]        ┆ i64        │
+╞═════════════════════╪═════════════════════╪════════════╡
+│ 1958-07-01 00:00:00 ┆ 1958-08-01 00:00:00 ┆ 532        │
+│ 1958-07-01 00:00:00 ┆ 1958-09-01 00:00:00 ┆ 460        │
+└─────────────────────┴─────────────────────┴────────────┘
+First 5 rows:
+shape: (5, 2)
+┌─────────────────────┬────────────┐
+│ time                ┆ passengers │
+│ ---                 ┆ ---        │
+│ datetime[μs]        ┆ i64        │
+╞═════════════════════╪════════════╡
+│ 1949-01-01 00:00:00 ┆ 112        │
+│ 1949-02-01 00:00:00 ┆ 118        │
+│ 1949-03-01 00:00:00 ┆ 132        │
+│ 1949-04-01 00:00:00 ┆ 129        │
+│ 1949-05-01 00:00:00 ┆ 121        │
+└─────────────────────┴────────────┘
+
+Last 5 rows:
+shape: (5, 2)
+┌─────────────────────┬────────────┐
+│ time                ┆ passengers │
+│ ---                 ┆ ---        │
+│ datetime[μs]        ┆ i64        │
+╞═════════════════════╪════════════╡
+│ 1960-08-01 00:00:00 ┆ 606        │
+│ 1960-09-01 00:00:00 ┆ 508        │
+│ 1960-10-01 00:00:00 ┆ 461        │
+│ 1960-11-01 00:00:00 ┆ 390        │
+│ 1960-12-01 00:00:00 ┆ 432        │
+└─────────────────────┴────────────┘
+
+Dataset shape: 144 rows, 2 columns
+
+Date range: 1949-01-01 00:00:00 to 1960-12-01 00:00:00
+Training set: 115 observations (1949-01-01 00:00:00 to 1958-07-01 00:00:00)
+Test set: 29 observations (1958-08-01 00:00:00 to 1960-12-01 00:00:00)
+
+Forecasting horizon: 12 months
+Baseline (Seasonal Naive) MAE: 28.58 thousand passengers
+Reducer MAE: 23.67 thousand passengers
+Baseline MAE: 28.58 thousand passengers
+Improvement: 17.2%
+Running hyperparameter search...
+
+✅ Search complete!
+
+Best parameters found:
+  estimator__alpha: 9.46428398348786
+  feature_transformer__lag__lag: 3
+
+Best cross-validation MAE: nan
+Baseline MAE (for comparison): 28.58
+Best forecaster MAE: 24.33 thousand passengers
+Running GridSearchCV (9 combinations)...
+
+✅ Grid search complete!
+
+Best parameters found:
+  estimator__alpha: 0.1
+  feature_transformer__lag__lag: 2
+
+Best cross-validation MAE: nan
+GridSearchCV MAE on test set: 20.75
+Simulating rolling forecast...
+Traceback (most recent call last):
+  File "/home/gigi/Workspace/stateful-y/yohou/examples/quickstart.py", line 1215, in <module>
+    app.run()
+    ~~~~~~~^^
+  File "/home/gigi/Workspace/stateful-y/yohou/.venv/lib/python3.13/site-packages/marimo/_ast/app.py", line 750, in run
+    ).run()
+      ~~~^^
+  File "/home/gigi/Workspace/stateful-y/yohou/.venv/lib/python3.13/site-packages/marimo/_runtime/app/script_runner.py", line 240, in run
+    raise e.__cause__ from None  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/.venv/lib/python3.13/site-packages/marimo/_runtime/executor.py", line 138, in execute_cell
+    exec(cell.body, glbls)
+    ~~~~^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/examples/quickstart.py", line 1052, in <module>
+    y_pred_incremental = pipeline_incremental.update_predict(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/point_forecaster/base.py", line 305, in update_predict
+    self.update(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 937, in update
+    X_t_updated = _update_transformers_one(
+        y, X, self.target_transformer_, self.feature_transformer_, self.input_features
+    )
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 2163, in _update_transformers_one
+    y_t = target_transformer.update_transform(y)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 757, in update_transform
+    X_t = _update_transform_one(transform, X_t, None, None, routed_params[name])
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/pipeline.py", line 2745, in _update_transform_one
+    X_transformed = transformer.update_transform(X, **routed_params.get("update_transform", {}))
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/base.py", line 234, in update_transform
+    X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validate_data.py", line 504, in validate_transformer_data
+    check_continuity(
+    ~~~~~~~~~~~~~~~~^
+        transformer._X_observed,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        check_intervals=(interval is not None),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/gigi/Workspace/stateful-y/yohou/src/yohou/utils/validation.py", line 1214, in check_continuity
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: Overlap detected between DataFrames: previous DataFrame ends at 1958-07-01 00:00:00, next DataFrame starts at 1957-08-01 00:00:00, expected 1958-08-01 00:00:00 (interval 1mo).
