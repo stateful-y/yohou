@@ -1,0 +1,235 @@
+"""Tests for PolynomialTrendForecaster."""
+
+from datetime import datetime
+
+import numpy as np
+import polars as pl
+import pytest
+from sklearn.base import clone
+from sklearn.linear_model import ElasticNet
+from sklearn.pipeline import Pipeline
+
+from conftest import run_checks
+from yohou.stationarity import PolynomialTrendForecaster
+from yohou.testing import _yield_yohou_forecaster_checks
+
+
+class TestPolynomialTrendForecaster:
+    @pytest.mark.parametrize(
+        "forecaster,expected_failures",
+        [
+            (
+                PolynomialTrendForecaster(degree=1),
+                [],
+            ),
+            (
+                PolynomialTrendForecaster(degree=2),
+                [],
+            ),
+            (
+                PolynomialTrendForecaster(degree=3),
+                [],
+            ),
+        ],
+    )
+    def test_polynomial_trend_checks(self, forecaster, expected_failures, y_X_factory):
+        """Run systematic checks on PolynomialTrendForecaster."""
+        # Generate data with trend
+        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+
+        # Add linear trend to data
+        y = y.with_columns([(pl.col(col) + pl.Series(range(len(y)))).alias(col) for col in y.columns if col != "time"])
+
+        y_train, y_test = y[:80], y[80:]
+        X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
+
+        forecaster_fitted = clone(forecaster)
+        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+
+        run_checks(
+            forecaster_fitted,
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            expected_failures=set(expected_failures),
+        )
+
+    def test_polynomial_linear_analytical(self):
+        """Test linear trend forecaster on known linear process."""
+        # Create perfect linear trend: y = 2*t + 5
+        from datetime import timedelta
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [2 * i + 5 for i in range(50)]})
+
+        # Fit on first 40, predict next 10
+        forecaster = PolynomialTrendForecaster(degree=1, estimator=ElasticNet(alpha=0.0, l1_ratio=0.0))
+        forecaster.fit(y[:40], forecasting_horizon=1)
+
+        # Predict 10 steps
+        y_pred = forecaster.predict(forecasting_horizon=10)
+
+        # Check predictions match exact linear continuation
+        expected_values = [2 * i + 5 for i in range(40, 50)]
+
+        # Allow small numerical error (floating point precision)
+        pred_values = y_pred["value"].to_numpy().flatten()
+        assert np.allclose(pred_values, expected_values, atol=1e-10), (
+            "Linear trend predictions should match exact linear process"
+        )
+
+    def test_polynomial_quadratic_analytical(self):
+        """Test polynomial trend on known quadratic process."""
+        # Create perfect quadratic: y = 0.5*t^2 + 2*t + 1
+        from datetime import timedelta
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [0.5 * i**2 + 2 * i + 1 for i in range(50)]})
+
+        # Fit polynomial degree 2
+        forecaster = PolynomialTrendForecaster(degree=2, estimator=ElasticNet(alpha=0.0, l1_ratio=0.0))
+        forecaster.fit(y[:40], forecasting_horizon=1)
+
+        # Predict 10 steps
+        y_pred = forecaster.predict(forecasting_horizon=10)
+
+        # Check predictions
+        expected_values = [0.5 * i**2 + 2 * i + 1 for i in range(40, 50)]
+
+        # Polynomial fitting may have small numerical errors
+        pred_values = y_pred["value"].to_numpy().flatten()
+        assert np.allclose(pred_values, expected_values, atol=1e-1), (
+            "Polynomial trend should match quadratic process closely"
+        )
+
+    def test_polynomial_different_horizons(self):
+        """Test that different forecasting horizons work correctly."""
+        from datetime import timedelta
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [2 * i + 5 for i in range(50)]})
+
+        forecaster = PolynomialTrendForecaster(degree=1)
+        forecaster.fit(y[:40], forecasting_horizon=5)
+
+        # Predict different horizon than fit
+        y_pred_10 = forecaster.predict(forecasting_horizon=10)
+        assert len(y_pred_10) == 10
+
+        y_pred_3 = forecaster.predict(forecasting_horizon=3)
+        assert len(y_pred_3) == 3
+
+    def test_polynomial_panel_data(self, panel_time_series_factory):
+        """Test PolynomialTrendForecaster with panel data."""
+        y_panel = panel_time_series_factory(length=100, n_series=3, seed=42)
+
+        # Add linear trends with different slopes per series
+        for i in range(3):
+            col_name = f"panel__series_{i}"
+            y_panel = y_panel.with_columns((pl.col(col_name) + (i + 1) * pl.Series(range(100))).alias(col_name))
+
+        forecaster = PolynomialTrendForecaster(degree=1)
+        forecaster.fit(y_panel[:80], forecasting_horizon=5)
+
+        # Predict all groups
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        # Should have predictions for all series
+        assert "panel__series_0" in y_pred.columns
+        assert "panel__series_1" in y_pred.columns
+        assert "panel__series_2" in y_pred.columns
+        assert len(y_pred) == 5
+
+    def test_polynomial_observe_predict(self):
+        """Test observe_predict method."""
+        from datetime import timedelta
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [2 * i + 5 for i in range(50)]})
+
+        forecaster = PolynomialTrendForecaster(degree=1)
+        fit_forecasting_horizon = 5
+        forecaster.fit(y[:30], forecasting_horizon=fit_forecasting_horizon)
+
+        # Observe with new data and predict
+        n_new = 10
+        predict_forecasting_horizon = 5
+        y_new = y[30 : 30 + n_new]
+        y_pred = forecaster.observe_predict(y_new, forecasting_horizon=predict_forecasting_horizon)
+
+        assert len(y_pred) == predict_forecasting_horizon * (1 + n_new // fit_forecasting_horizon)
+        assert "value" in y_pred.columns
+
+    def test_polynomial_panel_pooled_strategy(self, panel_time_series_factory):
+        """Test PolynomialTrendForecaster with pooled panel strategy."""
+        y_panel = panel_time_series_factory(length=100, n_series=3, seed=42)
+
+        # Add distinct linear trends with different slopes per series
+        for i in range(3):
+            col_name = f"panel__series_{i}"
+            # Series 0: slope=1, Series 1: slope=3, Series 2: slope=5
+            slope = 1 + i * 2
+            y_panel = y_panel.with_columns((pl.col(col_name) + slope * pl.Series(range(100))).alias(col_name))
+
+        # Fit forecaster with default pooled strategy
+        forecaster = PolynomialTrendForecaster(degree=1)
+        forecaster.fit(y_panel[:80], forecasting_horizon=5)
+
+        # Pooled strategy: estimator_ should be single Pipeline object
+        assert isinstance(forecaster.estimator_, Pipeline), "Pooled should store single Pipeline"
+        assert not isinstance(forecaster.estimator_, dict), "Pooled should not be a dict"
+
+        # Predict all groups
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        # Basic structure checks
+        assert len(y_pred) == 5
+        assert "panel__series_0" in y_pred.columns
+        assert "panel__series_1" in y_pred.columns
+        assert "panel__series_2" in y_pred.columns
+
+
+class TestPolynomialTrendWithoutExogenous:
+    """Tests for PolynomialTrendForecaster with X=None."""
+
+    def test_fit_predict_without_exogenous(self):
+        """PolynomialTrendForecaster should work without exogenous features."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 2, 19),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [float(i) for i in range(50)]})
+
+        forecaster = PolynomialTrendForecaster(degree=1)
+        forecaster.fit(y[:40], X=None, forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        assert isinstance(y_pred, pl.DataFrame)
+        assert "time" in y_pred.columns
+        assert len(y_pred) == 5
+
+    def test_ignores_exogenous_tag(self):
+        """PolynomialTrendForecaster should have ignores_exogenous=True tag."""
+        forecaster = PolynomialTrendForecaster(degree=1)
+        tags = forecaster.__sklearn_tags__()
+        assert tags.forecaster_tags.ignores_exogenous is True
