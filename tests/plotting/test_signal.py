@@ -1,0 +1,155 @@
+"""Tests for signal plotting functions."""
+
+import polars as pl
+import pytest
+from plotly import graph_objects as go
+
+from yohou.plotting import plot_phase, plot_spectrum
+
+
+@pytest.fixture
+def sample_df():
+    """Create sample DataFrame for testing."""
+    import numpy as np
+
+    n = 100
+    t = np.linspace(0, 2 * np.pi * 4, n)
+    return pl.DataFrame({
+        "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+        "y": (np.sin(t) + 0.5 * np.cos(2 * t)).tolist(),
+    })
+
+
+@pytest.fixture
+def short_df():
+    """Create short sample DataFrame for spectrum tests."""
+    return pl.DataFrame({
+        "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+        "x": [100 + i % 20 for i in range(91)],
+        "y": [150 + (i % 15) * 2 for i in range(91)],
+    })
+
+
+class TestPlotPhase:
+    """Tests for plot_phase function."""
+
+    def test_basic(self, sample_df):
+        """Test basic phase spectrum plot."""
+        fig = plot_phase(sample_df, columns="y")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_unwrap(self, sample_df):
+        """Test with phase unwrapping enabled."""
+        fig = plot_phase(sample_df, columns="y", unwrap=True)
+        assert isinstance(fig, go.Figure)
+
+    def test_degrees(self, sample_df):
+        """Test degrees mode."""
+        fig = plot_phase(sample_df, columns="y", angle_unit="degree")
+        assert isinstance(fig, go.Figure)
+        # Y-axis label should mention degrees
+        y_text = fig.layout.yaxis.title.text
+        assert "deg" in y_text.lower() or "°" in y_text
+
+    def test_radians(self, sample_df):
+        """Test radians mode (default)."""
+        fig = plot_phase(sample_df, columns="y", angle_unit="radian")
+        assert isinstance(fig, go.Figure)
+        y_text = fig.layout.yaxis.title.text
+        assert "radian" in y_text.lower()
+
+    def test_multiple_columns(self, sample_df):
+        """Test with multiple columns."""
+        import numpy as np
+
+        n = len(sample_df)
+        df = sample_df.with_columns(pl.Series("y2", (np.cos(np.linspace(0, 4 * np.pi, n))).tolist()))
+        fig = plot_phase(df, columns=["y", "y2"])
+        assert len(fig.data) >= 2
+
+    def test_panel(self):
+        """Test panel data faceting."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y__a": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+            "y__b": np.cos(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+
+class TestPlotSpectrum:
+    """Tests for plot_spectrum function."""
+
+    def test_basic(self):
+        """Test basic periodogram functionality."""
+        import numpy as np
+
+        t = np.arange(100)
+        y = np.sin(2 * np.pi * 0.1 * t)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y": y,
+        })
+
+        fig = plot_spectrum(df, columns="y")
+        assert len(fig.data) >= 1
+        assert fig.data[0].type == "scatter"
+
+    def test_log_scale(self):
+        """Test log scale option."""
+        import numpy as np
+
+        t = np.arange(100)
+        y = np.sin(2 * np.pi * 0.1 * t)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y": y,
+        })
+
+        fig = plot_spectrum(df, log_scale=True)
+        assert len(fig.data) >= 1
+        assert fig.layout.yaxis.type == "log"
+
+    def test_peaks(self):
+        """Test peak detection."""
+        import numpy as np
+
+        t = np.arange(100)
+        y = np.sin(2 * np.pi * 0.1 * t) + 0.5 * np.sin(2 * np.pi * 0.25 * t)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y": y,
+        })
+
+        fig = plot_spectrum(df, show_peaks=True, n_peaks=2)
+        assert len(fig.data) >= 2  # Line trace + peak markers
+
+    def test_multiple_columns(self):
+        """Test plotting multiple columns."""
+        import numpy as np
+
+        t = np.arange(100)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y1": np.sin(2 * np.pi * 0.1 * t),
+            "y2": np.sin(2 * np.pi * 0.2 * t),
+        })
+
+        fig = plot_spectrum(df, columns=["y1", "y2"])
+        assert len(fig.data) >= 2
+
+    def test_panel(self, short_df):
+        """Test panel faceting for periodogram."""
+        df = pl.DataFrame({
+            "time": short_df["time"],
+            "y__a": short_df["y"],
+            "y__b": short_df["x"],
+        })
+        fig = plot_spectrum(df, panel_group_names=["y"])
+        assert len(fig.data) > 0
