@@ -8,7 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0-alpha.1] - 2026-02-20
 
-This **minor release** includes 0 commits.
+This **minor release** includes 1 commit.
+
+- Initial commit
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @gtauzin
 
 ## [Unreleased]
 
