@@ -33,9 +33,6 @@ dependencies = [
 [project.optional-dependencies]
 plotting = ["statsmodels>=0.14"]
 
-[project.scripts]
-pytest = "pytest:console_main"
-
 [dependency-groups]
 dev = [
     {include-group = "tests"},
