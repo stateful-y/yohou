@@ -166,12 +166,17 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             forecasting_horizon=forecasting_horizon,
         )
 
-        # Use None to delegate to fit_forecasting_horizon_
+        # TODO: Reconsider
+        # stride=1: each row of y_calib produces one prediction window of length
+        # forecasting_horizon.  This yields calibration_size - step + 1 conformity
+        # scores for each horizon step k, instead of the ~2-3 scores that result
+        # from stride=forecasting_horizon.  More calibration scores per step gives
+        # quantiles that are stable and well-separated.
         y_pred_calib = self.point_forecaster_.observe_predict(
             y=y_calib,
             X=X_calib,
             forecasting_horizon=None,
-            stride=None,
+            stride=1,
             predict_transformed=False,
         )
 
@@ -519,8 +524,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             upper_data = {}
             for col in value_cols:
                 scores_col = scores_no_time[col].to_numpy().astype(np.float64)
-                lower_q = weighted_quantile(scores_col, 1 - coverage_rate / 2, weights)
-                upper_q = weighted_quantile(scores_col, coverage_rate / 2, weights)
+                alpha = 1.0 - coverage_rate
+                lower_q = weighted_quantile(scores_col, alpha / 2.0, weights)
+                upper_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
                 pred_val = float(y_pred_values[col][0])
                 lower_data[col] = [pred_val + lower_q]
                 upper_data[col] = [pred_val + upper_q]
