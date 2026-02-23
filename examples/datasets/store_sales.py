@@ -2,7 +2,7 @@
 
 Weekly retail profit for SKUs from Dominick's Finer Foods in Yohou panel format.
 
-Dataset: 115704 weekly profit series (exploring first 9)
+Dataset: 50 weekly profit series by default (exploring first 9)
 Demonstrates: inspect_locality, plot_time_series, plot_boxplot, plot_seasonality
 """
 
@@ -85,8 +85,9 @@ def _(mo):
     mo.md("""
     ## 1. Inspect Panel Structure
 
-    The full dataset has 115704 series using the `Tn__profit` convention.
-    Here we work with the first 9 series.
+    By default, `fetch_dominick()` returns 50 series using the `Tn__profit`
+    convention (pass `n_series=None` for all 115704). Here we work with the
+    first 9 series.
     """)
     return
 
@@ -205,7 +206,7 @@ def _(mo):
     - **`inspect_locality`**: Automatically discovers panel groups from column names
     - **Direct plotting**: Panel columns can be plotted directly with `plot_time_series`
     - **Boxplots**: Compare distributions across panel groups to spot outliers and variability
-    - **Large dataset**: 115704 series available; select a subset for exploration
+    - **Large dataset**: 50 series loaded by default; pass `n_series=None` for all 115704
 
     ## Next Steps
 

@@ -36,6 +36,7 @@ def parse_tsf(
     source: str | IO[bytes],
     *,
     value_column_name: str = "value",
+    n_series: int | None = None,
 ) -> tuple[pl.DataFrame, dict]:
     """Parse a Monash ``.tsf`` file into a wide polars DataFrame.
 
@@ -46,6 +47,9 @@ def parse_tsf(
     value_column_name : str
         Name for the value column(s). For panel data, column names become
         ``"{series_name}__{value_column_name}"``.
+    n_series : int or None
+        Maximum number of series to parse. ``None`` parses all series.
+        Use this to limit memory consumption for large datasets.
 
     Returns
     -------
@@ -59,7 +63,7 @@ def parse_tsf(
     lines = _read_lines(source)
     attributes, header_meta, data_start_idx = _parse_header(lines)
 
-    series_list = _parse_data_lines(lines[data_start_idx:], attributes)
+    series_list = _parse_data_lines(lines[data_start_idx:], attributes, n_series=n_series)
 
     polars_freq = TSF_FREQUENCY_MAP.get(header_meta["frequency_raw"], header_meta["frequency_raw"])
 
@@ -141,6 +145,8 @@ def _parse_header(
 def _parse_data_lines(
     data_lines: list[str],
     attributes: list[tuple[str, str]],
+    *,
+    n_series: int | None = None,
 ) -> list[dict]:
     """Parse data lines into a list of series dicts.
 
@@ -177,6 +183,9 @@ def _parse_data_lines(
             "start_timestamp": start_timestamp,
             "values": values,
         })
+
+        if n_series is not None and len(series_list) >= n_series:
+            break
 
     return series_list
 

@@ -35,7 +35,7 @@ def _(mo):
     # Pedestrian Counts Forecasting
 
     The Pedestrian Counts dataset contains hourly pedestrian counts from
-    66 sensors in Melbourne. We work with a subset of sensors to
+    Melbourne sensors (20 by default). We work with a subset of sensors to
     demonstrate a realistic **panel forecasting** scenario on high-frequency
     data.
 

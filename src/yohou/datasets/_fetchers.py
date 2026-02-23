@@ -71,6 +71,7 @@ def _fetch_dataset(
     dataset_name: str,
     *,
     value_column_name: str = "value",
+    n_series: int | None = None,
     data_home: str | os.PathLike | None = None,
     download_if_missing: bool = True,
     n_retries: int = 3,
@@ -86,6 +87,10 @@ def _fetch_dataset(
         Subdirectory name under data_home for caching.
     value_column_name : str
         Name for the value column(s) in the DataFrame.
+    n_series : int or None
+        Maximum number of series to load.  ``None`` loads every series
+        in the dataset.  When set, a separate parquet cache is kept so
+        that the full dataset and any subset coexist on disk.
     data_home : str, PathLike, or None
         Cache directory.
     download_if_missing : bool
@@ -104,7 +109,9 @@ def _fetch_dataset(
     """
     data_home_str = get_data_home(data_home)
     dataset_dir = os.path.join(data_home_str, dataset_name)
-    parquet_path = os.path.join(dataset_dir, f"{dataset_name}.parquet")
+
+    suffix = "" if n_series is None else f"_n{n_series}"
+    parquet_path = os.path.join(dataset_dir, f"{dataset_name}{suffix}.parquet")
 
     if os.path.exists(parquet_path):
         frame = pl.read_parquet(parquet_path)
@@ -128,6 +135,7 @@ def _fetch_dataset(
             zip_path,
             metadata.tsf_filename,
             value_column_name=value_column_name,
+            n_series=n_series,
         )
 
         frame.write_parquet(parquet_path)
@@ -139,7 +147,7 @@ def _fetch_dataset(
         feature_names=feature_names,
         DESCR=metadata.descr,
         frequency=metadata.frequency,
-        n_series=metadata.n_series,
+        n_series=len(feature_names),
         filename=parquet_path,
     )
 
@@ -149,10 +157,11 @@ def _extract_and_parse(
     tsf_filename: str,
     *,
     value_column_name: str,
+    n_series: int | None = None,
 ) -> pl.DataFrame:
     """Extract a TSF file from a ZIP and parse it to a polars DataFrame."""
     with zipfile.ZipFile(zip_path, "r") as zf, zf.open(tsf_filename) as f:
-        frame, _metadata = parse_tsf(f, value_column_name=value_column_name)
+        frame, _metadata = parse_tsf(f, value_column_name=value_column_name, n_series=n_series)
 
     if frame.schema.get("time") == pl.Date:
         frame = frame.with_columns(pl.col("time").cast(pl.Datetime))
@@ -162,6 +171,7 @@ def _extract_and_parse(
 
 def fetch_tourism_monthly(
     *,
+    n_series: int | None = None,
     data_home: str | os.PathLike | None = None,
     download_if_missing: bool = True,
     n_retries: int = 3,
@@ -174,6 +184,10 @@ def fetch_tourism_monthly(
 
     Parameters
     ----------
+    n_series : int or None, default=None
+        Maximum number of series to include.  ``None`` loads all 366
+        series.  A smaller value reduces memory usage and speeds up
+        parsing.
     data_home : str, PathLike, or None
         Specify another download and cache folder for the datasets.
         By default all yohou data is stored in ``~/yohou_data/``.
@@ -191,8 +205,8 @@ def fetch_tourism_monthly(
         Dictionary-like object with the following attributes:
 
         frame : pl.DataFrame
-            DataFrame with ``"time"`` (Datetime) and 366 series columns
-            using the ``__`` separator convention
+            DataFrame with ``"time"`` (Datetime) and up to 366 series
+            columns using the ``__`` separator convention
             (e.g. ``"T1__tourists"``).
         feature_names : list of str
             Non-time column names.
@@ -201,7 +215,7 @@ def fetch_tourism_monthly(
         frequency : str
             ``"1mo"``.
         n_series : int
-            ``366``.
+            Number of series actually loaded.
         filename : str
             Path to the cached parquet file.
 
@@ -224,6 +238,7 @@ def fetch_tourism_monthly(
         metadata=TOURISM_MONTHLY,
         dataset_name="tourism_monthly",
         value_column_name="tourists",
+        n_series=n_series,
         data_home=data_home,
         download_if_missing=download_if_missing,
         n_retries=n_retries,
@@ -240,8 +255,8 @@ def fetch_sunspot(
 ) -> Bunch:
     """Fetch the Sunspot dataset (without missing values) from Monash/Zenodo.
 
-    Single very long daily time series of sunspot numbers from
-    1818-01-08 to 2020-05-31.
+    Single daily time series of sunspot numbers from 1818-01-08 to
+    2020-05-31 (73 924 observations).
 
     Parameters
     ----------
@@ -303,6 +318,7 @@ def fetch_sunspot(
 
 def fetch_tourism_quarterly(
     *,
+    n_series: int | None = None,
     data_home: str | os.PathLike | None = None,
     download_if_missing: bool = True,
     n_retries: int = 3,
@@ -315,6 +331,10 @@ def fetch_tourism_quarterly(
 
     Parameters
     ----------
+    n_series : int or None, default=None
+        Maximum number of series to include.  ``None`` loads all 427
+        series.  A smaller value reduces memory usage and speeds up
+        parsing.
     data_home : str, PathLike, or None
         Specify another download and cache folder for the datasets.
         By default all yohou data is stored in ``~/yohou_data/``.
@@ -332,8 +352,8 @@ def fetch_tourism_quarterly(
         Dictionary-like object with the following attributes:
 
         frame : pl.DataFrame
-            DataFrame with ``"time"`` (Datetime) and 427 series columns
-            using the ``__`` separator convention
+            DataFrame with ``"time"`` (Datetime) and up to 427 series
+            columns using the ``__`` separator convention
             (e.g. ``"T1__tourists"``).
         feature_names : list of str
             Non-time column names.
@@ -342,7 +362,7 @@ def fetch_tourism_quarterly(
         frequency : str
             ``"3mo"``.
         n_series : int
-            ``427``.
+            Number of series actually loaded.
         filename : str
             Path to the cached parquet file.
 
@@ -365,6 +385,7 @@ def fetch_tourism_quarterly(
         metadata=TOURISM_QUARTERLY,
         dataset_name="tourism_quarterly",
         value_column_name="tourists",
+        n_series=n_series,
         data_home=data_home,
         download_if_missing=download_if_missing,
         n_retries=n_retries,
@@ -383,7 +404,7 @@ def fetch_electricity_demand(
 
     5 half-hourly time series of electricity demand from five
     Australian states: New South Wales, Queensland, South Australia,
-    Tasmania, and Victoria.
+    Tasmania, and Victoria (232 272 time steps).
 
     Parameters
     ----------
@@ -446,6 +467,7 @@ def fetch_electricity_demand(
 
 def fetch_dominick(
     *,
+    n_series: int | None = 50,
     data_home: str | os.PathLike | None = None,
     download_if_missing: bool = True,
     n_retries: int = 3,
@@ -453,17 +475,17 @@ def fetch_dominick(
 ) -> Bunch:
     """Fetch the Dominick dataset from Monash/Zenodo.
 
-    115704 weekly time series representing the profit of individual
-    stock keeping units from a retailer (Dominick's Finer Foods).
-
-    .. warning::
-
-        This is a large dataset (12 MB compressed, 115704 series).
-        Parsing may take several minutes on the first call. Subsequent
-        calls load from a cached parquet file.
+    Weekly time series representing the profit of individual stock
+    keeping units from a retailer (Dominick's Finer Foods).  The full
+    dataset contains 115 704 series; by default only the first 50 are
+    loaded to keep memory usage reasonable.
 
     Parameters
     ----------
+    n_series : int or None, default=50
+        Maximum number of series to include.  ``None`` loads all
+        115 704 series (several GB of memory).  The default of 50
+        keeps the dataset small enough for interactive examples.
     data_home : str, PathLike, or None
         Specify another download and cache folder for the datasets.
         By default all yohou data is stored in ``~/yohou_data/``.
@@ -481,8 +503,8 @@ def fetch_dominick(
         Dictionary-like object with the following attributes:
 
         frame : pl.DataFrame
-            DataFrame with ``"time"`` (Datetime) and 115704 series
-            columns using the ``__`` separator convention
+            DataFrame with ``"time"`` (Datetime) and up to 115 704
+            series columns using the ``__`` separator convention
             (e.g. ``"T1__profit"``).
         feature_names : list of str
             Non-time column names.
@@ -491,7 +513,7 @@ def fetch_dominick(
         frequency : str
             ``"1w"``.
         n_series : int
-            ``115704``.
+            Number of series actually loaded.
         filename : str
             Path to the cached parquet file.
 
@@ -514,6 +536,7 @@ def fetch_dominick(
         metadata=DOMINICK,
         dataset_name="dominick",
         value_column_name="profit",
+        n_series=n_series,
         data_home=data_home,
         download_if_missing=download_if_missing,
         n_retries=n_retries,
@@ -523,6 +546,7 @@ def fetch_dominick(
 
 def fetch_pedestrian_counts(
     *,
+    n_series: int | None = 20,
     data_home: str | os.PathLike | None = None,
     download_if_missing: bool = True,
     n_retries: int = 3,
@@ -530,11 +554,16 @@ def fetch_pedestrian_counts(
 ) -> Bunch:
     """Fetch the Melbourne Pedestrian Counts dataset from Monash/Zenodo.
 
-    66 hourly time series of pedestrian counts captured from sensors
-    in Melbourne city from May 2009 to April 2020.
+    Hourly time series of pedestrian counts captured from sensors in
+    Melbourne city from May 2009 to April 2020.  The full dataset
+    contains 66 sensors; by default only the first 20 are loaded.
 
     Parameters
     ----------
+    n_series : int or None, default=20
+        Maximum number of sensor series to include.  ``None`` loads
+        all 66 series.  The default of 20 keeps memory usage
+        manageable for interactive examples.
     data_home : str, PathLike, or None
         Specify another download and cache folder for the datasets.
         By default all yohou data is stored in ``~/yohou_data/``.
@@ -552,8 +581,8 @@ def fetch_pedestrian_counts(
         Dictionary-like object with the following attributes:
 
         frame : pl.DataFrame
-            DataFrame with ``"time"`` (Datetime) and 66 sensor columns
-            using the ``__`` separator convention
+            DataFrame with ``"time"`` (Datetime) and up to 66 sensor
+            columns using the ``__`` separator convention
             (e.g. ``"T1__count"``).
         feature_names : list of str
             Non-time column names.
@@ -562,7 +591,7 @@ def fetch_pedestrian_counts(
         frequency : str
             ``"1h"``.
         n_series : int
-            ``66``.
+            Number of series actually loaded.
         filename : str
             Path to the cached parquet file.
 
@@ -585,6 +614,7 @@ def fetch_pedestrian_counts(
         metadata=PEDESTRIAN_COUNTS,
         dataset_name="pedestrian_counts",
         value_column_name="count",
+        n_series=n_series,
         data_home=data_home,
         download_if_missing=download_if_missing,
         n_retries=n_retries,
@@ -594,6 +624,7 @@ def fetch_pedestrian_counts(
 
 def fetch_hospital(
     *,
+    n_series: int | None = None,
     data_home: str | os.PathLike | None = None,
     download_if_missing: bool = True,
     n_retries: int = 3,
@@ -606,6 +637,10 @@ def fetch_hospital(
 
     Parameters
     ----------
+    n_series : int or None, default=None
+        Maximum number of series to include.  ``None`` loads all 767
+        series.  A smaller value reduces memory usage and speeds up
+        parsing.
     data_home : str, PathLike, or None
         Specify another download and cache folder for the datasets.
         By default all yohou data is stored in ``~/yohou_data/``.
@@ -623,8 +658,8 @@ def fetch_hospital(
         Dictionary-like object with the following attributes:
 
         frame : pl.DataFrame
-            DataFrame with ``"time"`` (Datetime) and 767 series columns
-            using the ``__`` separator convention
+            DataFrame with ``"time"`` (Datetime) and up to 767 series
+            columns using the ``__`` separator convention
             (e.g. ``"T1__patients"``).
         feature_names : list of str
             Non-time column names.
@@ -633,7 +668,7 @@ def fetch_hospital(
         frequency : str
             ``"1mo"``.
         n_series : int
-            ``767``.
+            Number of series actually loaded.
         filename : str
             Path to the cached parquet file.
 
@@ -656,6 +691,7 @@ def fetch_hospital(
         metadata=HOSPITAL,
         dataset_name="hospital",
         value_column_name="patients",
+        n_series=n_series,
         data_home=data_home,
         download_if_missing=download_if_missing,
         n_retries=n_retries,

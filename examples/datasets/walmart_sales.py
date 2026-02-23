@@ -1,8 +1,8 @@
 """Pedestrian Counts - Sensor-Level Panel Analysis.
 
-Hourly pedestrian counts from 66 sensors in Melbourne.
+Hourly pedestrian counts from Melbourne sensors.
 
-Dataset: 66 hourly count series (exploring first 6)
+Dataset: 20 hourly count series by default (exploring first 6)
 Demonstrates: inspect_locality, plot_time_series, plot_boxplot, plot_seasonality
 """
 
@@ -83,8 +83,9 @@ def _(mo):
     mo.md("""
     ## 1. Inspect Panel Structure
 
-    The full dataset has 66 sensors using the `Tn__count` convention.
-    Here we work with the first 6 sensors.
+    By default, `fetch_pedestrian_counts()` returns 20 sensors using the
+    `Tn__count` convention (pass `n_series=None` for all 66). Here we work
+    with the first 6 sensors.
     """)
     return
 
@@ -203,7 +204,7 @@ def _(mo):
     ## Key Takeaways
 
     - **Native panel format**: Columns use `Tn__count` convention: no pivoting needed
-    - **Hourly frequency**: 66 pedestrian count sensors from Melbourne (2009-2020)
+    - **Hourly frequency**: 20 pedestrian count sensors by default (pass `n_series=None` for all 66)
     - **Sensor comparison**: Direct multi-series plotting without manual pivoting
     - **Intraday patterns**: Clear hour-of-day effects with commute and lunch-time peaks
     - **`inspect_locality`**: Automatically discovers panel groups from column names

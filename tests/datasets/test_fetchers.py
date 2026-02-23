@@ -181,6 +181,28 @@ class TestFetchCommon:
         bunch2 = fetcher(data_home=tmp_path, download_if_missing=False)
         assert bunch1.frame.equals(bunch2.frame)
 
+    def test_n_series_limits_columns(self, tmp_path):
+        """n_series limits the number of series parsed and cached."""
+        bunch = fetch_tourism_monthly(data_home=tmp_path, n_series=1)
+        non_time = [c for c in bunch.frame.columns if c != "time"]
+        assert len(non_time) == 1
+        assert bunch.n_series == 1
+
+    def test_n_series_none_loads_all(self, tmp_path):
+        """n_series=None loads all series (2 in the mock TSF)."""
+        bunch = fetch_tourism_monthly(data_home=tmp_path, n_series=None)
+        non_time = [c for c in bunch.frame.columns if c != "time"]
+        assert len(non_time) == 2
+        assert bunch.n_series == 2
+
+    def test_n_series_separate_cache(self, tmp_path):
+        """Different n_series values produce separate cache files."""
+        bunch_all = fetch_tourism_monthly(data_home=tmp_path, n_series=None)
+        bunch_sub = fetch_tourism_monthly(data_home=tmp_path, n_series=1)
+        assert bunch_all.filename != bunch_sub.filename
+        assert len(bunch_all.feature_names) == 2
+        assert len(bunch_sub.feature_names) == 1
+
 
 class TestFetchIntegration:
     """Integration tests that download from Zenodo (requires network)."""
@@ -210,8 +232,8 @@ class TestFetchIntegration:
     @pytest.mark.slow
     @pytest.mark.integration
     def test_real_download_dominick(self, tmp_path):
-        """Real download of the large Dominick dataset."""
+        """Real download of the large Dominick dataset (default subset)."""
         bunch = fetch_dominick(data_home=tmp_path)
         assert isinstance(bunch.frame, pl.DataFrame)
         assert "time" in bunch.frame.columns
-        assert bunch.n_series == 115704
+        assert bunch.n_series == 50
