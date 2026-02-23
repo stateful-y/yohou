@@ -279,7 +279,7 @@ def plot_forecast(
                     y_lower = y_pred[lower_col].to_list()
                     x_band = t + t[::-1]
                     y_band = y_upper + y_lower[::-1]
-                    pi_name = f"{col} ({rate:.0%} PI)" if multi_col else f"{interval_base} ({rate:.0%} PI)"
+                    pi_name = f"{col} ({rate:.0%} PI)" if multi_col else f"Forecast ({rate:.0%} PI)"
                     fig.add_trace(
                         go.Scatter(
                             x=x_band,

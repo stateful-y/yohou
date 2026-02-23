@@ -120,6 +120,7 @@ def _():
         compose_weights,
         copy,
         exponential_decay_weight,
+        go,
         inspect_locality,
         linear_decay_weight,
         load_air_passengers,
@@ -728,7 +729,73 @@ def _(
     y_pred_interval = _y_pred_point.join(_y_pred_pi, on="time")
     print(f"Interval columns: {y_pred_interval.columns}")
     y_pred_interval.head()
-    return coverage_rates, y_pred_interval
+    return conformal, coverage_rates, y_pred_interval
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Conformality score distribution
+
+    Under the hood `SplitConformalForecaster` computes a **conformality score**
+    for every point in the held-out calibration set:
+
+    $$s_i = y_i - \hat{y}_i \quad \text{(signed residual, default scorer)}$$
+
+    These scores are stored in `conformal.conformity_scores_` (one row per
+    calibration point, one score per forecast step).  Their empirical
+    distribution governs two things:
+
+    * **Interval centres**: a zero-centred distribution means the point
+      forecaster is unbiased on the calibration window.
+    * **Interval widths**: the spread sets the floor on achievable interval
+      width.  The dashed lines mark the lower/upper quantiles used for each
+      coverage level — the further apart a pair, the wider that band.
+    """)
+    return
+
+
+@app.cell
+def _(conformal, go):
+    _scores = conformal.conformity_scores_
+    _col = next(c for c in _scores.columns if c not in ("time", "step"))
+    _vals = _scores[_col].drop_nulls()
+
+    _fig_scores = go.Figure()
+    _fig_scores.add_trace(go.Histogram(
+        x=_vals.to_list(),
+        nbinsx=20,
+        name="Calibration scores",
+        marker_color="#4c78a8",
+        opacity=0.72,
+    ))
+    _fig_scores.add_vline(
+        x=0, line_dash="dot", line_color="#888", line_width=1.5,
+        annotation_text="0", annotation_position="top",
+    )
+    for _rate, _color in zip([0.5, 0.7, 0.9], ["#f28e2b", "#59a14f", "#e15759"]):
+        _alpha = (1 - _rate) / 2
+        _q_lo = float(_vals.quantile(_alpha))
+        _q_hi = float(_vals.quantile(1 - _alpha))
+        _fig_scores.add_vline(
+            x=_q_lo, line_dash="dash", line_color=_color, line_width=1.5,
+            annotation_text=f"{_rate:.0%} lo", annotation_position="bottom right",
+        )
+        _fig_scores.add_vline(
+            x=_q_hi, line_dash="dash", line_color=_color, line_width=1.5,
+            annotation_text=f"{_rate:.0%} hi", annotation_position="top right",
+        )
+    _fig_scores.update_layout(
+        title=f"Conformality Score Distribution — calibration set ({_col})",
+        xaxis_title="Score  (y − ŷ)",
+        yaxis_title="Count",
+        bargap=0.05,
+        height=380,
+        template="simple_white",
+        showlegend=False,
+    )
+    _fig_scores
+    return
 
 
 @app.cell
@@ -821,6 +888,37 @@ def _(
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Composing weights & metadata routing
+
+    `compose_weights(fn1, fn2, …)` multiplies weight vectors element-wise, so
+    recent *and* seasonally prominent timesteps are emphasised simultaneously:
+
+    ```python
+    _tw = compose_weights(
+        exponential_decay_weight(half_life=20),   # recency
+        seasonal_emphasis_weight(seasonality=12, emphasis=3.0),  # season
+    )
+    ```
+
+    Yohou uses **sklearn metadata routing** to thread `time_weight` through
+    pipelines without touching every intermediate step.
+    Opt the forecaster in with `.set_fit_request(time_weight=True)`, then
+    pass the weight as a keyword argument to `.fit()`:
+
+    ```python
+    forecaster.set_fit_request(time_weight=True)
+    forecaster.fit(y_train, forecasting_horizon=h, time_weight=_tw)
+    ```
+
+    The framework converts `time_weight` to sklearn's `sample_weight` internally
+    before passing it to the underlying estimator.
+    """)
+    return
+
+
 @app.cell
 def _(
     FeaturePipeline,
@@ -857,6 +955,42 @@ def _(
     y_pred_weighted = weighted_forecaster.predict(forecasting_horizon=forecasting_horizon)
     mae_weighted = scorer.score(y_test, y_pred_weighted)
     print(f"Time-weighted MAE: {mae_weighted:.2f}")
+    return (y_pred_weighted,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Weighted vs. unweighted forecast
+
+    Overlaying both forecasts shows the practical effect of the time weight:
+    the weighted model tilts its extrapolation towards the most recent trend
+    and the seasonal peak positions it was told to emphasise.
+    A lower MAE alone does not tell the whole story — the chart reveals *where*
+    the two models diverge and whether the weighted version tracks the
+    actual trajectory more closely in the critical final months.
+    """)
+    return
+
+
+@app.cell
+def _(
+    forecasting_horizon,
+    plot_forecast,
+    y_pred_reduction,
+    y_pred_weighted,
+    y_test,
+    y_train,
+):
+    plot_forecast(
+        y_test,
+        {"Unweighted": y_pred_reduction, "Time-weighted": y_pred_weighted},
+        y_train=y_train,
+        forecasting_horizon=forecasting_horizon,
+        title="Time-Weighted vs. Unweighted Forecast",
+        y_label="Passengers (thousands)",
+        height=400,
+    )
     return
 
 
