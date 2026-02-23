@@ -83,9 +83,10 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
                 "Increase calibration_size or reduce forecasting_horizon."
             )
 
-        lower_quantile: float = np.quantile(scores_array, coverage_rate / 2.0, method="lower")
+        alpha = 1.0 - coverage_rate
+        lower_quantile: float = np.quantile(scores_array, alpha / 2.0, method="lower")
 
-        upper_quantile: float = np.quantile(scores_array, 1 - coverage_rate / 2.0, method="higher")
+        upper_quantile: float = np.quantile(scores_array, 1.0 - alpha / 2.0, method="higher")
 
         return lower_quantile, upper_quantile
 
@@ -123,7 +124,7 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
                 "Increase calibration_size or reduce forecasting_horizon."
             )
 
-        quantile: float = np.quantile(conformity_array, 1 - coverage_rate, method="lower")
+        quantile: float = np.quantile(conformity_array, coverage_rate, method="lower")
 
         return quantile
 

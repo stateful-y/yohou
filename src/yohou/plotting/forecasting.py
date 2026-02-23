@@ -8,9 +8,15 @@ from plotly.subplots import make_subplots
 
 from yohou.plotting._utils import (
     apply_default_layout,
+    palette_yohou,
     resolve_color_palette,
 )
 from yohou.utils import inspect_locality, validate_plotting_data
+
+# The full palette list is used as the default effective palette in every
+# plot_forecast code path. Slots 0/1/2 are reserved for the three semantic
+# traces (history, single-model forecast, actual); slot 3+ are model colors.
+_PALETTE = list(palette_yohou().values())
 
 __all__ = [
     "plot_components",
@@ -81,9 +87,6 @@ def plot_forecast(
         Plot height in pixels.
     **kwargs : dict
         Additional styling parameters:
-        - history_color : str, default="#2563EB"
-        - actual_color : str, default="#16a34a"
-        - forecast_color : str, default="#DC2626" (single-model only)
         - line_width : float, default=2.0
         - band_opacity : float, default=0.15
         - show_transition : bool, default=True
@@ -148,12 +151,14 @@ def plot_forecast(
     if y_train is not None:
         validate_plotting_data(y_train)
 
-    # Get kwargs
-    history_color = kwargs.get("history_color", "#2563EB")
-    actual_color = kwargs.get("actual_color", "#16a34a")
-    forecast_color = kwargs.get("forecast_color", "#DC2626")
+    # Semantic colors always come from the effective palette: slot 0 = history,
+    # slot 1 = single-model forecast, slot 2 = actual, slot 3+ = model comparison.
+    eff_palette = color_palette if color_palette is not None else _PALETTE
+    history_color = eff_palette[0]
+    forecast_color = eff_palette[1 % len(eff_palette)]
+    actual_color = eff_palette[2 % len(eff_palette)]
     line_width = kwargs.get("line_width", 2.0)
-    band_opacity = kwargs.get("band_opacity", 0.15)
+    band_opacity = kwargs.get("band_opacity", 0.25)
     show_transition = kwargs.get("show_transition", True)
 
     # Detect panel data
@@ -176,9 +181,6 @@ def plot_forecast(
             y_label=y_label,
             width=width,
             height=height,
-            history_color=history_color,
-            actual_color=actual_color,
-            forecast_color=forecast_color,
             line_width=line_width,
             band_opacity=band_opacity,
             show_transition=show_transition,
@@ -198,8 +200,6 @@ def plot_forecast(
             y_label=y_label,
             width=width,
             height=height,
-            history_color=history_color,
-            actual_color=actual_color,
             line_width=line_width,
             band_opacity=band_opacity,
             show_transition=show_transition,
@@ -212,7 +212,8 @@ def plot_forecast(
     plot_columns = test_value_cols
 
     multi_col = len(plot_columns) > 1
-    col_colors = resolve_color_palette(color_palette, len(plot_columns)) if multi_col else []
+    _model_pal = eff_palette[3:] or eff_palette
+    col_colors = resolve_color_palette(_model_pal, len(plot_columns)) if multi_col else []
 
     fig = go.Figure()
 
@@ -234,6 +235,10 @@ def plot_forecast(
             actual_name = "Actual"
             forecast_name = "Forecast"
 
+        # Compute pred_col early so interval rendering can hoist before Actual.
+        pred_col = col if col in pred_value_cols else (pred_value_cols[0] if pred_value_cols else None)
+        fc_group = f"forecast_{col}" if multi_col else "forecast"
+
         # Training data
         if y_train is not None and col in y_train.columns:
             train_df = y_train.tail(n_history) if n_history is not None else y_train
@@ -246,9 +251,49 @@ def plot_forecast(
                     name=train_name,
                     showlegend=train_show,
                     legendgroup="train",
+                    legendrank=1,
                     hovertemplate=f"<b>{col} Train</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
                 )
             )
+
+        # Prediction intervals – rendered before Actual so the actual line sits on top.
+        # Works even when there is no point forecast (predict_interval-only DataFrames).
+        # legendrank >= 3 places them after Train (1) and Actual (2) in the legend.
+        if coverage_rates:
+            interval_base = pred_col if pred_col is not None else col
+            _hex = forecast_c.lstrip("#")
+            rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+            sorted_rates = sorted(coverage_rates)
+            n_rates = len(sorted_rates)
+            for sort_idx, rate in enumerate(sorted_rates):
+                lower_col = f"{interval_base}_lower_{rate}"
+                upper_col = f"{interval_base}_upper_{rate}"
+
+                if lower_col in y_pred.columns and upper_col in y_pred.columns:
+                    # Narrower bands (lower rate, lower sort_idx) rendered most opaque;
+                    # wider outer bands fade out gracefully.
+                    rate_opacity = band_opacity * (1.0 - 0.45 * sort_idx / max(1, n_rates - 1))
+                    rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {rate_opacity:.3f})"
+                    t = y_pred["time"].to_list()
+                    y_upper = y_pred[upper_col].to_list()
+                    y_lower = y_pred[lower_col].to_list()
+                    x_band = t + t[::-1]
+                    y_band = y_upper + y_lower[::-1]
+                    pi_name = f"{col} ({rate:.0%} PI)" if multi_col else f"Forecast ({rate:.0%} PI)"
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x_band,
+                            y=y_band,
+                            fill="toself",
+                            fillcolor=rgba,
+                            mode="lines",
+                            line={"width": 0, "color": rgba},
+                            name=pi_name,
+                            legendgroup=fc_group,
+                            legendrank=3 + sort_idx,
+                            hoverinfo="skip",
+                        )
+                    )
 
         # Actual test data
         fig.add_trace(
@@ -259,12 +304,12 @@ def plot_forecast(
                 line={"color": actual_c, "width": line_width},
                 name=actual_name,
                 legendgroup=f"actual_{col}" if multi_col else "actual",
+                legendrank=2,
                 hovertemplate=f"<b>{col} Actual</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
             )
         )
 
         # Forecast
-        pred_col = col if col in pred_value_cols else (pred_value_cols[0] if pred_value_cols else None)
         if pred_col is not None and pred_col in y_pred.columns:
             x_forecast = y_pred["time"]
             forecast_y = y_pred[pred_col]
@@ -275,7 +320,6 @@ def plot_forecast(
                 x_forecast = pl.concat([pl.Series("time", [last_train_time]), y_pred["time"]])
                 forecast_y = pl.concat([pl.Series([last_train_val], dtype=forecast_y.dtype), forecast_y])
 
-            fc_group = f"forecast_{col}" if multi_col else "forecast"
             line_spec: dict = {"color": forecast_c, "width": line_width}
             if f_dash:
                 line_spec["dash"] = f_dash
@@ -288,44 +332,10 @@ def plot_forecast(
                     line=line_spec,
                     name=forecast_name,
                     legendgroup=fc_group,
+                    legendrank=10,
                     hovertemplate=f"<b>{col} Forecast</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
                 )
             )
-
-            # Prediction intervals
-            if coverage_rates:
-                _hex = forecast_c.lstrip("#")
-                rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-                for rate in sorted(coverage_rates):
-                    lower_col = f"{pred_col}_lower_{rate}"
-                    upper_col = f"{pred_col}_upper_{rate}"
-
-                    if lower_col in y_pred.columns and upper_col in y_pred.columns:
-                        rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
-                        fig.add_trace(
-                            go.Scatter(
-                                x=y_pred["time"],
-                                y=y_pred[upper_col],
-                                mode="lines",
-                                line={"width": 0},
-                                showlegend=False,
-                                hoverinfo="skip",
-                                legendgroup=fc_group,
-                            )
-                        )
-                        pi_name = f"{col} ({rate:.0%} PI)" if multi_col else f"{pred_col} ({rate:.0%} PI)"
-                        fig.add_trace(
-                            go.Scatter(
-                                x=y_pred["time"],
-                                y=y_pred[lower_col],
-                                fill="tonexty",
-                                fillcolor=rgba,
-                                mode="lines",
-                                line={"width": 0},
-                                name=pi_name,
-                                legendgroup=fc_group,
-                            )
-                        )
 
     fig = apply_default_layout(
         fig,
@@ -352,8 +362,6 @@ def _plot_forecast_multi_model(
     y_label: str | None,
     width: int | None,
     height: int | None,
-    history_color: str,
-    actual_color: str,
     line_width: float,
     band_opacity: float,
     show_transition: bool,
@@ -373,7 +381,7 @@ def _plot_forecast_multi_model(
     n_history : int | None
         Number of history points to show.
     color_palette : list[str] | None
-        Color palette for model traces.
+        Color palette. Slots 0/1/2 = history/forecast/actual; 3+ = models.
     title : str | None
         Plot title.
     x_label : str | None
@@ -384,10 +392,6 @@ def _plot_forecast_multi_model(
         Plot width.
     height : int | None
         Plot height.
-    history_color : str
-        Color for train data.
-    actual_color : str
-        Color for actual data.
     line_width : float
         Line width.
     band_opacity : float
@@ -401,12 +405,17 @@ def _plot_forecast_multi_model(
         Plotly figure with overlaid model forecasts.
 
     """
+    eff_palette = color_palette if color_palette is not None else _PALETTE
+    history_color = eff_palette[0]
+    actual_color = eff_palette[2 % len(eff_palette)]
+    _model_pal = eff_palette[3:] or eff_palette
+
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
     test_value_cols = [c for c in y_test.columns if c != "time"]
     plot_columns = test_value_cols
 
     model_names = list(y_preds.keys())
-    colors = resolve_color_palette(color_palette, len(model_names))
+    colors = resolve_color_palette(_model_pal, len(model_names))
 
     fig = go.Figure()
 
@@ -428,7 +437,40 @@ def _plot_forecast_multi_model(
                 )
             )
 
-        # Actual data once
+        # Interval bands first (behind everything else).
+        for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
+            model_color = colors[model_idx % len(colors)]
+            pred_value_cols = [c for c in y_pred.columns if c != "time" and not interval_pattern.match(c)]
+            pred_col = col if col in pred_value_cols else pred_value_cols[0] if pred_value_cols else None
+            interval_base = pred_col if (pred_col is not None and pred_col in y_pred.columns) else col
+            if not coverage_rates:
+                continue
+            for rate in sorted(coverage_rates):
+                lower_col = f"{interval_base}_lower_{rate}"
+                upper_col = f"{interval_base}_upper_{rate}"
+                if lower_col in y_pred.columns and upper_col in y_pred.columns:
+                    rgb = tuple(int(model_color[i : i + 2], 16) for i in (1, 3, 5))
+                    rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
+                    t = y_pred["time"].to_list()
+                    y_upper = y_pred[upper_col].to_list()
+                    y_lower = y_pred[lower_col].to_list()
+                    x_band = t + t[::-1]
+                    y_band = y_upper + y_lower[::-1]
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x_band,
+                            y=y_band,
+                            fill="toself",
+                            fillcolor=rgba,
+                            mode="lines",
+                            line={"width": 0, "color": rgba},
+                            name=f"{model_name} ({rate:.0%} PI)",
+                            legendgroup=model_name,
+                            hoverinfo="skip",
+                        )
+                    )
+
+        # Actual data
         fig.add_trace(
             go.Scatter(
                 x=y_test["time"],
@@ -441,65 +483,40 @@ def _plot_forecast_multi_model(
             )
         )
 
-        # Each model
+        # Forecast lines on top
         for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
             model_color = colors[model_idx % len(colors)]
             pred_value_cols = [c for c in y_pred.columns if c != "time" and not interval_pattern.match(c)]
             pred_col = col if col in pred_value_cols else pred_value_cols[0] if pred_value_cols else None
-
-            if pred_col is None or pred_col not in y_pred.columns:
-                continue
-
-            x_fc = y_pred["time"]
-            y_fc = y_pred[pred_col]
-
-            if show_transition and y_train is not None and col in y_train.columns:
-                x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), y_pred["time"]])
-                y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
-
-            fig.add_trace(
-                go.Scatter(
-                    x=x_fc,
-                    y=y_fc,
-                    mode="lines",
-                    line={"color": model_color, "width": line_width},
-                    name=model_name,
-                    legendgroup=model_name,
-                    hovertemplate=(f"<b>{model_name}</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>"),
-                )
+            interval_base = pred_col if (pred_col is not None and pred_col in y_pred.columns) else col
+            has_point = pred_col is not None and pred_col in y_pred.columns
+            has_intervals = bool(
+                coverage_rates and any(f"{interval_base}_lower_{rate}" in y_pred.columns for rate in coverage_rates)
             )
 
-            # Intervals for this model
-            if coverage_rates:
-                for rate in sorted(coverage_rates):
-                    lower_col = f"{pred_col}_lower_{rate}"
-                    upper_col = f"{pred_col}_upper_{rate}"
-                    if lower_col in y_pred.columns and upper_col in y_pred.columns:
-                        rgb = tuple(int(model_color[i : i + 2], 16) for i in (1, 3, 5))
-                        rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
-                        fig.add_trace(
-                            go.Scatter(
-                                x=y_pred["time"],
-                                y=y_pred[upper_col],
-                                mode="lines",
-                                line={"width": 0},
-                                showlegend=False,
-                                hoverinfo="skip",
-                                legendgroup=model_name,
-                            )
-                        )
-                        fig.add_trace(
-                            go.Scatter(
-                                x=y_pred["time"],
-                                y=y_pred[lower_col],
-                                fill="tonexty",
-                                fillcolor=rgba,
-                                mode="lines",
-                                line={"width": 0},
-                                name=f"{model_name} ({rate:.0%} PI)",
-                                legendgroup=model_name,
-                            )
-                        )
+            if not has_point and not has_intervals:
+                continue
+
+            if has_point:
+                assert pred_col is not None
+                x_fc = y_pred["time"]
+                y_fc = y_pred[pred_col]
+
+                if show_transition and y_train is not None and col in y_train.columns:
+                    x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), y_pred["time"]])
+                    y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_fc,
+                        y=y_fc,
+                        mode="lines",
+                        line={"color": model_color, "width": line_width},
+                        name=model_name,
+                        legendgroup=model_name,
+                        hovertemplate=(f"<b>{model_name}</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>"),
+                    )
+                )
 
     title_default = title or "Forecast Comparison"
     x_label_default = x_label or "Time"
@@ -532,9 +549,6 @@ def _plot_forecast_panel(
     y_label: str | None,
     width: int | None,
     height: int | None,
-    history_color: str,
-    actual_color: str,
-    forecast_color: str,
     line_width: float,
     band_opacity: float,
     show_transition: bool,
@@ -561,7 +575,7 @@ def _plot_forecast_panel(
     facet_n_cols : int
         Columns in facet grid.
     color_palette : list[str] | None
-        Color palette.
+        Color palette. Slots 0/1/2 = history/forecast/actual; 3+ = models.
     title : str | None
         Plot title.
     x_label : str | None
@@ -572,12 +586,6 @@ def _plot_forecast_panel(
         Plot width.
     height : int | None
         Plot height.
-    history_color : str
-        Color for train data.
-    actual_color : str
-        Color for actual data.
-    forecast_color : str
-        Color for forecast data (single-model only).
     line_width : float
         Line width.
     band_opacity : float
@@ -591,6 +599,12 @@ def _plot_forecast_panel(
         Plotly figure with faceted panel subplots.
 
     """
+    eff_palette = color_palette if color_palette is not None else _PALETTE
+    history_color = eff_palette[0]
+    actual_color = eff_palette[2 % len(eff_palette)]
+    forecast_color = eff_palette[1 % len(eff_palette)]
+    _model_pal = eff_palette[3:] or eff_palette
+
     _, test_panels = inspect_locality(y_test)
 
     # Get all panel columns (one per group member)
@@ -609,7 +623,7 @@ def _plot_forecast_panel(
         assert isinstance(y_pred, dict)
         model_preds: dict[str, pl.DataFrame] = y_pred  # type: ignore[assignment]
         model_names = list(model_preds.keys())
-        model_colors = resolve_color_palette(color_palette, len(model_names))
+        model_colors = resolve_color_palette(_model_pal, len(model_names))
     else:
         assert isinstance(y_pred, pl.DataFrame)
         model_preds = {"Forecast": y_pred}
@@ -624,7 +638,8 @@ def _plot_forecast_panel(
         rows=n_rows,
         cols=n_cols_grid,
         subplot_titles=[c.replace("__", " \u2013 ") for c in all_panel_cols],
-        vertical_spacing=0.12,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
         horizontal_spacing=0.08,
     )
 
@@ -651,6 +666,44 @@ def _plot_forecast_panel(
                 col=col_grid,
             )
 
+        # Interval bands first (behind Actual and forecast lines).
+        for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
+            m_color = model_colors[m_idx % len(model_colors)]
+            pred_value_cols = [c for c in m_pred.columns if c != "time" and not interval_pattern.match(c)]
+            pred_col = col if col in pred_value_cols else None
+            interval_base = pred_col if pred_col is not None else col
+            if not coverage_rates:
+                continue
+            _hex = m_color.lstrip("#")
+            rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+            for rate in sorted(coverage_rates):
+                lower_c = f"{interval_base}_lower_{rate}"
+                upper_c = f"{interval_base}_upper_{rate}"
+                if lower_c in m_pred.columns and upper_c in m_pred.columns:
+                    rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
+                    t = m_pred["time"].to_list()
+                    y_upper = m_pred[upper_c].to_list()
+                    y_lower = m_pred[lower_c].to_list()
+                    x_band = t + t[::-1]
+                    y_band = y_upper + y_lower[::-1]
+                    pi_label = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x_band,
+                            y=y_band,
+                            fill="toself",
+                            fillcolor=rgba,
+                            mode="lines",
+                            line={"width": 0, "color": rgba},
+                            name=pi_label if idx == 0 else None,
+                            showlegend=(idx == 0),
+                            legendgroup=m_name,
+                            hoverinfo="skip",
+                        ),
+                        row=row,
+                        col=col_grid,
+                    )
+
         # Actual
         if col in y_test.columns:
             fig.add_trace(
@@ -667,84 +720,53 @@ def _plot_forecast_panel(
                 col=col_grid,
             )
 
-        # Forecasts: iterate over models
+        # Forecast lines on top of bands and actual.
         for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
             m_color = model_colors[m_idx % len(model_colors)]
             pred_value_cols = [c for c in m_pred.columns if c != "time" and not interval_pattern.match(c)]
             pred_col = col if col in pred_value_cols else None
 
-            if pred_col is None:
-                continue
-
-            x_fc = m_pred["time"]
-            y_fc = m_pred[pred_col]
-            if show_transition and y_train is not None and col in y_train.columns:
-                x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), m_pred["time"]])
-                y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
-
-            fig.add_trace(
-                go.Scatter(
-                    x=x_fc,
-                    y=y_fc,
-                    mode="lines",
-                    line={"color": m_color, "width": line_width},
-                    name=m_name if idx == 0 else None,
-                    showlegend=(idx == 0),
-                    legendgroup=m_name,
-                ),
-                row=row,
-                col=col_grid,
+            has_point = pred_col is not None
+            interval_base = pred_col if has_point else col
+            has_intervals = bool(
+                coverage_rates and any(f"{interval_base}_lower_{rate}" in m_pred.columns for rate in coverage_rates)
             )
 
-            # Intervals
-            if coverage_rates:
-                _hex = m_color.lstrip("#")
-                rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-                for rate in sorted(coverage_rates):
-                    lower_c = f"{pred_col}_lower_{rate}"
-                    upper_c = f"{pred_col}_upper_{rate}"
-                    if lower_c in m_pred.columns and upper_c in m_pred.columns:
-                        rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
-                        fig.add_trace(
-                            go.Scatter(
-                                x=m_pred["time"],
-                                y=m_pred[upper_c],
-                                mode="lines",
-                                line={"width": 0},
-                                showlegend=False,
-                                hoverinfo="skip",
-                                legendgroup=m_name,
-                            ),
-                            row=row,
-                            col=col_grid,
-                        )
-                        pi_label = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
-                        fig.add_trace(
-                            go.Scatter(
-                                x=m_pred["time"],
-                                y=m_pred[lower_c],
-                                fill="tonexty",
-                                fillcolor=rgba,
-                                mode="lines",
-                                line={"width": 0},
-                                name=pi_label if idx == 0 else None,
-                                showlegend=(idx == 0),
-                                legendgroup=m_name,
-                            ),
-                            row=row,
-                            col=col_grid,
-                        )
+            if not has_point and not has_intervals:
+                continue
 
-    fig.update_layout(
+            if has_point:
+                assert pred_col is not None
+                x_fc = m_pred["time"]
+                y_fc = m_pred[pred_col]
+                if show_transition and y_train is not None and col in y_train.columns:
+                    x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), m_pred["time"]])
+                    y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_fc,
+                        y=y_fc,
+                        mode="lines",
+                        line={"color": m_color, "width": line_width},
+                        name=m_name if idx == 0 else None,
+                        showlegend=(idx == 0),
+                        legendgroup=m_name,
+                    ),
+                    row=row,
+                    col=col_grid,
+                )
+
+    fig = apply_default_layout(
+        fig,
         title=title or ("Forecast Comparison" if is_multi_model else "Forecast"),
-        height=height or (300 * n_rows),
         width=width,
+        height=height or (300 * n_rows),
     )
-    for i in range(n_panels):
-        r = i // facet_n_cols + 1
-        c = i % facet_n_cols + 1
-        fig.update_xaxes(title_text=x_label or "Time", row=r, col=c)
-        fig.update_yaxes(title_text=y_label or "Value", row=r, col=c)
+    # X-axis title only on the bottom row (axes are shared above it).
+    for c in range(1, n_cols_grid + 1):
+        fig.update_xaxes(title_text=x_label or "Time", row=n_rows, col=c)
+    fig.update_yaxes(title_text=y_label or "Value")
 
     return fig
 
@@ -892,7 +914,8 @@ def plot_time_weight(
             rows=n_rows,
             cols=n_cols_grid,
             subplot_titles=[c.replace("__", " \u2013 ") for c in all_weight_cols],
-            vertical_spacing=0.15,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
             horizontal_spacing=0.1,
         )
 
@@ -930,11 +953,9 @@ def plot_time_weight(
         )
 
         # Update axes labels
-        for i in range(n_groups):
-            r = i // facet_n_cols + 1
-            c = i % facet_n_cols + 1
-            fig.update_xaxes(title_text=x_label or "Time", row=r, col=c)
-            fig.update_yaxes(title_text=y_label or "Weight", row=r, col=c)
+        for c in range(1, n_cols_grid + 1):
+            fig.update_xaxes(title_text=x_label or "Time", row=n_rows, col=c)
+        fig.update_yaxes(title_text=y_label or "Weight")
 
         return fig
 
