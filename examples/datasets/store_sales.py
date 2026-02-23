@@ -1,8 +1,8 @@
-"""Store Sales - Panel Retail Analysis.
+"""Dominick - Weekly Retail Panel Analysis.
 
-Daily retail sales for 3 stores × 3 items in Yohou panel format.
+Weekly retail profit for SKUs from Dominick's Finer Foods in Yohou panel format.
 
-Dataset: 9 panel groups (store_X_item_Y__sales), 1826 daily observations
+Dataset: 115704 weekly profit series (exploring first 9)
 Demonstrates: inspect_locality, plot_time_series, plot_boxplot, plot_seasonality
 """
 
@@ -17,7 +17,7 @@ def _():
     import marimo as mo
     import polars as pl
 
-    from yohou.datasets import load_store_sales
+    from yohou.datasets import fetch_dominick
     from yohou.plotting import (
         plot_boxplot,
         plot_seasonality,
@@ -26,8 +26,8 @@ def _():
     from yohou.utils.panel import inspect_locality
 
     return (
+        fetch_dominick,
         inspect_locality,
-        load_store_sales,
         mo,
         pl,
         plot_boxplot,
@@ -39,17 +39,17 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # Store Sales Dataset
+    # Dominick Dataset
 
     ## What You'll Learn
 
-    This example demonstrates panel data analysis with the Store Sales dataset,
-    which is pre-formatted in Yohou's native `__` panel convention. You'll learn
-    how to:
+    This example demonstrates panel data analysis with the Dominick dataset
+    (Dominick's Finer Foods), pre-formatted in Yohou's native `__` panel
+    convention. You'll learn how to:
 
     - Inspect panel structure with `inspect_locality`
     - Visualize panel columns directly without manual pivoting
-    - Compare sales across stores and items
+    - Compare profit across SKUs
     - Analyze distributions across panel groups with boxplots
 
     ## Prerequisites
@@ -71,8 +71,11 @@ async def _():
 
 
 @app.cell
-def _(load_store_sales):
-    df = load_store_sales()
+def _(fetch_dominick):
+    _all = fetch_dominick().frame
+    # Select first 9 series for a manageable panel
+    _cols = ["time"] + [c for c in _all.columns if c != "time"][:9]
+    df = _all.select(_cols)
     df.head(10)
     return (df,)
 
@@ -82,8 +85,8 @@ def _(mo):
     mo.md("""
     ## 1. Inspect Panel Structure
 
-    The dataset uses Yohou's `__` separator convention: `store_X_item_Y__sales`.
-    `inspect_locality` identifies global columns and panel groups automatically.
+    The full dataset has 115704 series using the `Tn__profit` convention.
+    Here we work with the first 9 series.
     """)
     return
 
@@ -104,23 +107,23 @@ def _(df, inspect_locality, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 2. Store Comparison: All Items for Store 1
+    ## 2. First Three Series
 
-    Visualizing all items for a single store shows how different product categories
-    contribute to total sales.
+    Visualizing the first three SKU profit series shows how different products
+    behave over time.
     """)
     return
 
 
 @app.cell
 def _(df, plot_time_series):
-    store_1_cols = [c for c in df.columns if c.startswith("store_1")]
+    first_3_cols = [c for c in df.columns if c.endswith("__profit")][:3]
 
     plot_time_series(
         df,
-        columns=store_1_cols,
-        title="Store 1 - All Items",
-        y_label="Sales",
+        columns=first_3_cols,
+        title="Dominick - First 3 SKUs",
+        y_label="Profit",
     )
     return
 
@@ -128,22 +131,23 @@ def _(df, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 3. Item Comparison Across Stores
+    ## 3. All Selected Series
 
-    Comparing the same item across stores reveals location-specific demand patterns.
+    Comparing all 9 selected series reveals scale differences and shared
+    patterns across SKUs.
     """)
     return
 
 
 @app.cell
 def _(df, plot_time_series):
-    item_1_cols = [c for c in df.columns if c.endswith("item_1__sales")]
+    all_profit_cols = [c for c in df.columns if c.endswith("__profit")]
 
     plot_time_series(
         df,
-        columns=item_1_cols,
-        title="Item 1 - All Stores",
-        y_label="Sales",
+        columns=all_profit_cols,
+        title="Dominick - 9 SKUs",
+        y_label="Profit",
     )
     return
 
@@ -151,10 +155,10 @@ def _(df, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 4. Sales Distribution by Panel Group
+    ## 4. Profit Distribution by Panel Group
 
-    Boxplots reveal the distribution of daily sales for each store-item
-    combination, making it easy to compare variability and outliers.
+    Boxplots reveal the distribution of weekly profit for each SKU,
+    making it easy to compare variability and outliers.
     """)
     return
 
@@ -163,8 +167,8 @@ def _(mo):
 def _(df, plot_boxplot):
     plot_boxplot(
         df,
-        title="Sales Distribution by Store-Item",
-        y_label="Sales",
+        title="Profit Distribution by SKU",
+        y_label="Profit",
     )
     return
 
@@ -172,22 +176,22 @@ def _(df, plot_boxplot):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 5. Day-of-Week Patterns
+    ## 5. Monthly Patterns
 
-    Aggregating by day of week shows the weekly sales cycle and identifies peak
-    shopping days.
+    Aggregating by month shows seasonal profit cycles across the year.
     """)
     return
 
 
 @app.cell
 def _(df, plot_seasonality):
+    _first_col = [c for c in df.columns if c.endswith("__profit")][0]
     plot_seasonality(
         df,
-        columns="store_1_item_1__sales",
-        feature="dayofweek",
+        columns=_first_col,
+        feature="month",
         aggregation="mean",
-        title="Store 1 Item 1 - Average Sales by Day of Week",
+        title="T1 - Average Profit by Month",
     )
     return
 
@@ -197,15 +201,15 @@ def _(mo):
     mo.md("""
     ## Key Takeaways
 
-    - **Native panel format**: Columns use `store_X_item_Y__sales` convention: no pivoting needed
+    - **Native panel format**: Columns use `Tn__profit` convention: no pivoting needed
     - **`inspect_locality`**: Automatically discovers panel groups from column names
     - **Direct plotting**: Panel columns can be plotted directly with `plot_time_series`
     - **Boxplots**: Compare distributions across panel groups to spot outliers and variability
-    - **Weekday patterns**: Clear day-of-week effects in retail sales
+    - **Large dataset**: 115704 series available; select a subset for exploration
 
     ## Next Steps
 
-    - **Branch-level panel**: See `examples/datasets/walmart_sales.py`
+    - **Hourly panel**: See `examples/datasets/walmart_sales.py`
     - **Quarterly panel data**: See `examples/datasets/australian_tourism.py`
     - **Panel forecasting**: See `examples/point/panel_forecasting.py` for global vs local models
     """)

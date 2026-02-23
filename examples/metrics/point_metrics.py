@@ -56,7 +56,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import (
         MeanAbsoluteError,
         MeanAbsolutePercentageError,
@@ -84,7 +84,7 @@ def _():
         RootMeanSquaredScaledError,
         SeasonalNaive,
         SymmetricMeanAbsolutePercentageError,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_model_comparison_bar,
         plot_score_time_series,
@@ -107,11 +107,12 @@ def _(
     PointReductionForecaster,
     Ridge,
     SeasonalNaive,
-    load_air_passengers,
+    fetch_tourism_monthly,
 ):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
 
     y_train = y.head(120)

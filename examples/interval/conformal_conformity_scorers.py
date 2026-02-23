@@ -52,7 +52,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import DistanceSimilarity, SplitConformalForecaster
     from yohou.metrics import AbsoluteResidual, EmpiricalCoverage, GammaResidual, MeanIntervalWidth, Residual
     from yohou.plotting import plot_forecast
@@ -70,7 +70,7 @@ def _():
         Residual,
         Ridge,
         SplitConformalForecaster,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
@@ -85,14 +85,14 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers, mo):
-    air = load_air_passengers()
+def _(fetch_tourism_monthly, mo):
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     _split = int(len(air) * 0.8)
     y_train = air.head(_split)
     y_test = air.tail(len(air) - _split)
     horizon = len(y_test)
     coverage_rates = [0.9]
-    mo.md(f"**Air Passengers**: Train={len(y_train)}, Test={len(y_test)}")
+    mo.md(f"**Monthly Tourism**: Train={len(y_train)}, Test={len(y_test)}")
     return air, coverage_rates, horizon, y_test, y_train
 
 

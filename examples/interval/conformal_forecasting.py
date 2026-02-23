@@ -55,7 +55,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import (
         AbsoluteResidual,
@@ -81,7 +81,7 @@ def _():
         Ridge,
         SeasonalNaive,
         SplitConformalForecaster,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
@@ -92,14 +92,14 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We load the Air Passengers dataset and split it into training and test sets for calibrating and evaluating conformal intervals.
+    We load the Monthly Tourism dataset and split it into training and test sets for calibrating and evaluating conformal intervals.
     """)
     return
 
 
 @app.cell
-def _(load_air_passengers, pl):
-    y = load_air_passengers().rename({"Passengers": "passengers"})
+def _(fetch_tourism_monthly, pl):
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
 
     # Need enough calibration data: use 80/20 split
     split_idx = int(len(y) * 0.8)

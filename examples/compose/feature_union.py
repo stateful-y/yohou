@@ -53,7 +53,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import FeatureUnion
-    from yohou.datasets import load_sunspots
+    from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -74,7 +74,7 @@ def _():
         RollingStatisticsTransformer,
         SeasonalNaive,
         StandardScaler,
-        load_sunspots,
+        fetch_sunspot,
         pl,
         plot_forecast,
         plot_time_series,
@@ -90,8 +90,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_sunspots, mo):
-    sunspots = load_sunspots()
+def _(fetch_sunspot, mo):
+    sunspots = fetch_sunspot().frame
     _split = int(len(sunspots) * 0.85)
     y_train = sunspots.head(_split)
     y_test = sunspots.tail(len(sunspots) - _split)

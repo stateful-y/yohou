@@ -56,7 +56,7 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.plotting import plot_time_series
     from yohou.stationarity import (
         ASinhTransformer,
@@ -76,7 +76,7 @@ def _():
         SeasonalDifferencing,
         SeasonalLogDifferencing,
         SeasonalReturn,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_time_series,
     )
@@ -87,19 +87,20 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    Air Passengers has multiplicative seasonality and an upward trend,
+    Monthly Tourism has seasonality and an upward trend,
     clearly non-stationary.
     """)
     return
 
 
 @app.cell
-def _(load_air_passengers, plot_time_series):
+def _(fetch_tourism_monthly, plot_time_series):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
-    plot_time_series(y, title="Air Passengers (Non-Stationary)")
+    plot_time_series(y, title="Monthly Tourism (Non-Stationary)")
     return (y,)
 
 

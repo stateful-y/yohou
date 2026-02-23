@@ -1,8 +1,8 @@
-"""Walmart Sales - Branch-Level Panel Analysis.
+"""Pedestrian Counts - Sensor-Level Panel Analysis.
 
-Daily sales and ratings for 3 branches in Yohou panel format.
+Hourly pedestrian counts from 66 sensors in Melbourne.
 
-Dataset: 3 branches (A, B, C) with total sales and ratings, 89 daily observations
+Dataset: 66 hourly count series (exploring first 6)
 Demonstrates: inspect_locality, plot_time_series, plot_boxplot, plot_seasonality
 """
 
@@ -16,7 +16,7 @@ app = marimo.App(width="medium")
 def _():
     import marimo as mo
 
-    from yohou.datasets import load_walmart_sales
+    from yohou.datasets import fetch_pedestrian_counts
     from yohou.plotting import (
         plot_boxplot,
         plot_seasonality,
@@ -25,8 +25,8 @@ def _():
     from yohou.utils.panel import inspect_locality
 
     return (
+        fetch_pedestrian_counts,
         inspect_locality,
-        load_walmart_sales,
         mo,
         plot_boxplot,
         plot_seasonality,
@@ -37,18 +37,18 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # Walmart Sales Dataset
+    # Pedestrian Counts Dataset
 
     ## What You'll Learn
 
-    This example demonstrates branch-level panel analysis with the Walmart Sales
-    dataset, pre-formatted in Yohou's native `__` panel convention. You'll learn
-    how to:
+    This example demonstrates sensor-level panel analysis with the Melbourne
+    Pedestrian Counts dataset, pre-formatted in Yohou's native `__` panel
+    convention. You'll learn how to:
 
     - Inspect panel structure with `inspect_locality`
-    - Compare daily sales and ratings across branches
-    - Visualize distributions across branches with boxplots
-    - Analyze day-of-week effects
+    - Compare hourly pedestrian counts across sensors
+    - Visualize distributions across sensors with boxplots
+    - Analyze hour-of-day effects
 
     ## Prerequisites
 
@@ -69,8 +69,11 @@ async def _():
 
 
 @app.cell
-def _(load_walmart_sales):
-    df = load_walmart_sales()
+def _(fetch_pedestrian_counts):
+    _all = fetch_pedestrian_counts().frame
+    # Select first 6 sensors for a manageable panel
+    _cols = ["time"] + [c for c in _all.columns if c != "time"][:6]
+    df = _all.select(_cols)
     df.head(10)
     return (df,)
 
@@ -80,7 +83,8 @@ def _(mo):
     mo.md("""
     ## 1. Inspect Panel Structure
 
-    The dataset has 3 branches (A, B, C), each with `total` and `rating` variables.
+    The full dataset has 66 sensors using the `Tn__count` convention.
+    Here we work with the first 6 sensors.
     """)
     return
 
@@ -101,23 +105,24 @@ def _(df, inspect_locality, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 2. Branch Sales Comparison
+    ## 2. Sensor Comparison
 
-    Comparing total sales across branches A, B, and C shows relative revenue
-    performance and temporal alignment.
+    Comparing counts across sensors shows how pedestrian traffic varies
+    by location. Some sensors are in high-traffic areas while others
+    capture quieter streets.
     """)
     return
 
 
 @app.cell
 def _(df, plot_time_series):
-    total_cols = [c for c in df.columns if c.endswith("__total")]
+    _count_cols = [c for c in df.columns if c.endswith("__count")][:3]
 
     plot_time_series(
-        df,
-        columns=total_cols,
-        title="Daily Sales by Branch",
-        y_label="Sales ($)",
+        df.head(24 * 7),  # One week of hourly data
+        columns=_count_cols,
+        title="Pedestrian Counts - First 3 Sensors (1 Week)",
+        y_label="Count",
     )
     return
 
@@ -125,23 +130,23 @@ def _(df, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 3. Branch Ratings Comparison
+    ## 3. All Selected Sensors
 
-    Customer ratings across branches reveal service quality differences and
-    potential seasonal patterns.
+    Plotting all 6 selected sensors reveals scale differences and shared
+    temporal patterns across locations.
     """)
     return
 
 
 @app.cell
 def _(df, plot_time_series):
-    rating_cols = [c for c in df.columns if c.endswith("__rating")]
+    _count_cols = [c for c in df.columns if c.endswith("__count")]
 
     plot_time_series(
-        df,
-        columns=rating_cols,
-        title="Average Daily Rating by Branch",
-        y_label="Rating",
+        df.head(24 * 14),  # Two weeks of hourly data
+        columns=_count_cols,
+        title="Pedestrian Counts - 6 Sensors (2 Weeks)",
+        y_label="Count",
     )
     return
 
@@ -149,23 +154,20 @@ def _(df, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 4. Sales Distribution by Branch
+    ## 4. Count Distribution by Sensor
 
-    Boxplots compare total sales distributions across branches, revealing
-    relative performance and variability in this short 89-day window.
+    Boxplots reveal the distribution of hourly counts for each sensor,
+    making it easy to compare traffic levels and variability.
     """)
     return
 
 
 @app.cell
 def _(df, plot_boxplot):
-    _total_cols = [c for c in df.columns if c.endswith("__total")]
-
     plot_boxplot(
         df,
-        columns=_total_cols,
-        title="Total Sales Distribution by Branch",
-        y_label="Sales ($)",
+        title="Pedestrian Count Distribution by Sensor",
+        y_label="Count",
     )
     return
 
@@ -173,23 +175,24 @@ def _(df, plot_boxplot):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 5. Day-of-Week Patterns
+    ## 5. Hour-of-Day Patterns
 
-    Weekly aggregation reveals which days drive the most sales activity across
-    all branches.
+    Aggregating by hour reveals the daily pedestrian traffic cycle, with
+    peaks during commute hours and lunch time.
     """)
     return
 
 
 @app.cell
 def _(df, plot_seasonality):
+    _first_col = [c for c in df.columns if c.endswith("__count")][0]
     plot_seasonality(
         df,
-        columns="branch_a__total",
-        feature="dayofweek",
+        columns=_first_col,
+        feature="hour",
         aggregation="mean",
-        title="Branch A - Average Sales by Day of Week",
-        y_label="Average Sales ($)",
+        title="T1 - Average Pedestrian Count by Hour",
+        y_label="Average Count",
     )
     return
 
@@ -199,17 +202,17 @@ def _(mo):
     mo.md("""
     ## Key Takeaways
 
-    - **Native panel format**: Columns use `branch_X__total` and `branch_X__rating` convention
-    - **Multi-variable panels**: Each branch has both `total` and `rating` variables
-    - **Short horizon**: 89 days of data (Jan–Mar 2019): suitable for short-term analysis
-    - **Branch comparison**: Direct multi-series plotting without manual pivoting
+    - **Native panel format**: Columns use `Tn__count` convention: no pivoting needed
+    - **Hourly frequency**: 66 pedestrian count sensors from Melbourne (2009-2020)
+    - **Sensor comparison**: Direct multi-series plotting without manual pivoting
+    - **Intraday patterns**: Clear hour-of-day effects with commute and lunch-time peaks
     - **`inspect_locality`**: Automatically discovers panel groups from column names
 
     ## Next Steps
 
-    - **Larger retail panel**: See `examples/datasets/store_sales.py`
+    - **Weekly panel**: See `examples/datasets/store_sales.py`
     - **Quarterly panel data**: See `examples/datasets/australian_tourism.py`
-    - **Short-horizon forecasting**: See `examples/datasets/walmart_forecasting.py` for panel forecasting on this dataset
+    - **Panel forecasting**: See `examples/datasets/walmart_forecasting.py` for panel forecasting on this dataset
     """)
     return
 

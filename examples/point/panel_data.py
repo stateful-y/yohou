@@ -56,7 +56,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import LocalPanelForecaster
-    from yohou.datasets import load_store_sales
+    from yohou.datasets import fetch_dominick
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -70,7 +70,7 @@ def _():
         PointReductionForecaster,
         Ridge,
         inspect_locality,
-        load_store_sales,
+        fetch_dominick,
         pl,
         plot_forecast,
         plot_time_series,
@@ -89,8 +89,11 @@ def _(mo):
 
 
 @app.cell
-def _(inspect_locality, load_store_sales, mo):
-    store = load_store_sales()
+def _(inspect_locality, fetch_dominick, mo, pl):
+    _bunch = fetch_dominick()
+    # Select first 6 series for a manageable panel demo
+    _selected = [f"T{i}__profit" for i in range(1, 7)]
+    store = _bunch.frame.select("time", *_selected).drop_nulls()
 
     global_cols, panel_groups = inspect_locality(store)
 
@@ -98,8 +101,7 @@ def _(inspect_locality, load_store_sales, mo):
         f"**Dataset shape**: {store.shape}\n\n"
         f"**Global columns** (shared): `{global_cols}`\n\n"
         f"**Panel groups** ({len(panel_groups)}):\n\n"
-        + "\n".join(f"- `{name}`: {cols}" for name, cols in sorted(panel_groups.items())[:4])
-        + f"\n- ... ({len(panel_groups) - 4} more)"
+        + "\n".join(f"- `{name}`: {cols}" for name, cols in sorted(panel_groups.items()))
     )
     return panel_groups, store
 
@@ -108,14 +110,14 @@ def _(inspect_locality, load_store_sales, mo):
 def _(plot_time_series, store):
     plot_time_series(
         store,
-        title="Store Sales: All Panel Groups",
+        title="Dominick: All Panel Groups",
     )
     return
 
 
 @app.cell
 def _(mo, store):
-    _target_cols = [c for c in store.columns if c.endswith("__sales")]
+    _target_cols = [c for c in store.columns if c.endswith("__profit")]
     y = store.select("time", *_target_cols)
     _split = int(len(y) * 0.85)
     y_train = y.head(_split)
@@ -123,7 +125,7 @@ def _(mo, store):
     horizon = len(y_test)
 
     mo.md(
-        f"**Targets**: {len(_target_cols)} sales columns\n\n"
+        f"**Targets**: {len(_target_cols)} profit columns\n\n"
         f"**Train**: {len(y_train)} rows | **Test**: {len(y_test)} rows | "
         f"**Horizon**: {horizon}"
     )
@@ -166,7 +168,7 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
+        panel_group_names=["T1", "T2", "T3"],
         title="Global Strategy: One Model, Per-Group State",
     )
     return
@@ -208,7 +210,7 @@ def _(plot_forecast, y_pred_multivariate, y_test, y_train):
         y_pred_multivariate,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
+        panel_group_names=["T1", "T2", "T3"],
         title="Multivariate Strategy: Cross-Group Features",
     )
     return
@@ -247,7 +249,7 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         y_pred_local,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
+        panel_group_names=["T1", "T2", "T3"],
         title="Local Strategy: Independent Per-Group Clones",
     )
     return
@@ -285,7 +287,7 @@ def _(
 
     _rows = []
     for _group in sorted(panel_groups.keys()):
-        _col = f"{_group}__sales"
+        _col = f"{_group}__profit"
         if _col in _scores_global.columns:
             _rows.append({
                 "Group": _group,

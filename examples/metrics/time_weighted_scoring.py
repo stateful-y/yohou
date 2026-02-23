@@ -53,7 +53,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers, load_store_sales
+    from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_weight
     from yohou.point import PointReductionForecaster
@@ -73,8 +73,8 @@ def _():
         compose_weights,
         exponential_decay_weight,
         linear_decay_weight,
-        load_air_passengers,
-        load_store_sales,
+        fetch_tourism_monthly,
+        fetch_dominick,
         pl,
         plot_forecast,
         plot_time_weight,
@@ -91,8 +91,8 @@ def _(mo):
 
 
 @app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, load_air_passengers, mo):
-    air = load_air_passengers()
+def _(LagTransformer, PointReductionForecaster, Ridge, fetch_tourism_monthly, mo):
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
     _split = int(len(air) * 0.85)
     y_train = air.head(_split)
     y_test = air.tail(len(air) - _split)
@@ -254,11 +254,12 @@ def _(
     PointReductionForecaster,
     Ridge,
     exponential_decay_weight,
-    load_store_sales,
+    fetch_dominick,
     mo,
 ):
-    _store = load_store_sales()
-    _target_cols = [c for c in _store.columns if c.endswith("__sales")]
+    _full = fetch_dominick().frame
+    _store = _full.select("time", *[c for c in _full.columns if c != "time"][:9])
+    _target_cols = [c for c in _store.columns if c.endswith("__profit")]
     _y = _store.select("time", *_target_cols)
     _split_p = int(len(_y) * 0.85)
     _y_train_p = _y.head(_split_p)

@@ -54,7 +54,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_store_sales
+    from yohou.datasets import fetch_dominick
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import (
         EmpiricalCoverage,
@@ -76,7 +76,7 @@ def _():
         RootMeanSquaredError,
         SplitConformalForecaster,
         inspect_locality,
-        load_store_sales,
+        fetch_dominick,
         pl,
     )
 
@@ -90,10 +90,11 @@ def _(mo):
 
 
 @app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, inspect_locality, load_store_sales, mo):
-    store = load_store_sales()
+def _(LagTransformer, PointReductionForecaster, Ridge, inspect_locality, fetch_dominick, mo):
+    _full = fetch_dominick().frame
+    store = _full.select("time", *[c for c in _full.columns if c != "time"][:9])
     _globals, groups = inspect_locality(store)
-    _target_cols = [c for c in store.columns if c.endswith("__sales")]
+    _target_cols = [c for c in store.columns if c.endswith("__profit")]
     y = store.select("time", *_target_cols)
 
     _split = int(len(y) * 0.85)
@@ -240,17 +241,17 @@ def _(mo):
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
-    # Weight store_1 groups 3x more than others
+    # Weight T1-T3 groups 3x more than others
     _weights = {
-        "store_1_item_1": 3.0,
-        "store_1_item_2": 3.0,
-        "store_1_item_3": 3.0,
-        "store_2_item_1": 1.0,
-        "store_2_item_2": 1.0,
-        "store_2_item_3": 1.0,
-        "store_3_item_1": 1.0,
-        "store_3_item_2": 1.0,
-        "store_3_item_3": 1.0,
+        "T1": 3.0,
+        "T2": 3.0,
+        "T3": 3.0,
+        "T4": 1.0,
+        "T5": 1.0,
+        "T6": 1.0,
+        "T7": 1.0,
+        "T8": 1.0,
+        "T9": 1.0,
     }
     _scorer_weighted = MeanAbsoluteError(
         aggregation_method="all", panel_group_weight=_weights

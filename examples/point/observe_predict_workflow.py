@@ -60,7 +60,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers, load_store_sales
+    from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -71,8 +71,8 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        load_air_passengers,
-        load_store_sales,
+        fetch_dominick,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
         plot_time_series,
@@ -92,8 +92,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
-    df = load_air_passengers()
+def _(fetch_tourism_monthly):
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     _n = len(df)
     train_end = int(_n * 0.6)
     cal_end = int(_n * 0.85)
@@ -324,37 +324,41 @@ def _(mo):
 
 
 @app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, load_store_sales, mo):
-    _store = load_store_sales()
-    _sales_cols = [c for c in _store.columns if c.endswith("__sales")]
-    _split = int(len(_store) * 0.8)
-    _cal_split = int(len(_store) * 0.9)
+def _(LagTransformer, PointReductionForecaster, Ridge, fetch_dominick, mo):
+    _panel = fetch_dominick().frame.select(
+        "time", "T1__profit", "T2__profit", "T3__profit",
+        "T4__profit", "T5__profit", "T6__profit",
+        "T7__profit", "T8__profit", "T9__profit",
+    )
+    _profit_cols = [c for c in _panel.columns if c.endswith("__profit")]
+    _split = int(len(_panel) * 0.8)
+    _cal_split = int(len(_panel) * 0.9)
 
-    _y_train_p = _store.head(_split).select("time", *_sales_cols)
-    _y_cal_p = _store[_split:_cal_split].select("time", *_sales_cols)
+    _y_train_p = _panel.head(_split).select("time", *_profit_cols)
+    _y_cal_p = _panel[_split:_cal_split].select("time", *_profit_cols)
 
     _fc_panel = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 7]),
+        feature_transformer=LagTransformer(lag=[1, 4]),
     )
-    _horizon_p = 7
+    _horizon_p = 4
     _fc_panel.fit(_y_train_p, forecasting_horizon=_horizon_p)
 
-    # Observe ONLY store_1 groups (simulate store_1 data arriving first)
+    # Observe ONLY T1-T3 groups (simulate partial data arrival)
     _fc_panel.observe(
-        _y_cal_p.head(7),
-        panel_group_names=["store_1_item_1", "store_1_item_2", "store_1_item_3"],
+        _y_cal_p.head(4),
+        panel_group_names=["T1", "T2", "T3"],
     )
 
-    # Predict for store_1 only (other groups still at old position)
+    # Predict for T1-T3 only (other groups still at old position)
     _y_pred_s1 = _fc_panel.predict(
         forecasting_horizon=_horizon_p,
-        panel_group_names=["store_1_item_1", "store_1_item_2", "store_1_item_3"],
+        panel_group_names=["T1", "T2", "T3"],
     )
 
     mo.md(
         f"**Predicted columns**: {[c for c in _y_pred_s1.columns if c != 'time' and c != 'observed_time']}\n\n"
-        f"Only store_1 groups were observed and predicted, other groups remain at their previous state."
+        f"Only T1-T3 groups were observed and predicted, other groups remain at their previous state."
     )
     return
 

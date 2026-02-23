@@ -1,10 +1,10 @@
 """Signal Processing -- Spectrum and Phase after Numerical Filtering.
 
 Applies `NumericalFilter` (Butterworth low-pass) to the highly periodic
-Victorian electricity Temperature signal and compares the power spectrum
+Victorian electricity demand signal and compares the power spectrum
 and phase spectrum before and after filtering.
 
-Dataset: vic_electricity (Temperature column -- 30-min periodicity)
+Dataset: electricity_demand (vic__demand column -- 30-min periodicity)
 Demonstrates: plot_spectrum, plot_phase
 """
 
@@ -36,13 +36,13 @@ async def _():
 def _():
     import polars as pl
 
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.plotting import plot_phase, plot_spectrum, plot_time_series
     from yohou.preprocessing import NumericalFilter
 
     return (
         NumericalFilter,
-        load_vic_electricity,
+        fetch_electricity_demand,
         pl,
         plot_phase,
         plot_spectrum,
@@ -57,7 +57,7 @@ def _(mo):
 
     ## What You'll Learn
 
-    - Applying a `NumericalFilter` (Butterworth low-pass) to a temperature
+    - Applying a `NumericalFilter` (Butterworth low-pass) to a demand
       signal
     - Comparing raw vs. filtered signals in the time domain
     - Using `plot_spectrum` to see how a low-pass filter removes
@@ -66,8 +66,8 @@ def _(mo):
 
     ## The Dataset
 
-    Victorian electricity demand data recorded every **30 minutes** over
-    three years. The **Temperature** column contains a strong daily cycle
+    Australian electricity demand data recorded every **30 minutes** over
+    several years. The **vic__demand** column contains a strong daily cycle
     (period ≈ 48 samples) plus higher-frequency fluctuations that a
     low-pass filter will suppress.
     """)
@@ -75,8 +75,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_vic_electricity):
-    vic = load_vic_electricity()
+def _(fetch_electricity_demand):
+    vic = fetch_electricity_demand().frame
     # Take 30 days (1440 half-hours) for readable plots
     vic_short = vic.head(1440)
     return (vic_short,)
@@ -85,7 +85,7 @@ def _(load_vic_electricity):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Raw Temperature Signal
+    ## Raw Demand Signal
 
     The 30-day window shows a clear daily cycle plus short-term noise.
     """)
@@ -96,8 +96,8 @@ def _(mo):
 def _(plot_time_series, vic_short):
     plot_time_series(
         vic_short,
-        columns="Temperature",
-        title="Raw Temperature -- 30-day Window",
+        columns="vic__demand",
+        title="Raw Demand -- 30-day Window",
     )
     return
 
@@ -122,12 +122,12 @@ def _(NumericalFilter, pl, vic_short):
         order=1,
         cutoff_frequency=0.05,
     )
-    temp_df = vic_short.select("time", "Temperature")
+    temp_df = vic_short.select("time", "vic__demand")
     lowpass.fit(temp_df)
     temp_filtered = lowpass.transform(temp_df)
     # Combine raw and filtered for side-by-side comparison
-    combined = temp_df.rename({"Temperature": "Raw"}).join(
-        temp_filtered.rename({"Temperature": "Filtered"}),
+    combined = temp_df.rename({"vic__demand": "Raw"}).join(
+        temp_filtered.rename({"vic__demand": "Filtered"}),
         on="time",
     )
     return combined, temp_df, temp_filtered
@@ -138,7 +138,7 @@ def _(combined, plot_time_series):
     plot_time_series(
         combined,
         columns=["Raw", "Filtered"],
-        title="Temperature -- Raw vs. Low-Pass Filtered",
+        title="Demand -- Raw vs. Low-Pass Filtered",
     )
     return
 
@@ -159,8 +159,8 @@ def _(mo):
 def _(plot_spectrum, temp_df):
     plot_spectrum(
         temp_df,
-        columns="Temperature",
-        title="Power Spectrum -- Raw Temperature",
+        columns="vic__demand",
+        title="Power Spectrum -- Raw Demand",
     )
     return
 
@@ -169,7 +169,7 @@ def _(plot_spectrum, temp_df):
 def _(plot_spectrum, temp_filtered):
     plot_spectrum(
         temp_filtered,
-        columns="Temperature",
+        columns="vic__demand",
         title="Power Spectrum -- After Low-Pass Filter",
     )
     return
@@ -179,7 +179,7 @@ def _(plot_spectrum, temp_filtered):
 def _(plot_spectrum, temp_df):
     plot_spectrum(
         temp_df,
-        columns="Temperature",
+        columns="vic__demand",
         log_scale=True,
         title="Power Spectrum -- Raw (Log Scale)",
     )
@@ -190,7 +190,7 @@ def _(plot_spectrum, temp_df):
 def _(plot_spectrum, temp_filtered):
     plot_spectrum(
         temp_filtered,
-        columns="Temperature",
+        columns="vic__demand",
         log_scale=True,
         title="Power Spectrum -- Filtered (Log Scale)",
     )
@@ -201,7 +201,7 @@ def _(plot_spectrum, temp_filtered):
 def _(plot_spectrum, temp_df):
     plot_spectrum(
         temp_df,
-        columns="Temperature",
+        columns="vic__demand",
         title="Power Spectrum -- Raw",
     )
     return
@@ -224,8 +224,8 @@ def _(mo):
 def _(plot_phase, temp_df):
     plot_phase(
         temp_df,
-        columns="Temperature",
-        title="Phase -- Raw Temperature",
+        columns="vic__demand",
+        title="Phase -- Raw Demand",
     )
     return
 
@@ -234,7 +234,7 @@ def _(plot_phase, temp_df):
 def _(plot_phase, temp_filtered):
     plot_phase(
         temp_filtered,
-        columns="Temperature",
+        columns="vic__demand",
         title="Phase -- After Low-Pass Filter",
     )
     return
@@ -244,7 +244,7 @@ def _(plot_phase, temp_filtered):
 def _(plot_phase, temp_df):
     plot_phase(
         temp_df,
-        columns="Temperature",
+        columns="vic__demand",
         angle_unit="degree",
         title="Phase -- Raw (Degrees)",
     )
@@ -255,7 +255,7 @@ def _(plot_phase, temp_df):
 def _(plot_phase, temp_filtered):
     plot_phase(
         temp_filtered,
-        columns="Temperature",
+        columns="vic__demand",
         unwrap=False,
         title="Phase -- Filtered (Wrapped)",
     )
@@ -266,7 +266,7 @@ def _(plot_phase, temp_filtered):
 def _(plot_phase, temp_df):
     plot_phase(
         temp_df,
-        columns="Temperature",
+        columns="vic__demand",
         angle_unit="degree",
         unwrap=False,
         title="Phase -- Raw (Wrapped Degrees)",
@@ -299,7 +299,7 @@ def _(NumericalFilter, plot_time_series, temp_df):
     temp_bp = bandpass.transform(temp_df)
     plot_time_series(
         temp_bp,
-        columns="Temperature",
+        columns="vic__demand",
         title="Bandpass Filtered -- Daily Cycle Extracted",
     )
     return (temp_bp,)
@@ -309,7 +309,7 @@ def _(NumericalFilter, plot_time_series, temp_df):
 def _(plot_spectrum, temp_bp):
     plot_spectrum(
         temp_bp,
-        columns="Temperature",
+        columns="vic__demand",
         log_scale=True,
         title="Power Spectrum -- Bandpass (Log Scale)",
     )

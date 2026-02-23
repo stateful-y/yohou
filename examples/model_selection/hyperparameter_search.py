@@ -57,7 +57,7 @@ def _():
     from scipy.stats import uniform
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import (
         ExpandingWindowSplitter,
@@ -76,7 +76,7 @@ def _():
         PointReductionForecaster,
         RandomizedSearchCV,
         Ridge,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_cv_results_scatter,
         uniform,
@@ -94,10 +94,11 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
 
     y_train = y.head(120)

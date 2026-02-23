@@ -55,7 +55,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import DecompositionPipeline, FeaturePipeline, FeatureUnion
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -78,7 +78,7 @@ def _():
         RollingStatisticsTransformer,
         SeasonalNaive,
         StandardScaler,
-        load_vic_electricity,
+        fetch_electricity_demand,
         pl,
         plot_forecast,
     )
@@ -93,11 +93,11 @@ def _(mo):
 
 
 @app.cell
-def _(load_vic_electricity, mo, pl):
-    _elec = load_vic_electricity()
+def _(fetch_electricity_demand, mo, pl):
+    _elec = fetch_electricity_demand().frame
     elec = (
         _elec.group_by_dynamic("time", every="1d")
-        .agg(pl.col("Demand").mean())
+        .agg(pl.col("vic__demand").mean())
     )
     _split = int(len(elec) * 0.85)
     y_train = elec.head(_split)

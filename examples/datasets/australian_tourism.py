@@ -1,8 +1,8 @@
-"""Australian Tourism - State-Level Panel Data.
+"""Tourism Quarterly - Panel Data Exploration.
 
-Quarterly tourism trips aggregated by Australian state.
+Quarterly tourism trips from the Monash forecasting competition.
 
-Dataset: 8 states, 80 quarterly observations (1998-2017)
+Dataset: 427 quarterly tourism series, exploring first 8 as panel
 Demonstrates: inspect_locality, plot_time_series, plot_seasonality, plot_boxplot
 """
 
@@ -16,7 +16,7 @@ app = marimo.App(width="medium")
 def _():
     import marimo as mo
 
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.plotting import (
         plot_boxplot,
         plot_seasonality,
@@ -25,8 +25,8 @@ def _():
     from yohou.utils.panel import inspect_locality
 
     return (
+        fetch_tourism_quarterly,
         inspect_locality,
-        load_australian_tourism,
         mo,
         plot_boxplot,
         plot_seasonality,
@@ -37,16 +37,16 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # Australian Tourism Dataset
+    # Tourism Quarterly Dataset
 
     ## What You'll Learn
 
-    This example demonstrates quarterly panel data analysis with the Australian
-    Tourism dataset, pre-formatted in Yohou's native `__` panel convention. You'll
+    This example demonstrates quarterly panel data analysis with the Tourism
+    Quarterly dataset, pre-formatted in Yohou's native `__` panel convention. You'll
     learn how to:
 
     - Inspect panel structure with `inspect_locality`
-    - Compare tourism demand across Australian states
+    - Compare tourism demand across panel groups
     - Analyze quarterly seasonal patterns
     - Use box plots for distribution analysis
 
@@ -69,8 +69,11 @@ async def _():
 
 
 @app.cell
-def _(load_australian_tourism):
-    df = load_australian_tourism()
+def _(fetch_tourism_quarterly):
+    _all = fetch_tourism_quarterly().frame
+    # Select first 8 series for a manageable panel
+    _cols = ["time"] + [c for c in _all.columns if c != "time"][:8]
+    df = _all.select(_cols)
     df.head(10)
     return (df,)
 
@@ -80,8 +83,8 @@ def _(mo):
     mo.md("""
     ## 1. Inspect Panel Structure
 
-    The dataset has 8 panel groups, one per Australian state, using
-    the `state_name__trips` convention.
+    The full dataset has 427 panel groups using the `Tn__tourists`
+    convention. Here we work with the first 8 series.
     """)
     return
 
@@ -102,27 +105,23 @@ def _(df, inspect_locality, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 2. Major States Comparison
+    ## 2. First Three Series Comparison
 
-    Comparing NSW and Victoria, the two largest tourism markets, shows
-    dominant demand patterns and seasonal differences.
+    Comparing the first three tourism series shows demand patterns and
+    seasonal differences across panel groups.
     """)
     return
 
 
 @app.cell
 def _(df, plot_time_series):
-    major = [
-        "new_south_wales__trips",
-        "victoria__trips",
-        "queensland__trips",
-    ]
+    major = [c for c in df.columns if c.endswith("__tourists")][:3]
 
     plot_time_series(
         df,
         columns=major,
-        title="Tourism by Major States",
-        y_label="Trips",
+        title="Tourism Quarterly - First 3 Series",
+        y_label="Tourists",
     )
     return
 
@@ -130,23 +129,23 @@ def _(df, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 3. All States Overview
+    ## 3. All Selected Series Overview
 
-    Plotting all 8 states together reveals the scale differences and shared
-    seasonal patterns across Australia.
+    Plotting all 8 series together reveals scale differences and shared
+    seasonal patterns.
     """)
     return
 
 
 @app.cell
 def _(df, plot_time_series):
-    all_trip_cols = [c for c in df.columns if c.endswith("__trips")]
+    all_trip_cols = [c for c in df.columns if c.endswith("__tourists")]
 
     plot_time_series(
         df,
         columns=all_trip_cols,
-        title="Tourism - All States",
-        y_label="Trips",
+        title="Tourism Quarterly - 8 Series",
+        y_label="Tourists",
     )
     return
 
@@ -156,20 +155,20 @@ def _(mo):
     mo.md("""
     ## 4. Quarterly Seasonality
 
-    Quarterly aggregation highlights peak tourism seasons, particularly Q1 and
-    Q4 (summer/holiday periods in Australia).
+    Quarterly aggregation highlights peak tourism seasons across the year.
     """)
     return
 
 
 @app.cell
 def _(df, plot_seasonality):
+    _first_col = [c for c in df.columns if c.endswith("__tourists")][0]
     plot_seasonality(
         df,
-        columns="new_south_wales__trips",
+        columns=_first_col,
         feature="quarter",
         aggregation="mean",
-        title="NSW - Average Tourism by Quarter",
+        title="T1 - Average Tourism by Quarter",
     )
     return
 
@@ -179,7 +178,7 @@ def _(mo):
     mo.md("""
     ## 5. Annual Distribution
 
-    Box plots show the year-to-year variability in tourism demand for each state.
+    Box plots show the year-to-year variability in tourism demand for each series.
     """)
     return
 
@@ -199,16 +198,15 @@ def _(mo):
     mo.md("""
     ## Key Takeaways
 
-    - **Native panel format**: Columns use `state_name__trips` convention: no pivoting needed
-    - **Quarterly frequency**: 80 observations spanning 20 years (1998–2017)
-    - **State-level aggregation**: Pre-aggregated from regional data for clean panel analysis
-    - **Seasonal patterns**: Q1 and Q4 are typically peak tourism quarters
-    - **Scale differences**: NSW and Victoria dominate, but all states show consistent patterns
+    - **Native panel format**: Columns use `Tn__tourists` convention: no pivoting needed
+    - **Quarterly frequency**: 427 tourism time series from the Monash competition
+    - **Seasonal patterns**: Quarterly aggregation reveals peak tourism periods
+    - **Scale differences**: Different series have different demand levels
 
     ## Next Steps
 
-    - For daily panel data, see `examples/datasets/store_sales.py`
-    - For branch-level panel, see `examples/datasets/walmart_sales.py`
+    - For weekly panel data, see `examples/datasets/store_sales.py`
+    - For hourly panel, see `examples/datasets/walmart_sales.py`
     - **Panel forecasting**: See `examples/datasets/australian_tourism_forecasting.py` for end-to-end panel forecasting
     """)
     return

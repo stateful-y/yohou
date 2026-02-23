@@ -56,7 +56,7 @@ def _():
     from sklearn.linear_model import QuantileRegressor
     from sklearn.multioutput import MultiOutputRegressor
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
     from yohou.plotting import plot_forecast
@@ -68,7 +68,7 @@ def _():
         IntervalScore,
         LagTransformer,
         MeanIntervalWidth,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
@@ -79,16 +79,17 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We load the Air Passengers dataset and split it into training and test sets.
+    We load the Monthly Tourism dataset and split it into training and test sets.
     """)
     return
 
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
 
     split_idx = int(len(y) * 0.8)

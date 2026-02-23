@@ -58,7 +58,7 @@ def _():
     from sklearn.linear_model import QuantileRegressor
     from sklearn.multioutput import MultiOutputRegressor
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import (
         CalibrationError,
@@ -80,7 +80,7 @@ def _():
         MultiOutputRegressor,
         PinballLoss,
         QuantileRegressor,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_calibration,
         plot_forecast,
@@ -103,11 +103,12 @@ def _(
     LagTransformer,
     MultiOutputRegressor,
     QuantileRegressor,
-    load_air_passengers,
+    fetch_tourism_monthly,
 ):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
 
     y_train = y.head(115)

@@ -57,7 +57,7 @@ def _():
     import polars as pl
 
     from yohou.compose import FeatureUnion
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.plotting import plot_rolling_statistics, plot_time_series
     from yohou.preprocessing import (
         ExponentialMovingAverage,
@@ -72,7 +72,7 @@ def _():
         LagTransformer,
         RollingStatisticsTransformer,
         SlidingWindowFunctionTransformer,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_rolling_statistics,
         plot_time_series,
@@ -84,16 +84,17 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We load the Air Passengers dataset and split it into segments for demonstrating windowed transformations.
+    We load the Monthly Tourism dataset and split it into segments for demonstrating windowed transformations.
     """)
     return
 
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
     print(f"Shape: {y.shape}")
     y.head()

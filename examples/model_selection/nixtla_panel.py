@@ -58,7 +58,7 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection.split import ExpandingWindowSplitter
     from yohou.plotting import plot_forecast
@@ -67,7 +67,7 @@ def _():
     return (
         ExpandingWindowSplitter,
         MeanAbsoluteError,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
         inspect_locality,
@@ -83,8 +83,8 @@ def _(mo):
 
 
 @app.cell
-def _(inspect_locality, load_australian_tourism, mo, pl):
-    tourism = load_australian_tourism()
+def _(inspect_locality, fetch_tourism_quarterly, mo, pl):
+    tourism = fetch_tourism_quarterly().frame.select("time", *[f"T{i}__tourists" for i in range(1, 9)])
     _split = int(len(tourism) * 0.8)
     y_train = tourism.head(_split)
     y_test = tourism.tail(len(tourism) - _split)

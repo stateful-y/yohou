@@ -3,7 +3,7 @@
 Demonstrates cross-validation split visualization and hyperparameter search
 result scatter plots with varied parameter combinations.
 
-Datasets: air_passengers
+Datasets: tourism_monthly
 Demonstrates: plot_splits, plot_cv_results_scatter
 """
 
@@ -29,7 +29,7 @@ async def _():
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import (
         ExpandingWindowSplitter,
@@ -45,7 +45,7 @@ def _():
         MeanAbsoluteError,
         SeasonalNaive,
         SlidingWindowSplitter,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_cv_results_scatter,
         plot_splits,
@@ -69,8 +69,8 @@ def _(mo):
     """)
     return
 @app.cell
-def _(load_air_passengers):
-    air = load_air_passengers()
+def _(fetch_tourism_monthly):
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     return (air,)
 @app.cell(hide_code=True)
 def _(mo):

@@ -61,7 +61,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers, load_store_sales
+    from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -84,8 +84,8 @@ def _():
         Ridge,
         RobustScaler,
         StandardScaler,
-        load_air_passengers,
-        load_store_sales,
+        fetch_dominick,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
         plot_time_series,
@@ -101,8 +101,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
-    df = load_air_passengers()
+def _(fetch_tourism_monthly):
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     _split = int(len(df) * 0.85)
     y_train = df.head(_split).select("time", "Passengers")
     y_test = df.tail(len(df) - _split).select("time", "Passengers")
@@ -211,7 +211,7 @@ def _(MinMaxScaler, RobustScaler, StandardScaler, pl, plot_time_series, y_train)
         ],
         how="horizontal",
     )
-    plot_time_series(_combined, title="Scaler Comparison on Air Passengers")
+    plot_time_series(_combined, title="Scaler Comparison on Monthly Tourism")
     return
 
 
@@ -344,21 +344,25 @@ def _(
     PointReductionForecaster,
     Ridge,
     StandardScaler,
-    load_store_sales,
+    fetch_dominick,
     plot_forecast,
 ):
-    _store = load_store_sales()
-    _split = int(len(_store) * 0.9)
-    _sales_cols = [c for c in _store.columns if c.endswith("__sales")]
-    _y_train_p = _store.head(_split).select("time", *_sales_cols)
-    _y_test_p = _store.tail(len(_store) - _split).select("time", *_sales_cols)
+    _panel = fetch_dominick().frame.select(
+        "time", "T1__profit", "T2__profit", "T3__profit",
+        "T4__profit", "T5__profit", "T6__profit",
+        "T7__profit", "T8__profit", "T9__profit",
+    )
+    _split = int(len(_panel) * 0.9)
+    _profit_cols = [c for c in _panel.columns if c.endswith("__profit")]
+    _y_train_p = _panel.head(_split).select("time", *_profit_cols)
+    _y_test_p = _panel.tail(len(_panel) - _split).select("time", *_profit_cols)
 
     _fc_panel = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
         target_transformer=StandardScaler(),
-        feature_transformer=LagTransformer(lag=[1, 7]),
+        feature_transformer=LagTransformer(lag=[1, 4]),
     )
-    _horizon_p = min(len(_y_test_p), 14)
+    _horizon_p = min(len(_y_test_p), 8)
     _fc_panel.fit(_y_train_p, forecasting_horizon=_horizon_p)
     _y_pred_p = _fc_panel.predict(forecasting_horizon=_horizon_p)
 
@@ -366,8 +370,8 @@ def _(
         _y_test_p,
         _y_pred_p,
         y_train=_y_train_p,
-        n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1"],
+        n_history=20,
+        panel_group_names=["T1", "T2"],
         title="Panel Forecast with Per-Group StandardScaler",
     )
     return

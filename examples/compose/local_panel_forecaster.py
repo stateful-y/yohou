@@ -68,7 +68,7 @@ def _():
     from sklearn.tree import DecisionTreeRegressor
 
     from yohou.compose import LocalPanelForecaster
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -84,7 +84,7 @@ def _():
         Ridge,
         SeasonalNaive,
         inspect_locality,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
         plot_time_series,
@@ -97,16 +97,19 @@ def _(mo):
     ## 1. Prepare Panel Data
 
     Australian Tourism: quarterly trips for 8 states.  Each state is a
-    panel group with the `__` separator (e.g. `victoria__trips`).
+    panel group with the `__` separator (e.g. `T1__tourists`).
     """)
     return
 
 
 @app.cell
-def _(inspect_locality, load_australian_tourism, mo):
-    tourism = load_australian_tourism()
+def _(inspect_locality, fetch_tourism_quarterly, mo):
+    _tourism_full = fetch_tourism_quarterly().frame
+    # Select first 8 series for a manageable panel demo
+    _tourist_cols = [c for c in _tourism_full.columns if c.endswith("__tourists")][:8]
+    tourism = _tourism_full.select("time", *_tourist_cols)
     _globals, groups = inspect_locality(tourism)
-    y = tourism.select("time", *[c for c in tourism.columns if c.endswith("__trips")])
+    y = tourism.select("time", *[c for c in tourism.columns if c.endswith("__tourists")])
 
     _split = int(len(y) * 0.80)
     y_train = y.head(_split)
@@ -123,7 +126,7 @@ def _(inspect_locality, load_australian_tourism, mo):
 
 @app.cell
 def _(plot_time_series, y):
-    plot_time_series(y, title="Australian Tourism: Quarterly Trips by State")
+    plot_time_series(y, title="Tourism Quarterly: Quarterly Tourists by Series")
     return
 
 
@@ -158,8 +161,8 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         y_pred_local,
         y_train=y_train,
         n_history=12,
-        panel_group_names=["victoria", "new_south_wales", "queensland"],
-        title="LocalPanelForecaster: Top 3 States",
+        panel_group_names=["T1", "T2", "T3"],
+        title="LocalPanelForecaster: Top 3 Series",
     )
     return
 
@@ -205,7 +208,7 @@ def _(mo):
 def _(fc_local, horizon, mo):
     y_pred_top3 = fc_local.predict(
         forecasting_horizon=horizon,
-        panel_group_names=["victoria", "new_south_wales", "queensland"],
+        panel_group_names=["T1", "T2", "T3"],
     )
     mo.md(
         f"**Selective prediction columns**: {sorted(y_pred_top3.columns)}\n\n"
@@ -255,9 +258,10 @@ def _(mo):
 
 
 @app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, horizon, load_australian_tourism):
-    _tourism = load_australian_tourism()
-    _y2 = _tourism.select("time", *[c for c in _tourism.columns if c.endswith("__trips")])
+def _(LagTransformer, PointReductionForecaster, Ridge, horizon, fetch_tourism_quarterly):
+    _tourism = fetch_tourism_quarterly().frame
+    _tourist_cols = [c for c in _tourism.columns if c.endswith("__tourists")][:8]
+    _y2 = _tourism.select("time", *_tourist_cols)
     _split2 = int(len(_y2) * 0.80)
     y_train2 = _y2.head(_split2)
     y_test2 = _y2.tail(len(_y2) - _split2)
@@ -303,7 +307,7 @@ def _(
 
     _rows = []
     for _group in sorted(groups.keys()):
-        _col = f"{_group}__trips"
+        _col = f"{_group}__tourists"
         if _col in _scores_global.columns:
             _rows.append({
                 "State": _group,

@@ -56,7 +56,7 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
     from yohou.plotting import (
@@ -77,7 +77,7 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_cv_results_scatter,
         plot_forecast,
@@ -92,17 +92,18 @@ def _(mo):
     mo.md(r"""
     ## 1. Load and Explore the Data
 
-    We use the classic Air Passengers dataset - monthly airline passengers from 1949-1960.
-    It exhibits strong trend and multiplicative seasonality, making it ideal for
+    We use the Monthly Tourism dataset - monthly tourist counts.
+    It exhibits strong trend and seasonality, making it ideal for
     demonstrating preprocessing techniques.
     """)
 
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
 
     print(f"Dataset: {len(y)} observations from {y['time'].min()} to {y['time'].max()}")
@@ -112,7 +113,7 @@ def _(load_air_passengers):
 
 @app.cell
 def _(plot_time_series, y):
-    plot_time_series(y, title="Air Passengers (1949-1960)")
+    plot_time_series(y, title="Monthly Tourism")
 
 
 @app.cell
@@ -201,7 +202,7 @@ def _(mo):
     mo.md(r"""
     ## 4. Adding Target Transformation
 
-    The Air Passengers data has multiplicative seasonality (variance grows with level).
+    The Monthly Tourism data has multiplicative seasonality (variance grows with level).
     A `LogTransformer` via `target_transformer` stabilizes variance. It is applied to y
     before fitting and automatically inverted after prediction.
     """)

@@ -51,7 +51,7 @@ def _():
     from scipy.stats import loguniform, randint
     from sklearn.linear_model import ElasticNet, Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import (
         MeanAbsoluteError,
         MeanAbsolutePercentageError,
@@ -74,7 +74,7 @@ def _():
         RandomizedSearchCV,
         Ridge,
         RootMeanSquaredError,
-        load_air_passengers,
+        fetch_tourism_monthly,
         loguniform,
         pl,
         plot_cv_results_scatter,
@@ -92,11 +92,11 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers, mo):
-    ap = load_air_passengers()
+def _(fetch_tourism_monthly, mo):
+    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
     _split = int(len(ap) * 0.85)
-    y_train = ap.head(_split).select("time", "Passengers")
-    y_test = ap.tail(len(ap) - _split).select("time", "Passengers")
+    y_train = ap.head(_split)
+    y_test = ap.tail(len(ap) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")

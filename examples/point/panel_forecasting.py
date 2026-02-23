@@ -55,7 +55,7 @@ def _():
     from sklearn.tree import DecisionTreeRegressor
 
     from yohou.compose import ColumnForecaster
-    from yohou.datasets import load_store_sales
+    from yohou.datasets import fetch_dominick
     from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -72,7 +72,7 @@ def _():
         RootMeanSquaredError,
         SeasonalNaive,
         inspect_locality,
-        load_store_sales,
+        fetch_dominick,
         pl,
         plot_forecast,
         plot_time_series,
@@ -88,10 +88,13 @@ def _(mo):
 
 
 @app.cell
-def _(inspect_locality, load_store_sales, mo, pl):
-    store = load_store_sales()
+def _(inspect_locality, fetch_dominick, mo, pl):
+    _bunch = fetch_dominick()
+    # Select first 9 series for a manageable panel demo (3 groups of 3)
+    _selected = [f"T{i}__profit" for i in range(1, 10)]
+    store = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(store)
-    _target_cols = [c for c in store.columns if c.endswith("__sales")]
+    _target_cols = [c for c in store.columns if c.endswith("__profit")]
     y = store.select("time", *_target_cols)
 
     _split = int(len(y) * 0.85)
@@ -102,7 +105,7 @@ def _(inspect_locality, load_store_sales, mo, pl):
     mo.md(
         f"**Panel groups**: {list(groups.keys())}\n\n"
         f"**Target columns**: {_target_cols}\n\n"
-        f"**Train**: {len(y_train)} days, **Test**: {len(y_test)} days, "
+        f"**Train**: {len(y_train)} weeks, **Test**: {len(y_test)} weeks, "
         f"**Horizon**: {horizon}"
     )
     return groups, horizon, store, y, y_test, y_train
@@ -138,7 +141,7 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_2", "store_3_item_3"],
+        panel_group_names=["T1", "T4", "T7"],
         title="Global Ridge Model: Selected Groups",
     )
     return
@@ -166,28 +169,28 @@ def _(
     y,
     y_train,
 ):
-    _s1_cols = [c for c in y.columns if c.startswith("store_1") and c != "time"]
-    _s2_cols = [c for c in y.columns if c.startswith("store_2") and c != "time"]
-    _s3_cols = [c for c in y.columns if c.startswith("store_3") and c != "time"]
+    _g1_cols = [f"T{i}__profit" for i in range(1, 4)]
+    _g2_cols = [f"T{i}__profit" for i in range(4, 7)]
+    _g3_cols = [f"T{i}__profit" for i in range(7, 10)]
 
     fc_column = ColumnForecaster(
         forecasters=[
             (
-                "store_1_ridge",
+                "group_1_ridge",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
                     feature_transformer=LagTransformer(lag=[1, 7]),
                 ),
-                _s1_cols,
+                _g1_cols,
             ),
-            ("store_2_naive", SeasonalNaive(seasonality=7), _s2_cols),
+            ("group_2_naive", SeasonalNaive(seasonality=7), _g2_cols),
             (
-                "store_3_tree",
+                "group_3_tree",
                 PointReductionForecaster(
                     estimator=DecisionTreeRegressor(max_depth=5),
                     feature_transformer=LagTransformer(lag=[1, 7, 14]),
                 ),
-                _s3_cols,
+                _g3_cols,
             ),
         ],
     )
@@ -203,8 +206,8 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         y_pred_column,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
-        title="ColumnForecaster: Per-Store Specialisation",
+        panel_group_names=["T1", "T4", "T7"],
+        title="ColumnForecaster: Per-Group Specialisation",
     )
     return
 
@@ -222,14 +225,14 @@ def _(mo):
 
 @app.cell
 def _(fc_global, mo, plot_forecast, y_pred_global, y_test, y_train):
-    # Predict only store_1 groups
+    # Predict only T1-T3 groups
     y_pred_s1 = fc_global.predict(
         forecasting_horizon=len(y_test),
-        panel_group_names=["store_1_item_1", "store_1_item_2", "store_1_item_3"],
+        panel_group_names=["T1", "T2", "T3"],
     )
     mo.md(
         f"**Selective prediction columns**: {y_pred_s1.columns}\n\n"
-        f"Only store_1 groups are predicted; other groups are omitted."
+        f"Only T1-T3 groups are predicted; other groups are omitted."
     )
     return (y_pred_s1,)
 

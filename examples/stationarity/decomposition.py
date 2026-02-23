@@ -6,7 +6,7 @@ FourierSeasonalityForecaster, and DecompositionPipeline.
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.1"
 app = marimo.App(width="medium")
 
 
@@ -58,7 +58,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_components, plot_forecast
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -80,8 +80,7 @@ def _():
         PointReductionForecaster,
         PolynomialTrendForecaster,
         Ridge,
-        load_air_passengers,
-        pl,
+        fetch_tourism_monthly,
         plot_components,
         plot_forecast,
     )
@@ -98,13 +97,14 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
-    y_train = y.head(120)
-    y_test = y.tail(24)
+    y_train = y.head(280)
+    y_test = y.tail(65)
     fh = len(y_test)
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")

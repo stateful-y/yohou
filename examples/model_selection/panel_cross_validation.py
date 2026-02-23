@@ -51,7 +51,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, SlidingWindowSplitter
     from yohou.plotting import plot_splits
@@ -66,7 +66,7 @@ def _():
         PointReductionForecaster,
         Ridge,
         SlidingWindowSplitter,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_splits,
     )
@@ -81,8 +81,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_australian_tourism, mo):
-    tourism = load_australian_tourism()
+def _(fetch_tourism_quarterly, mo):
+    tourism = fetch_tourism_quarterly().frame.select("time", *[f"T{i}__tourists" for i in range(1, 9)])
     mo.md(
         f"**Shape**: {tourism.shape}\n\n"
         f"**Columns**: {tourism.columns}\n\n"

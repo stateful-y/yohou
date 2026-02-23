@@ -58,14 +58,14 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
     from yohou.plotting import plot_forecast
 
     return (
         MeanAbsoluteError,
         RootMeanSquaredError,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
@@ -80,11 +80,11 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers, mo):
-    ap = load_air_passengers()
+def _(fetch_tourism_monthly, mo):
+    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
     _split = int(len(ap) * 0.85)
-    y_train = ap.head(_split).select("time", "Passengers")
-    y_test = ap.tail(len(ap) - _split).select("time", "Passengers")
+    y_train = ap.head(_split)
+    y_test = ap.tail(len(ap) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")

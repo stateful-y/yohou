@@ -54,7 +54,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_australian_tourism, load_sunspots
+    from yohou.datasets import fetch_sunspot, fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -75,8 +75,8 @@ def _():
         PolynomialTrendForecaster,
         Ridge,
         SeasonalNaive,
-        load_australian_tourism,
-        load_sunspots,
+        fetch_sunspot,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
         plot_time_series,
@@ -92,8 +92,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_sunspots, mo):
-    sunspots = load_sunspots()
+def _(fetch_sunspot, mo):
+    sunspots = fetch_sunspot().frame
     _split = int(len(sunspots) * 0.85)
     y_train = sunspots.head(_split)
     y_test = sunspots.tail(len(sunspots) - _split)
@@ -289,10 +289,13 @@ def _(
     PointReductionForecaster,
     PolynomialTrendForecaster,
     Ridge,
-    load_australian_tourism,
+    fetch_tourism_quarterly,
     plot_forecast,
 ):
-    _tourism = load_australian_tourism()
+    _tourism = fetch_tourism_quarterly().frame
+    # Select first 8 series for a manageable panel demo
+    _tourist_cols = [c for c in _tourism.columns if c.endswith("__tourists")][:8]
+    _tourism = _tourism.select("time", *_tourist_cols)
     _split_p = int(len(_tourism) * 0.8)
     _y_train_p = _tourism.head(_split_p)
     _y_test_p = _tourism.tail(len(_tourism) - _split_p)
@@ -318,7 +321,7 @@ def _(
         _y_pred_panel,
         y_train=_y_train_p,
         n_history=8,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T1", "T2", "T3"],
         title="Panel Decomposition: Trend + Residual",
     )
     return

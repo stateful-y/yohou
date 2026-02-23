@@ -52,7 +52,7 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.multioutput import MultiOutputRegressor
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster
@@ -65,7 +65,7 @@ def _():
         MultiOutputRegressor,
         PointReductionForecaster,
         Ridge,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
@@ -80,8 +80,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
-    y = load_air_passengers().rename({"Passengers": "passengers"})
+def _(fetch_tourism_monthly):
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
 
     split_idx = int(len(y) * 0.8)
     y_train = y.head(split_idx)

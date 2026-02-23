@@ -59,7 +59,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import DistanceSimilarity, SplitConformalForecaster
     from yohou.metrics import (
         AbsoluteResidual,
@@ -81,7 +81,7 @@ def _():
         PointReductionForecaster,
         Ridge,
         SplitConformalForecaster,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_calibration,
         plot_forecast,
@@ -94,17 +94,18 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We use Air Passengers, its clear trend and multiplicative seasonality make
+    We use Monthly Tourism, its clear trend and seasonality make
     similarity effects visible because the error structure changes over time.
     """)
     return
 
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
 
     split_idx = int(len(y) * 0.8)

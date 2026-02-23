@@ -66,13 +66,14 @@ or alternatively, add `yohou` to your `requirements.txt` or `pyproject.toml` fil
 
 ### 1. Load data and split
 
-Yohou datasets return Polars DataFrames with a `"time"` column.
+Yohou datasets are fetched from [Monash/Zenodo](https://forecastingdata.org) and return a `Bunch` with a `.frame` attribute (a Polars DataFrame with a `"time"` column).
 
 ```python
-from yohou.datasets import load_air_passengers
+from yohou.datasets import fetch_tourism_monthly
 
-y = load_air_passengers()
-y_train, y_test = y[:115], y[115:]
+bunch = fetch_tourism_monthly()
+y = bunch.frame.select("time", "T1__tourists").rename({"T1__tourists": "tourists"})
+y_train, y_test = y[:280], y[280:]
 ```
 
 ### 2. Fit a forecaster

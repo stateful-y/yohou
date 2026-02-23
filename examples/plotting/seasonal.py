@@ -3,7 +3,7 @@
 Demonstrates seasonality overlays, subseries plots, ACF/PACF, power spectrum, and
 phase spectrum with varied parameter combinations.
 
-Datasets: air_passengers, sunspots, australian_tourism
+Datasets: tourism_monthly, sunspot, tourism_quarterly
 Demonstrates: plot_seasonality, plot_subseasonality, plot_autocorrelation,
     plot_partial_autocorrelation
 """
@@ -35,9 +35,9 @@ async def _():
 @app.cell(hide_code=True)
 def _():
     from yohou.datasets import (
-        load_air_passengers,
-        load_australian_tourism,
-        load_sunspots,
+        fetch_sunspot,
+        fetch_tourism_monthly,
+        fetch_tourism_quarterly,
     )
     from yohou.plotting import (
         plot_autocorrelation,
@@ -47,9 +47,9 @@ def _():
     )
 
     return (
-        load_air_passengers,
-        load_australian_tourism,
-        load_sunspots,
+        fetch_sunspot,
+        fetch_tourism_monthly,
+        fetch_tourism_quarterly,
         plot_autocorrelation,
         plot_partial_autocorrelation,
         plot_seasonality,
@@ -77,10 +77,10 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers, load_australian_tourism, load_sunspots):
-    air = load_air_passengers()
-    sunspots = load_sunspots()
-    tourism = load_australian_tourism()
+def _(fetch_tourism_monthly, fetch_tourism_quarterly, fetch_sunspot):
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    sunspots = fetch_sunspot().frame
+    tourism = fetch_tourism_quarterly().frame
     return air, sunspots, tourism
 
 
@@ -132,8 +132,8 @@ def _(plot_seasonality, tourism):
     plot_seasonality(
         tourism,
         seasonality="quarter",
-        panel_group_names=["act", "victoria"],
-        title="Seasonal Overlay -- Australian Tourism Panel (ACT & Victoria)",
+        panel_group_names=["T1", "T2"],
+        title="Seasonal Overlay -- Tourism Quarterly Panel (T1 & T2)",
     )
     return
 

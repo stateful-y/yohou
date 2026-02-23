@@ -52,7 +52,7 @@ def _():
     import polars as pl
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -74,7 +74,7 @@ def _():
         SeasonalDifferencing,
         SeasonalNaive,
         inspect_locality,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
         plot_time_series,
@@ -90,8 +90,11 @@ def _(mo):
 
 
 @app.cell
-def _(inspect_locality, load_australian_tourism, mo):
-    tourism = load_australian_tourism()
+def _(inspect_locality, fetch_tourism_quarterly, mo):
+    _bunch = fetch_tourism_quarterly()
+    # Select first 8 series for a manageable panel demo
+    _selected = [f"T{i}__tourists" for i in range(1, 9)]
+    tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(tourism)
     _split = int(len(tourism) * 0.8)
     y_train = tourism.head(_split)
@@ -107,7 +110,7 @@ def _(inspect_locality, load_australian_tourism, mo):
 
 @app.cell
 def _(plot_time_series, tourism):
-    plot_time_series(tourism, title="Australian Tourism: All States")
+    plot_time_series(tourism, title="Tourism Quarterly: All Panel Groups")
     return
 
 
@@ -127,7 +130,7 @@ def _(SeasonalDifferencing, plot_time_series, tourism):
     sd = SeasonalDifferencing(seasonality=4)
     sd.fit(tourism)
     tourism_diff = sd.transform(tourism)
-    plot_time_series(tourism_diff, title="Seasonal Differencing (lag=4): All States")
+    plot_time_series(tourism_diff, title="Seasonal Differencing (lag=4): All Groups")
     return sd, tourism_diff
 
 
@@ -196,7 +199,7 @@ def _(plot_forecast, y_pred_decomp, y_test, y_train):
         y_pred_decomp,
         y_train=y_train,
         n_history=12,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T1", "T2", "T3"],
         title="DecompositionPipeline: Trend + Residual (Panel)",
     )
     return
@@ -247,7 +250,7 @@ def _(
         _y_pred_three,
         y_train=y_train,
         n_history=12,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T1", "T2", "T3"],
         title="Trend + Seasonality + Residual (Panel)",
     )
     return (fc_three,)
@@ -276,7 +279,7 @@ def _(MeanAbsoluteError, SeasonalNaive, groups, horizon, mo, pl, y_pred_decomp, 
         _s_naive = float(_scorer.score(y_test, _y_pred_naive, panel_group_names=[_state]))
         _s_decomp = float(_scorer.score(y_test, y_pred_decomp, panel_group_names=[_state]))
         _rows.append({
-            "State": _state,
+            "Group": _state,
             "SeasonalNaive MAE": round(_s_naive, 1),
             "Decomposition MAE": round(_s_decomp, 1),
         })

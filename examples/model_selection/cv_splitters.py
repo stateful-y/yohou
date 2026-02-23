@@ -53,14 +53,14 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.model_selection import ExpandingWindowSplitter, SlidingWindowSplitter
     from yohou.plotting import plot_splits
 
     return (
         ExpandingWindowSplitter,
         SlidingWindowSplitter,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_splits,
     )
@@ -77,10 +77,11 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
     print(f"Total observations: {len(y)}")
     return (y,)

@@ -1,8 +1,8 @@
-"""ETTm1 - Electricity Transformer Multivariate Analysis.
+"""Hospital - Monthly Patient Counts Panel Analysis.
 
-Multivariate analysis of transformer temperature and load features.
+Monthly patient counts for medical products in Yohou panel format.
 
-Dataset: 7 temperature features at 15-minute intervals
+Dataset: 767 monthly patient count series (exploring first 6)
 Demonstrates: plot_time_series, plot_cross_correlation, plot_seasonality
 """
 
@@ -16,7 +16,7 @@ app = marimo.App(width="medium")
 def _():
     import marimo as mo
 
-    from yohou.datasets import load_ett_m1
+    from yohou.datasets import fetch_hospital
     from yohou.plotting import (
         plot_cross_correlation,
         plot_seasonality,
@@ -24,7 +24,7 @@ def _():
     )
 
     return (
-        load_ett_m1,
+        fetch_hospital,
         mo,
         plot_cross_correlation,
         plot_seasonality,
@@ -35,17 +35,17 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # ETTm1 Dataset
+    # Hospital Dataset
 
     ## What You'll Learn
 
-    This example demonstrates multivariate time series analysis with the ETTm1
-    (Electricity Transformer Temperature) dataset. You'll learn how to:
+    This example demonstrates monthly panel time series analysis with the
+    Hospital dataset (767 series of patient counts). You'll learn how to:
 
-    - Visualize multiple correlated features simultaneously
-    - Analyze cross-correlation between temperature and load features
-    - Identify hourly and weekly seasonality patterns in industrial IoT data
-    - Understand lead-lag relationships in multivariate systems
+    - Visualize multiple patient count series simultaneously
+    - Analyze cross-correlation between different series
+    - Identify monthly and quarterly seasonality patterns in healthcare data
+    - Understand relationships across panel groups
 
     ## Prerequisites
 
@@ -66,8 +66,11 @@ async def _():
 
 
 @app.cell
-def _(load_ett_m1):
-    df = load_ett_m1()
+def _(fetch_hospital):
+    _all = fetch_hospital().frame
+    # Select first 6 series for a manageable exploration
+    _cols = ["time"] + [c for c in _all.columns if c != "time"][:6]
+    df = _all.select(_cols)
     df.head(20)
     return (df,)
 
@@ -75,23 +78,23 @@ def _(load_ett_m1):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 1. Multiple Features Visualization
+    ## 1. Multiple Series Visualization
 
-    Plotting all features together shows how oil temperature (OT) and load
-    variables co-move over time.
+    Plotting several patient count series together shows how different
+    medical product categories co-move over time.
     """)
     return
 
 
 @app.cell
 def _(df, plot_time_series):
-    df_week = df.head(96 * 7)
+    _cols = [c for c in df.columns if c.endswith("__patients")][:4]
 
     plot_time_series(
-        df_week,
-        columns=["OT", "HUFL", "MUFL", "LUFL"],
-        title="Oil Temperature and Load Features (7 Days)",
-        y_label="Temperature",
+        df,
+        columns=_cols,
+        title="Hospital Patient Counts - First 4 Series",
+        y_label="Patients",
     )
     return
 
@@ -99,45 +102,43 @@ def _(df, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 2. Cross-Correlation with High Load
+    ## 2. Cross-Correlation Between Series
 
-    Cross-correlation with HUFL (High UseFul Load) quantifies the strength and
-    timing of the temperature-load relationship.
+    Cross-correlation between T1 and T2 quantifies the strength and
+    timing of the relationship between two patient count series.
     """)
     return
 
 
 @app.cell
 def _(df, plot_cross_correlation):
-    df_month = df.head(96 * 30)
-
     plot_cross_correlation(
-        df_month,
-        columns=["OT", "HUFL"],
-        max_lags=96,
-        title="Oil Temperature vs High Load Cross-Correlation",
+        df,
+        columns=["T1__patients", "T2__patients"],
+        max_lags=24,
+        title="T1 vs T2 Patient Counts Cross-Correlation",
     )
-    return (df_month,)
+    return (df,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 3. Cross-Correlation with Medium Load
+    ## 3. Cross-Correlation: T1 vs T3
 
-    Comparing cross-correlation with MUFL reveals whether different load
-    categories have different lag structures.
+    Comparing cross-correlation with a different series reveals whether
+    different categories have different lag structures.
     """)
     return
 
 
 @app.cell
-def _(df_month, plot_cross_correlation):
+def _(df, plot_cross_correlation):
     plot_cross_correlation(
-        df_month,
-        columns=["OT", "MUFL"],
-        max_lags=96,
-        title="Oil Temperature vs Medium Load Cross-Correlation",
+        df,
+        columns=["T1__patients", "T3__patients"],
+        max_lags=24,
+        title="T1 vs T3 Patient Counts Cross-Correlation",
     )
     return
 
@@ -145,10 +146,10 @@ def _(df_month, plot_cross_correlation):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 4. Hourly Seasonality
+    ## 4. Monthly Seasonality
 
-    Aggregating by hour reveals the 24-hour demand cycle driven by business
-    hours and daily routines.
+    Aggregating by month reveals seasonal healthcare demand patterns
+    driven by illness seasonality and administrative cycles.
     """)
     return
 
@@ -157,9 +158,9 @@ def _(mo):
 def _(df, plot_seasonality):
     plot_seasonality(
         df,
-        columns="OT",
-        seasonality="hour",
-        title="Average Oil Temperature by Hour",
+        columns="T1__patients",
+        seasonality="month",
+        title="T1 - Average Patient Count by Month",
     )
     return
 
@@ -167,10 +168,9 @@ def _(df, plot_seasonality):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 5. Day-of-Week Patterns
+    ## 5. Quarterly Patterns
 
-    Weekly patterns show slightly higher temperatures on weekdays compared to
-    weekends.
+    Quarterly aggregation shows broader seasonal trends in patient counts.
     """)
     return
 
@@ -179,9 +179,9 @@ def _(mo):
 def _(df, plot_seasonality):
     plot_seasonality(
         df,
-        columns="OT",
-        seasonality="weekday",
-        title="Average Oil Temperature by Day of Week",
+        columns="T1__patients",
+        seasonality="quarter",
+        title="T1 - Average Patient Count by Quarter",
     )
     return
 
@@ -191,17 +191,16 @@ def _(mo):
     mo.md("""
     ## Key Takeaways
 
-    - **Strong feature correlation**: Oil temperature (OT) closely tracks load features
-    - **High load dominates**: HUFL (High UseFul Load) shows strongest correlation with target
-    - **Near-instantaneous response**: Cross-correlation peaks near zero lag
-    - **24-hour cycles**: Clear intraday patterns driven by business hours
-    - **Weekday effects**: Temperature slightly higher on weekdays vs weekends
-    - **15-minute resolution**: Captures rapid temperature fluctuations
+    - **Panel format**: 767 monthly patient count series using `Tn__patients` convention
+    - **Cross-series correlation**: Different medical product series show varying correlation strength
+    - **Monthly seasonality**: Healthcare demand follows seasonal illness patterns
+    - **Monthly resolution**: Captures medium-term trends in patient counts
+    - **Large panel**: 767 series available; select a subset for tractable exploration
 
     ## Next Steps
 
-    - For simpler multivariate data, see `examples/datasets/vic_electricity.py`
     - For high-frequency panel data, see `examples/datasets/vic_electricity.py`
+    - For weekly panel, see `examples/datasets/store_sales.py`
     - For univariate cyclic patterns, see `examples/datasets/sunspots.py`
     """)
     return

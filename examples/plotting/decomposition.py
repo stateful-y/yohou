@@ -3,7 +3,7 @@
 Demonstrates STL decomposition with different component selections, robustness
 settings, and window parameters.
 
-Datasets: air_passengers
+Datasets: tourism_monthly
 Demonstrates: plot_stl_components
 """
 
@@ -34,12 +34,12 @@ async def _():
 @app.cell(hide_code=True)
 def _():
     from yohou.datasets import (
-        load_air_passengers,
+        fetch_tourism_monthly,
     )
     from yohou.plotting import plot_stl_components
 
     return (
-        load_air_passengers,
+        fetch_tourism_monthly,
         plot_stl_components,
     )
 
@@ -62,8 +62,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
-    air = load_air_passengers()
+def _(fetch_tourism_monthly):
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     return (air,)
 
 

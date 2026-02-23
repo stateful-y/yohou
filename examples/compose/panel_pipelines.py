@@ -51,7 +51,7 @@ def _(mo):
     ## Prerequisites
 
     Panel data conventions (`__` separator) and basic forecasting
-    (see `examples/quickstart.py`, `examples/datasets/store_sales.py`).
+    (see `examples/quickstart.py`, `examples/datasets/dominick.py`).
     """)
     return
 
@@ -67,7 +67,7 @@ def _():
         FeaturePipeline,
         FeatureUnion,
     )
-    from yohou.datasets import load_store_sales
+    from yohou.datasets import fetch_dominick
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -90,7 +90,7 @@ def _():
         SeasonalNaive,
         StandardScaler,
         inspect_locality,
-        load_store_sales,
+        fetch_dominick,
         pl,
         plot_forecast,
         plot_time_series,
@@ -106,10 +106,13 @@ def _(mo):
 
 
 @app.cell
-def _(inspect_locality, load_store_sales, mo):
-    store = load_store_sales()
+def _(inspect_locality, fetch_dominick, mo):
+    _dom_full = fetch_dominick().frame
+    # Select first 9 series for a manageable panel demo
+    _profit_cols = [c for c in _dom_full.columns if c.endswith("__profit")][:9]
+    store = _dom_full.select("time", *_profit_cols)
     _globals, groups = inspect_locality(store)
-    sales_cols = [c for c in store.columns if c.endswith("__sales")]
+    sales_cols = [c for c in store.columns if c.endswith("__profit")]
 
     _split = int(len(store) * 0.85)
     y_train = store.head(_split).select("time", *sales_cols)
@@ -118,8 +121,8 @@ def _(inspect_locality, load_store_sales, mo):
 
     mo.md(
         f"**Groups**: {list(groups.keys())}\n\n"
-        f"**Train**: {len(y_train)} days, **Test**: {len(y_test)} days\n\n"
-        f"9 panel groups: 3 stores x 3 items"
+        f"**Train**: {len(y_train)} rows, **Test**: {len(y_test)} rows\n\n"
+        f"9 panel groups from Dominick dataset"
     )
     return groups, horizon, sales_cols, store, y_test, y_train
 
@@ -154,8 +157,8 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
-        title="Global Model: Item 1 Across Stores",
+        panel_group_names=["T1", "T2", "T3"],
+        title="Global Model: First 3 Series",
     )
     return
 
@@ -184,29 +187,29 @@ def _(
     y_test,
     y_train,
 ):
-    # Ridge for store_1, SeasonalNaive for store_2, Ridge(alpha=10) for store_3
-    _s1_cols = [c for c in sales_cols if c.startswith("store_1")]
-    _s2_cols = [c for c in sales_cols if c.startswith("store_2")]
-    _s3_cols = [c for c in sales_cols if c.startswith("store_3")]
+    # Ridge for first 3 groups, SeasonalNaive for next 3, Ridge(alpha=10) for last 3
+    _g1_cols = sales_cols[:3]
+    _g2_cols = sales_cols[3:6]
+    _g3_cols = sales_cols[6:9]
 
     fc_column = ColumnForecaster(
         forecasters=[
             (
-                "store_1",
+                "group_1",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
                     feature_transformer=LagTransformer(lag=[1, 7]),
                 ),
-                _s1_cols,
+                _g1_cols,
             ),
-            ("store_2", SeasonalNaive(seasonality=7), _s2_cols),
+            ("group_2", SeasonalNaive(seasonality=7), _g2_cols),
             (
-                "store_3",
+                "group_3",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=10.0),
                     feature_transformer=LagTransformer(lag=[1, 7, 14]),
                 ),
-                _s3_cols,
+                _g3_cols,
             ),
         ],
     )
@@ -223,8 +226,8 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         y_pred_column,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
-        title="ColumnForecaster: Different Model Per Store",
+        panel_group_names=["T1", "T2", "T3"],
+        title="ColumnForecaster: Different Model Per Group",
     )
     return
 
@@ -271,7 +274,7 @@ def _(
         _y_pred_union,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_2"],
+        panel_group_names=["T1", "T4"],
         title="FeatureUnion (Lags + Rolling) on Panel Data",
     )
     return (fc_union,)
@@ -321,7 +324,7 @@ def _(
         _y_pred_decomp,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1"],
+        panel_group_names=["T1", "T4"],
         title="DecompositionPipeline (Trend + Residual) on Panel Data",
     )
     return (fc_decomp,)
@@ -379,7 +382,7 @@ def _(
         _y_pred_nested,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_3_item_3"],
+        panel_group_names=["T1", "T9"],
         title="Nested Pipeline on Panel Data",
     )
     return (fc_nested,)

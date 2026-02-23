@@ -50,7 +50,7 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.plotting import plot_time_series
     from yohou.preprocessing import SeasonalImputer, SimpleImputer, SimpleTimeImputer, TransformedSpaceKNNImputer
 
@@ -59,7 +59,7 @@ def _():
         SimpleImputer,
         SimpleTimeImputer,
         TransformedSpaceKNNImputer,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_time_series,
     )
@@ -74,8 +74,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers, mo, pl):
-    air = load_air_passengers()
+def _(fetch_tourism_monthly, mo, pl):
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
 
     # Create gaps: indices 30-34 (block), and scattered singles
     _gap_indices = list(range(30, 35)) + [50, 70, 90, 110]
@@ -95,7 +95,7 @@ def _(load_air_passengers, mo, pl):
 
 @app.cell
 def _(air_missing, plot_time_series):
-    plot_time_series(air_missing, title="Air Passengers: With Synthetic Gaps")
+    plot_time_series(air_missing, title="Monthly Tourism: With Synthetic Gaps")
     return
 
 

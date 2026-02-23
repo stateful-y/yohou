@@ -51,7 +51,7 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.plotting import plot_time_series
     from yohou.preprocessing import NumericalDifferentiator, NumericalFilter, NumericalIntegrator
 
@@ -59,7 +59,7 @@ def _():
         NumericalDifferentiator,
         NumericalFilter,
         NumericalIntegrator,
-        load_vic_electricity,
+        fetch_electricity_demand,
         pl,
         plot_time_series,
     )
@@ -74,12 +74,14 @@ def _(mo):
 
 
 @app.cell
-def _(load_vic_electricity, mo):
-    elec = load_vic_electricity()
+def _(fetch_electricity_demand, mo, pl):
+    elec = fetch_electricity_demand().frame
     # Use a manageable subset (first 2 weeks = 672 half-hour periods)
-    elec_subset = elec.head(672).select("time", "Demand")
+    elec_subset = elec.head(672).select(
+        "time", pl.col("vic__demand").alias("demand")
+    )
     mo.md(
-        f"**Victoria Electricity** (30-min intervals)\n\n"
+        f"**Electricity Demand** (30-min intervals)\n\n"
         f"Full dataset: {len(elec)} rows, using first {len(elec_subset)} rows\n\n"
         f"Columns: {elec_subset.columns}"
     )
@@ -116,7 +118,7 @@ def _(NumericalFilter, elec_subset, pl, plot_time_series):
 
     # Combine for visual comparison
     _combined = elec_subset.join(
-        demand_smooth.rename({"Demand": "Demand_smooth"}),
+        demand_smooth.rename({"demand": "demand_smooth"}),
         on="time",
     )
     plot_time_series(_combined, title="Low-Pass Filter (cutoff=0.05)")
@@ -146,7 +148,7 @@ def _(NumericalFilter, elec_subset, pl, plot_time_series):
     demand_residual = hp_filter.transform(elec_subset)
 
     _combined_hp = elec_subset.join(
-        demand_residual.rename({"Demand": "Demand_highpass"}),
+        demand_residual.rename({"demand": "demand_highpass"}),
         on="time",
     )
     plot_time_series(_combined_hp, title="High-Pass Filter (cutoff=0.05)")
@@ -177,7 +179,7 @@ def _(NumericalFilter, elec_subset, pl, plot_time_series):
     for _name, _filt in _designs.items():
         _filt.fit(elec_subset)
         _out = _filt.transform(elec_subset)
-        _result = _result.with_columns(_out["Demand"].alias(f"Demand_{_name}"))
+        _result = _result.with_columns(_out["demand"].alias(f"demand_{_name}"))
 
     plot_time_series(
         _result.head(200),
@@ -270,9 +272,9 @@ def _(NumericalDifferentiator, NumericalFilter, elec_subset, pl, plot_time_serie
     _rate_raw = _diff_raw.transform(elec_subset)
 
     _compare = _rate_smooth.join(
-        _rate_raw.rename({"Demand_differentiated": "Demand_raw_rate"}),
+        _rate_raw.rename({"demand_differentiated": "demand_raw_rate"}),
         on="time",
-    ).rename({"Demand_differentiated": "Demand_smooth_rate"})
+    ).rename({"demand_differentiated": "demand_smooth_rate"})
 
     plot_time_series(
         _compare.head(200),

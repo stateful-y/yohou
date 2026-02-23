@@ -65,7 +65,7 @@ def _():
     from sklearn.model_selection import train_test_split
 
     from yohou.compose import DecompositionPipeline, FeaturePipeline
-    from yohou.datasets import load_air_passengers, load_store_sales
+    from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import MeanAbsoluteError, MeanSquaredError
     from yohou.model_selection import (
@@ -121,10 +121,10 @@ def _():
         copy,
         exponential_decay_weight,
         go,
+        fetch_dominick,
+        fetch_tourism_monthly,
         inspect_locality,
         linear_decay_weight,
-        load_air_passengers,
-        load_store_sales,
         pl,
         plot_calibration,
         plot_cv_results_scatter,
@@ -144,8 +144,10 @@ def _(mo):
     mo.md(r"""
     ## 1. Data & Visualisation
 
-    We use the classic **Air Passengers** dataset, monthly international airline
-    passenger totals from 1949 to 1960.
+    We use the **Tourism Monthly** dataset from the Monash forecasting archive,
+    a panel of 366 monthly tourism series. For this quickstart we pick a single
+    series (`T1__tourists`) and rename it to `"passengers"` so the downstream
+    code stays readable.
 
     Yohou requires a polars DataFrame with a **`"time"` column** (datetime type).
     """)
@@ -153,8 +155,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
-    y = load_air_passengers().rename({"Passengers": "passengers"})
+def _(fetch_tourism_monthly):
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
     print(f"Shape: {y.shape}  |  Range: {y['time'].min()} → {y['time'].max()}")
     y.head()
     return (y,)
@@ -165,8 +167,8 @@ def _(plot_time_series, y):
     plot_time_series(
         y,
         columns="passengers",
-        title="Air Passengers (1949 – 1960)",
-        y_label="Passengers (thousands)",
+        title="Monthly Tourism (1979 – 2007)",
+        y_label="Monthly tourists",
         height=380,
     )
     return
@@ -175,8 +177,8 @@ def _(plot_time_series, y):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    **Observations**: strong upward trend, yearly seasonality (summer peaks), and
-    increasing variance, hallmarks of a non-stationary, multiplicative series.
+    **Observations**: clear yearly seasonality, a long-term upward trend,
+    and variance that grows with level — typical of many tourism time series.
     """)
     return
 
@@ -223,7 +225,7 @@ def _(plot_forecast, y_pred_baseline, y_test, y_train):
         y_pred_baseline,
         y_train=y_train,
         title="Baseline: Seasonal Naive",
-        y_label="Passengers (thousands)",
+        y_label="Monthly tourists",
         height=380,
     )
     return
@@ -297,7 +299,7 @@ def _(plot_forecast, y_pred_baseline, y_pred_reduction, y_test, y_train):
         {"Baseline": y_pred_baseline, "Reduction": y_pred_reduction},
         y_train=y_train,
         title="Reduction Forecaster vs Baseline",
-        y_label="Passengers (thousands)",
+        y_label="Monthly tourists",
         height=380,
     )
     return
@@ -370,7 +372,7 @@ def _(
         },
         y_train=y_train,
         title="Model Comparison (so far)",
-        y_label="Passengers (thousands)",
+        y_label="Monthly tourists",
         height=400,
     )
     return
@@ -415,7 +417,7 @@ def _(copy, forecasting_horizon, plot_forecast, reduction, y_test, y_train):
         {"Static (predict only)": _y_pred_static, "Incremental (observe_predict)": _y_pred_incr},
         y_train=y_train,
         title="Static vs Incremental: single observe_predict call",
-        y_label="Passengers (thousands)",
+        y_label="Monthly tourists",
         height=400,
     )
     return
@@ -597,7 +599,7 @@ def _(
         },
         y_train=y_train,
         title="Model Comparison (tuning)",
-        y_label="Passengers (thousands)",
+        y_label="Monthly tourists",
         height=400,
     )
     return
@@ -806,7 +808,7 @@ def _(plot_forecast, y_pred_interval, y_test, y_train):
         y_train=y_train,
         coverage_rates=[0.5, 0.7, 0.9],
         title="50 / 70 / 90% Prediction Intervals (Split Conformal)",
-        y_label="Passengers (thousands)",
+        y_label="Monthly tourists",
         height=400,
     )
     return
@@ -988,7 +990,7 @@ def _(
         y_train=y_train,
         forecasting_horizon=forecasting_horizon,
         title="Time-Weighted vs. Unweighted Forecast",
-        y_label="Passengers (thousands)",
+        y_label="Monthly tourists",
         height=400,
     )
     return
@@ -1002,7 +1004,7 @@ def _(mo):
     Yohou uses **column prefixes with `__`** to represent panel groups:
 
     ```
-    store_1_item_1__sales   store_2_item_1__sales   store_3_item_1__sales
+    T1__profit   T2__profit   T3__profit
     ```
 
     Any forecaster automatically handles all groups when it sees this pattern.
@@ -1011,10 +1013,10 @@ def _(mo):
 
 
 @app.cell
-def _(inspect_locality, load_store_sales):
-    _df = load_store_sales()
-    _cols = ["store_1_item_1__sales", "store_2_item_1__sales", "store_3_item_1__sales"]
-    y_panel = _df.select(["time"] + _cols)
+def _(fetch_dominick, inspect_locality):
+    _bunch = fetch_dominick()
+    _cols = [c for c in _bunch.frame.columns if c != "time"][:3]
+    y_panel = _bunch.frame.select("time", *_cols)
 
     _global, _groups = inspect_locality(y_panel)
     print(f"Panel groups: {list(_groups.keys())}")
@@ -1024,12 +1026,12 @@ def _(inspect_locality, load_store_sales):
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, y_panel):
-    _split = len(y_panel) - 90
+    _split = len(y_panel) - 13
     y_panel_train, y_panel_test = y_panel[:_split], y_panel[_split:]
 
-    panel_baseline = SeasonalNaive(seasonality=365)
-    panel_baseline.fit(y_panel_train, forecasting_horizon=91)
-    y_pred_panel = panel_baseline.predict(forecasting_horizon=91)
+    panel_baseline = SeasonalNaive(seasonality=52)
+    panel_baseline.fit(y_panel_train, forecasting_horizon=13)
+    y_pred_panel = panel_baseline.predict(forecasting_horizon=13)
 
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_panel_test)
@@ -1045,7 +1047,7 @@ def _(plot_forecast, y_panel_test, y_panel_train, y_pred_panel):
         y_train=y_panel_train,
         facet_n_cols=1,
         title="Panel Forecast: SeasonalNaive",
-        y_label="Sales",
+        y_label="Profit",
         height=700,
     )
     return

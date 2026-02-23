@@ -61,7 +61,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -73,7 +73,7 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        load_air_passengers,
+        fetch_tourism_monthly,
         np,
         pl,
         plot_forecast,
@@ -90,8 +90,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
-    df = load_air_passengers()
+def _(fetch_tourism_monthly):
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     split_idx = int(len(df) * 0.85)
     y_train = df.head(split_idx).select("time", "Passengers")
     y_test = df.tail(len(df) - split_idx).select("time", "Passengers")
@@ -126,7 +126,7 @@ def _(FunctionTransformer, np, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    We set `check_inverse=False` because `air_passengers` is monthly data
+    We set `check_inverse=False` because the tourism dataset is monthly data
     (variable day counts). With daily or sub-daily data you can use
     `check_inverse=True` (default) to verify `exp(log(x)) ≈ x` at `fit()` time.
     """)

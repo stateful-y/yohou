@@ -55,7 +55,7 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.plotting import plot_missing_data, plot_time_series
     from yohou.preprocessing import (
         OutlierPercentileHandler,
@@ -69,7 +69,7 @@ def _():
         OutlierThresholdHandler,
         SeasonalImputer,
         SimpleTimeImputer,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_missing_data,
         plot_time_series,
@@ -87,10 +87,11 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers, pl):
+def _(fetch_tourism_monthly, pl):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
 
     # Introduce missing values at random positions

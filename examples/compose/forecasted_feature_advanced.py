@@ -43,7 +43,7 @@ def _(mo):
     - **`strategy="predicted"`**: Uses forecasted features during prediction
     - **`strategy="rewind"`**: Rewinds feature forecaster state before prediction
     - **`split_ratio`**: Controls train/validation split for feature forecaster
-    - Strategy comparison on ETT-M1 multivariate data
+    - Strategy comparison on Hospital multivariate data
     """)
     return
 
@@ -54,7 +54,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import ForecastedFeatureForecaster
-    from yohou.datasets import load_ett_m1
+    from yohou.datasets import fetch_hospital
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster
@@ -66,7 +66,7 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        load_ett_m1,
+        fetch_hospital,
         pl,
         plot_forecast,
     )
@@ -81,31 +81,29 @@ def _(mo):
 
 
 @app.cell
-def _(load_ett_m1, mo, pl):
-    _ett = load_ett_m1()
-    # Resample to hourly
-    ett = (
-        _ett.group_by_dynamic("time", every="1h")
-        .agg(
-            pl.col("OT").mean(),
-            pl.col("HUFL").mean(),
-            pl.col("HULL").mean(),
-            pl.col("MUFL").mean(),
-        )
+def _(fetch_hospital, mo, pl):
+    _hosp = fetch_hospital().frame
+    # Select 4 series and rename for multivariate analysis
+    hospital = _hosp.select(
+        "time",
+        pl.col("T1__patients").alias("target"),
+        pl.col("T2__patients").alias("feature_1"),
+        pl.col("T3__patients").alias("feature_2"),
+        pl.col("T4__patients").alias("feature_3"),
     )
-    _split = int(len(ett) * 0.85)
-    y_train = ett.head(_split).select("time", "OT")
-    y_test = ett.tail(len(ett) - _split).select("time", "OT")
-    X_train = ett.head(_split).select("time", "HUFL", "HULL", "MUFL")
-    X_test = ett.tail(len(ett) - _split).select("time", "HUFL", "HULL", "MUFL")
+    _split = int(len(hospital) * 0.85)
+    y_train = hospital.head(_split).select("time", "target")
+    y_test = hospital.tail(len(hospital) - _split).select("time", "target")
+    X_train = hospital.head(_split).select("time", "feature_1", "feature_2", "feature_3")
+    X_test = hospital.tail(len(hospital) - _split).select("time", "feature_1", "feature_2", "feature_3")
     horizon = len(y_test)
 
     mo.md(
-        f"**ETT-M1 (hourly)**: {len(ett)} rows\n\n"
-        f"**Target**: OT, **Features**: HUFL, HULL, MUFL\n\n"
+        f"**Hospital (monthly)**: {len(hospital)} rows\n\n"
+        f"**Target**: target, **Features**: feature_1, feature_2, feature_3\n\n"
         f"**Train**: {len(y_train)}, **Test**: {len(y_test)}"
     )
-    return X_test, X_train, ett, horizon, y_test, y_train
+    return X_test, X_train, hospital, horizon, y_test, y_train
 
 
 @app.cell(hide_code=True)
@@ -132,11 +130,11 @@ def _(
     fc_actual = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 24]),
+            feature_transformer=LagTransformer(lag=[1, 12]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 24]),
+            feature_transformer=LagTransformer(lag=[1, 12]),
         ),
         strategy="actual",
     )
@@ -169,11 +167,11 @@ def _(
     fc_predicted = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 24]),
+            feature_transformer=LagTransformer(lag=[1, 12]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 24]),
+            feature_transformer=LagTransformer(lag=[1, 12]),
         ),
         strategy="predicted",
         split_ratio=0.7,
@@ -207,11 +205,11 @@ def _(
     fc_rewind = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 24]),
+            feature_transformer=LagTransformer(lag=[1, 12]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 24]),
+            feature_transformer=LagTransformer(lag=[1, 12]),
         ),
         strategy="rewind",
     )
@@ -290,11 +288,11 @@ def _(
         _fc = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lag=[1, 24]),
+                feature_transformer=LagTransformer(lag=[1, 12]),
             ),
             feature_forecaster=PointReductionForecaster(
                 estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lag=[1, 24]),
+                feature_transformer=LagTransformer(lag=[1, 12]),
             ),
             strategy="predicted",
             split_ratio=_ratio,
@@ -321,7 +319,7 @@ def _(mo):
 
     ## Next Steps
 
-    - **ETT-M1 exploration**: See `examples/datasets/ett_m1_multivariate.py`
+    - **Hospital exploration**: See `examples/datasets/hospital.py`
     - **Pipeline composition**: See `examples/compose/pipeline_composition.py`
     - **Feature union**: See `examples/compose/feature_union.py`
     """)

@@ -3,7 +3,7 @@
 Demonstrates forecast plots, decomposition visualization, and time weight
 plots with varied parameter combinations.
 
-Datasets: air_passengers, sunspots
+Datasets: tourism_monthly, sunspots
 Demonstrates: plot_forecast, plot_components, plot_time_weight
 """
 
@@ -36,7 +36,7 @@ def _():
     import polars as pl
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_air_passengers, load_sunspots
+    from yohou.datasets import fetch_sunspot, fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.plotting import (
         plot_components,
@@ -62,8 +62,8 @@ def _():
         SplitConformalForecaster,
         exponential_decay_weight,
         linear_decay_weight,
-        load_air_passengers,
-        load_sunspots,
+        fetch_tourism_monthly,
+        fetch_sunspot,
         pl,
         plot_components,
         plot_forecast,
@@ -90,8 +90,8 @@ def _(mo):
 
 
 @app.cell
-def _(load_air_passengers):
-    air = load_air_passengers()
+def _(fetch_tourism_monthly):
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     fh = 12
     y_train = air.head(len(air) - fh)
     y_test = air.tail(fh)
@@ -111,8 +111,8 @@ def _(PointReductionForecaster, SeasonalNaive, fh, y_train):
 
 
 @app.cell
-def _(SeasonalNaive, SplitConformalForecaster, fh, load_sunspots):
-    sunspots = load_sunspots()
+def _(SeasonalNaive, SplitConformalForecaster, fh, fetch_sunspot):
+    sunspots = fetch_sunspot().frame
     ss_train = sunspots.head(len(sunspots) - fh)
     ss_test = sunspots.tail(fh)
 
@@ -191,7 +191,7 @@ def _(plot_forecast, ss_test, ss_train, y_pred_conformal):
         y_train=ss_train,
         coverage_rates=[0.9],
         n_history=120,
-        title="Conformal Forecaster -- 90% PI on Sunspots",
+        title="Conformal Forecaster -- 90% PI on Sunspot",
     )
     return
 

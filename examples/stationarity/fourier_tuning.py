@@ -53,7 +53,7 @@ def _():
     from sklearn.linear_model import ElasticNet, Ridge
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -74,7 +74,7 @@ def _():
         PointReductionForecaster,
         PolynomialTrendForecaster,
         Ridge,
-        load_vic_electricity,
+        fetch_electricity_demand,
         pl,
         plot_forecast,
         plot_time_series,
@@ -86,23 +86,23 @@ def _(mo):
     mo.md(r"""
     ## 1. Load Data
 
-    Use Victoria electricity with daily aggregation for clear
+    Use electricity demand data with daily aggregation for clear
     weekly seasonality.
     """)
     return
 
 
 @app.cell
-def _(load_vic_electricity, mo, pl):
-    _elec = load_vic_electricity()
+def _(fetch_electricity_demand, mo, pl):
+    _elec = fetch_electricity_demand().frame
     # Resample to daily for clearer weekly patterns
     elec_daily = (
         _elec.group_by_dynamic("time", every="1d")
-        .agg(pl.col("Demand").mean())
+        .agg(pl.col("vic__demand").mean().alias("demand"))
     )
     _split = int(len(elec_daily) * 0.85)
-    y_train = elec_daily.head(_split).select("time", "Demand")
-    y_test = elec_daily.tail(len(elec_daily) - _split).select("time", "Demand")
+    y_train = elec_daily.head(_split).select("time", "demand")
+    y_test = elec_daily.tail(len(elec_daily) - _split).select("time", "demand")
     horizon = len(y_test)
     mo.md(
         f"**Daily electricity demand**: {len(elec_daily)} days\n\n"

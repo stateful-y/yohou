@@ -56,7 +56,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import ForecastedFeatureForecaster
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster
@@ -68,7 +68,7 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        load_vic_electricity,
+        fetch_electricity_demand,
         pl,
         plot_forecast,
     )
@@ -79,28 +79,29 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data with Exogenous Features
 
-    We'll forecast electricity Demand using Temperature as an exogenous feature.
-    At prediction time, Temperature is unknown, it must be forecasted too.
+    We'll forecast Victoria's electricity demand using NSW demand as an
+    exogenous feature.  At prediction time, NSW demand is unknown, it
+    must be forecasted too.
     """)
     return
 
 
 @app.cell
-def _(load_vic_electricity, pl):
-    raw = load_vic_electricity()
+def _(fetch_electricity_demand, pl):
+    raw = fetch_electricity_demand().frame
 
     # Resample to daily for speed
     daily = (
         raw.group_by_dynamic("time", every="1d")
         .agg(
-            pl.col("Demand").mean(),
-            pl.col("Temperature").mean(),
+            pl.col("vic__demand").mean().alias("demand"),
+            pl.col("nsw__demand").mean().alias("nsw_demand"),
         )
         .sort("time")
     )
 
-    y = daily.select("time", "Demand")
-    X = daily.select("time", "Temperature")
+    y = daily.select("time", "demand")
+    X = daily.select("time", "nsw_demand")
 
     split_idx = len(y) - 14
     y_train, y_test = y.head(split_idx), y.tail(len(y) - split_idx)

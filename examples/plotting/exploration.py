@@ -3,7 +3,7 @@
 Demonstrates four exploration plotting functions with varied parameter
 combinations across univariate, multivariate, and panel datasets.
 
-Datasets: air_passengers, vic_electricity, australian_tourism, store_sales
+Datasets: tourism_monthly, electricity_demand, tourism_quarterly, dominick
 Demonstrates: plot_time_series, plot_rolling_statistics,
     plot_boxplot, plot_missing_data
 """
@@ -37,10 +37,10 @@ def _():
     import polars as pl
 
     from yohou.datasets import (
-        load_air_passengers,
-        load_australian_tourism,
-        load_store_sales,
-        load_vic_electricity,
+        fetch_dominick,
+        fetch_electricity_demand,
+        fetch_tourism_monthly,
+        fetch_tourism_quarterly,
     )
     from yohou.plotting import (
         plot_boxplot,
@@ -50,10 +50,10 @@ def _():
     )
 
     return (
-        load_air_passengers,
-        load_australian_tourism,
-        load_store_sales,
-        load_vic_electricity,
+        fetch_dominick,
+        fetch_electricity_demand,
+        fetch_tourism_monthly,
+        fetch_tourism_quarterly,
         pl,
         plot_boxplot,
         plot_missing_data,
@@ -83,15 +83,17 @@ def _(mo):
 
 @app.cell
 def _(
-    load_air_passengers,
-    load_australian_tourism,
-    load_store_sales,
-    load_vic_electricity,
+    fetch_tourism_monthly,
+    fetch_tourism_quarterly,
+    fetch_dominick,
+    fetch_electricity_demand,
 ):
-    air = load_air_passengers()
-    vic = load_vic_electricity()
-    tourism = load_australian_tourism()
-    store = load_store_sales()
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    vic = fetch_electricity_demand().frame
+    tourism = fetch_tourism_quarterly().frame
+    _dom_full = fetch_dominick().frame
+    _profit_cols = [c for c in _dom_full.columns if c.endswith("__profit")][:6]
+    store = _dom_full.select("time", *_profit_cols)
     return air, store, tourism, vic
 
 
@@ -109,7 +111,7 @@ def _(mo):
 
 @app.cell
 def _(air, plot_time_series):
-    plot_time_series(air, title="Air Passengers -- Single Column")
+    plot_time_series(air, title="Monthly Tourism -- Single Column")
     return
 
 
@@ -117,8 +119,8 @@ def _(air, plot_time_series):
 def _(plot_time_series, vic):
     plot_time_series(
         vic,
-        columns=["Demand", "Temperature"],
-        title="Victoria Electricity -- Multi-Column Overlay",
+        columns=["vic__demand", "nsw__demand"],
+        title="Electricity Demand -- Multi-Column Overlay",
     )
     return
 
@@ -127,8 +129,8 @@ def _(plot_time_series, vic):
 def _(plot_time_series, tourism):
     plot_time_series(
         tourism,
-        panel_group_names=["act", "victoria"],
-        title="Australian Tourism -- Panel Faceting (ACT & Victoria)",
+        panel_group_names=["T1", "T2"],
+        title="Tourism Quarterly -- Panel Faceting (T1 & T2)",
     )
     return
 
@@ -139,7 +141,7 @@ def _(air, plot_time_series):
         air,
         line_dash="dash",
         color_palette=["#DC2626"],
-        title="Air Passengers -- Dashed Red Line",
+        title="Monthly Tourism -- Dashed Red Line",
     )
     return
 
@@ -194,7 +196,7 @@ def _(air, plot_rolling_statistics):
 def _(plot_rolling_statistics, vic):
     plot_rolling_statistics(
         vic,
-        columns="Demand",
+        columns="vic__demand",
         window_size=48,
         statistics="mean",
         show_original=False,
@@ -217,13 +219,13 @@ def _(mo):
 
 @app.cell
 def _(air, plot_boxplot):
-    plot_boxplot(air, period="1mo", title="Monthly Boxplot (Air Passengers)")
+    plot_boxplot(air, period="1mo", title="Monthly Boxplot (Monthly Tourism)")
     return
 
 
 @app.cell
 def _(air, plot_boxplot):
-    plot_boxplot(air, period="1q", title="Quarterly Boxplot (Air Passengers)")
+    plot_boxplot(air, period="1q", title="Quarterly Boxplot (Monthly Tourism)")
     return
 
 
@@ -243,8 +245,8 @@ def _(plot_boxplot, tourism):
     plot_boxplot(
         tourism,
         period="1y",
-        panel_group_names=["act", "victoria"],
-        title="Quarterly Boxplot -- Australian Tourism Panel (ACT & Victoria)",
+        panel_group_names=["T1", "T2"],
+        title="Quarterly Boxplot -- Tourism Quarterly Panel (T1 & T2)",
     )
     return
 

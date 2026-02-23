@@ -50,7 +50,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_sunspots
+    from yohou.datasets import fetch_sunspot
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import (
         EmpiricalCoverage,
@@ -78,7 +78,7 @@ def _():
         Ridge,
         RootMeanSquaredError,
         SplitConformalForecaster,
-        load_sunspots,
+        fetch_sunspot,
         pl,
         plot_forecast,
     )
@@ -93,11 +93,11 @@ def _(mo):
 
 
 @app.cell
-def _(load_sunspots, mo):
-    ss = load_sunspots()
+def _(fetch_sunspot, mo):
+    ss = fetch_sunspot().frame
     _split = int(len(ss) * 0.85)
-    y_train = ss.head(_split).select("time", "Sunspots")
-    y_test = ss.tail(len(ss) - _split).select("time", "Sunspots")
+    y_train = ss.head(_split)
+    y_test = ss.tail(len(ss) - _split)
     horizon = min(len(y_test), 50)
 
     mo.md(

@@ -52,7 +52,7 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, MeanIntervalWidth
     from yohou.plotting import plot_forecast
@@ -69,7 +69,7 @@ def _():
         Ridge,
         SplitConformalForecaster,
         inspect_locality,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
     )
@@ -84,8 +84,11 @@ def _(mo):
 
 
 @app.cell
-def _(inspect_locality, load_australian_tourism, mo):
-    tourism = load_australian_tourism()
+def _(inspect_locality, fetch_tourism_quarterly, mo):
+    _bunch = fetch_tourism_quarterly()
+    # Select first 8 series for a manageable panel demo
+    _selected = [f"T{i}__tourists" for i in range(1, 9)]
+    tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(tourism)
     _split = int(len(tourism) * 0.8)
     y_train = tourism.head(_split)
@@ -144,7 +147,7 @@ def _(coverage_rates, plot_forecast, y_pred_conf, y_test, y_train):
         y_train=y_train,
         n_history=8,
         coverage_rates=coverage_rates,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T1", "T2", "T3"],
         title="Split Conformal: Panel (90% Interval)",
     )
     return
@@ -180,7 +183,7 @@ def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
         y_train=y_train,
         n_history=8,
         coverage_rates=coverage_rates,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T1", "T2", "T3"],
         title="Interval Reduction: Panel (90% Interval)",
     )
     return
@@ -223,7 +226,7 @@ def _(
         _w_i = float(_width_scorer.score(y_test, y_pred_interval, panel_group_names=[_state]))
 
         _rows.append({
-            "State": _state,
+            "Group": _state,
             "Conformal Coverage": round(_cov_c, 3),
             "Reduction Coverage": round(_cov_i, 3),
             "Conformal Width": round(_w_c, 1),

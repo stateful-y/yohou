@@ -51,14 +51,14 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.plotting import plot_time_series
     from yohou.preprocessing import Downsampler, Upsampler
 
     return (
         Downsampler,
         Upsampler,
-        load_vic_electricity,
+        fetch_electricity_demand,
         pl,
         plot_time_series,
     )
@@ -73,12 +73,16 @@ def _(mo):
 
 
 @app.cell
-def _(load_vic_electricity, mo):
-    elec = load_vic_electricity()
+def _(fetch_electricity_demand, mo, pl):
+    elec = fetch_electricity_demand().frame
     # Take a 2-week subset (30-min intervals = 672 rows)
-    elec_subset = elec.head(672).select("time", "Demand", "Temperature")
+    elec_subset = elec.head(672).select(
+        "time",
+        pl.col("vic__demand").alias("demand"),
+        pl.col("nsw__demand").alias("nsw_demand"),
+    )
     mo.md(
-        f"**Victoria Electricity**: 30-min intervals\n\n"
+        f"**Electricity Demand**: 30-min intervals\n\n"
         f"**Subset**: {len(elec_subset)} rows (2 weeks)\n\n"
         f"**Columns**: {elec_subset.columns}"
     )
@@ -129,7 +133,7 @@ def _(Downsampler, elec_subset, mo, pl):
         _ds = Downsampler(interval="1d", aggregation=_method)
         _ds.fit(elec_subset)
         _out = _ds.transform(elec_subset)
-        _demand_range = _out["Demand"]
+        _demand_range = _out["demand"]
         _rows.append({
             "Aggregation": _method,
             "Rows": len(_out),
@@ -197,7 +201,7 @@ def _(Downsampler, Upsampler, elec_subset, mo, plot_time_series):
 @app.cell
 def _(elec_upsampled, plot_time_series):
     plot_time_series(
-        elec_upsampled.select("time", "Demand").head(96),
+        elec_upsampled.select("time", "demand").head(96),
         title="Upsampled (Linear): First 2 Days",
     )
     return
@@ -223,7 +227,7 @@ def _(Downsampler, Upsampler, elec_subset, mo, pl):
         _us = Upsampler(interval="30m", interpolation=_method)
         _us.fit(_coarse)
         _out = _us.transform(_coarse)
-        _demand_std = float(_out["Demand"].std())
+        _demand_std = float(_out["demand"].std())
         _rows.append({
             "Interpolation": _method,
             "Output Rows": len(_out),
@@ -248,8 +252,8 @@ def _(mo):
 def _(elec_subset, elec_upsampled, mo, pl):
     # Align lengths for comparison
     _n = min(len(elec_subset), len(elec_upsampled))
-    _orig = elec_subset.head(_n)["Demand"]
-    _roundtrip = elec_upsampled.head(_n)["Demand"]
+    _orig = elec_subset.head(_n)["demand"]
+    _roundtrip = elec_upsampled.head(_n)["demand"]
     _mae = ((_orig - _roundtrip).abs()).mean()
 
     mo.md(

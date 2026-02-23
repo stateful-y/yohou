@@ -54,7 +54,7 @@ def _():
     import polars as pl
     from sklearn.model_selection import train_test_split
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import SeasonalNaive
@@ -62,7 +62,7 @@ def _():
     return (
         MeanAbsoluteError,
         SeasonalNaive,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
         plot_time_series,
@@ -75,15 +75,16 @@ def _(mo):
     mo.md(r"""
     ## 1. Load and Split Data
 
-    We begin by loading the Air Passengers dataset and splitting it into training and test sets for evaluating the forecasters.
+    We begin by loading the Monthly Tourism dataset and splitting it into training and test sets for evaluating the forecasters.
     """)
 
 
 @app.cell
-def _(load_air_passengers, train_test_split):
+def _(fetch_tourism_monthly, train_test_split):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .rename({"T1__tourists": "passengers"})
     )
     y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
     forecasting_horizon = 12
@@ -94,7 +95,7 @@ def _(load_air_passengers, train_test_split):
 
 @app.cell
 def _(plot_time_series, y):
-    plot_time_series(y, title="Air Passengers")
+    plot_time_series(y, title="Monthly Tourism")
 
 
 @app.cell(hide_code=True)

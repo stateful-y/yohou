@@ -3,7 +3,7 @@
 Demonstrates residual diagnostics, score time series, score distributions,
 per-horizon analysis, model comparison bars, and calibration plots.
 
-Datasets: air_passengers
+Datasets: tourism_monthly
 Demonstrates: plot_residual_time_series, plot_score_time_series, plot_score_distribution,
     plot_score_per_horizon, plot_model_comparison_bar, plot_calibration
 """
@@ -36,7 +36,7 @@ async def _():
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers, load_sunspots
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import (
         MeanAbsoluteError,
@@ -60,7 +60,7 @@ def _():
         RootMeanSquaredError,
         SeasonalNaive,
         SplitConformalForecaster,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_calibration,
         plot_model_comparison_bar,
@@ -94,8 +94,8 @@ def _(mo):
 
 
 @app.cell
-def _(PointReductionForecaster, SeasonalNaive, load_air_passengers):
-    air = load_air_passengers()
+def _(PointReductionForecaster, SeasonalNaive, fetch_tourism_monthly):
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     fh = 24
     y_train = air.head(len(air) - fh)
     y_test = air.tail(fh)
@@ -456,8 +456,8 @@ def _(mo):
 
 
 @app.cell
-def _(SeasonalNaive, SplitConformalForecaster, load_air_passengers, pl):
-    air_calib = load_air_passengers()
+def _(SeasonalNaive, SplitConformalForecaster, fetch_tourism_monthly, pl):
+    air_calib = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
     fh_calib = 12
     y_train_calib = air_calib.head(len(air_calib) - fh_calib)
     y_test_calib = air_calib.tail(fh_calib)

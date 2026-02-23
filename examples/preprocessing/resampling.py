@@ -53,11 +53,11 @@ def _(mo):
 def _():
     import polars as pl
 
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.plotting import plot_time_series
     from yohou.preprocessing import Downsampler, Upsampler
 
-    return (Downsampler, Upsampler, load_vic_electricity, pl, plot_time_series)
+    return (Downsampler, Upsampler, fetch_electricity_demand, pl, plot_time_series)
 
 
 @app.cell(hide_code=True)
@@ -65,20 +65,22 @@ def _(mo):
     mo.md(r"""
     ## 1. Load High-Frequency Data
 
-    Victoria Electricity has 30-minute intervals, ideal for demonstrating downsampling.
+    The Electricity Demand dataset has 30-minute intervals, ideal for demonstrating downsampling.
     """)
     return
 
 
 @app.cell
-def _(load_vic_electricity):
-    raw = load_vic_electricity()
+def _(fetch_electricity_demand, pl):
+    raw = fetch_electricity_demand().frame.select(
+        "time", pl.col("vic__demand").alias("demand")
+    )
     print(f"Shape: {raw.shape}")
     print(f"Columns: {raw.columns}")
     print(f"Time range: {raw['time'].min()} to {raw['time'].max()}")
 
     # Use a subset for speed
-    y_hf = raw.select("time", "Demand").head(48 * 30)  # ~30 days of 30-min data
+    y_hf = raw.head(48 * 30)  # ~30 days of 30-min data
     print(f"Subset: {len(y_hf)} observations")
     return raw, y_hf
 
@@ -105,14 +107,14 @@ def _(Downsampler, y_hf):
     y_daily_sum = daily_sum.transform(y_hf)
 
     print(f"30-min data: {len(y_hf)} rows → daily mean: {len(y_daily_mean)} rows")
-    print(f"First day mean demand: {y_daily_mean['Demand'][0]:.1f}")
-    print(f"First day total demand: {y_daily_sum['Demand'][0]:.1f}")
+    print(f"First day mean demand: {y_daily_mean['demand'][0]:.1f}")
+    print(f"First day total demand: {y_daily_sum['demand'][0]:.1f}")
     return daily_mean, daily_sum, y_daily_mean, y_daily_sum
 
 
 @app.cell
 def _(plot_time_series, y_daily_mean):
-    plot_time_series(y_daily_mean, title="Daily Mean Demand")
+    plot_time_series(y_daily_mean, title="Daily Mean Electricity Demand")
     return
 
 
@@ -132,7 +134,7 @@ def _(Downsampler, y_hf):
         _ds = Downsampler(interval="1d", aggregation=_agg)
         _ds.fit(y_hf)
         _result = _ds.transform(y_hf)
-        _first_val = _result["Demand"][0]
+        _first_val = _result["demand"][0]
         print(f"aggregation={_agg:>6s}  first day: {_first_val:.1f}  rows: {len(_result)}")
     return
 
@@ -166,7 +168,7 @@ def _(Upsampler, y_daily_mean):
         _up.fit(y_daily_mean)
         _result = _up.transform(y_daily_mean)
         # Show first few hourly values to compare methods
-        _vals = _result["Demand"].head(5).to_list()
+        _vals = _result["demand"].head(5).to_list()
         print(f"interpolation={_method:>10s}  first 5h: {[f'{v:.1f}' for v in _vals]}")
     return
 
@@ -188,7 +190,7 @@ def _(Downsampler, plot_time_series, y_hf):
     y_weekly = weekly.transform(y_hf)
 
     print(f"30-min: {len(y_hf)} → weekly: {len(y_weekly)} rows")
-    plot_time_series(y_weekly, title="Weekly Mean Demand")
+    plot_time_series(y_weekly, title="Weekly Mean Electricity Demand")
     return weekly, y_weekly
 
 
