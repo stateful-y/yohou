@@ -16,7 +16,7 @@ def on_page_markdown(markdown, page, config, files):
     [View] links are converted to relative paths pointing to locally exported
     static HTML notebooks.
 
-    [Editable] links are rewritten to open the notebook in the marimo online
+    [Open in marimo] placeholder links are resolved to the marimo online
     playground via marimo.app. On RTD the commit SHA being built is used so
     PR previews link to the correct revision; locally, ``main`` is used.
     """
@@ -36,9 +36,9 @@ def on_page_markdown(markdown, page, config, files):
     )
     playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
 
-    # Rewrite [Editable] → marimo.app playground
+    # Resolve [Open in marimo] placeholder URLs → full marimo.app playground URLs
     markdown = re.sub(
-        r"\[Editable\]\(/examples/([^)]+?)/edit/\)",
+        r"\[Open in marimo\]\(/examples/([^)]+?)/edit/\)",
         rf"[Open in marimo]({playground_base}/examples/\1.py)",
         markdown,
     )
@@ -92,7 +92,7 @@ def on_pre_build(config):
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Export static HTML (read-only view) — always
+        # Export static HTML (read-only view)
         static_file = output_dir / "index.html"
         try:
             subprocess.run(
