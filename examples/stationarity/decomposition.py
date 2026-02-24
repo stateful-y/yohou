@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Trend and Seasonality Forecasters with DecompositionPipeline.
 
 Demonstrates PolynomialTrendForecaster, PatternSeasonalityForecaster,
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.20.1"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -50,7 +45,6 @@ def _(mo):
     Understanding of trend and seasonality concepts.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -85,7 +79,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -95,12 +88,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
     y_train = y.head(280)
@@ -109,7 +101,6 @@ def _(fetch_tourism_monthly):
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return fh, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -120,7 +111,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(PolynomialTrendForecaster, fh, plot_forecast, y_test, y_train):
     trend_fc = PolynomialTrendForecaster(degree=1)
@@ -130,7 +120,6 @@ def _(PolynomialTrendForecaster, fh, plot_forecast, y_test, y_train):
     print(f"Trend prediction (first 5): {y_pred_trend['passengers'].head(5).to_list()}")
     plot_forecast(y_test, y_pred_trend, y_train=y_train, title="Linear Trend Forecast")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -145,7 +134,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(PatternSeasonalityForecaster, fh, y_train):
     for method in ["naive", "average", "median"]:
@@ -154,7 +142,6 @@ def _(PatternSeasonalityForecaster, fh, y_train):
         pred = season_fc.predict(forecasting_horizon=fh)
         print(f"method={method:>7s}  first pred: {pred['passengers'][0]:.1f}")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -165,7 +152,6 @@ def _(mo):
     capture more complex seasonal shapes.
     """)
     return
-
 
 @app.cell
 def _(FourierSeasonalityForecaster, fh, plot_forecast, y_test, y_train):
@@ -181,7 +167,6 @@ def _(FourierSeasonalityForecaster, fh, plot_forecast, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -193,7 +178,6 @@ def _(mo):
     `trend → seasonality → residual`
     """)
     return
-
 
 @app.cell
 def _(
@@ -228,7 +212,6 @@ def _(
     print(f"DecompositionPipeline prediction: {len(y_pred_decomp)} steps")
     return decomp, y_pred_decomp
 
-
 @app.cell
 def _(MeanAbsoluteError, y_pred_decomp, y_test, y_train):
     mae = MeanAbsoluteError()
@@ -236,7 +219,6 @@ def _(MeanAbsoluteError, y_pred_decomp, y_test, y_train):
     score = mae.score(y_test, y_pred_decomp)
     print(f"Decomposition MAE: {score:.2f}")
     return
-
 
 @app.cell
 def _(plot_forecast, y_pred_decomp, y_test, y_train):
@@ -248,7 +230,6 @@ def _(plot_forecast, y_pred_decomp, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -258,7 +239,6 @@ def _(mo):
     `named_forecasters_`.
     """)
     return
-
 
 @app.cell
 def _(decomp, fh, plot_components, y_test):
@@ -274,7 +254,6 @@ def _(decomp, fh, plot_components, y_test):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -289,7 +268,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -300,7 +278,6 @@ def _(mo):
     - **Interval forecasting**: See `interval/` for prediction intervals
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

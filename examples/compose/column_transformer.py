@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Column-Wise Feature Transformation.
 
 Demonstrates ColumnTransformer for applying different transforms to different
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -53,7 +48,6 @@ def _(mo):
     (see `examples/point/reduction_forecaster.py`).
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -85,7 +79,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -97,16 +90,15 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_electricity_demand, pl):
     _elec = fetch_electricity_demand().frame
-    # Downsample to daily for manageable size
+    # Downsample to daily for manageable size (drop trailing all-null days)
     vic_daily = _elec.group_by_dynamic("time", every="1d").agg(
         pl.col("vic__demand").mean().alias("Demand"),
         pl.col("nsw__demand").mean().alias("NSW_Demand"),
         pl.col("sa__demand").mean().alias("SA_Demand"),
-    )
+    ).drop_nulls()
 
     split_idx = int(len(vic_daily) * 0.85)
     y_train = vic_daily.head(split_idx).select("time", "Demand")
@@ -116,7 +108,6 @@ def _(fetch_electricity_demand, pl):
 
     y_train.head()
     return X_test, X_train, split_idx, vic_daily, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -128,7 +119,6 @@ def _(mo):
     columns.
     """)
     return
-
 
 @app.cell
 def _(ColumnTransformer, StandardScaler):
@@ -142,7 +132,6 @@ def _(ColumnTransformer, StandardScaler):
     ct
     return (ct,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -153,7 +142,6 @@ def _(mo):
     at fit time and `.transform()` on `X` at predict time.
     """)
     return
-
 
 @app.cell
 def _(
@@ -176,7 +164,6 @@ def _(
     y_pred_ct = forecaster_ct.predict(X_test, forecasting_horizon=forecasting_horizon)
     return forecaster_ct, forecasting_horizon, y_pred_ct
 
-
 @app.cell
 def _(plot_forecast, y_pred_ct, y_test, y_train):
     plot_forecast(
@@ -188,7 +175,6 @@ def _(plot_forecast, y_pred_ct, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -199,7 +185,6 @@ def _(mo):
     feature availability.
     """)
     return
-
 
 @app.cell
 def _(ColumnTransformer, StandardScaler, mo):
@@ -215,7 +200,6 @@ def _(ColumnTransformer, StandardScaler, mo):
     )
     return (ct_pass,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -226,7 +210,6 @@ def _(mo):
     (the default).
     """)
     return
-
 
 @app.cell
 def _(ColumnTransformer, StandardScaler, X_train, mo):
@@ -242,7 +225,6 @@ def _(ColumnTransformer, StandardScaler, X_train, mo):
     mo.md(f"**Feature names (verbose=True)**: {_names}")
     return (ct_verbose,)
 
-
 @app.cell
 def _(ColumnTransformer, StandardScaler, X_train, mo):
     _ct_short = ColumnTransformer(
@@ -256,7 +238,6 @@ def _(ColumnTransformer, StandardScaler, X_train, mo):
     _names = _ct_short.get_feature_names_out()
     mo.md(f"**Feature names (verbose=False)**: {_names}")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -272,11 +253,10 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(inspect_locality, fetch_dominick, mo, pl):
     _dom_full = fetch_dominick().frame
-    _profit_cols = [c for c in _dom_full.columns if c.endswith("__profit")][:9]
+    _profit_cols = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
     store = _dom_full.select("time", *_profit_cols)
     _globals, _groups = inspect_locality(store)
     mo.md(
@@ -295,7 +275,6 @@ def _(inspect_locality, fetch_dominick, mo, pl):
 
     y_train_panel.head()
     return store, y_test_panel, y_train_panel
-
 
 @app.cell
 def _(
@@ -320,11 +299,10 @@ def _(
         _y_pred_panel,
         y_train=y_train_panel,
         n_history=30,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
         title="Panel Forecast: First 3 Groups",
     )
     return (forecaster_panel,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -344,7 +322,6 @@ def _(mo):
     - **Panel pipelines**: See `examples/compose/panel_pipelines.py` for comprehensive panel composition patterns
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

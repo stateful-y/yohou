@@ -1,3 +1,12 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "optuna",
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Optuna Hyperparameter Optimisation.
 
 Demonstrates yohou-optuna integration for Bayesian hyperparameter search
@@ -9,24 +18,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou", "optuna"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -47,7 +43,6 @@ def _(mo):
     **Requires**: `yohou-optuna` package (install with `uv pip install yohou-optuna`)
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -80,7 +75,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -88,10 +82,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly, mo):
-    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
     _split = int(len(ap) * 0.85)
     y_train = ap.head(_split)
     y_test = ap.tail(len(ap) - _split)
@@ -99,7 +92,6 @@ def _(fetch_tourism_monthly, mo):
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
     return ap, horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -111,7 +103,6 @@ def _(mo):
     using a Tree-structured Parzen Estimator (TPE) by default.
     """)
     return
-
 
 @app.cell
 def _(CategoricalDistribution, FloatDistribution):
@@ -129,14 +120,12 @@ def _(CategoricalDistribution, FloatDistribution):
     }
     return lag_distributions, param_distributions, param_distributions_ridge
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. OptunaSearchCV with TPE Sampler
     """)
     return
-
 
 @app.cell
 def _(
@@ -170,14 +159,12 @@ def _(
     optuna_search.fit(y_train, forecasting_horizon=horizon)
     return optuna, optuna_search
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Inspect Results
     """)
     return
-
 
 @app.cell
 def _(mo, optuna_search):
@@ -188,12 +175,10 @@ def _(mo, optuna_search):
     )
     return
 
-
 @app.cell
 def _(plot_cv_results_scatter, optuna_search):
     plot_cv_results_scatter(optuna_search.cv_results_, "estimator__alpha")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -203,7 +188,6 @@ def _(mo):
     Each trial records the parameters sampled and resulting score.
     """)
     return
-
 
 @app.cell
 def _(mo, optuna_search, pl):
@@ -220,14 +204,12 @@ def _(mo, optuna_search, pl):
     mo.ui.table(pl.DataFrame(_trials))
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Best Model Forecast
     """)
     return
-
 
 @app.cell
 def _(horizon, optuna_search, plot_forecast, y_test, y_train):
@@ -241,7 +223,6 @@ def _(horizon, optuna_search, plot_forecast, y_test, y_train):
     )
     return (y_pred_optuna,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -251,7 +232,6 @@ def _(mo):
     choices like lag configurations.
     """)
     return
-
 
 @app.cell
 def _(
@@ -290,7 +270,6 @@ def _(
     )
     return (optuna_lag_search,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -310,7 +289,6 @@ def _(mo):
     - **Hyperparameter search basics**: See `examples/model_selection/hyperparameter_search.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

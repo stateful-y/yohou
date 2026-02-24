@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "yohou",
+# ]
+# ///
 """Correlation and Scatter Diagnostics.
 
 Demonstrates correlation heatmaps, scatter matrices, cross-correlation, and
@@ -17,15 +24,6 @@ def _():
     import marimo as mo
 
     return (mo,)
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "yohou"])
-    return
 @app.cell(hide_code=True)
 def _():
     import polars as pl

@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Data Stationarity.
 
 Demonstrates per-group decomposition (trend + seasonality) and stationarity
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -45,7 +40,6 @@ def _(mo):
     - Inspecting per-group residuals
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -80,7 +74,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -88,12 +81,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(inspect_locality, fetch_tourism_quarterly, mo):
     _bunch = fetch_tourism_quarterly()
-    # Select first 8 series for a manageable panel demo
-    _selected = [f"T{i}__tourists" for i in range(1, 9)]
+    # Select 8 series with uniform length for a manageable panel demo
+    _selected = [f"T{i}__tourists" for i in range(3, 11)]
     tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(tourism)
     _split = int(len(tourism) * 0.8)
@@ -107,12 +99,10 @@ def _(inspect_locality, fetch_tourism_quarterly, mo):
     )
     return groups, horizon, tourism, y_test, y_train
 
-
 @app.cell
 def _(plot_time_series, tourism):
     plot_time_series(tourism, title="Tourism Quarterly: All Panel Groups")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -124,7 +114,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SeasonalDifferencing, plot_time_series, tourism):
     sd = SeasonalDifferencing(seasonality=4)
@@ -132,7 +121,6 @@ def _(SeasonalDifferencing, plot_time_series, tourism):
     tourism_diff = sd.transform(tourism)
     plot_time_series(tourism_diff, title="Seasonal Differencing (lag=4): All Groups")
     return sd, tourism_diff
-
 
 @app.cell
 def _(mo, sd, tourism, tourism_diff):
@@ -151,7 +139,6 @@ def _(mo, sd, tourism, tourism_diff):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -160,7 +147,6 @@ def _(mo):
     Each group gets its own linear trend + residual model.
     """)
     return
-
 
 @app.cell
 def _(
@@ -191,7 +177,6 @@ def _(
     y_pred_decomp = fc_decomp.predict(forecasting_horizon=horizon)
     return Ridge, fc_decomp, y_pred_decomp
 
-
 @app.cell
 def _(plot_forecast, y_pred_decomp, y_test, y_train):
     plot_forecast(
@@ -204,7 +189,6 @@ def _(plot_forecast, y_pred_decomp, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -214,7 +198,6 @@ def _(mo):
     for a three-component decomposition.
     """)
     return
-
 
 @app.cell
 def _(
@@ -255,7 +238,6 @@ def _(
     )
     return (fc_three,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -264,7 +246,6 @@ def _(mo):
     Score each approach per group to see decomposition benefits.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, groups, horizon, mo, pl, y_pred_decomp, y_test, y_train):
@@ -287,7 +268,6 @@ def _(MeanAbsoluteError, SeasonalNaive, groups, horizon, mo, pl, y_pred_decomp, 
     mo.ui.table(pl.DataFrame(_rows))
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -306,7 +286,6 @@ def _(mo):
     - **Decomposition details**: See `examples/stationarity/decomposition.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

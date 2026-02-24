@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Multi-Column Forecasting with ColumnForecaster.
 
 Demonstrates applying different forecasters to different column subsets.
@@ -8,24 +16,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,7 +43,6 @@ def _(mo):
 
     Familiarity with `SeasonalNaive` and `PointReductionForecaster`.
     """)
-
 
 @app.cell(hide_code=True)
 def _():
@@ -75,7 +69,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -85,12 +78,11 @@ def _(mo):
     We'll select Victoria and NSW demand as targets.
     """)
 
-
 @app.cell
 def _(fetch_electricity_demand, pl):
     raw = fetch_electricity_demand().frame
 
-    # Resample to daily to keep the example fast
+    # Resample to daily to keep the example fast (drop trailing all-null days)
     y_full = (
         raw.group_by_dynamic("time", every="1d")
         .agg(
@@ -98,6 +90,7 @@ def _(fetch_electricity_demand, pl):
             pl.col("nsw__demand").mean().alias("nsw_demand"),
         )
         .sort("time")
+        .drop_nulls()
     )
 
     # Use last 365 days
@@ -113,7 +106,6 @@ def _(fetch_electricity_demand, pl):
     y_train.head()
     return forecasting_horizon, split_idx, y_full, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -122,7 +114,6 @@ def _(mo):
     Each entry is a `(name, forecaster, columns)` tuple.
     Here we use `SeasonalNaive` for vic_demand and a `PointReductionForecaster` for nsw_demand.
     """)
-
 
 @app.cell
 def _(
@@ -155,7 +146,6 @@ def _(
     y_pred.head()
     return col_fc, y_pred
 
-
 @app.cell
 def _(MeanAbsoluteError, y_pred, y_test, y_train):
     mae = MeanAbsoluteError()
@@ -163,7 +153,6 @@ def _(MeanAbsoluteError, y_pred, y_test, y_train):
     score = mae.score(y_test, y_pred)
     print(f"Multi-column MAE (aggregated): {score:.2f}")
     return (mae, score)
-
 
 @app.cell
 def _(plot_forecast, y_pred, y_test, y_train):
@@ -174,7 +163,6 @@ def _(plot_forecast, y_pred, y_test, y_train):
         title="ColumnForecaster: VIC Demand + NSW Demand",
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -182,7 +170,6 @@ def _(mo):
 
     After fitting, access individual forecasters by name via `named_forecasters_`.
     """)
-
 
 @app.cell
 def _(col_fc):
@@ -193,7 +180,6 @@ def _(col_fc):
     print(f"\nVIC demand forecaster seasonality: {vic_demand_fc.seasonality}")
     return (vic_demand_fc,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -202,7 +188,6 @@ def _(mo):
     By default `remainder="drop"`, columns not assigned to any forecaster are
     excluded from predictions. Pass a forecaster to handle them automatically.
     """)
-
 
 @app.cell
 def _(
@@ -225,7 +210,6 @@ def _(
     print(f"Remainder columns: {col_fc_rem.remainder_cols_}")
     return col_fc_rem, y_pred_rem
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -235,7 +219,6 @@ def _(mo):
     We select 7 to demonstrate `ColumnForecaster` at scale, assigning a
     dedicated forecaster to the primary series and using `remainder` for the rest.
     """)
-
 
 @app.cell
 def _(fetch_hospital, pl):
@@ -254,7 +237,6 @@ def _(fetch_hospital, pl):
     print(f"Hospital columns: {hosp_sub.columns}")
     print(f"Train: {len(hosp_train)}, Test: {len(hosp_test)}")
     return hosp_horizon, hosp_test, hosp_train
-
 
 @app.cell
 def _(
@@ -297,7 +279,6 @@ def _(
     print(f"\nHospital Multi-column MAE: {hosp_score:.2f}")
     return col_fc_hosp, hosp_pred, hosp_score
 
-
 @app.cell
 def _(hosp_pred, hosp_test, hosp_train, plot_forecast):
     plot_forecast(
@@ -307,7 +288,6 @@ def _(hosp_pred, hosp_test, hosp_train, plot_forecast):
         title="Hospital: ColumnForecaster (Ridge for T1, SeasonalNaive for rest)",
         columns=["T1_patients"],
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -322,7 +302,6 @@ def _(mo):
     - Scales naturally from 2 columns (Electricity Demand) to 7+ columns (Hospital)
     """)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -332,7 +311,6 @@ def _(mo):
     - **Decomposition**: See `stationarity/` for `DecompositionPipeline`
     - **Panel data**: See `examples/panel_data.py` for panel forecasting
     """)
-
 
 if __name__ == "__main__":
     app.run()

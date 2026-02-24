@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Composition Patterns for Panel Data.
 
 Demonstrates how all composition meta-estimators (ColumnForecaster,
@@ -10,24 +18,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -54,7 +49,6 @@ def _(mo):
     (see `examples/quickstart.py`).
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -96,7 +90,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -104,12 +97,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(inspect_locality, fetch_dominick, mo):
     _dom_full = fetch_dominick().frame
-    # Select first 9 series for a manageable panel demo
-    _profit_cols = [c for c in _dom_full.columns if c.endswith("__profit")][:9]
+    # Select 9 series with complete data (no nulls) for a manageable panel demo
+    _profit_cols = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
     store = _dom_full.select("time", *_profit_cols)
     _globals, groups = inspect_locality(store)
     sales_cols = [c for c in store.columns if c.endswith("__profit")]
@@ -126,7 +118,6 @@ def _(inspect_locality, fetch_dominick, mo):
     )
     return groups, horizon, sales_cols, store, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -136,7 +127,6 @@ def _(mo):
     automatically when it detects panel data.
     """)
     return
-
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_test, y_train):
@@ -149,7 +139,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_test, y_train)
 
     return fc_global, y_pred_global
 
-
 @app.cell
 def _(plot_forecast, y_pred_global, y_test, y_train):
     plot_forecast(
@@ -157,11 +146,10 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
         title="Global Model: First 3 Series",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -173,7 +161,6 @@ def _(mo):
     own specialised model.
     """)
     return
-
 
 @app.cell
 def _(
@@ -218,7 +205,6 @@ def _(
 
     return fc_column, y_pred_column
 
-
 @app.cell
 def _(plot_forecast, y_pred_column, y_test, y_train):
     plot_forecast(
@@ -226,11 +212,10 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         y_pred_column,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
         title="ColumnForecaster: Different Model Per Group",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -241,7 +226,6 @@ def _(mo):
     in parallel via `FeatureUnion`, then use as `feature_transformer`.
     """)
     return
-
 
 @app.cell
 def _(
@@ -274,11 +258,10 @@ def _(
         _y_pred_union,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T4"],
+        panel_group_names=["T7", "T13"],
         title="FeatureUnion (Lags + Rolling) on Panel Data",
     )
     return (fc_union,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -289,7 +272,6 @@ def _(mo):
     The pipeline fits a separate trend model per group.
     """)
     return
-
 
 @app.cell
 def _(
@@ -324,11 +306,10 @@ def _(
         _y_pred_decomp,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T4"],
+        panel_group_names=["T7", "T13"],
         title="DecompositionPipeline (Trend + Residual) on Panel Data",
     )
     return (fc_decomp,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -339,7 +320,6 @@ def _(mo):
     then use `FeatureUnion` for lag + rolling features on the residual.
     """)
     return
-
 
 @app.cell
 def _(
@@ -382,11 +362,10 @@ def _(
         _y_pred_nested,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T9"],
+        panel_group_names=["T7", "T24"],
         title="Nested Pipeline on Panel Data",
     )
     return (fc_nested,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -397,7 +376,6 @@ def _(mo):
     benefit from specialised models.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y_train):
@@ -417,7 +395,6 @@ def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y
     comparison = pl.DataFrame(_rows)
     mo.ui.table(comparison)
     return (comparison,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -439,7 +416,6 @@ def _(mo):
     - **Panel preprocessing**: See `examples/preprocessing/panel_preprocessing.py` for transformer-level panel handling
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

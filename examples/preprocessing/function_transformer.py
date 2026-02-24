@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Custom Function-Based Transforms.
 
 Demonstrates FunctionTransformer for wrapping arbitrary polars operations
@@ -10,24 +18,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -54,7 +49,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _():
     import numpy as np
@@ -80,7 +74,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -88,16 +81,14 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
-    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
     split_idx = int(len(df) * 0.85)
     y_train = df.head(split_idx).select("time", "Passengers")
     y_test = df.tail(len(df) - split_idx).select("time", "Passengers")
     y_train.head()
     return df, split_idx, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -110,7 +101,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(FunctionTransformer, np, y_train):
     log_transformer = FunctionTransformer(
@@ -122,7 +112,6 @@ def _(FunctionTransformer, np, y_train):
     y_log.head()
     return log_transformer, y_log
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -131,7 +120,6 @@ def _(mo):
     `check_inverse=True` (default) to verify `exp(log(x)) ≈ x` at `fit()` time.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -144,7 +132,6 @@ def _(mo):
     `inverse_transform` can recover the original values.
     """)
     return
-
 
 @app.cell
 def _(FunctionTransformer, mo, pl, y_train):
@@ -173,7 +160,6 @@ def _(FunctionTransformer, mo, pl, y_train):
     )
     return diff_transformer, y_diff
 
-
 @app.cell
 def _(diff_transformer, mo, y_diff, y_train):
     # inverse_transform needs X_p (warmup data) when observation_horizon > 0
@@ -193,7 +179,6 @@ def _(diff_transformer, mo, y_diff, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -205,7 +190,6 @@ def _(mo):
     - A **callable** `(transformer, input_features) -> list[str]`
     """)
     return
-
 
 @app.cell
 def _(FunctionTransformer, mo, pl, y_train):
@@ -221,7 +205,6 @@ def _(FunctionTransformer, mo, pl, y_train):
     mo.md(f"**Output feature names**: {_names}")
     return (pct_transformer,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -231,7 +214,6 @@ def _(mo):
     `inv_kw_args`.
     """)
     return
-
 
 @app.cell
 def _(FunctionTransformer, mo, pl, y_train):
@@ -250,7 +232,6 @@ def _(FunctionTransformer, mo, pl, y_train):
     )
     return (clip_transformer,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -260,7 +241,6 @@ def _(mo):
     target before fitting and automatically back-transform predictions.
     """)
     return
-
 
 @app.cell
 def _(
@@ -292,7 +272,6 @@ def _(
     _score = scorer.score(y_test, y_pred)
     return forecaster, scorer, y_pred
 
-
 @app.cell
 def _(plot_forecast, y_pred, y_test, y_train):
     plot_forecast(
@@ -303,7 +282,6 @@ def _(plot_forecast, y_pred, y_test, y_train):
         title="Forecast with Log Target Transform",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -325,7 +303,6 @@ def _(mo):
     - **Signal processing**: See `examples/preprocessing/signal_processing.py` for numerical filters and differentiators
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

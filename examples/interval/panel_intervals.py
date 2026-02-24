@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Prediction Intervals.
 
 Demonstrates SplitConformalForecaster and IntervalReductionForecaster
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -45,7 +40,6 @@ def _(mo):
     - Comparing interval width across groups
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -74,7 +68,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -82,12 +75,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(inspect_locality, fetch_tourism_quarterly, mo):
     _bunch = fetch_tourism_quarterly()
-    # Select first 8 series for a manageable panel demo
-    _selected = [f"T{i}__tourists" for i in range(1, 9)]
+    # Select T3-T10 (same length series, 88 rows after drop_nulls)
+    _selected = [f"T{i}__tourists" for i in range(3, 11)]
     tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(tourism)
     _split = int(len(tourism) * 0.8)
@@ -103,7 +95,6 @@ def _(inspect_locality, fetch_tourism_quarterly, mo):
     )
     return coverage_rates, groups, horizon, tourism, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -113,7 +104,6 @@ def _(mo):
     gets its own conformal quantile based on its residual distribution.
     """)
     return
-
 
 @app.cell
 def _(
@@ -138,7 +128,6 @@ def _(
     )
     return fc_conformal, y_pred_conf
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_conf, y_test, y_train):
     plot_forecast(
@@ -147,11 +136,10 @@ def _(coverage_rates, plot_forecast, y_pred_conf, y_test, y_train):
         y_train=y_train,
         n_history=8,
         coverage_rates=coverage_rates,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T3", "T4", "T5"],
         title="Split Conformal: Panel (90% Interval)",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -164,7 +152,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(IntervalReductionForecaster, coverage_rates, horizon, y_train):
     fc_interval = IntervalReductionForecaster()
@@ -174,7 +161,6 @@ def _(IntervalReductionForecaster, coverage_rates, horizon, y_train):
     )
     return fc_interval, y_pred_interval
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
     plot_forecast(
@@ -183,11 +169,10 @@ def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
         y_train=y_train,
         n_history=8,
         coverage_rates=coverage_rates,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T3", "T4", "T5"],
         title="Interval Reduction: Panel (90% Interval)",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -198,7 +183,6 @@ def _(mo):
     compare interval widths.
     """)
     return
-
 
 @app.cell
 def _(
@@ -237,7 +221,6 @@ def _(
     mo.ui.table(_results)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -256,7 +239,6 @@ def _(mo):
     - **Conformity scorers**: See `examples/metrics/conformity_scorers.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

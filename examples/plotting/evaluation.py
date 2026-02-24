@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Model Evaluation Plots.
 
 Demonstrates residual diagnostics, score time series, score distributions,
@@ -13,24 +21,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -70,7 +65,6 @@ def _():
         plot_score_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -92,10 +86,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(PointReductionForecaster, SeasonalNaive, fetch_tourism_monthly):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
     fh = 24
     y_train = air.head(len(air) - fh)
     y_test = air.tail(fh)
@@ -109,7 +102,6 @@ def _(PointReductionForecaster, SeasonalNaive, fetch_tourism_monthly):
     y_pred_reduction = reduction.predict(forecasting_horizon=fh)
     return y_pred_naive, y_pred_reduction, y_test
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -121,7 +113,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(plot_residual_time_series, y_pred_naive, y_test):
     plot_residual_time_series(
@@ -130,7 +121,6 @@ def _(plot_residual_time_series, y_pred_naive, y_test):
         title="Seasonal Naive -- Residual Diagnostics",
     )
     return
-
 
 @app.cell
 def _(plot_residual_time_series, y_pred_reduction, y_test):
@@ -141,7 +131,6 @@ def _(plot_residual_time_series, y_pred_reduction, y_test):
     )
     return
 
-
 @app.cell
 def _(plot_residual_time_series, y_pred_naive, y_test):
     plot_residual_time_series(
@@ -151,7 +140,6 @@ def _(plot_residual_time_series, y_pred_naive, y_test):
         title="Naive Residuals -- Single Column",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -164,7 +152,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(MeanAbsoluteError, plot_score_time_series, y_pred_naive, y_test):
     plot_score_time_series(
@@ -174,7 +161,6 @@ def _(MeanAbsoluteError, plot_score_time_series, y_pred_naive, y_test):
         title="MAE Over Time -- Seasonal Naive",
     )
     return
-
 
 @app.cell
 def _(
@@ -191,7 +177,6 @@ def _(
         title="MAE Over Time -- Model Comparison",
     )
     return
-
 
 @app.cell
 def _(
@@ -211,7 +196,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -221,7 +205,6 @@ def _(mo):
     scores. Toggle **kind**, **show_mean**, **show_zero**, and **n_bins**.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
@@ -235,7 +218,6 @@ def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
     )
     return
 
-
 @app.cell
 def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
     plot_score_distribution(
@@ -246,7 +228,6 @@ def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
         title="MAE Distribution -- KDE",
     )
     return
-
 
 @app.cell
 def _(
@@ -268,7 +249,6 @@ def _(
     )
     return
 
-
 @app.cell
 def _(
     RootMeanSquaredError,
@@ -287,7 +267,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -298,7 +277,6 @@ def _(mo):
     kind, and overlay a **trend** line.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
@@ -311,7 +289,6 @@ def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
     )
     return
 
-
 @app.cell
 def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
     plot_score_per_horizon(
@@ -322,7 +299,6 @@ def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
         title="MAE by Horizon -- Bar",
     )
     return
-
 
 @app.cell
 def _(
@@ -342,7 +318,6 @@ def _(
     )
     return
 
-
 @app.cell
 def _(
     RootMeanSquaredError,
@@ -360,7 +335,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -370,7 +344,6 @@ def _(mo):
     model-scorer results. Vary **group_by**, **orientation**, and **sort_by**.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _(
@@ -400,7 +373,6 @@ def _(
     }
     return (score_results,)
 
-
 @app.cell
 def _(plot_model_comparison_bar, score_results):
     plot_model_comparison_bar(
@@ -409,7 +381,6 @@ def _(plot_model_comparison_bar, score_results):
         title="Model Comparison -- Group by Scorer (default)",
     )
     return
-
 
 @app.cell
 def _(plot_model_comparison_bar, score_results):
@@ -420,7 +391,6 @@ def _(plot_model_comparison_bar, score_results):
     )
     return
 
-
 @app.cell
 def _(plot_model_comparison_bar, score_results):
     plot_model_comparison_bar(
@@ -430,7 +400,6 @@ def _(plot_model_comparison_bar, score_results):
         title="Model Comparison -- Horizontal Bars",
     )
     return
-
 
 @app.cell
 def _(plot_model_comparison_bar, score_results):
@@ -443,7 +412,6 @@ def _(plot_model_comparison_bar, score_results):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -454,10 +422,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SeasonalNaive, SplitConformalForecaster, fetch_tourism_monthly, pl):
-    air_calib = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
+    air_calib = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
     fh_calib = 12
     y_train_calib = air_calib.head(len(air_calib) - fh_calib)
     y_test_calib = air_calib.tail(fh_calib)
@@ -474,7 +441,6 @@ def _(SeasonalNaive, SplitConformalForecaster, fetch_tourism_monthly, pl):
     )
     return coverage_rates, y_pred_calib, y_test_calib
 
-
 @app.cell
 def _(coverage_rates, plot_calibration, y_pred_calib, y_test_calib):
     plot_calibration(
@@ -485,7 +451,6 @@ def _(coverage_rates, plot_calibration, y_pred_calib, y_test_calib):
         title="Calibration -- Multiple Coverage Rates",
     )
     return
-
 
 @app.cell
 def _(plot_calibration, y_pred_calib, y_test_calib):
@@ -500,7 +465,6 @@ def _(plot_calibration, y_pred_calib, y_test_calib):
     )
     return
 
-
 @app.cell
 def _(plot_calibration, y_pred_calib, y_test_calib):
     plot_calibration(
@@ -513,7 +477,6 @@ def _(plot_calibration, y_pred_calib, y_test_calib):
         title="Calibration -- Custom Reference Line",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -535,7 +498,6 @@ def _(mo):
     - **Signal processing**: See `examples/plotting/signal_processing.py` for spectrum and phase analysis
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

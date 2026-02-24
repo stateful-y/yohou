@@ -1,15 +1,22 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "scipy",
+#     "yohou",
+# ]
+# ///
 import marimo
 
 __generated_with = "0.20.1"
 app = marimo.App(width="medium")
-
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -38,19 +45,6 @@ def _(mo):
     Basic Python and familiarity with sklearn's `fit` / `predict` API.
     """)
     return
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "scipy", "yohou"])
-    _ = None
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -138,7 +132,6 @@ def _():
         uniform,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -153,14 +146,12 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
-    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
     print(f"Shape: {y.shape}  |  Range: {y['time'].min()} → {y['time'].max()}")
     y.head()
     return (y,)
-
 
 @app.cell
 def _(plot_time_series, y):
@@ -173,7 +164,6 @@ def _(plot_time_series, y):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -182,7 +172,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(train_test_split, y):
     y_train, y_test = train_test_split(y, test_size=24, shuffle=False)
@@ -190,7 +179,6 @@ def _(train_test_split, y):
 
     print(f"Train: {len(y_train)} rows  |  Test: {len(y_test)} rows  |  Horizon: {forecasting_horizon}")
     return forecasting_horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -204,7 +192,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
     baseline = SeasonalNaive(seasonality=12)
@@ -217,7 +204,6 @@ def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
     print(f"Baseline MAE: {mae_baseline:.2f}")
     return mae_baseline, scorer, y_pred_baseline
 
-
 @app.cell
 def _(plot_forecast, y_pred_baseline, y_test, y_train):
     plot_forecast(
@@ -229,7 +215,6 @@ def _(plot_forecast, y_pred_baseline, y_test, y_train):
         height=380,
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -247,13 +232,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     max_lag_slider = mo.ui.slider(start=1, stop=12, value=3, label="Max lag", show_value=True)
     max_lag_slider
     return (max_lag_slider,)
-
 
 @app.cell
 def _(
@@ -291,7 +274,6 @@ def _(
     print(f"Reduction MAE: {mae_reduction:.2f}  ({improvement:+.1f}% vs baseline)")
     return reduction, y_pred_reduction
 
-
 @app.cell
 def _(plot_forecast, y_pred_baseline, y_pred_reduction, y_test, y_train):
     plot_forecast(
@@ -303,7 +285,6 @@ def _(plot_forecast, y_pred_baseline, y_pred_reduction, y_test, y_train):
         height=380,
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -317,7 +298,6 @@ def _(mo):
     - **Residual** via any forecaster (here `PointReductionForecaster`)
     """)
     return
-
 
 @app.cell
 def _(
@@ -353,7 +333,6 @@ def _(
     print(f"Decomposition MAE: {mae_decomp:.2f}")
     return (y_pred_decomp,)
 
-
 @app.cell
 def _(
     plot_forecast,
@@ -377,7 +356,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -395,7 +373,6 @@ def _(mo):
     the remaining horizon:
     """)
     return
-
 
 @app.cell
 def _(copy, forecasting_horizon, plot_forecast, reduction, y_test, y_train):
@@ -422,7 +399,6 @@ def _(copy, forecasting_horizon, plot_forecast, reduction, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -437,7 +413,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -445,7 +420,6 @@ def _(mo):
     An **expanding window** grows the training set with each fold:
     """)
     return
-
 
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y_train):
@@ -457,14 +431,12 @@ def _(ExpandingWindowSplitter, plot_splits, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     A **sliding window** keeps training size fixed — oldest data is dropped each fold:
     """)
     return
-
 
 @app.cell
 def _(SlidingWindowSplitter, plot_splits, y_train):
@@ -476,7 +448,6 @@ def _(SlidingWindowSplitter, plot_splits, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -486,7 +457,6 @@ def _(mo):
     Efficient for larger search spaces.
     """)
     return
-
 
 @app.cell
 def _(
@@ -521,7 +491,6 @@ def _(
     print(f"Best CV MAE:  {random_search.best_score_:.2f}")
     return (random_search,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -530,7 +499,6 @@ def _(mo):
     Exhaustively test every combination, best for small discrete grids.
     """)
     return
-
 
 @app.cell
 def _(
@@ -560,7 +528,6 @@ def _(
     print(f"Best CV MAE:  {grid_search.best_score_:.2f}")
     return (grid_search,)
 
-
 @app.cell
 def _(forecasting_horizon, grid_search, random_search, scorer, y_test):
     y_pred_random = random_search.predict(forecasting_horizon=forecasting_horizon)
@@ -572,14 +539,12 @@ def _(forecasting_horizon, grid_search, random_search, scorer, y_test):
     print(f"GridSearchCV       test MAE: {mae_grid:.2f}")
     return y_pred_grid, y_pred_random
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     Compare the tuned models against the baseline on the test set:
     """)
     return
-
 
 @app.cell
 def _(
@@ -604,7 +569,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -612,7 +576,6 @@ def _(mo):
     cross-validated score, making it easy to identify the optimal range:
     """)
     return
-
 
 @app.cell
 def _(grid_search, plot_cv_results_scatter):
@@ -626,7 +589,6 @@ def _(grid_search, plot_cv_results_scatter):
     )
     return
 
-
 @app.cell
 def _(plot_cv_results_scatter, random_search):
     plot_cv_results_scatter(
@@ -638,7 +600,6 @@ def _(plot_cv_results_scatter, random_search):
         height=380,
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -655,7 +616,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(MeanAbsoluteError, MeanSquaredError, y_pred_reduction, y_test, y_train):
     _scorers = {
@@ -669,7 +629,6 @@ def _(MeanAbsoluteError, MeanSquaredError, y_pred_reduction, y_test, y_train):
         print(f"{_name}: {_result}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -679,7 +638,6 @@ def _(mo):
     See `examples/metrics/` for an exhaustive scorer survey.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -693,7 +651,6 @@ def _(mo):
     desired confidence levels.
     """)
     return
-
 
 @app.cell
 def _(
@@ -733,7 +690,6 @@ def _(
     y_pred_interval.head()
     return conformal, coverage_rates, y_pred_interval
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -755,7 +711,6 @@ def _(mo):
       coverage level — the further apart a pair, the wider that band.
     """)
     return
-
 
 @app.cell
 def _(conformal, go):
@@ -799,7 +754,6 @@ def _(conformal, go):
     _fig_scores
     return
 
-
 @app.cell
 def _(plot_forecast, y_pred_interval, y_test, y_train):
     plot_forecast(
@@ -812,7 +766,6 @@ def _(plot_forecast, y_pred_interval, y_test, y_train):
         height=400,
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -828,7 +781,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(coverage_rates, plot_calibration, y_pred_interval, y_test):
     plot_calibration(
@@ -840,7 +792,6 @@ def _(coverage_rates, plot_calibration, y_pred_interval, y_test):
         height=400,
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -860,7 +811,6 @@ def _(mo):
     | `compose_weights(fn1, fn2, …)` | Multiply multiple weight functions element-wise |
     """)
     return
-
 
 @app.cell
 def _(
@@ -888,7 +838,6 @@ def _(
         height=500,
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -919,7 +868,6 @@ def _(mo):
     before passing it to the underlying estimator.
     """)
     return
-
 
 @app.cell
 def _(
@@ -959,7 +907,6 @@ def _(
     print(f"Time-weighted MAE: {mae_weighted:.2f}")
     return (y_pred_weighted,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -973,7 +920,6 @@ def _(mo):
     actual trajectory more closely in the critical final months.
     """)
     return
-
 
 @app.cell
 def _(
@@ -995,7 +941,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -1011,18 +956,17 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_dominick, inspect_locality):
     _bunch = fetch_dominick()
-    _cols = [c for c in _bunch.frame.columns if c != "time"][:3]
+    # Select 3 series that have complete data (no nulls)
+    _cols = ["T7__profit", "T11__profit", "T12__profit"]
     y_panel = _bunch.frame.select("time", *_cols)
 
     _global, _groups = inspect_locality(y_panel)
     print(f"Panel groups: {list(_groups.keys())}")
     y_panel.head()
     return (y_panel,)
-
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, y_panel):
@@ -1038,7 +982,6 @@ def _(MeanAbsoluteError, SeasonalNaive, y_panel):
     print(f"Panel baseline MAE: {_scorer.score(y_panel_test, y_pred_panel):.2f}")
     return y_panel_test, y_panel_train, y_pred_panel
 
-
 @app.cell
 def _(plot_forecast, y_panel_test, y_panel_train, y_pred_panel):
     plot_forecast(
@@ -1051,7 +994,6 @@ def _(plot_forecast, y_panel_test, y_panel_train, y_pred_panel):
         height=700,
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -1068,7 +1010,6 @@ def _(mo):
     - **Intervals**: `SplitConformalForecaster` + `predict_interval(coverage_rates=[0.9])`
     - **Panel data**: `__` separator convention: one forecaster handles all groups
 
-
     ## Next Steps
 
     | Topic | Notebook |
@@ -1083,7 +1024,6 @@ def _(mo):
     | Plotting gallery | `plotting/exploration.py`, `plotting/forecasting_visualization.py`, … |
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

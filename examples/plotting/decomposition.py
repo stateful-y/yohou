@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "yohou",
+# ]
+# ///
 """STL Decomposition.
 
 Demonstrates STL decomposition with different component selections, robustness
@@ -12,24 +19,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -42,7 +36,6 @@ def _():
         fetch_tourism_monthly,
         plot_stl_components,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -60,12 +53,10 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
     return (air,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -78,7 +69,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(air, plot_stl_components):
     plot_stl_components(
@@ -86,7 +76,6 @@ def _(air, plot_stl_components):
         title="STL -- All Components (Default)",
     )
     return
-
 
 @app.cell
 def _(air, plot_stl_components):
@@ -96,7 +85,6 @@ def _(air, plot_stl_components):
         title="STL -- Trend and Seasonal Only",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -109,7 +97,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(air, plot_stl_components):
     plot_stl_components(
@@ -118,7 +105,6 @@ def _(air, plot_stl_components):
         title="STL -- Non-Robust Estimation",
     )
     return
-
 
 @app.cell
 def _(air, plot_stl_components):
@@ -130,7 +116,6 @@ def _(air, plot_stl_components):
     )
     return
 
-
 @app.cell
 def _(air, plot_stl_components):
     plot_stl_components(
@@ -140,7 +125,6 @@ def _(air, plot_stl_components):
         title="STL -- Residual Only (Robust)",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -158,7 +142,6 @@ def _(mo):
     - **Exploration**: See `examples/plotting/exploration.py` for rolling statistics and missing data audits
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

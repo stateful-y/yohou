@@ -1,3 +1,13 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "neuralforecast",
+#     "plotly",
+#     "scikit-learn",
+#     "statsforecast",
+#     "yohou",
+# ]
+# ///
 """Nixtla Statistical and Neural Forecasters.
 
 Demonstrates yohou-nixtla integration across statistical and neural forecaster
@@ -9,27 +19,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install([
-            "plotly", "scikit-learn", "yohou",
-            "statsforecast", "neuralforecast",
-        ])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -53,7 +47,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
@@ -70,7 +63,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -78,10 +70,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly, mo):
-    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
     _split = int(len(ap) * 0.85)
     y_train = ap.head(_split)
     y_test = ap.tail(len(ap) - _split)
@@ -89,7 +80,6 @@ def _(fetch_tourism_monthly, mo):
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
     return ap, horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -104,7 +94,6 @@ def _(mo):
     - `freq`: Frequency string (auto-inferred if not set)
     """)
     return
-
 
 @app.cell
 def _():
@@ -123,7 +112,6 @@ def _():
         HoltWintersForecaster,
         SeasonalNaiveForecaster,
     )
-
 
 @app.cell
 def _(
@@ -148,7 +136,6 @@ def _(
         stats_preds[_name] = _fc.predict(forecasting_horizon=horizon)
     return stats_models, stats_preds
 
-
 @app.cell
 def _(MeanAbsoluteError, mo, pl, stats_preds, y_test, y_train):
     _scorer = MeanAbsoluteError()
@@ -160,7 +147,6 @@ def _(MeanAbsoluteError, mo, pl, stats_preds, y_test, y_train):
     stats_results = pl.DataFrame(_rows)
     mo.ui.table(stats_results)
     return (stats_results,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -176,13 +162,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _():
     from yohou_nixtla.neural import NBEATSForecaster, NHITSForecaster
 
     return NBEATSForecaster, NHITSForecaster
-
 
 @app.cell
 def _(NBEATSForecaster, NHITSForecaster, horizon, y_train):
@@ -196,7 +180,6 @@ def _(NBEATSForecaster, NHITSForecaster, horizon, y_train):
         neural_preds[_name] = _fc.predict(forecasting_horizon=horizon)
     return neural_models, neural_preds
 
-
 @app.cell
 def _(MeanAbsoluteError, mo, neural_preds, pl, y_test, y_train):
     _scorer = MeanAbsoluteError()
@@ -209,7 +192,6 @@ def _(MeanAbsoluteError, mo, neural_preds, pl, y_test, y_train):
     mo.ui.table(neural_results)
     return (neural_results,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -217,14 +199,12 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(mo, neural_results, pl, stats_results):
     all_results = pl.concat([stats_results, neural_results])
     all_results_sorted = all_results.sort("MAE")
     mo.ui.table(all_results_sorted)
     return all_results, all_results_sorted
-
 
 @app.cell
 def _(neural_preds, plot_forecast, stats_preds, y_test, y_train):
@@ -240,7 +220,6 @@ def _(neural_preds, plot_forecast, stats_preds, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -249,7 +228,6 @@ def _(mo):
     All Nixtla forecasters work with yohou's GridSearchCV.
     """)
     return
-
 
 @app.cell
 def _(
@@ -278,7 +256,6 @@ def _(
     )
     return ExpandingWindowSplitter, GridSearchCV
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -299,7 +276,6 @@ def _(mo):
     - **Hyperparameter search**: See `examples/model_selection/hyperparameter_search.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

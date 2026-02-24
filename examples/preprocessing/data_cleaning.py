@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Data Cleaning: Imputation and Outlier Handling.
 
 Demonstrates SimpleTimeImputer, SeasonalImputer, OutlierThresholdHandler,
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -49,7 +44,6 @@ def _(mo):
     None. data cleaning is often the first preprocessing step.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -75,7 +69,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -85,12 +78,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly, pl):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
 
@@ -111,12 +103,10 @@ def _(fetch_tourism_monthly, pl):
     print(f"Introduced {null_count} missing values")
     return null_count, null_indices, random, y, y_missing
 
-
 @app.cell
 def _(plot_missing_data, y_missing):
     plot_missing_data(y_missing, title="Missing Data Pattern")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -128,7 +118,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SimpleTimeImputer, y_missing):
     for method in ["linear", "forward", "backward", "nearest"]:
@@ -139,7 +128,6 @@ def _(SimpleTimeImputer, y_missing):
         print(f"method={method:>10s}  remaining nulls: {remaining_nulls}")
     return (filled, imputer, method, remaining_nulls)
 
-
 @app.cell
 def _(SimpleTimeImputer, plot_time_series, y_missing):
     linear_imputer = SimpleTimeImputer(method="linear")
@@ -148,7 +136,6 @@ def _(SimpleTimeImputer, plot_time_series, y_missing):
 
     plot_time_series(y_filled, title="After Linear Imputation")
     return linear_imputer, y_filled
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -160,7 +147,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SeasonalImputer, y_missing):
     seasonal_imp = SeasonalImputer(period=12)
@@ -171,7 +157,6 @@ def _(SeasonalImputer, y_missing):
     print(f"Remaining nulls after seasonal imputation: {remaining}")
     return remaining, seasonal_imp, y_seasonal
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -180,7 +165,6 @@ def _(mo):
     Now let's work with outliers. We'll add some extreme values to the clean data.
     """)
     return
-
 
 @app.cell
 def _(pl, y):
@@ -197,7 +181,6 @@ def _(pl, y):
     print("Added 4 spikes and 3 dips")
     return (y_outlier,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -206,7 +189,6 @@ def _(mo):
     Uses **fixed** thresholds. Values outside are clipped or set to null.
     """)
     return
-
 
 @app.cell
 def _(OutlierThresholdHandler, y_outlier):
@@ -218,7 +200,6 @@ def _(OutlierThresholdHandler, y_outlier):
     print(f"  Min: {y_clipped['passengers'].min()}, Max: {y_clipped['passengers'].max()}")
     return clip_handler, y_clipped
 
-
 @app.cell
 def _(OutlierThresholdHandler, y_outlier):
     nan_handler = OutlierThresholdHandler(low=100, high=500, strategy="nan")
@@ -228,7 +209,6 @@ def _(OutlierThresholdHandler, y_outlier):
     print(f"Values replaced with null: {y_nanified['passengers'].null_count()}")
     return nan_handler, y_nanified
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -237,7 +217,6 @@ def _(mo):
     Uses **learned** percentile thresholds from the data.
     """)
     return
-
 
 @app.cell
 def _(OutlierPercentileHandler, y_outlier):
@@ -249,7 +228,6 @@ def _(OutlierPercentileHandler, y_outlier):
     print(f"  Min: {y_pct['passengers'].min():.0f}, Max: {y_pct['passengers'].max():.0f}")
     return pct_handler, y_pct
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -258,7 +236,6 @@ def _(mo):
     A common pattern: first replace outliers with null, then impute.
     """)
     return
-
 
 @app.cell
 def _(OutlierPercentileHandler, SimpleTimeImputer, y_outlier):
@@ -276,7 +253,6 @@ def _(OutlierPercentileHandler, SimpleTimeImputer, y_outlier):
     print(f"After imputation: {y_clean['passengers'].null_count()} nulls")
     return step1, step2, y_clean, y_step1
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -291,7 +267,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -302,7 +277,6 @@ def _(mo):
     - **Stationarity**: See `stationarity/` for trend/seasonality removal
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

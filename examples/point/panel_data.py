@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Data Forecasting.
 
 Demonstrates panel data conventions, panel_strategy parameter,
@@ -9,25 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    _ = None
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,7 +42,6 @@ def _(mo):
     - Groupwise scoring to compare strategies
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -76,7 +69,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -87,12 +79,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(inspect_locality, fetch_dominick, mo, pl):
     _bunch = fetch_dominick()
-    # Select first 6 series for a manageable panel demo
-    _selected = [f"T{i}__profit" for i in range(1, 7)]
+    # Select 6 series with complete data (no nulls) for a manageable panel demo
+    _selected = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit"]
     store = _bunch.frame.select("time", *_selected).drop_nulls()
 
     global_cols, panel_groups = inspect_locality(store)
@@ -105,7 +96,6 @@ def _(inspect_locality, fetch_dominick, mo, pl):
     )
     return panel_groups, store
 
-
 @app.cell
 def _(plot_time_series, store):
     plot_time_series(
@@ -113,7 +103,6 @@ def _(plot_time_series, store):
         title="Dominick: All Panel Groups",
     )
     return
-
 
 @app.cell
 def _(mo, store):
@@ -131,7 +120,6 @@ def _(mo, store):
     )
     return horizon, y, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -148,7 +136,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     fc_global = PointReductionForecaster(
@@ -160,7 +147,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     y_pred_global = fc_global.predict(forecasting_horizon=horizon)
     return fc_global, y_pred_global
 
-
 @app.cell
 def _(plot_forecast, y_pred_global, y_test, y_train):
     plot_forecast(
@@ -168,11 +154,10 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
         title="Global Strategy: One Model, Per-Group State",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -190,7 +175,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     fc_multivariate = PointReductionForecaster(
@@ -202,7 +186,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     y_pred_multivariate = fc_multivariate.predict(forecasting_horizon=horizon)
     return fc_multivariate, y_pred_multivariate
 
-
 @app.cell
 def _(plot_forecast, y_pred_multivariate, y_test, y_train):
     plot_forecast(
@@ -210,11 +193,10 @@ def _(plot_forecast, y_pred_multivariate, y_test, y_train):
         y_pred_multivariate,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
         title="Multivariate Strategy: Cross-Group Features",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -228,7 +210,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, horizon, y_train):
     fc_local = LocalPanelForecaster(
@@ -241,7 +222,6 @@ def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, hor
     y_pred_local = fc_local.predict(forecasting_horizon=horizon)
     return fc_local, y_pred_local
 
-
 @app.cell
 def _(plot_forecast, y_pred_local, y_test, y_train):
     plot_forecast(
@@ -249,11 +229,10 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         y_pred_local,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
         title="Local Strategy: Independent Per-Group Clones",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -264,7 +243,6 @@ def _(mo):
     produces one score per group, averaged across timesteps).
     """)
     return
-
 
 @app.cell
 def _(
@@ -300,7 +278,6 @@ def _(
     mo.ui.table(comparison)
     return (comparison,)
 
-
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred_global, y_pred_local, y_pred_multivariate, y_test, y_train):
     _scorer = MeanAbsoluteError()
@@ -318,7 +295,6 @@ def _(MeanAbsoluteError, mo, y_pred_global, y_pred_local, y_pred_multivariate, y
         f"| Local | {_overall_local} |"
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -347,7 +323,6 @@ def _(mo):
     - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

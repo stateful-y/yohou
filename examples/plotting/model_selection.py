@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Model Selection Visualization.
 
 Demonstrates cross-validation split visualization and hyperparameter search
@@ -16,15 +24,6 @@ def _():
     import marimo as mo
 
     return (mo,)
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
 @app.cell(hide_code=True)
 def _():
     import polars as pl
@@ -70,7 +69,7 @@ def _(mo):
     return
 @app.cell
 def _(fetch_tourism_monthly):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
     return (air,)
 @app.cell(hide_code=True)
 def _(mo):

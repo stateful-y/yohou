@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Signal Processing -- Spectrum and Phase after Numerical Filtering.
 
 Applies `NumericalFilter` (Butterworth low-pass) to the highly periodic
@@ -13,24 +21,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -48,7 +43,6 @@ def _():
         plot_spectrum,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -73,14 +67,12 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_electricity_demand):
     vic = fetch_electricity_demand().frame
     # Take 30 days (1440 half-hours) for readable plots
     vic_short = vic.head(1440)
     return (vic_short,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -91,7 +83,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(plot_time_series, vic_short):
     plot_time_series(
@@ -100,7 +91,6 @@ def _(plot_time_series, vic_short):
         title="Raw Demand -- 30-day Window",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -112,7 +102,6 @@ def _(mo):
     the daily cycle, and removes everything faster.
     """)
     return
-
 
 @app.cell
 def _(NumericalFilter, pl, vic_short):
@@ -132,7 +121,6 @@ def _(NumericalFilter, pl, vic_short):
     )
     return combined, temp_df, temp_filtered
 
-
 @app.cell
 def _(combined, plot_time_series):
     plot_time_series(
@@ -141,7 +129,6 @@ def _(combined, plot_time_series):
         title="Demand -- Raw vs. Low-Pass Filtered",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -154,7 +141,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(plot_spectrum, temp_df):
     plot_spectrum(
@@ -164,7 +150,6 @@ def _(plot_spectrum, temp_df):
     )
     return
 
-
 @app.cell
 def _(plot_spectrum, temp_filtered):
     plot_spectrum(
@@ -173,7 +158,6 @@ def _(plot_spectrum, temp_filtered):
         title="Power Spectrum -- After Low-Pass Filter",
     )
     return
-
 
 @app.cell
 def _(plot_spectrum, temp_df):
@@ -185,7 +169,6 @@ def _(plot_spectrum, temp_df):
     )
     return
 
-
 @app.cell
 def _(plot_spectrum, temp_filtered):
     plot_spectrum(
@@ -196,7 +179,6 @@ def _(plot_spectrum, temp_filtered):
     )
     return
 
-
 @app.cell
 def _(plot_spectrum, temp_df):
     plot_spectrum(
@@ -205,7 +187,6 @@ def _(plot_spectrum, temp_df):
         title="Power Spectrum -- Raw",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -219,7 +200,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(plot_phase, temp_df):
     plot_phase(
@@ -229,7 +209,6 @@ def _(plot_phase, temp_df):
     )
     return
 
-
 @app.cell
 def _(plot_phase, temp_filtered):
     plot_phase(
@@ -238,7 +217,6 @@ def _(plot_phase, temp_filtered):
         title="Phase -- After Low-Pass Filter",
     )
     return
-
 
 @app.cell
 def _(plot_phase, temp_df):
@@ -250,7 +228,6 @@ def _(plot_phase, temp_df):
     )
     return
 
-
 @app.cell
 def _(plot_phase, temp_filtered):
     plot_phase(
@@ -260,7 +237,6 @@ def _(plot_phase, temp_filtered):
         title="Phase -- Filtered (Wrapped)",
     )
     return
-
 
 @app.cell
 def _(plot_phase, temp_df):
@@ -273,7 +249,6 @@ def _(plot_phase, temp_df):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -285,7 +260,6 @@ def _(mo):
     component.
     """)
     return
-
 
 @app.cell
 def _(NumericalFilter, plot_time_series, temp_df):
@@ -304,7 +278,6 @@ def _(NumericalFilter, plot_time_series, temp_df):
     )
     return (temp_bp,)
 
-
 @app.cell
 def _(plot_spectrum, temp_bp):
     plot_spectrum(
@@ -314,7 +287,6 @@ def _(plot_spectrum, temp_bp):
         title="Power Spectrum -- Bandpass (Log Scale)",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -340,7 +312,6 @@ def _(mo):
       STL decomposition and calendar heatmaps
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

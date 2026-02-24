@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Point Metrics for Forecast Evaluation.
 
 Demonstrates all point scoring metrics and aggregation methods.
@@ -8,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -49,7 +44,6 @@ def _(mo):
     Basic understanding of forecast error metrics.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -90,7 +84,6 @@ def _():
         plot_score_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -99,7 +92,6 @@ def _(mo):
     We fit a simple forecaster and generate predictions to use as input for the metric functions.
     """)
     return
-
 
 @app.cell
 def _(
@@ -111,7 +103,7 @@ def _(
 ):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
 
@@ -136,7 +128,6 @@ def _(
     print(f"Ridge predictions: {len(y_pred_ridge)}")
     return y_pred_naive, y_pred_ridge, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -145,7 +136,6 @@ def _(mo):
     All scorers follow the same pattern: instantiate → `fit(y_train)` → `score(y_test, y_pred)`.
     """)
     return
-
 
 @app.cell
 def _(
@@ -178,7 +168,6 @@ def _(
         print(f"{_name:>10s}  {_s_naive:>10.2f}  {_s_ridge:>10.2f}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -189,7 +178,6 @@ def _(mo):
     A score < 1 means the model outperforms the naive baseline.
     """)
     return
-
 
 @app.cell
 def _(
@@ -211,7 +199,6 @@ def _(
         print(f"{_name}: Naive={_s_naive:.3f}, Ridge={_s_ridge:.3f}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -221,7 +208,6 @@ def _(mo):
     Choose `"timewise"` or `"componentwise"` for more granular results.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, y_pred_ridge, y_test, y_train):
@@ -233,7 +219,6 @@ def _(MeanAbsoluteError, y_pred_ridge, y_test, y_train):
     print(scores_tw.head())
     return
 
-
 @app.cell
 def _(MeanAbsoluteError, y_pred_ridge, y_test, y_train):
     # Componentwise: one score per target column
@@ -243,7 +228,6 @@ def _(MeanAbsoluteError, y_pred_ridge, y_test, y_train):
     print(f"Componentwise MAE: {scores_cw}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -252,7 +236,6 @@ def _(mo):
     We plot the metric results to compare forecaster performance visually.
     """)
     return
-
 
 @app.cell
 def _(
@@ -273,7 +256,6 @@ def _(
         title="MAE Over Time",
     )
     return
-
 
 @app.cell
 def _(
@@ -303,7 +285,6 @@ def _(
     plot_model_comparison_bar(results, title="Model Comparison")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -318,7 +299,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -329,7 +309,6 @@ def _(mo):
     - **Time weighting**: See `examples/time_weighted_forecasting.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

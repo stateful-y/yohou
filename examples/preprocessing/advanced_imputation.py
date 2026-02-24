@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Advanced Imputation.
 
 Demonstrates SimpleTimeImputer, SeasonalImputer, and sklearn-wrapped
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -44,7 +39,6 @@ def _(mo):
     - Comparing methods on synthetic gaps
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -64,7 +58,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -72,10 +65,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly, mo, pl):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
 
     # Create gaps: indices 30-34 (block), and scattered singles
     _gap_indices = list(range(30, 35)) + [50, 70, 90, 110]
@@ -92,12 +84,10 @@ def _(fetch_tourism_monthly, mo, pl):
     )
     return air, air_missing
 
-
 @app.cell
 def _(air_missing, plot_time_series):
     plot_time_series(air_missing, title="Monthly Tourism: With Synthetic Gaps")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -105,7 +95,6 @@ def _(mo):
     ## 2. SimpleTimeImputer: Linear Interpolation
     """)
     return
-
 
 @app.cell
 def _(SimpleTimeImputer, air_missing, plot_time_series):
@@ -115,14 +104,12 @@ def _(SimpleTimeImputer, air_missing, plot_time_series):
     plot_time_series(filled_linear, title="Linear Interpolation")
     return filled_linear, imp_linear
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. SimpleTimeImputer: Forward Fill
     """)
     return
-
 
 @app.cell
 def _(SimpleTimeImputer, air_missing, plot_time_series):
@@ -131,7 +118,6 @@ def _(SimpleTimeImputer, air_missing, plot_time_series):
     filled_forward = imp_forward.transform(air_missing)
     plot_time_series(filled_forward, title="Forward Fill")
     return filled_forward, imp_forward
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -143,7 +129,6 @@ def _(mo):
     across long gaps.
     """)
     return
-
 
 @app.cell
 def _(SimpleTimeImputer, air_missing, mo):
@@ -158,7 +143,6 @@ def _(SimpleTimeImputer, air_missing, mo):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -169,7 +153,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SeasonalImputer, air_missing, plot_time_series):
     imp_seasonal = SeasonalImputer(period=12, fill_method="seasonal_mean")
@@ -177,7 +160,6 @@ def _(SeasonalImputer, air_missing, plot_time_series):
     filled_seasonal = imp_seasonal.transform(air_missing)
     plot_time_series(filled_seasonal, title="Seasonal Imputer (period=12, seasonal_mean)")
     return filled_seasonal, imp_seasonal
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -189,7 +171,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SimpleImputer, air_missing, plot_time_series):
     imp_mean = SimpleImputer(strategy="mean")
@@ -198,7 +179,6 @@ def _(SimpleImputer, air_missing, plot_time_series):
     plot_time_series(filled_mean, title="SimpleImputer (strategy='mean')")
     return filled_mean, imp_mean
 
-
 @app.cell
 def _(TransformedSpaceKNNImputer, air_missing, plot_time_series):
     imp_knn = TransformedSpaceKNNImputer(n_neighbors=5)
@@ -206,7 +186,6 @@ def _(TransformedSpaceKNNImputer, air_missing, plot_time_series):
     filled_knn = imp_knn.transform(air_missing)
     plot_time_series(filled_knn, title="TransformedSpaceKNNImputer (n_neighbors=5)")
     return filled_knn, imp_knn
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -217,7 +196,6 @@ def _(mo):
     positions.
     """)
     return
-
 
 @app.cell
 def _(air, filled_forward, filled_knn, filled_linear, filled_mean, filled_seasonal, mo, pl):
@@ -241,7 +219,6 @@ def _(air, filled_forward, filled_knn, filled_linear, filled_mean, filled_season
     mo.ui.table(pl.DataFrame(_rows))
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -260,7 +237,6 @@ def _(mo):
     - **Sklearn wrappers**: See `examples/preprocessing/sklearn_wrappers.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

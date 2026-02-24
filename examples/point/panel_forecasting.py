@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Point Forecasting.
 
 Demonstrates global vs local models, ColumnForecaster specialisation,
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -46,7 +41,6 @@ def _(mo):
     - Groupwise scoring to identify weak groups
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -78,7 +72,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -86,12 +79,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(inspect_locality, fetch_dominick, mo, pl):
     _bunch = fetch_dominick()
-    # Select first 9 series for a manageable panel demo (3 groups of 3)
-    _selected = [f"T{i}__profit" for i in range(1, 10)]
+    # Select 9 series with complete data (no nulls) for a manageable panel demo
+    _selected = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
     store = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(store)
     _target_cols = [c for c in store.columns if c.endswith("__profit")]
@@ -110,7 +102,6 @@ def _(inspect_locality, fetch_dominick, mo, pl):
     )
     return groups, horizon, store, y, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -122,7 +113,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     fc_global = PointReductionForecaster(
@@ -133,7 +123,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     y_pred_global = fc_global.predict(forecasting_horizon=horizon)
     return fc_global, y_pred_global
 
-
 @app.cell
 def _(plot_forecast, y_pred_global, y_test, y_train):
     plot_forecast(
@@ -141,11 +130,10 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T4", "T7"],
+        panel_group_names=["T7", "T13", "T22"],
         title="Global Ridge Model: Selected Groups",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -155,7 +143,6 @@ def _(mo):
     Assign different model families to different store groups.
     """)
     return
-
 
 @app.cell
 def _(
@@ -169,9 +156,9 @@ def _(
     y,
     y_train,
 ):
-    _g1_cols = [f"T{i}__profit" for i in range(1, 4)]
-    _g2_cols = [f"T{i}__profit" for i in range(4, 7)]
-    _g3_cols = [f"T{i}__profit" for i in range(7, 10)]
+    _g1_cols = ["T7__profit", "T11__profit", "T12__profit"]
+    _g2_cols = ["T13__profit", "T15__profit", "T19__profit"]
+    _g3_cols = ["T22__profit", "T23__profit", "T24__profit"]
 
     fc_column = ColumnForecaster(
         forecasters=[
@@ -198,7 +185,6 @@ def _(
     y_pred_column = fc_column.predict(forecasting_horizon=horizon)
     return fc_column, y_pred_column
 
-
 @app.cell
 def _(plot_forecast, y_pred_column, y_test, y_train):
     plot_forecast(
@@ -206,11 +192,10 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         y_pred_column,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["T1", "T4", "T7"],
+        panel_group_names=["T7", "T13", "T22"],
         title="ColumnForecaster: Per-Group Specialisation",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -222,20 +207,18 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fc_global, mo, plot_forecast, y_pred_global, y_test, y_train):
-    # Predict only T1-T3 groups
+    # Predict only T7-T12 groups
     y_pred_s1 = fc_global.predict(
         forecasting_horizon=len(y_test),
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
     )
     mo.md(
         f"**Selective prediction columns**: {y_pred_s1.columns}\n\n"
-        f"Only T1-T3 groups are predicted; other groups are omitted."
+        f"Only T7, T11, T12 groups are predicted; other groups are omitted."
     )
     return (y_pred_s1,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -246,7 +229,6 @@ def _(mo):
     and worst under each model.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y_train):
@@ -266,7 +248,6 @@ def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y
     mo.ui.table(comparison_df)
     return (comparison_df,)
 
-
 @app.cell
 def _(MeanAbsoluteError, RootMeanSquaredError, mo, y_pred_global, y_test, y_train):
     # Aggregation modes: "groupwise", "componentwise", "timewise", "all"
@@ -284,7 +265,6 @@ def _(MeanAbsoluteError, RootMeanSquaredError, mo, y_pred_global, y_test, y_trai
         "Groupwise aggregation returns one score per group (aggregated over time)."
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -304,7 +284,6 @@ def _(mo):
     - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

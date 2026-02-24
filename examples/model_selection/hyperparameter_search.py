@@ -1,3 +1,12 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "scipy",
+#     "yohou",
+# ]
+# ///
 """Hyperparameter Search with GridSearchCV and RandomizedSearchCV.
 
 Demonstrates time series hyperparameter optimization with temporal cross-validation.
@@ -8,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "scipy", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -49,7 +45,6 @@ def _(mo):
     Familiarity with splitters (see `cv_splitters.py`) and scorers (see `metrics/`).
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -82,7 +77,6 @@ def _():
         uniform,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -92,12 +86,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
 
@@ -108,7 +101,6 @@ def _(fetch_tourism_monthly):
     print(f"Train: {len(y_train)}, Test: {len(y_test)}, Horizon: {fh}")
     return fh, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -118,7 +110,6 @@ def _(mo):
     Uses `ExpandingWindowSplitter` for temporal CV and `MeanAbsoluteError` for scoring.
     """)
     return
-
 
 @app.cell
 def _(
@@ -155,7 +146,6 @@ def _(
     print(f"Best score:  {grid_search.best_score_:.2f}")
     return (grid_search,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -164,7 +154,6 @@ def _(mo):
     `cv_results_` is a dict with per-parameter-combination scores, similar to sklearn.
     """)
     return
-
 
 @app.cell
 def _(grid_search, pl):
@@ -180,7 +169,6 @@ def _(grid_search, pl):
     results_df
     return
 
-
 @app.cell
 def _(grid_search, plot_cv_results_scatter):
     plot_cv_results_scatter(
@@ -190,7 +178,6 @@ def _(grid_search, plot_cv_results_scatter):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -199,7 +186,6 @@ def _(mo):
     After fitting, `GridSearchCV` acts as a forecaster using the best-found parameters.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, grid_search, y_test, y_train):
@@ -212,7 +198,6 @@ def _(MeanAbsoluteError, grid_search, y_test, y_train):
     y_pred.head()
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -222,7 +207,6 @@ def _(mo):
     randomly. Use `n_iter` to control how many to try.
     """)
     return
-
 
 @app.cell
 def _(
@@ -255,7 +239,6 @@ def _(
     print(f"Best score:  {rand_search.best_score_:.2f}")
     return (rand_search,)
 
-
 @app.cell
 def _(plot_cv_results_scatter, rand_search):
     plot_cv_results_scatter(
@@ -264,7 +247,6 @@ def _(plot_cv_results_scatter, rand_search):
         title="Randomized Search: Alpha vs Score",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -281,7 +263,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -292,7 +273,6 @@ def _(mo):
     - **Interval search**: Use `IntervalReductionForecaster` with search for interval tuning
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Scorer Aggregation Modes.
 
 Demonstrates timewise, componentwise, groupwise, coveragewise, and all
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -47,7 +42,6 @@ def _(mo):
     - `panel_group_weight`: weight groups differently during aggregation
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -80,7 +74,6 @@ def _():
         pl,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -88,11 +81,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, inspect_locality, fetch_dominick, mo):
     _full = fetch_dominick().frame
-    store = _full.select("time", *[c for c in _full.columns if c != "time"][:9])
+    _selected = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
+    store = _full.select("time", *_selected)
     _globals, groups = inspect_locality(store)
     _target_cols = [c for c in store.columns if c.endswith("__profit")]
     y = store.select("time", *_target_cols)
@@ -115,7 +108,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, inspect_locality, fetch_d
     )
     return fc, groups, horizon, store, y, y_pred, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -125,7 +117,6 @@ def _(mo):
     reduced.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -138,7 +129,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -148,7 +138,6 @@ def _(mo):
     Result has one row.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -162,12 +151,10 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
     )
     return (score_timewise,)
 
-
 @app.cell
 def _(score_timewise):
     score_timewise
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -178,7 +165,6 @@ def _(mo):
     one row per timestep.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -192,12 +178,10 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
     )
     return (score_componentwise,)
 
-
 @app.cell
 def _(score_componentwise):
     score_componentwise.head()
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -208,7 +192,6 @@ def _(mo):
     Groups that share the same prefix are combined.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -222,12 +205,10 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
     )
     return (score_groupwise,)
 
-
 @app.cell
 def _(score_groupwise):
     score_groupwise.head()
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -237,7 +218,6 @@ def _(mo):
     Weight certain groups more heavily in the aggregation.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -270,7 +250,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -279,7 +258,6 @@ def _(mo):
     Pass a list of modes to get partially-reduced output.
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -293,7 +271,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -303,7 +280,6 @@ def _(mo):
     aggregates across coverage rates.
     """)
     return
-
 
 @app.cell
 def _(
@@ -351,7 +327,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -376,7 +351,6 @@ def _(mo):
     - **Interval metrics**: See `examples/metrics/interval_metrics.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

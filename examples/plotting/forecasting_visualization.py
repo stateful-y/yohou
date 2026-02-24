@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Forecast Visualization and Comparison.
 
 Demonstrates forecast plots, decomposition visualization, and time weight
@@ -12,24 +20,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -70,7 +65,6 @@ def _():
         plot_time_weight,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -88,15 +82,13 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
     fh = 12
     y_train = air.head(len(air) - fh)
     y_test = air.tail(fh)
     return fh, y_test, y_train
-
 
 @app.cell
 def _(PointReductionForecaster, SeasonalNaive, fh, y_train):
@@ -108,7 +100,6 @@ def _(PointReductionForecaster, SeasonalNaive, fh, y_train):
     reduction.fit(y_train, forecasting_horizon=fh)
     y_pred_reduction = reduction.predict(forecasting_horizon=fh)
     return y_pred_naive, y_pred_reduction
-
 
 @app.cell
 def _(SeasonalNaive, SplitConformalForecaster, fh, fetch_sunspot):
@@ -126,7 +117,6 @@ def _(SeasonalNaive, SplitConformalForecaster, fh, fetch_sunspot):
     )
     return ss_test, ss_train, y_pred_conformal
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -137,7 +127,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
     plot_forecast(
@@ -147,7 +136,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
         title="Seasonal Naive -- Full History",
     )
     return
-
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
@@ -160,7 +148,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -172,7 +159,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(plot_forecast, y_pred_naive, y_pred_reduction, y_test):
     plot_forecast(
@@ -181,7 +167,6 @@ def _(plot_forecast, y_pred_naive, y_pred_reduction, y_test):
         title="Multi-Model Comparison (Overlay)",
     )
     return
-
 
 @app.cell
 def _(plot_forecast, ss_test, ss_train, y_pred_conformal):
@@ -195,7 +180,6 @@ def _(plot_forecast, ss_test, ss_train, y_pred_conformal):
     )
     return
 
-
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
     plot_forecast(
@@ -207,7 +191,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -217,7 +200,6 @@ def _(mo):
     as stacked subplots. Toggle **show_original** and pass a subset of components.
     """)
     return
-
 
 @app.cell
 def _(
@@ -241,7 +223,6 @@ def _(
         decomp_components[_name] = _fc.predict(forecasting_horizon=fh)
     return (decomp_components,)
 
-
 @app.cell
 def _(decomp_components, fh, plot_components, y_test):
     plot_components(
@@ -251,7 +232,6 @@ def _(decomp_components, fh, plot_components, y_test):
         title="Decomposition -- Trend + Seasonality with Original",
     )
     return
-
 
 @app.cell
 def _(decomp_components, fh, plot_components, y_train):
@@ -263,7 +243,6 @@ def _(decomp_components, fh, plot_components, y_train):
     )
     return
 
-
 @app.cell
 def _(decomp_components, fh, plot_components, y_test):
     plot_components(
@@ -272,7 +251,6 @@ def _(decomp_components, fh, plot_components, y_test):
         title="Decomposition -- Trend Only",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -284,7 +262,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(exponential_decay_weight, linear_decay_weight, pl, y_train):
     _times = y_train["time"]
@@ -295,7 +272,6 @@ def _(exponential_decay_weight, linear_decay_weight, pl, y_train):
     lin_weight_df = pl.DataFrame({"time": _times, "time_weight": _lin_fn(_times)})
     return exp_weight_df, lin_weight_df
 
-
 @app.cell
 def _(exp_weight_df, plot_time_weight):
     plot_time_weight(
@@ -304,7 +280,6 @@ def _(exp_weight_df, plot_time_weight):
         title="Exponential Decay Weight (half_life=24)",
     )
     return
-
 
 @app.cell
 def _(lin_weight_df, plot_time_weight):
@@ -315,7 +290,6 @@ def _(lin_weight_df, plot_time_weight):
     )
     return
 
-
 @app.cell
 def _(lin_weight_df, plot_time_weight):
     plot_time_weight(
@@ -325,7 +299,6 @@ def _(lin_weight_df, plot_time_weight):
         title="Linear Decay Weight -- Semi-Transparent Fill",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -343,7 +316,6 @@ def _(mo):
     - **Cross-validation**: See `examples/plotting/model_selection.py` for CV split visualization and hyperparameter search results
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

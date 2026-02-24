@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Pipeline Composition.
 
 Demonstrates nested pipeline patterns: FeaturePipeline, FeatureUnion
@@ -10,24 +18,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -47,7 +42,6 @@ def _(mo):
     - Multi-level nesting: Decomposition → Feature → Union → Forecaster
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -83,7 +77,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -91,13 +84,13 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_electricity_demand, mo, pl):
     _elec = fetch_electricity_demand().frame
     elec = (
         _elec.group_by_dynamic("time", every="1d")
-        .agg(pl.col("vic__demand").mean())
+        .agg(pl.col("vic__demand").mean().alias("demand"))
+        .drop_nulls()
     )
     _split = int(len(elec) * 0.85)
     y_train = elec.head(_split)
@@ -105,7 +98,6 @@ def _(fetch_electricity_demand, mo, pl):
     horizon = len(y_test)
     mo.md(f"**Daily electricity demand**: Train={len(y_train)}, Test={len(y_test)}")
     return elec, horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -116,7 +108,6 @@ def _(mo):
     `observation_horizon` is the **sum** of all steps.
     """)
     return
-
 
 @app.cell
 def _(FeaturePipeline, LagTransformer, StandardScaler, mo, y_train):
@@ -137,7 +128,6 @@ def _(FeaturePipeline, LagTransformer, StandardScaler, mo, y_train):
     )
     return (fp,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -146,7 +136,6 @@ def _(mo):
     Branch in parallel (FeatureUnion), then apply a sequential step.
     """)
     return
-
 
 @app.cell
 def _(
@@ -182,7 +171,6 @@ def _(
     )
     return (fp_nested,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -191,7 +179,6 @@ def _(mo):
     Use the nested pipeline as `feature_transformer` in a forecaster.
     """)
     return
-
 
 @app.cell
 def _(
@@ -227,7 +214,6 @@ def _(
     )
     return fc_fp, y_pred_fp
 
-
 @app.cell
 def _(horizon, plot_forecast, y_pred_fp, y_test, y_train):
     plot_forecast(
@@ -239,7 +225,6 @@ def _(horizon, plot_forecast, y_pred_fp, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -249,7 +234,6 @@ def _(mo):
     model uses FeatureUnion.
     """)
     return
-
 
 @app.cell
 def _(
@@ -296,14 +280,12 @@ def _(
     )
     return (fc_deep,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Compare All Pipelines
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, fc_deep, fc_fp, horizon, mo, pl, y_test, y_train):
@@ -321,7 +303,6 @@ def _(MeanAbsoluteError, fc_deep, fc_fp, horizon, mo, pl, y_test, y_train):
 
     mo.ui.table(pl.DataFrame(_rows))
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -341,7 +322,6 @@ def _(mo):
     - **Panel pipelines**: See `examples/compose/panel_pipelines.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

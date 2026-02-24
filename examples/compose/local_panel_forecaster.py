@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """LocalPanelForecaster: Independent Per-Group Forecasting.
 
 Demonstrates LocalPanelForecaster for fitting completely independent
@@ -10,25 +18,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    _ = None
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -60,7 +54,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
@@ -90,24 +83,22 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
 
-    Australian Tourism: quarterly trips for 8 states.  Each state is a
-    panel group with the `__` separator (e.g. `T1__tourists`).
+    Australian Tourism: quarterly trips for 8 series.  Each series is a
+    panel group with the `__` separator (e.g. `T3__tourists`).
     """)
     return
-
 
 @app.cell
 def _(inspect_locality, fetch_tourism_quarterly, mo):
     _tourism_full = fetch_tourism_quarterly().frame
-    # Select first 8 series for a manageable panel demo
-    _tourist_cols = [c for c in _tourism_full.columns if c.endswith("__tourists")][:8]
-    tourism = _tourism_full.select("time", *_tourist_cols)
+    # Select T3-T10 (same length, 88 rows after drop_nulls)
+    _tourist_cols = [f"T{i}__tourists" for i in range(3, 11)]
+    tourism = _tourism_full.select("time", *_tourist_cols).drop_nulls()
     _globals, groups = inspect_locality(tourism)
     y = tourism.select("time", *[c for c in tourism.columns if c.endswith("__tourists")])
 
@@ -123,12 +114,10 @@ def _(inspect_locality, fetch_tourism_quarterly, mo):
     )
     return groups, horizon, tourism, y, y_test, y_train
 
-
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(y, title="Tourism Quarterly: Quarterly Tourists by Series")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -139,7 +128,6 @@ def _(mo):
     fresh `clone()` that is fitted independently on that group's data.
     """)
     return
-
 
 @app.cell
 def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, horizon, y_train):
@@ -153,7 +141,6 @@ def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, hor
     y_pred_local = fc_local.predict(forecasting_horizon=horizon)
     return fc_local, y_pred_local
 
-
 @app.cell
 def _(plot_forecast, y_pred_local, y_test, y_train):
     plot_forecast(
@@ -161,11 +148,10 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         y_pred_local,
         y_train=y_train,
         n_history=12,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T3", "T4", "T5"],
         title="LocalPanelForecaster: Top 3 Series",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -176,7 +162,6 @@ def _(mo):
     their fitted clones.  You can inspect individual models.
     """)
     return
-
 
 @app.cell
 def _(fc_local, mo):
@@ -191,7 +176,6 @@ def _(fc_local, mo):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -203,19 +187,17 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fc_local, horizon, mo):
     y_pred_top3 = fc_local.predict(
         forecasting_horizon=horizon,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T3", "T4", "T5"],
     )
     mo.md(
         f"**Selective prediction columns**: {sorted(y_pred_top3.columns)}\n\n"
         "Only the requested groups are predicted; others are omitted."
     )
     return (y_pred_top3,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -227,7 +209,6 @@ def _(mo):
     groups' clones.
     """)
     return
-
 
 @app.cell
 def _(fc_local, horizon, mo, y_test):
@@ -244,7 +225,6 @@ def _(fc_local, horizon, mo, y_test):
     )
     return (y_pred_updated,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -256,12 +236,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, fetch_tourism_quarterly):
     _tourism = fetch_tourism_quarterly().frame
-    _tourist_cols = [c for c in _tourism.columns if c.endswith("__tourists")][:8]
-    _y2 = _tourism.select("time", *_tourist_cols)
+    _tourist_cols = [f"T{i}__tourists" for i in range(3, 11)]
+    _y2 = _tourism.select("time", *_tourist_cols).drop_nulls()
     _split2 = int(len(_y2) * 0.80)
     y_train2 = _y2.head(_split2)
     y_test2 = _y2.tail(len(_y2) - _split2)
@@ -274,7 +253,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, fetch_tourism_qu
     fc_global.fit(y_train2, forecasting_horizon=horizon)
     y_pred_global = fc_global.predict(forecasting_horizon=horizon)
     return fc_global, y_pred_global, y_test2, y_train2
-
 
 @app.cell
 def _(
@@ -319,7 +297,6 @@ def _(
     mo.ui.table(comparison)
     return comparison, fc_local2
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -329,7 +306,6 @@ def _(mo):
     simple baselines like `SeasonalNaive`.
     """)
     return
-
 
 @app.cell
 def _(LocalPanelForecaster, MeanAbsoluteError, SeasonalNaive, horizon, mo, y_test2, y_train2):
@@ -349,7 +325,6 @@ def _(LocalPanelForecaster, MeanAbsoluteError, SeasonalNaive, horizon, mo, y_tes
         "(quarterly pattern)."
     )
     return (fc_naive_local,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -373,7 +348,6 @@ def _(mo):
     - **Panel intervals**: See `examples/interval/panel_intervals.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

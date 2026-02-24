@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Conformal Prediction Intervals.
 
 Demonstrates SplitConformalForecaster for distribution-free prediction intervals.
@@ -8,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,7 +43,6 @@ def _(mo):
     Basic understanding of prediction intervals and `PointReductionForecaster`.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -86,7 +80,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -96,10 +89,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly, pl):
-    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
 
     # Need enough calibration data: use 80/20 split
     split_idx = int(len(y) * 0.8)
@@ -109,7 +101,6 @@ def _(fetch_tourism_monthly, pl):
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return forecasting_horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -121,7 +112,6 @@ def _(mo):
     are used for calibration.
     """)
     return
-
 
 @app.cell
 def _(
@@ -152,7 +142,6 @@ def _(
     y_pred_int.head()
     return coverage_rates, y_pred_int
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
     plot_forecast(
@@ -164,7 +153,6 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -175,7 +163,6 @@ def _(mo):
     - `MeanIntervalWidth`: Average interval width (narrower = better, given coverage)
     """)
     return
-
 
 @app.cell
 def _(
@@ -194,7 +181,6 @@ def _(
         print(f"{_scorer_cls.__name__}: {_score}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -207,7 +193,6 @@ def _(mo):
     - `GammaResidual()`: $|y - \hat{y}| / \hat{y}$: scale-adaptive, wider intervals where predictions are larger
     """)
     return
-
 
 @app.cell
 def _(
@@ -256,7 +241,6 @@ def _(
         print(f"{_name:>20s}  coverage={_coverage}  width={_avg_width}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -265,7 +249,6 @@ def _(mo):
     Conformal intervals work with **any** point forecaster, including `SeasonalNaive`.
     """)
     return
-
 
 @app.cell
 def _(SeasonalNaive, SplitConformalForecaster, forecasting_horizon, y_train):
@@ -282,7 +265,6 @@ def _(SeasonalNaive, SplitConformalForecaster, forecasting_horizon, y_train):
     y_pred_naive_int.head()
     return (y_pred_naive_int,)
 
-
 @app.cell
 def _(plot_forecast, y_pred_naive_int, y_test, y_train):
     plot_forecast(
@@ -293,7 +275,6 @@ def _(plot_forecast, y_pred_naive_int, y_test, y_train):
         title="Conformal Intervals on SeasonalNaive",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -308,7 +289,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -319,7 +299,6 @@ def _(mo):
     - **Calibration plots**: See `plotting/` for `plot_calibration`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

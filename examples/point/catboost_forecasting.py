@@ -1,3 +1,12 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "catboost",
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Point Forecasting with CatBoost.
 
 Demonstrates PointReductionForecaster with CatBoostRegressor as the wrapped
@@ -9,24 +18,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "catboost", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -43,7 +39,6 @@ def _(mo):
     - Comparing CatBoost with a linear baseline
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -70,7 +65,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -78,10 +72,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
-    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
 
     split_idx = int(len(y) * 0.8)
     y_train = y.head(split_idx)
@@ -90,7 +83,6 @@ def _(fetch_tourism_monthly):
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return forecasting_horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -102,7 +94,6 @@ def _(mo):
     suppress per-iteration training logs.
     """)
     return
-
 
 @app.cell
 def _(
@@ -131,7 +122,6 @@ def _(
     y_pred_cb.head()
     return catboost_fc, y_pred_cb
 
-
 @app.cell
 def _(plot_forecast, y_pred_cb, y_test, y_train):
     plot_forecast(
@@ -142,14 +132,12 @@ def _(plot_forecast, y_pred_cb, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Compare with Linear Baseline
     """)
     return
-
 
 @app.cell
 def _(
@@ -178,7 +166,6 @@ def _(
     print(f"Ridge    MAE: {mae_ridge:.2f}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -190,7 +177,6 @@ def _(mo):
     - Consider `GridSearchCV` for tuning `iterations`, `depth`, `learning_rate`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

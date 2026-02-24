@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Window Transformers: Lags, Rolling Statistics, and EMA.
 
 Demonstrates LagTransformer, RollingStatisticsTransformer, SlidingWindowFunctionTransformer,
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -50,7 +45,6 @@ def _(mo):
     Basic understanding of feature engineering and time series concepts.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -78,7 +72,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -88,18 +81,16 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
     print(f"Shape: {y.shape}")
     y.head()
     return (y,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -110,7 +101,6 @@ def _(mo):
     The first `max(lag)` rows become null (the `observation_horizon`).
     """)
     return
-
 
 @app.cell
 def _(LagTransformer, y):
@@ -124,7 +114,6 @@ def _(LagTransformer, y):
     y_lagged.head(15)
     return lag_tf, y_lagged
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -134,7 +123,6 @@ def _(mo):
     can be computed simultaneously.
     """)
     return
-
 
 @app.cell
 def _(RollingStatisticsTransformer, y):
@@ -150,7 +138,6 @@ def _(RollingStatisticsTransformer, y):
     y_rolled.head(15)
     return roll_tf, y_rolled
 
-
 @app.cell
 def _(plot_rolling_statistics, y):
     plot_rolling_statistics(
@@ -161,7 +148,6 @@ def _(plot_rolling_statistics, y):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -171,7 +157,6 @@ def _(mo):
     The function receives a polars Series and returns a scalar.
     """)
     return
-
 
 @app.cell
 def _(SlidingWindowFunctionTransformer, y):
@@ -192,7 +177,6 @@ def _(SlidingWindowFunctionTransformer, y):
     y_range.head(10)
     return range_tf, y_range
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -202,7 +186,6 @@ def _(mo):
     it has `observation_horizon=0` (stateless) since it uses all history.
     """)
     return
-
 
 @app.cell
 def _(ExponentialMovingAverage, y):
@@ -214,7 +197,6 @@ def _(ExponentialMovingAverage, y):
     y_ema.head()
     return ema_tf, y_ema
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -224,7 +206,6 @@ def _(mo):
     All outputs are concatenated horizontally.
     """)
     return
-
 
 @app.cell
 def _(
@@ -250,7 +231,6 @@ def _(
     y_combined.head(15)
     return union, y_combined
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -265,7 +245,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -276,7 +255,6 @@ def _(mo):
     - **Using in forecasters**: Pass to `feature_transformer` in `PointReductionForecaster`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

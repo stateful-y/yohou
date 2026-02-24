@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Cross-Validation Splitters for Time Series.
 
 Demonstrates ExpandingWindowSplitter and SlidingWindowSplitter with visualization.
@@ -8,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,7 +43,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
@@ -65,7 +59,6 @@ def _():
         plot_splits,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -75,17 +68,15 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
     print(f"Total observations: {len(y)}")
     return (y,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -97,7 +88,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(ExpandingWindowSplitter, y):
     expanding = ExpandingWindowSplitter(n_splits=4, test_size=12)
@@ -107,12 +97,10 @@ def _(ExpandingWindowSplitter, y):
         print(f"  Split {_i}: train={len(_train_idx)}, test={len(_test_idx)}")
     return (expanding,)
 
-
 @app.cell
 def _(expanding, plot_splits, y):
     plot_splits(y, expanding, title="Expanding Window Splitter (4 splits, test=12)")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -124,7 +112,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SlidingWindowSplitter, y):
     sliding = SlidingWindowSplitter(n_splits=5, test_size=12)
@@ -134,12 +121,10 @@ def _(SlidingWindowSplitter, y):
         print(f"  Split {_i}: train={len(_train_idx)}, test={len(_test_idx)}")
     return (sliding,)
 
-
 @app.cell
 def _(plot_splits, sliding, y):
     plot_splits(y, sliding, title="Sliding Window Splitter (5 folds, test=12)")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -151,7 +136,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y):
     expanding_gap = ExpandingWindowSplitter(n_splits=3, test_size=12, gap=6)
@@ -161,7 +145,6 @@ def _(ExpandingWindowSplitter, plot_splits, y):
 
     plot_splits(y, expanding_gap, title="Expanding Window with gap=6")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -173,7 +156,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y):
     capped = ExpandingWindowSplitter(n_splits=4, test_size=12, max_train_size=80)
@@ -183,7 +165,6 @@ def _(ExpandingWindowSplitter, plot_splits, y):
 
     plot_splits(y, capped, title="Expanding Window capped at 80")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -195,7 +176,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SlidingWindowSplitter, plot_splits, y):
     strided = SlidingWindowSplitter(n_splits=5, test_size=12, stride=6)
@@ -203,7 +183,6 @@ def _(SlidingWindowSplitter, plot_splits, y):
     print(f"Splits with stride=6: {strided.get_n_splits()}")
     plot_splits(y, strided, title="Sliding Window with stride=6 (overlapping tests)")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -219,7 +198,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -229,7 +207,6 @@ def _(mo):
     - **Scoring**: See `metrics/` for evaluation metrics used in CV
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

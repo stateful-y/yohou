@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "yohou",
+# ]
+# ///
 """Seasonal and Frequency Domain Analysis.
 
 Demonstrates seasonality overlays, subseries plots, ACF/PACF, power spectrum, and
@@ -13,24 +20,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -56,7 +50,6 @@ def _():
         plot_subseasonality,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -75,14 +68,12 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly, fetch_tourism_quarterly, fetch_sunspot):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
     sunspots = fetch_sunspot().frame
     tourism = fetch_tourism_quarterly().frame
     return air, sunspots, tourism
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -95,7 +86,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(air, plot_seasonality):
     plot_seasonality(
@@ -105,7 +95,6 @@ def _(air, plot_seasonality):
     )
     return
 
-
 @app.cell
 def _(air, plot_seasonality):
     plot_seasonality(
@@ -114,7 +103,6 @@ def _(air, plot_seasonality):
         title="Seasonal Overlay -- Quarterly",
     )
     return
-
 
 @app.cell
 def _(air, plot_seasonality):
@@ -126,7 +114,6 @@ def _(air, plot_seasonality):
     )
     return
 
-
 @app.cell
 def _(plot_seasonality, tourism):
     plot_seasonality(
@@ -136,7 +123,6 @@ def _(plot_seasonality, tourism):
         title="Seasonal Overlay -- Tourism Quarterly Panel (T1 & T2)",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -149,7 +135,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(air, plot_subseasonality):
     plot_subseasonality(
@@ -159,7 +144,6 @@ def _(air, plot_subseasonality):
         title="Subseries -- Monthly with Mean Line",
     )
     return
-
 
 @app.cell
 def _(air, plot_subseasonality):
@@ -171,7 +155,6 @@ def _(air, plot_subseasonality):
     )
     return
 
-
 @app.cell
 def _(air, plot_subseasonality):
     plot_subseasonality(
@@ -181,7 +164,6 @@ def _(air, plot_subseasonality):
         title="Subseries -- Monthly, No Mean Line",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -194,7 +176,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(air, plot_autocorrelation):
     plot_autocorrelation(
@@ -203,7 +184,6 @@ def _(air, plot_autocorrelation):
         title="ACF -- 36 Lags (Default 95% CI)",
     )
     return
-
 
 @app.cell
 def _(air, plot_autocorrelation):
@@ -215,7 +195,6 @@ def _(air, plot_autocorrelation):
     )
     return
 
-
 @app.cell
 def _(air, plot_autocorrelation):
     plot_autocorrelation(
@@ -225,7 +204,6 @@ def _(air, plot_autocorrelation):
         title="ACF -- Bars Only, No Confidence Bands",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -238,7 +216,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(air, plot_partial_autocorrelation):
     plot_partial_autocorrelation(
@@ -247,7 +224,6 @@ def _(air, plot_partial_autocorrelation):
         title="PACF -- Yule-Walker (Default)",
     )
     return
-
 
 @app.cell
 def _(air, plot_partial_autocorrelation):
@@ -259,7 +235,6 @@ def _(air, plot_partial_autocorrelation):
     )
     return
 
-
 @app.cell
 def _(air, plot_partial_autocorrelation):
     plot_partial_autocorrelation(
@@ -269,7 +244,6 @@ def _(air, plot_partial_autocorrelation):
         title="PACF -- 24 Lags, 90% CI",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -287,7 +261,6 @@ def _(mo):
     - **Forecast visualization**: See `examples/plotting/forecasting_visualization.py` for model comparison
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

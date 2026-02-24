@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Forecasted Feature Advanced.
 
 Demonstrates ForecastedFeatureForecaster strategies (actual, predicted,
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -46,7 +41,6 @@ def _(mo):
     - Strategy comparison on Hospital multivariate data
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -71,14 +65,12 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Multivariate Data
     """)
     return
-
 
 @app.cell
 def _(fetch_hospital, mo, pl):
@@ -105,7 +97,6 @@ def _(fetch_hospital, mo, pl):
     )
     return X_test, X_train, hospital, horizon, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -115,7 +106,6 @@ def _(mo):
     prediction time, you must provide X (or use the default forecast).
     """)
     return
-
 
 @app.cell
 def _(
@@ -130,18 +120,17 @@ def _(
     fc_actual = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 12]),
+            feature_transformer=LagTransformer(lag=[1, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 12]),
+            feature_transformer=LagTransformer(lag=[1, 3]),
         ),
         strategy="actual",
     )
     fc_actual.fit(y_train, X_train, forecasting_horizon=horizon)
     y_pred_actual = fc_actual.predict(forecasting_horizon=horizon)
     return fc_actual, y_pred_actual
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -152,7 +141,6 @@ def _(mo):
     This avoids train-test leakage.
     """)
     return
-
 
 @app.cell
 def _(
@@ -167,11 +155,11 @@ def _(
     fc_predicted = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 12]),
+            feature_transformer=LagTransformer(lag=[1, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 12]),
+            feature_transformer=LagTransformer(lag=[1, 3]),
         ),
         strategy="predicted",
         split_ratio=0.7,
@@ -179,7 +167,6 @@ def _(
     fc_predicted.fit(y_train, X_train, forecasting_horizon=horizon)
     y_pred_predicted = fc_predicted.predict(forecasting_horizon=horizon)
     return fc_predicted, y_pred_predicted
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -190,7 +177,6 @@ def _(mo):
     prediction, providing a different initialisation point.
     """)
     return
-
 
 @app.cell
 def _(
@@ -205,11 +191,11 @@ def _(
     fc_rewind = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 12]),
+            feature_transformer=LagTransformer(lag=[1, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 12]),
+            feature_transformer=LagTransformer(lag=[1, 3]),
         ),
         strategy="rewind",
     )
@@ -217,14 +203,12 @@ def _(
     y_pred_rewind = fc_rewind.predict(forecasting_horizon=horizon)
     return fc_rewind, y_pred_rewind
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Compare Strategies
     """)
     return
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, pl, y_pred_actual, y_pred_predicted, y_pred_rewind, y_test, y_train):
@@ -243,18 +227,16 @@ def _(MeanAbsoluteError, mo, pl, y_pred_actual, y_pred_predicted, y_pred_rewind,
     mo.ui.table(pl.DataFrame(_rows))
     return
 
-
 @app.cell
 def _(plot_forecast, y_pred_predicted, y_test, y_train):
     plot_forecast(
         y_test,
         y_pred_predicted,
         y_train=y_train,
-        n_history=168,
+        n_history=36,
         title="ForecastedFeatureForecaster (strategy='predicted')",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -265,7 +247,6 @@ def _(mo):
     fitting the feature forecaster and the target forecaster.
     """)
     return
-
 
 @app.cell
 def _(
@@ -288,11 +269,11 @@ def _(
         _fc = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lag=[1, 12]),
+                feature_transformer=LagTransformer(lag=[1, 3]),
             ),
             feature_forecaster=PointReductionForecaster(
                 estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lag=[1, 12]),
+                feature_transformer=LagTransformer(lag=[1, 3]),
             ),
             strategy="predicted",
             split_ratio=_ratio,
@@ -304,7 +285,6 @@ def _(
 
     mo.ui.table(pl.DataFrame(_rows))
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -323,7 +303,6 @@ def _(mo):
     - **Feature union**: See `examples/compose/feature_union.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

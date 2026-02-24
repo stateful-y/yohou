@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Interval Metrics for Prediction Interval Evaluation.
 
 Demonstrates interval scorers: EmpiricalCoverage, IntervalScore, MeanIntervalWidth,
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -50,7 +45,6 @@ def _(mo):
     Understanding of prediction intervals from `interval/` examples.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -86,7 +80,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -95,7 +88,6 @@ def _(mo):
     We fit an interval forecaster and produce prediction intervals to evaluate with the metrics below.
     """)
     return
-
 
 @app.cell
 def _(
@@ -107,7 +99,7 @@ def _(
 ):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
 
@@ -135,7 +127,6 @@ def _(
     print(f"Prediction columns: {y_pred_int.columns}")
     return coverage_rates, y_pred_int, y_test, y_train
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
     plot_forecast(
@@ -147,7 +138,6 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -157,7 +147,6 @@ def _(mo):
     A 90% interval should contain ~90% of observations.
     """)
     return
-
 
 @app.cell
 def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
@@ -171,7 +160,6 @@ def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
     print(f"\n  Result: {coverage_result}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -182,7 +170,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(IntervalScore, coverage_rates, y_pred_int, y_test, y_train):
     is_scorer = IntervalScore(coverage_rates=coverage_rates)
@@ -190,7 +177,6 @@ def _(IntervalScore, coverage_rates, y_pred_int, y_test, y_train):
     is_result = is_scorer.score(y_test, y_pred_int)
     print(f"Interval Score: {is_result}")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -202,7 +188,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(MeanIntervalWidth, coverage_rates, y_pred_int, y_test, y_train):
     miw = MeanIntervalWidth(coverage_rates=coverage_rates)
@@ -210,7 +195,6 @@ def _(MeanIntervalWidth, coverage_rates, y_pred_int, y_test, y_train):
     width_result = miw.score(y_test, y_pred_int)
     print(f"Mean Interval Width: {width_result}")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -220,7 +204,6 @@ def _(mo):
     We examine two additional metrics that assess quantile accuracy and coverage reliability.
     """)
     return
-
 
 @app.cell
 def _(CalibrationError, PinballLoss, coverage_rates, y_pred_int, y_test, y_train):
@@ -235,7 +218,6 @@ def _(CalibrationError, PinballLoss, coverage_rates, y_pred_int, y_test, y_train
     print(f"Calibration Error: {cal_result}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -245,7 +227,6 @@ def _(mo):
     `"coveragewise"` gives per-coverage-rate scores.
     """)
     return
-
 
 @app.cell
 def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
@@ -259,7 +240,6 @@ def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
     print(cw_result)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -268,7 +248,6 @@ def _(mo):
     `plot_calibration` shows nominal vs. empirical coverage, ideal is the diagonal.
     """)
     return
-
 
 @app.cell
 def _(coverage_rates, plot_calibration, y_pred_int, y_test):
@@ -280,7 +259,6 @@ def _(coverage_rates, plot_calibration, y_pred_int, y_test):
         title="Calibration: Nominal vs Empirical Coverage",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -297,7 +275,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -308,7 +285,6 @@ def _(mo):
     - **Time weighting**: See `examples/time_weighted_forecasting.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

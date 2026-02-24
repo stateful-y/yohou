@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Stationarity Transformers: Differencing, Log, BoxCox, and Returns.
 
 Demonstrates transformations for making time series stationary.
@@ -8,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -50,7 +45,6 @@ def _(mo):
     Understanding of stationarity concepts in time series.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -81,7 +75,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -92,17 +85,15 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly, plot_time_series):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
     plot_time_series(y, title="Monthly Tourism (Non-Stationary)")
     return (y,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -113,7 +104,6 @@ def _(mo):
     Stateless and invertible.
     """)
     return
-
 
 @app.cell
 def _(LogTransformer, y):
@@ -133,7 +123,6 @@ def _(LogTransformer, y):
     print(f"Max inverse error: {log_inv_err:.10f}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -143,7 +132,6 @@ def _(mo):
     `lmbda=0.5` is square root.
     """)
     return
-
 
 @app.cell
 def _(BoxCoxTransformer, y):
@@ -156,7 +144,6 @@ def _(BoxCoxTransformer, y):
         print(f"lmbda={_lmbda:.2f}  range={_rng:.2f}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -166,7 +153,6 @@ def _(mo):
     Stateful: `observation_horizon = seasonality`.
     """)
     return
-
 
 @app.cell
 def _(SeasonalDifferencing, y):
@@ -179,7 +165,6 @@ def _(SeasonalDifferencing, y):
     y_diff.head()
     return diff_tf, y_diff
 
-
 @app.cell
 def _(diff_tf, y, y_diff):
     # Inverse transform requires X_p (the observation_horizon prefix from original data)
@@ -189,7 +174,6 @@ def _(diff_tf, y, y_diff):
     diff_inv_err = (y["passengers"].tail(len(y_inv)) - y_inv[_inv_col]).abs().max()
     print(f"SeasonalDifferencing inverse error: {diff_inv_err:.10f}")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -201,7 +185,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SeasonalLogDifferencing, plot_time_series, y):
     sld = SeasonalLogDifferencing(seasonality=12, offset=0.0)
@@ -211,7 +194,6 @@ def _(SeasonalLogDifferencing, plot_time_series, y):
     print(f"observation_horizon: {sld.observation_horizon}")
     plot_time_series(y_sld, title="Seasonal Log Differenced (should look stationary)")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -224,7 +206,6 @@ def _(mo):
     Both are invertible and stateful.
     """)
     return
-
 
 @app.cell
 def _(AbsoluteSeasonalReturn, SeasonalReturn, y):
@@ -241,7 +222,6 @@ def _(AbsoluteSeasonalReturn, SeasonalReturn, y):
     print(f"AbsoluteSeasonalReturn (first 5 values): {y_asr[_asr_col].head(5).to_list()}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -251,7 +231,6 @@ def _(mo):
     Robust, symmetric, works with zero and negative values.
     """)
     return
-
 
 @app.cell
 def _(ASinhTransformer, y):
@@ -270,7 +249,6 @@ def _(ASinhTransformer, y):
     print(f"Inverse error: {asinh_inv_err:.10f}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -279,7 +257,6 @@ def _(mo):
     We bring together the results from all transforms to compare their effectiveness at inducing stationarity.
     """)
     return
-
 
 @app.cell
 def _(
@@ -307,7 +284,6 @@ def _(
         print(f"{_name:<22s}  {_tf.observation_horizon:>11d}  {str(_has_inv):>10s}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -322,7 +298,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -333,7 +308,6 @@ def _(mo):
     - **Preprocessing**: See `preprocessing/` for data cleaning and feature engineering
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

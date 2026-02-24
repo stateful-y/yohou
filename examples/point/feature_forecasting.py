@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Forecasting with Forecasted Features.
 
 Demonstrates ForecastedFeatureForecaster for chaining feature and target forecasting.
@@ -8,24 +16,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,7 +43,6 @@ def _(mo):
     Familiarity with `PointReductionForecaster`.
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -73,7 +67,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -85,12 +78,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_electricity_demand, pl):
     raw = fetch_electricity_demand().frame
 
-    # Resample to daily for speed
+    # Resample to daily for speed (drop trailing all-null days)
     daily = (
         raw.group_by_dynamic("time", every="1d")
         .agg(
@@ -98,6 +90,7 @@ def _(fetch_electricity_demand, pl):
             pl.col("nsw__demand").mean().alias("nsw_demand"),
         )
         .sort("time")
+        .drop_nulls()
     )
 
     y = daily.select("time", "demand")
@@ -122,7 +115,6 @@ def _(fetch_electricity_demand, pl):
         y_train,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -133,7 +125,6 @@ def _(mo):
     forecasted features at predict time.
     """)
     return
-
 
 @app.cell
 def _(
@@ -164,7 +155,6 @@ def _(
     y_pred_actual.head()
     return ff_actual, y_pred_actual
 
-
 @app.cell
 def _(MeanAbsoluteError, y_pred_actual, y_test, y_train):
     mae_actual = MeanAbsoluteError()
@@ -172,7 +162,6 @@ def _(MeanAbsoluteError, y_pred_actual, y_test, y_train):
     score_actual = mae_actual.score(y_test, y_pred_actual)
     print(f"MAE (actual strategy): {score_actual:.2f}")
     return (mae_actual, score_actual)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -185,7 +174,6 @@ def _(mo):
     Let's compare both.
     """)
     return
-
 
 @app.cell
 def _(
@@ -225,7 +213,6 @@ def _(
         print(f"strategy={strategy:>10s}  MAE: {_score:.2f}")
     return (strategy_results,)
 
-
 @app.cell
 def _(plot_forecast, strategy_results, y_test, y_train):
     preds_dict = {name: r["pred"] for name, r in strategy_results.items()}
@@ -237,7 +224,6 @@ def _(plot_forecast, strategy_results, y_test, y_train):
     )
     return (preds_dict,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -247,7 +233,6 @@ def _(mo):
     forecasters simultaneously.
     """)
     return
-
 
 @app.cell
 def _(
@@ -299,7 +284,6 @@ def _(
     print(f"Rolling MAE: {score_rolling:.2f}")
     return all_preds, ff_rolling, mae_rolling, score_rolling
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -312,7 +296,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -323,7 +306,6 @@ def _(mo):
     - **Decomposition**: See `stationarity/` for `DecompositionPipeline`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

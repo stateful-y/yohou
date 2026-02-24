@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Cross-Validation.
 
 Demonstrates time series cross-validation on panel data with
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -44,7 +39,6 @@ def _(mo):
     - Per-group results analysis from grid search
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -71,7 +65,6 @@ def _():
         plot_splits,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -79,17 +72,15 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_quarterly, mo):
-    tourism = fetch_tourism_quarterly().frame.select("time", *[f"T{i}__tourists" for i in range(1, 9)])
+    tourism = fetch_tourism_quarterly().frame.select("time", *[f"T{i}__tourists" for i in range(3, 11)]).drop_nulls()
     mo.md(
         f"**Shape**: {tourism.shape}\n\n"
         f"**Columns**: {tourism.columns}\n\n"
         f"**Quarterly**: {len(tourism)} observations"
     )
     return (tourism,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -101,19 +92,16 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(ExpandingWindowSplitter, tourism):
     ew_splitter = ExpandingWindowSplitter(n_splits=3, test_size=8, gap=0)
     ew_splitter
     return (ew_splitter,)
 
-
 @app.cell
 def _(ew_splitter, plot_splits, tourism):
     plot_splits(tourism, ew_splitter, title="Expanding Window: 3 Splits")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -124,13 +112,11 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(SlidingWindowSplitter, plot_splits, tourism):
     sw_splitter = SlidingWindowSplitter(n_splits=3, test_size=8, stride=8, gap=0)
     plot_splits(tourism, sw_splitter, title="Sliding Window: Fixed Size")
     return (sw_splitter,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -141,7 +127,6 @@ def _(mo):
     scorer evaluates all panel groups together.
     """)
     return
-
 
 @app.cell
 def _(
@@ -174,7 +159,6 @@ def _(
     search.fit(tourism, forecasting_horizon=8)
     return (search,)
 
-
 @app.cell
 def _(mo, pl, search):
     _results = search.cv_results_
@@ -191,7 +175,6 @@ def _(mo, pl, search):
     )
     return
 
-
 @app.cell
 def _(mo, pl, search):
     _results = search.cv_results_
@@ -204,7 +187,6 @@ def _(mo, pl, search):
     mo.ui.table(_table)
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -215,7 +197,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(mo, search, tourism):
     _y_pred_best = search.predict(forecasting_horizon=8)
@@ -225,7 +206,6 @@ def _(mo, search, tourism):
         "All panel groups are predicted using the best hyperparameters."
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -246,7 +226,6 @@ def _(mo):
     - **CV splitters**: See `examples/model_selection/cv_splitters.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

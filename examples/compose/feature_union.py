@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Parallel Feature Engineering with FeatureUnion.
 
 Demonstrates FeatureUnion to combine multiple transformers in parallel,
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -45,7 +40,6 @@ def _(mo):
     - Using `FeatureUnion` as `feature_transformer` in a forecaster
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -80,7 +74,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -88,10 +81,10 @@ def _(mo):
     """)
     return
 
-
 @app.cell
-def _(fetch_sunspot, mo):
-    sunspots = fetch_sunspot().frame
+def _(fetch_sunspot, mo, pl):
+    _raw = fetch_sunspot().frame
+    sunspots = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
     _split = int(len(sunspots) * 0.85)
     y_train = sunspots.head(_split)
     y_test = sunspots.tail(len(sunspots) - _split)
@@ -102,7 +95,6 @@ def _(fetch_sunspot, mo):
     )
     return horizon, sunspots, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -111,7 +103,6 @@ def _(mo):
     Combine lag features with rolling statistics.
     """)
     return
-
 
 @app.cell
 def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
@@ -132,7 +123,6 @@ def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
     )
     return (union_basic,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -142,7 +132,6 @@ def _(mo):
     is prefixed with the transformer name.
     """)
     return
-
 
 @app.cell
 def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
@@ -174,7 +163,6 @@ def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -183,7 +171,6 @@ def _(mo):
     Combine lags, rolling statistics, and exponential moving average.
     """)
     return
-
 
 @app.cell
 def _(
@@ -211,7 +198,6 @@ def _(
     )
     return (union_three,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -221,7 +207,6 @@ def _(mo):
     feature sets for the reduction-based forecaster.
     """)
     return
-
 
 @app.cell
 def _(
@@ -263,7 +248,6 @@ def _(
     )
     return (fc_union,)
 
-
 @app.cell
 def _(fc_union, horizon, plot_forecast, y_test, y_train):
     _y_pred = fc_union.predict(forecasting_horizon=horizon)
@@ -275,7 +259,6 @@ def _(fc_union, horizon, plot_forecast, y_test, y_train):
         title="FeatureUnion (Lags + Rolling + EMA): Sunspots",
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -295,7 +278,6 @@ def _(mo):
     - **Panel feature union**: See `examples/compose/panel_pipelines.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

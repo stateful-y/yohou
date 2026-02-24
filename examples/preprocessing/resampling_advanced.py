@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Advanced Resampling.
 
 Demonstrates Downsampler and Upsampler with different aggregation
@@ -10,24 +18,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -46,7 +41,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
@@ -63,14 +57,12 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load High-Frequency Data
     """)
     return
-
 
 @app.cell
 def _(fetch_electricity_demand, mo, pl):
@@ -88,14 +80,12 @@ def _(fetch_electricity_demand, mo, pl):
     )
     return elec, elec_subset
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Downsampler: Mean Aggregation to Hourly
     """)
     return
-
 
 @app.cell
 def _(Downsampler, elec_subset, mo, plot_time_series):
@@ -108,12 +98,10 @@ def _(Downsampler, elec_subset, mo, plot_time_series):
     )
     return ds_mean, elec_hourly
 
-
 @app.cell
 def _(elec_hourly, plot_time_series):
     plot_time_series(elec_hourly.head(168), title="Hourly Mean: First Week")
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -121,7 +109,6 @@ def _(mo):
     ## 3. Different Aggregation Methods
     """)
     return
-
 
 @app.cell
 def _(Downsampler, elec_subset, mo, pl):
@@ -144,7 +131,6 @@ def _(Downsampler, elec_subset, mo, pl):
     mo.ui.table(pl.DataFrame(_rows))
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -154,7 +140,6 @@ def _(mo):
     `label` controls which boundary timestamp represents the bin.
     """)
     return
-
 
 @app.cell
 def _(Downsampler, elec_subset, mo):
@@ -172,14 +157,12 @@ def _(Downsampler, elec_subset, mo):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Upsampler: Linear Interpolation
     """)
     return
-
 
 @app.cell
 def _(Downsampler, Upsampler, elec_subset, mo, plot_time_series):
@@ -197,7 +180,6 @@ def _(Downsampler, Upsampler, elec_subset, mo, plot_time_series):
     )
     return elec_upsampled, us_linear
 
-
 @app.cell
 def _(elec_upsampled, plot_time_series):
     plot_time_series(
@@ -206,14 +188,12 @@ def _(elec_upsampled, plot_time_series):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Different Interpolation Methods
     """)
     return
-
 
 @app.cell
 def _(Downsampler, Upsampler, elec_subset, mo, pl):
@@ -237,7 +217,6 @@ def _(Downsampler, Upsampler, elec_subset, mo, pl):
     mo.ui.table(pl.DataFrame(_rows))
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -246,7 +225,6 @@ def _(mo):
     Compare original vs down-then-up to see information loss.
     """)
     return
-
 
 @app.cell
 def _(elec_subset, elec_upsampled, mo, pl):
@@ -262,7 +240,6 @@ def _(elec_subset, elec_upsampled, mo, pl):
         "Higher aggregation intervals lose more detail."
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -282,7 +259,6 @@ def _(mo):
     - **Window transformers**: See `examples/preprocessing/window_transformers.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

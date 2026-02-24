@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Time-Weighted Scoring.
 
 Demonstrates weighting functions (exponential, linear, seasonal) that
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -46,7 +41,6 @@ def _(mo):
     - Panel data with time weights
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -81,7 +75,6 @@ def _():
         seasonal_emphasis_weight,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -89,10 +82,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, fetch_tourism_monthly, mo):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "passengers"})
+    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
     _split = int(len(air) * 0.85)
     y_train = air.head(_split)
     y_test = air.tail(len(air) - _split)
@@ -108,7 +100,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, fetch_tourism_monthly, mo
     mo.md(f"**Air Passengers**: Train={len(y_train)}, Test={len(y_test)}")
     return air, fc, horizon, y_pred, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -119,7 +110,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(exponential_decay_weight, plot_time_weight, y_test):
     w_exp = exponential_decay_weight(half_life=6)
@@ -128,7 +118,6 @@ def _(exponential_decay_weight, plot_time_weight, y_test):
     )
     plot_time_weight(_weights_df, title="Exponential Decay (half_life=6)")
     return (w_exp,)
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, w_exp, y_pred, y_test, y_train):
@@ -144,14 +133,12 @@ def _(MeanAbsoluteError, mo, w_exp, y_pred, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Linear Decay Weight
     """)
     return
-
 
 @app.cell
 def _(linear_decay_weight, plot_time_weight, y_test):
@@ -161,7 +148,6 @@ def _(linear_decay_weight, plot_time_weight, y_test):
     )
     plot_time_weight(_weights_df, title="Linear Decay (full range)")
     return (w_lin,)
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, w_lin, y_pred, y_test, y_train):
@@ -173,7 +159,6 @@ def _(MeanAbsoluteError, mo, w_lin, y_pred, y_test, y_train):
     mo.md(f"**Linear-weighted MAE**: {_weighted_lin:.2f}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -184,7 +169,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(plot_time_weight, seasonal_emphasis_weight, y_test):
     w_season = seasonal_emphasis_weight(seasonality=12, emphasis=3.0)
@@ -193,7 +177,6 @@ def _(plot_time_weight, seasonal_emphasis_weight, y_test):
     )
     plot_time_weight(_weights_df, title="Seasonal Emphasis (period=12, emphasis=3x)")
     return (w_season,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -204,7 +187,6 @@ def _(mo):
     decay AND seasonal emphasis.
     """)
     return
-
 
 @app.cell
 def _(
@@ -224,7 +206,6 @@ def _(
     plot_time_weight(_weights_df, title="Composed: Exponential + Seasonal")
     return (w_composed,)
 
-
 @app.cell
 def _(MeanAbsoluteError, mo, w_composed, y_pred, y_test, y_train):
     _scorer = MeanAbsoluteError()
@@ -235,7 +216,6 @@ def _(MeanAbsoluteError, mo, w_composed, y_pred, y_test, y_train):
     mo.md(f"**Composed-weighted MAE**: {_weighted_comp:.2f}")
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -245,7 +225,6 @@ def _(mo):
     all groups.
     """)
     return
-
 
 @app.cell
 def _(
@@ -258,7 +237,8 @@ def _(
     mo,
 ):
     _full = fetch_dominick().frame
-    _store = _full.select("time", *[c for c in _full.columns if c != "time"][:9])
+    _selected = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
+    _store = _full.select("time", *_selected)
     _target_cols = [c for c in _store.columns if c.endswith("__profit")]
     _y = _store.select("time", *_target_cols)
     _split_p = int(len(_y) * 0.85)
@@ -288,7 +268,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -308,7 +287,6 @@ def _(mo):
     - **Scoring**: See `examples/scoring.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

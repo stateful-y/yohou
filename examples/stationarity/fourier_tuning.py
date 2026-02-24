@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Fourier Seasonality Tuning.
 
 Demonstrates FourierSeasonalityForecaster with harmonic selection,
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -45,7 +40,6 @@ def _(mo):
     - Using Fourier inside a DecompositionPipeline
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -80,7 +74,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -91,14 +84,14 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_electricity_demand, mo, pl):
     _elec = fetch_electricity_demand().frame
-    # Resample to daily for clearer weekly patterns
+    # Resample to daily for clearer weekly patterns (drop trailing all-null days)
     elec_daily = (
         _elec.group_by_dynamic("time", every="1d")
         .agg(pl.col("vic__demand").mean().alias("demand"))
+        .drop_nulls()
     )
     _split = int(len(elec_daily) * 0.85)
     y_train = elec_daily.head(_split).select("time", "demand")
@@ -111,7 +104,6 @@ def _(fetch_electricity_demand, mo, pl):
     )
     return elec_daily, horizon, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -121,7 +113,6 @@ def _(mo):
     With `seasonality=7`, max harmonics = 3 (floor(7/2)).
     """)
     return
-
 
 @app.cell
 def _(FourierSeasonalityForecaster, MeanAbsoluteError, horizon, mo, pl, y_test, y_train):
@@ -139,14 +130,12 @@ def _(FourierSeasonalityForecaster, MeanAbsoluteError, horizon, mo, pl, y_test, 
     mo.ui.table(pl.DataFrame(_rows))
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Fourier vs Pattern Seasonality
     """)
     return
-
 
 @app.cell
 def _(
@@ -179,7 +168,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -189,7 +177,6 @@ def _(mo):
     regression estimators can affect regularisation.
     """)
     return
-
 
 @app.cell
 def _(
@@ -222,7 +209,6 @@ def _(
     mo.ui.table(pl.DataFrame(_rows))
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -232,7 +218,6 @@ def _(mo):
     forecasting approach.
     """)
     return
-
 
 @app.cell
 def _(
@@ -272,7 +257,6 @@ def _(
     )
     return (fc_decomp_fourier,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -291,7 +275,6 @@ def _(mo):
     - **Decomposition**: See `examples/stationarity/decomposition.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

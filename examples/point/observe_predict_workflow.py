@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Observe-Predict Workflow.
 
 Demonstrates the observe/predict cycle for rolling-origin evaluation and
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -54,7 +49,6 @@ def _(mo):
     """)
     return
 
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
@@ -78,7 +72,6 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -90,10 +83,9 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(fetch_tourism_monthly):
-    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").rename({"T1__tourists": "Passengers"})
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
     _n = len(df)
     train_end = int(_n * 0.6)
     cal_end = int(_n * 0.85)
@@ -105,7 +97,6 @@ def _(fetch_tourism_monthly):
     y_train.tail(3)
     return cal_end, df, train_end, y_cal, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -114,7 +105,6 @@ def _(mo):
     Train on the initial training window.
     """)
     return
-
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, y_train):
@@ -126,7 +116,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, y_train):
     forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
     return forecaster, forecasting_horizon
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -137,7 +126,6 @@ def _(mo):
     transformers and the forecaster's internal time tracking.
     """)
     return
-
 
 @app.cell
 def _(forecaster, mo, y_cal):
@@ -152,7 +140,6 @@ def _(forecaster, mo, y_cal):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -162,7 +149,6 @@ def _(mo):
     position, 6 months ahead of where the original training ended.
     """)
     return
-
 
 @app.cell
 def _(forecaster, forecasting_horizon, mo):
@@ -174,7 +160,6 @@ def _(forecaster, forecasting_horizon, mo):
     )
     return (y_pred_after_obs,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -184,7 +169,6 @@ def _(mo):
     This is the most common pattern in rolling evaluation loops.
     """)
     return
-
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, y_cal, y_train):
@@ -203,7 +187,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, y_ca
     y_pred_op
     return fc_op, y_pred_op
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -214,7 +197,6 @@ def _(mo):
     can be compared against actuals.
     """)
     return
-
 
 @app.cell
 def _(
@@ -264,7 +246,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -275,7 +256,6 @@ def _(mo):
     a point in the past and re-evaluate without retraining.
     """)
     return
-
 
 @app.cell
 def _(
@@ -310,7 +290,6 @@ def _(
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -322,13 +301,12 @@ def _(mo):
     """)
     return
 
-
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, fetch_dominick, mo):
     _panel = fetch_dominick().frame.select(
-        "time", "T1__profit", "T2__profit", "T3__profit",
-        "T4__profit", "T5__profit", "T6__profit",
-        "T7__profit", "T8__profit", "T9__profit",
+        "time", "T7__profit", "T11__profit", "T12__profit",
+        "T13__profit", "T15__profit", "T19__profit",
+        "T22__profit", "T23__profit", "T24__profit",
     )
     _profit_cols = [c for c in _panel.columns if c.endswith("__profit")]
     _split = int(len(_panel) * 0.8)
@@ -344,24 +322,23 @@ def _(LagTransformer, PointReductionForecaster, Ridge, fetch_dominick, mo):
     _horizon_p = 4
     _fc_panel.fit(_y_train_p, forecasting_horizon=_horizon_p)
 
-    # Observe ONLY T1-T3 groups (simulate partial data arrival)
+    # Observe ONLY T7-T12 groups (simulate partial data arrival)
     _fc_panel.observe(
         _y_cal_p.head(4),
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
     )
 
-    # Predict for T1-T3 only (other groups still at old position)
+    # Predict for T7-T12 only (other groups still at old position)
     _y_pred_s1 = _fc_panel.predict(
         forecasting_horizon=_horizon_p,
-        panel_group_names=["T1", "T2", "T3"],
+        panel_group_names=["T7", "T11", "T12"],
     )
 
     mo.md(
         f"**Predicted columns**: {[c for c in _y_pred_s1.columns if c != 'time' and c != 'observed_time']}\n\n"
-        f"Only T1-T3 groups were observed and predicted, other groups remain at their previous state."
+        f"Only T7, T11, T12 groups were observed and predicted, other groups remain at their previous state."
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -383,7 +360,6 @@ def _(mo):
     - **Panel forecasting**: See `examples/point/panel_forecasting.py` for comprehensive panel workflows
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Interval Forecaster Hyperparameter Search.
 
 Demonstrates GridSearchCV with interval forecasters, tuning
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -43,7 +38,6 @@ def _(mo):
     - Balancing coverage vs interval width
     """)
     return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -83,7 +77,6 @@ def _():
         plot_forecast,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -91,21 +84,20 @@ def _(mo):
     """)
     return
 
-
 @app.cell
-def _(fetch_sunspot, mo):
-    ss = fetch_sunspot().frame
+def _(fetch_sunspot, mo, pl):
+    _raw = fetch_sunspot().frame
+    ss = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
     _split = int(len(ss) * 0.85)
     y_train = ss.head(_split)
-    y_test = ss.tail(len(ss) - _split)
-    horizon = min(len(y_test), 50)
+    y_test = ss[_split : _split + 24]
+    horizon = len(y_test)
 
     mo.md(
         f"**Sunspots**: {len(ss)} observations\n\n"
         f"**Train**: {len(y_train)}, **Test**: {len(y_test)}"
     )
     return horizon, ss, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -117,7 +109,6 @@ def _(mo):
     the search, then evaluate interval quality separately.
     """)
     return
-
 
 @app.cell
 def _(
@@ -158,14 +149,12 @@ def _(
     interval_gs.fit(y_train, forecasting_horizon=horizon)
     return (interval_gs,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Search Results
     """)
     return
-
 
 @app.cell
 def _(interval_gs, mo, pl):
@@ -176,7 +165,6 @@ def _(interval_gs, mo, pl):
     mo.ui.table(_results.select(_cols))
     return
 
-
 @app.cell
 def _(interval_gs, mo):
     mo.md(
@@ -184,7 +172,6 @@ def _(interval_gs, mo):
         f"**Best MAE (negated)**: {interval_gs.best_score_:.4f}"
     )
     return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -195,7 +182,6 @@ def _(mo):
     interval predictions using coverage and width metrics.
     """)
     return
-
 
 @app.cell
 def _(
@@ -228,7 +214,6 @@ def _(
     mo.md("\n".join(f"- **{k}**: {v}" for k, v in _metrics.items()))
     return (y_pred_interval,)
 
-
 @app.cell
 def _(plot_forecast, y_pred_interval, y_test, y_train):
     plot_forecast(
@@ -240,7 +225,6 @@ def _(plot_forecast, y_pred_interval, y_test, y_train):
     )
     return
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -249,7 +233,6 @@ def _(mo):
     Interval forecasters also produce point predictions.
     """)
     return
-
 
 @app.cell
 def _(horizon, interval_gs, plot_forecast, y_test, y_train):
@@ -262,7 +245,6 @@ def _(horizon, interval_gs, plot_forecast, y_test, y_train):
         title="Point Prediction from Best Interval Forecaster",
     )
     return (y_pred_point,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -282,7 +264,6 @@ def _(mo):
     - **Conformity scorers**: See `examples/interval/conformal_conformity_scorers.py`
     """)
     return
-
 
 if __name__ == "__main__":
     app.run()

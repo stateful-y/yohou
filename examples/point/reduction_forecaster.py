@@ -1,3 +1,12 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "plotly",
+#     "scikit-learn",
+#     "scipy",
+#     "yohou",
+# ]
+# ///
 """Reduction Forecasting with sklearn.
 
 Demonstrates PointReductionForecaster for tabular ML-based time series forecasting,
@@ -9,24 +18,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "scipy", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,7 +44,6 @@ def _(mo):
 
     Basic familiarity with sklearn's fit/predict API and time series concepts (trend, seasonality).
     """)
-
 
 @app.cell(hide_code=True)
 def _():
@@ -86,7 +81,6 @@ def _():
         train_test_split,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -97,12 +91,11 @@ def _(mo):
     demonstrating preprocessing techniques.
     """)
 
-
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists")
+        .frame.select("time", "T1__tourists").drop_nulls()
         .rename({"T1__tourists": "passengers"})
     )
 
@@ -110,16 +103,13 @@ def _(fetch_tourism_monthly):
     y.head()
     return (y,)
 
-
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(y, title="Monthly Tourism")
 
-
 @app.cell
 def _(plot_seasonality, y):
     plot_seasonality(y, period="month", title="Monthly Seasonality Pattern")
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -130,7 +120,6 @@ def _(mo):
     We hold out the last ~20% (29 months) for testing.
     """)
 
-
 @app.cell
 def _(train_test_split, y):
     y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
@@ -139,7 +128,6 @@ def _(train_test_split, y):
     print(f"Training: {len(y_train)} obs ({y_train['time'].min()} to {y_train['time'].max()})")
     print(f"Test: {len(y_test)} obs ({y_test['time'].min()} to {y_test['time'].max()})")
     return forecasting_horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -159,7 +147,6 @@ def _(mo):
     We start with a simple Ridge regressor and 12 lag features.
     """)
 
-
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, y_train):
     forecaster = PointReductionForecaster(
@@ -171,13 +158,11 @@ def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, y_tr
     print("Forecaster fitted successfully")
     return (forecaster,)
 
-
 @app.cell
 def _(forecaster, forecasting_horizon):
     y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon)
     y_pred.head()
     return (y_pred,)
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_forecast, y_pred, y_test, y_train):
@@ -196,7 +181,6 @@ def _(MeanAbsoluteError, plot_forecast, y_pred, y_test, y_train):
     fig_basic
     return fig_basic, mae, score, y_test_trimmed
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -206,7 +190,6 @@ def _(mo):
     A `LogTransformer` via `target_transformer` stabilizes variance. It is applied to y
     before fitting and automatically inverted after prediction.
     """)
-
 
 @app.cell
 def _(
@@ -227,7 +210,6 @@ def _(
     y_pred_log = forecaster_log.predict(forecasting_horizon=forecasting_horizon)
     return forecaster_log, y_pred_log
 
-
 @app.cell
 def _(MeanAbsoluteError, plot_forecast, y_pred_log, y_test, y_train):
     fig_log = plot_forecast(
@@ -245,7 +227,6 @@ def _(MeanAbsoluteError, plot_forecast, y_pred_log, y_test, y_train):
     fig_log
     return fig_log, mae_log, score_log, y_test_log
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -255,7 +236,6 @@ def _(mo):
     (`feature_transformer__lag`) using `GridSearchCV` with time series
     cross-validation via `ExpandingWindowSplitter`.
     """)
-
 
 @app.cell
 def _(
@@ -297,7 +277,6 @@ def _(
     print(f"Best CV score (MAE): {-grid_search.best_score_:.2f}")
     return cv_splitter, forecaster_to_tune, grid_search, param_grid
 
-
 @app.cell
 def _(grid_search, plot_cv_results_scatter):
     plot_cv_results_scatter(
@@ -305,7 +284,6 @@ def _(grid_search, plot_cv_results_scatter):
         param_name="estimator__alpha",
         title="Grid Search Results: Alpha vs CV Score",
     )
-
 
 @app.cell
 def _(forecasting_horizon, grid_search, plot_forecast, y_test, y_train):
@@ -318,7 +296,6 @@ def _(forecasting_horizon, grid_search, plot_forecast, y_test, y_train):
         title="Tuned Reduction Forecast (GridSearchCV)",
     )
     return (y_pred_tuned,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -333,7 +310,6 @@ def _(mo):
     - Log transforms help with multiplicative seasonality (variance scaling with level)
     """)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -344,7 +320,6 @@ def _(mo):
     - **Interval prediction**: See `interval/` examples for uncertainty quantification
     - **Decomposition**: See `stationarity/` for trend/seasonality extraction before forecasting
     """)
-
 
 if __name__ == "__main__":
     app.run()
