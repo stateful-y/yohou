@@ -31,7 +31,7 @@ Currently, Yohou supports Python 3.11+.
 - **Interval forecasting**: Get calibrated prediction intervals via `SplitConformalForecaster`, `IntervalReductionForecaster` with `DistanceSimilarity`, and conformity scorers.
 - **Cross-validation & tuning**: Temporal splitters (`ExpandingWindowSplitter`, `SlidingWindowSplitter`) and `GridSearchCV` / `RandomizedSearchCV` designed for time series with no data leakage across time.
 - **Metrics & visualization**: Point and interval scorers with timewise, componentwise, and groupwise aggregation. Over 25 Plotly-based plotting functions for exploration, diagnostics, forecasting, and evaluation.
-- **Bundled datasets**: Seven ready-to-use Polars datasets including `air_passengers`, `sunspots`, `walmart_sales`, and `australian_tourism` for quick experimentation.
+- **Remote datasets**: Seven `fetch_*` functions download Monash/Zenodo time series on demand (`tourism_monthly`, `sunspot`, `tourism_quarterly`, `electricity_demand`, `dominick`, `pedestrian_counts`, `hospital`) with local Parquet caching.
 - **(Experimental) Time-weighted training**: Weight recent or seasonal observations with `exponential_decay_weight`, `linear_decay_weight`, `seasonal_emphasis_weight`, and `compose_weights`, propagated via sklearn metadata routing.
 
 ## How to install Yohou?

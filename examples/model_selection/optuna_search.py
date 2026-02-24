@@ -1,9 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "marimo",
 #     "optuna",
-#     "plotly",
 #     "scikit-learn",
 #     "yohou",
 #     "yohou-optuna",

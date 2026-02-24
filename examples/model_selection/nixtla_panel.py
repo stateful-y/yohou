@@ -1,11 +1,8 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "marimo",
-#     "plotly",
-#     "scikit-learn",
-#     "statsforecast",
 #     "yohou",
+#     "yohou-nixtla",
 # ]
 # ///
 """Nixtla Forecasters on Panel Data.

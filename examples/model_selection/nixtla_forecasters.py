@@ -1,11 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "marimo",
-#     "neuralforecast",
-#     "plotly",
-#     "scikit-learn",
-#     "statsforecast",
 #     "yohou",
 #     "yohou-nixtla",
 # ]

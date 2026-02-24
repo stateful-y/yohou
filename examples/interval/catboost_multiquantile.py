@@ -2,8 +2,6 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "catboost",
-#     "marimo",
-#     "plotly",
 #     "scikit-learn",
 #     "yohou",
 # ]
