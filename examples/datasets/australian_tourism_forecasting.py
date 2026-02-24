@@ -30,8 +30,8 @@ def _(mo):
     # Tourism Quarterly Forecasting
 
     The Tourism Quarterly dataset contains 427 quarterly tourism series
-    from the Monash forecasting competition. We select the first 8 series
-    for a manageable panel, demonstrating **panel forecasting**.
+    from the Monash forecasting competition. We select 8 same-length series
+    (T3-T10) for a manageable panel, demonstrating **panel forecasting**.
 
     ## What You'll Learn
 
@@ -81,9 +81,10 @@ def _(mo):
 @app.cell
 def _(fetch_tourism_quarterly, inspect_locality, mo):
     _all = fetch_tourism_quarterly().frame
-    # Select first 8 series for a manageable panel
-    _cols = ["time"] + [c for c in _all.columns if c != "time"][:8]
-    tourism = _all.select(_cols)
+    # Select 8 same-length series (T3-T10) to avoid NaN from uneven lengths
+    _value_cols = [c for c in _all.columns if c != "time"]
+    _cols = ["time"] + _value_cols[2:10]
+    tourism = _all.select(_cols).drop_nulls()
     _globals, groups = inspect_locality(tourism)
 
     mo.md(
@@ -152,8 +153,8 @@ def _(plot_forecast, y_pred, y_test, y_train):
         y_pred,
         y_train=y_train,
         n_history=20,
-        panel_group_names=["T1", "T2", "T3"],
-        title="Tourism Forecasts: Series T1-T3",
+        panel_group_names=["T3", "T4", "T5"],
+        title="Tourism Forecasts: Series T3-T5",
     )
 
 @app.cell
@@ -163,8 +164,8 @@ def _(plot_forecast, y_pred, y_test, y_train):
         y_pred,
         y_train=y_train,
         n_history=20,
-        panel_group_names=["T4", "T5", "T6"],
-        title="Tourism Forecasts: Series T4-T6",
+        panel_group_names=["T6", "T7", "T8"],
+        title="Tourism Forecasts: Series T6-T8",
     )
 
 @app.cell(hide_code=True)
@@ -275,20 +276,20 @@ def _(
     )
     _fc_sel.fit(_y_tr, forecasting_horizon=4)
 
-    # Observe only first three series
-    _first_three = ["T1", "T2", "T3"]
-    _fc_sel.observe(_y_new, panel_group_names=_first_three)
+    # Observe only three selected series
+    _three = ["T3", "T4", "T5"]
+    _fc_sel.observe(_y_new, panel_group_names=_three)
 
-    # Predict only first three series
+    # Predict only those three series
     _y_pred_sel = _fc_sel.predict(
         forecasting_horizon=4,
-        panel_group_names=_first_three,
+        panel_group_names=_three,
     )
     plot_forecast(
         tourism.tail(len(tourism) - _split - 4).head(4).select("time", *_trip_cols),
         _y_pred_sel,
-        panel_group_names=_first_three,
-        title="Selective Observation: Series T1-T3 Only",
+        panel_group_names=_three,
+        title="Selective Observation: Series T3-T5 Only",
     )
 
 @app.cell(hide_code=True)

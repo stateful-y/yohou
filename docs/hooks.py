@@ -52,11 +52,22 @@ def on_pre_build(config):
     if not examples_dir.exists():
         return
 
+    # Skip nixtla notebooks when yohou-nixtla is not installed (e.g. Python 3.14
+    # where transitive dep 'ray' has no wheels).
+    _skip_stems: set[str] = set()
+    try:
+        import yohou_nixtla  # noqa: F401
+    except ModuleNotFoundError:
+        _skip_stems |= {"nixtla_forecasters", "nixtla_panel"}
+
     # Find all marimo notebooks (recursively, excluding __marimo__ and bugs dirs)
     notebooks = [
         p
         for p in examples_dir.rglob("*.py")
-        if "__marimo__" not in p.parts and "bugs" not in p.parts and "__init__" not in p.name
+        if "__marimo__" not in p.parts
+        and "bugs" not in p.parts
+        and "__init__" not in p.name
+        and p.stem not in _skip_stems
     ]
     if not notebooks:
         return

@@ -74,7 +74,7 @@ def _(mo):
     """)
 
 @app.cell
-def _(fetch_hospital, mo):
+def _(fetch_hospital, mo, pl):
     _all = fetch_hospital().frame
     # Use T1 as target, T2-T4 as covariates (rename to non-panel columns)
     hospital = _all.select(
@@ -83,7 +83,7 @@ def _(fetch_hospital, mo):
         pl.col("T2__patients").alias("cov_1"),
         pl.col("T3__patients").alias("cov_2"),
         pl.col("T4__patients").alias("cov_3"),
-    )
+    ).drop_nulls()
     mo.md(
         f"**Hospital**: {len(_all)} rows, {len(_all.columns) - 1} series\n\n"
         f"**Selected**: {len(hospital)} months\n\n"
@@ -110,7 +110,7 @@ def _(mo):
     """)
 
 @app.cell
-def _(hospital, mo, pl):
+def _(hospital, mo):
     _split = int(len(hospital) * 0.85)
     _covariates = ["cov_1", "cov_2", "cov_3"]
 
@@ -206,7 +206,7 @@ def _(
             feature_transformer=LagTransformer(lag=[1, 12]),
         ),
         strategy="predicted",
-        split_ratio=0.8,
+        split_ratio=0.6,
     )
     fc_ff.fit(y_train, X_train, forecasting_horizon=6)
     y_pred_ff = fc_ff.predict(forecasting_horizon=horizon)
