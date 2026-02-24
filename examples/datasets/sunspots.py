@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -26,8 +27,8 @@ def _():
     from yohou.datasets import fetch_sunspot
     from yohou.plotting import (
         plot_autocorrelation,
-        plot_spectrum,
         plot_rolling_statistics,
+        plot_spectrum,
         plot_time_series,
     )
 
@@ -60,7 +61,6 @@ def _(mo):
 
     None -- this is a standalone dataset exploration.
     """)
-    return
 
 @app.cell
 def _(fetch_sunspot, pl):
@@ -80,7 +80,6 @@ def _(mo):
     The raw data spans 200+ years of monthly sunspot observations, revealing the
     characteristic ~11-year solar cycle.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -89,7 +88,6 @@ def _(df, plot_time_series):
         title="Sunspot Numbers (1818-2020)",
         y_label="Sunspot Count",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -99,7 +97,6 @@ def _(mo):
     An 11-year rolling average smooths out individual cycles and highlights
     longer-term trends in solar activity.
     """)
-    return
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -110,7 +107,6 @@ def _(df, plot_rolling_statistics):
         show_original=True,
         title="11-Year Rolling Mean",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -120,7 +116,6 @@ def _(mo):
     The interquartile range (IQR) envelope shows the variability of sunspot
     activity within each cycle.
     """)
-    return
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -132,7 +127,6 @@ def _(df, plot_rolling_statistics):
         show_original=False,
         title="11-Year Rolling Median with IQR",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -142,7 +136,6 @@ def _(mo):
     Autocorrelation reveals the cyclical structure, with peaks at ~132-month
     intervals confirming the ~11-year solar cycle.
     """)
-    return
 
 @app.cell
 def _(df, plot_autocorrelation):
@@ -151,7 +144,6 @@ def _(df, plot_autocorrelation):
         lags=200,
         title="Autocorrelation Function",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -161,7 +153,6 @@ def _(mo):
     Spectral analysis identifies the dominant frequency components in the
     sunspot data.
     """)
-    return
 
 @app.cell
 def _(df, plot_spectrum):
@@ -173,7 +164,6 @@ def _(df, plot_spectrum):
         n_peaks=5,
         title="Periodogram - Dominant Frequencies",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -188,11 +178,10 @@ def _(mo):
 
     ## Next Steps
 
-    - For another long series, see `examples/datasets/air_passengers.py`
+    - For another long series, see `examples/datasets/tourism_monthly.py`
     - For higher frequency with cycles, see `examples/datasets/vic_electricity.py`
     - For panel data with cycles, see `examples/datasets/australian_tourism.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

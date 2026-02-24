@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -46,7 +47,6 @@ def _(mo):
     Familiarity with `SplitConformalForecaster` and basic conformal prediction
     (see `examples/interval/conformal_forecasting.py`).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -90,14 +90,13 @@ def _(mo):
     We use Monthly Tourism, its clear trend and seasonality make
     similarity effects visible because the error structure changes over time.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
 
     split_idx = int(len(y) * 0.8)
@@ -115,7 +114,6 @@ def _(mo):
     First we build a standard `SplitConformalForecaster` **without** similarity
     weighting. All calibration residuals get equal weight.
     """)
-    return
 
 @app.cell
 def _(
@@ -162,7 +160,6 @@ def _(plot_forecast, y_pred_standard, y_test, y_train):
         n_history=36,
         title="Standard Conformal (Uniform Weights)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -173,7 +170,6 @@ def _(mo):
     whose lag features are close to the test point get higher weight, producing
     intervals that adapt to local error structure.
     """)
-    return
 
 @app.cell
 def _(
@@ -218,7 +214,6 @@ def _(plot_forecast, y_pred_euclidean, y_test, y_train):
         n_history=36,
         title="Euclidean Similarity Weighting",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -229,7 +224,6 @@ def _(mo):
     Let us compare **euclidean**, **cosine**, and **cityblock** (Manhattan distance)
     side by side.
     """)
-    return
 
 @app.cell
 def _(
@@ -294,7 +288,6 @@ def _(
         "| Method | Width |\n|--------|-------|\n"
         + "\n".join(_rows)
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -304,7 +297,6 @@ def _(mo):
     Good intervals should achieve empirical coverage close to the nominal rate.
     `plot_calibration` shows whether each method is over- or under-covering.
     """)
-    return
 
 @app.cell
 def _(plot_calibration, coverage, y_pred_standard, y_test):
@@ -314,7 +306,6 @@ def _(plot_calibration, coverage, y_pred_standard, y_test):
         coverage_rates=coverage,
         title="Calibration: Standard Conformal",
     )
-    return
 
 @app.cell
 def _(plot_calibration, coverage, y_pred_euclidean, y_test):
@@ -324,7 +315,6 @@ def _(plot_calibration, coverage, y_pred_euclidean, y_test):
         coverage_rates=coverage,
         title="Calibration: Euclidean Similarity",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -334,7 +324,6 @@ def _(mo):
     Prediction intervals typically widen at longer horizons. `plot_score_per_horizon`
     shows how interval scores change across forecast steps.
     """)
-    return
 
 @app.cell
 def _(IntervalScore, plot_score_per_horizon, y_pred_euclidean, y_pred_standard, y_test):
@@ -345,7 +334,6 @@ def _(IntervalScore, plot_score_per_horizon, y_pred_euclidean, y_pred_standard, 
         kind="line",
         title="Interval Score per Horizon Step (90% Coverage)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -356,7 +344,6 @@ def _(mo):
     `metric_params={"p": 1.5}` gives a p-norm between Manhattan (p=1) and
     Euclidean (p=2).
     """)
-    return
 
 @app.cell
 def _(
@@ -403,7 +390,6 @@ def _(plot_forecast, y_pred_minkowski, y_test, y_train):
         n_history=36,
         title="Minkowski (p=1.5) Similarity",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -422,7 +408,6 @@ def _(mo):
     - **Panel intervals**: See `examples/interval/panel_intervals.py` for prediction intervals on panel data
     - **Interval metrics**: See `examples/metrics/interval_metrics.py` for EmpiricalCoverage, IntervalScore, and more
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

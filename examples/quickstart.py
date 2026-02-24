@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo>=0.20.2",
 #     "plotly",
 #     "scikit-learn",
 #     "scipy",
@@ -44,7 +45,6 @@ def _(mo):
 
     Basic Python and familiarity with sklearn's `fit` / `predict` API.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -52,7 +52,6 @@ def _():
 
     import plotly.graph_objects as go
     import polars as pl
-    from plotly.subplots import make_subplots
     from scipy.stats import randint, uniform
     from sklearn.base import clone
     from sklearn.linear_model import Ridge
@@ -139,16 +138,15 @@ def _(mo):
 
     We use the **Tourism Monthly** dataset from the Monash forecasting archive,
     a panel of 366 monthly tourism series. For this quickstart we pick a single
-    series (`T1__tourists`) and rename it to `"passengers"` so the downstream
+    series (`T1__tourists`) and rename it to `"tourists"` so the downstream
     code stays readable.
 
     Yohou requires a polars DataFrame with a **`"time"` column** (datetime type).
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     print(f"Shape: {y.shape}  |  Range: {y['time'].min()} → {y['time'].max()}")
     y.head()
     return (y,)
@@ -157,12 +155,11 @@ def _(fetch_tourism_monthly):
 def _(plot_time_series, y):
     plot_time_series(
         y,
-        columns="passengers",
+        columns="tourists",
         title="Monthly Tourism (1979 – 2007)",
         y_label="Monthly tourists",
         height=380,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -170,7 +167,6 @@ def _(mo):
     **Observations**: clear yearly seasonality, a long-term upward trend,
     and variance that grows with level — typical of many tourism time series.
     """)
-    return
 
 @app.cell
 def _(train_test_split, y):
@@ -190,7 +186,6 @@ def _(mo):
 
     Every more complex model should **beat this baseline**.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
@@ -214,7 +209,6 @@ def _(plot_forecast, y_pred_baseline, y_test, y_train):
         y_label="Monthly tourists",
         height=380,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -230,7 +224,6 @@ def _(mo):
 
     When used as a `target_transformer`, all transformations are automatically inverted at prediction time. In the case of a `FeaturePipeline`, this means all transforms it includes have to be invertible.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -284,7 +277,6 @@ def _(plot_forecast, y_pred_baseline, y_pred_reduction, y_test, y_train):
         y_label="Monthly tourists",
         height=380,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -297,7 +289,6 @@ def _(mo):
     - **Seasonality** via `FourierSeasonalityForecaster`
     - **Residual** via any forecaster (here `PointReductionForecaster`)
     """)
-    return
 
 @app.cell
 def _(
@@ -354,7 +345,6 @@ def _(
         y_label="Monthly tourists",
         height=400,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -372,7 +362,6 @@ def _(mo):
     first calls `observe_predict` to absorb half the test period before predicting
     the remaining horizon:
     """)
-    return
 
 @app.cell
 def _(copy, forecasting_horizon, plot_forecast, reduction, y_test, y_train):
@@ -397,7 +386,6 @@ def _(copy, forecasting_horizon, plot_forecast, reduction, y_test, y_train):
         y_label="Monthly tourists",
         height=400,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -411,7 +399,6 @@ def _(mo):
 
     Pair with `GridSearchCV` or `RandomizedSearchCV` to tune hyperparameters.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -419,7 +406,6 @@ def _(mo):
     `plot_splits` visualizes the train/test structure across folds.
     An **expanding window** grows the training set with each fold:
     """)
-    return
 
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y_train):
@@ -429,14 +415,12 @@ def _(ExpandingWindowSplitter, plot_splits, y_train):
         title="Expanding Window (5 folds)",
         height=310,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     A **sliding window** keeps training size fixed — oldest data is dropped each fold:
     """)
-    return
 
 @app.cell
 def _(SlidingWindowSplitter, plot_splits, y_train):
@@ -446,7 +430,6 @@ def _(SlidingWindowSplitter, plot_splits, y_train):
         title="Sliding Window (5 folds)",
         height=310,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -456,7 +439,6 @@ def _(mo):
     Randomly sample from continuous / discrete parameter distributions.
     Efficient for larger search spaces.
     """)
-    return
 
 @app.cell
 def _(
@@ -498,7 +480,6 @@ def _(mo):
 
     Exhaustively test every combination, best for small discrete grids.
     """)
-    return
 
 @app.cell
 def _(
@@ -544,7 +525,6 @@ def _(mo):
     mo.md(r"""
     Compare the tuned models against the baseline on the test set:
     """)
-    return
 
 @app.cell
 def _(
@@ -567,7 +547,6 @@ def _(
         y_label="Monthly tourists",
         height=400,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -575,7 +554,6 @@ def _(mo):
     `plot_cv_results_scatter` shows how each hyperparameter value affects the
     cross-validated score, making it easy to identify the optimal range:
     """)
-    return
 
 @app.cell
 def _(grid_search, plot_cv_results_scatter):
@@ -587,7 +565,6 @@ def _(grid_search, plot_cv_results_scatter):
         y_label="Mean MAE",
         height=380,
     )
-    return
 
 @app.cell
 def _(plot_cv_results_scatter, random_search):
@@ -599,7 +576,6 @@ def _(plot_cv_results_scatter, random_search):
         y_label="Mean MAE",
         height=380,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -614,7 +590,6 @@ def _(mo):
       - `"componentwise"` → per-timestep scores (DataFrame)
       - `"all"` → single scalar across all columns and timesteps
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, MeanSquaredError, y_pred_reduction, y_test, y_train):
@@ -627,7 +602,6 @@ def _(MeanAbsoluteError, MeanSquaredError, y_pred_reduction, y_test, y_train):
         _s.fit(y_train)
         _result = _s.score(y_test, y_pred_reduction)
         print(f"{_name}: {_result}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -637,7 +611,6 @@ def _(mo):
 
     See `examples/metrics/` for an exhaustive scorer survey.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -650,7 +623,6 @@ def _(mo):
     Pass `coverage_rates` to `predict_interval` to get intervals at the
     desired confidence levels.
     """)
-    return
 
 @app.cell
 def _(
@@ -710,7 +682,6 @@ def _(mo):
       width.  The dashed lines mark the lower/upper quantiles used for each
       coverage level — the further apart a pair, the wider that band.
     """)
-    return
 
 @app.cell
 def _(conformal, go):
@@ -752,7 +723,6 @@ def _(conformal, go):
         showlegend=False,
     )
     _fig_scores
-    return
 
 @app.cell
 def _(plot_forecast, y_pred_interval, y_test, y_train):
@@ -765,7 +735,6 @@ def _(plot_forecast, y_pred_interval, y_test, y_train):
         y_label="Monthly tourists",
         height=400,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -779,7 +748,6 @@ def _(mo):
     indicate perfect calibration; points below mean the intervals are too narrow
     (under-coverage), points above mean they are too wide (over-coverage).
     """)
-    return
 
 @app.cell
 def _(coverage_rates, plot_calibration, y_pred_interval, y_test):
@@ -787,11 +755,10 @@ def _(coverage_rates, plot_calibration, y_pred_interval, y_test):
         y_pred_interval,
         y_test,
         coverage_rates=coverage_rates,
-        columns="passengers",
+        columns="tourists",
         title="Prediction Interval Calibration",
         height=400,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -810,7 +777,6 @@ def _(mo):
     | `seasonal_emphasis_weight(seasonality=…, emphasis=…)` | Boost specific seasonal positions |
     | `compose_weights(fn1, fn2, …)` | Multiply multiple weight functions element-wise |
     """)
-    return
 
 @app.cell
 def _(
@@ -837,7 +803,6 @@ def _(
         title="Time Weight Functions",
         height=500,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -867,7 +832,6 @@ def _(mo):
     The framework converts `time_weight` to sklearn's `sample_weight` internally
     before passing it to the underlying estimator.
     """)
-    return
 
 @app.cell
 def _(
@@ -919,7 +883,6 @@ def _(mo):
     the two models diverge and whether the weighted version tracks the
     actual trajectory more closely in the critical final months.
     """)
-    return
 
 @app.cell
 def _(
@@ -939,7 +902,6 @@ def _(
         y_label="Monthly tourists",
         height=400,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -954,7 +916,6 @@ def _(mo):
 
     Any forecaster automatically handles all groups when it sees this pattern.
     """)
-    return
 
 @app.cell
 def _(fetch_dominick, inspect_locality):
@@ -993,7 +954,6 @@ def _(plot_forecast, y_panel_test, y_panel_train, y_pred_panel):
         y_label="Profit",
         height=700,
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -1020,10 +980,9 @@ def _(mo):
     | Decomposition deep dive | `stationarity/decomposition.py` |
     | Metrics guide | `metrics/point_metrics.py`, `metrics/interval_metrics.py` |
     | Splitters & search | `model_selection/cv_splitters.py`, `model_selection/hyperparameter_search.py` |
-    | Dataset explorers | `datasets/air_passengers.py`, `datasets/store_sales.py`, … |
+    | Dataset explorers | `datasets/tourism_monthly.py`, `datasets/store_sales.py`, … |
     | Plotting gallery | `plotting/exploration.py`, `plotting/forecasting_visualization.py`, … |
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

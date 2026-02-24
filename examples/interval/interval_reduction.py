@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -42,13 +43,10 @@ def _(mo):
 
     Understanding of `PointReductionForecaster` and prediction intervals.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
-    from sklearn.linear_model import QuantileRegressor
-    from sklearn.multioutput import MultiOutputRegressor
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
@@ -74,14 +72,13 @@ def _(mo):
 
     We load the Monthly Tourism dataset and split it into training and test sets.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
 
     split_idx = int(len(y) * 0.8)
@@ -100,7 +97,6 @@ def _(mo):
     The default estimator is `MultiOutputRegressor(QuantileRegressor())`.
     `coverage_rates` are specified at **fit time** to train the needed quantile models.
     """)
-    return
 
 @app.cell
 def _(
@@ -139,7 +135,6 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
         coverage_rates=coverage_rates,
         title="Quantile Regression Intervals",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -148,7 +143,6 @@ def _(mo):
 
     We assess how well the prediction intervals capture the true values using interval-specific metrics.
     """)
-    return
 
 @app.cell
 def _(
@@ -165,7 +159,6 @@ def _(
         scorer.fit(y_train)
         score = scorer.score(y_test, y_pred_int)
         print(f"{_scorer_cls.__name__}: {score}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -175,7 +168,6 @@ def _(mo):
     You can train and predict with as many coverage rates as needed.
     Each rate adds lower/upper columns to the prediction.
     """)
-    return
 
 @app.cell
 def _(
@@ -214,7 +206,6 @@ def _(many_rates, plot_forecast, y_pred_many, y_test, y_train):
         coverage_rates=many_rates,
         title="Multiple Coverage Rates",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -227,7 +218,6 @@ def _(mo):
     - More coverage rates = more quantile models to train
     - Evaluate with `EmpiricalCoverage`, `IntervalScore`, `MeanIntervalWidth`
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -238,7 +228,6 @@ def _(mo):
     - **Calibration plots**: Use `plot_calibration` from `yohou.plotting`
     - **Scoring**: See `metrics/` for comprehensive interval metrics
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

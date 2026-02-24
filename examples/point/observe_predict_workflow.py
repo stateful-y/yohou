@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -47,7 +48,6 @@ def _(mo):
     Familiarity with `PointReductionForecaster` and `fit/predict`
     (see `examples/quickstart.py`).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -81,18 +81,17 @@ def _(mo):
     then we use the calibration set to demonstrate `observe` and `predict`
     incrementally.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     _n = len(df)
     train_end = int(_n * 0.6)
     cal_end = int(_n * 0.85)
 
-    y_train = df.head(train_end).select("time", "Passengers")
-    y_cal = df[train_end:cal_end].select("time", "Passengers")
-    y_test = df.tail(_n - cal_end).select("time", "Passengers")
+    y_train = df.head(train_end).select("time", "tourists")
+    y_cal = df[train_end:cal_end].select("time", "tourists")
+    y_test = df.tail(_n - cal_end).select("time", "tourists")
 
     y_train.tail(3)
     return cal_end, df, train_end, y_cal, y_test, y_train
@@ -104,7 +103,6 @@ def _(mo):
 
     Train on the initial training window.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, y_train):
@@ -125,7 +123,6 @@ def _(mo):
     refitting the model**. This updates the observation buffer used by
     transformers and the forecaster's internal time tracking.
     """)
-    return
 
 @app.cell
 def _(forecaster, mo, y_cal):
@@ -138,7 +135,6 @@ def _(forecaster, mo, y_cal):
         f"`{forecaster.observed_time_}`\n\n"
         f"The model now knows about 6 additional months without refitting."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -148,7 +144,6 @@ def _(mo):
     Now `predict()` produces forecasts starting from the newly observed
     position, 6 months ahead of where the original training ended.
     """)
-    return
 
 @app.cell
 def _(forecaster, forecasting_horizon, mo):
@@ -168,7 +163,6 @@ def _(mo):
     `observe_predict()` is an atomic combination of `observe()` + `predict()`.
     This is the most common pattern in rolling evaluation loops.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, y_cal, y_train):
@@ -196,7 +190,6 @@ def _(mo):
     window, score, and repeat. This produces a sequence of forecasts that
     can be compared against actuals.
     """)
-    return
 
 @app.cell
 def _(
@@ -244,7 +237,6 @@ def _(
         f"**Mean MAE**: {sum(_scores) / len(_scores):.1f}" if _scores else
         f"**Rolling evaluation**: {len(_all_preds)} windows (no complete truth windows for scoring)"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -255,7 +247,6 @@ def _(mo):
     window **without refitting**. This is useful for backtesting: rewind to
     a point in the past and re-evaluate without retraining.
     """)
-    return
 
 @app.cell
 def _(
@@ -288,7 +279,6 @@ def _(
         f"The forecaster state is now as if we had only observed "
         f"the first {len(y_cal) // 2} calibration months."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -299,7 +289,6 @@ def _(mo):
     using `panel_group_names`. This is useful when different groups receive
     new data at different times.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, fetch_dominick, mo):
@@ -338,7 +327,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, fetch_dominick, mo):
         f"**Predicted columns**: {[c for c in _y_pred_s1.columns if c != 'time' and c != 'observed_time']}\n\n"
         f"Only T7, T11, T12 groups were observed and predicted, other groups remain at their previous state."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -359,7 +347,6 @@ def _(mo):
     - **Scoring**: See `examples/scoring.py` for evaluating forecast quality with point and interval metrics
     - **Panel forecasting**: See `examples/point/panel_forecasting.py` for comprehensive panel workflows
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

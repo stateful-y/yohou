@@ -11,38 +11,32 @@ from pathlib import Path
 
 
 def on_page_markdown(markdown, page, config, files):
-    """Rewrite example links to work in both local and RTD environments.
+    """Rewrite example links for both local and RTD environments.
 
-    On local builds, converts absolute paths like /examples/ to relative paths
-    based on page depth so the locally exported HTML/WASM notebooks are served.
+    [View] links are converted to relative paths pointing to locally exported
+    static HTML notebooks.
 
-    On Read the Docs, static HTML exports are available via [View] links (same
-    relative rewriting as local). [Editable] links are rewritten to open the
-    notebook in the marimo online playground via marimo.app.
+    [Editable] links are rewritten to open the notebook in the marimo online
+    playground via marimo.app. On RTD the branch being built is used so PR
+    previews link to the correct branch; locally, ``main`` is used.
     """
     # Calculate relative path based on page depth (used on all builds)
     src_parts = page.file.src_path.split("/")
     depth = len(src_parts) if src_parts[-1] != "index.md" else len(src_parts) - 1
     prefix = "../" * depth
 
-    if os.environ.get("READTHEDOCS"):
-        repo_url = config.get("repo_url", "").rstrip("/")
-        github_path = repo_url.removeprefix("https://")
-        # Use the branch/tag being built so PR previews link to the PR branch
-        git_ref = os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main")
-        playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
+    repo_url = config.get("repo_url", "").rstrip("/")
+    github_path = repo_url.removeprefix("https://")
+    git_ref = os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main")
+    playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
 
-        # Rewrite [Editable] → marimo.app playground (no WASM export on RTD)
-        markdown = re.sub(
-            r"\[Editable\]\(/examples/([^)]+?)/edit/\)",
-            rf"[Open in marimo]({playground_base}/examples/\1.py)",
-            markdown,
-        )
-        # Rewrite [View] to relative paths pointing to local HTML exports
-        markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
-        return markdown
-
-    # Local build: convert absolute paths to relative paths
+    # Rewrite [Editable] → marimo.app playground
+    markdown = re.sub(
+        r"\[Editable\]\(/examples/([^)]+?)/edit/\)",
+        rf"[Open in marimo]({playground_base}/examples/\1.py)",
+        markdown,
+    )
+    # Rewrite [View] to relative paths pointing to local HTML exports
     markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
     return markdown
 
@@ -52,8 +46,6 @@ def on_pre_build(config):
 
     This ensures standalone HTML versions are available when mkdocs processes files.
     """
-    is_rtd = bool(os.environ.get("READTHEDOCS"))
-
     project_root = Path(__file__).parent.parent
     examples_dir = project_root / "examples"
 
@@ -72,7 +64,10 @@ def on_pre_build(config):
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
+    failed: list[str] = []
+
     for notebook in notebooks:
+        rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
 
         # Clean previous export artifacts before re-exporting
@@ -92,6 +87,7 @@ def on_pre_build(config):
                     "-q",
                     "export",
                     "html",
+                    "--no-sandbox",
                     str(notebook),
                     "-o",
                     str(static_file),
@@ -100,56 +96,21 @@ def on_pre_build(config):
                 capture_output=True,
                 text=True,
             )
-            print(
-                f"[hooks] exported html {notebook.relative_to(project_root)} -> {static_file.relative_to(project_root)}"
-            )
+            print(f"[hooks] exported html {rel_path} -> {static_file.relative_to(project_root)}")
         except subprocess.CalledProcessError as e:
-            print(f"[hooks] Error exporting html {notebook.name}: {e}", file=sys.stderr)
+            failed.append(str(rel_path))
+            print(f"[hooks] FAILED html {rel_path}: {e}", file=sys.stderr)
             if e.stderr:
                 print(e.stderr, file=sys.stderr)
-        except FileNotFoundError:
-            print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
-            break
-
-        # Export interactive WASM (editable in-browser) — skip on RTD to stay
-        # within the 15-minute build time limit
-        if is_rtd:
             continue
-
-        edit_dir = output_dir / "edit"
-        edit_file = edit_dir / "index.html"
-        edit_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "marimo",
-                    "-y",
-                    "-q",
-                    "export",
-                    "html-wasm",
-                    str(notebook),
-                    "-o",
-                    str(edit_file),
-                    "--mode",
-                    "edit",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            print(
-                f"[hooks] exported html-wasm {notebook.relative_to(project_root)} -> {edit_file.relative_to(project_root)}"
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"[hooks] Error exporting html-wasm {notebook.name}: {e}", file=sys.stderr)
-            if e.stderr:
-                print(e.stderr, file=sys.stderr)
         except FileNotFoundError:
             print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
             break
+
+    if failed:
+        msg = f"[hooks] {len(failed)} notebook(s) had cell execution errors:\n"
+        msg += "\n".join(f"  - {f}" for f in failed)
+        raise RuntimeError(msg)
 
 
 class _HtmlToMarkdown(HTMLParser):
@@ -434,32 +395,6 @@ def _is_excluded(relative_posix: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(relative_posix, pattern) for pattern in patterns)
 
 
-def _fix_marimo_filename(html_file: Path, notebook_name: str) -> None:
-    """Replace the default 'notebook.py' filename in marimo HTML exports.
-
-    Marimo exports always use 'notebook.py' as the default filename. This function
-    replaces it with the actual notebook name to show the correct title in browser tabs.
-
-    Note: Only the <marimo-filename> display tag is replaced. The config
-    ``"filename"`` field must stay as ``"notebook.py"`` because the marimo WASM
-    worker has that name hard-coded and writes the notebook source to
-    ``/marimo/notebook.py``. Changing the config value would cause a
-    ``FileNotFoundError`` at runtime.
-    """
-    if not html_file.exists():
-        return
-
-    html_content = html_file.read_text(encoding="utf-8")
-
-    # Replace the display tag
-    html_content = html_content.replace(
-        "<marimo-filename hidden>notebook.py</marimo-filename>",
-        f"<marimo-filename hidden>{notebook_name}.py</marimo-filename>",
-    )
-
-    html_file.write_text(html_content, encoding="utf-8")
-
-
 def _inject_rtd_css(html_file: Path) -> None:
     """Inject CSS to hide Read The Docs version menu flyout in marimo notebooks.
 
@@ -493,7 +428,7 @@ def on_post_build(config):
     project_root = Path(__file__).parent.parent
     docs_examples = project_root / "docs" / "examples"
 
-    # Copy standalone HTML example files (both static and WASM/edit)
+    # Copy standalone HTML example exports to site
     if docs_examples.exists():
         for html_dir in docs_examples.iterdir():
             if not html_dir.is_dir() or html_dir.name.startswith("."):
@@ -507,37 +442,14 @@ def on_post_build(config):
             target_dir = site_dir / "examples" / html_dir.name
             target_dir.mkdir(parents=True, exist_ok=True)
 
-            # Copy top-level files (static HTML export)
+            # Copy exported HTML files
             for file in html_dir.iterdir():
                 if file.name == "CLAUDE.md" or file.is_dir():
                     continue
                 shutil.copy2(file, target_dir / file.name)
 
-            # Inject CSS to hide RTD version menu in static HTML
+            # Inject CSS to hide RTD version menu in exported HTML
             _inject_rtd_css(target_dir / "index.html")
-
-            # Copy edit/ subdirectory (WASM export) if it exists
-            edit_src = html_dir / "edit"
-            if edit_src.exists() and edit_src.is_dir():
-                edit_target = target_dir / "edit"
-                if edit_target.exists():
-                    shutil.rmtree(edit_target)
-                shutil.copytree(
-                    edit_src,
-                    edit_target,
-                    ignore=shutil.ignore_patterns("CLAUDE.md"),
-                )
-
-                # Remove CLAUDE.md if MkDocs copied it from docs/ during build
-                claude_md = edit_target / "CLAUDE.md"
-                if claude_md.exists():
-                    claude_md.unlink()
-
-                # Fix the marimo filename in WASM export only
-                _fix_marimo_filename(edit_target / "index.html", html_dir.name)
-
-                # Inject CSS to hide RTD version menu in WASM export
-                _inject_rtd_css(edit_target / "index.html")
 
             print(f"[hooks] copied examples/{html_dir.name}/ to site")
 

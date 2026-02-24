@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -42,7 +43,6 @@ def _(mo):
 
     Familiarity with `PointReductionForecaster`.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -76,7 +76,6 @@ def _(mo):
     exogenous feature.  At prediction time, NSW demand is unknown, it
     must be forecasted too.
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand, pl):
@@ -124,7 +123,6 @@ def _(mo):
     Simple, but the target model sees perfect features at train time vs. noisy
     forecasted features at predict time.
     """)
-    return
 
 @app.cell
 def _(
@@ -173,7 +171,6 @@ def _(mo):
 
     Let's compare both.
     """)
-    return
 
 @app.cell
 def _(
@@ -232,7 +229,6 @@ def _(mo):
     `ForecastedFeatureForecaster` supports `update` for both target and feature
     forecasters simultaneously.
     """)
-    return
 
 @app.cell
 def _(
@@ -294,7 +290,6 @@ def _(mo):
     - `"actual"` is simplest; `"predicted"` / `"reset"` reduce train-test distribution shift
     - `update()` passes new observations to both internal forecasters
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -305,7 +300,6 @@ def _(mo):
     - **Interval forecasting**: See `interval/` for prediction intervals
     - **Decomposition**: See `stationarity/` for `DecompositionPipeline`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

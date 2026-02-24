@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo>=0.20.2",
 #     "plotly",
 #     "scikit-learn",
 #     "scipy",
@@ -96,7 +97,7 @@ def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
 
     print(f"Dataset: {len(y)} observations from {y['time'].min()} to {y['time'].max()}")

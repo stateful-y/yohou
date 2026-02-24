@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo>=0.20.2",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -40,7 +41,6 @@ def _(mo):
     - Selective training/prediction with `panel_group_names`
     - Groupwise scoring to identify weak groups
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -77,7 +77,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_dominick, mo, pl):
@@ -111,7 +110,6 @@ def _(mo):
     to every group. Each group gets its own fitted parameters, but shares
     the same hyperparameters.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
@@ -133,7 +131,6 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         panel_group_names=["T7", "T13", "T22"],
         title="Global Ridge Model: Selected Groups",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -142,7 +139,6 @@ def _(mo):
 
     Assign different model families to different store groups.
     """)
-    return
 
 @app.cell
 def _(
@@ -195,7 +191,6 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         panel_group_names=["T7", "T13", "T22"],
         title="ColumnForecaster: Per-Group Specialisation",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -205,7 +200,6 @@ def _(mo):
     Use `panel_group_names` to train or predict on a subset of groups.
     Useful when new groups appear or you want group-specific analysis.
     """)
-    return
 
 @app.cell
 def _(fc_global, mo, plot_forecast, y_pred_global, y_test, y_train):
@@ -228,7 +222,6 @@ def _(mo):
     Score each group individually to identify which groups perform best
     and worst under each model.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y_train):
@@ -264,7 +257,6 @@ def _(MeanAbsoluteError, RootMeanSquaredError, mo, y_pred_global, y_test, y_trai
         f"**Groupwise RMSE columns**: {_s_rmse.columns}\n\n"
         "Groupwise aggregation returns one score per group (aggregated over time)."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -283,7 +275,6 @@ def _(mo):
     - **Aggregation modes**: See `examples/metrics/aggregation_modes.py`
     - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

@@ -1,10 +1,12 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "optuna",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
+#     "yohou-optuna",
 # ]
 # ///
 """Optuna Hyperparameter Optimisation.
@@ -42,13 +44,13 @@ def _(mo):
 
     **Requires**: `yohou-optuna` package (install with `uv pip install yohou-optuna`)
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from optuna.distributions import CategoricalDistribution, FloatDistribution
     from sklearn.linear_model import ElasticNet, Ridge
+    from yohou_optuna import OptunaSearchCV, Sampler
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
@@ -56,7 +58,6 @@ def _():
     from yohou.plotting import plot_cv_results_scatter, plot_forecast
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
-    from yohou_optuna import OptunaSearchCV, Sampler
 
     return (
         CategoricalDistribution,
@@ -80,18 +81,17 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly, mo):
-    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
-    _split = int(len(ap) * 0.85)
-    y_train = ap.head(_split)
-    y_test = ap.tail(len(ap) - _split)
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    _split = int(len(tourism) * 0.85)
+    y_train = tourism.head(_split)
+    y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
-    return ap, horizon, y_test, y_train
+    return tourism, horizon, y_test, y_train
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -102,7 +102,6 @@ def _(mo):
     GridSearchCV's exhaustive grid, Optuna samples intelligently
     using a Tree-structured Parzen Estimator (TPE) by default.
     """)
-    return
 
 @app.cell
 def _(CategoricalDistribution, FloatDistribution):
@@ -125,7 +124,6 @@ def _(mo):
     mo.md(r"""
     ## 3. OptunaSearchCV with TPE Sampler
     """)
-    return
 
 @app.cell
 def _(
@@ -164,7 +162,6 @@ def _(mo):
     mo.md(r"""
     ## 4. Inspect Results
     """)
-    return
 
 @app.cell
 def _(mo, optuna_search):
@@ -173,12 +170,10 @@ def _(mo, optuna_search):
         f"**Best score (negated MAE)**: {optuna_search.best_score_:.4f}\n\n"
         f"**Number of trials**: {len(optuna_search.cv_results_['params'])}"
     )
-    return
 
 @app.cell
 def _(plot_cv_results_scatter, optuna_search):
     plot_cv_results_scatter(optuna_search.cv_results_, "estimator__alpha")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -187,7 +182,6 @@ def _(mo):
 
     Each trial records the parameters sampled and resulting score.
     """)
-    return
 
 @app.cell
 def _(mo, optuna_search, pl):
@@ -202,14 +196,12 @@ def _(mo, optuna_search, pl):
             ),
         })
     mo.ui.table(pl.DataFrame(_trials))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Best Model Forecast
     """)
-    return
 
 @app.cell
 def _(horizon, optuna_search, plot_forecast, y_test, y_train):
@@ -231,7 +223,6 @@ def _(mo):
     Combine continuous hyperparameter search with categorical
     choices like lag configurations.
     """)
-    return
 
 @app.cell
 def _(
@@ -288,7 +279,6 @@ def _(mo):
     - **Interval search**: See `examples/model_selection/interval_search.py`
     - **Hyperparameter search basics**: See `examples/model_selection/hyperparameter_search.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

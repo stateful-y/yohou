@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -40,7 +41,6 @@ def _(mo):
     - **`split_ratio`**: Controls train/validation split for feature forecaster
     - Strategy comparison on Hospital multivariate data
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -70,7 +70,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Multivariate Data
     """)
-    return
 
 @app.cell
 def _(fetch_hospital, mo, pl):
@@ -105,7 +104,6 @@ def _(mo):
     The target forecaster is trained on actual feature values. At
     prediction time, you must provide X (or use the default forecast).
     """)
-    return
 
 @app.cell
 def _(
@@ -140,7 +138,6 @@ def _(mo):
     Both fit and predict use the feature forecaster's predictions.
     This avoids train-test leakage.
     """)
-    return
 
 @app.cell
 def _(
@@ -176,7 +173,6 @@ def _(mo):
     The feature forecaster's observation state is rewound before
     prediction, providing a different initialisation point.
     """)
-    return
 
 @app.cell
 def _(
@@ -208,7 +204,6 @@ def _(mo):
     mo.md(r"""
     ## 5. Compare Strategies
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, mo, pl, y_pred_actual, y_pred_predicted, y_pred_rewind, y_test, y_train):
@@ -225,7 +220,6 @@ def _(MeanAbsoluteError, mo, pl, y_pred_actual, y_pred_predicted, y_pred_rewind,
         _rows.append({"Strategy": _name, "MAE": round(_mae, 3)})
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell
 def _(plot_forecast, y_pred_predicted, y_test, y_train):
@@ -236,7 +230,6 @@ def _(plot_forecast, y_pred_predicted, y_test, y_train):
         n_history=36,
         title="ForecastedFeatureForecaster (strategy='predicted')",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -246,7 +239,6 @@ def _(mo):
     `split_ratio` controls how the training data is split between
     fitting the feature forecaster and the target forecaster.
     """)
-    return
 
 @app.cell
 def _(
@@ -284,7 +276,6 @@ def _(
         _rows.append({"split_ratio": _ratio, "MAE": round(_mae, 3)})
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -302,7 +293,6 @@ def _(mo):
     - **Pipeline composition**: See `examples/compose/pipeline_composition.py`
     - **Feature union**: See `examples/compose/feature_union.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

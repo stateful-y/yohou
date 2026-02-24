@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -42,7 +43,6 @@ def _(mo):
 
     Basic understanding of prediction intervals and `PointReductionForecaster`.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -87,11 +87,10 @@ def _(mo):
 
     We load the Monthly Tourism dataset and split it into training and test sets for calibrating and evaluating conformal intervals.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly, pl):
-    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
     # Need enough calibration data: use 80/20 split
     split_idx = int(len(y) * 0.8)
@@ -111,7 +110,6 @@ def _(mo):
     `calibration_size` controls how many of the most recent training observations
     are used for calibration.
     """)
-    return
 
 @app.cell
 def _(
@@ -151,7 +149,6 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
         coverage_rates=coverage_rates,
         title="Split Conformal Prediction Intervals",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -162,7 +159,6 @@ def _(mo):
     - `IntervalScore`: Penalizes wide intervals and miscoverage
     - `MeanIntervalWidth`: Average interval width (narrower = better, given coverage)
     """)
-    return
 
 @app.cell
 def _(
@@ -179,7 +175,6 @@ def _(
         _scorer.fit(y_train)
         _score = _scorer.score(y_test, y_pred_int)
         print(f"{_scorer_cls.__name__}: {_score}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -192,7 +187,6 @@ def _(mo):
     - `AbsoluteResidual()`: $|y - \hat{y}|$: default, symmetric
     - `GammaResidual()`: $|y - \hat{y}| / \hat{y}$: scale-adaptive, wider intervals where predictions are larger
     """)
-    return
 
 @app.cell
 def _(
@@ -239,7 +233,6 @@ def _(
 
         scorer_results[_name] = {"pred": _pred, "coverage": _coverage, "width": _avg_width}
         print(f"{_name:>20s}  coverage={_coverage}  width={_avg_width}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -248,7 +241,6 @@ def _(mo):
 
     Conformal intervals work with **any** point forecaster, including `SeasonalNaive`.
     """)
-    return
 
 @app.cell
 def _(SeasonalNaive, SplitConformalForecaster, forecasting_horizon, y_train):
@@ -274,7 +266,6 @@ def _(plot_forecast, y_pred_naive_int, y_test, y_train):
         coverage_rates=[0.9],
         title="Conformal Intervals on SeasonalNaive",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -287,7 +278,6 @@ def _(mo):
     - Conformity scorers control interval shape: symmetric vs. scale-adaptive
     - Evaluate with `EmpiricalCoverage`, `IntervalScore`, and `MeanIntervalWidth`
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -298,7 +288,6 @@ def _(mo):
     - **Scoring**: See `metrics/` for comprehensive interval evaluation
     - **Calibration plots**: See `plotting/` for `plot_calibration`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -66,11 +67,10 @@ def _(mo):
     Familiarity with cross-validation concepts. See `examples/cross_validation.py`
     for a detailed introduction.
     """)
-    return
 @app.cell
 def _(fetch_tourism_monthly):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
-    return (air,)
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    return (tourism,)
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -80,58 +80,51 @@ def _(mo):
     train, test, and optional gap segments. Vary the splitter type, number
     of splits, and custom colours.
     """)
-    return
 @app.cell
-def _(ExpandingWindowSplitter, air, plot_splits):
+def _(ExpandingWindowSplitter, tourism, plot_splits):
     plot_splits(
-        air,
+        tourism,
         ExpandingWindowSplitter(n_splits=3, test_size=12),
         title="Expanding Window -- 3 Folds, 12-Step Test",
     )
-    return
 @app.cell
-def _(ExpandingWindowSplitter, air, plot_splits):
+def _(ExpandingWindowSplitter, tourism, plot_splits):
     plot_splits(
-        air,
+        tourism,
         ExpandingWindowSplitter(n_splits=5, test_size=12),
         title="Expanding Window -- 5 Folds",
     )
-    return
 @app.cell
-def _(SlidingWindowSplitter, air, plot_splits):
+def _(SlidingWindowSplitter, tourism, plot_splits):
     plot_splits(
-        air,
+        tourism,
         SlidingWindowSplitter(n_splits=5, test_size=12),
         title="Sliding Window -- 5 Folds / 12 Test",
     )
-    return
 @app.cell
-def _(SlidingWindowSplitter, air, plot_splits):
+def _(SlidingWindowSplitter, tourism, plot_splits):
     plot_splits(
-        air,
+        tourism,
         SlidingWindowSplitter(n_splits=5, test_size=12, stride=6),
         title="Sliding Window -- Stride 6 (Overlapping)",
     )
-    return
 @app.cell
-def _(ExpandingWindowSplitter, air, plot_splits):
+def _(ExpandingWindowSplitter, tourism, plot_splits):
     plot_splits(
-        air,
+        tourism,
         ExpandingWindowSplitter(n_splits=3, test_size=12, gap=6),
         train_color="#059669",
         test_color="#dc2626",
         gap_color="#fbbf24",
         title="Expanding Window -- Gap=6, Custom Colours",
     )
-    return
 @app.cell
-def _(SlidingWindowSplitter, air, plot_splits):
+def _(SlidingWindowSplitter, tourism, plot_splits):
     plot_splits(
-        air,
+        tourism,
         SlidingWindowSplitter(n_splits=3, test_size=12, gap=3),
         title="Sliding Window -- Gap=3",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -141,17 +134,16 @@ def _(mo):
     hyperparameter and the cross-validation score. Pass the `cv_results_`
     dict from `GridSearchCV` or `RandomizedSearchCV`.
     """)
-    return
 @app.cell
 def _(
     ExpandingWindowSplitter,
     GridSearchCV,
     MeanAbsoluteError,
     SeasonalNaive,
-    air,
+    tourism,
 ):
     fh = 12
-    y_train = air.head(len(air) - fh)
+    y_train = tourism.head(len(tourism) - fh)
 
     search = GridSearchCV(
         forecaster=SeasonalNaive(),
@@ -169,7 +161,6 @@ def _(cv_results, plot_cv_results_scatter):
         param_name="seasonality",
         title="CV Results -- Default",
     )
-    return
 @app.cell
 def _(cv_results, plot_cv_results_scatter):
     plot_cv_results_scatter(
@@ -178,7 +169,6 @@ def _(cv_results, plot_cv_results_scatter):
         highlight_best=False,
         title="CV Results -- No Best Highlight",
     )
-    return
 @app.cell
 def _(cv_results, plot_cv_results_scatter):
     plot_cv_results_scatter(
@@ -187,7 +177,6 @@ def _(cv_results, plot_cv_results_scatter):
         show_std=False,
         title="CV Results -- No Error Bars",
     )
-    return
 @app.cell
 def _(cv_results, plot_cv_results_scatter):
     plot_cv_results_scatter(
@@ -197,7 +186,6 @@ def _(cv_results, plot_cv_results_scatter):
         marker_size=14.0,
         title="CV Results -- Custom Marker Style",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -215,6 +203,5 @@ def _(mo):
     - **Similarity**: See `examples/plotting/similarity_heatmap.py` for distance-based interval weights
     - **Signal processing**: See `examples/plotting/signal_processing.py` for spectrum and phase analysis
     """)
-    return
 if __name__ == "__main__":
     app.run()

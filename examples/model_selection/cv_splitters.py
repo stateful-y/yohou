@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -41,7 +42,6 @@ def _(mo):
 
     Basic understanding of cross-validation concepts.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -66,14 +66,13 @@ def _(mo):
 
     We create a time series dataset to demonstrate how each cross-validation splitter partitions the data into training and test folds.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
     print(f"Total observations: {len(y)}")
     return (y,)
@@ -86,7 +85,6 @@ def _(mo):
     The training set **grows** with each split. The earliest data is always included.
     `n_splits` controls how many train/test pairs are generated.
     """)
-    return
 
 @app.cell
 def _(ExpandingWindowSplitter, y):
@@ -100,7 +98,6 @@ def _(ExpandingWindowSplitter, y):
 @app.cell
 def _(expanding, plot_splits, y):
     plot_splits(y, expanding, title="Expanding Window Splitter (4 splits, test=12)")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -110,7 +107,6 @@ def _(mo):
     The training window has a **fixed size** that slides forward.
     Older data is dropped, keeping model training focused on recent patterns.
     """)
-    return
 
 @app.cell
 def _(SlidingWindowSplitter, y):
@@ -124,7 +120,6 @@ def _(SlidingWindowSplitter, y):
 @app.cell
 def _(plot_splits, sliding, y):
     plot_splits(y, sliding, title="Sliding Window Splitter (5 folds, test=12)")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -134,7 +129,6 @@ def _(mo):
     In practice, there's often a gap between the last known observation and when
     forecasts are needed. The `gap` parameter simulates this.
     """)
-    return
 
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y):
@@ -144,7 +138,6 @@ def _(ExpandingWindowSplitter, plot_splits, y):
         print(f"  Split {_i}: train ends at {_train_idx[-1]}, test starts at {_test_idx[0]} (gap=6)")
 
     plot_splits(y, expanding_gap, title="Expanding Window with gap=6")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -154,7 +147,6 @@ def _(mo):
     `max_train_size` on `ExpandingWindowSplitter` limits growth, effectively
     becoming a sliding window that fills up from the expanding start.
     """)
-    return
 
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y):
@@ -164,7 +156,6 @@ def _(ExpandingWindowSplitter, plot_splits, y):
         print(f"  Split {_i}: train={len(_train_idx)} (capped at 80), test={len(_test_idx)}")
 
     plot_splits(y, capped, title="Expanding Window capped at 80")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -174,7 +165,6 @@ def _(mo):
     `stride` controls how many observations the window advances between splits.
     Default is `test_size` (non-overlapping test sets).
     """)
-    return
 
 @app.cell
 def _(SlidingWindowSplitter, plot_splits, y):
@@ -182,7 +172,6 @@ def _(SlidingWindowSplitter, plot_splits, y):
 
     print(f"Splits with stride=6: {strided.get_n_splits()}")
     plot_splits(y, strided, title="Sliding Window with stride=6 (overlapping tests)")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -196,7 +185,6 @@ def _(mo):
     - `stride`: Controls step size between splits (for overlapping test sets)
     - `plot_splits` visualizes the temporal structure of CV splits
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -206,7 +194,6 @@ def _(mo):
     - **Hyperparameter search**: See `hyperparameter_search.py` for GridSearchCV
     - **Scoring**: See `metrics/` for evaluation metrics used in CV
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

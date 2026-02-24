@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -52,12 +53,11 @@ def _(mo):
 
     None -- this is a standalone dataset exploration.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
     bunch = fetch_tourism_monthly()
-    df = bunch.frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
+    df = bunch.frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     df.head()
     return (df,)
 
@@ -66,9 +66,8 @@ def _(mo):
     mo.md("""
     ## 1. Raw Time Series Visualization
 
-    We explore the first series (T1) from the Tourism Monthly collection, renamed to "Passengers" for readability. The data reveals trend and seasonal patterns in monthly tourism counts.
+    We explore the first series (T1) from the Tourism Monthly collection, renamed to "tourists" for readability. The data reveals trend and seasonal patterns in monthly tourism counts.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -76,9 +75,8 @@ def _(df, plot_time_series):
         df,
         title="Tourism Monthly - Series T1",
         x_label="Year",
-        y_label="Passengers",
+        y_label="tourists",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -87,7 +85,6 @@ def _(mo):
 
     A 12-month rolling average smooths out seasonal noise and highlights the underlying trend.
     """)
-    return
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -98,7 +95,6 @@ def _(df, plot_rolling_statistics):
         show_original=True,
         title="12-Month Rolling Average",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -107,7 +103,6 @@ def _(mo):
 
     The min/max envelope shows how the range of tourism counts varies over time, highlighting seasonality amplitude changes.
     """)
-    return
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -119,7 +114,6 @@ def _(df, plot_rolling_statistics):
         show_original=False,
         title="12-Month Range Envelope",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -128,7 +122,6 @@ def _(mo):
 
     Aggregating by month reveals the seasonal shape of tourism demand across the year.
     """)
-    return
 
 @app.cell
 def _(df, plot_seasonality):
@@ -138,7 +131,6 @@ def _(df, plot_seasonality):
         aggregation="mean",
         title="Average Tourism by Month",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -156,7 +148,6 @@ def _(mo):
     - For panel data with multiple series, see `examples/datasets/store_sales.py`
     - For high-frequency data, see `examples/datasets/vic_electricity.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

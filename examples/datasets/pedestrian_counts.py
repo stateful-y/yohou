@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -59,7 +60,6 @@ def _(mo):
 
     None. this is a standalone dataset exploration.
     """)
-    return
 
 @app.cell
 def _(fetch_pedestrian_counts):
@@ -79,7 +79,6 @@ def _(mo):
     `Tn__count` convention (pass `n_series=None` for all 66). Here we work
     with the first 6 sensors.
     """)
-    return
 
 @app.cell
 def _(df, inspect_locality, mo):
@@ -91,7 +90,6 @@ def _(df, inspect_locality, mo):
 
     {chr(10).join(f'- **{k}**: {v}' for k, v in panel_groups.items())}
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -102,7 +100,6 @@ def _(mo):
     by location. Some sensors are in high-traffic areas while others
     capture quieter streets.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -114,7 +111,6 @@ def _(df, plot_time_series):
         title="Pedestrian Counts - First 3 Sensors (1 Week)",
         y_label="Count",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -124,7 +120,6 @@ def _(mo):
     Plotting all 6 selected sensors reveals scale differences and shared
     temporal patterns across locations.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -136,7 +131,6 @@ def _(df, plot_time_series):
         title="Pedestrian Counts - 6 Sensors (2 Weeks)",
         y_label="Count",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -146,7 +140,6 @@ def _(mo):
     Boxplots reveal the distribution of hourly counts for each sensor,
     making it easy to compare traffic levels and variability.
     """)
-    return
 
 @app.cell
 def _(df, plot_boxplot):
@@ -155,7 +148,6 @@ def _(df, plot_boxplot):
         title="Pedestrian Count Distribution by Sensor",
         y_label="Count",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -165,7 +157,6 @@ def _(mo):
     Aggregating by hour reveals the daily pedestrian traffic cycle, with
     peaks during commute hours and lunch time.
     """)
-    return
 
 @app.cell
 def _(df, plot_seasonality):
@@ -178,7 +169,6 @@ def _(df, plot_seasonality):
         title="T1 - Average Pedestrian Count by Hour",
         y_label="Average Count",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -195,9 +185,8 @@ def _(mo):
 
     - **Weekly panel**: See `examples/datasets/store_sales.py`
     - **Quarterly panel data**: See `examples/datasets/australian_tourism.py`
-    - **Panel forecasting**: See `examples/datasets/walmart_forecasting.py` for panel forecasting on this dataset
+    - **Panel forecasting**: See `examples/datasets/pedestrian_counts_forecasting.py` for panel forecasting on this dataset
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

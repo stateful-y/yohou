@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -46,7 +47,6 @@ def _(mo):
     (see `examples/datasets/australian_tourism.py` for dataset exploration,
     `examples/quickstart.py` for forecasting basics).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -77,7 +77,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Load and Inspect Panel Structure
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_quarterly, inspect_locality, mo):
@@ -101,7 +100,6 @@ def _(mo):
     mo.md(r"""
     ## 2. Train-Test Split
     """)
-    return
 
 @app.cell
 def _(mo, tourism):
@@ -127,7 +125,6 @@ def _(mo):
     group** automatically. Each series gets its own Ridge regression trained
     on lag features derived from that series only.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, y_test, y_train):
@@ -147,7 +144,6 @@ def _(mo):
 
     Use `panel_group_names` to view forecasts for specific series.
     """)
-    return
 
 @app.cell
 def _(plot_forecast, y_pred, y_test, y_train):
@@ -159,7 +155,6 @@ def _(plot_forecast, y_pred, y_test, y_train):
         panel_group_names=["T1", "T2", "T3"],
         title="Tourism Forecasts: Series T1-T3",
     )
-    return
 
 @app.cell
 def _(plot_forecast, y_pred, y_test, y_train):
@@ -171,7 +166,6 @@ def _(plot_forecast, y_pred, y_test, y_train):
         panel_group_names=["T4", "T5", "T6"],
         title="Tourism Forecasts: Series T4-T6",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -180,7 +174,6 @@ def _(mo):
 
     Score each series independently to identify which are harder to forecast.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, groups, mo, y_pred, y_test, y_train):
@@ -196,7 +189,6 @@ def _(MeanAbsoluteError, groups, mo, y_pred, y_test, y_train):
     mo.md(
         "| Series | MAE |\n|--------|-----|\n" + "\n".join(_lines)
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -206,7 +198,6 @@ def _(mo):
     Simulate a production workflow: fit on early data, then roll forward
     quarter by quarter using `observe_predict`.
     """)
-    return
 
 @app.cell
 def _(
@@ -252,9 +243,8 @@ def _(
         f"**MAE per window**: {_all_scores}\n\n"
         f"**Average MAE**: {sum(_all_scores) / len(_all_scores):.1f}"
         if _all_scores else
-        f"**Rolling windows**: completed (no full truth windows for scoring)"
+        "**Rolling windows**: completed (no full truth windows for scoring)"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -264,7 +254,6 @@ def _(mo):
     In practice, data for different series may arrive at different times.
     Use `panel_group_names` to observe only the groups that have new data.
     """)
-    return
 
 @app.cell
 def _(
@@ -301,7 +290,6 @@ def _(
         panel_group_names=_first_three,
         title="Selective Observation: Series T1-T3 Only",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -319,9 +307,8 @@ def _(mo):
 
     - **Dataset exploration**: See `examples/datasets/australian_tourism.py` for EDA on this dataset
     - **Panel data concepts**: See `examples/panel_data.py` for panel naming conventions
-    - **Pedestrian forecasting**: See `examples/datasets/walmart_forecasting.py` for another panel forecasting example
+    - **Pedestrian forecasting**: See `examples/datasets/pedestrian_counts_forecasting.py` for another panel forecasting example
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

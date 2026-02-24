@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -39,7 +40,6 @@ def _(mo):
     - `NumericalIntegrator`: Cumulative integration
     - Chaining filters for bandpass-like behaviour
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -63,7 +63,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Load High-Frequency Data
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand, mo, pl):
@@ -82,7 +81,6 @@ def _(fetch_electricity_demand, mo, pl):
 @app.cell
 def _(elec_subset, plot_time_series):
     plot_time_series(elec_subset, title="Electricity Demand: Raw (2 Weeks)")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -92,7 +90,6 @@ def _(mo):
     A Butterworth low-pass filter removes high-frequency noise,
     revealing the underlying demand trend.
     """)
-    return
 
 @app.cell
 def _(NumericalFilter, elec_subset, pl, plot_time_series):
@@ -121,7 +118,6 @@ def _(mo):
     A high-pass filter keeps only the fast-changing component, useful
     for isolating noise or short-term fluctuations.
     """)
-    return
 
 @app.cell
 def _(NumericalFilter, elec_subset, pl, plot_time_series):
@@ -148,7 +144,6 @@ def _(mo):
 
     Compare Butterworth, Chebyshev Type 1, and Bessel filters.
     """)
-    return
 
 @app.cell
 def _(NumericalFilter, elec_subset, pl, plot_time_series):
@@ -170,7 +165,6 @@ def _(NumericalFilter, elec_subset, pl, plot_time_series):
         _result.head(200),
         title="Filter Design Comparison (First 200 Samples)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -179,7 +173,6 @@ def _(mo):
 
     Estimate the derivative (rate of change) of the demand signal.
     """)
-    return
 
 @app.cell
 def _(NumericalDifferentiator, elec_subset, mo, plot_time_series):
@@ -196,7 +189,6 @@ def _(NumericalDifferentiator, elec_subset, mo, plot_time_series):
 @app.cell
 def _(demand_rate, plot_time_series):
     plot_time_series(demand_rate.head(200), title="Rate of Change: First 200 Samples")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -205,7 +197,6 @@ def _(mo):
 
     Integrate the demand signal to get cumulative energy consumption.
     """)
-    return
 
 @app.cell
 def _(NumericalIntegrator, elec_subset, mo, plot_time_series):
@@ -222,7 +213,6 @@ def _(NumericalIntegrator, elec_subset, mo, plot_time_series):
 @app.cell
 def _(demand_cumulative, plot_time_series):
     plot_time_series(demand_cumulative, title="Cumulative Integration: Total Energy")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -232,7 +222,6 @@ def _(mo):
     Apply a low-pass filter first to remove noise, then differentiate
     for a cleaner rate-of-change estimate.
     """)
-    return
 
 @app.cell
 def _(NumericalDifferentiator, NumericalFilter, elec_subset, pl, plot_time_series):
@@ -257,7 +246,6 @@ def _(NumericalDifferentiator, NumericalFilter, elec_subset, pl, plot_time_serie
         _compare.head(200),
         title="Rate of Change: Raw vs Smoothed",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -277,7 +265,6 @@ def _(mo):
     - **Window transformers**: See `examples/preprocessing/window_transformers.py`
     - **Stationarity transforms**: See `examples/stationarity/stationarity_transforms.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

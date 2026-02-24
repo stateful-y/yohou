@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -44,7 +45,6 @@ def _(mo):
 
     Basic understanding of feature engineering and time series concepts.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -79,14 +79,13 @@ def _(mo):
 
     We load the Monthly Tourism dataset and split it into segments for demonstrating windowed transformations.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
     print(f"Shape: {y.shape}")
     y.head()
@@ -100,7 +99,6 @@ def _(mo):
     Creates lagged columns. `lag=3` means the value from 3 steps ago.
     The first `max(lag)` rows become null (the `observation_horizon`).
     """)
-    return
 
 @app.cell
 def _(LagTransformer, y):
@@ -122,7 +120,6 @@ def _(mo):
     Computes rolling statistics over a sliding window. Multiple statistics
     can be computed simultaneously.
     """)
-    return
 
 @app.cell
 def _(RollingStatisticsTransformer, y):
@@ -146,7 +143,6 @@ def _(plot_rolling_statistics, y):
         statistics=["mean", "std"],
         title="Rolling Statistics (window=12)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -156,7 +152,6 @@ def _(mo):
     Apply any custom function over a sliding window.
     The function receives a polars Series and returns a scalar.
     """)
-    return
 
 @app.cell
 def _(SlidingWindowFunctionTransformer, y):
@@ -185,7 +180,6 @@ def _(mo):
     EWMA gives more weight to recent observations. Unlike rolling stats,
     it has `observation_horizon=0` (stateless) since it uses all history.
     """)
-    return
 
 @app.cell
 def _(ExponentialMovingAverage, y):
@@ -205,7 +199,6 @@ def _(mo):
     Combine multiple window transformers in parallel using `FeatureUnion`.
     All outputs are concatenated horizontally.
     """)
-    return
 
 @app.cell
 def _(
@@ -243,7 +236,6 @@ def _(mo):
     - `FeatureUnion` combines transformers in parallel for rich feature engineering
     - Stateful transformers produce nulls for the first `observation_horizon` rows
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -254,7 +246,6 @@ def _(mo):
     - **Resampling**: See `resampling.py` for frequency changes
     - **Using in forecasters**: Pass to `feature_transformer` in `PointReductionForecaster`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

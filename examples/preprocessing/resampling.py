@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -41,7 +42,6 @@ def _(mo):
 
     None.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -60,7 +60,6 @@ def _(mo):
 
     The Electricity Demand dataset has 30-minute intervals, ideal for demonstrating downsampling.
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand, pl):
@@ -84,7 +83,6 @@ def _(mo):
     Aggregate from 30-minute to daily frequency. Choose aggregation method:
     `"mean"`, `"sum"`, `"min"`, `"max"`, `"first"`, `"last"`, `"median"`.
     """)
-    return
 
 @app.cell
 def _(Downsampler, y_hf):
@@ -104,7 +102,6 @@ def _(Downsampler, y_hf):
 @app.cell
 def _(plot_time_series, y_daily_mean):
     plot_time_series(y_daily_mean, title="Daily Mean Electricity Demand")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -113,7 +110,6 @@ def _(mo):
 
     Let's compare how different aggregation strategies affect the resampled output.
     """)
-    return
 
 @app.cell
 def _(Downsampler, y_hf):
@@ -123,7 +119,6 @@ def _(Downsampler, y_hf):
         _result = _ds.transform(y_hf)
         _first_val = _result["demand"][0]
         print(f"aggregation={_agg:>6s}  first day: {_first_val:.1f}  rows: {len(_result)}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -133,7 +128,6 @@ def _(mo):
     Interpolate from daily to hourly (or any higher frequency).
     Methods: `"linear"`, `"nearest"`, `"forward"`, `"backward"`.
     """)
-    return
 
 @app.cell
 def _(Upsampler, y_daily_mean):
@@ -154,7 +148,6 @@ def _(Upsampler, y_daily_mean):
         # Show first few hourly values to compare methods
         _vals = _result["demand"].head(5).to_list()
         print(f"interpolation={_method:>10s}  first 5h: {[f'{v:.1f}' for v in _vals]}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -163,7 +156,6 @@ def _(mo):
 
     We apply the same downsampling approach at a weekly frequency to illustrate flexible interval selection.
     """)
-    return
 
 @app.cell
 def _(Downsampler, plot_time_series, y_hf):
@@ -187,7 +179,6 @@ def _(mo):
     - Use upsampling when models require uniform higher frequency
     - `interval` uses polars duration strings: `"1h"`, `"1d"`, `"1w"`, `"1mo"`
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -198,7 +189,6 @@ def _(mo):
     - **Data cleaning**: See `data_cleaning.py` for imputation and outliers
     - **In forecasters**: Use resampled data as input to any forecaster
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

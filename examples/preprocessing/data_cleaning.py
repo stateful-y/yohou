@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -43,7 +44,6 @@ def _(mo):
 
     None. data cleaning is often the first preprocessing step.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -76,14 +76,13 @@ def _(mo):
 
     We construct a small synthetic time series with deliberately introduced missing values to demonstrate the cleaning capabilities.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly, pl):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
 
     # Introduce missing values at random positions
@@ -95,18 +94,17 @@ def _(fetch_tourism_monthly, pl):
     y_missing = y.with_row_index("idx").with_columns(
         pl.when(pl.col("idx").is_in(null_indices))
         .then(None)
-        .otherwise(pl.col("passengers"))
-        .alias("passengers")
+        .otherwise(pl.col("tourists"))
+        .alias("tourists")
     ).drop("idx")
 
-    null_count = y_missing["passengers"].null_count()
+    null_count = y_missing["tourists"].null_count()
     print(f"Introduced {null_count} missing values")
     return null_count, null_indices, random, y, y_missing
 
 @app.cell
 def _(plot_missing_data, y_missing):
     plot_missing_data(y_missing, title="Missing Data Pattern")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -116,7 +114,6 @@ def _(mo):
     Interpolates missing values using temporal methods.
     Methods: `"linear"`, `"forward"`, `"backward"`, `"nearest"`.
     """)
-    return
 
 @app.cell
 def _(SimpleTimeImputer, y_missing):
@@ -124,7 +121,7 @@ def _(SimpleTimeImputer, y_missing):
         imputer = SimpleTimeImputer(method=method)
         imputer.fit(y_missing)
         filled = imputer.transform(y_missing)
-        remaining_nulls = filled["passengers"].null_count()
+        remaining_nulls = filled["tourists"].null_count()
         print(f"method={method:>10s}  remaining nulls: {remaining_nulls}")
     return (filled, imputer, method, remaining_nulls)
 
@@ -145,7 +142,6 @@ def _(mo):
     Fills missing values using the seasonal average for that position.
     `period=12` means monthly seasonality in monthly data.
     """)
-    return
 
 @app.cell
 def _(SeasonalImputer, y_missing):
@@ -153,7 +149,7 @@ def _(SeasonalImputer, y_missing):
     seasonal_imp.fit(y_missing)
     y_seasonal = seasonal_imp.transform(y_missing)
 
-    remaining = y_seasonal["passengers"].null_count()
+    remaining = y_seasonal["tourists"].null_count()
     print(f"Remaining nulls after seasonal imputation: {remaining}")
     return remaining, seasonal_imp, y_seasonal
 
@@ -164,18 +160,17 @@ def _(mo):
 
     Now let's work with outliers. We'll add some extreme values to the clean data.
     """)
-    return
 
 @app.cell
 def _(pl, y):
     # Add outliers
     y_outlier = y.with_row_index("idx").with_columns(
         pl.when(pl.col("idx").is_in([20, 50, 80, 110]))
-        .then(pl.col("passengers") * 3)  # Spike outliers
+        .then(pl.col("tourists") * 3)  # Spike outliers
         .when(pl.col("idx").is_in([30, 70, 100]))
-        .then(pl.col("passengers") * 0.2)  # Dip outliers
-        .otherwise(pl.col("passengers"))
-        .alias("passengers")
+        .then(pl.col("tourists") * 0.2)  # Dip outliers
+        .otherwise(pl.col("tourists"))
+        .alias("tourists")
     ).drop("idx")
 
     print("Added 4 spikes and 3 dips")
@@ -188,7 +183,6 @@ def _(mo):
 
     Uses **fixed** thresholds. Values outside are clipped or set to null.
     """)
-    return
 
 @app.cell
 def _(OutlierThresholdHandler, y_outlier):
@@ -197,7 +191,7 @@ def _(OutlierThresholdHandler, y_outlier):
     y_clipped = clip_handler.transform(y_outlier)
 
     print("Clipped to [100, 500]:")
-    print(f"  Min: {y_clipped['passengers'].min()}, Max: {y_clipped['passengers'].max()}")
+    print(f"  Min: {y_clipped['tourists'].min()}, Max: {y_clipped['tourists'].max()}")
     return clip_handler, y_clipped
 
 @app.cell
@@ -206,7 +200,7 @@ def _(OutlierThresholdHandler, y_outlier):
     nan_handler.fit(y_outlier)
     y_nanified = nan_handler.transform(y_outlier)
 
-    print(f"Values replaced with null: {y_nanified['passengers'].null_count()}")
+    print(f"Values replaced with null: {y_nanified['tourists'].null_count()}")
     return nan_handler, y_nanified
 
 @app.cell(hide_code=True)
@@ -216,7 +210,6 @@ def _(mo):
 
     Uses **learned** percentile thresholds from the data.
     """)
-    return
 
 @app.cell
 def _(OutlierPercentileHandler, y_outlier):
@@ -225,7 +218,7 @@ def _(OutlierPercentileHandler, y_outlier):
     y_pct = pct_handler.transform(y_outlier)
 
     print("Clipped to [5th, 95th] percentile:")
-    print(f"  Min: {y_pct['passengers'].min():.0f}, Max: {y_pct['passengers'].max():.0f}")
+    print(f"  Min: {y_pct['tourists'].min():.0f}, Max: {y_pct['tourists'].max():.0f}")
     return pct_handler, y_pct
 
 @app.cell(hide_code=True)
@@ -235,7 +228,6 @@ def _(mo):
 
     A common pattern: first replace outliers with null, then impute.
     """)
-    return
 
 @app.cell
 def _(OutlierPercentileHandler, SimpleTimeImputer, y_outlier):
@@ -249,8 +241,8 @@ def _(OutlierPercentileHandler, SimpleTimeImputer, y_outlier):
     step2.fit(y_step1)
     y_clean = step2.transform(y_step1)
 
-    print(f"After outlier removal: {y_step1['passengers'].null_count()} nulls")
-    print(f"After imputation: {y_clean['passengers'].null_count()} nulls")
+    print(f"After outlier removal: {y_step1['tourists'].null_count()} nulls")
+    print(f"After imputation: {y_clean['tourists'].null_count()} nulls")
     return step1, step2, y_clean, y_step1
 
 @app.cell(hide_code=True)
@@ -265,7 +257,6 @@ def _(mo):
     - Chain outlier→imputation for robust cleaning
     - All transformers are stateless (no `observation_horizon`)
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -276,7 +267,6 @@ def _(mo):
     - **Resampling**: See `resampling.py` for frequency changes
     - **Stationarity**: See `stationarity/` for trend/seasonality removal
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

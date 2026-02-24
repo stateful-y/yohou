@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -38,7 +39,6 @@ def _(mo):
     - `GridSearchCV` with panel data: hyperparameter search across groups
     - Per-group results analysis from grid search
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -70,7 +70,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_quarterly, mo):
@@ -90,7 +89,6 @@ def _(mo):
     Each fold trains on an expanding window and tests on a fixed-size
     window. All panel groups share the same time splits.
     """)
-    return
 
 @app.cell
 def _(ExpandingWindowSplitter, tourism):
@@ -101,7 +99,6 @@ def _(ExpandingWindowSplitter, tourism):
 @app.cell
 def _(ew_splitter, plot_splits, tourism):
     plot_splits(tourism, ew_splitter, title="Expanding Window: 3 Splits")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -110,7 +107,6 @@ def _(mo):
 
     Fixed-size train and test windows that slide forward.
     """)
-    return
 
 @app.cell
 def _(SlidingWindowSplitter, plot_splits, tourism):
@@ -126,7 +122,6 @@ def _(mo):
     Search over forecaster hyperparameters using time series CV. The
     scorer evaluates all panel groups together.
     """)
-    return
 
 @app.cell
 def _(
@@ -173,7 +168,6 @@ def _(mo, pl, search):
         f"**Best parameters**: {search.best_params_}\n\n"
         f"**Best score**: {search.best_score_:.4f}"
     )
-    return
 
 @app.cell
 def _(mo, pl, search):
@@ -185,7 +179,6 @@ def _(mo, pl, search):
         "rank": _results["rank_test_score"],
     }).sort("rank")
     mo.ui.table(_table)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -195,7 +188,6 @@ def _(mo):
     When `refit=True`, the search object can predict directly using the
     best estimator fitted on the full training data.
     """)
-    return
 
 @app.cell
 def _(mo, search, tourism):
@@ -205,7 +197,6 @@ def _(mo, search, tourism):
         f"**Prediction shape**: {_y_pred_best.shape}\n\n"
         "All panel groups are predicted using the best hyperparameters."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -225,7 +216,6 @@ def _(mo):
     - **Interval search**: See `examples/model_selection/interval_search.py`
     - **CV splitters**: See `examples/model_selection/cv_splitters.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

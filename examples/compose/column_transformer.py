@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -47,7 +48,6 @@ def _(mo):
     Familiarity with `PointReductionForecaster` and basic transformers
     (see `examples/point/reduction_forecaster.py`).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -88,7 +88,6 @@ def _(mo):
     very different dynamics: `vic__demand`, `nsw__demand`, `sa__demand`, etc.
     We use Victoria as the target and other states as exogenous features.
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand, pl):
@@ -118,7 +117,6 @@ def _(mo):
     `StandardScaler`, pass SA_Demand through unchanged, and drop any remaining
     columns.
     """)
-    return
 
 @app.cell
 def _(ColumnTransformer, StandardScaler):
@@ -141,7 +139,6 @@ def _(mo):
     `PointReductionForecaster`. The forecaster calls `.fit_transform()` on `X`
     at fit time and `.transform()` on `X` at predict time.
     """)
-    return
 
 @app.cell
 def _(
@@ -173,7 +170,6 @@ def _(plot_forecast, y_pred_ct, y_test, y_train):
         n_history=60,
         title="Forecast with ColumnTransformer (NSW scaled, SA passthrough)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -184,7 +180,6 @@ def _(mo):
     Compare with `remainder="drop"` (the default) to see the effect on
     feature availability.
     """)
-    return
 
 @app.cell
 def _(ColumnTransformer, StandardScaler, mo):
@@ -209,7 +204,6 @@ def _(mo):
     which include the transformer name prefix when `verbose_feature_names_out=True`
     (the default).
     """)
-    return
 
 @app.cell
 def _(ColumnTransformer, StandardScaler, X_train, mo):
@@ -237,7 +231,6 @@ def _(ColumnTransformer, StandardScaler, X_train, mo):
     _ct_short.fit(X_train)
     _names = _ct_short.get_feature_names_out()
     mo.md(f"**Feature names (verbose=False)**: {_names}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -251,7 +244,6 @@ def _(mo):
 
     Here we use the Dominick dataset (9 panel groups).
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_dominick, mo, pl):
@@ -321,7 +313,6 @@ def _(mo):
     - **Pipeline composition**: See `examples/compose/pipeline_composition.py` for nesting ColumnTransformer in larger pipelines
     - **Panel pipelines**: See `examples/compose/panel_pipelines.py` for comprehensive panel composition patterns
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

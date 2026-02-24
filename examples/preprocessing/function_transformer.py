@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -47,7 +48,6 @@ def _(mo):
     Working knowledge of polars expressions and `PointReductionForecaster`
     (see `examples/quickstart.py`).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -79,14 +79,13 @@ def _(mo):
     mo.md(r"""
     ## 1. Load Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     split_idx = int(len(df) * 0.85)
-    y_train = df.head(split_idx).select("time", "Passengers")
-    y_test = df.tail(len(df) - split_idx).select("time", "Passengers")
+    y_train = df.head(split_idx).select("time", "tourists")
+    y_test = df.tail(len(df) - split_idx).select("time", "tourists")
     y_train.head()
     return df, split_idx, y_test, y_train
 
@@ -99,7 +98,6 @@ def _(mo):
     The function receives a polars `DataFrame` **without the `"time"` column**
     and must return a DataFrame (or array) with the same number of rows.
     """)
-    return
 
 @app.cell
 def _(FunctionTransformer, np, y_train):
@@ -119,7 +117,6 @@ def _(mo):
     (variable day counts). With daily or sub-daily data you can use
     `check_inverse=True` (default) to verify `exp(log(x)) ≈ x` at `fit()` time.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -131,7 +128,6 @@ def _(mo):
     The first `observation_horizon` rows are stored as memory so that
     `inverse_transform` can recover the original values.
     """)
-    return
 
 @app.cell
 def _(FunctionTransformer, mo, pl, y_train):
@@ -169,15 +165,14 @@ def _(diff_transformer, mo, y_diff, y_train):
     # Compare recovered vs. original (minus warmup)
     _y_orig_tail = y_train.tail(len(y_diff))
     _max_diff = (
-        _y_recovered.select("Passengers").to_series()
-        - _y_orig_tail.select("Passengers").to_series()
+        _y_recovered.select("tourists").to_series()
+        - _y_orig_tail.select("tourists").to_series()
     ).abs().max()
     mo.md(
         f"**Max absolute reconstruction error**: {_max_diff}\n\n"
         f"The round-trip is exact because `inverse_transform` uses stored "
         f"observation memory to recover the initial level."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -189,7 +184,6 @@ def _(mo):
     - `"one-to-one"`: keep original names (same as default)
     - A **callable** `(transformer, input_features) -> list[str]`
     """)
-    return
 
 @app.cell
 def _(FunctionTransformer, mo, pl, y_train):
@@ -213,7 +207,6 @@ def _(mo):
     Pass extra arguments to `func` and `inverse_func` via `kw_args` and
     `inv_kw_args`.
     """)
-    return
 
 @app.cell
 def _(FunctionTransformer, mo, pl, y_train):
@@ -226,9 +219,9 @@ def _(FunctionTransformer, mo, pl, y_train):
     )
     _y_clipped = clip_transformer.fit_transform(y_train)
     mo.md(
-        f"**Min before clip**: {y_train['Passengers'].min()}\n\n"
-        f"**Min after clip**: {_y_clipped['Passengers'].min()}\n\n"
-        f"**Max after clip**: {_y_clipped['Passengers'].max()}"
+        f"**Min before clip**: {y_train['tourists'].min()}\n\n"
+        f"**Min after clip**: {_y_clipped['tourists'].min()}\n\n"
+        f"**Max after clip**: {_y_clipped['tourists'].max()}"
     )
     return (clip_transformer,)
 
@@ -240,7 +233,6 @@ def _(mo):
     Use `FunctionTransformer` as `target_transformer` to log-transform the
     target before fitting and automatically back-transform predictions.
     """)
-    return
 
 @app.cell
 def _(
@@ -281,7 +273,6 @@ def _(plot_forecast, y_pred, y_test, y_train):
         n_history=36,
         title="Forecast with Log Target Transform",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -302,7 +293,6 @@ def _(mo):
     - **Window transforms**: See `examples/preprocessing/window_transforms.py` for rolling and expanding windows
     - **Signal processing**: See `examples/preprocessing/signal_processing.py` for numerical filters and differentiators
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "catboost",
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -38,7 +39,6 @@ def _(mo):
     - Silencing CatBoost training output with `verbose=0`
     - Comparing CatBoost with a linear baseline
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -70,11 +70,10 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
     split_idx = int(len(y) * 0.8)
     y_train = y.head(split_idx)
@@ -93,7 +92,6 @@ def _(mo):
     plugs directly into `PointReductionForecaster`.  Set `verbose=0` to
     suppress per-iteration training logs.
     """)
-    return
 
 @app.cell
 def _(
@@ -130,14 +128,12 @@ def _(plot_forecast, y_pred_cb, y_test, y_train):
         y_train=y_train,
         title="CatBoost Point Forecast",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Compare with Linear Baseline
     """)
-    return
 
 @app.cell
 def _(
@@ -164,7 +160,6 @@ def _(
     mae_ridge = scorer.score(y_test, y_pred_ridge)
     print(f"CatBoost MAE: {mae_cb:.2f}")
     print(f"Ridge    MAE: {mae_ridge:.2f}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -176,7 +171,6 @@ def _(mo):
     - Use `verbose=0` to keep notebook output clean
     - Consider `GridSearchCV` for tuning `iterations`, `depth`, `learning_rate`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

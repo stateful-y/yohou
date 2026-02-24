@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -65,7 +66,6 @@ def _(mo):
     (period ≈ 48 samples) plus higher-frequency fluctuations that a
     low-pass filter will suppress.
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand):
@@ -81,7 +81,6 @@ def _(mo):
 
     The 30-day window shows a clear daily cycle plus short-term noise.
     """)
-    return
 
 @app.cell
 def _(plot_time_series, vic_short):
@@ -90,7 +89,6 @@ def _(plot_time_series, vic_short):
         columns="vic__demand",
         title="Raw Demand -- 30-day Window",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -101,7 +99,6 @@ def _(mo):
     (relative to Nyquist) keeps only the slowest oscillations, roughly
     the daily cycle, and removes everything faster.
     """)
-    return
 
 @app.cell
 def _(NumericalFilter, pl, vic_short):
@@ -128,7 +125,6 @@ def _(combined, plot_time_series):
         columns=["Raw", "Filtered"],
         title="Demand -- Raw vs. Low-Pass Filtered",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -139,7 +135,6 @@ def _(mo):
     The raw signal shows energy at many frequencies; after filtering, only the
     low-frequency band retains power.
     """)
-    return
 
 @app.cell
 def _(plot_spectrum, temp_df):
@@ -148,7 +143,6 @@ def _(plot_spectrum, temp_df):
         columns="vic__demand",
         title="Power Spectrum -- Raw Demand",
     )
-    return
 
 @app.cell
 def _(plot_spectrum, temp_filtered):
@@ -157,7 +151,6 @@ def _(plot_spectrum, temp_filtered):
         columns="vic__demand",
         title="Power Spectrum -- After Low-Pass Filter",
     )
-    return
 
 @app.cell
 def _(plot_spectrum, temp_df):
@@ -167,7 +160,6 @@ def _(plot_spectrum, temp_df):
         log_scale=True,
         title="Power Spectrum -- Raw (Log Scale)",
     )
-    return
 
 @app.cell
 def _(plot_spectrum, temp_filtered):
@@ -177,7 +169,6 @@ def _(plot_spectrum, temp_filtered):
         log_scale=True,
         title="Power Spectrum -- Filtered (Log Scale)",
     )
-    return
 
 @app.cell
 def _(plot_spectrum, temp_df):
@@ -186,7 +177,6 @@ def _(plot_spectrum, temp_df):
         columns="vic__demand",
         title="Power Spectrum -- Raw",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -198,7 +188,6 @@ def _(mo):
     `angle_unit="degree"` converts from radians. Notice how the filter
     shifts the phase at higher frequencies that are attenuated.
     """)
-    return
 
 @app.cell
 def _(plot_phase, temp_df):
@@ -207,7 +196,6 @@ def _(plot_phase, temp_df):
         columns="vic__demand",
         title="Phase -- Raw Demand",
     )
-    return
 
 @app.cell
 def _(plot_phase, temp_filtered):
@@ -216,7 +204,6 @@ def _(plot_phase, temp_filtered):
         columns="vic__demand",
         title="Phase -- After Low-Pass Filter",
     )
-    return
 
 @app.cell
 def _(plot_phase, temp_df):
@@ -226,7 +213,6 @@ def _(plot_phase, temp_df):
         angle_unit="degree",
         title="Phase -- Raw (Degrees)",
     )
-    return
 
 @app.cell
 def _(plot_phase, temp_filtered):
@@ -236,7 +222,6 @@ def _(plot_phase, temp_filtered):
         unwrap=False,
         title="Phase -- Filtered (Wrapped)",
     )
-    return
 
 @app.cell
 def _(plot_phase, temp_df):
@@ -247,7 +232,6 @@ def _(plot_phase, temp_df):
         unwrap=False,
         title="Phase -- Raw (Wrapped Degrees)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -259,7 +243,6 @@ def _(mo):
     samples → normalised frequency ≈ 0.04) extracts just that
     component.
     """)
-    return
 
 @app.cell
 def _(NumericalFilter, plot_time_series, temp_df):
@@ -286,7 +269,6 @@ def _(plot_spectrum, temp_bp):
         log_scale=True,
         title="Power Spectrum -- Bandpass (Log Scale)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -311,7 +293,6 @@ def _(mo):
     - **Decomposition**: See `examples/plotting/decomposition.py` for
       STL decomposition and calendar heatmaps
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

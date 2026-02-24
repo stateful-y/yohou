@@ -1,17 +1,19 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "neuralforecast",
 #     "plotly",
 #     "scikit-learn",
 #     "statsforecast",
 #     "yohou",
+#     "yohou-nixtla",
 # ]
 # ///
 """Nixtla Statistical and Neural Forecasters.
 
 Demonstrates yohou-nixtla integration across statistical and neural forecaster
-families with side-by-side comparison on air passengers data.
+families with side-by-side comparison on tourism monthly data.
 """
 
 import marimo
@@ -45,7 +47,6 @@ def _(mo):
 
     **Requires**: `yohou-nixtla` package (install with `uv pip install yohou-nixtla`)
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -68,18 +69,17 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly, mo):
-    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
-    _split = int(len(ap) * 0.85)
-    y_train = ap.head(_split)
-    y_test = ap.tail(len(ap) - _split)
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    _split = int(len(tourism) * 0.85)
+    y_train = tourism.head(_split)
+    y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
-    return ap, horizon, y_test, y_train
+    return tourism, horizon, y_test, y_train
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -93,7 +93,6 @@ def _(mo):
     - `season_length`: Seasonal period (12 for monthly data)
     - `freq`: Frequency string (auto-inferred if not set)
     """)
-    return
 
 @app.cell
 def _():
@@ -160,7 +159,6 @@ def _(mo):
     - `input_size`: Lookback window length
     - `max_steps`: Training iterations (keep low for demos)
     """)
-    return
 
 @app.cell
 def _():
@@ -197,7 +195,6 @@ def _(mo):
     mo.md(r"""
     ## 4. Cross-Family Comparison
     """)
-    return
 
 @app.cell
 def _(mo, neural_results, pl, stats_results):
@@ -218,7 +215,6 @@ def _(neural_preds, plot_forecast, stats_preds, y_test, y_train):
         n_history=36,
         title=f"Best Stats: {_best_stats}",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -227,7 +223,6 @@ def _(mo):
 
     All Nixtla forecasters work with yohou's GridSearchCV.
     """)
-    return
 
 @app.cell
 def _(
@@ -275,7 +270,6 @@ def _(mo):
     - **Optuna search**: See `examples/model_selection/optuna_search.py`
     - **Hyperparameter search**: See `examples/model_selection/hyperparameter_search.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

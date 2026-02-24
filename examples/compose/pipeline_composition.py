@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -41,7 +42,6 @@ def _(mo):
     - `DecompositionPipeline` with feature-engineered residual models
     - Multi-level nesting: Decomposition → Feature → Union → Forecaster
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -82,7 +82,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand, mo, pl):
@@ -107,7 +106,6 @@ def _(mo):
     `FeaturePipeline` applies steps sequentially. The combined
     `observation_horizon` is the **sum** of all steps.
     """)
-    return
 
 @app.cell
 def _(FeaturePipeline, LagTransformer, StandardScaler, mo, y_train):
@@ -135,7 +133,6 @@ def _(mo):
 
     Branch in parallel (FeatureUnion), then apply a sequential step.
     """)
-    return
 
 @app.cell
 def _(
@@ -178,7 +175,6 @@ def _(mo):
 
     Use the nested pipeline as `feature_transformer` in a forecaster.
     """)
-    return
 
 @app.cell
 def _(
@@ -223,7 +219,6 @@ def _(horizon, plot_forecast, y_pred_fp, y_test, y_train):
         n_history=30,
         title="FeaturePipeline(Union + Scale) + Ridge",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -233,7 +228,6 @@ def _(mo):
     Multi-level nesting: Decomposition removes trend, then the residual
     model uses FeatureUnion.
     """)
-    return
 
 @app.cell
 def _(
@@ -285,7 +279,6 @@ def _(mo):
     mo.md(r"""
     ## 6. Compare All Pipelines
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, fc_deep, fc_fp, horizon, mo, pl, y_test, y_train):
@@ -302,7 +295,6 @@ def _(MeanAbsoluteError, fc_deep, fc_fp, horizon, mo, pl, y_test, y_train):
         _rows.append({"Pipeline": _name, "MAE": round(_mae, 2)})
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -321,7 +313,6 @@ def _(mo):
     - **Feature union details**: See `examples/compose/feature_union.py`
     - **Panel pipelines**: See `examples/compose/panel_pipelines.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

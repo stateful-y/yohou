@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "catboost",
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -47,7 +48,6 @@ def _(mo):
 
     Familiarity with `IntervalReductionForecaster` (see `interval_reduction.py`).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -84,11 +84,10 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
     split_idx = int(len(y) * 0.8)
     y_train = y.head(split_idx)
@@ -113,7 +112,6 @@ def _(mo):
     let the forecaster apply **recursive** multi-step prediction at
     inference time.
     """)
-    return
 
 @app.cell
 def _(
@@ -163,7 +161,6 @@ def _(coverage_rates, plot_forecast, y_pred_mq, y_test, y_train):
         coverage_rates=coverage_rates,
         title="CatBoost MultiQuantile Intervals",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -173,7 +170,6 @@ def _(mo):
     The standard path trains **2 × len(coverage_rates)** separate models.
     With CatBoost `MultiQuantile`, only **one** model is needed.
     """)
-    return
 
 @app.cell
 def _(
@@ -215,14 +211,12 @@ def _(elapsed_mq, elapsed_std, mo):
         | Standard QuantileRegressor | {4} | {elapsed_std:.2f}s |
         """
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Evaluate Interval Quality
     """)
-    return
 
 @app.cell
 def _(
@@ -246,7 +240,6 @@ def _(
 
     table = "| Approach | Metric | Score |\n|---|---|---|\n" + "\n".join(rows)
     mo.md(table)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -259,7 +252,6 @@ def _(mo):
     - Multi-quantile is faster when many coverage rates are needed
     - Interval quality is comparable to separate quantile models
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -40,7 +41,6 @@ def _(mo):
     - `store_residuals=True` for inspecting intermediate residuals
     - Panel data decomposition
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -81,7 +81,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Univariate Data
     """)
-    return
 
 @app.cell
 def _(fetch_sunspot, mo, pl):
@@ -99,7 +98,6 @@ def _(mo):
     mo.md(r"""
     ## 2. Two-Component: Trend + Residual
     """)
-    return
 
 @app.cell
 def _(
@@ -143,7 +141,6 @@ def _(mo):
     mo.md(r"""
     ## 3. Three-Component: Trend + Seasonality + Residual
     """)
-    return
 
 @app.cell
 def _(
@@ -191,7 +188,6 @@ def _(mo):
     Apply a log transformation before decomposition, then invert after
     prediction. Useful for data with multiplicative trends.
     """)
-    return
 
 @app.cell
 def _(
@@ -236,7 +232,6 @@ def _(mo):
     mo.md(r"""
     ## 5. Compare All Variations
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred_log, y_pred_three, y_pred_two, y_test, y_train):
@@ -253,7 +248,6 @@ def _(MeanAbsoluteError, mo, y_pred_log, y_pred_three, y_pred_two, y_test, y_tra
         f"| Trend + Season + Residual | {_mae_three:.2f} |\n"
         f"| Log + Trend + Residual | {_mae_log:.2f} |"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -263,7 +257,6 @@ def _(mo):
     Apply the same pipeline to panel data: each group gets its own
     trend and residual model.
     """)
-    return
 
 @app.cell
 def _(
@@ -307,7 +300,6 @@ def _(
         panel_group_names=["T3", "T4", "T5"],
         title="Panel Decomposition: Trend + Residual",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -329,7 +321,6 @@ def _(mo):
     - **Stationarity transforms**: See `examples/stationarity/stationarity_transforms.py`
     - **Panel stationarity**: See `examples/stationarity/panel_stationarity.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

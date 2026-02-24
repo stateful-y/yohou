@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -48,7 +49,6 @@ def _(mo):
     Panel data conventions (`__` separator) and basic forecasting
     (see `examples/quickstart.py`).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -95,7 +95,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Panel Data Recap
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_dominick, mo):
@@ -126,7 +125,6 @@ def _(mo):
     A single `PointReductionForecaster` fits one model per group
     automatically when it detects panel data.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_test, y_train):
@@ -149,7 +147,6 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         panel_group_names=["T7", "T11", "T12"],
         title="Global Model: First 3 Series",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -160,7 +157,6 @@ def _(mo):
     subsets. With panel data, group each store-item combination with its
     own specialised model.
     """)
-    return
 
 @app.cell
 def _(
@@ -215,7 +211,6 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         panel_group_names=["T7", "T11", "T12"],
         title="ColumnForecaster: Different Model Per Group",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -225,7 +220,6 @@ def _(mo):
     Build rich feature sets by combining lag features and rolling statistics
     in parallel via `FeatureUnion`, then use as `feature_transformer`.
     """)
-    return
 
 @app.cell
 def _(
@@ -271,7 +265,6 @@ def _(mo):
     Decompose each panel group into trend + residual automatically.
     The pipeline fits a separate trend model per group.
     """)
-    return
 
 @app.cell
 def _(
@@ -319,7 +312,6 @@ def _(mo):
     Combine decomposition with feature engineering: remove trend first,
     then use `FeatureUnion` for lag + rolling features on the residual.
     """)
-    return
 
 @app.cell
 def _(
@@ -375,7 +367,6 @@ def _(mo):
     Score each approach with groupwise aggregation to see which groups
     benefit from specialised models.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y_train):
@@ -415,7 +406,6 @@ def _(mo):
     - **Panel intervals**: See `examples/interval/panel_intervals.py` for prediction intervals on panel data
     - **Panel preprocessing**: See `examples/preprocessing/panel_preprocessing.py` for transformer-level panel handling
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

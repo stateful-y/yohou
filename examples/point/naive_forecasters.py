@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo>=0.20.2",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -76,7 +77,7 @@ def _(fetch_tourism_monthly, train_test_split):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
     y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
     forecasting_horizon = 12

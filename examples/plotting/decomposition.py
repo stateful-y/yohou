@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -51,12 +52,11 @@ def _(mo):
 
     Understanding of additive decomposition concepts (trend, seasonality, residuals).
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
-    return (air,)
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    return (tourism,)
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -67,24 +67,21 @@ def _(mo):
     and displays selected **components**. By default all five panels are shown:
     observed, trend, seasonal, residual, and seasonal-adjusted.
     """)
-    return
 
 @app.cell
-def _(air, plot_stl_components):
+def _(tourism, plot_stl_components):
     plot_stl_components(
-        air,
+        tourism,
         title="STL -- All Components (Default)",
     )
-    return
 
 @app.cell
-def _(air, plot_stl_components):
+def _(tourism, plot_stl_components):
     plot_stl_components(
-        air,
+        tourism,
         components=["trend", "seasonal"],
         title="STL -- Trend and Seasonal Only",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -95,36 +92,32 @@ def _(mo):
     explicit **period**, and **seasonal_window** size. Comparing robust vs
     non-robust helps gauge the impact of outliers on the trend estimate.
     """)
-    return
 
 @app.cell
-def _(air, plot_stl_components):
+def _(tourism, plot_stl_components):
     plot_stl_components(
-        air,
+        tourism,
         robust=False,
         title="STL -- Non-Robust Estimation",
     )
-    return
 
 @app.cell
-def _(air, plot_stl_components):
+def _(tourism, plot_stl_components):
     plot_stl_components(
-        air,
+        tourism,
         period=12,
         seasonal_window=15,
         title="STL -- Explicit Period=12, Seasonal Window=15",
     )
-    return
 
 @app.cell
-def _(air, plot_stl_components):
+def _(tourism, plot_stl_components):
     plot_stl_components(
-        air,
+        tourism,
         components=["residual"],
         robust=True,
         title="STL -- Residual Only (Robust)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -141,7 +134,6 @@ def _(mo):
     - **Forecast visualization**: See `examples/plotting/forecasting_visualization.py` for model comparison and prediction intervals
     - **Exploration**: See `examples/plotting/exploration.py` for rolling statistics and missing data audits
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

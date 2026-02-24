@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -40,7 +41,6 @@ def _(mo):
     - Multivariate: using covariates as exogenous features (X)
     - `ForecastedFeatureForecaster`: chain target and feature forecasters
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -72,7 +72,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Explore the Dataset
     """)
-    return
 
 @app.cell
 def _(fetch_hospital, mo):
@@ -96,7 +95,6 @@ def _(fetch_hospital, mo):
 @app.cell
 def _(hospital, plot_time_series):
     plot_time_series(hospital.select("time", "patients"), title="Hospital: Target Patient Counts (T1)")
-    return
 
 @app.cell
 def _(hospital, plot_time_series):
@@ -104,14 +102,12 @@ def _(hospital, plot_time_series):
         hospital.select("time", "cov_1", "cov_2", "cov_3"),
         title="Hospital: Covariate Series (T2-T4)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Train/Test Split
     """)
-    return
 
 @app.cell
 def _(hospital, mo, pl):
@@ -136,7 +132,6 @@ def _(mo):
     mo.md(r"""
     ## 3. Univariate Baseline (Target Only)
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_test, y_train):
@@ -154,7 +149,6 @@ def _(plot_forecast, y_pred_uni, y_test, y_train):
         y_test, y_pred_uni, y_train=y_train, n_history=24,
         title="Univariate Baseline (Target Only)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -164,7 +158,6 @@ def _(mo):
     When test-time covariates are available (known future values), pass
     them as `X` to both `fit()` and `predict()`.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, X_test, X_train, horizon, y_test, y_train):
@@ -182,7 +175,6 @@ def _(plot_forecast, y_pred_multi, y_test, y_train):
         y_test, y_pred_multi, y_train=y_train, n_history=24,
         title="Multivariate (Known Exogenous)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -192,7 +184,6 @@ def _(mo):
     When covariates are NOT known at prediction time, forecast them
     separately and use those forecasts as inputs.
     """)
-    return
 
 @app.cell
 def _(
@@ -227,14 +218,12 @@ def _(plot_forecast, y_pred_ff, y_test, y_train):
         y_test, y_pred_ff, y_train=y_train, n_history=24,
         title="ForecastedFeatureForecaster (strategy='predicted')",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Compare Approaches
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, RootMeanSquaredError, mo, pl, y_pred_ff, y_pred_multi, y_pred_uni, y_test, y_train):
@@ -254,7 +243,6 @@ def _(MeanAbsoluteError, RootMeanSquaredError, mo, pl, y_pred_ff, y_pred_multi, 
         _rows.append({"Method": _name, "MAE": round(_m, 3), "RMSE": round(_r, 3)})
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -273,7 +261,6 @@ def _(mo):
     - **Feature union**: See `examples/compose/feature_union.py`
     - **Pipeline composition**: See `examples/compose/pipeline_composition.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

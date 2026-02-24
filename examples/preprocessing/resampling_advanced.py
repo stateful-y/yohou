@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -39,7 +40,6 @@ def _(mo):
     - Boundary / label settings (`closed`, `label`)
     - Combining downsampling and upsampling for round-trip tests
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -62,7 +62,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Load High-Frequency Data
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand, mo, pl):
@@ -85,7 +84,6 @@ def _(mo):
     mo.md(r"""
     ## 2. Downsampler: Mean Aggregation to Hourly
     """)
-    return
 
 @app.cell
 def _(Downsampler, elec_subset, mo, plot_time_series):
@@ -101,14 +99,12 @@ def _(Downsampler, elec_subset, mo, plot_time_series):
 @app.cell
 def _(elec_hourly, plot_time_series):
     plot_time_series(elec_hourly.head(168), title="Hourly Mean: First Week")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Different Aggregation Methods
     """)
-    return
 
 @app.cell
 def _(Downsampler, elec_subset, mo, pl):
@@ -129,7 +125,6 @@ def _(Downsampler, elec_subset, mo, pl):
         })
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -139,7 +134,6 @@ def _(mo):
     `closed` controls which side of the interval boundary is inclusive.
     `label` controls which boundary timestamp represents the bin.
     """)
-    return
 
 @app.cell
 def _(Downsampler, elec_subset, mo):
@@ -155,14 +149,12 @@ def _(Downsampler, elec_subset, mo):
         f"**left/left**: first 3 timestamps: {_out_left['time'].head(3).to_list()}\n\n"
         f"**right/right**: first 3 timestamps: {_out_right['time'].head(3).to_list()}"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Upsampler: Linear Interpolation
     """)
-    return
 
 @app.cell
 def _(Downsampler, Upsampler, elec_subset, mo, plot_time_series):
@@ -186,14 +178,12 @@ def _(elec_upsampled, plot_time_series):
         elec_upsampled.select("time", "demand").head(96),
         title="Upsampled (Linear): First 2 Days",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Different Interpolation Methods
     """)
-    return
 
 @app.cell
 def _(Downsampler, Upsampler, elec_subset, mo, pl):
@@ -215,7 +205,6 @@ def _(Downsampler, Upsampler, elec_subset, mo, pl):
         })
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -224,7 +213,6 @@ def _(mo):
 
     Compare original vs down-then-up to see information loss.
     """)
-    return
 
 @app.cell
 def _(elec_subset, elec_upsampled, mo, pl):
@@ -239,7 +227,6 @@ def _(elec_subset, elec_upsampled, mo, pl):
         "Some information is inevitably lost during downsampling. "
         "Higher aggregation intervals lose more detail."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -258,7 +245,6 @@ def _(mo):
     - **Signal processing**: See `examples/preprocessing/signal_processing.py`
     - **Window transformers**: See `examples/preprocessing/window_transformers.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

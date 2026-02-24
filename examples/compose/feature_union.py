@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -39,7 +40,6 @@ def _(mo):
     - `verbose_feature_names_out` for prefixed column names
     - Using `FeatureUnion` as `feature_transformer` in a forecaster
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -79,7 +79,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Load Data
     """)
-    return
 
 @app.cell
 def _(fetch_sunspot, mo, pl):
@@ -102,7 +101,6 @@ def _(mo):
 
     Combine lag features with rolling statistics.
     """)
-    return
 
 @app.cell
 def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
@@ -131,7 +129,6 @@ def _(mo):
     When `verbose_feature_names_out=True` (default), each output column
     is prefixed with the transformer name.
     """)
-    return
 
 @app.cell
 def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
@@ -161,7 +158,6 @@ def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
         "Verbose names help disambiguate when multiple transformers produce "
         "similarly-named features."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -170,7 +166,6 @@ def _(mo):
 
     Combine lags, rolling statistics, and exponential moving average.
     """)
-    return
 
 @app.cell
 def _(
@@ -206,7 +201,6 @@ def _(mo):
     Use `FeatureUnion` as the `feature_transformer` to produce rich
     feature sets for the reduction-based forecaster.
     """)
-    return
 
 @app.cell
 def _(
@@ -258,7 +252,6 @@ def _(fc_union, horizon, plot_forecast, y_test, y_train):
         n_history=60,
         title="FeatureUnion (Lags + Rolling + EMA): Sunspots",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -277,7 +270,6 @@ def _(mo):
     - **Decomposition**: See `examples/compose/decomposition_variations.py`
     - **Panel feature union**: See `examples/compose/panel_pipelines.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

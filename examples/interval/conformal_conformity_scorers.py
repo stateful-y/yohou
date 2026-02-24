@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -39,7 +40,6 @@ def _(mo):
     - Coverage and width comparison across scorers
     - Using `DistanceSimilarity` with different conformity scorers
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -74,18 +74,17 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly, mo):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
-    _split = int(len(air) * 0.8)
-    y_train = air.head(_split)
-    y_test = air.tail(len(air) - _split)
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    _split = int(len(tourism) * 0.8)
+    y_train = tourism.head(_split)
+    y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
     coverage_rates = [0.9]
     mo.md(f"**Monthly Tourism**: Train={len(y_train)}, Test={len(y_test)}")
-    return air, coverage_rates, horizon, y_test, y_train
+    return tourism, coverage_rates, horizon, y_test, y_train
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -95,7 +94,6 @@ def _(mo):
     `Residual()` uses raw residuals: `y_true - y_pred`.
     Produces asymmetric intervals reflecting the sign of typical errors.
     """)
-    return
 
 @app.cell
 def _(
@@ -137,7 +135,6 @@ def _(mo):
     `AbsoluteResidual()` uses `|y_true - y_pred|`.
     Produces symmetric intervals centred around the point prediction.
     """)
-    return
 
 @app.cell
 def _(
@@ -180,7 +177,6 @@ def _(mo):
     `(y_true - y_pred) / y_pred`. Produces prediction-proportional
     intervals (wider when predictions are larger).
     """)
-    return
 
 @app.cell
 def _(
@@ -219,7 +215,6 @@ def _(mo):
     mo.md(r"""
     ## 5. Compare Coverage and Width
     """)
-    return
 
 @app.cell
 def _(EmpiricalCoverage, MeanIntervalWidth, mo, pl, y_pred_abs, y_pred_gamma, y_pred_resid, y_test, y_train):
@@ -246,7 +241,6 @@ def _(EmpiricalCoverage, MeanIntervalWidth, mo, pl, y_pred_abs, y_pred_gamma, y_
         })
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -257,7 +251,6 @@ def _(mo):
     similarity to the current observation. Combined with different
     conformity scorers, this produces adaptive intervals.
     """)
-    return
 
 @app.cell
 def _(
@@ -319,7 +312,6 @@ def _(mo):
     - **Conformal forecasting**: See `examples/interval/conformal_forecasting.py`
     - **Distance similarity**: See `examples/interval/distance_similarity.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

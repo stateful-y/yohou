@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -44,7 +45,6 @@ def _(mo):
 
     Understanding of stationarity concepts in time series.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -53,8 +53,8 @@ def _():
     from yohou.datasets import fetch_tourism_monthly
     from yohou.plotting import plot_time_series
     from yohou.stationarity import (
-        ASinhTransformer,
         AbsoluteSeasonalReturn,
+        ASinhTransformer,
         BoxCoxTransformer,
         LogTransformer,
         SeasonalDifferencing,
@@ -83,14 +83,13 @@ def _(mo):
     Monthly Tourism has seasonality and an upward trend,
     clearly non-stationary.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly, plot_time_series):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
     plot_time_series(y, title="Monthly Tourism (Non-Stationary)")
     return (y,)
@@ -103,7 +102,6 @@ def _(mo):
     Takes the natural log to stabilize multiplicative variance.
     Stateless and invertible.
     """)
-    return
 
 @app.cell
 def _(LogTransformer, y):
@@ -113,15 +111,14 @@ def _(LogTransformer, y):
 
     data_col = [c for c in y_log.columns if c != "time"][0]
     print(f"observation_horizon: {log_tf.observation_horizon}")
-    print(f"Original range: [{y['passengers'].min()}, {y['passengers'].max()}]")
+    print(f"Original range: [{y['tourists'].min()}, {y['tourists'].max()}]")
     print(f"Log range: [{y_log[data_col].min():.2f}, {y_log[data_col].max():.2f}]")
 
     # Verify inverse transform recovers original (X_p=None for stateless transforms)
     y_recovered = log_tf.inverse_transform(y_log, X_p=None)
     rec_col = [c for c in y_recovered.columns if c != "time"][0]
-    log_inv_err = (y["passengers"] - y_recovered[rec_col]).abs().max()
+    log_inv_err = (y["tourists"] - y_recovered[rec_col]).abs().max()
     print(f"Max inverse error: {log_inv_err:.10f}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -131,7 +128,6 @@ def _(mo):
     Generalization of LogTransformer. `lmbda=0` is log, `lmbda=1` is identity,
     `lmbda=0.5` is square root.
     """)
-    return
 
 @app.cell
 def _(BoxCoxTransformer, y):
@@ -142,7 +138,6 @@ def _(BoxCoxTransformer, y):
         _data_col = [c for c in _y_bc.columns if c != "time"][0]
         _rng = _y_bc[_data_col].max() - _y_bc[_data_col].min()
         print(f"lmbda={_lmbda:.2f}  range={_rng:.2f}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -152,7 +147,6 @@ def _(mo):
     Removes seasonal patterns by computing `y_t - y_{t-s}`.
     Stateful: `observation_horizon = seasonality`.
     """)
-    return
 
 @app.cell
 def _(SeasonalDifferencing, y):
@@ -171,9 +165,8 @@ def _(diff_tf, y, y_diff):
     y_prefix = y.head(diff_tf.observation_horizon)
     y_inv = diff_tf.inverse_transform(y_diff, X_p=y_prefix)
     _inv_col = [c for c in y_inv.columns if c != "time"][0]
-    diff_inv_err = (y["passengers"].tail(len(y_inv)) - y_inv[_inv_col]).abs().max()
+    diff_inv_err = (y["tourists"].tail(len(y_inv)) - y_inv[_inv_col]).abs().max()
     print(f"SeasonalDifferencing inverse error: {diff_inv_err:.10f}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -183,7 +176,6 @@ def _(mo):
     Combines log transform and seasonal differencing in one step:
     `log(y_t) - log(y_{t-s})`. Particularly effective for multiplicative seasonality.
     """)
-    return
 
 @app.cell
 def _(SeasonalLogDifferencing, plot_time_series, y):
@@ -193,7 +185,6 @@ def _(SeasonalLogDifferencing, plot_time_series, y):
 
     print(f"observation_horizon: {sld.observation_horizon}")
     plot_time_series(y_sld, title="Seasonal Log Differenced (should look stationary)")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -205,7 +196,6 @@ def _(mo):
 
     Both are invertible and stateful.
     """)
-    return
 
 @app.cell
 def _(AbsoluteSeasonalReturn, SeasonalReturn, y):
@@ -220,7 +210,6 @@ def _(AbsoluteSeasonalReturn, SeasonalReturn, y):
     y_asr = asr.transform(y)
     _asr_col = [c for c in y_asr.columns if c != "time"][0]
     print(f"AbsoluteSeasonalReturn (first 5 values): {y_asr[_asr_col].head(5).to_list()}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -230,7 +219,6 @@ def _(mo):
     Inverse hyperbolic sine: `asinh((x - median) / MAD * scale)`.
     Robust, symmetric, works with zero and negative values.
     """)
-    return
 
 @app.cell
 def _(ASinhTransformer, y):
@@ -245,9 +233,8 @@ def _(ASinhTransformer, y):
     # Verify invertibility (X_p=None for stateless)
     y_back = asinh_tf.inverse_transform(y_asinh, X_p=None)
     _back_col = [c for c in y_back.columns if c != "time"][0]
-    asinh_inv_err = (y["passengers"] - y_back[_back_col]).abs().max()
+    asinh_inv_err = (y["tourists"] - y_back[_back_col]).abs().max()
     print(f"Inverse error: {asinh_inv_err:.10f}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -256,7 +243,6 @@ def _(mo):
 
     We bring together the results from all transforms to compare their effectiveness at inducing stationarity.
     """)
-    return
 
 @app.cell
 def _(
@@ -282,7 +268,6 @@ def _(
         _y_t = _tf.transform(y)
         _has_inv = hasattr(_tf, "inverse_transform")
         print(f"{_name:<22s}  {_tf.observation_horizon:>11d}  {str(_has_inv):>10s}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -296,7 +281,6 @@ def _(mo):
     - Stateful transformers have `observation_horizon > 0` (first rows are lost)
     - Combine with `target_transformer` in `PointReductionForecaster` for automatic inverse
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -307,7 +291,6 @@ def _(mo):
     - **Using as target_transformer**: See `point/reduction_forecaster.py`
     - **Preprocessing**: See `preprocessing/` for data cleaning and feature engineering
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

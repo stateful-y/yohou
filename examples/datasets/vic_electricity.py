@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -60,7 +61,6 @@ def _(mo):
 
     None. this is a standalone dataset exploration.
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand):
@@ -76,7 +76,6 @@ def _(mo):
     The dataset has 5 panel groups, one per Australian state, using the
     `state__demand` convention.
     """)
-    return
 
 @app.cell
 def _(df, inspect_locality, mo):
@@ -88,7 +87,6 @@ def _(df, inspect_locality, mo):
 
     {chr(10).join(f'- **{k}**: {v}' for k, v in panel_groups.items())}
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -98,7 +96,6 @@ def _(mo):
     Plotting demand from all 5 states reveals scale differences: NSW and
     Victoria have the highest demand, while Tasmania is the smallest.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -109,7 +106,6 @@ def _(df, plot_time_series):
         columns=_demand_cols,
         title="Electricity Demand - All States (1 Week)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -119,7 +115,6 @@ def _(mo):
     A 24-hour (48-step) rolling average of NSW demand highlights daily and
     weekly patterns beneath the noisy half-hourly readings.
     """)
-    return
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -131,7 +126,6 @@ def _(df, plot_rolling_statistics):
         show_original=True,
         title="NSW - 24-Hour Rolling Average",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -141,7 +135,6 @@ def _(mo):
     Cross-correlation quantifies how demand in one state relates to demand
     in another, revealing synchronised patterns.
     """)
-    return
 
 @app.cell
 def _(df, plot_cross_correlation):
@@ -151,7 +144,6 @@ def _(df, plot_cross_correlation):
         max_lags=100,
         title="NSW vs Victoria Demand Cross-Correlation",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -161,7 +153,6 @@ def _(mo):
     Aggregating by hour of day reveals intraday demand peaks and the
     consumption pattern across all states.
     """)
-    return
 
 @app.cell
 def _(df, plot_seasonality):
@@ -171,7 +162,6 @@ def _(df, plot_seasonality):
         seasonality="hour",
         title="NSW - Average Demand by Hour",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -186,11 +176,10 @@ def _(mo):
 
     ## Next Steps
 
-    - For monthly panel data, see `examples/datasets/ett_m1.py`
+    - For monthly panel data, see `examples/datasets/hospital.py`
     - For weekly panel data, see `examples/datasets/store_sales.py`
     - For panel data forecasting, see `examples/datasets/australian_tourism_forecasting.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

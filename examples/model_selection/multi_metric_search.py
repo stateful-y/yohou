@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -37,7 +38,6 @@ def _(mo):
     - Refit strategies: select best by MAE, RMSE, or MAPE
     - `RandomizedSearchCV` with distributions for efficient search
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -81,18 +81,17 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly, mo):
-    ap = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
-    _split = int(len(ap) * 0.85)
-    y_train = ap.head(_split)
-    y_test = ap.tail(len(ap) - _split)
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    _split = int(len(tourism) * 0.85)
+    y_train = tourism.head(_split)
+    y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
-    return ap, horizon, y_test, y_train
+    return tourism, horizon, y_test, y_train
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -106,7 +105,6 @@ def _(mo):
     Scores for "lower is better" metrics are **negated** internally
     (sklearn convention: higher = better).
     """)
-    return
 
 @app.cell
 def _(
@@ -150,14 +148,12 @@ def _(mo):
     With multiple scorers, each metric gets its own `mean_test_{name}`,
     `std_test_{name}`, and `rank_test_{name}` columns.
     """)
-    return
 
 @app.cell
 def _(mo, multi_gs, pl):
     _results = pl.DataFrame(multi_gs.cv_results_)
     _cols = [c for c in _results.columns if "mean_test" in c or "rank_test" in c or "param_" in c]
     mo.ui.table(_results.select(_cols))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -166,7 +162,6 @@ def _(mo):
 
     Compare which alpha each metric selects as "best".
     """)
-    return
 
 @app.cell
 def _(
@@ -206,7 +201,6 @@ def _(
             "Best Score (negated)": round(float(_gs.best_score_), 4),
         })
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -215,7 +209,6 @@ def _(mo):
 
     For larger parameter spaces, random sampling is more efficient.
     """)
-    return
 
 @app.cell
 def _(
@@ -259,7 +252,6 @@ def _(
 @app.cell
 def _(plot_cv_results_scatter, rand_search):
     plot_cv_results_scatter(rand_search.cv_results_, "estimator__alpha")
-    return
 
 @app.cell
 def _(horizon, plot_forecast, rand_search, y_test, y_train):
@@ -291,7 +283,6 @@ def _(mo):
     - **Optuna search**: See `examples/model_selection/optuna_search.py`
     - **Panel CV**: See `examples/model_selection/panel_cross_validation.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

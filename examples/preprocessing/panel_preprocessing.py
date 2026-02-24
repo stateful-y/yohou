@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -40,7 +41,6 @@ def _(mo):
     - Inspecting panel structure with `inspect_locality()`
     - Custom per-group preprocessing pipelines
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -74,7 +74,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Inspect Panel Structure
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_tourism_quarterly, mo, pl):
@@ -102,7 +101,6 @@ def _(mo):
     and processes each group independently while preserving the naming
     convention.
     """)
-    return
 
 @app.cell
 def _(StandardScaler, mo, tourism):
@@ -133,7 +131,6 @@ def _(mo):
     retain the panel naming convention. Check the output columns to see
     the generated feature names.
     """)
-    return
 
 @app.cell
 def _(mo, tourism_rolling):
@@ -142,14 +139,12 @@ def _(mo, tourism_rolling):
         f"**Rows**: {len(tourism_rolling)} "
         f"(reduced from original due to window_size=4 observation horizon)"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Lag Transformer on Panel Data
     """)
-    return
 
 @app.cell
 def _(LagTransformer, mo, tourism):
@@ -171,7 +166,6 @@ def _(mo):
     Use `get_group_df` to extract a single group as a standard DataFrame
     with unprefixed column names. Useful for custom per-group analysis.
     """)
-    return
 
 @app.cell
 def _(get_group_df, mo, pl, tourism):
@@ -188,7 +182,6 @@ def _(get_group_df, mo, pl, tourism):
 @app.cell
 def _(t3_df, plot_time_series):
     plot_time_series(t3_df, title="T3: Tourists (Extracted Group)")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -198,7 +191,6 @@ def _(mo):
     After per-group processing, recombine results into a single panel
     DataFrame using `dict_to_panel`.
     """)
-    return
 
 @app.cell
 def _(StandardScaler, dict_to_panel, get_group_df, mo, pl, tourism):
@@ -226,7 +218,6 @@ def _(mo):
     `SimpleTimeImputer` fills missing values per-group when working
     with panel data.
     """)
-    return
 
 @app.cell
 def _(SimpleTimeImputer, mo, pl, tourism):
@@ -271,7 +262,6 @@ def _(mo):
     - **Panel pipelines**: See `examples/compose/panel_pipelines.py`
     - **Panel forecasting**: See `examples/point/panel_forecasting.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

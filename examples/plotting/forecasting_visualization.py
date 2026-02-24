@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -80,14 +81,13 @@ def _(mo):
 
     Basic familiarity with yohou's fit/predict API (see `examples/quickstart.py`).
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     fh = 12
-    y_train = air.head(len(air) - fh)
-    y_test = air.tail(fh)
+    y_train = tourism.head(len(tourism) - fh)
+    y_test = tourism.tail(fh)
     return fh, y_test, y_train
 
 @app.cell
@@ -125,7 +125,6 @@ def _(mo):
     `plot_forecast` displays actuals vs predictions. Pass **y_train** to include
     history, and use **n_history** to trim the visible window.
     """)
-    return
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
@@ -135,7 +134,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
         y_train=y_train,
         title="Seasonal Naive -- Full History",
     )
-    return
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
@@ -146,7 +144,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
         n_history=50,
         title="Seasonal Naive -- Last 50 Steps of History",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -157,7 +154,6 @@ def _(mo):
     forecasters, include **coverage_rates** to display prediction bands.
     Toggle **show_transition** to control the training/test boundary marker.
     """)
-    return
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_pred_reduction, y_test):
@@ -166,7 +162,6 @@ def _(plot_forecast, y_pred_naive, y_pred_reduction, y_test):
         {"Naive": y_pred_naive, "Reduction": y_pred_reduction},
         title="Multi-Model Comparison (Overlay)",
     )
-    return
 
 @app.cell
 def _(plot_forecast, ss_test, ss_train, y_pred_conformal):
@@ -178,7 +173,6 @@ def _(plot_forecast, ss_test, ss_train, y_pred_conformal):
         n_history=120,
         title="Conformal Forecaster -- 90% PI on Sunspot",
     )
-    return
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
@@ -189,7 +183,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
         show_transition=False,
         title="Seasonal Naive -- No Transition Marker",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -199,7 +192,6 @@ def _(mo):
     `plot_components` displays a fitted `DecompositionPipeline`'s components
     as stacked subplots. Toggle **show_original** and pass a subset of components.
     """)
-    return
 
 @app.cell
 def _(
@@ -231,7 +223,6 @@ def _(decomp_components, fh, plot_components, y_test):
         show_original=True,
         title="Decomposition -- Trend + Seasonality with Original",
     )
-    return
 
 @app.cell
 def _(decomp_components, fh, plot_components, y_train):
@@ -241,7 +232,6 @@ def _(decomp_components, fh, plot_components, y_train):
         show_original=False,
         title="Decomposition -- Components Only",
     )
-    return
 
 @app.cell
 def _(decomp_components, fh, plot_components, y_test):
@@ -250,7 +240,6 @@ def _(decomp_components, fh, plot_components, y_test):
         {"trend": decomp_components["trend"]},
         title="Decomposition -- Trend Only",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -260,7 +249,6 @@ def _(mo):
     `plot_time_weight` renders weighting functions over time. Toggle the
     **fill** kwarg for an area chart and adjust **fill_opacity**.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(exponential_decay_weight, linear_decay_weight, pl, y_train):
@@ -279,7 +267,6 @@ def _(exp_weight_df, plot_time_weight):
         fill=True,
         title="Exponential Decay Weight (half_life=24)",
     )
-    return
 
 @app.cell
 def _(lin_weight_df, plot_time_weight):
@@ -288,7 +275,6 @@ def _(lin_weight_df, plot_time_weight):
         fill=False,
         title="Linear Decay Weight -- Line Only",
     )
-    return
 
 @app.cell
 def _(lin_weight_df, plot_time_weight):
@@ -298,7 +284,6 @@ def _(lin_weight_df, plot_time_weight):
         fill_opacity=0.5,
         title="Linear Decay Weight -- Semi-Transparent Fill",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -315,7 +300,6 @@ def _(mo):
     - **Exploration**: See `examples/plotting/exploration.py` for rolling statistics and missing data audits
     - **Cross-validation**: See `examples/plotting/model_selection.py` for CV split visualization and hyperparameter search results
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

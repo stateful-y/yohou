@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -39,7 +40,6 @@ def _(mo):
     - Seasonal differencing on panel data
     - Inspecting per-group residuals
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -79,7 +79,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Load and Explore Panel Data
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_tourism_quarterly, mo):
@@ -102,7 +101,6 @@ def _(inspect_locality, fetch_tourism_quarterly, mo):
 @app.cell
 def _(plot_time_series, tourism):
     plot_time_series(tourism, title="Tourism Quarterly: All Panel Groups")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -112,7 +110,6 @@ def _(mo):
     `SeasonalDifferencing(seasonality=4)` removes quarterly seasonality
     from each state independently.
     """)
-    return
 
 @app.cell
 def _(SeasonalDifferencing, plot_time_series, tourism):
@@ -137,7 +134,6 @@ def _(mo, sd, tourism, tourism_diff):
         f"**Inverse transform check**: max error = {_max_err:.2e}\n\n"
         f"The seasonal differencing is perfectly invertible (within floating-point precision)."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -146,7 +142,6 @@ def _(mo):
 
     Each group gets its own linear trend + residual model.
     """)
-    return
 
 @app.cell
 def _(
@@ -187,7 +182,6 @@ def _(plot_forecast, y_pred_decomp, y_test, y_train):
         panel_group_names=["T1", "T2", "T3"],
         title="DecompositionPipeline: Trend + Residual (Panel)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -197,7 +191,6 @@ def _(mo):
     Add a `PatternSeasonalityForecaster` between trend and residual
     for a three-component decomposition.
     """)
-    return
 
 @app.cell
 def _(
@@ -245,7 +238,6 @@ def _(mo):
 
     Score each approach per group to see decomposition benefits.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, groups, horizon, mo, pl, y_pred_decomp, y_test, y_train):
@@ -266,7 +258,6 @@ def _(MeanAbsoluteError, SeasonalNaive, groups, horizon, mo, pl, y_pred_decomp, 
         })
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -285,7 +276,6 @@ def _(mo):
     - **Stationarity transforms**: See `examples/stationarity/stationarity_transforms.py`
     - **Decomposition details**: See `examples/stationarity/decomposition.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

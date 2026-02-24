@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -59,7 +60,6 @@ def _(mo):
 
     None. this is a standalone dataset exploration.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_quarterly):
@@ -78,7 +78,6 @@ def _(mo):
     The full dataset has 427 panel groups using the `Tn__tourists`
     convention. Here we work with the first 8 series.
     """)
-    return
 
 @app.cell
 def _(df, inspect_locality, mo):
@@ -90,7 +89,6 @@ def _(df, inspect_locality, mo):
 
     {chr(10).join(f'- **{k}**: {v}' for k, v in panel_groups.items())}
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -100,7 +98,6 @@ def _(mo):
     Comparing the first three tourism series shows demand patterns and
     seasonal differences across panel groups.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -112,7 +109,6 @@ def _(df, plot_time_series):
         title="Tourism Quarterly - First 3 Series",
         y_label="Tourists",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -122,7 +118,6 @@ def _(mo):
     Plotting all 8 series together reveals scale differences and shared
     seasonal patterns.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -134,7 +129,6 @@ def _(df, plot_time_series):
         title="Tourism Quarterly - 8 Series",
         y_label="Tourists",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -143,7 +137,6 @@ def _(mo):
 
     Quarterly aggregation highlights peak tourism seasons across the year.
     """)
-    return
 
 @app.cell
 def _(df, plot_seasonality):
@@ -155,7 +148,6 @@ def _(df, plot_seasonality):
         aggregation="mean",
         title="T1 - Average Tourism by Quarter",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -164,7 +156,6 @@ def _(mo):
 
     Box plots show the year-to-year variability in tourism demand for each series.
     """)
-    return
 
 @app.cell
 def _(df, plot_boxplot):
@@ -173,7 +164,6 @@ def _(df, plot_boxplot):
         period="1y",
         title="Annual Tourism Distribution",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -188,10 +178,9 @@ def _(mo):
     ## Next Steps
 
     - For weekly panel data, see `examples/datasets/store_sales.py`
-    - For hourly panel, see `examples/datasets/walmart_sales.py`
+    - For hourly panel, see `examples/datasets/pedestrian_counts.py`
     - **Panel forecasting**: See `examples/datasets/australian_tourism_forecasting.py` for end-to-end panel forecasting
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

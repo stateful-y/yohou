@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -54,7 +55,6 @@ def _(mo):
     Familiarity with `SplitConformalForecaster`
     (see `examples/interval/conformal_forecasting.py`).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -96,11 +96,10 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     split_idx = int(len(df) * 0.85)
     y_train = df.head(split_idx)
     # Cap test size at 24 so it fits within calibration_size
@@ -115,7 +114,6 @@ def _(mo):
     All conformal forecasters share the same underlying point forecaster.
     This isolates the effect of the conformity scorer on interval quality.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge):
@@ -134,7 +132,6 @@ def _(mo):
     **asymmetric** intervals (lower and upper bounds can differ in distance
     from the point prediction).
     """)
-    return
 
 @app.cell
 def _(
@@ -175,7 +172,6 @@ def _(mo):
     point prediction. This is the most common choice when you have no reason
     to expect directional bias.
     """)
-    return
 
 @app.cell
 def _(
@@ -215,9 +211,8 @@ def _(mo):
     Normalises residuals by the prediction magnitude, making intervals
     **adaptive** (wider when predictions are large, narrower when small).
     This is especially useful for data with **multiplicative** noise patterns
-    like the Air Passengers series.
+    like the Tourism Monthly series.
     """)
-    return
 
 @app.cell
 def _(
@@ -256,7 +251,6 @@ def _(mo):
 
     Combines magnitude-adaptive scaling with symmetric intervals.
     """)
-    return
 
 @app.cell
 def _(
@@ -298,7 +292,6 @@ def _(mo):
     - **Interval Score**: Proper scoring rule penalising width + miscoverage
     - **Mean Interval Width**: Average width (narrower is better, given adequate coverage)
     """)
-    return
 
 @app.cell
 def _(
@@ -354,11 +347,10 @@ def _(mo):
     - **GammaResidual**: Choose for multiplicative data (e.g., sales, passenger counts) where absolute error scales with the level
     - **AbsoluteGammaResidual**: Combines adaptiveness with symmetry; good default for multiplicative data with balanced errors
 
-    For this Air Passengers series (strong multiplicative trend), the
+    For this Tourism Monthly series (strong multiplicative trend), the
     **Gamma** variants should produce better-calibrated intervals because
     interval width adapts to the prediction magnitude.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -379,7 +371,6 @@ def _(mo):
     - **Conformal prediction basics**: See `examples/interval/conformal_forecasting.py` for the full conformal workflow
     - **Interval metrics**: See `examples/metrics/interval_metrics.py` for deep-dive into interval evaluation
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

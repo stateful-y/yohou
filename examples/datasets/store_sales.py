@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -61,7 +62,6 @@ def _(mo):
 
     None -- this is a standalone dataset exploration.
     """)
-    return
 
 @app.cell
 def _(fetch_dominick):
@@ -81,7 +81,6 @@ def _(mo):
     convention (pass `n_series=None` for all 115704). Here we work with the
     first 9 series.
     """)
-    return
 
 @app.cell
 def _(df, inspect_locality, mo):
@@ -103,7 +102,6 @@ def _(mo):
     Visualizing the first three SKU profit series shows how different products
     behave over time.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -115,7 +113,6 @@ def _(df, plot_time_series):
         title="Dominick - First 3 SKUs",
         y_label="Profit",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -125,7 +122,6 @@ def _(mo):
     Comparing all 9 selected series reveals scale differences and shared
     patterns across SKUs.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -137,7 +133,6 @@ def _(df, plot_time_series):
         title="Dominick - 9 SKUs",
         y_label="Profit",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -147,7 +142,6 @@ def _(mo):
     Boxplots reveal the distribution of weekly profit for each SKU,
     making it easy to compare variability and outliers.
     """)
-    return
 
 @app.cell
 def _(df, plot_boxplot):
@@ -156,7 +150,6 @@ def _(df, plot_boxplot):
         title="Profit Distribution by SKU",
         y_label="Profit",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -165,7 +158,6 @@ def _(mo):
 
     Aggregating by month shows seasonal profit cycles across the year.
     """)
-    return
 
 @app.cell
 def _(df, plot_seasonality):
@@ -177,7 +169,6 @@ def _(df, plot_seasonality):
         aggregation="mean",
         title="T1 - Average Profit by Month",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -192,11 +183,10 @@ def _(mo):
 
     ## Next Steps
 
-    - **Hourly panel**: See `examples/datasets/walmart_sales.py`
+    - **Hourly panel**: See `examples/datasets/pedestrian_counts.py`
     - **Quarterly panel data**: See `examples/datasets/australian_tourism.py`
     - **Panel forecasting**: See `examples/point/panel_forecasting.py` for global vs local models
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

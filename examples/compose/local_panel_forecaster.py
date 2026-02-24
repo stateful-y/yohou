@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -52,7 +53,6 @@ def _(mo):
     For homogeneous groups, the default `panel_strategy="global"` is
     simpler and often sufficient.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -91,7 +91,6 @@ def _(mo):
     Australian Tourism: quarterly trips for 8 series.  Each series is a
     panel group with the `__` separator (e.g. `T3__tourists`).
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_tourism_quarterly, mo):
@@ -117,7 +116,6 @@ def _(inspect_locality, fetch_tourism_quarterly, mo):
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(y, title="Tourism Quarterly: Quarterly Tourists by Series")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -127,7 +125,6 @@ def _(mo):
     Wrap a forecaster in `LocalPanelForecaster`.  Each panel group gets a
     fresh `clone()` that is fitted independently on that group's data.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, horizon, y_train):
@@ -151,7 +148,6 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         panel_group_names=["T3", "T4", "T5"],
         title="LocalPanelForecaster: Top 3 Series",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -161,7 +157,6 @@ def _(mo):
     After fitting, `forecasters_` holds a dict mapping group names to
     their fitted clones.  You can inspect individual models.
     """)
-    return
 
 @app.cell
 def _(fc_local, mo):
@@ -174,7 +169,6 @@ def _(fc_local, mo):
         f"**Fitted clones** ({len(fc_local.forecasters_)}):\n\n"
         + "\n".join(_rows)
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -185,7 +179,6 @@ def _(mo):
     of groups.  This is useful when new data arrives for specific groups
     or you want group-specific analysis.
     """)
-    return
 
 @app.cell
 def _(fc_local, horizon, mo):
@@ -208,7 +201,6 @@ def _(mo):
     rolling evaluation.  New observations update only the specified
     groups' clones.
     """)
-    return
 
 @app.cell
 def _(fc_local, horizon, mo, y_test):
@@ -234,7 +226,6 @@ def _(mo):
     default `panel_strategy="global"` (shared hyperparameters, per-group
     transformers) using groupwise MAE.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, fetch_tourism_quarterly):
@@ -305,7 +296,6 @@ def _(mo):
     `LocalPanelForecaster` works with any forecaster, including
     simple baselines like `SeasonalNaive`.
     """)
-    return
 
 @app.cell
 def _(LocalPanelForecaster, MeanAbsoluteError, SeasonalNaive, horizon, mo, y_test2, y_train2):
@@ -347,7 +337,6 @@ def _(mo):
     - **Composition patterns**: See `examples/compose/panel_pipelines.py`
     - **Panel intervals**: See `examples/interval/panel_intervals.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

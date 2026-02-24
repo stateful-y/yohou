@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo>=0.20.2",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -41,7 +42,6 @@ def _(mo):
     - When to use each strategy
     - Groupwise scoring to compare strategies
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -77,7 +77,6 @@ def _(mo):
     Panel columns follow the `<group>__<series>` naming pattern.
     `inspect_locality` discovers groups automatically.
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_dominick, mo, pl):
@@ -102,7 +101,6 @@ def _(plot_time_series, store):
         store,
         title="Dominick: All Panel Groups",
     )
-    return
 
 @app.cell
 def _(mo, store):
@@ -134,7 +132,6 @@ def _(mo):
     This is efficient when groups share similar dynamics and you want
     one set of hyperparameters to govern all groups.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
@@ -157,7 +154,6 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         panel_group_names=["T7", "T11", "T12"],
         title="Global Strategy: One Model, Per-Group State",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -173,7 +169,6 @@ def _(mo):
     learn from inter-group relationships (e.g. spatial spillover effects,
     cannibalization between stores).
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
@@ -196,7 +191,6 @@ def _(plot_forecast, y_pred_multivariate, y_test, y_train):
         panel_group_names=["T7", "T11", "T12"],
         title="Multivariate Strategy: Cross-Group Features",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -208,7 +202,6 @@ def _(mo):
     which shares hyperparameters across groups, each clone has its own
     parameters.  This is the right choice when groups are heterogeneous.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, horizon, y_train):
@@ -232,7 +225,6 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         panel_group_names=["T7", "T11", "T12"],
         title="Local Strategy: Independent Per-Group Clones",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -242,7 +234,6 @@ def _(mo):
     Compare all three strategies using per-group MAE (timewise aggregation
     produces one score per group, averaged across timesteps).
     """)
-    return
 
 @app.cell
 def _(
@@ -294,7 +285,6 @@ def _(MeanAbsoluteError, mo, y_pred_global, y_pred_local, y_pred_multivariate, y
         f"| Multivariate | {_overall_multi} |\n"
         f"| Local | {_overall_local} |"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -322,7 +312,6 @@ def _(mo):
     - **Panel intervals**: See `examples/interval/panel_intervals.py`
     - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

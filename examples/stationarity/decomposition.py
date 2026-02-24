@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -44,18 +45,16 @@ def _(mo):
 
     Understanding of trend and seasonality concepts.
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
     from sklearn.linear_model import Ridge
 
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_components, plot_forecast
-    from yohou.point import PointReductionForecaster, SeasonalNaive
+    from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.stationarity import (
         FourierSeasonalityForecaster,
@@ -86,14 +85,13 @@ def _(mo):
 
     We load a time series dataset suitable for demonstrating trend and seasonality decomposition.
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
     y = (
         fetch_tourism_monthly()
         .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "passengers"})
+        .rename({"T1__tourists": "tourists"})
     )
     y_train = y.head(280)
     y_test = y.tail(65)
@@ -109,7 +107,6 @@ def _(mo):
 
     Fits a polynomial to the time index. `degree=1` is linear, `degree=2` is quadratic.
     """)
-    return
 
 @app.cell
 def _(PolynomialTrendForecaster, fh, plot_forecast, y_test, y_train):
@@ -117,9 +114,8 @@ def _(PolynomialTrendForecaster, fh, plot_forecast, y_test, y_train):
     trend_fc.fit(y_train, forecasting_horizon=fh)
     y_pred_trend = trend_fc.predict(forecasting_horizon=fh)
 
-    print(f"Trend prediction (first 5): {y_pred_trend['passengers'].head(5).to_list()}")
+    print(f"Trend prediction (first 5): {y_pred_trend['tourists'].head(5).to_list()}")
     plot_forecast(y_test, y_pred_trend, y_train=y_train, title="Linear Trend Forecast")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -132,7 +128,6 @@ def _(mo):
     - `method="average"`: Average across all observed seasons
     - `method="median"`: Median across seasons
     """)
-    return
 
 @app.cell
 def _(PatternSeasonalityForecaster, fh, y_train):
@@ -140,8 +135,7 @@ def _(PatternSeasonalityForecaster, fh, y_train):
         season_fc = PatternSeasonalityForecaster(seasonality=12, method=method)
         season_fc.fit(y_train, forecasting_horizon=fh)
         pred = season_fc.predict(forecasting_horizon=fh)
-        print(f"method={method:>7s}  first pred: {pred['passengers'][0]:.1f}")
-    return
+        print(f"method={method:>7s}  first pred: {pred['tourists'][0]:.1f}")
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -151,7 +145,6 @@ def _(mo):
     Models seasonality using Fourier basis functions. More harmonics
     capture more complex seasonal shapes.
     """)
-    return
 
 @app.cell
 def _(FourierSeasonalityForecaster, fh, plot_forecast, y_test, y_train):
@@ -165,7 +158,6 @@ def _(FourierSeasonalityForecaster, fh, plot_forecast, y_test, y_train):
     plot_forecast(
         y_test, y_pred_fourier, y_train=y_train, title="Fourier Seasonality (3 harmonics)"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -177,7 +169,6 @@ def _(mo):
 
     `trend → seasonality → residual`
     """)
-    return
 
 @app.cell
 def _(
@@ -218,7 +209,6 @@ def _(MeanAbsoluteError, y_pred_decomp, y_test, y_train):
     mae.fit(y_train)
     score = mae.score(y_test, y_pred_decomp)
     print(f"Decomposition MAE: {score:.2f}")
-    return
 
 @app.cell
 def _(plot_forecast, y_pred_decomp, y_test, y_train):
@@ -228,7 +218,6 @@ def _(plot_forecast, y_pred_decomp, y_test, y_train):
         y_train=y_train,
         title="DecompositionPipeline: Trend + Season + Residual",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -238,7 +227,6 @@ def _(mo):
     With `store_residuals=True`, access each component's contribution via
     `named_forecasters_`.
     """)
-    return
 
 @app.cell
 def _(decomp, fh, plot_components, y_test):
@@ -252,7 +240,6 @@ def _(decomp, fh, plot_components, y_test):
         components,
         title="Decomposition Components",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -266,7 +253,6 @@ def _(mo):
     - `store_residuals=True` enables component inspection
     - The pipeline prediction is the **sum** of all component predictions
     """)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -277,7 +263,6 @@ def _(mo):
     - **Reduction forecasting**: See `point/reduction_forecaster.py`
     - **Interval forecasting**: See `interval/` for prediction intervals
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

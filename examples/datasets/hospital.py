@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -56,7 +57,6 @@ def _(mo):
 
     None. this is a standalone dataset exploration.
     """)
-    return
 
 @app.cell
 def _(fetch_hospital):
@@ -75,7 +75,6 @@ def _(mo):
     Plotting several patient count series together shows how different
     medical product categories co-move over time.
     """)
-    return
 
 @app.cell
 def _(df, plot_time_series):
@@ -87,7 +86,6 @@ def _(df, plot_time_series):
         title="Hospital Patient Counts - First 4 Series",
         y_label="Patients",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -97,7 +95,6 @@ def _(mo):
     Cross-correlation between T1 and T2 quantifies the strength and
     timing of the relationship between two patient count series.
     """)
-    return
 
 @app.cell
 def _(df, plot_cross_correlation):
@@ -117,7 +114,6 @@ def _(mo):
     Comparing cross-correlation with a different series reveals whether
     different categories have different lag structures.
     """)
-    return
 
 @app.cell
 def _(df, plot_cross_correlation):
@@ -127,7 +123,6 @@ def _(df, plot_cross_correlation):
         max_lags=24,
         title="T1 vs T3 Patient Counts Cross-Correlation",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -137,7 +132,6 @@ def _(mo):
     Aggregating by month reveals seasonal healthcare demand patterns
     driven by illness seasonality and administrative cycles.
     """)
-    return
 
 @app.cell
 def _(df, plot_seasonality):
@@ -147,7 +141,6 @@ def _(df, plot_seasonality):
         seasonality="month",
         title="T1 - Average Patient Count by Month",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -156,7 +149,6 @@ def _(mo):
 
     Quarterly aggregation shows broader seasonal trends in patient counts.
     """)
-    return
 
 @app.cell
 def _(df, plot_seasonality):
@@ -166,7 +158,6 @@ def _(df, plot_seasonality):
         seasonality="quarter",
         title="T1 - Average Patient Count by Quarter",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -185,7 +176,6 @@ def _(mo):
     - For weekly panel, see `examples/datasets/store_sales.py`
     - For univariate cyclic patterns, see `examples/datasets/sunspots.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

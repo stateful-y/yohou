@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -48,7 +49,6 @@ def _(mo):
     Basic familiarity with sklearn preprocessing and `PointReductionForecaster`
     (see `examples/quickstart.py`).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -90,14 +90,13 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
 
 @app.cell
 def _(fetch_tourism_monthly):
-    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "Passengers"})
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     _split = int(len(df) * 0.85)
-    y_train = df.head(_split).select("time", "Passengers")
-    y_test = df.tail(len(df) - _split).select("time", "Passengers")
+    y_train = df.head(_split).select("time", "tourists")
+    y_test = df.tail(len(df) - _split).select("time", "tourists")
     y_train.head()
     return df, y_test, y_train
 
@@ -109,17 +108,16 @@ def _(mo):
     Centres each column to zero mean and unit variance. This is the most
     common scaler for regression models.
     """)
-    return
 
 @app.cell
 def _(StandardScaler, mo, y_train):
     std_scaler = StandardScaler()
     y_scaled = std_scaler.fit_transform(y_train)
-    _stats = y_scaled.select("Passengers").describe()
+    _stats = y_scaled.select("tourists").describe()
     mo.md(
         f"**After StandardScaler**: "
-        f"mean = {y_scaled['Passengers'].mean():.4f}, "
-        f"std = {y_scaled['Passengers'].std():.4f}"
+        f"mean = {y_scaled['tourists'].mean():.4f}, "
+        f"std = {y_scaled['tourists'].std():.4f}"
     )
     return std_scaler, y_scaled
 
@@ -127,11 +125,10 @@ def _(StandardScaler, mo, y_train):
 def _(mo, std_scaler, y_scaled, y_train):
     _y_inv = std_scaler.inverse_transform(y_scaled)
     _max_err = (
-        _y_inv.select("Passengers").to_series()
-        - y_train.select("Passengers").to_series()
+        _y_inv.select("tourists").to_series()
+        - y_train.select("tourists").to_series()
     ).abs().max()
     mo.md(f"**Round-trip reconstruction error**: {_max_err:.2e}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -141,7 +138,6 @@ def _(mo):
     Scales each column to the range `[0, 1]` (or a custom `feature_range`).
     Useful when the model is sensitive to feature magnitudes.
     """)
-    return
 
 @app.cell
 def _(MinMaxScaler, mo, y_train):
@@ -149,8 +145,8 @@ def _(MinMaxScaler, mo, y_train):
     _y_mm = mm_scaler.fit_transform(y_train)
     mo.md(
         f"**After MinMaxScaler**: "
-        f"min = {_y_mm['Passengers'].min():.4f}, "
-        f"max = {_y_mm['Passengers'].max():.4f}"
+        f"min = {_y_mm['tourists'].min():.4f}, "
+        f"max = {_y_mm['tourists'].max():.4f}"
     )
     return (mm_scaler,)
 
@@ -161,7 +157,6 @@ def _(mo):
 
     Uses median and IQR instead of mean and std, making it robust to outliers.
     """)
-    return
 
 @app.cell
 def _(RobustScaler, mo, y_train):
@@ -169,8 +164,8 @@ def _(RobustScaler, mo, y_train):
     _y_rob = rob_scaler.fit_transform(y_train)
     mo.md(
         f"**After RobustScaler**: "
-        f"median = {_y_rob['Passengers'].median():.4f}, "
-        f"IQR-scaled std = {_y_rob['Passengers'].std():.4f}"
+        f"median = {_y_rob['tourists'].median():.4f}, "
+        f"IQR-scaled std = {_y_rob['tourists'].std():.4f}"
     )
     return (rob_scaler,)
 
@@ -179,13 +174,12 @@ def _(mo):
     mo.md(r"""
     ## 5. Compare Scalers Visually
     """)
-    return
 
 @app.cell
 def _(MinMaxScaler, RobustScaler, StandardScaler, pl, plot_time_series, y_train):
-    _std = StandardScaler().fit_transform(y_train).rename({"Passengers": "StandardScaler"})
-    _mm = MinMaxScaler().fit_transform(y_train).rename({"Passengers": "MinMaxScaler"})
-    _rob = RobustScaler().fit_transform(y_train).rename({"Passengers": "RobustScaler"})
+    _std = StandardScaler().fit_transform(y_train).rename({"tourists": "StandardScaler"})
+    _mm = MinMaxScaler().fit_transform(y_train).rename({"tourists": "MinMaxScaler"})
+    _rob = RobustScaler().fit_transform(y_train).rename({"tourists": "RobustScaler"})
     _combined = pl.concat(
         [
             _std.select("time", "StandardScaler"),
@@ -195,7 +189,6 @@ def _(MinMaxScaler, RobustScaler, StandardScaler, pl, plot_time_series, y_train)
         how="horizontal",
     )
     plot_time_series(_combined, title="Scaler Comparison on Monthly Tourism")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -206,7 +199,6 @@ def _(mo):
     data more Gaussian-like.  Box-Cox requires strictly positive values;
     Yeo-Johnson works with any data.
     """)
-    return
 
 @app.cell
 def _(PowerTransformer, mo, y_train):
@@ -214,7 +206,7 @@ def _(PowerTransformer, mo, y_train):
     _y_pw = pw_transformer.fit_transform(y_train)
     mo.md(
         f"**After PowerTransformer (Box-Cox)**: "
-        f"skewness = {_y_pw['Passengers'].skew():.4f}"
+        f"skewness = {_y_pw['tourists'].skew():.4f}"
     )
     return (pw_transformer,)
 
@@ -226,7 +218,6 @@ def _(mo):
     Creates interaction and polynomial terms. Useful as a `feature_transformer`
     to enrich the feature space before a linear regression.
     """)
-    return
 
 @app.cell
 def _(PolynomialFeatures, mo, y_train):
@@ -248,7 +239,6 @@ def _(mo):
     fitting and inverse-scale predictions. Here we compare raw predictions
     with StandardScaler-transformed predictions.
     """)
-    return
 
 @app.cell
 def _(
@@ -299,7 +289,6 @@ def _(plot_forecast, y_pred_scaled, y_test, y_train):
         n_history=36,
         title="Forecast with StandardScaler Target Transform",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -310,7 +299,6 @@ def _(mo):
     forecaster, yohou fits a **separate scaler per panel group**. Each
     group's data is scaled independently.
     """)
-    return
 
 @app.cell
 def _(
@@ -348,7 +336,6 @@ def _(
         panel_group_names=["T7", "T11"],
         title="Panel Forecast with Per-Group StandardScaler",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -369,7 +356,6 @@ def _(mo):
     - **Custom transforms**: See `examples/preprocessing/function_transformer.py` for wrapping arbitrary polars operations
     - **Stationarity transforms**: See `examples/stationarity/` for decomposition-based transforms (LogTransformer, BoxCoxTransformer, etc.)
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "yohou",
 # ]
@@ -61,7 +62,6 @@ def _(mo):
 
     Basic understanding of correlation and scatter plots. Familiarity with multivariate time series concepts.
     """)
-    return
 @app.cell
 def _(fetch_electricity_demand, fetch_hospital, pl):
     _elec = fetch_electricity_demand().frame
@@ -89,14 +89,12 @@ def _(mo):
     them as a heatmap. Vary the **colorscale**, toggle **show_values**, and restrict
     to a subset of **columns**.
     """)
-    return
 @app.cell
 def _(plot_correlation_heatmap, vic_daily):
     plot_correlation_heatmap(
         vic_daily,
         title="Pearson Correlation -- Default (RdBu_r, Values Shown)",
     )
-    return
 @app.cell
 def _(plot_correlation_heatmap, vic_daily):
     plot_correlation_heatmap(
@@ -105,7 +103,6 @@ def _(plot_correlation_heatmap, vic_daily):
         show_values=False,
         title="Pearson Correlation -- Viridis, No Annotations",
     )
-    return
 @app.cell
 def _(plot_correlation_heatmap, vic_daily):
     plot_correlation_heatmap(
@@ -113,7 +110,6 @@ def _(plot_correlation_heatmap, vic_daily):
         columns=["Victoria", "NSW"],
         title="Pearson Correlation -- Column Subset",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -123,14 +119,12 @@ def _(mo):
     The **diagonal** can be `"kde"`, `"histogram"`, or `"none"`. The **seasonality**
     parameter colors points by season, and **show_correlation** overlays Pearson r.
     """)
-    return
 @app.cell
 def _(plot_scatter_matrix, vic_daily):
     plot_scatter_matrix(
         vic_daily,
         title="Scatter Matrix -- Default (KDE Diagonal)",
     )
-    return
 @app.cell
 def _(plot_scatter_matrix, vic_daily):
     plot_scatter_matrix(
@@ -138,7 +132,6 @@ def _(plot_scatter_matrix, vic_daily):
         diagonal="histogram",
         title="Scatter Matrix -- Histogram Diagonal",
     )
-    return
 @app.cell
 def _(plot_scatter_matrix, vic_daily):
     plot_scatter_matrix(
@@ -147,7 +140,6 @@ def _(plot_scatter_matrix, vic_daily):
         show_correlation=False,
         title="Scatter Matrix -- Scatter Only, No Statistics",
     )
-    return
 @app.cell
 def _(plot_scatter_matrix, vic_daily):
     plot_scatter_matrix(
@@ -156,7 +148,6 @@ def _(plot_scatter_matrix, vic_daily):
         seasonality="month",
         title="Scatter Matrix -- Month-Colored Points",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -166,7 +157,6 @@ def _(mo):
     two columns at integer lags. Vary **lags**, **alpha** (significance level),
     and reverse the column pair to inspect asymmetry.
     """)
-    return
 @app.cell
 def _(plot_cross_correlation, vic_daily):
     plot_cross_correlation(
@@ -175,7 +165,6 @@ def _(plot_cross_correlation, vic_daily):
         lags=40,
         title="CCF: Victoria vs NSW (40 Lags)",
     )
-    return
 @app.cell
 def _(plot_cross_correlation, vic_daily):
     plot_cross_correlation(
@@ -185,7 +174,6 @@ def _(plot_cross_correlation, vic_daily):
         alpha=0.01,
         title="CCF: Victoria vs NSW (20 Lags, alpha=0.01)",
     )
-    return
 @app.cell
 def _(plot_cross_correlation, vic_daily):
     plot_cross_correlation(
@@ -194,7 +182,6 @@ def _(plot_cross_correlation, vic_daily):
         lags=40,
         title="CCF: NSW vs Victoria (Reversed Direction)",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -205,7 +192,6 @@ def _(mo):
     colors points by season, **show_regression** adds a trend line, and
     **show_diagonal** draws the $y = x$ identity.
     """)
-    return
 @app.cell
 def _(hospital, plot_lag_scatter):
     plot_lag_scatter(
@@ -214,7 +200,6 @@ def _(hospital, plot_lag_scatter):
         lags=1,
         title="Lag 1 Scatter -- Hospital patients_1",
     )
-    return
 @app.cell
 def _(hospital, plot_lag_scatter):
     plot_lag_scatter(
@@ -223,7 +208,6 @@ def _(hospital, plot_lag_scatter):
         lags=[1, 6, 12, 24],
         title="Multi-Lag Grid -- patients_1 at Lags 1, 6, 12, 24",
     )
-    return
 @app.cell
 def _(hospital, plot_lag_scatter):
     plot_lag_scatter(
@@ -234,7 +218,6 @@ def _(hospital, plot_lag_scatter):
         show_regression=True,
         title="Lag Scatter -- Month-Colored with Regression Line",
     )
-    return
 @app.cell
 def _(hospital, plot_lag_scatter):
     plot_lag_scatter(
@@ -245,7 +228,6 @@ def _(hospital, plot_lag_scatter):
         marker_opacity=0.3,
         title="Lag Scatter -- No Diagonal, Transparent Markers",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -262,6 +244,5 @@ def _(mo):
     - **STL decomposition**: See `examples/plotting/decomposition.py` for decomposition and calendar heatmaps
     - **Exploration**: See `examples/plotting/exploration.py` for rolling statistics and missing data audits
     """)
-    return
 if __name__ == "__main__":
     app.run()

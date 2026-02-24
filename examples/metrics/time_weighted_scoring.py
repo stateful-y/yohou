@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -40,7 +41,6 @@ def _(mo):
     - Applying weights in scorer `score()` via `time_weight`
     - Panel data with time weights
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -80,14 +80,13 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data and Predictions
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, fetch_tourism_monthly, mo):
-    air = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "passengers"})
-    _split = int(len(air) * 0.85)
-    y_train = air.head(_split)
-    y_test = air.tail(len(air) - _split)
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    _split = int(len(tourism) * 0.85)
+    y_train = tourism.head(_split)
+    y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
 
     fc = PointReductionForecaster(
@@ -97,8 +96,8 @@ def _(LagTransformer, PointReductionForecaster, Ridge, fetch_tourism_monthly, mo
     fc.fit(y_train, forecasting_horizon=horizon)
     y_pred = fc.predict(forecasting_horizon=horizon)
 
-    mo.md(f"**Air Passengers**: Train={len(y_train)}, Test={len(y_test)}")
-    return air, fc, horizon, y_pred, y_test, y_train
+    mo.md(f"**Tourism Monthly**: Train={len(y_train)}, Test={len(y_test)}")
+    return tourism, fc, horizon, y_pred, y_test, y_train
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -108,7 +107,6 @@ def _(mo):
     Recent observations receive the highest weight, decaying
     exponentially with a configurable `half_life`.
     """)
-    return
 
 @app.cell
 def _(exponential_decay_weight, plot_time_weight, y_test):
@@ -131,14 +129,12 @@ def _(MeanAbsoluteError, mo, w_exp, y_pred, y_test, y_train):
         f"**Unweighted MAE**: {_unweighted:.2f}\n\n"
         f"**Exponential-weighted MAE**: {_weighted:.2f}"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Linear Decay Weight
     """)
-    return
 
 @app.cell
 def _(linear_decay_weight, plot_time_weight, y_test):
@@ -157,7 +153,6 @@ def _(MeanAbsoluteError, mo, w_lin, y_pred, y_test, y_train):
         _scorer.score(y_test, y_pred, time_weight=w_lin)
     )
     mo.md(f"**Linear-weighted MAE**: {_weighted_lin:.2f}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -167,7 +162,6 @@ def _(mo):
     Boost the weight at specific seasonal positions (e.g., every 12
     months for annual cycles).
     """)
-    return
 
 @app.cell
 def _(plot_time_weight, seasonal_emphasis_weight, y_test):
@@ -186,7 +180,6 @@ def _(mo):
     Multiply multiple weight functions together: e.g., exponential
     decay AND seasonal emphasis.
     """)
-    return
 
 @app.cell
 def _(
@@ -214,7 +207,6 @@ def _(MeanAbsoluteError, mo, w_composed, y_pred, y_test, y_train):
         _scorer.score(y_test, y_pred, time_weight=w_composed)
     )
     mo.md(f"**Composed-weighted MAE**: {_weighted_comp:.2f}")
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -224,7 +216,6 @@ def _(mo):
     Time weights work with panel data: applied per-timestep across
     all groups.
     """)
-    return
 
 @app.cell
 def _(
@@ -266,7 +257,6 @@ def _(
         f"**Panel exp-weighted MAE**: {_weighted_p:.2f}\n\n"
         "Time weights apply uniformly across all panel groups."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -286,7 +276,6 @@ def _(mo):
     - **Aggregation modes**: See `examples/metrics/aggregation_modes.py`
     - **Scoring**: See `examples/scoring.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

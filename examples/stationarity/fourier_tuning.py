@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -39,7 +40,6 @@ def _(mo):
     - Different estimators (ElasticNet, Ridge) for Fourier regression
     - Using Fourier inside a DecompositionPipeline
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -82,7 +82,6 @@ def _(mo):
     Use electricity demand data with daily aggregation for clear
     weekly seasonality.
     """)
-    return
 
 @app.cell
 def _(fetch_electricity_demand, mo, pl):
@@ -112,7 +111,6 @@ def _(mo):
     Vary the number of Fourier harmonics for weekly seasonality.
     With `seasonality=7`, max harmonics = 3 (floor(7/2)).
     """)
-    return
 
 @app.cell
 def _(FourierSeasonalityForecaster, MeanAbsoluteError, horizon, mo, pl, y_test, y_train):
@@ -128,14 +126,12 @@ def _(FourierSeasonalityForecaster, MeanAbsoluteError, horizon, mo, pl, y_test, 
         _rows.append({"Harmonics": str(_nh), "MAE": round(_mae, 2)})
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Fourier vs Pattern Seasonality
     """)
-    return
 
 @app.cell
 def _(
@@ -166,7 +162,6 @@ def _(
         f"**Pattern (average) MAE**: {_mae_p:.2f}\n\n"
         "Fourier produces smoother seasonal patterns; Pattern is more flexible."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -176,7 +171,6 @@ def _(mo):
     The Fourier features are just sine/cosine columns. Different
     regression estimators can affect regularisation.
     """)
-    return
 
 @app.cell
 def _(
@@ -207,7 +201,6 @@ def _(
         _rows.append({"Estimator": _name, "MAE": round(_mae, 2)})
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -217,7 +210,6 @@ def _(mo):
     Combine trend removal with Fourier seasonality for a structured
     forecasting approach.
     """)
-    return
 
 @app.cell
 def _(
@@ -274,7 +266,6 @@ def _(mo):
     - **Stationarity transforms**: See `examples/stationarity/stationarity_transforms.py`
     - **Decomposition**: See `examples/stationarity/decomposition.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -41,7 +42,6 @@ def _(mo):
     - `"all"`: scalar output (default)
     - `panel_group_weight`: weight groups differently during aggregation
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -79,7 +79,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data and Predictions
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, inspect_locality, fetch_dominick, mo):
@@ -116,7 +115,6 @@ def _(mo):
     A single scalar value: all dimensions (time, components, groups) are
     reduced.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -127,7 +125,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
         f"**Aggregation `'all'`**:\n\n"
         f"MAE (all): {float(_score_all):.2f}"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -137,7 +134,6 @@ def _(mo):
     Aggregate over time, producing one score per component/group column.
     Result has one row.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -154,7 +150,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
 @app.cell
 def _(score_timewise):
     score_timewise
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -164,7 +159,6 @@ def _(mo):
     Aggregate over components/groups for each timestep. Result has
     one row per timestep.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -181,7 +175,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
 @app.cell
 def _(score_componentwise):
     score_componentwise.head()
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -191,7 +184,6 @@ def _(mo):
     With panel data, aggregate within each panel group separately.
     Groups that share the same prefix are combined.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -208,7 +200,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
 @app.cell
 def _(score_groupwise):
     score_groupwise.head()
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -217,7 +208,6 @@ def _(mo):
 
     Weight certain groups more heavily in the aggregation.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -248,7 +238,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
         f"**Weighted MAE** (store_1 x3): {float(_s_w):.2f}\n\n"
         "Weighted scores shift toward the heavily-weighted groups."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -257,7 +246,6 @@ def _(mo):
 
     Pass a list of modes to get partially-reduced output.
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
@@ -269,7 +257,6 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
         f"Result shape: {_score_multi.shape}\n\n"
         f"Columns: {_score_multi.columns}"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -279,7 +266,6 @@ def _(mo):
     Interval scorers have an extra `"coveragewise"` dimension that
     aggregates across coverage rates.
     """)
-    return
 
 @app.cell
 def _(
@@ -325,7 +311,6 @@ def _(
         f"**Per-rate coverage**: {_s_per_rate}\n\n"
         f"**Per-rate width**: {_s_w_per_rate}"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -350,7 +335,6 @@ def _(mo):
     - **Point metrics**: See `examples/metrics/point_metrics.py`
     - **Interval metrics**: See `examples/metrics/interval_metrics.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "statsforecast",
@@ -44,7 +45,6 @@ def _(mo):
 
     **Requires**: `yohou-nixtla` package
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -70,7 +70,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Explore Panel Data
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_tourism_quarterly, mo, pl):
@@ -99,7 +98,6 @@ def _(mo):
 
     Nixtla's stats models fit **one model per series** internally.
     """)
-    return
 
 @app.cell
 def _():
@@ -148,7 +146,6 @@ def _(mo):
 
     Score each model per panel group to see where models differ.
     """)
-    return
 
 @app.cell
 def _(
@@ -183,7 +180,6 @@ def _(mo):
     mo.md(r"""
     ## 4. Forecast Visualisation
     """)
-    return
 
 @app.cell
 def _(plot_forecast, stats_panel_preds, y_test, y_train):
@@ -194,14 +190,12 @@ def _(plot_forecast, stats_panel_preds, y_test, y_train):
         n_history=8,
         title="AutoARIMA on Panel Data",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Cross-Validation
     """)
-    return
 
 @app.cell
 def _(
@@ -246,7 +240,6 @@ def _(mo):
     - **Panel forecasting**: See `examples/point/panel_forecasting.py`
     - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

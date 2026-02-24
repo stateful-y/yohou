@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -39,7 +40,6 @@ def _(mo):
     - Per-group coverage analysis
     - Comparing interval width across groups
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -73,7 +73,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
     """)
-    return
 
 @app.cell
 def _(inspect_locality, fetch_tourism_quarterly, mo):
@@ -103,7 +102,6 @@ def _(mo):
     `SplitConformalForecaster` calibrates per-group: each panel group
     gets its own conformal quantile based on its residual distribution.
     """)
-    return
 
 @app.cell
 def _(
@@ -139,7 +137,6 @@ def _(coverage_rates, plot_forecast, y_pred_conf, y_test, y_train):
         panel_group_names=["T3", "T4", "T5"],
         title="Split Conformal: Panel (90% Interval)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -150,7 +147,6 @@ def _(mo):
     prediction intervals. Each panel group gets independent quantile
     estimates.
     """)
-    return
 
 @app.cell
 def _(IntervalReductionForecaster, coverage_rates, horizon, y_train):
@@ -172,7 +168,6 @@ def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
         panel_group_names=["T3", "T4", "T5"],
         title="Interval Reduction: Panel (90% Interval)",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -182,7 +177,6 @@ def _(mo):
     Check whether each group achieves the target coverage rate and
     compare interval widths.
     """)
-    return
 
 @app.cell
 def _(
@@ -219,7 +213,6 @@ def _(
 
     _results = pl.DataFrame(_rows)
     mo.ui.table(_results)
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -238,7 +231,6 @@ def _(mo):
     - **Conformal variations**: See `examples/interval/conformal_forecasting.py`
     - **Conformity scorers**: See `examples/metrics/conformity_scorers.py`
     """)
-    return
 
 if __name__ == "__main__":
     app.run()

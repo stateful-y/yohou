@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "marimo",
 #     "plotly",
 #     "scikit-learn",
 #     "yohou",
@@ -44,10 +45,9 @@ def _(mo):
     ## Prerequisites
 
     Familiarity with panel data conventions and `PointReductionForecaster`
-    (see `examples/datasets/walmart_sales.py` for dataset exploration,
+    (see `examples/datasets/pedestrian_counts.py` for dataset exploration,
     `examples/quickstart.py` for forecasting basics).
     """)
-    return
 
 @app.cell(hide_code=True)
 def _():
@@ -78,7 +78,6 @@ def _(mo):
     mo.md(r"""
     ## 1. Load and Inspect
     """)
-    return
 
 @app.cell
 def _(fetch_pedestrian_counts, inspect_locality, mo):
@@ -106,7 +105,6 @@ def _(mo):
     With hourly data, we use lags that capture both short-term (lag 1)
     and daily (lag 24) patterns. We forecast a 24-hour horizon.
     """)
-    return
 
 @app.cell
 def _(mo, pedestrian):
@@ -143,7 +141,6 @@ def _(groups, plot_forecast, y_pred, y_test, y_train):
         panel_group_names=_group_names,
         title="Hourly Pedestrian Count Forecast: First 3 Sensors",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -153,7 +150,6 @@ def _(mo):
     Forecasting all 6 sensors simultaneously to compare predictions
     across locations.
     """)
-    return
 
 @app.cell
 def _(groups, plot_forecast, y_pred, y_test, y_train):
@@ -165,14 +161,12 @@ def _(groups, plot_forecast, y_pred, y_test, y_train):
         panel_group_names=list(groups.keys()),
         title="Hourly Pedestrian Count Forecast: All 6 Sensors",
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Per-Sensor Scoring
     """)
-    return
 
 @app.cell
 def _(MeanAbsoluteError, groups, mo, y_pred, y_test, y_train):
@@ -189,7 +183,6 @@ def _(MeanAbsoluteError, groups, mo, y_pred, y_test, y_train):
         "**Pedestrian Count MAE per Sensor**\n\n"
         "| Sensor | MAE |\n|--------|-----|\n" + "\n".join(_lines)
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -199,7 +192,6 @@ def _(mo):
     Roll forward in 24-hour steps, observing then predicting the next
     24 hours at each step.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, MeanAbsoluteError, PointReductionForecaster, Ridge, mo, pedestrian):
@@ -236,9 +228,8 @@ def _(LagTransformer, MeanAbsoluteError, PointReductionForecaster, Ridge, mo, pe
         f"**MAE per window**: {_window_scores}\n\n"
         f"**Average MAE**: {sum(_window_scores) / len(_window_scores):.1f}"
         if _window_scores else
-        f"**Rolling evaluation completed** (insufficient truth for scoring)"
+        "**Rolling evaluation completed** (insufficient truth for scoring)"
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -247,7 +238,6 @@ def _(mo):
 
     Simulate a scenario where Sensor T1 data arrives before the others.
     """)
-    return
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, mo, pedestrian):
@@ -274,7 +264,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, mo, pedestrian):
         f"**Sensor T2 observed time**: `{_time_t2}`\n\n"
         f"Other sensors remain at their previous position until new data arrives."
     )
-    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -289,11 +278,10 @@ def _(mo):
 
     ## Next Steps
 
-    - **Dataset exploration**: See `examples/datasets/walmart_sales.py` for EDA on this dataset
+    - **Dataset exploration**: See `examples/datasets/pedestrian_counts.py` for EDA on this dataset
     - **Australian Tourism**: See `examples/datasets/australian_tourism_forecasting.py` for quarterly panel forecasting
     - **Panel concepts**: See `examples/panel_data.py` for the `__` naming convention
     """)
-    return
 
 if __name__ == "__main__":
     app.run()
