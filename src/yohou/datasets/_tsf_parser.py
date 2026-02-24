@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from datetime import datetime
 from typing import IO
 
@@ -60,10 +61,10 @@ def parse_tsf(
         ``"missing"``, ``"equallength"``, ``"relation"``, ``"n_series"``.
 
     """
-    lines = _read_lines(source)
-    attributes, header_meta, data_start_idx = _parse_header(lines)
+    line_iter = _iter_text_lines(source)
+    attributes, header_meta = _parse_header(line_iter)
 
-    series_list = _parse_data_lines(lines[data_start_idx:], attributes, n_series=n_series)
+    series_list = _parse_data_lines(line_iter, attributes, n_series=n_series)
 
     polars_freq = TSF_FREQUENCY_MAP.get(header_meta["frequency_raw"], header_meta["frequency_raw"])
 
@@ -88,24 +89,30 @@ def parse_tsf(
     return frame, metadata
 
 
-def _read_lines(source: str | IO[bytes]) -> list[str]:
-    """Read all lines from a file path or file-like object."""
+def _iter_text_lines(source: str | IO[bytes]) -> Iterator[str]:
+    """Yield decoded text lines from a file path or file-like object.
+
+    Unlike reading all lines into a list, this streams one line at a
+    time so that large files are never fully loaded into memory.
+    """
     if isinstance(source, str):
         with open(source, encoding="utf-8", errors="replace") as f:
-            return f.read().splitlines()
-
-    content = source.read()
-    if isinstance(content, bytes):
-        content = content.decode("utf-8", errors="replace")
-    return content.splitlines()
+            yield from (line.rstrip("\n\r") for line in f)
+    else:
+        for raw_line in source:
+            if isinstance(raw_line, bytes):
+                yield raw_line.decode("utf-8", errors="replace").rstrip("\n\r")
+            else:
+                yield raw_line.rstrip("\n\r")
 
 
 def _parse_header(
-    lines: list[str],
-) -> tuple[list[tuple[str, str]], dict, int]:
-    """Parse TSF header lines.
+    line_iter: Iterator[str],
+) -> tuple[list[tuple[str, str]], dict]:
+    """Parse TSF header lines from a line iterator.
 
-    Returns ``(attributes, header_meta, data_start_index)``.
+    Advances the iterator past the ``@data`` marker and returns
+    ``(attributes, header_meta)``.
     """
     attributes: list[tuple[str, str]] = []
     header_meta: dict = {
@@ -116,7 +123,7 @@ def _parse_header(
         "relation": "",
     }
 
-    for i, line in enumerate(lines):
+    for line in line_iter:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -136,19 +143,19 @@ def _parse_header(
         elif stripped.startswith("@relation"):
             header_meta["relation"] = " ".join(stripped.split()[1:])
         elif stripped.startswith("@data"):
-            return attributes, header_meta, i + 1
+            return attributes, header_meta
 
     msg = "TSF file does not contain an @data section"
     raise ValueError(msg)
 
 
 def _parse_data_lines(
-    data_lines: list[str],
+    line_iter: Iterator[str],
     attributes: list[tuple[str, str]],
     *,
     n_series: int | None = None,
 ) -> list[dict]:
-    """Parse data lines into a list of series dicts.
+    """Parse data lines from a line iterator into a list of series dicts.
 
     Each dict has keys: ``name``, ``extra_attrs``, ``start_timestamp``,
     ``values``.
@@ -156,7 +163,7 @@ def _parse_data_lines(
     n_attrs = len(attributes)
     series_list: list[dict] = []
 
-    for line in data_lines:
+    for line in line_iter:
         stripped = line.strip()
         if not stripped:
             continue

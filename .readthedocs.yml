@@ -19,6 +19,10 @@ build:
     install:
       # Sync doc-dependencies (the group "docs") and install the project itself
       - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --group docs
+    post_install:
+      # Pre-download all datasets so marimo exports read from parquet cache
+      # instead of downloading and parsing large TSF archives during the build
+      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv run python docs/precache_datasets.py
 
 # MkDocs configuration
 mkdocs:
