@@ -157,6 +157,7 @@ nav:
     - Stationarity: pages/examples/stationarity.md
     - Metrics: pages/examples/metrics.md
     - Model Selection: pages/examples/model-selection.md
+    - Datasets: pages/examples/datasets.md
     - Plotting: pages/examples/plotting.md
   - Development:
     - pages/development/index.md
