@@ -24,7 +24,9 @@ def on_page_markdown(markdown, page, config, files):
         # repo_url is e.g. "https://github.com/stateful-y/yohou"
         # Strip "https://" to form the marimo.app prefix
         github_path = repo_url.removeprefix("https://")
-        playground_base = f"https://marimo.app/{github_path}/blob/main"
+        # Use the branch/tag being built so PR previews link to the PR branch
+        git_ref = os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main")
+        playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
 
         # Rewrite editable links first (more specific pattern)
         # [Editable](/examples/{path}/edit/) → [Open in marimo](playground/{path}.py)
