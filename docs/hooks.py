@@ -1,6 +1,7 @@
 """MkDocs hooks for post-build processing."""
 
 import fnmatch
+import os
 import re
 import shutil
 import subprocess
@@ -34,6 +35,10 @@ def on_pre_build(config):
 
     This ensures standalone HTML versions are available when mkdocs processes files.
     """
+    if os.environ.get("READTHEDOCS"):
+        print("[hooks] Skipping notebook export on Read the Docs")
+        return
+
     project_root = Path(__file__).parent.parent
     examples_dir = project_root / "examples"
 
