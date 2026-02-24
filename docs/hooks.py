@@ -13,10 +13,36 @@ from pathlib import Path
 def on_page_markdown(markdown, page, config, files):
     """Rewrite example links to work in both local and RTD environments.
 
-    Converts absolute paths like /examples/ to relative paths based on page depth.
-    This works on both local builds and Read the Docs.
+    On local builds, converts absolute paths like /examples/ to relative paths
+    based on page depth so the locally exported HTML/WASM notebooks are served.
+
+    On Read the Docs (where notebook exports are skipped), rewrites View/Editable
+    links to open the notebook in the marimo online playground via marimo.app.
     """
-    # Calculate relative path based on page depth
+    if os.environ.get("READTHEDOCS"):
+        repo_url = config.get("repo_url", "").rstrip("/")
+        # repo_url is e.g. "https://github.com/stateful-y/yohou"
+        # Strip "https://" to form the marimo.app prefix
+        github_path = repo_url.removeprefix("https://")
+        playground_base = f"https://marimo.app/{github_path}/blob/main"
+
+        # Rewrite editable links first (more specific pattern)
+        # [Editable](/examples/{path}/edit/) → [Open in marimo](playground/{path}.py)
+        markdown = re.sub(
+            r"\[Editable\]\(/examples/([^)]+?)/edit/\)",
+            rf"[Open in marimo]({playground_base}/examples/\1.py)",
+            markdown,
+        )
+        # Rewrite view links
+        # [View](/examples/{path}/) → [View on marimo](playground/{path}.py?mode=read)
+        markdown = re.sub(
+            r"\[View\]\(/examples/([^)]+?)/\)",
+            rf"[View on marimo]({playground_base}/examples/\1.py?mode=read)",
+            markdown,
+        )
+        return markdown
+
+    # Local build: convert absolute paths to relative paths
     src_parts = page.file.src_path.split("/")
 
     # Calculate depth (pages/examples.md has depth 2, index.md has depth 0)
