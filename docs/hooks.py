@@ -17,8 +17,8 @@ def on_page_markdown(markdown, page, config, files):
     static HTML notebooks.
 
     [Editable] links are rewritten to open the notebook in the marimo online
-    playground via marimo.app. On RTD the branch being built is used so PR
-    previews link to the correct branch; locally, ``main`` is used.
+    playground via marimo.app. On RTD the commit SHA being built is used so
+    PR previews link to the correct revision; locally, ``main`` is used.
     """
     # Calculate relative path based on page depth (used on all builds)
     src_parts = page.file.src_path.split("/")
@@ -27,7 +27,13 @@ def on_page_markdown(markdown, page, config, files):
 
     repo_url = config.get("repo_url", "").rstrip("/")
     github_path = repo_url.removeprefix("https://")
-    git_ref = os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main")
+    # READTHEDOCS_GIT_IDENTIFIER is the PR number for pull-request builds,
+    # which is not a valid git ref.  READTHEDOCS_GIT_COMMIT_HASH is always
+    # the actual commit SHA checked out by RTD.
+    git_ref = os.environ.get(
+        "READTHEDOCS_GIT_COMMIT_HASH",
+        os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main"),
+    )
     playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
 
     # Rewrite [Editable] → marimo.app playground
