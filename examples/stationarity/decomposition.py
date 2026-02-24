@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Trend and Seasonality Forecasters with DecompositionPipeline.
 
 Demonstrates PolynomialTrendForecaster, PatternSeasonalityForecaster,
@@ -6,27 +13,14 @@ FourierSeasonalityForecaster, and DecompositionPipeline.
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.1"
 app = marimo.App(width="medium")
-
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -49,19 +43,16 @@ def _(mo):
 
     Understanding of trend and seasonality concepts.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
     from sklearn.linear_model import Ridge
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_components, plot_forecast
-    from yohou.point import PointReductionForecaster, SeasonalNaive
+    from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.stationarity import (
         FourierSeasonalityForecaster,
@@ -80,12 +71,10 @@ def _():
         PointReductionForecaster,
         PolynomialTrendForecaster,
         Ridge,
-        load_air_passengers,
-        pl,
+        fetch_tourism_monthly,
         plot_components,
         plot_forecast,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -94,22 +83,20 @@ def _(mo):
 
     We load a time series dataset suitable for demonstrating trend and seasonality decomposition.
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists").drop_nulls()
+        .rename({"T1__tourists": "tourists"})
     )
-    y_train = y.head(120)
-    y_test = y.tail(24)
+    y_train = y.head(280)
+    y_test = y.tail(65)
     fh = len(y_test)
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return fh, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -118,8 +105,6 @@ def _(mo):
 
     Fits a polynomial to the time index. `degree=1` is linear, `degree=2` is quadratic.
     """)
-    return
-
 
 @app.cell
 def _(PolynomialTrendForecaster, fh, plot_forecast, y_test, y_train):
@@ -127,10 +112,8 @@ def _(PolynomialTrendForecaster, fh, plot_forecast, y_test, y_train):
     trend_fc.fit(y_train, forecasting_horizon=fh)
     y_pred_trend = trend_fc.predict(forecasting_horizon=fh)
 
-    print(f"Trend prediction (first 5): {y_pred_trend['passengers'].head(5).to_list()}")
+    print(f"Trend prediction (first 5): {y_pred_trend['tourists'].head(5).to_list()}")
     plot_forecast(y_test, y_pred_trend, y_train=y_train, title="Linear Trend Forecast")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -143,8 +126,6 @@ def _(mo):
     - `method="average"`: Average across all observed seasons
     - `method="median"`: Median across seasons
     """)
-    return
-
 
 @app.cell
 def _(PatternSeasonalityForecaster, fh, y_train):
@@ -152,9 +133,7 @@ def _(PatternSeasonalityForecaster, fh, y_train):
         season_fc = PatternSeasonalityForecaster(seasonality=12, method=method)
         season_fc.fit(y_train, forecasting_horizon=fh)
         pred = season_fc.predict(forecasting_horizon=fh)
-        print(f"method={method:>7s}  first pred: {pred['passengers'][0]:.1f}")
-    return
-
+        print(f"method={method:>7s}  first pred: {pred['tourists'][0]:.1f}")
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -164,8 +143,6 @@ def _(mo):
     Models seasonality using Fourier basis functions. More harmonics
     capture more complex seasonal shapes.
     """)
-    return
-
 
 @app.cell
 def _(FourierSeasonalityForecaster, fh, plot_forecast, y_test, y_train):
@@ -179,8 +156,6 @@ def _(FourierSeasonalityForecaster, fh, plot_forecast, y_test, y_train):
     plot_forecast(
         y_test, y_pred_fourier, y_train=y_train, title="Fourier Seasonality (3 harmonics)"
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -192,8 +167,6 @@ def _(mo):
 
     `trend → seasonality → residual`
     """)
-    return
-
 
 @app.cell
 def _(
@@ -228,15 +201,12 @@ def _(
     print(f"DecompositionPipeline prediction: {len(y_pred_decomp)} steps")
     return decomp, y_pred_decomp
 
-
 @app.cell
 def _(MeanAbsoluteError, y_pred_decomp, y_test, y_train):
     mae = MeanAbsoluteError()
     mae.fit(y_train)
     score = mae.score(y_test, y_pred_decomp)
     print(f"Decomposition MAE: {score:.2f}")
-    return
-
 
 @app.cell
 def _(plot_forecast, y_pred_decomp, y_test, y_train):
@@ -246,8 +216,6 @@ def _(plot_forecast, y_pred_decomp, y_test, y_train):
         y_train=y_train,
         title="DecompositionPipeline: Trend + Season + Residual",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -257,8 +225,6 @@ def _(mo):
     With `store_residuals=True`, access each component's contribution via
     `named_forecasters_`.
     """)
-    return
-
 
 @app.cell
 def _(decomp, fh, plot_components, y_test):
@@ -272,8 +238,6 @@ def _(decomp, fh, plot_components, y_test):
         components,
         title="Decomposition Components",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -287,8 +251,6 @@ def _(mo):
     - `store_residuals=True` enables component inspection
     - The pipeline prediction is the **sum** of all component predictions
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -299,8 +261,6 @@ def _(mo):
     - **Reduction forecasting**: See `point/reduction_forecaster.py`
     - **Interval forecasting**: See `interval/` for prediction intervals
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

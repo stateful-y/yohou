@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Data Forecasting.
 
 Demonstrates panel data conventions, panel_strategy parameter,
@@ -9,25 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    _ = None
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -47,8 +40,6 @@ def _(mo):
     - When to use each strategy
     - Groupwise scoring to compare strategies
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -56,7 +47,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import LocalPanelForecaster
-    from yohou.datasets import load_store_sales
+    from yohou.datasets import fetch_dominick
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -70,12 +61,11 @@ def _():
         PointReductionForecaster,
         Ridge,
         inspect_locality,
-        load_store_sales,
+        fetch_dominick,
         pl,
         plot_forecast,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -85,12 +75,13 @@ def _(mo):
     Panel columns follow the `<group>__<series>` naming pattern.
     `inspect_locality` discovers groups automatically.
     """)
-    return
-
 
 @app.cell
-def _(inspect_locality, load_store_sales, mo):
-    store = load_store_sales()
+def _(inspect_locality, fetch_dominick, mo, pl):
+    _bunch = fetch_dominick()
+    # Select 6 series with complete data (no nulls) for a manageable panel demo
+    _selected = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit"]
+    store = _bunch.frame.select("time", *_selected).drop_nulls()
 
     global_cols, panel_groups = inspect_locality(store)
 
@@ -98,24 +89,20 @@ def _(inspect_locality, load_store_sales, mo):
         f"**Dataset shape**: {store.shape}\n\n"
         f"**Global columns** (shared): `{global_cols}`\n\n"
         f"**Panel groups** ({len(panel_groups)}):\n\n"
-        + "\n".join(f"- `{name}`: {cols}" for name, cols in sorted(panel_groups.items())[:4])
-        + f"\n- ... ({len(panel_groups) - 4} more)"
+        + "\n".join(f"- `{name}`: {cols}" for name, cols in sorted(panel_groups.items()))
     )
     return panel_groups, store
-
 
 @app.cell
 def _(plot_time_series, store):
     plot_time_series(
         store,
-        title="Store Sales: All Panel Groups",
+        title="Dominick: All Panel Groups",
     )
-    return
-
 
 @app.cell
 def _(mo, store):
-    _target_cols = [c for c in store.columns if c.endswith("__sales")]
+    _target_cols = [c for c in store.columns if c.endswith("__profit")]
     y = store.select("time", *_target_cols)
     _split = int(len(y) * 0.85)
     y_train = y.head(_split)
@@ -123,12 +110,11 @@ def _(mo, store):
     horizon = len(y_test)
 
     mo.md(
-        f"**Targets**: {len(_target_cols)} sales columns\n\n"
+        f"**Targets**: {len(_target_cols)} profit columns\n\n"
         f"**Train**: {len(y_train)} rows | **Test**: {len(y_test)} rows | "
         f"**Horizon**: {horizon}"
     )
     return horizon, y, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -144,8 +130,6 @@ def _(mo):
     This is efficient when groups share similar dynamics and you want
     one set of hyperparameters to govern all groups.
     """)
-    return
-
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
@@ -158,7 +142,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     y_pred_global = fc_global.predict(forecasting_horizon=horizon)
     return fc_global, y_pred_global
 
-
 @app.cell
 def _(plot_forecast, y_pred_global, y_test, y_train):
     plot_forecast(
@@ -166,11 +149,9 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
+        panel_group_names=["T7", "T11", "T12"],
         title="Global Strategy: One Model, Per-Group State",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -186,8 +167,6 @@ def _(mo):
     learn from inter-group relationships (e.g. spatial spillover effects,
     cannibalization between stores).
     """)
-    return
-
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
@@ -200,7 +179,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     y_pred_multivariate = fc_multivariate.predict(forecasting_horizon=horizon)
     return fc_multivariate, y_pred_multivariate
 
-
 @app.cell
 def _(plot_forecast, y_pred_multivariate, y_test, y_train):
     plot_forecast(
@@ -208,11 +186,9 @@ def _(plot_forecast, y_pred_multivariate, y_test, y_train):
         y_pred_multivariate,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
+        panel_group_names=["T7", "T11", "T12"],
         title="Multivariate Strategy: Cross-Group Features",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -224,8 +200,6 @@ def _(mo):
     which shares hyperparameters across groups, each clone has its own
     parameters.  This is the right choice when groups are heterogeneous.
     """)
-    return
-
 
 @app.cell
 def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, horizon, y_train):
@@ -239,7 +213,6 @@ def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, hor
     y_pred_local = fc_local.predict(forecasting_horizon=horizon)
     return fc_local, y_pred_local
 
-
 @app.cell
 def _(plot_forecast, y_pred_local, y_test, y_train):
     plot_forecast(
@@ -247,11 +220,9 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         y_pred_local,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
+        panel_group_names=["T7", "T11", "T12"],
         title="Local Strategy: Independent Per-Group Clones",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -261,8 +232,6 @@ def _(mo):
     Compare all three strategies using per-group MAE (timewise aggregation
     produces one score per group, averaged across timesteps).
     """)
-    return
-
 
 @app.cell
 def _(
@@ -285,7 +254,7 @@ def _(
 
     _rows = []
     for _group in sorted(panel_groups.keys()):
-        _col = f"{_group}__sales"
+        _col = f"{_group}__profit"
         if _col in _scores_global.columns:
             _rows.append({
                 "Group": _group,
@@ -297,7 +266,6 @@ def _(
     comparison = pl.DataFrame(_rows)
     mo.ui.table(comparison)
     return (comparison,)
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred_global, y_pred_local, y_pred_multivariate, y_test, y_train):
@@ -315,8 +283,6 @@ def _(MeanAbsoluteError, mo, y_pred_global, y_pred_local, y_pred_multivariate, y
         f"| Multivariate | {_overall_multi} |\n"
         f"| Local | {_overall_local} |"
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -344,8 +310,6 @@ def _(mo):
     - **Panel intervals**: See `examples/interval/panel_intervals.py`
     - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Prediction Intervals.
 
 Demonstrates SplitConformalForecaster and IntervalReductionForecaster
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -44,15 +38,13 @@ def _(mo):
     - Per-group coverage analysis
     - Comparing interval width across groups
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, MeanIntervalWidth
     from yohou.plotting import plot_forecast
@@ -69,23 +61,23 @@ def _():
         Ridge,
         SplitConformalForecaster,
         inspect_locality,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
     """)
-    return
-
 
 @app.cell
-def _(inspect_locality, load_australian_tourism, mo):
-    tourism = load_australian_tourism()
+def _(inspect_locality, fetch_tourism_quarterly, mo):
+    _bunch = fetch_tourism_quarterly()
+    # Select T3-T10 (same length series, 88 rows after drop_nulls)
+    _selected = [f"T{i}__tourists" for i in range(3, 11)]
+    tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(tourism)
     _split = int(len(tourism) * 0.8)
     y_train = tourism.head(_split)
@@ -100,7 +92,6 @@ def _(inspect_locality, load_australian_tourism, mo):
     )
     return coverage_rates, groups, horizon, tourism, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -109,8 +100,6 @@ def _(mo):
     `SplitConformalForecaster` calibrates per-group: each panel group
     gets its own conformal quantile based on its residual distribution.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -135,7 +124,6 @@ def _(
     )
     return fc_conformal, y_pred_conf
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_conf, y_test, y_train):
     plot_forecast(
@@ -144,11 +132,9 @@ def _(coverage_rates, plot_forecast, y_pred_conf, y_test, y_train):
         y_train=y_train,
         n_history=8,
         coverage_rates=coverage_rates,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T3", "T4", "T5"],
         title="Split Conformal: Panel (90% Interval)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -159,8 +145,6 @@ def _(mo):
     prediction intervals. Each panel group gets independent quantile
     estimates.
     """)
-    return
-
 
 @app.cell
 def _(IntervalReductionForecaster, coverage_rates, horizon, y_train):
@@ -171,7 +155,6 @@ def _(IntervalReductionForecaster, coverage_rates, horizon, y_train):
     )
     return fc_interval, y_pred_interval
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
     plot_forecast(
@@ -180,11 +163,9 @@ def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
         y_train=y_train,
         n_history=8,
         coverage_rates=coverage_rates,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T3", "T4", "T5"],
         title="Interval Reduction: Panel (90% Interval)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -194,8 +175,6 @@ def _(mo):
     Check whether each group achieves the target coverage rate and
     compare interval widths.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -223,7 +202,7 @@ def _(
         _w_i = float(_width_scorer.score(y_test, y_pred_interval, panel_group_names=[_state]))
 
         _rows.append({
-            "State": _state,
+            "Group": _state,
             "Conformal Coverage": round(_cov_c, 3),
             "Reduction Coverage": round(_cov_i, 3),
             "Conformal Width": round(_w_c, 1),
@@ -232,8 +211,6 @@ def _(
 
     _results = pl.DataFrame(_rows)
     mo.ui.table(_results)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -252,8 +229,6 @@ def _(mo):
     - **Conformal variations**: See `examples/interval/conformal_forecasting.py`
     - **Conformity scorers**: See `examples/metrics/conformity_scorers.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

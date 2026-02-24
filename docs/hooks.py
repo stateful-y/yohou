@@ -1,6 +1,7 @@
 """MkDocs hooks for post-build processing."""
 
 import fnmatch
+import os
 import re
 import shutil
 import subprocess
@@ -10,21 +11,38 @@ from pathlib import Path
 
 
 def on_page_markdown(markdown, page, config, files):
-    """Rewrite example links to work in both local and RTD environments.
+    """Rewrite example links for both local and RTD environments.
 
-    Converts absolute paths like /examples/ to relative paths based on page depth.
-    This works on both local builds and Read the Docs.
+    [View] links are converted to relative paths pointing to locally exported
+    static HTML notebooks.
+
+    [Open in marimo] placeholder links are resolved to the marimo online
+    playground via marimo.app. On RTD the commit SHA being built is used so
+    PR previews link to the correct revision; locally, ``main`` is used.
     """
-    # Calculate relative path based on page depth
+    # Calculate relative path based on page depth (used on all builds)
     src_parts = page.file.src_path.split("/")
-
-    # Calculate depth (pages/examples.md has depth 2, index.md has depth 0)
     depth = len(src_parts) if src_parts[-1] != "index.md" else len(src_parts) - 1
-
-    # Build relative prefix: '../' repeated for each directory level
     prefix = "../" * depth
 
-    # Replace absolute paths with relative paths
+    repo_url = config.get("repo_url", "").rstrip("/")
+    github_path = repo_url.removeprefix("https://")
+    # READTHEDOCS_GIT_IDENTIFIER is the PR number for pull-request builds,
+    # which is not a valid git ref.  READTHEDOCS_GIT_COMMIT_HASH is always
+    # the actual commit SHA checked out by RTD.
+    git_ref = os.environ.get(
+        "READTHEDOCS_GIT_COMMIT_HASH",
+        os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main"),
+    )
+    playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
+
+    # Resolve [Open in marimo] placeholder URLs → full marimo.app playground URLs
+    markdown = re.sub(
+        r"\[Open in marimo\]\(/examples/([^)]+?)/edit/\)",
+        rf"[Open in marimo]({playground_base}/examples/\1.py)",
+        markdown,
+    )
+    # Rewrite [View] to relative paths pointing to local HTML exports
     markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
     return markdown
 
@@ -40,11 +58,22 @@ def on_pre_build(config):
     if not examples_dir.exists():
         return
 
+    # Skip nixtla notebooks when yohou-nixtla is not installed (e.g. Python 3.14
+    # where transitive dep 'ray' has no wheels).
+    _skip_stems: set[str] = set()
+    try:
+        import yohou_nixtla  # noqa: F401
+    except ModuleNotFoundError:
+        _skip_stems |= {"nixtla_forecasters", "nixtla_panel"}
+
     # Find all marimo notebooks (recursively, excluding __marimo__ and bugs dirs)
     notebooks = [
         p
         for p in examples_dir.rglob("*.py")
-        if "__marimo__" not in p.parts and "bugs" not in p.parts and "__init__" not in p.name
+        if "__marimo__" not in p.parts
+        and "bugs" not in p.parts
+        and "__init__" not in p.name
+        and p.stem not in _skip_stems
     ]
     if not notebooks:
         return
@@ -52,8 +81,10 @@ def on_pre_build(config):
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
-    # Export each notebook in both static HTML and interactive WASM formats
+    failed: list[str] = []
+
     for notebook in notebooks:
+        rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
 
         # Clean previous export artifacts before re-exporting
@@ -73,6 +104,7 @@ def on_pre_build(config):
                     "-q",
                     "export",
                     "html",
+                    "--no-sandbox",
                     str(notebook),
                     "-o",
                     str(static_file),
@@ -81,52 +113,21 @@ def on_pre_build(config):
                 capture_output=True,
                 text=True,
             )
-            print(
-                f"[hooks] exported html {notebook.relative_to(project_root)} -> {static_file.relative_to(project_root)}"
-            )
+            print(f"[hooks] exported html {rel_path} -> {static_file.relative_to(project_root)}")
         except subprocess.CalledProcessError as e:
-            print(f"[hooks] Error exporting html {notebook.name}: {e}", file=sys.stderr)
+            failed.append(str(rel_path))
+            print(f"[hooks] FAILED html {rel_path}: {e}", file=sys.stderr)
             if e.stderr:
                 print(e.stderr, file=sys.stderr)
+            continue
         except FileNotFoundError:
             print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
             break
 
-        # Export interactive WASM (editable in-browser)
-        edit_dir = output_dir / "edit"
-        edit_file = edit_dir / "index.html"
-        edit_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "marimo",
-                    "-y",
-                    "-q",
-                    "export",
-                    "html-wasm",
-                    str(notebook),
-                    "-o",
-                    str(edit_file),
-                    "--mode",
-                    "edit",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            print(
-                f"[hooks] exported html-wasm {notebook.relative_to(project_root)} -> {edit_file.relative_to(project_root)}"
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"[hooks] Error exporting html-wasm {notebook.name}: {e}", file=sys.stderr)
-            if e.stderr:
-                print(e.stderr, file=sys.stderr)
-        except FileNotFoundError:
-            print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
-            break
+    if failed:
+        msg = f"[hooks] {len(failed)} notebook(s) had cell execution errors:\n"
+        msg += "\n".join(f"  - {f}" for f in failed)
+        raise RuntimeError(msg)
 
 
 class _HtmlToMarkdown(HTMLParser):
@@ -411,32 +412,6 @@ def _is_excluded(relative_posix: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(relative_posix, pattern) for pattern in patterns)
 
 
-def _fix_marimo_filename(html_file: Path, notebook_name: str) -> None:
-    """Replace the default 'notebook.py' filename in marimo HTML exports.
-
-    Marimo exports always use 'notebook.py' as the default filename. This function
-    replaces it with the actual notebook name to show the correct title in browser tabs.
-
-    Note: Only the <marimo-filename> display tag is replaced. The config
-    ``"filename"`` field must stay as ``"notebook.py"`` because the marimo WASM
-    worker has that name hard-coded and writes the notebook source to
-    ``/marimo/notebook.py``. Changing the config value would cause a
-    ``FileNotFoundError`` at runtime.
-    """
-    if not html_file.exists():
-        return
-
-    html_content = html_file.read_text(encoding="utf-8")
-
-    # Replace the display tag
-    html_content = html_content.replace(
-        "<marimo-filename hidden>notebook.py</marimo-filename>",
-        f"<marimo-filename hidden>{notebook_name}.py</marimo-filename>",
-    )
-
-    html_file.write_text(html_content, encoding="utf-8")
-
-
 def _inject_rtd_css(html_file: Path) -> None:
     """Inject CSS to hide Read The Docs version menu flyout in marimo notebooks.
 
@@ -470,7 +445,7 @@ def on_post_build(config):
     project_root = Path(__file__).parent.parent
     docs_examples = project_root / "docs" / "examples"
 
-    # Copy standalone HTML example files (both static and WASM/edit)
+    # Copy standalone HTML example exports to site
     if docs_examples.exists():
         for html_dir in docs_examples.iterdir():
             if not html_dir.is_dir() or html_dir.name.startswith("."):
@@ -484,37 +459,14 @@ def on_post_build(config):
             target_dir = site_dir / "examples" / html_dir.name
             target_dir.mkdir(parents=True, exist_ok=True)
 
-            # Copy top-level files (static HTML export)
+            # Copy exported HTML files
             for file in html_dir.iterdir():
                 if file.name == "CLAUDE.md" or file.is_dir():
                     continue
                 shutil.copy2(file, target_dir / file.name)
 
-            # Inject CSS to hide RTD version menu in static HTML
+            # Inject CSS to hide RTD version menu in exported HTML
             _inject_rtd_css(target_dir / "index.html")
-
-            # Copy edit/ subdirectory (WASM export) if it exists
-            edit_src = html_dir / "edit"
-            if edit_src.exists() and edit_src.is_dir():
-                edit_target = target_dir / "edit"
-                if edit_target.exists():
-                    shutil.rmtree(edit_target)
-                shutil.copytree(
-                    edit_src,
-                    edit_target,
-                    ignore=shutil.ignore_patterns("CLAUDE.md"),
-                )
-
-                # Remove CLAUDE.md if MkDocs copied it from docs/ during build
-                claude_md = edit_target / "CLAUDE.md"
-                if claude_md.exists():
-                    claude_md.unlink()
-
-                # Fix the marimo filename in WASM export only
-                _fix_marimo_filename(edit_target / "index.html", html_dir.name)
-
-                # Inject CSS to hide RTD version menu in WASM export
-                _inject_rtd_css(edit_target / "index.html")
 
             print(f"[hooks] copied examples/{html_dir.name}/ to site")
 

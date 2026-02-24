@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "catboost",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Interval Forecasting with CatBoost MultiQuantile.
 
 Demonstrates IntervalReductionForecaster using CatBoost's native
@@ -10,24 +18,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "catboost", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -51,8 +46,6 @@ def _(mo):
 
     Familiarity with `IntervalReductionForecaster` (see `interval_reduction.py`).
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -63,7 +56,7 @@ def _():
     from sklearn.linear_model import QuantileRegressor
     from sklearn.multioutput import MultiOutputRegressor
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
     from yohou.plotting import plot_forecast
@@ -78,24 +71,21 @@ def _():
         MeanIntervalWidth,
         MultiOutputRegressor,
         QuantileRegressor,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
         time,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
-    y = load_air_passengers().rename({"Passengers": "passengers"})
+def _(fetch_tourism_monthly):
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
     split_idx = int(len(y) * 0.8)
     y_train = y.head(split_idx)
@@ -104,7 +94,6 @@ def _(load_air_passengers):
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return forecasting_horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -121,8 +110,6 @@ def _(mo):
     let the forecaster apply **recursive** multi-step prediction at
     inference time.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -163,7 +150,6 @@ def _(
     print(f"Prediction columns: {y_pred_mq.columns}")
     return catboost_fc, coverage_rates, elapsed_mq, y_pred_mq
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_mq, y_test, y_train):
     plot_forecast(
@@ -173,8 +159,6 @@ def _(coverage_rates, plot_forecast, y_pred_mq, y_test, y_train):
         coverage_rates=coverage_rates,
         title="CatBoost MultiQuantile Intervals",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -184,8 +168,6 @@ def _(mo):
     The standard path trains **2 × len(coverage_rates)** separate models.
     With CatBoost `MultiQuantile`, only **one** model is needed.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -216,7 +198,6 @@ def _(
     print(f"Standard quantile fit time: {elapsed_std:.2f}s ({2 * len(coverage_rates)} models)")
     return elapsed_std, y_pred_std
 
-
 @app.cell
 def _(elapsed_mq, elapsed_std, mo):
     mo.md(
@@ -228,16 +209,12 @@ def _(elapsed_mq, elapsed_std, mo):
         | Standard QuantileRegressor | {4} | {elapsed_std:.2f}s |
         """
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Evaluate Interval Quality
     """)
-    return
-
 
 @app.cell
 def _(
@@ -261,8 +238,6 @@ def _(
 
     table = "| Approach | Metric | Score |\n|---|---|---|\n" + "\n".join(rows)
     mo.md(table)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -275,8 +250,6 @@ def _(mo):
     - Multi-quantile is faster when many coverage rates are needed
     - Interval quality is comparable to separate quantile models
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Multi-Metric Hyperparameter Search.
 
 Demonstrates multi-metric scoring and refit strategies with GridSearchCV
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -42,8 +36,6 @@ def _(mo):
     - Refit strategies: select best by MAE, RMSE, or MAPE
     - `RandomizedSearchCV` with distributions for efficient search
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -51,7 +43,7 @@ def _():
     from scipy.stats import loguniform, randint
     from sklearn.linear_model import ElasticNet, Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import (
         MeanAbsoluteError,
         MeanAbsolutePercentageError,
@@ -74,7 +66,7 @@ def _():
         RandomizedSearchCV,
         Ridge,
         RootMeanSquaredError,
-        load_air_passengers,
+        fetch_tourism_monthly,
         loguniform,
         pl,
         plot_cv_results_scatter,
@@ -82,26 +74,22 @@ def _():
         randint,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers, mo):
-    ap = load_air_passengers()
-    _split = int(len(ap) * 0.85)
-    y_train = ap.head(_split).select("time", "Passengers")
-    y_test = ap.tail(len(ap) - _split).select("time", "Passengers")
+def _(fetch_tourism_monthly, mo):
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    _split = int(len(tourism) * 0.85)
+    y_train = tourism.head(_split)
+    y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
-    return ap, horizon, y_test, y_train
-
+    return tourism, horizon, y_test, y_train
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -115,8 +103,6 @@ def _(mo):
     Scores for "lower is better" metrics are **negated** internally
     (sklearn convention: higher = better).
     """)
-    return
-
 
 @app.cell
 def _(
@@ -152,7 +138,6 @@ def _(
     multi_gs.fit(y_train, forecasting_horizon=horizon)
     return multi_gs, multi_scoring
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -161,16 +146,12 @@ def _(mo):
     With multiple scorers, each metric gets its own `mean_test_{name}`,
     `std_test_{name}`, and `rank_test_{name}` columns.
     """)
-    return
-
 
 @app.cell
 def _(mo, multi_gs, pl):
     _results = pl.DataFrame(multi_gs.cv_results_)
     _cols = [c for c in _results.columns if "mean_test" in c or "rank_test" in c or "param_" in c]
     mo.ui.table(_results.select(_cols))
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -179,8 +160,6 @@ def _(mo):
 
     Compare which alpha each metric selects as "best".
     """)
-    return
-
 
 @app.cell
 def _(
@@ -220,8 +199,6 @@ def _(
             "Best Score (negated)": round(float(_gs.best_score_), 4),
         })
     mo.ui.table(pl.DataFrame(_rows))
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -230,8 +207,6 @@ def _(mo):
 
     For larger parameter spaces, random sampling is more efficient.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -272,12 +247,9 @@ def _(
     )
     return (rand_search,)
 
-
 @app.cell
 def _(plot_cv_results_scatter, rand_search):
     plot_cv_results_scatter(rand_search.cv_results_, "estimator__alpha")
-    return
-
 
 @app.cell
 def _(horizon, plot_forecast, rand_search, y_test, y_train):
@@ -290,7 +262,6 @@ def _(horizon, plot_forecast, rand_search, y_test, y_train):
         title="Best Forecaster (RandomizedSearchCV, multi-metric)",
     )
     return (y_pred_best,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -310,8 +281,6 @@ def _(mo):
     - **Optuna search**: See `examples/model_selection/optuna_search.py`
     - **Panel CV**: See `examples/model_selection/panel_cross_validation.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

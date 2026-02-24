@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Parallel Feature Engineering with FeatureUnion.
 
 Demonstrates FeatureUnion to combine multiple transformers in parallel,
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -44,8 +38,6 @@ def _(mo):
     - `verbose_feature_names_out` for prefixed column names
     - Using `FeatureUnion` as `feature_transformer` in a forecaster
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -53,7 +45,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import FeatureUnion
-    from yohou.datasets import load_sunspots
+    from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -74,24 +66,22 @@ def _():
         RollingStatisticsTransformer,
         SeasonalNaive,
         StandardScaler,
-        load_sunspots,
+        fetch_sunspot,
         pl,
         plot_forecast,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load Data
     """)
-    return
-
 
 @app.cell
-def _(load_sunspots, mo):
-    sunspots = load_sunspots()
+def _(fetch_sunspot, mo, pl):
+    _raw = fetch_sunspot().frame
+    sunspots = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
     _split = int(len(sunspots) * 0.85)
     y_train = sunspots.head(_split)
     y_test = sunspots.tail(len(sunspots) - _split)
@@ -102,7 +92,6 @@ def _(load_sunspots, mo):
     )
     return horizon, sunspots, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -110,8 +99,6 @@ def _(mo):
 
     Combine lag features with rolling statistics.
     """)
-    return
-
 
 @app.cell
 def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
@@ -132,7 +119,6 @@ def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
     )
     return (union_basic,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -141,8 +127,6 @@ def _(mo):
     When `verbose_feature_names_out=True` (default), each output column
     is prefixed with the transformer name.
     """)
-    return
-
 
 @app.cell
 def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
@@ -172,8 +156,6 @@ def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
         "Verbose names help disambiguate when multiple transformers produce "
         "similarly-named features."
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -182,8 +164,6 @@ def _(mo):
 
     Combine lags, rolling statistics, and exponential moving average.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -211,7 +191,6 @@ def _(
     )
     return (union_three,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -220,8 +199,6 @@ def _(mo):
     Use `FeatureUnion` as the `feature_transformer` to produce rich
     feature sets for the reduction-based forecaster.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -263,7 +240,6 @@ def _(
     )
     return (fc_union,)
 
-
 @app.cell
 def _(fc_union, horizon, plot_forecast, y_test, y_train):
     _y_pred = fc_union.predict(forecasting_horizon=horizon)
@@ -274,8 +250,6 @@ def _(fc_union, horizon, plot_forecast, y_test, y_train):
         n_history=60,
         title="FeatureUnion (Lags + Rolling + EMA): Sunspots",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -294,8 +268,6 @@ def _(mo):
     - **Decomposition**: See `examples/compose/decomposition_variations.py`
     - **Panel feature union**: See `examples/compose/panel_pipelines.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

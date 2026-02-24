@@ -24,7 +24,16 @@ from sklearn.utils import (
     Bunch,
     _safe_indexing,
 )
-from sklearn.utils._dataframe import is_pandas_df
+
+try:
+    from sklearn.utils._dataframe import is_pandas_df
+except ModuleNotFoundError:  # scikit-learn < 1.6 (e.g. pyodide)
+
+    def is_pandas_df(X: object) -> bool:  # type: ignore[misc]
+        """Return True if *X* is a pandas DataFrame."""
+        return hasattr(X, "iloc") and hasattr(X, "columns")
+
+
 from sklearn.utils._param_validation import HasMethods, Hidden, StrOptions
 from sklearn.utils._set_output import (
     _get_output_config,

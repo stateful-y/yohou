@@ -1,9 +1,16 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "numpy",
+#     "yohou",
+# ]
+# ///
 """Exploratory Time Series Visualization.
 
 Demonstrates four exploration plotting functions with varied parameter
 combinations across univariate, multivariate, and panel datasets.
 
-Datasets: air_passengers, vic_electricity, australian_tourism, store_sales
+Datasets: tourism_monthly, electricity_demand, tourism_quarterly, dominick
 Demonstrates: plot_time_series, plot_rolling_statistics,
     plot_boxplot, plot_missing_data
 """
@@ -13,34 +20,21 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
 
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "yohou"])
-    return
-
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
     from yohou.datasets import (
-        load_air_passengers,
-        load_australian_tourism,
-        load_store_sales,
-        load_vic_electricity,
+        fetch_dominick,
+        fetch_electricity_demand,
+        fetch_tourism_monthly,
+        fetch_tourism_quarterly,
     )
     from yohou.plotting import (
         plot_boxplot,
@@ -50,17 +44,16 @@ def _():
     )
 
     return (
-        load_air_passengers,
-        load_australian_tourism,
-        load_store_sales,
-        load_vic_electricity,
+        fetch_dominick,
+        fetch_electricity_demand,
+        fetch_tourism_monthly,
+        fetch_tourism_quarterly,
         pl,
         plot_boxplot,
         plot_missing_data,
         plot_rolling_statistics,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -78,22 +71,21 @@ def _(mo):
 
     None -- this is a standalone exploration tutorial.
     """)
-    return
-
 
 @app.cell
 def _(
-    load_air_passengers,
-    load_australian_tourism,
-    load_store_sales,
-    load_vic_electricity,
+    fetch_tourism_monthly,
+    fetch_tourism_quarterly,
+    fetch_dominick,
+    fetch_electricity_demand,
 ):
-    air = load_air_passengers()
-    vic = load_vic_electricity()
-    tourism = load_australian_tourism()
-    store = load_store_sales()
-    return air, store, tourism, vic
-
+    tourism_monthly = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    vic = fetch_electricity_demand().frame
+    tourism_quarterly = fetch_tourism_quarterly().frame
+    _dom_full = fetch_dominick().frame
+    _profit_cols = [c for c in _dom_full.columns if c.endswith("__profit")][:6]
+    store = _dom_full.select("time", *_profit_cols)
+    return tourism_monthly, tourism_quarterly, store, vic
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -104,45 +96,35 @@ def _(mo):
     Varying **columns**, **panel_group_names**, and styling kwargs shows how the same
     function adapts to different data shapes.
     """)
-    return
-
 
 @app.cell
-def _(air, plot_time_series):
-    plot_time_series(air, title="Air Passengers -- Single Column")
-    return
-
+def _(tourism_monthly, plot_time_series):
+    plot_time_series(tourism_monthly, title="Monthly Tourism -- Single Column")
 
 @app.cell
 def _(plot_time_series, vic):
     plot_time_series(
         vic,
-        columns=["Demand", "Temperature"],
-        title="Victoria Electricity -- Multi-Column Overlay",
+        columns=["vic__demand", "nsw__demand"],
+        title="Electricity Demand -- Multi-Column Overlay",
     )
-    return
-
 
 @app.cell
-def _(plot_time_series, tourism):
+def _(plot_time_series, tourism_quarterly):
     plot_time_series(
-        tourism,
-        panel_group_names=["act", "victoria"],
-        title="Australian Tourism -- Panel Faceting (ACT & Victoria)",
+        tourism_quarterly,
+        panel_group_names=["T1", "T2"],
+        title="Tourism Quarterly -- Panel Faceting (T1 & T2)",
     )
-    return
-
 
 @app.cell
-def _(air, plot_time_series):
+def _(tourism_monthly, plot_time_series):
     plot_time_series(
-        air,
+        tourism_monthly,
         line_dash="dash",
         color_palette=["#DC2626"],
-        title="Air Passengers -- Dashed Red Line",
+        title="Monthly Tourism -- Dashed Red Line",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -153,55 +135,45 @@ def _(mo):
     Key parameters include **window_size**, **statistics** (single string or list),
     **show_original**, and the **fill_between** kwarg for envelope bands.
     """)
-    return
-
 
 @app.cell
-def _(air, plot_rolling_statistics):
+def _(tourism_monthly, plot_rolling_statistics):
     plot_rolling_statistics(
-        air,
+        tourism_monthly,
         window_size=12,
         statistics="mean",
         title="12-Month Rolling Mean",
     )
-    return
-
 
 @app.cell
-def _(air, plot_rolling_statistics):
+def _(tourism_monthly, plot_rolling_statistics):
     plot_rolling_statistics(
-        air,
+        tourism_monthly,
         window_size=12,
         statistics=["mean", "std"],
         title="12-Month Rolling Mean and Standard Deviation",
     )
-    return
-
 
 @app.cell
-def _(air, plot_rolling_statistics):
+def _(tourism_monthly, plot_rolling_statistics):
     plot_rolling_statistics(
-        air,
+        tourism_monthly,
         window_size=12,
         statistics=["min", "max", "mean"],
         fill_between=True,
         title="12-Month Min/Max Envelope with Mean",
     )
-    return
-
 
 @app.cell
 def _(plot_rolling_statistics, vic):
     plot_rolling_statistics(
         vic,
-        columns="Demand",
+        columns="vic__demand",
         window_size=48,
         statistics="mean",
         show_original=False,
         title="48-Step Rolling Mean on Vic Demand (Smoothed Only)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -212,42 +184,32 @@ def _(mo):
     within each group. Vary the period, toggle **show_points**, or pass
     **panel_group_names** for panel data.
     """)
-    return
-
 
 @app.cell
-def _(air, plot_boxplot):
-    plot_boxplot(air, period="1mo", title="Monthly Boxplot (Air Passengers)")
-    return
-
+def _(tourism_monthly, plot_boxplot):
+    plot_boxplot(tourism_monthly, period="1mo", title="Monthly Boxplot (Monthly Tourism)")
 
 @app.cell
-def _(air, plot_boxplot):
-    plot_boxplot(air, period="1q", title="Quarterly Boxplot (Air Passengers)")
-    return
-
+def _(tourism_monthly, plot_boxplot):
+    plot_boxplot(tourism_monthly, period="1q", title="Quarterly Boxplot (Monthly Tourism)")
 
 @app.cell
-def _(air, plot_boxplot):
+def _(tourism_monthly, plot_boxplot):
     plot_boxplot(
-        air,
+        tourism_monthly,
         period="1mo",
         show_points="all",
         title="Monthly Boxplot -- All Points Shown",
     )
-    return
-
 
 @app.cell
-def _(plot_boxplot, tourism):
+def _(plot_boxplot, tourism_quarterly):
     plot_boxplot(
-        tourism,
+        tourism_quarterly,
         period="1y",
-        panel_group_names=["act", "victoria"],
-        title="Quarterly Boxplot -- Australian Tourism Panel (ACT & Victoria)",
+        panel_group_names=["T1", "T2"],
+        title="Yearly Boxplot -- Tourism Quarterly Panel (T1 & T2)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -258,8 +220,6 @@ def _(mo):
     `"heatmap"`, `"bars"`, and `"matrix"`. Additional kwargs like
     **time_aggregation** and custom colors provide further control.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(pl, store):
@@ -279,24 +239,17 @@ def _(pl, store):
     )
     return (store_nan,)
 
-
 @app.cell
 def _(plot_missing_data, store_nan):
     plot_missing_data(store_nan, kind="heatmap", title="Missing Data -- Heatmap")
-    return
-
 
 @app.cell
 def _(plot_missing_data, store_nan):
     plot_missing_data(store_nan, kind="bars", title="Missing Data -- Bar Chart")
-    return
-
 
 @app.cell
 def _(plot_missing_data, store_nan):
     plot_missing_data(store_nan, kind="matrix", title="Missing Data -- Matrix")
-    return
-
 
 @app.cell
 def _(plot_missing_data, store_nan):
@@ -308,8 +261,6 @@ def _(plot_missing_data, store_nan):
         color_present="#22c55e",
         title="Missing Data -- Monthly Aggregation, Custom Colors",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -327,8 +278,6 @@ def _(mo):
     - **Seasonal analysis**: See `examples/plotting/seasonal.py` for seasonality overlays and frequency-domain plots
     - **Forecast visualization**: See `examples/plotting/forecasting_visualization.py` for model comparison and prediction intervals
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

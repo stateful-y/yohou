@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Observe-Predict Workflow.
 
 Demonstrates the observe/predict cycle for rolling-origin evaluation and
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -52,15 +46,13 @@ def _(mo):
     Familiarity with `PointReductionForecaster` and `fit/predict`
     (see `examples/quickstart.py`).
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers, load_store_sales
+    from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -71,13 +63,12 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        load_air_passengers,
-        load_store_sales,
+        fetch_dominick,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -88,23 +79,20 @@ def _(mo):
     then we use the calibration set to demonstrate `observe` and `predict`
     incrementally.
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
-    df = load_air_passengers()
+def _(fetch_tourism_monthly):
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     _n = len(df)
     train_end = int(_n * 0.6)
     cal_end = int(_n * 0.85)
 
-    y_train = df.head(train_end).select("time", "Passengers")
-    y_cal = df[train_end:cal_end].select("time", "Passengers")
-    y_test = df.tail(_n - cal_end).select("time", "Passengers")
+    y_train = df.head(train_end).select("time", "tourists")
+    y_cal = df[train_end:cal_end].select("time", "tourists")
+    y_test = df.tail(_n - cal_end).select("time", "tourists")
 
     y_train.tail(3)
     return cal_end, df, train_end, y_cal, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -113,8 +101,6 @@ def _(mo):
 
     Train on the initial training window.
     """)
-    return
-
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, y_train):
@@ -126,7 +112,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, y_train):
     forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
     return forecaster, forecasting_horizon
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -136,8 +121,6 @@ def _(mo):
     refitting the model**. This updates the observation buffer used by
     transformers and the forecaster's internal time tracking.
     """)
-    return
-
 
 @app.cell
 def _(forecaster, mo, y_cal):
@@ -150,8 +133,6 @@ def _(forecaster, mo, y_cal):
         f"`{forecaster.observed_time_}`\n\n"
         f"The model now knows about 6 additional months without refitting."
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -161,8 +142,6 @@ def _(mo):
     Now `predict()` produces forecasts starting from the newly observed
     position, 6 months ahead of where the original training ended.
     """)
-    return
-
 
 @app.cell
 def _(forecaster, forecasting_horizon, mo):
@@ -174,7 +153,6 @@ def _(forecaster, forecasting_horizon, mo):
     )
     return (y_pred_after_obs,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -183,8 +161,6 @@ def _(mo):
     `observe_predict()` is an atomic combination of `observe()` + `predict()`.
     This is the most common pattern in rolling evaluation loops.
     """)
-    return
-
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, y_cal, y_train):
@@ -203,7 +179,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, y_ca
     y_pred_op
     return fc_op, y_pred_op
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -213,8 +188,6 @@ def _(mo):
     window, score, and repeat. This produces a sequence of forecasts that
     can be compared against actuals.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -262,8 +235,6 @@ def _(
         f"**Mean MAE**: {sum(_scores) / len(_scores):.1f}" if _scores else
         f"**Rolling evaluation**: {len(_all_preds)} windows (no complete truth windows for scoring)"
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -274,8 +245,6 @@ def _(mo):
     window **without refitting**. This is useful for backtesting: rewind to
     a point in the past and re-evaluate without retraining.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -308,8 +277,6 @@ def _(
         f"The forecaster state is now as if we had only observed "
         f"the first {len(y_cal) // 2} calibration months."
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -320,44 +287,44 @@ def _(mo):
     using `panel_group_names`. This is useful when different groups receive
     new data at different times.
     """)
-    return
-
 
 @app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, load_store_sales, mo):
-    _store = load_store_sales()
-    _sales_cols = [c for c in _store.columns if c.endswith("__sales")]
-    _split = int(len(_store) * 0.8)
-    _cal_split = int(len(_store) * 0.9)
+def _(LagTransformer, PointReductionForecaster, Ridge, fetch_dominick, mo):
+    _panel = fetch_dominick().frame.select(
+        "time", "T7__profit", "T11__profit", "T12__profit",
+        "T13__profit", "T15__profit", "T19__profit",
+        "T22__profit", "T23__profit", "T24__profit",
+    )
+    _profit_cols = [c for c in _panel.columns if c.endswith("__profit")]
+    _split = int(len(_panel) * 0.8)
+    _cal_split = int(len(_panel) * 0.9)
 
-    _y_train_p = _store.head(_split).select("time", *_sales_cols)
-    _y_cal_p = _store[_split:_cal_split].select("time", *_sales_cols)
+    _y_train_p = _panel.head(_split).select("time", *_profit_cols)
+    _y_cal_p = _panel[_split:_cal_split].select("time", *_profit_cols)
 
     _fc_panel = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 7]),
+        feature_transformer=LagTransformer(lag=[1, 4]),
     )
-    _horizon_p = 7
+    _horizon_p = 4
     _fc_panel.fit(_y_train_p, forecasting_horizon=_horizon_p)
 
-    # Observe ONLY store_1 groups (simulate store_1 data arriving first)
+    # Observe ONLY T7-T12 groups (simulate partial data arrival)
     _fc_panel.observe(
-        _y_cal_p.head(7),
-        panel_group_names=["store_1_item_1", "store_1_item_2", "store_1_item_3"],
+        _y_cal_p.head(4),
+        panel_group_names=["T7", "T11", "T12"],
     )
 
-    # Predict for store_1 only (other groups still at old position)
+    # Predict for T7-T12 only (other groups still at old position)
     _y_pred_s1 = _fc_panel.predict(
         forecasting_horizon=_horizon_p,
-        panel_group_names=["store_1_item_1", "store_1_item_2", "store_1_item_3"],
+        panel_group_names=["T7", "T11", "T12"],
     )
 
     mo.md(
         f"**Predicted columns**: {[c for c in _y_pred_s1.columns if c != 'time' and c != 'observed_time']}\n\n"
-        f"Only store_1 groups were observed and predicted, other groups remain at their previous state."
+        f"Only T7, T11, T12 groups were observed and predicted, other groups remain at their previous state."
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -378,8 +345,6 @@ def _(mo):
     - **Scoring**: See `examples/scoring.py` for evaluating forecast quality with point and interval metrics
     - **Panel forecasting**: See `examples/point/panel_forecasting.py` for comprehensive panel workflows
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

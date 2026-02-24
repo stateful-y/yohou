@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Data Stationarity.
 
 Demonstrates per-group decomposition (trend + seasonality) and stationarity
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -44,15 +38,13 @@ def _(mo):
     - Seasonal differencing on panel data
     - Inspecting per-group residuals
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -74,24 +66,24 @@ def _():
         SeasonalDifferencing,
         SeasonalNaive,
         inspect_locality,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load and Explore Panel Data
     """)
-    return
-
 
 @app.cell
-def _(inspect_locality, load_australian_tourism, mo):
-    tourism = load_australian_tourism()
+def _(inspect_locality, fetch_tourism_quarterly, mo):
+    _bunch = fetch_tourism_quarterly()
+    # Select 8 series with uniform length for a manageable panel demo
+    _selected = [f"T{i}__tourists" for i in range(3, 11)]
+    tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(tourism)
     _split = int(len(tourism) * 0.8)
     y_train = tourism.head(_split)
@@ -104,12 +96,9 @@ def _(inspect_locality, load_australian_tourism, mo):
     )
     return groups, horizon, tourism, y_test, y_train
 
-
 @app.cell
 def _(plot_time_series, tourism):
-    plot_time_series(tourism, title="Australian Tourism: All States")
-    return
-
+    plot_time_series(tourism, title="Tourism Quarterly: All Panel Groups")
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -119,17 +108,14 @@ def _(mo):
     `SeasonalDifferencing(seasonality=4)` removes quarterly seasonality
     from each state independently.
     """)
-    return
-
 
 @app.cell
 def _(SeasonalDifferencing, plot_time_series, tourism):
     sd = SeasonalDifferencing(seasonality=4)
     sd.fit(tourism)
     tourism_diff = sd.transform(tourism)
-    plot_time_series(tourism_diff, title="Seasonal Differencing (lag=4): All States")
+    plot_time_series(tourism_diff, title="Seasonal Differencing (lag=4): All Groups")
     return sd, tourism_diff
-
 
 @app.cell
 def _(mo, sd, tourism, tourism_diff):
@@ -146,8 +132,6 @@ def _(mo, sd, tourism, tourism_diff):
         f"**Inverse transform check**: max error = {_max_err:.2e}\n\n"
         f"The seasonal differencing is perfectly invertible (within floating-point precision)."
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -156,8 +140,6 @@ def _(mo):
 
     Each group gets its own linear trend + residual model.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -188,7 +170,6 @@ def _(
     y_pred_decomp = fc_decomp.predict(forecasting_horizon=horizon)
     return Ridge, fc_decomp, y_pred_decomp
 
-
 @app.cell
 def _(plot_forecast, y_pred_decomp, y_test, y_train):
     plot_forecast(
@@ -196,11 +177,9 @@ def _(plot_forecast, y_pred_decomp, y_test, y_train):
         y_pred_decomp,
         y_train=y_train,
         n_history=12,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T1", "T2", "T3"],
         title="DecompositionPipeline: Trend + Residual (Panel)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -210,8 +189,6 @@ def _(mo):
     Add a `PatternSeasonalityForecaster` between trend and residual
     for a three-component decomposition.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -247,11 +224,10 @@ def _(
         _y_pred_three,
         y_train=y_train,
         n_history=12,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T1", "T2", "T3"],
         title="Trend + Seasonality + Residual (Panel)",
     )
     return (fc_three,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -260,8 +236,6 @@ def _(mo):
 
     Score each approach per group to see decomposition benefits.
     """)
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, groups, horizon, mo, pl, y_pred_decomp, y_test, y_train):
@@ -276,14 +250,12 @@ def _(MeanAbsoluteError, SeasonalNaive, groups, horizon, mo, pl, y_pred_decomp, 
         _s_naive = float(_scorer.score(y_test, _y_pred_naive, panel_group_names=[_state]))
         _s_decomp = float(_scorer.score(y_test, y_pred_decomp, panel_group_names=[_state]))
         _rows.append({
-            "State": _state,
+            "Group": _state,
             "SeasonalNaive MAE": round(_s_naive, 1),
             "Decomposition MAE": round(_s_decomp, 1),
         })
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -302,8 +274,6 @@ def _(mo):
     - **Stationarity transforms**: See `examples/stationarity/stationarity_transforms.py`
     - **Decomposition details**: See `examples/stationarity/decomposition.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

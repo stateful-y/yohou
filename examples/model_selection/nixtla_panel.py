@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+#     "yohou-nixtla",
+# ]
+# ///
 """Nixtla Forecasters on Panel Data.
 
 Demonstrates yohou-nixtla forecasters with panel time series,
@@ -9,27 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install([
-            "plotly", "scikit-learn", "yohou",
-            "statsforecast",
-        ])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -51,14 +42,12 @@ def _(mo):
 
     **Requires**: `yohou-nixtla` package
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection.split import ExpandingWindowSplitter
     from yohou.plotting import plot_forecast
@@ -67,24 +56,21 @@ def _():
     return (
         ExpandingWindowSplitter,
         MeanAbsoluteError,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
         inspect_locality,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Explore Panel Data
     """)
-    return
-
 
 @app.cell
-def _(inspect_locality, load_australian_tourism, mo, pl):
-    tourism = load_australian_tourism()
+def _(inspect_locality, fetch_tourism_quarterly, mo, pl):
+    tourism = fetch_tourism_quarterly().frame.select("time", *[f"T{i}__tourists" for i in range(3, 11)]).drop_nulls()
     _split = int(len(tourism) * 0.8)
     y_train = tourism.head(_split)
     y_test = tourism.tail(len(tourism) - _split)
@@ -102,7 +88,6 @@ def _(inspect_locality, load_australian_tourism, mo, pl):
     )
     return horizon, tourism, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -110,8 +95,6 @@ def _(mo):
 
     Nixtla's stats models fit **one model per series** internally.
     """)
-    return
-
 
 @app.cell
 def _():
@@ -122,7 +105,6 @@ def _():
     )
 
     return AutoARIMAForecaster, AutoETSForecaster, SeasonalNaiveForecaster
-
 
 @app.cell
 def _(
@@ -143,7 +125,6 @@ def _(
         stats_panel_preds[_name] = _fc.predict(forecasting_horizon=horizon)
     return stats_panel, stats_panel_preds
 
-
 @app.cell
 def _(MeanAbsoluteError, mo, pl, stats_panel_preds, y_test, y_train):
     _scorer = MeanAbsoluteError().fit(y_train)
@@ -155,7 +136,6 @@ def _(MeanAbsoluteError, mo, pl, stats_panel_preds, y_test, y_train):
     mo.ui.table(stats_panel_results)
     return (stats_panel_results,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -163,8 +143,6 @@ def _(mo):
 
     Score each model per panel group to see where models differ.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -194,14 +172,11 @@ def _(
     mo.ui.table(group_comparison)
     return (group_comparison,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Forecast Visualisation
     """)
-    return
-
 
 @app.cell
 def _(plot_forecast, stats_panel_preds, y_test, y_train):
@@ -212,16 +187,12 @@ def _(plot_forecast, stats_panel_preds, y_test, y_train):
         n_history=8,
         title="AutoARIMA on Panel Data",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Cross-Validation
     """)
-    return
-
 
 @app.cell
 def _(
@@ -248,7 +219,6 @@ def _(
     )
     return (GridSearchCV,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -267,8 +237,6 @@ def _(mo):
     - **Panel forecasting**: See `examples/point/panel_forecasting.py`
     - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

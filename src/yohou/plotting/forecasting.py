@@ -207,7 +207,9 @@ def plot_forecast(
 
     # Non-panel, single-model case
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
-    pred_value_cols = [c for c in y_pred.columns if c != "time" and not interval_pattern.match(c)]
+    pred_value_cols = [
+        c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+    ]
     test_value_cols = [c for c in y_test.columns if c != "time"]
     plot_columns = test_value_cols
 
@@ -440,7 +442,9 @@ def _plot_forecast_multi_model(
         # Interval bands first (behind everything else).
         for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
             model_color = colors[model_idx % len(colors)]
-            pred_value_cols = [c for c in y_pred.columns if c != "time" and not interval_pattern.match(c)]
+            pred_value_cols = [
+                c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+            ]
             pred_col = col if col in pred_value_cols else pred_value_cols[0] if pred_value_cols else None
             interval_base = pred_col if (pred_col is not None and pred_col in y_pred.columns) else col
             if not coverage_rates:
@@ -486,7 +490,9 @@ def _plot_forecast_multi_model(
         # Forecast lines on top
         for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
             model_color = colors[model_idx % len(colors)]
-            pred_value_cols = [c for c in y_pred.columns if c != "time" and not interval_pattern.match(c)]
+            pred_value_cols = [
+                c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+            ]
             pred_col = col if col in pred_value_cols else pred_value_cols[0] if pred_value_cols else None
             interval_base = pred_col if (pred_col is not None and pred_col in y_pred.columns) else col
             has_point = pred_col is not None and pred_col in y_pred.columns
@@ -669,7 +675,9 @@ def _plot_forecast_panel(
         # Interval bands first (behind Actual and forecast lines).
         for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
             m_color = model_colors[m_idx % len(model_colors)]
-            pred_value_cols = [c for c in m_pred.columns if c != "time" and not interval_pattern.match(c)]
+            pred_value_cols = [
+                c for c in m_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+            ]
             pred_col = col if col in pred_value_cols else None
             interval_base = pred_col if pred_col is not None else col
             if not coverage_rates:
@@ -723,7 +731,9 @@ def _plot_forecast_panel(
         # Forecast lines on top of bands and actual.
         for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
             m_color = model_colors[m_idx % len(model_colors)]
-            pred_value_cols = [c for c in m_pred.columns if c != "time" and not interval_pattern.match(c)]
+            pred_value_cols = [
+                c for c in m_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+            ]
             pred_col = col if col in pred_value_cols else None
 
             has_point = pred_col is not None

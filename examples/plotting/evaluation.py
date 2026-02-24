@@ -1,9 +1,15 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Model Evaluation Plots.
 
 Demonstrates residual diagnostics, score time series, score distributions,
 per-horizon analysis, model comparison bars, and calibration plots.
 
-Datasets: air_passengers
+Datasets: tourism_monthly
 Demonstrates: plot_residual_time_series, plot_score_time_series, plot_score_distribution,
     plot_score_per_horizon, plot_model_comparison_bar, plot_calibration
 """
@@ -13,30 +19,17 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
 
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers, load_sunspots
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import (
         MeanAbsoluteError,
@@ -60,7 +53,7 @@ def _():
         RootMeanSquaredError,
         SeasonalNaive,
         SplitConformalForecaster,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_calibration,
         plot_model_comparison_bar,
@@ -69,7 +62,6 @@ def _():
         plot_score_per_horizon,
         plot_score_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -90,15 +82,13 @@ def _(mo):
     Familiarity with yohou's fit/predict API and scoring system (see
     `examples/quickstart.py` and `examples/scoring.py`).
     """)
-    return
-
 
 @app.cell
-def _(PointReductionForecaster, SeasonalNaive, load_air_passengers):
-    air = load_air_passengers()
+def _(PointReductionForecaster, SeasonalNaive, fetch_tourism_monthly):
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     fh = 24
-    y_train = air.head(len(air) - fh)
-    y_test = air.tail(fh)
+    y_train = tourism.head(len(tourism) - fh)
+    y_test = tourism.tail(fh)
 
     naive = SeasonalNaive(seasonality=12)
     naive.fit(y_train, forecasting_horizon=fh)
@@ -109,7 +99,6 @@ def _(PointReductionForecaster, SeasonalNaive, load_air_passengers):
     y_pred_reduction = reduction.predict(forecasting_horizon=fh)
     return y_pred_naive, y_pred_reduction, y_test
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -119,8 +108,6 @@ def _(mo):
     residuals vs fitted, histogram, and Q-Q plot. Residuals are computed
     internally as `y_truth - y_pred`.
     """)
-    return
-
 
 @app.cell
 def _(plot_residual_time_series, y_pred_naive, y_test):
@@ -129,8 +116,6 @@ def _(plot_residual_time_series, y_pred_naive, y_test):
         y_test,
         title="Seasonal Naive -- Residual Diagnostics",
     )
-    return
-
 
 @app.cell
 def _(plot_residual_time_series, y_pred_reduction, y_test):
@@ -139,19 +124,15 @@ def _(plot_residual_time_series, y_pred_reduction, y_test):
         y_test,
         title="Reduction Forecaster -- Residual Diagnostics",
     )
-    return
-
 
 @app.cell
 def _(plot_residual_time_series, y_pred_naive, y_test):
     plot_residual_time_series(
         y_pred_naive,
         y_test,
-        columns="Passengers",
+        columns="tourists",
         title="Naive Residuals -- Single Column",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -162,8 +143,6 @@ def _(mo):
     single and multi-model comparisons, different scorers, and extensive
     styling via kwargs.
     """)
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_score_time_series, y_pred_naive, y_test):
@@ -173,8 +152,6 @@ def _(MeanAbsoluteError, plot_score_time_series, y_pred_naive, y_test):
         y_pred_naive,
         title="MAE Over Time -- Seasonal Naive",
     )
-    return
-
 
 @app.cell
 def _(
@@ -190,8 +167,6 @@ def _(
         {"Naive": y_pred_naive, "Reduction": y_pred_reduction},
         title="MAE Over Time -- Model Comparison",
     )
-    return
-
 
 @app.cell
 def _(
@@ -209,8 +184,6 @@ def _(
         show_markers=True,
         title="RMSE Over Time -- With Markers",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -220,8 +193,6 @@ def _(mo):
     `plot_score_distribution` renders histograms (or KDE) of per-timestep
     scores. Toggle **kind**, **show_mean**, **show_zero**, and **n_bins**.
     """)
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
@@ -233,8 +204,6 @@ def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
         n_bins=10,
         title="MAE Distribution -- Histogram (default)",
     )
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
@@ -245,8 +214,6 @@ def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
         kind="kde",
         title="MAE Distribution -- KDE",
     )
-    return
-
 
 @app.cell
 def _(
@@ -266,8 +233,6 @@ def _(
         show_zero=False,
         title="MAE Distribution -- Both, Custom Bins, No Zero Line",
     )
-    return
-
 
 @app.cell
 def _(
@@ -285,8 +250,6 @@ def _(
         n_bins=20,
         title="RMSE Distribution -- 20 Bins",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -297,8 +260,6 @@ def _(mo):
     step of the prediction window. Switch between **line** and **bar**
     kind, and overlay a **trend** line.
     """)
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
@@ -309,8 +270,6 @@ def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
         kind="line",
         title="MAE by Horizon -- Line",
     )
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
@@ -321,8 +280,6 @@ def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
         kind="bar",
         title="MAE by Horizon -- Bar",
     )
-    return
-
 
 @app.cell
 def _(
@@ -340,8 +297,6 @@ def _(
         show_trend=True,
         title="MAE by Horizon -- Multi-Model with Trend",
     )
-    return
-
 
 @app.cell
 def _(
@@ -358,8 +313,6 @@ def _(
         kind="bar",
         title="RMSE by Horizon -- Bar Comparison",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -369,8 +322,6 @@ def _(mo):
     `plot_model_comparison_bar` creates a grouped bar chart from a dict of
     model-scorer results. Vary **group_by**, **orientation**, and **sort_by**.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(
@@ -400,7 +351,6 @@ def _(
     }
     return (score_results,)
 
-
 @app.cell
 def _(plot_model_comparison_bar, score_results):
     plot_model_comparison_bar(
@@ -408,8 +358,6 @@ def _(plot_model_comparison_bar, score_results):
         group_by="scorer",
         title="Model Comparison -- Group by Scorer (default)",
     )
-    return
-
 
 @app.cell
 def _(plot_model_comparison_bar, score_results):
@@ -418,8 +366,6 @@ def _(plot_model_comparison_bar, score_results):
         group_by="model",
         title="Model Comparison -- Group by Model",
     )
-    return
-
 
 @app.cell
 def _(plot_model_comparison_bar, score_results):
@@ -429,8 +375,6 @@ def _(plot_model_comparison_bar, score_results):
         orientation="horizontal",
         title="Model Comparison -- Horizontal Bars",
     )
-    return
-
 
 @app.cell
 def _(plot_model_comparison_bar, score_results):
@@ -441,8 +385,6 @@ def _(plot_model_comparison_bar, score_results):
         ascending=False,
         title="Model Comparison -- Sorted by Naive Descending",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -452,15 +394,13 @@ def _(mo):
     `plot_calibration` assesses whether prediction intervals are well-calibrated.
     Points near the diagonal indicate accurate uncertainty quantification.
     """)
-    return
-
 
 @app.cell
-def _(SeasonalNaive, SplitConformalForecaster, load_air_passengers, pl):
-    air_calib = load_air_passengers()
+def _(SeasonalNaive, SplitConformalForecaster, fetch_tourism_monthly, pl):
+    tourism_calib = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     fh_calib = 12
-    y_train_calib = air_calib.head(len(air_calib) - fh_calib)
-    y_test_calib = air_calib.tail(fh_calib)
+    y_train_calib = tourism_calib.head(len(tourism_calib) - fh_calib)
+    y_test_calib = tourism_calib.tail(fh_calib)
 
     conformal_calib = SplitConformalForecaster(
         point_forecaster=SeasonalNaive(seasonality=12),
@@ -474,18 +414,15 @@ def _(SeasonalNaive, SplitConformalForecaster, load_air_passengers, pl):
     )
     return coverage_rates, y_pred_calib, y_test_calib
 
-
 @app.cell
 def _(coverage_rates, plot_calibration, y_pred_calib, y_test_calib):
     plot_calibration(
         y_pred_calib,
         y_test_calib,
         coverage_rates=coverage_rates,
-        columns="Passengers",
+        columns="tourists",
         title="Calibration -- Multiple Coverage Rates",
     )
-    return
-
 
 @app.cell
 def _(plot_calibration, y_pred_calib, y_test_calib):
@@ -493,13 +430,11 @@ def _(plot_calibration, y_pred_calib, y_test_calib):
         y_pred_calib,
         y_test_calib,
         coverage_rates=[0.5, 0.8, 0.9, 0.95],
-        columns="Passengers",
+        columns="tourists",
         x_label="Nominal",
         y_label="Empirical",
         title="Calibration -- Custom Axis Labels",
     )
-    return
-
 
 @app.cell
 def _(plot_calibration, y_pred_calib, y_test_calib):
@@ -507,13 +442,11 @@ def _(plot_calibration, y_pred_calib, y_test_calib):
         y_pred_calib,
         y_test_calib,
         coverage_rates=[0.5, 0.8, 0.9, 0.95],
-        columns="Passengers",
+        columns="tourists",
         reference_dash="dot",
         reference_color="#6366f1",
         title="Calibration -- Custom Reference Line",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -534,8 +467,6 @@ def _(mo):
     - **Similarity**: See `examples/plotting/similarity_heatmap.py` for distance-based interval weights
     - **Signal processing**: See `examples/plotting/signal_processing.py` for spectrum and phase analysis
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Interval Metrics for Prediction Interval Evaluation.
 
 Demonstrates interval scorers: EmpiricalCoverage, IntervalScore, MeanIntervalWidth,
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -49,8 +43,6 @@ def _(mo):
 
     Understanding of prediction intervals from `interval/` examples.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -58,7 +50,7 @@ def _():
     from sklearn.linear_model import QuantileRegressor
     from sklearn.multioutput import MultiOutputRegressor
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import (
         CalibrationError,
@@ -80,12 +72,11 @@ def _():
         MultiOutputRegressor,
         PinballLoss,
         QuantileRegressor,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_calibration,
         plot_forecast,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -94,8 +85,6 @@ def _(mo):
 
     We fit an interval forecaster and produce prediction intervals to evaluate with the metrics below.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -103,11 +92,12 @@ def _(
     LagTransformer,
     MultiOutputRegressor,
     QuantileRegressor,
-    load_air_passengers,
+    fetch_tourism_monthly,
 ):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists").drop_nulls()
+        .rename({"T1__tourists": "tourists"})
     )
 
     y_train = y.head(115)
@@ -134,7 +124,6 @@ def _(
     print(f"Prediction columns: {y_pred_int.columns}")
     return coverage_rates, y_pred_int, y_test, y_train
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
     plot_forecast(
@@ -144,8 +133,6 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
         coverage_rates=coverage_rates,
         title="Intervals for Evaluation",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -155,8 +142,6 @@ def _(mo):
     Measures the fraction of actual values falling within the interval.
     A 90% interval should contain ~90% of observations.
     """)
-    return
-
 
 @app.cell
 def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
@@ -164,12 +149,10 @@ def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
     ec.fit(y_train)
     coverage_result = ec.score(y_test, y_pred_int)
     print("Empirical Coverage:")
-    print(f"  Nominal → Empirical")
+    print("  Nominal → Empirical")
     for rate in coverage_rates:
         print(f"  {rate:.0%}     → result included")
     print(f"\n  Result: {coverage_result}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -179,8 +162,6 @@ def _(mo):
     The interval score rewards narrow intervals and penalizes miscoverage.
     Lower is better. Combines both sharpness and calibration.
     """)
-    return
-
 
 @app.cell
 def _(IntervalScore, coverage_rates, y_pred_int, y_test, y_train):
@@ -188,8 +169,6 @@ def _(IntervalScore, coverage_rates, y_pred_int, y_test, y_train):
     is_scorer.fit(y_train)
     is_result = is_scorer.score(y_test, y_pred_int)
     print(f"Interval Score: {is_result}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -199,8 +178,6 @@ def _(mo):
     Simply the average width of the prediction interval.
     Narrower is better **given adequate coverage**.
     """)
-    return
-
 
 @app.cell
 def _(MeanIntervalWidth, coverage_rates, y_pred_int, y_test, y_train):
@@ -208,8 +185,6 @@ def _(MeanIntervalWidth, coverage_rates, y_pred_int, y_test, y_train):
     miw.fit(y_train)
     width_result = miw.score(y_test, y_pred_int)
     print(f"Mean Interval Width: {width_result}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -218,8 +193,6 @@ def _(mo):
 
     We examine two additional metrics that assess quantile accuracy and coverage reliability.
     """)
-    return
-
 
 @app.cell
 def _(CalibrationError, PinballLoss, coverage_rates, y_pred_int, y_test, y_train):
@@ -232,8 +205,6 @@ def _(CalibrationError, PinballLoss, coverage_rates, y_pred_int, y_test, y_train
     ce.fit(y_train)
     cal_result = ce.score(y_test, y_pred_int)
     print(f"Calibration Error: {cal_result}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -243,8 +214,6 @@ def _(mo):
     Like point scorers, interval scorers support aggregation.
     `"coveragewise"` gives per-coverage-rate scores.
     """)
-    return
-
 
 @app.cell
 def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
@@ -256,8 +225,6 @@ def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
     cw_result = ec_cw.score(y_test, y_pred_int)
     print("Coverage-wise Empirical Coverage:")
     print(cw_result)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -266,8 +233,6 @@ def _(mo):
 
     `plot_calibration` shows nominal vs. empirical coverage, ideal is the diagonal.
     """)
-    return
-
 
 @app.cell
 def _(coverage_rates, plot_calibration, y_pred_int, y_test):
@@ -275,11 +240,9 @@ def _(coverage_rates, plot_calibration, y_pred_int, y_test):
         y_pred_int,
         y_test,
         coverage_rates=coverage_rates,
-        columns="passengers",
+        columns="tourists",
         title="Calibration: Nominal vs Empirical Coverage",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -294,8 +257,6 @@ def _(mo):
     - Use `aggregation_method="coveragewise"` for per-rate breakdown
     - `plot_calibration` visualizes calibration quality
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -306,8 +267,6 @@ def _(mo):
     - **Model selection**: See `model_selection/` for CV with scoring
     - **Time weighting**: See `examples/time_weighted_forecasting.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

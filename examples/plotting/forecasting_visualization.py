@@ -1,9 +1,15 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Forecast Visualization and Comparison.
 
 Demonstrates forecast plots, decomposition visualization, and time weight
 plots with varied parameter combinations.
 
-Datasets: air_passengers, sunspots
+Datasets: tourism_monthly, sunspots
 Demonstrates: plot_forecast, plot_components, plot_time_weight
 """
 
@@ -12,31 +18,18 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
 
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_air_passengers, load_sunspots
+    from yohou.datasets import fetch_sunspot, fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.plotting import (
         plot_components,
@@ -62,14 +55,13 @@ def _():
         SplitConformalForecaster,
         exponential_decay_weight,
         linear_decay_weight,
-        load_air_passengers,
-        load_sunspots,
+        fetch_tourism_monthly,
+        fetch_sunspot,
         pl,
         plot_components,
         plot_forecast,
         plot_time_weight,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -86,17 +78,14 @@ def _(mo):
 
     Basic familiarity with yohou's fit/predict API (see `examples/quickstart.py`).
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
-    air = load_air_passengers()
+def _(fetch_tourism_monthly):
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     fh = 12
-    y_train = air.head(len(air) - fh)
-    y_test = air.tail(fh)
+    y_train = tourism.head(len(tourism) - fh)
+    y_test = tourism.tail(fh)
     return fh, y_test, y_train
-
 
 @app.cell
 def _(PointReductionForecaster, SeasonalNaive, fh, y_train):
@@ -109,10 +98,9 @@ def _(PointReductionForecaster, SeasonalNaive, fh, y_train):
     y_pred_reduction = reduction.predict(forecasting_horizon=fh)
     return y_pred_naive, y_pred_reduction
 
-
 @app.cell
-def _(SeasonalNaive, SplitConformalForecaster, fh, load_sunspots):
-    sunspots = load_sunspots()
+def _(SeasonalNaive, SplitConformalForecaster, fh, fetch_sunspot):
+    sunspots = fetch_sunspot().frame
     ss_train = sunspots.head(len(sunspots) - fh)
     ss_test = sunspots.tail(fh)
 
@@ -126,7 +114,6 @@ def _(SeasonalNaive, SplitConformalForecaster, fh, load_sunspots):
     )
     return ss_test, ss_train, y_pred_conformal
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -135,8 +122,6 @@ def _(mo):
     `plot_forecast` displays actuals vs predictions. Pass **y_train** to include
     history, and use **n_history** to trim the visible window.
     """)
-    return
-
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
@@ -146,8 +131,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
         y_train=y_train,
         title="Seasonal Naive -- Full History",
     )
-    return
-
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
@@ -158,8 +141,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
         n_history=50,
         title="Seasonal Naive -- Last 50 Steps of History",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -170,8 +151,6 @@ def _(mo):
     forecasters, include **coverage_rates** to display prediction bands.
     Toggle **show_transition** to control the training/test boundary marker.
     """)
-    return
-
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_pred_reduction, y_test):
@@ -180,8 +159,6 @@ def _(plot_forecast, y_pred_naive, y_pred_reduction, y_test):
         {"Naive": y_pred_naive, "Reduction": y_pred_reduction},
         title="Multi-Model Comparison (Overlay)",
     )
-    return
-
 
 @app.cell
 def _(plot_forecast, ss_test, ss_train, y_pred_conformal):
@@ -191,10 +168,8 @@ def _(plot_forecast, ss_test, ss_train, y_pred_conformal):
         y_train=ss_train,
         coverage_rates=[0.9],
         n_history=120,
-        title="Conformal Forecaster -- 90% PI on Sunspots",
+        title="Conformal Forecaster -- 90% PI on Sunspot",
     )
-    return
-
 
 @app.cell
 def _(plot_forecast, y_pred_naive, y_test, y_train):
@@ -205,8 +180,6 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
         show_transition=False,
         title="Seasonal Naive -- No Transition Marker",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -216,8 +189,6 @@ def _(mo):
     `plot_components` displays a fitted `DecompositionPipeline`'s components
     as stacked subplots. Toggle **show_original** and pass a subset of components.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -241,7 +212,6 @@ def _(
         decomp_components[_name] = _fc.predict(forecasting_horizon=fh)
     return (decomp_components,)
 
-
 @app.cell
 def _(decomp_components, fh, plot_components, y_test):
     plot_components(
@@ -250,8 +220,6 @@ def _(decomp_components, fh, plot_components, y_test):
         show_original=True,
         title="Decomposition -- Trend + Seasonality with Original",
     )
-    return
-
 
 @app.cell
 def _(decomp_components, fh, plot_components, y_train):
@@ -261,8 +229,6 @@ def _(decomp_components, fh, plot_components, y_train):
         show_original=False,
         title="Decomposition -- Components Only",
     )
-    return
-
 
 @app.cell
 def _(decomp_components, fh, plot_components, y_test):
@@ -271,8 +237,6 @@ def _(decomp_components, fh, plot_components, y_test):
         {"trend": decomp_components["trend"]},
         title="Decomposition -- Trend Only",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -282,8 +246,6 @@ def _(mo):
     `plot_time_weight` renders weighting functions over time. Toggle the
     **fill** kwarg for an area chart and adjust **fill_opacity**.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(exponential_decay_weight, linear_decay_weight, pl, y_train):
@@ -295,7 +257,6 @@ def _(exponential_decay_weight, linear_decay_weight, pl, y_train):
     lin_weight_df = pl.DataFrame({"time": _times, "time_weight": _lin_fn(_times)})
     return exp_weight_df, lin_weight_df
 
-
 @app.cell
 def _(exp_weight_df, plot_time_weight):
     plot_time_weight(
@@ -303,8 +264,6 @@ def _(exp_weight_df, plot_time_weight):
         fill=True,
         title="Exponential Decay Weight (half_life=24)",
     )
-    return
-
 
 @app.cell
 def _(lin_weight_df, plot_time_weight):
@@ -313,8 +272,6 @@ def _(lin_weight_df, plot_time_weight):
         fill=False,
         title="Linear Decay Weight -- Line Only",
     )
-    return
-
 
 @app.cell
 def _(lin_weight_df, plot_time_weight):
@@ -324,8 +281,6 @@ def _(lin_weight_df, plot_time_weight):
         fill_opacity=0.5,
         title="Linear Decay Weight -- Semi-Transparent Fill",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -342,8 +297,6 @@ def _(mo):
     - **Exploration**: See `examples/plotting/exploration.py` for rolling statistics and missing data audits
     - **Cross-validation**: See `examples/plotting/model_selection.py` for CV split visualization and hyperparameter search results
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

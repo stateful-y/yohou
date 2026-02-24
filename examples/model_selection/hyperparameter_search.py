@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Hyperparameter Search with GridSearchCV and RandomizedSearchCV.
 
 Demonstrates time series hyperparameter optimization with temporal cross-validation.
@@ -8,24 +15,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "scipy", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,8 +42,6 @@ def _(mo):
 
     Familiarity with splitters (see `cv_splitters.py`) and scorers (see `metrics/`).
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -57,7 +49,7 @@ def _():
     from scipy.stats import uniform
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import (
         ExpandingWindowSplitter,
@@ -76,12 +68,11 @@ def _():
         PointReductionForecaster,
         RandomizedSearchCV,
         Ridge,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_cv_results_scatter,
         uniform,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -90,14 +81,13 @@ def _(mo):
 
     We load the data and define the forecaster, parameter grid, and cross-validation splitter used throughout the search examples.
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists").drop_nulls()
+        .rename({"T1__tourists": "tourists"})
     )
 
     y_train = y.head(120)
@@ -107,7 +97,6 @@ def _(load_air_passengers):
     print(f"Train: {len(y_train)}, Test: {len(y_test)}, Horizon: {fh}")
     return fh, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -116,8 +105,6 @@ def _(mo):
     Exhaustive grid search over parameter combinations.
     Uses `ExpandingWindowSplitter` for temporal CV and `MeanAbsoluteError` for scoring.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -154,7 +141,6 @@ def _(
     print(f"Best score:  {grid_search.best_score_:.2f}")
     return (grid_search,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -162,8 +148,6 @@ def _(mo):
 
     `cv_results_` is a dict with per-parameter-combination scores, similar to sklearn.
     """)
-    return
-
 
 @app.cell
 def _(grid_search, pl):
@@ -177,8 +161,6 @@ def _(grid_search, pl):
     ).sort("rank_test_score")
 
     results_df
-    return
-
 
 @app.cell
 def _(grid_search, plot_cv_results_scatter):
@@ -187,8 +169,6 @@ def _(grid_search, plot_cv_results_scatter):
         param_name="estimator__alpha",
         title="Grid Search: Alpha vs Score",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -197,8 +177,6 @@ def _(mo):
 
     After fitting, `GridSearchCV` acts as a forecaster using the best-found parameters.
     """)
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, grid_search, y_test, y_train):
@@ -209,8 +187,6 @@ def _(MeanAbsoluteError, grid_search, y_test, y_train):
     score = mae.score(y_test, y_pred)
     print(f"Best model MAE on test: {score:.2f}")
     y_pred.head()
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -220,8 +196,6 @@ def _(mo):
     For larger search spaces, `RandomizedSearchCV` samples parameter combinations
     randomly. Use `n_iter` to control how many to try.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -254,7 +228,6 @@ def _(
     print(f"Best score:  {rand_search.best_score_:.2f}")
     return (rand_search,)
 
-
 @app.cell
 def _(plot_cv_results_scatter, rand_search):
     plot_cv_results_scatter(
@@ -262,8 +235,6 @@ def _(plot_cv_results_scatter, rand_search):
         param_name="estimator__alpha",
         title="Randomized Search: Alpha vs Score",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -278,8 +249,6 @@ def _(mo):
     - Use `plot_cv_results_scatter` to visualize parameter-score relationships
     - After fitting, use the search object directly as a forecaster
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -290,8 +259,6 @@ def _(mo):
     - **Scoring**: See `metrics/` for all available scorers
     - **Interval search**: Use `IntervalReductionForecaster` with search for interval tuning
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Forecasting with Forecasted Features.
 
 Demonstrates ForecastedFeatureForecaster for chaining feature and target forecasting.
@@ -8,24 +15,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -47,8 +41,6 @@ def _(mo):
 
     Familiarity with `PointReductionForecaster`.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -56,7 +48,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import ForecastedFeatureForecaster
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster
@@ -68,39 +60,38 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        load_vic_electricity,
+        fetch_electricity_demand,
         pl,
         plot_forecast,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data with Exogenous Features
 
-    We'll forecast electricity Demand using Temperature as an exogenous feature.
-    At prediction time, Temperature is unknown, it must be forecasted too.
+    We'll forecast Victoria's electricity demand using NSW demand as an
+    exogenous feature.  At prediction time, NSW demand is unknown, it
+    must be forecasted too.
     """)
-    return
-
 
 @app.cell
-def _(load_vic_electricity, pl):
-    raw = load_vic_electricity()
+def _(fetch_electricity_demand, pl):
+    raw = fetch_electricity_demand().frame
 
-    # Resample to daily for speed
+    # Resample to daily for speed (drop trailing all-null days)
     daily = (
         raw.group_by_dynamic("time", every="1d")
         .agg(
-            pl.col("Demand").mean(),
-            pl.col("Temperature").mean(),
+            pl.col("vic__demand").mean().alias("demand"),
+            pl.col("nsw__demand").mean().alias("nsw_demand"),
         )
         .sort("time")
+        .drop_nulls()
     )
 
-    y = daily.select("time", "Demand")
-    X = daily.select("time", "Temperature")
+    y = daily.select("time", "demand")
+    X = daily.select("time", "nsw_demand")
 
     split_idx = len(y) - 14
     y_train, y_test = y.head(split_idx), y.tail(len(y) - split_idx)
@@ -121,7 +112,6 @@ def _(load_vic_electricity, pl):
         y_train,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -131,8 +121,6 @@ def _(mo):
     Simple, but the target model sees perfect features at train time vs. noisy
     forecasted features at predict time.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -163,7 +151,6 @@ def _(
     y_pred_actual.head()
     return ff_actual, y_pred_actual
 
-
 @app.cell
 def _(MeanAbsoluteError, y_pred_actual, y_test, y_train):
     mae_actual = MeanAbsoluteError()
@@ -171,7 +158,6 @@ def _(MeanAbsoluteError, y_pred_actual, y_test, y_train):
     score_actual = mae_actual.score(y_test, y_pred_actual)
     print(f"MAE (actual strategy): {score_actual:.2f}")
     return (mae_actual, score_actual)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -183,8 +169,6 @@ def _(mo):
 
     Let's compare both.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -224,7 +208,6 @@ def _(
         print(f"strategy={strategy:>10s}  MAE: {_score:.2f}")
     return (strategy_results,)
 
-
 @app.cell
 def _(plot_forecast, strategy_results, y_test, y_train):
     preds_dict = {name: r["pred"] for name, r in strategy_results.items()}
@@ -236,7 +219,6 @@ def _(plot_forecast, strategy_results, y_test, y_train):
     )
     return (preds_dict,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -245,8 +227,6 @@ def _(mo):
     `ForecastedFeatureForecaster` supports `update` for both target and feature
     forecasters simultaneously.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -298,7 +278,6 @@ def _(
     print(f"Rolling MAE: {score_rolling:.2f}")
     return all_preds, ff_rolling, mae_rolling, score_rolling
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -309,8 +288,6 @@ def _(mo):
     - `"actual"` is simplest; `"predicted"` / `"reset"` reduce train-test distribution shift
     - `update()` passes new observations to both internal forecasters
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -321,8 +298,6 @@ def _(mo):
     - **Interval forecasting**: See `interval/` for prediction intervals
     - **Decomposition**: See `stationarity/` for `DecompositionPipeline`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

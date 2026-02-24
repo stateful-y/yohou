@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Conformal Prediction with Different Conformity Scorers.
 
 Demonstrates how different conformity scorers affect prediction interval
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -44,15 +38,13 @@ def _(mo):
     - Coverage and width comparison across scorers
     - Using `DistanceSimilarity` with different conformity scorers
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import DistanceSimilarity, SplitConformalForecaster
     from yohou.metrics import AbsoluteResidual, EmpiricalCoverage, GammaResidual, MeanIntervalWidth, Residual
     from yohou.plotting import plot_forecast
@@ -70,31 +62,27 @@ def _():
         Residual,
         Ridge,
         SplitConformalForecaster,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers, mo):
-    air = load_air_passengers()
-    _split = int(len(air) * 0.8)
-    y_train = air.head(_split)
-    y_test = air.tail(len(air) - _split)
+def _(fetch_tourism_monthly, mo):
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    _split = int(len(tourism) * 0.8)
+    y_train = tourism.head(_split)
+    y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
     coverage_rates = [0.9]
-    mo.md(f"**Air Passengers**: Train={len(y_train)}, Test={len(y_test)}")
-    return air, coverage_rates, horizon, y_test, y_train
-
+    mo.md(f"**Monthly Tourism**: Train={len(y_train)}, Test={len(y_test)}")
+    return tourism, coverage_rates, horizon, y_test, y_train
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -104,8 +92,6 @@ def _(mo):
     `Residual()` uses raw residuals: `y_true - y_pred`.
     Produces asymmetric intervals reflecting the sign of typical errors.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -139,7 +125,6 @@ def _(
     )
     return fc_residual, y_pred_resid
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -148,8 +133,6 @@ def _(mo):
     `AbsoluteResidual()` uses `|y_true - y_pred|`.
     Produces symmetric intervals centred around the point prediction.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -183,7 +166,6 @@ def _(
     )
     return fc_abs, y_pred_abs
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -193,8 +175,6 @@ def _(mo):
     `(y_true - y_pred) / y_pred`. Produces prediction-proportional
     intervals (wider when predictions are larger).
     """)
-    return
-
 
 @app.cell
 def _(
@@ -228,14 +208,11 @@ def _(
     )
     return fc_gamma, y_pred_gamma
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Compare Coverage and Width
     """)
-    return
-
 
 @app.cell
 def _(EmpiricalCoverage, MeanIntervalWidth, mo, pl, y_pred_abs, y_pred_gamma, y_pred_resid, y_test, y_train):
@@ -262,8 +239,6 @@ def _(EmpiricalCoverage, MeanIntervalWidth, mo, pl, y_pred_abs, y_pred_gamma, y_
         })
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -274,8 +249,6 @@ def _(mo):
     similarity to the current observation. Combined with different
     conformity scorers, this produces adaptive intervals.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -314,7 +287,6 @@ def _(
     )
     return (fc_sim,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -338,8 +310,6 @@ def _(mo):
     - **Conformal forecasting**: See `examples/interval/conformal_forecasting.py`
     - **Distance similarity**: See `examples/interval/distance_similarity.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

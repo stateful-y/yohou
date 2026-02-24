@@ -52,7 +52,7 @@ Yohou bridges scikit-learn's tabular machine learning ecosystem with time series
 - **Composition**: Pipelines, feature unions, column transformers, and decomposition pipelines that compose like sklearn.
 - **Time-weighted learning**: Metadata routing support for `time_weight` in fitting and scoring.
 - **Interactive visualization**: 30+ Plotly-based plotting functions for exploration, diagnostics, and evaluation.
-- **Bundled datasets**: 7 ready-to-use time series datasets (univariate, multivariate, and panel).
+- **Remote datasets**: 7 `fetch_*` functions for Monash/Zenodo time series with local Parquet caching (univariate, multivariate, and panel).
 
 ## What's New
 

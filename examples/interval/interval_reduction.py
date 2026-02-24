@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Interval Reduction Forecasting with Quantile Regression.
 
 Demonstrates IntervalReductionForecaster for native quantile-based intervals.
@@ -8,24 +14,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -47,16 +40,12 @@ def _(mo):
 
     Understanding of `PointReductionForecaster` and prediction intervals.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
-    from sklearn.linear_model import QuantileRegressor
-    from sklearn.multioutput import MultiOutputRegressor
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
     from yohou.plotting import plot_forecast
@@ -68,27 +57,25 @@ def _():
         IntervalScore,
         LagTransformer,
         MeanIntervalWidth,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We load the Air Passengers dataset and split it into training and test sets.
+    We load the Monthly Tourism dataset and split it into training and test sets.
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists").drop_nulls()
+        .rename({"T1__tourists": "tourists"})
     )
 
     split_idx = int(len(y) * 0.8)
@@ -99,7 +86,6 @@ def _(load_air_passengers):
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return forecasting_horizon, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -108,8 +94,6 @@ def _(mo):
     The default estimator is `MultiOutputRegressor(QuantileRegressor())`.
     `coverage_rates` are specified at **fit time** to train the needed quantile models.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -139,7 +123,6 @@ def _(
     y_pred_int.head()
     return coverage_rates, y_pred_int
 
-
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
     plot_forecast(
@@ -149,8 +132,6 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
         coverage_rates=coverage_rates,
         title="Quantile Regression Intervals",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -159,8 +140,6 @@ def _(mo):
 
     We assess how well the prediction intervals capture the true values using interval-specific metrics.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -177,8 +156,6 @@ def _(
         scorer.fit(y_train)
         score = scorer.score(y_test, y_pred_int)
         print(f"{_scorer_cls.__name__}: {score}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -188,8 +165,6 @@ def _(mo):
     You can train and predict with as many coverage rates as needed.
     Each rate adds lower/upper columns to the prediction.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -219,7 +194,6 @@ def _(
         print(f"  {col}")
     return many_rates, y_pred_many
 
-
 @app.cell
 def _(many_rates, plot_forecast, y_pred_many, y_test, y_train):
     plot_forecast(
@@ -229,8 +203,6 @@ def _(many_rates, plot_forecast, y_pred_many, y_test, y_train):
         coverage_rates=many_rates,
         title="Multiple Coverage Rates",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -243,8 +215,6 @@ def _(mo):
     - More coverage rates = more quantile models to train
     - Evaluate with `EmpiricalCoverage`, `IntervalScore`, `MeanIntervalWidth`
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -255,8 +225,6 @@ def _(mo):
     - **Calibration plots**: Use `plot_calibration` from `yohou.plotting`
     - **Scoring**: See `metrics/` for comprehensive interval metrics
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

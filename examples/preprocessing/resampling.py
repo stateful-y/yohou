@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Resampling: Downsampler and Upsampler.
 
 Demonstrates changing time series frequency with aggregation or interpolation.
@@ -8,24 +14,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -46,42 +39,38 @@ def _(mo):
 
     None.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.plotting import plot_time_series
     from yohou.preprocessing import Downsampler, Upsampler
 
-    return (Downsampler, Upsampler, load_vic_electricity, pl, plot_time_series)
-
+    return (Downsampler, Upsampler, fetch_electricity_demand, pl, plot_time_series)
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load High-Frequency Data
 
-    Victoria Electricity has 30-minute intervals, ideal for demonstrating downsampling.
+    The Electricity Demand dataset has 30-minute intervals, ideal for demonstrating downsampling.
     """)
-    return
-
 
 @app.cell
-def _(load_vic_electricity):
-    raw = load_vic_electricity()
+def _(fetch_electricity_demand, pl):
+    raw = fetch_electricity_demand().frame.select(
+        "time", pl.col("vic__demand").alias("demand")
+    )
     print(f"Shape: {raw.shape}")
     print(f"Columns: {raw.columns}")
     print(f"Time range: {raw['time'].min()} to {raw['time'].max()}")
 
     # Use a subset for speed
-    y_hf = raw.select("time", "Demand").head(48 * 30)  # ~30 days of 30-min data
+    y_hf = raw.head(48 * 30)  # ~30 days of 30-min data
     print(f"Subset: {len(y_hf)} observations")
     return raw, y_hf
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -91,8 +80,6 @@ def _(mo):
     Aggregate from 30-minute to daily frequency. Choose aggregation method:
     `"mean"`, `"sum"`, `"min"`, `"max"`, `"first"`, `"last"`, `"median"`.
     """)
-    return
-
 
 @app.cell
 def _(Downsampler, y_hf):
@@ -105,16 +92,13 @@ def _(Downsampler, y_hf):
     y_daily_sum = daily_sum.transform(y_hf)
 
     print(f"30-min data: {len(y_hf)} rows → daily mean: {len(y_daily_mean)} rows")
-    print(f"First day mean demand: {y_daily_mean['Demand'][0]:.1f}")
-    print(f"First day total demand: {y_daily_sum['Demand'][0]:.1f}")
+    print(f"First day mean demand: {y_daily_mean['demand'][0]:.1f}")
+    print(f"First day total demand: {y_daily_sum['demand'][0]:.1f}")
     return daily_mean, daily_sum, y_daily_mean, y_daily_sum
-
 
 @app.cell
 def _(plot_time_series, y_daily_mean):
-    plot_time_series(y_daily_mean, title="Daily Mean Demand")
-    return
-
+    plot_time_series(y_daily_mean, title="Daily Mean Electricity Demand")
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -123,8 +107,6 @@ def _(mo):
 
     Let's compare how different aggregation strategies affect the resampled output.
     """)
-    return
-
 
 @app.cell
 def _(Downsampler, y_hf):
@@ -132,10 +114,8 @@ def _(Downsampler, y_hf):
         _ds = Downsampler(interval="1d", aggregation=_agg)
         _ds.fit(y_hf)
         _result = _ds.transform(y_hf)
-        _first_val = _result["Demand"][0]
+        _first_val = _result["demand"][0]
         print(f"aggregation={_agg:>6s}  first day: {_first_val:.1f}  rows: {len(_result)}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -145,8 +125,6 @@ def _(mo):
     Interpolate from daily to hourly (or any higher frequency).
     Methods: `"linear"`, `"nearest"`, `"forward"`, `"backward"`.
     """)
-    return
-
 
 @app.cell
 def _(Upsampler, y_daily_mean):
@@ -158,7 +136,6 @@ def _(Upsampler, y_daily_mean):
     y_hourly.head(30)
     return hourly, y_hourly
 
-
 @app.cell
 def _(Upsampler, y_daily_mean):
     for _method in ["linear", "nearest", "forward", "backward"]:
@@ -166,10 +143,8 @@ def _(Upsampler, y_daily_mean):
         _up.fit(y_daily_mean)
         _result = _up.transform(y_daily_mean)
         # Show first few hourly values to compare methods
-        _vals = _result["Demand"].head(5).to_list()
+        _vals = _result["demand"].head(5).to_list()
         print(f"interpolation={_method:>10s}  first 5h: {[f'{v:.1f}' for v in _vals]}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -178,8 +153,6 @@ def _(mo):
 
     We apply the same downsampling approach at a weekly frequency to illustrate flexible interval selection.
     """)
-    return
-
 
 @app.cell
 def _(Downsampler, plot_time_series, y_hf):
@@ -188,9 +161,8 @@ def _(Downsampler, plot_time_series, y_hf):
     y_weekly = weekly.transform(y_hf)
 
     print(f"30-min: {len(y_hf)} → weekly: {len(y_weekly)} rows")
-    plot_time_series(y_weekly, title="Weekly Mean Demand")
+    plot_time_series(y_weekly, title="Weekly Mean Electricity Demand")
     return weekly, y_weekly
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -204,8 +176,6 @@ def _(mo):
     - Use upsampling when models require uniform higher frequency
     - `interval` uses polars duration strings: `"1h"`, `"1d"`, `"1w"`, `"1mo"`
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -216,8 +186,6 @@ def _(mo):
     - **Data cleaning**: See `data_cleaning.py` for imputation and outliers
     - **In forecasters**: Use resampled data as input to any forecaster
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

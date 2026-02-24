@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Column-Wise Feature Transformation.
 
 Demonstrates ColumnTransformer for applying different transforms to different
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -34,8 +28,8 @@ def _(mo):
     # Column-Wise Feature Transformation
 
     When forecasting with multivariate data, different columns often need
-    different preprocessing, temperatures should be scaled, counts may need
-    log transforms, and holiday indicators should pass through untouched.
+    different preprocessing, demands from different regions should be scaled,
+    and some features may pass through untouched.
     `ColumnTransformer` applies **distinct transformers to distinct columns**
     in a single step.
 
@@ -52,8 +46,6 @@ def _(mo):
     Familiarity with `PointReductionForecaster` and basic transformers
     (see `examples/point/reduction_forecaster.py`).
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -61,7 +53,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import ColumnTransformer
-    from yohou.datasets import load_store_sales, load_vic_electricity
+    from yohou.datasets import fetch_dominick, fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -78,69 +70,63 @@ def _():
         Ridge,
         StandardScaler,
         inspect_locality,
-        load_store_sales,
-        load_vic_electricity,
+        fetch_dominick,
+        fetch_electricity_demand,
         pl,
         plot_forecast,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Multivariate Data
 
-    The Victoria Electricity dataset has three columns with very different scales:
-    `Demand` (MW), `Temperature` (Celsius), and `Holiday` (binary indicator).
+    The Electricity Demand dataset has five state-level demand columns with
+    very different dynamics: `vic__demand`, `nsw__demand`, `sa__demand`, etc.
+    We use Victoria as the target and other states as exogenous features.
     """)
-    return
-
 
 @app.cell
-def _(load_vic_electricity, pl):
-    vic = load_vic_electricity()
-    # Downsample to daily for manageable size
-    vic_daily = vic.group_by_dynamic("time", every="1d").agg(
-        pl.col("Demand").mean(),
-        pl.col("Temperature").mean(),
-        pl.col("Holiday").max(),
-    )
+def _(fetch_electricity_demand, pl):
+    _elec = fetch_electricity_demand().frame
+    # Downsample to daily for manageable size (drop trailing all-null days)
+    vic_daily = _elec.group_by_dynamic("time", every="1d").agg(
+        pl.col("vic__demand").mean().alias("Demand"),
+        pl.col("nsw__demand").mean().alias("NSW_Demand"),
+        pl.col("sa__demand").mean().alias("SA_Demand"),
+    ).drop_nulls()
 
     split_idx = int(len(vic_daily) * 0.85)
     y_train = vic_daily.head(split_idx).select("time", "Demand")
-    X_train = vic_daily.head(split_idx).select("time", "Temperature", "Holiday")
+    X_train = vic_daily.head(split_idx).select("time", "NSW_Demand", "SA_Demand")
     y_test = vic_daily.tail(len(vic_daily) - split_idx).select("time", "Demand")
-    X_test = vic_daily.tail(len(vic_daily) - split_idx).select("time", "Temperature", "Holiday")
+    X_test = vic_daily.tail(len(vic_daily) - split_idx).select("time", "NSW_Demand", "SA_Demand")
 
     y_train.head()
     return X_test, X_train, split_idx, vic_daily, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Build a ColumnTransformer
 
-    Each tuple is `(name, transformer, columns)`. We scale Temperature with
-    `StandardScaler`, pass Holiday through unchanged, and drop any remaining
+    Each tuple is `(name, transformer, columns)`. We scale NSW_Demand with
+    `StandardScaler`, pass SA_Demand through unchanged, and drop any remaining
     columns.
     """)
-    return
-
 
 @app.cell
 def _(ColumnTransformer, StandardScaler):
     ct = ColumnTransformer(
         transformers=[
-            ("scale_temp", StandardScaler(), ["Temperature"]),
-            ("holiday", "passthrough", ["Holiday"]),
+            ("scale_nsw", StandardScaler(), ["NSW_Demand"]),
+            ("sa", "passthrough", ["SA_Demand"]),
         ],
         remainder="drop",
     )
     ct
     return (ct,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -151,8 +137,6 @@ def _(mo):
     `PointReductionForecaster`. The forecaster calls `.fit_transform()` on `X`
     at fit time and `.transform()` on `X` at predict time.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -175,7 +159,6 @@ def _(
     y_pred_ct = forecaster_ct.predict(X_test, forecasting_horizon=forecasting_horizon)
     return forecaster_ct, forecasting_horizon, y_pred_ct
 
-
 @app.cell
 def _(plot_forecast, y_pred_ct, y_test, y_train):
     plot_forecast(
@@ -183,10 +166,8 @@ def _(plot_forecast, y_pred_ct, y_test, y_train):
         y_pred_ct,
         y_train=y_train,
         n_history=60,
-        title="Forecast with ColumnTransformer (Temperature scaled, Holiday passthrough)",
+        title="Forecast with ColumnTransformer (NSW scaled, SA passthrough)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -197,23 +178,20 @@ def _(mo):
     Compare with `remainder="drop"` (the default) to see the effect on
     feature availability.
     """)
-    return
-
 
 @app.cell
 def _(ColumnTransformer, StandardScaler, mo):
     ct_pass = ColumnTransformer(
         transformers=[
-            ("scale_temp", StandardScaler(), ["Temperature"]),
+            ("scale_nsw", StandardScaler(), ["NSW_Demand"]),
         ],
         remainder="passthrough",
     )
     mo.md(
-        f"**With `remainder='passthrough'`**: Holiday is kept automatically.\n\n"
+        f"**With `remainder='passthrough'`**: SA_Demand is kept automatically.\n\n"
         f"Transformer configuration: {ct_pass}"
     )
     return (ct_pass,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -224,15 +202,13 @@ def _(mo):
     which include the transformer name prefix when `verbose_feature_names_out=True`
     (the default).
     """)
-    return
-
 
 @app.cell
 def _(ColumnTransformer, StandardScaler, X_train, mo):
     ct_verbose = ColumnTransformer(
         transformers=[
-            ("scale_temp", StandardScaler(), ["Temperature"]),
-            ("holiday", "passthrough", ["Holiday"]),
+            ("scale_nsw", StandardScaler(), ["NSW_Demand"]),
+            ("sa", "passthrough", ["SA_Demand"]),
         ],
         verbose_feature_names_out=True,
     )
@@ -241,21 +217,18 @@ def _(ColumnTransformer, StandardScaler, X_train, mo):
     mo.md(f"**Feature names (verbose=True)**: {_names}")
     return (ct_verbose,)
 
-
 @app.cell
 def _(ColumnTransformer, StandardScaler, X_train, mo):
     _ct_short = ColumnTransformer(
         transformers=[
-            ("scale_temp", StandardScaler(), ["Temperature"]),
-            ("holiday", "passthrough", ["Holiday"]),
+            ("scale_nsw", StandardScaler(), ["NSW_Demand"]),
+            ("sa", "passthrough", ["SA_Demand"]),
         ],
         verbose_feature_names_out=False,
     )
     _ct_short.fit(X_train)
     _names = _ct_short.get_feature_names_out()
     mo.md(f"**Feature names (verbose=False)**: {_names}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -267,32 +240,31 @@ def _(mo):
     The forecaster decomposes the panel into individual groups, applies the
     transformer to each group's unprefixed columns, and reassembles the result.
 
-    Here we use the Store Sales dataset (9 panel groups).
+    Here we use the Dominick dataset (9 panel groups).
     """)
-    return
-
 
 @app.cell
-def _(inspect_locality, load_store_sales, mo, pl):
-    store = load_store_sales()
+def _(inspect_locality, fetch_dominick, mo, pl):
+    _dom_full = fetch_dominick().frame
+    _profit_cols = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
+    store = _dom_full.select("time", *_profit_cols)
     _globals, _groups = inspect_locality(store)
     mo.md(
         f"**Panel groups**: {len(_groups)} groups\n\n"
         f"**First group columns**: {list(_groups.values())[0]}"
     )
 
-    # Panel data: y contains all `__sales` columns, no separate X needed
+    # Panel data: y contains all `__profit` columns, no separate X needed
     _split = int(len(store) * 0.9)
     y_train_panel = store.head(_split).select(
-        "time", *[c for c in store.columns if c.endswith("__sales")]
+        "time", *[c for c in store.columns if c.endswith("__profit")]
     )
     y_test_panel = store.tail(len(store) - _split).select(
-        "time", *[c for c in store.columns if c.endswith("__sales")]
+        "time", *[c for c in store.columns if c.endswith("__profit")]
     )
 
     y_train_panel.head()
     return store, y_test_panel, y_train_panel
-
 
 @app.cell
 def _(
@@ -317,11 +289,10 @@ def _(
         _y_pred_panel,
         y_train=y_train_panel,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
-        title="Panel Forecast: Item 1 Across All Stores",
+        panel_group_names=["T7", "T11", "T12"],
+        title="Panel Forecast: First 3 Groups",
     )
     return (forecaster_panel,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -340,8 +311,6 @@ def _(mo):
     - **Pipeline composition**: See `examples/compose/pipeline_composition.py` for nesting ColumnTransformer in larger pipelines
     - **Panel pipelines**: See `examples/compose/panel_pipelines.py` for comprehensive panel composition patterns
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

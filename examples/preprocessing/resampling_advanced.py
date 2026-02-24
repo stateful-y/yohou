@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Advanced Resampling.
 
 Demonstrates Downsampler and Upsampler with different aggregation
@@ -10,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -44,54 +37,50 @@ def _(mo):
     - Boundary / label settings (`closed`, `label`)
     - Combining downsampling and upsampling for round-trip tests
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.plotting import plot_time_series
     from yohou.preprocessing import Downsampler, Upsampler
 
     return (
         Downsampler,
         Upsampler,
-        load_vic_electricity,
+        fetch_electricity_demand,
         pl,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load High-Frequency Data
     """)
-    return
-
 
 @app.cell
-def _(load_vic_electricity, mo):
-    elec = load_vic_electricity()
+def _(fetch_electricity_demand, mo, pl):
+    elec = fetch_electricity_demand().frame
     # Take a 2-week subset (30-min intervals = 672 rows)
-    elec_subset = elec.head(672).select("time", "Demand", "Temperature")
+    elec_subset = elec.head(672).select(
+        "time",
+        pl.col("vic__demand").alias("demand"),
+        pl.col("nsw__demand").alias("nsw_demand"),
+    )
     mo.md(
-        f"**Victoria Electricity**: 30-min intervals\n\n"
+        f"**Electricity Demand**: 30-min intervals\n\n"
         f"**Subset**: {len(elec_subset)} rows (2 weeks)\n\n"
         f"**Columns**: {elec_subset.columns}"
     )
     return elec, elec_subset
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Downsampler: Mean Aggregation to Hourly
     """)
-    return
-
 
 @app.cell
 def _(Downsampler, elec_subset, mo, plot_time_series):
@@ -104,20 +93,15 @@ def _(Downsampler, elec_subset, mo, plot_time_series):
     )
     return ds_mean, elec_hourly
 
-
 @app.cell
 def _(elec_hourly, plot_time_series):
     plot_time_series(elec_hourly.head(168), title="Hourly Mean: First Week")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Different Aggregation Methods
     """)
-    return
-
 
 @app.cell
 def _(Downsampler, elec_subset, mo, pl):
@@ -129,7 +113,7 @@ def _(Downsampler, elec_subset, mo, pl):
         _ds = Downsampler(interval="1d", aggregation=_method)
         _ds.fit(elec_subset)
         _out = _ds.transform(elec_subset)
-        _demand_range = _out["Demand"]
+        _demand_range = _out["demand"]
         _rows.append({
             "Aggregation": _method,
             "Rows": len(_out),
@@ -138,8 +122,6 @@ def _(Downsampler, elec_subset, mo, pl):
         })
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -149,8 +131,6 @@ def _(mo):
     `closed` controls which side of the interval boundary is inclusive.
     `label` controls which boundary timestamp represents the bin.
     """)
-    return
-
 
 @app.cell
 def _(Downsampler, elec_subset, mo):
@@ -166,16 +146,12 @@ def _(Downsampler, elec_subset, mo):
         f"**left/left**: first 3 timestamps: {_out_left['time'].head(3).to_list()}\n\n"
         f"**right/right**: first 3 timestamps: {_out_right['time'].head(3).to_list()}"
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Upsampler: Linear Interpolation
     """)
-    return
-
 
 @app.cell
 def _(Downsampler, Upsampler, elec_subset, mo, plot_time_series):
@@ -193,23 +169,18 @@ def _(Downsampler, Upsampler, elec_subset, mo, plot_time_series):
     )
     return elec_upsampled, us_linear
 
-
 @app.cell
 def _(elec_upsampled, plot_time_series):
     plot_time_series(
-        elec_upsampled.select("time", "Demand").head(96),
+        elec_upsampled.select("time", "demand").head(96),
         title="Upsampled (Linear): First 2 Days",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Different Interpolation Methods
     """)
-    return
-
 
 @app.cell
 def _(Downsampler, Upsampler, elec_subset, mo, pl):
@@ -223,7 +194,7 @@ def _(Downsampler, Upsampler, elec_subset, mo, pl):
         _us = Upsampler(interval="30m", interpolation=_method)
         _us.fit(_coarse)
         _out = _us.transform(_coarse)
-        _demand_std = float(_out["Demand"].std())
+        _demand_std = float(_out["demand"].std())
         _rows.append({
             "Interpolation": _method,
             "Output Rows": len(_out),
@@ -231,8 +202,6 @@ def _(Downsampler, Upsampler, elec_subset, mo, pl):
         })
 
     mo.ui.table(pl.DataFrame(_rows))
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -241,15 +210,13 @@ def _(mo):
 
     Compare original vs down-then-up to see information loss.
     """)
-    return
-
 
 @app.cell
 def _(elec_subset, elec_upsampled, mo, pl):
     # Align lengths for comparison
     _n = min(len(elec_subset), len(elec_upsampled))
-    _orig = elec_subset.head(_n)["Demand"]
-    _roundtrip = elec_upsampled.head(_n)["Demand"]
+    _orig = elec_subset.head(_n)["demand"]
+    _roundtrip = elec_upsampled.head(_n)["demand"]
     _mae = ((_orig - _roundtrip).abs()).mean()
 
     mo.md(
@@ -257,8 +224,6 @@ def _(elec_subset, elec_upsampled, mo, pl):
         "Some information is inevitably lost during downsampling. "
         "Higher aggregation intervals lose more detail."
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -277,8 +242,6 @@ def _(mo):
     - **Signal processing**: See `examples/preprocessing/signal_processing.py`
     - **Window transformers**: See `examples/preprocessing/window_transformers.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

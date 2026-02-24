@@ -1,9 +1,15 @@
-"""Victoria Electricity - Multivariate Analysis.
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
+"""Electricity Demand - Multi-State Panel Analysis.
 
-Electricity demand with temperature and cross-correlation analysis.
+Half-hourly electricity demand from 5 Australian states.
 
-Dataset: 30-min electricity demand and temperature
-Demonstrates: plot_time_series, plot_cross_correlation, plot_seasonality, plot_rolling_statistics
+Dataset: 5 state-level demand series at 30-minute intervals
+Demonstrates: inspect_locality, plot_time_series, plot_cross_correlation, plot_seasonality, plot_rolling_statistics
 """
 
 import marimo
@@ -11,21 +17,22 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
-    from yohou.datasets import load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand
     from yohou.plotting import (
         plot_cross_correlation,
         plot_rolling_statistics,
         plot_seasonality,
         plot_time_series,
     )
+    from yohou.utils.panel import inspect_locality
 
     return (
-        load_vic_electricity,
+        fetch_electricity_demand,
+        inspect_locality,
         mo,
         plot_cross_correlation,
         plot_rolling_statistics,
@@ -33,180 +40,144 @@ def _():
         plot_time_series,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    # Victoria Electricity Dataset
+    # Electricity Demand Dataset
 
     ## What You'll Learn
 
-    This example demonstrates high-frequency time series analysis with the
-    Victoria Electricity dataset. You'll learn how to:
+    This example demonstrates high-frequency panel time series analysis with the
+    Australian Electricity Demand dataset. You'll learn how to:
 
-    - Visualize 30-minute electricity demand patterns
-    - Analyze demand with temperature as an external covariate
-    - Use cross-correlation to find lagged relationships
+    - Inspect the panel structure of 5 Australian state demands
+    - Visualize and compare half-hourly demand across states
+    - Use cross-correlation to find relationships between states
     - Apply intraday seasonality analysis (hour of day)
 
     ## Prerequisites
 
     None. this is a standalone dataset exploration.
     """)
-    return
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "yohou"])
-    return
-
 
 @app.cell
-def _(load_vic_electricity):
-    df = load_vic_electricity()
+def _(fetch_electricity_demand):
+    df = fetch_electricity_demand().frame
     df.head()
     return (df,)
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## 1. Inspect Panel Structure
+
+    The dataset has 5 panel groups, one per Australian state, using the
+    `state__demand` convention.
+    """)
+
+@app.cell
+def _(df, inspect_locality, mo):
+    global_cols, panel_groups = inspect_locality(df)
+    mo.md(f"""
+    **Global columns**: {global_cols}
+
+    **Panel groups** ({len(panel_groups)} groups):
+
+    {chr(10).join(f'- **{k}**: {v}' for k, v in panel_groups.items())}
+    """)
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 1. Demand and Temperature Together
+    ## 2. All States Demand Comparison
 
-    Plotting demand and temperature on the same chart reveals their co-movement:
-    demand rises with extreme temperatures.
+    Plotting demand from all 5 states reveals scale differences: NSW and
+    Victoria have the highest demand, while Tasmania is the smallest.
     """)
-    return
-
 
 @app.cell
 def _(df, plot_time_series):
+    _demand_cols = [c for c in df.columns if c.endswith("__demand")]
+    # Show first 48*7 rows (one week of 30-min data) for readability
     plot_time_series(
-        df,
-        columns=["Demand", "Temperature"],
-        title="Electricity Demand and Temperature",
+        df.head(48 * 7),
+        columns=_demand_cols,
+        title="Electricity Demand - All States (1 Week)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 2. Demand Rolling Average
+    ## 3. Rolling Average - NSW Demand
 
-    A rolling average of demand highlights the underlying daily and weekly patterns
-    beneath the noisy 30-minute readings.
+    A 24-hour (48-step) rolling average of NSW demand highlights daily and
+    weekly patterns beneath the noisy half-hourly readings.
     """)
-    return
-
 
 @app.cell
 def _(df, plot_rolling_statistics):
     plot_rolling_statistics(
         df,
-        columns="Demand",
-        window_size=48,  # 24 hours
+        columns="nsw__demand",
+        window_size=48,  # 24 hours at 30-min intervals
         statistics="mean",
         show_original=True,
-        title="24-Hour Rolling Average",
+        title="NSW - 24-Hour Rolling Average",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 3. Temperature Range
+    ## 4. Cross-Correlation Between States
 
-    The min/max envelope of temperature shows the daily temperature swing and how
-    it varies across seasons.
+    Cross-correlation quantifies how demand in one state relates to demand
+    in another, revealing synchronised patterns.
     """)
-    return
-
-
-@app.cell
-def _(df, plot_rolling_statistics):
-    plot_rolling_statistics(
-        df,
-        columns="Temperature",
-        window_size=48,
-        statistics=["mean", "min", "max"],
-        fill_between=True,
-        show_original=False,
-        title="24-Hour Temperature Min/Mean/Max",
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## 4. Cross-Correlation Analysis
-
-    Cross-correlation quantifies the lagged relationship between temperature and
-    electricity demand.
-    """)
-    return
-
 
 @app.cell
 def _(df, plot_cross_correlation):
     plot_cross_correlation(
         df,
-        columns=["Temperature", "Demand"],
+        columns=["nsw__demand", "vic__demand"],
         max_lags=100,
-        title="Temperature vs Demand Cross-Correlation",
+        title="NSW vs Victoria Demand Cross-Correlation",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ## 5. Hourly Patterns
 
-    Aggregating by hour of day reveals the demand peak times and the intraday
-    consumption pattern.
+    Aggregating by hour of day reveals intraday demand peaks and the
+    consumption pattern across all states.
     """)
-    return
-
 
 @app.cell
 def _(df, plot_seasonality):
     plot_seasonality(
         df,
-        columns="Demand",
+        columns="nsw__demand",
         seasonality="hour",
-        title="Average Demand by Hour",
+        title="NSW - Average Demand by Hour",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ## Key Takeaways
 
-    - **High frequency**: 30-minute data captures intraday patterns
-    - **External regressors**: Temperature as a covariate explains demand variation
-    - **Cross-correlation**: Identifies lagged relationship between temperature and demand
-    - **Multiple statistics**: `["mean", "min", "max"]` with `fill_between=True` shows range
+    - **Panel format**: 5 state-level demand series using `state__demand` convention
+    - **High frequency**: Half-hourly data captures intraday patterns
+    - **Cross-state correlation**: States show strongly correlated demand patterns
     - **Intraday seasonality**: Clear hour-of-day effects (peak demand times)
+    - **Scale differences**: NSW and Victoria dominate total demand
 
     ## Next Steps
 
-    - For hourly data, see `examples/datasets/ett_m1.py`
-    - For daily data with external features, see `examples/datasets/walmart_sales.py`
-    - For panel data, see `examples/datasets/store_sales.py`
+    - For monthly panel data, see `examples/datasets/hospital.py`
+    - For weekly panel data, see `examples/datasets/store_sales.py`
+    - For panel data forecasting, see `examples/datasets/australian_tourism_forecasting.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

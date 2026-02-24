@@ -1,9 +1,15 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Correlation and Scatter Diagnostics.
 
 Demonstrates correlation heatmaps, scatter matrices, cross-correlation, and
 lag scatter plots with varied parameter combinations.
 
-Datasets: vic_electricity, ett_m1
+Datasets: electricity_demand, hospital
 Demonstrates: plot_correlation_heatmap, plot_scatter_matrix,
     plot_cross_correlation, plot_lag_scatter
 """
@@ -18,19 +24,10 @@ def _():
 
     return (mo,)
 @app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "yohou"])
-    return
-@app.cell(hide_code=True)
 def _():
     import polars as pl
 
-    from yohou.datasets import load_ett_m1, load_vic_electricity
+    from yohou.datasets import fetch_electricity_demand, fetch_hospital
     from yohou.plotting import (
         plot_correlation_heatmap,
         plot_cross_correlation,
@@ -39,8 +36,8 @@ def _():
     )
 
     return (
-        load_ett_m1,
-        load_vic_electricity,
+        fetch_electricity_demand,
+        fetch_hospital,
         pl,
         plot_correlation_heatmap,
         plot_cross_correlation,
@@ -63,18 +60,24 @@ def _(mo):
 
     Basic understanding of correlation and scatter plots. Familiarity with multivariate time series concepts.
     """)
-    return
 @app.cell
-def _(load_ett_m1, load_vic_electricity, pl):
-    vic = load_vic_electricity()
-    # Downsample to daily for cleaner visualizations
-    vic_daily = vic.group_by_dynamic("time", every="1d").agg(
-        pl.col("Demand").mean(),
-        pl.col("Temperature").mean(),
-        pl.col("Holiday").max(),
+def _(fetch_electricity_demand, fetch_hospital, pl):
+    _elec = fetch_electricity_demand().frame
+    # Downsample to daily, rename to plain columns for multivariate analysis
+    vic_daily = _elec.group_by_dynamic("time", every="1d").agg(
+        pl.col("vic__demand").mean().alias("Victoria"),
+        pl.col("nsw__demand").mean().alias("NSW"),
+        pl.col("sa__demand").mean().alias("SA"),
     )
-    ett = load_ett_m1()
-    return ett, vic, vic_daily
+    _hosp = fetch_hospital().frame
+    # Select 3 series and rename for multivariate analysis
+    hospital = _hosp.select(
+        "time",
+        pl.col("T1__patients").alias("patients_1"),
+        pl.col("T2__patients").alias("patients_2"),
+        pl.col("T3__patients").alias("patients_3"),
+    )
+    return hospital, vic_daily
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -84,14 +87,12 @@ def _(mo):
     them as a heatmap. Vary the **colorscale**, toggle **show_values**, and restrict
     to a subset of **columns**.
     """)
-    return
 @app.cell
 def _(plot_correlation_heatmap, vic_daily):
     plot_correlation_heatmap(
         vic_daily,
         title="Pearson Correlation -- Default (RdBu_r, Values Shown)",
     )
-    return
 @app.cell
 def _(plot_correlation_heatmap, vic_daily):
     plot_correlation_heatmap(
@@ -100,15 +101,13 @@ def _(plot_correlation_heatmap, vic_daily):
         show_values=False,
         title="Pearson Correlation -- Viridis, No Annotations",
     )
-    return
 @app.cell
 def _(plot_correlation_heatmap, vic_daily):
     plot_correlation_heatmap(
         vic_daily,
-        columns=["Demand", "Temperature"],
+        columns=["Victoria", "NSW"],
         title="Pearson Correlation -- Column Subset",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -118,14 +117,12 @@ def _(mo):
     The **diagonal** can be `"kde"`, `"histogram"`, or `"none"`. The **seasonality**
     parameter colors points by season, and **show_correlation** overlays Pearson r.
     """)
-    return
 @app.cell
 def _(plot_scatter_matrix, vic_daily):
     plot_scatter_matrix(
         vic_daily,
         title="Scatter Matrix -- Default (KDE Diagonal)",
     )
-    return
 @app.cell
 def _(plot_scatter_matrix, vic_daily):
     plot_scatter_matrix(
@@ -133,7 +130,6 @@ def _(plot_scatter_matrix, vic_daily):
         diagonal="histogram",
         title="Scatter Matrix -- Histogram Diagonal",
     )
-    return
 @app.cell
 def _(plot_scatter_matrix, vic_daily):
     plot_scatter_matrix(
@@ -142,16 +138,14 @@ def _(plot_scatter_matrix, vic_daily):
         show_correlation=False,
         title="Scatter Matrix -- Scatter Only, No Statistics",
     )
-    return
 @app.cell
 def _(plot_scatter_matrix, vic_daily):
     plot_scatter_matrix(
         vic_daily,
-        columns=["Demand", "Temperature"],
+        columns=["Victoria", "NSW"],
         seasonality="month",
         title="Scatter Matrix -- Month-Colored Points",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -161,35 +155,31 @@ def _(mo):
     two columns at integer lags. Vary **lags**, **alpha** (significance level),
     and reverse the column pair to inspect asymmetry.
     """)
-    return
 @app.cell
 def _(plot_cross_correlation, vic_daily):
     plot_cross_correlation(
         vic_daily,
-        columns=["Demand", "Temperature"],
+        columns=["Victoria", "NSW"],
         lags=40,
-        title="CCF: Demand vs Temperature (40 Lags)",
+        title="CCF: Victoria vs NSW (40 Lags)",
     )
-    return
 @app.cell
 def _(plot_cross_correlation, vic_daily):
     plot_cross_correlation(
         vic_daily,
-        columns=["Demand", "Temperature"],
+        columns=["Victoria", "NSW"],
         lags=20,
         alpha=0.01,
-        title="CCF: Demand vs Temperature (20 Lags, alpha=0.01)",
+        title="CCF: Victoria vs NSW (20 Lags, alpha=0.01)",
     )
-    return
 @app.cell
 def _(plot_cross_correlation, vic_daily):
     plot_cross_correlation(
         vic_daily,
-        columns=["Temperature", "Demand"],
+        columns=["NSW", "Victoria"],
         lags=40,
-        title="CCF: Temperature vs Demand (Reversed Direction)",
+        title="CCF: NSW vs Victoria (Reversed Direction)",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -200,47 +190,42 @@ def _(mo):
     colors points by season, **show_regression** adds a trend line, and
     **show_diagonal** draws the $y = x$ identity.
     """)
-    return
 @app.cell
-def _(ett, plot_lag_scatter):
+def _(hospital, plot_lag_scatter):
     plot_lag_scatter(
-        ett,
-        columns="OT",
+        hospital,
+        columns="patients_1",
         lags=1,
-        title="Lag 1 Scatter -- ETTm1 Oil Temperature",
+        title="Lag 1 Scatter -- Hospital patients_1",
     )
-    return
 @app.cell
-def _(ett, plot_lag_scatter):
+def _(hospital, plot_lag_scatter):
     plot_lag_scatter(
-        ett,
-        columns="OT",
+        hospital,
+        columns="patients_1",
         lags=[1, 6, 12, 24],
-        title="Multi-Lag Grid -- OT at Lags 1, 6, 12, 24",
+        title="Multi-Lag Grid -- patients_1 at Lags 1, 6, 12, 24",
     )
-    return
 @app.cell
-def _(ett, plot_lag_scatter):
+def _(hospital, plot_lag_scatter):
     plot_lag_scatter(
-        ett,
-        columns="OT",
+        hospital,
+        columns="patients_1",
         lags=[1, 12],
         seasonality="month",
         show_regression=True,
         title="Lag Scatter -- Month-Colored with Regression Line",
     )
-    return
 @app.cell
-def _(ett, plot_lag_scatter):
+def _(hospital, plot_lag_scatter):
     plot_lag_scatter(
-        ett,
-        columns="OT",
+        hospital,
+        columns="patients_1",
         lags=[1, 7],
         show_diagonal=False,
         marker_opacity=0.3,
         title="Lag Scatter -- No Diagonal, Transparent Markers",
     )
-    return
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -257,6 +242,5 @@ def _(mo):
     - **STL decomposition**: See `examples/plotting/decomposition.py` for decomposition and calendar heatmaps
     - **Exploration**: See `examples/plotting/exploration.py` for rolling statistics and missing data audits
     """)
-    return
 if __name__ == "__main__":
     app.run()

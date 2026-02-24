@@ -1,9 +1,15 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Seasonal and Frequency Domain Analysis.
 
 Demonstrates seasonality overlays, subseries plots, ACF/PACF, power spectrum, and
 phase spectrum with varied parameter combinations.
 
-Datasets: air_passengers, sunspots, australian_tourism
+Datasets: tourism_monthly, sunspot, tourism_quarterly
 Demonstrates: plot_seasonality, plot_subseasonality, plot_autocorrelation,
     plot_partial_autocorrelation
 """
@@ -13,31 +19,18 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
 
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "yohou"])
-    return
-
-
 @app.cell(hide_code=True)
 def _():
     from yohou.datasets import (
-        load_air_passengers,
-        load_australian_tourism,
-        load_sunspots,
+        fetch_sunspot,
+        fetch_tourism_monthly,
+        fetch_tourism_quarterly,
     )
     from yohou.plotting import (
         plot_autocorrelation,
@@ -47,15 +40,14 @@ def _():
     )
 
     return (
-        load_air_passengers,
-        load_australian_tourism,
-        load_sunspots,
+        fetch_sunspot,
+        fetch_tourism_monthly,
+        fetch_tourism_quarterly,
         plot_autocorrelation,
         plot_partial_autocorrelation,
         plot_seasonality,
         plot_subseasonality,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -73,16 +65,13 @@ def _(mo):
 
     Basic understanding of seasonality, autocorrelation, and the frequency domain. Familiarity with time series terminology.
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers, load_australian_tourism, load_sunspots):
-    air = load_air_passengers()
-    sunspots = load_sunspots()
-    tourism = load_australian_tourism()
-    return air, sunspots, tourism
-
+def _(fetch_tourism_monthly, fetch_tourism_quarterly, fetch_sunspot):
+    tourism_monthly = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    sunspots = fetch_sunspot().frame
+    tourism_quarterly = fetch_tourism_quarterly().frame
+    return tourism_monthly, tourism_quarterly, sunspots
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -93,50 +82,40 @@ def _(mo):
     gg_season style). Vary the **seasonality**, use **highlight** to emphasise
     specific years, and pass **panel_group_names** for panel data.
     """)
-    return
-
 
 @app.cell
-def _(air, plot_seasonality):
+def _(tourism_monthly, plot_seasonality):
     plot_seasonality(
-        air,
+        tourism_monthly,
         seasonality="month",
         title="Seasonal Overlay -- Monthly",
     )
-    return
-
 
 @app.cell
-def _(air, plot_seasonality):
+def _(tourism_monthly, plot_seasonality):
     plot_seasonality(
-        air,
+        tourism_monthly,
         seasonality="quarter",
         title="Seasonal Overlay -- Quarterly",
     )
-    return
-
 
 @app.cell
-def _(air, plot_seasonality):
+def _(tourism_monthly, plot_seasonality):
     plot_seasonality(
-        air,
+        tourism_monthly,
         seasonality="month",
-        highlight=[1958, 1960],
-        title="Seasonal Overlay -- Highlighting 1958 and 1960",
+        highlight=[2000, 2005],
+        title="Seasonal Overlay -- Highlighting 2000 and 2005",
     )
-    return
-
 
 @app.cell
-def _(plot_seasonality, tourism):
+def _(plot_seasonality, tourism_quarterly):
     plot_seasonality(
-        tourism,
+        tourism_quarterly,
         seasonality="quarter",
-        panel_group_names=["act", "victoria"],
-        title="Seasonal Overlay -- Australian Tourism Panel (ACT & Victoria)",
+        panel_group_names=["T1", "T2"],
+        title="Seasonal Overlay -- Tourism Quarterly Panel (T1 & T2)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -147,41 +126,33 @@ def _(mo):
     values across all years). Toggle **show_mean** for a horizontal reference, and
     adjust **n_cols** to change the grid layout.
     """)
-    return
-
 
 @app.cell
-def _(air, plot_subseasonality):
+def _(tourism_monthly, plot_subseasonality):
     plot_subseasonality(
-        air,
+        tourism_monthly,
         seasonality="month",
         show_mean=True,
         title="Subseries -- Monthly with Mean Line",
     )
-    return
-
 
 @app.cell
-def _(air, plot_subseasonality):
+def _(tourism_monthly, plot_subseasonality):
     plot_subseasonality(
-        air,
+        tourism_monthly,
         seasonality="quarter",
         facet_n_cols=2,
         title="Subseries -- Quarterly (2-Column Grid)",
     )
-    return
-
 
 @app.cell
-def _(air, plot_subseasonality):
+def _(tourism_monthly, plot_subseasonality):
     plot_subseasonality(
-        air,
+        tourism_monthly,
         seasonality="month",
         show_mean=False,
         title="Subseries -- Monthly, No Mean Line",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -192,40 +163,32 @@ def _(mo):
     peaks appear at multiples of the seasonal period (lag 12, 24, 36 for monthly
     data). Vary **confidence_level** and toggle **show_confidence**.
     """)
-    return
-
 
 @app.cell
-def _(air, plot_autocorrelation):
+def _(tourism_monthly, plot_autocorrelation):
     plot_autocorrelation(
-        air,
+        tourism_monthly,
         max_lags=36,
         title="ACF -- 36 Lags (Default 95% CI)",
     )
-    return
-
 
 @app.cell
-def _(air, plot_autocorrelation):
+def _(tourism_monthly, plot_autocorrelation):
     plot_autocorrelation(
-        air,
+        tourism_monthly,
         max_lags=48,
         confidence_level=0.99,
         title="ACF -- 48 Lags, 99% CI",
     )
-    return
-
 
 @app.cell
-def _(air, plot_autocorrelation):
+def _(tourism_monthly, plot_autocorrelation):
     plot_autocorrelation(
-        air,
+        tourism_monthly,
         max_lags=36,
         show_confidence=False,
         title="ACF -- Bars Only, No Confidence Bands",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -236,40 +199,32 @@ def _(mo):
     intermediate lags. Compare **method** options (`"yw"` vs `"ols"`) and vary
     **confidence_level** to assess significance.
     """)
-    return
-
 
 @app.cell
-def _(air, plot_partial_autocorrelation):
+def _(tourism_monthly, plot_partial_autocorrelation):
     plot_partial_autocorrelation(
-        air,
+        tourism_monthly,
         max_lags=36,
         title="PACF -- Yule-Walker (Default)",
     )
-    return
-
 
 @app.cell
-def _(air, plot_partial_autocorrelation):
+def _(tourism_monthly, plot_partial_autocorrelation):
     plot_partial_autocorrelation(
-        air,
+        tourism_monthly,
         max_lags=36,
         method="ols",
         title="PACF -- OLS Method",
     )
-    return
-
 
 @app.cell
-def _(air, plot_partial_autocorrelation):
+def _(tourism_monthly, plot_partial_autocorrelation):
     plot_partial_autocorrelation(
-        air,
+        tourism_monthly,
         max_lags=24,
         confidence_level=0.70,
         title="PACF -- 24 Lags, 90% CI",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -286,8 +241,6 @@ def _(mo):
     - **Correlation diagnostics**: See `examples/plotting/correlation.py` for scatter matrices and cross-correlation
     - **Forecast visualization**: See `examples/plotting/forecasting_visualization.py` for model comparison
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

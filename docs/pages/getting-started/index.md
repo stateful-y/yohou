@@ -19,26 +19,29 @@ pip install yohou
 
 ## Load a Dataset
 
-```python
-from yohou.datasets import load_air_passengers
+Datasets are downloaded from [Monash/Zenodo](https://forecastingdata.org) and cached locally.
 
-y = load_air_passengers()
+```python
+from yohou.datasets import fetch_tourism_monthly
+
+bunch = fetch_tourism_monthly()
+y = bunch.frame.select("time", "T1__tourists").rename({"T1__tourists": "tourists"})
 print(y.head())
 ```
 
 ```
 shape: (5, 2)
-┌────────────┬─────┐
-│ time       ┆ y   │
-│ ---        ┆ --- │
-│ date       ┆ i64 │
-╞════════════╪═════╡
-│ 1949-01-01 ┆ 112 │
-│ 1949-02-01 ┆ 118 │
-│ 1949-03-01 ┆ 132 │
-│ 1949-04-01 ┆ 129 │
-│ 1949-05-01 ┆ 121 │
-└────────────┴─────┘
+┌─────────────────────┬──────────┐
+│ time                ┆ tourists │
+│ ---                 ┆ ---      │
+│ datetime[μs]        ┆ f64      │
+╞═════════════════════╪══════════╡
+│ 1979-01-01 00:00:00 ┆ 1149.87  │
+│ 1979-02-01 00:00:00 ┆ 1053.80  │
+│ 1979-03-01 00:00:00 ┆ 1388.88  │
+│ 1979-04-01 00:00:00 ┆ 873.24   │
+│ 1979-05-01 00:00:00 ┆ 927.98   │
+└─────────────────────┴──────────┘
 ```
 
 ## Fit a Forecaster
@@ -48,7 +51,7 @@ from sklearn.linear_model import Ridge
 from yohou.point import PointReductionForecaster
 
 forecaster = PointReductionForecaster(estimator=Ridge(), window_length=12)
-forecaster.fit(y[:120], forecasting_horizon=12)
+forecaster.fit(y[:280], forecasting_horizon=12)
 ```
 
 ## Predict
@@ -63,7 +66,7 @@ print(y_pred.head())
 ```python
 from yohou.plotting import plot_forecast
 
-fig = plot_forecast(y, y_pred, title="Air Passengers Forecast")
+fig = plot_forecast(y, y_pred, title="Tourism Forecast")
 fig.show()
 ```
 

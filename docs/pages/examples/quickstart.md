@@ -1,6 +1,6 @@
 # Quickstart
 
-### Yohou Quickstart ([View](/examples/quickstart/) | [Editable](/examples/quickstart/edit/))
+### Yohou Quickstart ([View](/examples/quickstart/) | [Open in marimo](/examples/quickstart/edit/))
 
 **End-to-End Time Series Forecasting with a Scikit-Learn API**
 

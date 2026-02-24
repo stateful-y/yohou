@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Decomposition Variations.
 
 Demonstrates DecompositionPipeline configurations: two-component,
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -45,8 +39,6 @@ def _(mo):
     - `store_residuals=True` for inspecting intermediate residuals
     - Panel data decomposition
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -54,7 +46,7 @@ def _():
     from sklearn.linear_model import Ridge
 
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import load_australian_tourism, load_sunspots
+    from yohou.datasets import fetch_sunspot, fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -75,25 +67,23 @@ def _():
         PolynomialTrendForecaster,
         Ridge,
         SeasonalNaive,
-        load_australian_tourism,
-        load_sunspots,
+        fetch_sunspot,
+        fetch_tourism_quarterly,
         pl,
         plot_forecast,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Univariate Data
     """)
-    return
-
 
 @app.cell
-def _(load_sunspots, mo):
-    sunspots = load_sunspots()
+def _(fetch_sunspot, mo, pl):
+    _raw = fetch_sunspot().frame
+    sunspots = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
     _split = int(len(sunspots) * 0.85)
     y_train = sunspots.head(_split)
     y_test = sunspots.tail(len(sunspots) - _split)
@@ -101,14 +91,11 @@ def _(load_sunspots, mo):
     mo.md(f"**Sunspots**: Train={len(y_train)}, Test={len(y_test)}")
     return horizon, sunspots, y_test, y_train
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Two-Component: Trend + Residual
     """)
-    return
-
 
 @app.cell
 def _(
@@ -147,14 +134,11 @@ def _(
     )
     return fc_two, y_pred_two
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Three-Component: Trend + Seasonality + Residual
     """)
-    return
-
 
 @app.cell
 def _(
@@ -194,7 +178,6 @@ def _(
     )
     return fc_three, y_pred_three
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -203,8 +186,6 @@ def _(mo):
     Apply a log transformation before decomposition, then invert after
     prediction. Useful for data with multiplicative trends.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -244,14 +225,11 @@ def _(
     )
     return fc_log, y_pred_log
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Compare All Variations
     """)
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred_log, y_pred_three, y_pred_two, y_test, y_train):
@@ -268,8 +246,6 @@ def _(MeanAbsoluteError, mo, y_pred_log, y_pred_three, y_pred_two, y_test, y_tra
         f"| Trend + Season + Residual | {_mae_three:.2f} |\n"
         f"| Log + Trend + Residual | {_mae_log:.2f} |"
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -279,8 +255,6 @@ def _(mo):
     Apply the same pipeline to panel data: each group gets its own
     trend and residual model.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -289,10 +263,13 @@ def _(
     PointReductionForecaster,
     PolynomialTrendForecaster,
     Ridge,
-    load_australian_tourism,
+    fetch_tourism_quarterly,
     plot_forecast,
 ):
-    _tourism = load_australian_tourism()
+    _tourism = fetch_tourism_quarterly().frame
+    # Select 8 series with uniform length for a manageable panel demo
+    _tourist_cols = [f"T{i}__tourists" for i in range(3, 11)]
+    _tourism = _tourism.select("time", *_tourist_cols).drop_nulls()
     _split_p = int(len(_tourism) * 0.8)
     _y_train_p = _tourism.head(_split_p)
     _y_test_p = _tourism.tail(len(_tourism) - _split_p)
@@ -318,11 +295,9 @@ def _(
         _y_pred_panel,
         y_train=_y_train_p,
         n_history=8,
-        panel_group_names=["act", "victoria", "queensland"],
+        panel_group_names=["T3", "T4", "T5"],
         title="Panel Decomposition: Trend + Residual",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -344,8 +319,6 @@ def _(mo):
     - **Stationarity transforms**: See `examples/stationarity/stationarity_transforms.py`
     - **Panel stationarity**: See `examples/stationarity/panel_stationarity.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

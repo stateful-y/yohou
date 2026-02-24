@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Panel Data Preprocessing.
 
 Shows how transformers work with panel time series automatically and
@@ -9,24 +15,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -45,14 +38,12 @@ def _(mo):
     - Inspecting panel structure with `inspect_locality()`
     - Custom per-group preprocessing pipelines
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
-    from yohou.datasets import load_australian_tourism
+    from yohou.datasets import fetch_tourism_quarterly
     from yohou.plotting import plot_time_series
     from yohou.preprocessing import (
         LagTransformer,
@@ -70,23 +61,23 @@ def _():
         dict_to_panel,
         get_group_df,
         inspect_locality,
-        load_australian_tourism,
+        fetch_tourism_quarterly,
         pl,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Inspect Panel Structure
     """)
-    return
-
 
 @app.cell
-def _(inspect_locality, load_australian_tourism, mo, pl):
-    tourism = load_australian_tourism()
+def _(inspect_locality, fetch_tourism_quarterly, mo, pl):
+    _bunch = fetch_tourism_quarterly()
+    # Select 8 series with uniform length for a manageable panel demo
+    _selected = [f"T{i}__tourists" for i in range(3, 11)]
+    tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, panel_groups = inspect_locality(tourism)
 
     mo.md(
@@ -98,7 +89,6 @@ def _(inspect_locality, load_australian_tourism, mo, pl):
     )
     return panel_groups, tourism
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -108,8 +98,6 @@ def _(mo):
     and processes each group independently while preserving the naming
     convention.
     """)
-    return
-
 
 @app.cell
 def _(StandardScaler, mo, tourism):
@@ -120,11 +108,10 @@ def _(StandardScaler, mo, tourism):
     mo.md(
         f"**Scaled columns**: {tourism_scaled.columns}\n\n"
         f"Column naming preserved: all panel columns still contain `__`.\n\n"
-        f"Mean of scaled target (ACT): "
-        f"{tourism_scaled['act__trips'].mean():.4f} (should be ~0.0)"
+        f"Mean of scaled target (T3): "
+        f"{tourism_scaled['T3__tourists'].mean():.4f} (should be ~0.0)"
     )
     return scaler, tourism_scaled
-
 
 @app.cell
 def _(RollingStatisticsTransformer, tourism):
@@ -134,7 +121,6 @@ def _(RollingStatisticsTransformer, tourism):
     tourism_rolling.head()
     return rolling, tourism_rolling
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -142,8 +128,6 @@ def _(mo):
     retain the panel naming convention. Check the output columns to see
     the generated feature names.
     """)
-    return
-
 
 @app.cell
 def _(mo, tourism_rolling):
@@ -152,16 +136,12 @@ def _(mo, tourism_rolling):
         f"**Rows**: {len(tourism_rolling)} "
         f"(reduced from original due to window_size=4 observation horizon)"
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Lag Transformer on Panel Data
     """)
-    return
-
 
 @app.cell
 def _(LagTransformer, mo, tourism):
@@ -175,7 +155,6 @@ def _(LagTransformer, mo, tourism):
     )
     return lag_tf, tourism_lagged
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -184,27 +163,22 @@ def _(mo):
     Use `get_group_df` to extract a single group as a standard DataFrame
     with unprefixed column names. Useful for custom per-group analysis.
     """)
-    return
-
 
 @app.cell
 def _(get_group_df, mo, pl, tourism):
-    _schema = {"trips": pl.Float64}
-    act_df = get_group_df(tourism, "act", _schema)
+    _schema = {"tourists": pl.Float64}
+    t3_df = get_group_df(tourism, "T3", _schema)
 
     mo.md(
-        f"**ACT group shape**: {act_df.shape}\n\n"
-        f"**Columns**: {act_df.columns}\n\n"
-        f"Note: column is now `trips` (unprefixed), not `act__trips`."
+        f"**T3 group shape**: {t3_df.shape}\n\n"
+        f"**Columns**: {t3_df.columns}\n\n"
+        f"Note: column is now `tourists` (unprefixed), not `T3__tourists`."
     )
-    return (act_df,)
-
+    return (t3_df,)
 
 @app.cell
-def _(act_df, plot_time_series):
-    plot_time_series(act_df, title="ACT: Trips (Extracted Group)")
-    return
-
+def _(t3_df, plot_time_series):
+    plot_time_series(t3_df, title="T3: Tourists (Extracted Group)")
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -214,18 +188,16 @@ def _(mo):
     After per-group processing, recombine results into a single panel
     DataFrame using `dict_to_panel`.
     """)
-    return
-
 
 @app.cell
 def _(StandardScaler, dict_to_panel, get_group_df, mo, pl, tourism):
-    _schema = {"trips": pl.Float64}
+    _schema = {"tourists": pl.Float64}
     _groups = {}
-    for _state in ["act", "victoria", "queensland"]:
-        _df = get_group_df(tourism, _state, _schema)
+    for _group in ["T3", "T4", "T5"]:
+        _df = get_group_df(tourism, _group, _schema)
         _sc = StandardScaler()
         _sc.fit(_df)
-        _groups[_state] = _sc.transform(_df)
+        _groups[_group] = _sc.transform(_df)
 
     panel_again = dict_to_panel(_groups)
     mo.md(
@@ -235,7 +207,6 @@ def _(StandardScaler, dict_to_panel, get_group_df, mo, pl, tourism):
     )
     return (panel_again,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -244,19 +215,17 @@ def _(mo):
     `SimpleTimeImputer` fills missing values per-group when working
     with panel data.
     """)
-    return
-
 
 @app.cell
 def _(SimpleTimeImputer, mo, pl, tourism):
     # Inject some nulls for demonstration
     _mask = pl.Series([i % 7 == 0 for i in range(len(tourism))])
     _tourism_missing = tourism.with_columns(
-        pl.when(_mask).then(None).otherwise(pl.col("act__trips")).alias("act__trips"),
+        pl.when(_mask).then(None).otherwise(pl.col("T3__tourists")).alias("T3__tourists"),
         pl.when(_mask)
         .then(None)
-        .otherwise(pl.col("victoria__trips"))
-        .alias("victoria__trips"),
+        .otherwise(pl.col("T4__tourists"))
+        .alias("T4__tourists"),
     )
     _null_count = _tourism_missing.null_count().drop("time")
 
@@ -271,7 +240,6 @@ def _(SimpleTimeImputer, mo, pl, tourism):
         "Linear interpolation applied per group."
     )
     return (imputer,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -291,8 +259,6 @@ def _(mo):
     - **Panel pipelines**: See `examples/compose/panel_pipelines.py`
     - **Panel forecasting**: See `examples/point/panel_forecasting.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "catboost",
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Point Forecasting with CatBoost.
 
 Demonstrates PointReductionForecaster with CatBoostRegressor as the wrapped
@@ -9,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "catboost", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -42,8 +37,6 @@ def _(mo):
     - Silencing CatBoost training output with `verbose=0`
     - Comparing CatBoost with a linear baseline
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -52,7 +45,7 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.multioutput import MultiOutputRegressor
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster
@@ -65,23 +58,20 @@ def _():
         MultiOutputRegressor,
         PointReductionForecaster,
         Ridge,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
-    y = load_air_passengers().rename({"Passengers": "passengers"})
+def _(fetch_tourism_monthly):
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
     split_idx = int(len(y) * 0.8)
     y_train = y.head(split_idx)
@@ -90,7 +80,6 @@ def _(load_air_passengers):
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return forecasting_horizon, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -101,8 +90,6 @@ def _(mo):
     plugs directly into `PointReductionForecaster`.  Set `verbose=0` to
     suppress per-iteration training logs.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -131,7 +118,6 @@ def _(
     y_pred_cb.head()
     return catboost_fc, y_pred_cb
 
-
 @app.cell
 def _(plot_forecast, y_pred_cb, y_test, y_train):
     plot_forecast(
@@ -140,16 +126,12 @@ def _(plot_forecast, y_pred_cb, y_test, y_train):
         y_train=y_train,
         title="CatBoost Point Forecast",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Compare with Linear Baseline
     """)
-    return
-
 
 @app.cell
 def _(
@@ -176,8 +158,6 @@ def _(
     mae_ridge = scorer.score(y_test, y_pred_ridge)
     print(f"CatBoost MAE: {mae_cb:.2f}")
     print(f"Ridge    MAE: {mae_ridge:.2f}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -189,8 +169,6 @@ def _(mo):
     - Use `verbose=0` to keep notebook output clean
     - Consider `GridSearchCV` for tuning `iterations`, `depth`, `learning_rate`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

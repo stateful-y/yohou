@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Naive Forecasters as Baselines.
 
 Demonstrates SeasonalNaive for baseline forecasting with update/predict workflow.
@@ -8,24 +15,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -48,13 +42,12 @@ def _(mo):
     Basic understanding of seasonality in time series.
     """)
 
-
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.model_selection import train_test_split
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import SeasonalNaive
@@ -62,28 +55,27 @@ def _():
     return (
         MeanAbsoluteError,
         SeasonalNaive,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
         plot_time_series,
         train_test_split,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load and Split Data
 
-    We begin by loading the Air Passengers dataset and splitting it into training and test sets for evaluating the forecasters.
+    We begin by loading the Monthly Tourism dataset and splitting it into training and test sets for evaluating the forecasters.
     """)
 
-
 @app.cell
-def _(load_air_passengers, train_test_split):
+def _(fetch_tourism_monthly, train_test_split):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists").drop_nulls()
+        .rename({"T1__tourists": "tourists"})
     )
     y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
     forecasting_horizon = 12
@@ -91,11 +83,9 @@ def _(load_air_passengers, train_test_split):
     print(f"Train: {len(y_train)} obs, Test: {len(y_test)} obs")
     return forecasting_horizon, y, y_test, y_train
 
-
 @app.cell
 def _(plot_time_series, y):
-    plot_time_series(y, title="Air Passengers")
-
+    plot_time_series(y, title="Monthly Tourism")
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -107,7 +97,6 @@ def _(mo):
     using the same month from the previous year.
     """)
 
-
 @app.cell
 def _(SeasonalNaive, forecasting_horizon, y_train):
     naive = SeasonalNaive(seasonality=12)
@@ -117,7 +106,6 @@ def _(SeasonalNaive, forecasting_horizon, y_train):
     print(f"Predicted {len(y_pred_naive)} steps ahead")
     y_pred_naive.head()
     return naive, y_pred_naive
-
 
 @app.cell
 def _(MeanAbsoluteError, plot_forecast, y_pred_naive, y_test, y_train):
@@ -135,7 +123,6 @@ def _(MeanAbsoluteError, plot_forecast, y_pred_naive, y_test, y_train):
     )
     return mae, score, y_test_h
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -144,7 +131,6 @@ def _(mo):
     The `seasonality` parameter controls how far back the forecaster looks.
     Let's compare `seasonality=1` (repeat last value), `6`, and `12`.
     """)
-
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
@@ -164,7 +150,6 @@ def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
         print(f"seasonality={period:>2d}  MAE: {results[f'seasonality={period}']['mae']:.2f}")
     return (results,)
 
-
 @app.cell
 def _(plot_forecast, results, y_test, y_train):
     preds_dict = {name: r["pred"] for name, r in results.items()}
@@ -176,7 +161,6 @@ def _(plot_forecast, results, y_test, y_train):
     )
     return (preds_dict,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -186,7 +170,6 @@ def _(mo):
     Combined with `predict`, this enables **rolling evaluation** -
     simulating real-world deployment where new data arrives incrementally.
     """)
-
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, pl, y_test, y_train):
@@ -215,7 +198,6 @@ def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, pl, y_test, y_train
     print(f"Rolling MAE: {score_rolling:.2f}")
     return all_preds, mae_rolling, naive_rolling, score_rolling
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -227,7 +209,6 @@ def _(mo):
     - Always compare ML forecasters against naive baselines to prove added value
     """)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -237,7 +218,6 @@ def _(mo):
     - **Scoring**: See `metrics/` for comprehensive evaluation metrics
     - **Cross-validation**: See `model_selection/` for temporal CV strategies
     """)
-
 
 if __name__ == "__main__":
     app.run()

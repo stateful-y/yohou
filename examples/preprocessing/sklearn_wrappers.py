@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Sklearn-Compatible Scalers and Transformers.
 
 Demonstrates yohou's sklearn wrapper classes (StandardScaler, MinMaxScaler,
@@ -10,24 +17,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -53,15 +47,13 @@ def _(mo):
     Basic familiarity with sklearn preprocessing and `PointReductionForecaster`
     (see `examples/quickstart.py`).
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers, load_store_sales
+    from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -84,31 +76,27 @@ def _():
         Ridge,
         RobustScaler,
         StandardScaler,
-        load_air_passengers,
-        load_store_sales,
+        fetch_dominick,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
-    df = load_air_passengers()
+def _(fetch_tourism_monthly):
+    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     _split = int(len(df) * 0.85)
-    y_train = df.head(_split).select("time", "Passengers")
-    y_test = df.tail(len(df) - _split).select("time", "Passengers")
+    y_train = df.head(_split).select("time", "tourists")
+    y_test = df.tail(len(df) - _split).select("time", "tourists")
     y_train.head()
     return df, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -118,32 +106,27 @@ def _(mo):
     Centres each column to zero mean and unit variance. This is the most
     common scaler for regression models.
     """)
-    return
-
 
 @app.cell
 def _(StandardScaler, mo, y_train):
     std_scaler = StandardScaler()
     y_scaled = std_scaler.fit_transform(y_train)
-    _stats = y_scaled.select("Passengers").describe()
+    _stats = y_scaled.select("tourists").describe()
     mo.md(
         f"**After StandardScaler**: "
-        f"mean = {y_scaled['Passengers'].mean():.4f}, "
-        f"std = {y_scaled['Passengers'].std():.4f}"
+        f"mean = {y_scaled['tourists'].mean():.4f}, "
+        f"std = {y_scaled['tourists'].std():.4f}"
     )
     return std_scaler, y_scaled
-
 
 @app.cell
 def _(mo, std_scaler, y_scaled, y_train):
     _y_inv = std_scaler.inverse_transform(y_scaled)
     _max_err = (
-        _y_inv.select("Passengers").to_series()
-        - y_train.select("Passengers").to_series()
+        _y_inv.select("tourists").to_series()
+        - y_train.select("tourists").to_series()
     ).abs().max()
     mo.md(f"**Round-trip reconstruction error**: {_max_err:.2e}")
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -153,8 +136,6 @@ def _(mo):
     Scales each column to the range `[0, 1]` (or a custom `feature_range`).
     Useful when the model is sensitive to feature magnitudes.
     """)
-    return
-
 
 @app.cell
 def _(MinMaxScaler, mo, y_train):
@@ -162,11 +143,10 @@ def _(MinMaxScaler, mo, y_train):
     _y_mm = mm_scaler.fit_transform(y_train)
     mo.md(
         f"**After MinMaxScaler**: "
-        f"min = {_y_mm['Passengers'].min():.4f}, "
-        f"max = {_y_mm['Passengers'].max():.4f}"
+        f"min = {_y_mm['tourists'].min():.4f}, "
+        f"max = {_y_mm['tourists'].max():.4f}"
     )
     return (mm_scaler,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -175,8 +155,6 @@ def _(mo):
 
     Uses median and IQR instead of mean and std, making it robust to outliers.
     """)
-    return
-
 
 @app.cell
 def _(RobustScaler, mo, y_train):
@@ -184,25 +162,22 @@ def _(RobustScaler, mo, y_train):
     _y_rob = rob_scaler.fit_transform(y_train)
     mo.md(
         f"**After RobustScaler**: "
-        f"median = {_y_rob['Passengers'].median():.4f}, "
-        f"IQR-scaled std = {_y_rob['Passengers'].std():.4f}"
+        f"median = {_y_rob['tourists'].median():.4f}, "
+        f"IQR-scaled std = {_y_rob['tourists'].std():.4f}"
     )
     return (rob_scaler,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Compare Scalers Visually
     """)
-    return
-
 
 @app.cell
 def _(MinMaxScaler, RobustScaler, StandardScaler, pl, plot_time_series, y_train):
-    _std = StandardScaler().fit_transform(y_train).rename({"Passengers": "StandardScaler"})
-    _mm = MinMaxScaler().fit_transform(y_train).rename({"Passengers": "MinMaxScaler"})
-    _rob = RobustScaler().fit_transform(y_train).rename({"Passengers": "RobustScaler"})
+    _std = StandardScaler().fit_transform(y_train).rename({"tourists": "StandardScaler"})
+    _mm = MinMaxScaler().fit_transform(y_train).rename({"tourists": "MinMaxScaler"})
+    _rob = RobustScaler().fit_transform(y_train).rename({"tourists": "RobustScaler"})
     _combined = pl.concat(
         [
             _std.select("time", "StandardScaler"),
@@ -211,9 +186,7 @@ def _(MinMaxScaler, RobustScaler, StandardScaler, pl, plot_time_series, y_train)
         ],
         how="horizontal",
     )
-    plot_time_series(_combined, title="Scaler Comparison on Air Passengers")
-    return
-
+    plot_time_series(_combined, title="Scaler Comparison on Monthly Tourism")
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -224,8 +197,6 @@ def _(mo):
     data more Gaussian-like.  Box-Cox requires strictly positive values;
     Yeo-Johnson works with any data.
     """)
-    return
-
 
 @app.cell
 def _(PowerTransformer, mo, y_train):
@@ -233,10 +204,9 @@ def _(PowerTransformer, mo, y_train):
     _y_pw = pw_transformer.fit_transform(y_train)
     mo.md(
         f"**After PowerTransformer (Box-Cox)**: "
-        f"skewness = {_y_pw['Passengers'].skew():.4f}"
+        f"skewness = {_y_pw['tourists'].skew():.4f}"
     )
     return (pw_transformer,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -246,8 +216,6 @@ def _(mo):
     Creates interaction and polynomial terms. Useful as a `feature_transformer`
     to enrich the feature space before a linear regression.
     """)
-    return
-
 
 @app.cell
 def _(PolynomialFeatures, mo, y_train):
@@ -260,7 +228,6 @@ def _(PolynomialFeatures, mo, y_train):
     )
     return (poly,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -270,8 +237,6 @@ def _(mo):
     fitting and inverse-scale predictions. Here we compare raw predictions
     with StandardScaler-transformed predictions.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -313,7 +278,6 @@ def _(
     )
     return fc_scaled, y_pred_scaled
 
-
 @app.cell
 def _(plot_forecast, y_pred_scaled, y_test, y_train):
     plot_forecast(
@@ -323,8 +287,6 @@ def _(plot_forecast, y_pred_scaled, y_test, y_train):
         n_history=36,
         title="Forecast with StandardScaler Target Transform",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -335,8 +297,6 @@ def _(mo):
     forecaster, yohou fits a **separate scaler per panel group**. Each
     group's data is scaled independently.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -344,21 +304,25 @@ def _(
     PointReductionForecaster,
     Ridge,
     StandardScaler,
-    load_store_sales,
+    fetch_dominick,
     plot_forecast,
 ):
-    _store = load_store_sales()
-    _split = int(len(_store) * 0.9)
-    _sales_cols = [c for c in _store.columns if c.endswith("__sales")]
-    _y_train_p = _store.head(_split).select("time", *_sales_cols)
-    _y_test_p = _store.tail(len(_store) - _split).select("time", *_sales_cols)
+    _panel = fetch_dominick().frame.select(
+        "time", "T7__profit", "T11__profit", "T12__profit",
+        "T13__profit", "T15__profit", "T19__profit",
+        "T22__profit", "T23__profit", "T24__profit",
+    )
+    _split = int(len(_panel) * 0.9)
+    _profit_cols = [c for c in _panel.columns if c.endswith("__profit")]
+    _y_train_p = _panel.head(_split).select("time", *_profit_cols)
+    _y_test_p = _panel.tail(len(_panel) - _split).select("time", *_profit_cols)
 
     _fc_panel = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
         target_transformer=StandardScaler(),
-        feature_transformer=LagTransformer(lag=[1, 7]),
+        feature_transformer=LagTransformer(lag=[1, 4]),
     )
-    _horizon_p = min(len(_y_test_p), 14)
+    _horizon_p = min(len(_y_test_p), 8)
     _fc_panel.fit(_y_train_p, forecasting_horizon=_horizon_p)
     _y_pred_p = _fc_panel.predict(forecasting_horizon=_horizon_p)
 
@@ -366,12 +330,10 @@ def _(
         _y_test_p,
         _y_pred_p,
         y_train=_y_train_p,
-        n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1"],
+        n_history=20,
+        panel_group_names=["T7", "T11"],
         title="Panel Forecast with Per-Group StandardScaler",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -392,8 +354,6 @@ def _(mo):
     - **Custom transforms**: See `examples/preprocessing/function_transformer.py` for wrapping arbitrary polars operations
     - **Stationarity transforms**: See `examples/stationarity/` for decomposition-based transforms (LogTransformer, BoxCoxTransformer, etc.)
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

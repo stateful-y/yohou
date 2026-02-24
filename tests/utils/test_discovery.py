@@ -68,4 +68,4 @@ class TestAllFunctions:
     def test_all_functions(self):
         """Test all_functions returns correct count."""
         functions = all_functions()
-        assert len(functions) == 176
+        assert len(functions) == 179

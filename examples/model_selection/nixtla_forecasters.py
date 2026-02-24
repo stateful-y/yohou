@@ -1,7 +1,14 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+#     "yohou-nixtla",
+# ]
+# ///
 """Nixtla Statistical and Neural Forecasters.
 
 Demonstrates yohou-nixtla integration across statistical and neural forecaster
-families with side-by-side comparison on air passengers data.
+families with side-by-side comparison on tourism monthly data.
 """
 
 import marimo
@@ -9,27 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install([
-            "plotly", "scikit-learn", "yohou",
-            "statsforecast", "neuralforecast",
-        ])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -51,45 +42,39 @@ def _(mo):
 
     **Requires**: `yohou-nixtla` package (install with `uv pip install yohou-nixtla`)
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
     from yohou.plotting import plot_forecast
 
     return (
         MeanAbsoluteError,
         RootMeanSquaredError,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_forecast,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers, mo):
-    ap = load_air_passengers()
-    _split = int(len(ap) * 0.85)
-    y_train = ap.head(_split).select("time", "Passengers")
-    y_test = ap.tail(len(ap) - _split).select("time", "Passengers")
+def _(fetch_tourism_monthly, mo):
+    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    _split = int(len(tourism) * 0.85)
+    y_train = tourism.head(_split)
+    y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
-    return ap, horizon, y_test, y_train
-
+    return tourism, horizon, y_test, y_train
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -103,8 +88,6 @@ def _(mo):
     - `season_length`: Seasonal period (12 for monthly data)
     - `freq`: Frequency string (auto-inferred if not set)
     """)
-    return
-
 
 @app.cell
 def _():
@@ -123,7 +106,6 @@ def _():
         HoltWintersForecaster,
         SeasonalNaiveForecaster,
     )
-
 
 @app.cell
 def _(
@@ -148,7 +130,6 @@ def _(
         stats_preds[_name] = _fc.predict(forecasting_horizon=horizon)
     return stats_models, stats_preds
 
-
 @app.cell
 def _(MeanAbsoluteError, mo, pl, stats_preds, y_test, y_train):
     _scorer = MeanAbsoluteError()
@@ -160,7 +141,6 @@ def _(MeanAbsoluteError, mo, pl, stats_preds, y_test, y_train):
     stats_results = pl.DataFrame(_rows)
     mo.ui.table(stats_results)
     return (stats_results,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -174,15 +154,12 @@ def _(mo):
     - `input_size`: Lookback window length
     - `max_steps`: Training iterations (keep low for demos)
     """)
-    return
-
 
 @app.cell
 def _():
     from yohou_nixtla.neural import NBEATSForecaster, NHITSForecaster
 
     return NBEATSForecaster, NHITSForecaster
-
 
 @app.cell
 def _(NBEATSForecaster, NHITSForecaster, horizon, y_train):
@@ -196,7 +173,6 @@ def _(NBEATSForecaster, NHITSForecaster, horizon, y_train):
         neural_preds[_name] = _fc.predict(forecasting_horizon=horizon)
     return neural_models, neural_preds
 
-
 @app.cell
 def _(MeanAbsoluteError, mo, neural_preds, pl, y_test, y_train):
     _scorer = MeanAbsoluteError()
@@ -209,14 +185,11 @@ def _(MeanAbsoluteError, mo, neural_preds, pl, y_test, y_train):
     mo.ui.table(neural_results)
     return (neural_results,)
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Cross-Family Comparison
     """)
-    return
-
 
 @app.cell
 def _(mo, neural_results, pl, stats_results):
@@ -224,7 +197,6 @@ def _(mo, neural_results, pl, stats_results):
     all_results_sorted = all_results.sort("MAE")
     mo.ui.table(all_results_sorted)
     return all_results, all_results_sorted
-
 
 @app.cell
 def _(neural_preds, plot_forecast, stats_preds, y_test, y_train):
@@ -238,8 +210,6 @@ def _(neural_preds, plot_forecast, stats_preds, y_test, y_train):
         n_history=36,
         title=f"Best Stats: {_best_stats}",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -248,8 +218,6 @@ def _(mo):
 
     All Nixtla forecasters work with yohou's GridSearchCV.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -278,7 +246,6 @@ def _(
     )
     return ExpandingWindowSplitter, GridSearchCV
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -298,8 +265,6 @@ def _(mo):
     - **Optuna search**: See `examples/model_selection/optuna_search.py`
     - **Hyperparameter search**: See `examples/model_selection/hyperparameter_search.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

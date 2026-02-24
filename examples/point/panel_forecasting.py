@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Panel Point Forecasting.
 
 Demonstrates global vs local models, ColumnForecaster specialisation,
@@ -9,24 +16,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -45,8 +39,6 @@ def _(mo):
     - Selective training/prediction with `panel_group_names`
     - Groupwise scoring to identify weak groups
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
@@ -55,7 +47,7 @@ def _():
     from sklearn.tree import DecisionTreeRegressor
 
     from yohou.compose import ColumnForecaster
-    from yohou.datasets import load_store_sales
+    from yohou.datasets import fetch_dominick
     from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -72,26 +64,26 @@ def _():
         RootMeanSquaredError,
         SeasonalNaive,
         inspect_locality,
-        load_store_sales,
+        fetch_dominick,
         pl,
         plot_forecast,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
     """)
-    return
-
 
 @app.cell
-def _(inspect_locality, load_store_sales, mo, pl):
-    store = load_store_sales()
+def _(inspect_locality, fetch_dominick, mo, pl):
+    _bunch = fetch_dominick()
+    # Select 9 series with complete data (no nulls) for a manageable panel demo
+    _selected = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
+    store = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_locality(store)
-    _target_cols = [c for c in store.columns if c.endswith("__sales")]
+    _target_cols = [c for c in store.columns if c.endswith("__profit")]
     y = store.select("time", *_target_cols)
 
     _split = int(len(y) * 0.85)
@@ -102,11 +94,10 @@ def _(inspect_locality, load_store_sales, mo, pl):
     mo.md(
         f"**Panel groups**: {list(groups.keys())}\n\n"
         f"**Target columns**: {_target_cols}\n\n"
-        f"**Train**: {len(y_train)} days, **Test**: {len(y_test)} days, "
+        f"**Train**: {len(y_train)} weeks, **Test**: {len(y_test)} weeks, "
         f"**Horizon**: {horizon}"
     )
     return groups, horizon, store, y, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -117,8 +108,6 @@ def _(mo):
     to every group. Each group gets its own fitted parameters, but shares
     the same hyperparameters.
     """)
-    return
-
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
@@ -130,7 +119,6 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     y_pred_global = fc_global.predict(forecasting_horizon=horizon)
     return fc_global, y_pred_global
 
-
 @app.cell
 def _(plot_forecast, y_pred_global, y_test, y_train):
     plot_forecast(
@@ -138,11 +126,9 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_2", "store_3_item_3"],
+        panel_group_names=["T7", "T13", "T22"],
         title="Global Ridge Model: Selected Groups",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -151,8 +137,6 @@ def _(mo):
 
     Assign different model families to different store groups.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -166,35 +150,34 @@ def _(
     y,
     y_train,
 ):
-    _s1_cols = [c for c in y.columns if c.startswith("store_1") and c != "time"]
-    _s2_cols = [c for c in y.columns if c.startswith("store_2") and c != "time"]
-    _s3_cols = [c for c in y.columns if c.startswith("store_3") and c != "time"]
+    _g1_cols = ["T7__profit", "T11__profit", "T12__profit"]
+    _g2_cols = ["T13__profit", "T15__profit", "T19__profit"]
+    _g3_cols = ["T22__profit", "T23__profit", "T24__profit"]
 
     fc_column = ColumnForecaster(
         forecasters=[
             (
-                "store_1_ridge",
+                "group_1_ridge",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
                     feature_transformer=LagTransformer(lag=[1, 7]),
                 ),
-                _s1_cols,
+                _g1_cols,
             ),
-            ("store_2_naive", SeasonalNaive(seasonality=7), _s2_cols),
+            ("group_2_naive", SeasonalNaive(seasonality=7), _g2_cols),
             (
-                "store_3_tree",
+                "group_3_tree",
                 PointReductionForecaster(
                     estimator=DecisionTreeRegressor(max_depth=5),
                     feature_transformer=LagTransformer(lag=[1, 7, 14]),
                 ),
-                _s3_cols,
+                _g3_cols,
             ),
         ],
     )
     fc_column.fit(y_train, forecasting_horizon=horizon)
     y_pred_column = fc_column.predict(forecasting_horizon=horizon)
     return fc_column, y_pred_column
-
 
 @app.cell
 def _(plot_forecast, y_pred_column, y_test, y_train):
@@ -203,11 +186,9 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         y_pred_column,
         y_train=y_train,
         n_history=30,
-        panel_group_names=["store_1_item_1", "store_2_item_1", "store_3_item_1"],
-        title="ColumnForecaster: Per-Store Specialisation",
+        panel_group_names=["T7", "T13", "T22"],
+        title="ColumnForecaster: Per-Group Specialisation",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -217,22 +198,19 @@ def _(mo):
     Use `panel_group_names` to train or predict on a subset of groups.
     Useful when new groups appear or you want group-specific analysis.
     """)
-    return
-
 
 @app.cell
 def _(fc_global, mo, plot_forecast, y_pred_global, y_test, y_train):
-    # Predict only store_1 groups
+    # Predict only T7-T12 groups
     y_pred_s1 = fc_global.predict(
         forecasting_horizon=len(y_test),
-        panel_group_names=["store_1_item_1", "store_1_item_2", "store_1_item_3"],
+        panel_group_names=["T7", "T11", "T12"],
     )
     mo.md(
         f"**Selective prediction columns**: {y_pred_s1.columns}\n\n"
-        f"Only store_1 groups are predicted; other groups are omitted."
+        f"Only T7, T11, T12 groups are predicted; other groups are omitted."
     )
     return (y_pred_s1,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -242,8 +220,6 @@ def _(mo):
     Score each group individually to identify which groups perform best
     and worst under each model.
     """)
-    return
-
 
 @app.cell
 def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y_train):
@@ -263,7 +239,6 @@ def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y
     mo.ui.table(comparison_df)
     return (comparison_df,)
 
-
 @app.cell
 def _(MeanAbsoluteError, RootMeanSquaredError, mo, y_pred_global, y_test, y_train):
     # Aggregation modes: "groupwise", "componentwise", "timewise", "all"
@@ -280,8 +255,6 @@ def _(MeanAbsoluteError, RootMeanSquaredError, mo, y_pred_global, y_test, y_trai
         f"**Groupwise RMSE columns**: {_s_rmse.columns}\n\n"
         "Groupwise aggregation returns one score per group (aggregated over time)."
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -300,8 +273,6 @@ def _(mo):
     - **Aggregation modes**: See `examples/metrics/aggregation_modes.py`
     - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

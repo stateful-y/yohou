@@ -1,61 +1,63 @@
 # Datasets
 
-### Air Passengers ([View](/examples/datasets/air_passengers/) | [Editable](/examples/datasets/air_passengers/edit/))
+Each dataset notebook fetches data from [Monash/Zenodo](https://forecastingdata.org) using `yohou.datasets` functions. See the [API reference](../api/datasets.md) for full function signatures.
 
-**Classic Trend + Monthly Seasonality**
+### Tourism Monthly ([View](/examples/datasets/tourism_monthly/) | [Open in marimo](/examples/datasets/tourism_monthly/edit/))
 
-The canonical time series dataset. Explore trend and seasonal patterns with `plot_time_series`, `plot_rolling_statistics`, and `plot_seasonality`.
+**Trend and Seasonality Analysis** — `fetch_tourism_monthly`
 
-### Sunspots ([View](/examples/datasets/sunspots/) | [Editable](/examples/datasets/sunspots/edit/))
+Monthly tourism series from the Monash forecasting competition. Explores the first series T1 with `plot_time_series`, `plot_rolling_statistics`, and `plot_seasonality`.
 
-**Long-Term Cyclic Patterns**
+### Tourism Quarterly ([View](/examples/datasets/australian_tourism/) | [Open in marimo](/examples/datasets/australian_tourism/edit/))
 
-Monthly sunspot counts from 1749–1984. Demonstrates autocorrelation analysis and spectrum visualization for identifying the ~11-year solar cycle.
+**Panel Data Exploration** — `fetch_tourism_quarterly`
 
-### Australian Tourism ([View](/examples/datasets/australian_tourism/) | [Editable](/examples/datasets/australian_tourism/edit/))
+Quarterly tourism trips from the Monash forecasting competition (427 series). Explores 8 series with `inspect_locality`, `plot_time_series`, `plot_seasonality`, and `plot_boxplot`.
 
-**Quarterly Panel Data (8 States)**
+### Tourism Quarterly Forecasting ([View](/examples/datasets/australian_tourism_forecasting/) | [Open in marimo](/examples/datasets/australian_tourism_forecasting/edit/))
 
-Australian tourism demand from 1998–2017. Demonstrates `inspect_locality`, panel plotting, and boxplots for multi-group exploration.
+**Panel Forecasting Workflow** — `fetch_tourism_quarterly`
 
-### Australian Tourism Forecasting ([View](/examples/datasets/australian_tourism_forecasting/) | [Editable](/examples/datasets/australian_tourism_forecasting/edit/))
+End-to-end panel forecasting on tourism quarterly data: fit, predict, observe-predict, per-group scoring, rolling evaluation, and selective group observation.
 
-**Panel Forecasting Workflow**
+### Sunspots ([View](/examples/datasets/sunspots/) | [Open in marimo](/examples/datasets/sunspots/edit/))
 
-End-to-end panel forecasting on Australian tourism: fit, predict, observe-predict, scoring, and per-group analysis across 8 states.
+**Cyclic Pattern Analysis** — `fetch_sunspot`
 
-### Victoria Electricity ([View](/examples/datasets/vic_electricity/) | [Editable](/examples/datasets/vic_electricity/edit/))
+Daily sunspot numbers (1818–2020), resampled to monthly. Demonstrates 11-year solar cycles with `plot_time_series`, `plot_rolling_statistics`, `plot_autocorrelation`, and `plot_spectrum`.
 
-**High-Frequency Multivariate Analysis**
+### Electricity Demand ([View](/examples/datasets/vic_electricity/) | [Open in marimo](/examples/datasets/vic_electricity/edit/))
 
-30-minute demand and temperature data. Demonstrates cross-correlation, rolling statistics, and high-frequency diagnostics.
+**Multi-State Panel Analysis** — `fetch_electricity_demand`
 
-### Store Sales ([View](/examples/datasets/store_sales/) | [Editable](/examples/datasets/store_sales/edit/))
+Half-hourly electricity demand from 5 Australian states. Demonstrates `inspect_locality`, `plot_time_series`, `plot_cross_correlation`, `plot_seasonality`, and `plot_rolling_statistics`.
 
-**Daily Retail Panel Data**
+### Dominick Store Sales ([View](/examples/datasets/store_sales/) | [Open in marimo](/examples/datasets/store_sales/edit/))
 
-3 stores × 3 items over 1826 daily observations. Demonstrates panel inspection, boxplots, and seasonality analysis for retail data.
+**Weekly Retail Panel Analysis** — `fetch_dominick`
 
-### Walmart Sales ([View](/examples/datasets/walmart_sales/) | [Editable](/examples/datasets/walmart_sales/edit/))
+Weekly retail profit for SKUs from Dominick's Finer Foods in panel format. Explores 9 of 50 series with `inspect_locality`, `plot_time_series`, `plot_boxplot`, and `plot_seasonality`.
 
-**Branch-Level Panel Analysis**
+### Pedestrian Counts ([View](/examples/datasets/pedestrian_counts/) | [Open in marimo](/examples/datasets/pedestrian_counts/edit/))
 
-Walmart branches A/B/C with 89 daily observations. Explores panel inspection, boxplots, and seasonality patterns.
+**Sensor-Level Panel Analysis** — `fetch_pedestrian_counts`
 
-### Walmart Forecasting ([View](/examples/datasets/walmart_forecasting/) | [Editable](/examples/datasets/walmart_forecasting/edit/))
+Hourly pedestrian counts from Melbourne sensors (20 series). Explores 6 series with `inspect_locality`, `plot_time_series`, `plot_boxplot`, and `plot_seasonality`.
 
-**Multi-Target Panel Forecasting**
+### Pedestrian Counts Forecasting ([View](/examples/datasets/pedestrian_counts_forecasting/) | [Open in marimo](/examples/datasets/pedestrian_counts_forecasting/edit/))
 
-Multi-target forecasting (sales + ratings) across 3 branches. Per-branch evaluation with selective group observe-predict.
+**Panel Forecasting Workflow** — `fetch_pedestrian_counts`
 
-### ETT-M1 ([View](/examples/datasets/ett_m1/) | [Editable](/examples/datasets/ett_m1/edit/))
+Panel forecasting on hourly pedestrian data: per-sensor evaluation, rolling observe-predict, and selective group observation.
 
-**Electricity Transformer Temperature**
+### Hospital ([View](/examples/datasets/hospital/) | [Open in marimo](/examples/datasets/hospital/edit/))
 
-Multivariate analysis of 7 features at 15-minute intervals. Demonstrates cross-correlation and seasonality for industrial sensor data.
+**Monthly Patient Counts Panel** — `fetch_hospital`
 
-### ETT-M1 Multivariate Forecasting ([View](/examples/datasets/ett_m1_multivariate/) | [Editable](/examples/datasets/ett_m1_multivariate/edit/))
+Monthly patient counts for medical products (767 series, 2000–2006). Explores 6 series with `plot_time_series`, `plot_cross_correlation`, and `plot_seasonality`.
 
-**Multivariate Forecasting with Exogenous Features**
+### Hospital Multivariate ([View](/examples/datasets/hospital_multivariate/) | [Open in marimo](/examples/datasets/hospital_multivariate/edit/))
 
-Forecast electricity transformer temperature using `ForecastedFeatureForecaster` with exogenous features. Demonstrates the full multivariate reduction workflow.
+**Multivariate Forecasting** — `fetch_hospital`
+
+Multivariate forecasting using `ForecastedFeatureForecaster`: target-only baseline vs. known exogenous features vs. forecasted features.

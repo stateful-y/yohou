@@ -1,8 +1,14 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Sunspots - Cyclic Pattern Analysis.
 
-Classic sunspot dataset demonstrating 11-year solar cycles.
+Sunspot dataset demonstrating 11-year solar cycles.
 
-Dataset: Monthly sunspot numbers, 1749-1984
+Dataset: Daily sunspot numbers, 1818-2020 (resampled to monthly)
 Demonstrates: plot_time_series, plot_rolling_statistics, plot_autocorrelation, plot_spectrum
 """
 
@@ -11,28 +17,28 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
+    import polars as pl
 
-    from yohou.datasets import load_sunspots
+    from yohou.datasets import fetch_sunspot
     from yohou.plotting import (
         plot_autocorrelation,
-        plot_spectrum,
         plot_rolling_statistics,
+        plot_spectrum,
         plot_time_series,
     )
 
     return (
-        load_sunspots,
+        fetch_sunspot,
         mo,
+        pl,
         plot_autocorrelation,
         plot_spectrum,
         plot_rolling_statistics,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -44,7 +50,7 @@ def _(mo):
     This example demonstrates analysis of long-term cyclical patterns using the
     Sunspot Numbers dataset. You'll learn how to:
 
-    - Visualize long historical time series (235+ years)
+    - Visualize long historical time series (200+ years)
     - Detect and smooth 11-year solar cycles with rolling statistics
     - Identify periodicity with autocorrelation analysis
     - Find dominant frequencies using spectral analysis
@@ -53,47 +59,33 @@ def _(mo):
 
     None -- this is a standalone dataset exploration.
     """)
-    return
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "yohou"])
-    return
-
 
 @app.cell
-def _(load_sunspots):
-    df = load_sunspots()
+def _(fetch_sunspot, pl):
+    df = (
+        fetch_sunspot()
+        .frame.group_by_dynamic("time", every="1mo")
+        .agg(pl.col("sunspot_number").mean())
+    )
     df.head()
     return (df,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ## 1. Raw Time Series
 
-    The raw data spans 235+ years of monthly sunspot observations, revealing the
+    The raw data spans 200+ years of monthly sunspot observations, revealing the
     characteristic ~11-year solar cycle.
     """)
-    return
-
 
 @app.cell
 def _(df, plot_time_series):
     plot_time_series(
         df,
-        title="Sunspot Numbers (1749-1984)",
+        title="Sunspot Numbers (1818-2020)",
         y_label="Sunspot Count",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -103,8 +95,6 @@ def _(mo):
     An 11-year rolling average smooths out individual cycles and highlights
     longer-term trends in solar activity.
     """)
-    return
-
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -115,8 +105,6 @@ def _(df, plot_rolling_statistics):
         show_original=True,
         title="11-Year Rolling Mean",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -126,8 +114,6 @@ def _(mo):
     The interquartile range (IQR) envelope shows the variability of sunspot
     activity within each cycle.
     """)
-    return
-
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -139,8 +125,6 @@ def _(df, plot_rolling_statistics):
         show_original=False,
         title="11-Year Rolling Median with IQR",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -150,8 +134,6 @@ def _(mo):
     Autocorrelation reveals the cyclical structure, with peaks at ~132-month
     intervals confirming the ~11-year solar cycle.
     """)
-    return
-
 
 @app.cell
 def _(df, plot_autocorrelation):
@@ -160,8 +142,6 @@ def _(df, plot_autocorrelation):
         lags=200,
         title="Autocorrelation Function",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -171,8 +151,6 @@ def _(mo):
     Spectral analysis identifies the dominant frequency components in the
     sunspot data.
     """)
-    return
-
 
 @app.cell
 def _(df, plot_spectrum):
@@ -184,8 +162,6 @@ def _(df, plot_spectrum):
         n_peaks=5,
         title="Periodogram - Dominant Frequencies",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -193,19 +169,17 @@ def _(mo):
     ## Key Takeaways
 
     - **Solar cycles**: Clear ~11-year periodicity in sunspot activity
-    - **Long series**: 235+ years of monthly data reveals secular patterns
+    - **Long series**: 200+ years of monthly data reveals secular patterns
     - **Rolling IQR**: `fill_between=True` with quantiles shows uncertainty bands
     - **ACF peaks**: Autocorrelation shows cyclical peaks at ~132-month intervals
     - **Spectral analysis**: Periodogram identifies dominant frequency components
 
     ## Next Steps
 
-    - For another long series, see `examples/datasets/air_passengers.py`
+    - For another long series, see `examples/datasets/tourism_monthly.py`
     - For higher frequency with cycles, see `examples/datasets/vic_electricity.py`
     - For panel data with cycles, see `examples/datasets/australian_tourism.py`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

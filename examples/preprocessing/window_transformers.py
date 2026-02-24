@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "yohou",
+# ]
+# ///
 """Window Transformers: Lags, Rolling Statistics, and EMA.
 
 Demonstrates LagTransformer, RollingStatisticsTransformer, SlidingWindowFunctionTransformer,
@@ -9,24 +15,11 @@ import marimo
 __generated_with = "0.19.9"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys
-
-    if "pyodide" in sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -49,15 +42,13 @@ def _(mo):
 
     Basic understanding of feature engineering and time series concepts.
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
     from yohou.compose import FeatureUnion
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.plotting import plot_rolling_statistics, plot_time_series
     from yohou.preprocessing import (
         ExponentialMovingAverage,
@@ -72,33 +63,30 @@ def _():
         LagTransformer,
         RollingStatisticsTransformer,
         SlidingWindowFunctionTransformer,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_rolling_statistics,
         plot_time_series,
     )
-
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We load the Air Passengers dataset and split it into segments for demonstrating windowed transformations.
+    We load the Monthly Tourism dataset and split it into segments for demonstrating windowed transformations.
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists").drop_nulls()
+        .rename({"T1__tourists": "tourists"})
     )
     print(f"Shape: {y.shape}")
     y.head()
     return (y,)
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -108,8 +96,6 @@ def _(mo):
     Creates lagged columns. `lag=3` means the value from 3 steps ago.
     The first `max(lag)` rows become null (the `observation_horizon`).
     """)
-    return
-
 
 @app.cell
 def _(LagTransformer, y):
@@ -123,7 +109,6 @@ def _(LagTransformer, y):
     y_lagged.head(15)
     return lag_tf, y_lagged
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -132,8 +117,6 @@ def _(mo):
     Computes rolling statistics over a sliding window. Multiple statistics
     can be computed simultaneously.
     """)
-    return
-
 
 @app.cell
 def _(RollingStatisticsTransformer, y):
@@ -149,7 +132,6 @@ def _(RollingStatisticsTransformer, y):
     y_rolled.head(15)
     return roll_tf, y_rolled
 
-
 @app.cell
 def _(plot_rolling_statistics, y):
     plot_rolling_statistics(
@@ -158,8 +140,6 @@ def _(plot_rolling_statistics, y):
         statistics=["mean", "std"],
         title="Rolling Statistics (window=12)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -169,8 +149,6 @@ def _(mo):
     Apply any custom function over a sliding window.
     The function receives a polars Series and returns a scalar.
     """)
-    return
-
 
 @app.cell
 def _(SlidingWindowFunctionTransformer, y):
@@ -191,7 +169,6 @@ def _(SlidingWindowFunctionTransformer, y):
     y_range.head(10)
     return range_tf, y_range
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -200,8 +177,6 @@ def _(mo):
     EWMA gives more weight to recent observations. Unlike rolling stats,
     it has `observation_horizon=0` (stateless) since it uses all history.
     """)
-    return
-
 
 @app.cell
 def _(ExponentialMovingAverage, y):
@@ -213,7 +188,6 @@ def _(ExponentialMovingAverage, y):
     y_ema.head()
     return ema_tf, y_ema
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -222,8 +196,6 @@ def _(mo):
     Combine multiple window transformers in parallel using `FeatureUnion`.
     All outputs are concatenated horizontally.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -249,7 +221,6 @@ def _(
     y_combined.head(15)
     return union, y_combined
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -262,8 +233,6 @@ def _(mo):
     - `FeatureUnion` combines transformers in parallel for rich feature engineering
     - Stateful transformers produce nulls for the first `observation_horizon` rows
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -274,8 +243,6 @@ def _(mo):
     - **Resampling**: See `resampling.py` for frequency changes
     - **Using in forecasters**: Pass to `feature_transformer` in `PointReductionForecaster`
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()

@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "scikit-learn",
+#     "yohou",
+# ]
+# ///
 """Distance-Based Similarity Weighting for Conformal Prediction.
 
 Demonstrates DistanceSimilarity and its role in adaptive conformal intervals.
@@ -8,24 +15,11 @@ import marimo
 __generated_with = "0.19.11"
 app = marimo.App(width="medium")
 
-
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-async def _():
-    import sys as _sys
-
-    if "pyodide" in _sys.modules:
-        import micropip
-
-        await micropip.install(["plotly", "scikit-learn", "yohou"])
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -51,15 +45,13 @@ def _(mo):
     Familiarity with `SplitConformalForecaster` and basic conformal prediction
     (see `examples/interval/conformal_forecasting.py`).
     """)
-    return
-
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import load_air_passengers
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import DistanceSimilarity, SplitConformalForecaster
     from yohou.metrics import (
         AbsoluteResidual,
@@ -81,38 +73,36 @@ def _():
         PointReductionForecaster,
         Ridge,
         SplitConformalForecaster,
-        load_air_passengers,
+        fetch_tourism_monthly,
         pl,
         plot_calibration,
         plot_forecast,
         plot_score_per_horizon,
     )
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We use Air Passengers, its clear trend and multiplicative seasonality make
+    We use Monthly Tourism, its clear trend and seasonality make
     similarity effects visible because the error structure changes over time.
     """)
-    return
-
 
 @app.cell
-def _(load_air_passengers):
+def _(fetch_tourism_monthly):
     y = (
-        load_air_passengers()
-        .rename({"Passengers": "passengers"})
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists").drop_nulls()
+        .rename({"T1__tourists": "tourists"})
     )
 
     split_idx = int(len(y) * 0.8)
     y_train = y.head(split_idx)
     y_test = y.tail(len(y) - split_idx)
-    forecasting_horizon = len(y_test)
+    forecasting_horizon = min(len(y_test), 24)  # Cap below calibration_size
+    y_test = y_test.head(forecasting_horizon)
     return forecasting_horizon, split_idx, y, y_test, y_train
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -122,8 +112,6 @@ def _(mo):
     First we build a standard `SplitConformalForecaster` **without** similarity
     weighting. All calibration residuals get equal weight.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -160,7 +148,6 @@ def _(
     )
     return conformal_standard, coverage, y_pred_standard
 
-
 @app.cell
 def _(plot_forecast, y_pred_standard, y_test, y_train):
     plot_forecast(
@@ -171,8 +158,6 @@ def _(plot_forecast, y_pred_standard, y_test, y_train):
         n_history=36,
         title="Standard Conformal (Uniform Weights)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -183,8 +168,6 @@ def _(mo):
     whose lag features are close to the test point get higher weight, producing
     intervals that adapt to local error structure.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -219,7 +202,6 @@ def _(
     )
     return conformal_euclidean, y_pred_euclidean
 
-
 @app.cell
 def _(plot_forecast, y_pred_euclidean, y_test, y_train):
     plot_forecast(
@@ -230,8 +212,6 @@ def _(plot_forecast, y_pred_euclidean, y_test, y_train):
         n_history=36,
         title="Euclidean Similarity Weighting",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -242,8 +222,6 @@ def _(mo):
     Let us compare **euclidean**, **cosine**, and **cityblock** (Manhattan distance)
     side by side.
     """)
-    return
-
 
 @app.cell
 def _(
@@ -281,7 +259,6 @@ def _(
         )
     return (similarity_predictions,)
 
-
 @app.cell
 def _(
     mo,
@@ -309,8 +286,6 @@ def _(
         "| Method | Width |\n|--------|-------|\n"
         + "\n".join(_rows)
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -320,8 +295,6 @@ def _(mo):
     Good intervals should achieve empirical coverage close to the nominal rate.
     `plot_calibration` shows whether each method is over- or under-covering.
     """)
-    return
-
 
 @app.cell
 def _(plot_calibration, coverage, y_pred_standard, y_test):
@@ -331,8 +304,6 @@ def _(plot_calibration, coverage, y_pred_standard, y_test):
         coverage_rates=coverage,
         title="Calibration: Standard Conformal",
     )
-    return
-
 
 @app.cell
 def _(plot_calibration, coverage, y_pred_euclidean, y_test):
@@ -342,8 +313,6 @@ def _(plot_calibration, coverage, y_pred_euclidean, y_test):
         coverage_rates=coverage,
         title="Calibration: Euclidean Similarity",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -353,8 +322,6 @@ def _(mo):
     Prediction intervals typically widen at longer horizons. `plot_score_per_horizon`
     shows how interval scores change across forecast steps.
     """)
-    return
-
 
 @app.cell
 def _(IntervalScore, plot_score_per_horizon, y_pred_euclidean, y_pred_standard, y_test):
@@ -365,8 +332,6 @@ def _(IntervalScore, plot_score_per_horizon, y_pred_euclidean, y_pred_standard, 
         kind="line",
         title="Interval Score per Horizon Step (90% Coverage)",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -377,8 +342,6 @@ def _(mo):
     `metric_params={"p": 1.5}` gives a p-norm between Manhattan (p=1) and
     Euclidean (p=2).
     """)
-    return
-
 
 @app.cell
 def _(
@@ -415,7 +378,6 @@ def _(
     )
     return conformal_minkowski, y_pred_minkowski
 
-
 @app.cell
 def _(plot_forecast, y_pred_minkowski, y_test, y_train):
     plot_forecast(
@@ -426,8 +388,6 @@ def _(plot_forecast, y_pred_minkowski, y_test, y_train):
         n_history=36,
         title="Minkowski (p=1.5) Similarity",
     )
-    return
-
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -446,8 +406,6 @@ def _(mo):
     - **Panel intervals**: See `examples/interval/panel_intervals.py` for prediction intervals on panel data
     - **Interval metrics**: See `examples/metrics/interval_metrics.py` for EmpiricalCoverage, IntervalScore, and more
     """)
-    return
-
 
 if __name__ == "__main__":
     app.run()
