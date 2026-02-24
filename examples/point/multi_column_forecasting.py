@@ -331,7 +331,6 @@ def _(mo):
     - **Feature forecasting**: See `feature_forecasting.py` for `ForecastedFeatureForecaster`
     - **Decomposition**: See `stationarity/` for `DecompositionPipeline`
     - **Panel data**: See `examples/panel_data.py` for panel forecasting
-    - **ETTm1 exploration**: See `examples/datasets/hospital.py` for detailed analysis
     """)
 
 

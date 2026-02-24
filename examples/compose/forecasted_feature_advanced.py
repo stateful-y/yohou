@@ -319,7 +319,6 @@ def _(mo):
 
     ## Next Steps
 
-    - **Hospital exploration**: See `examples/datasets/hospital.py`
     - **Pipeline composition**: See `examples/compose/pipeline_composition.py`
     - **Feature union**: See `examples/compose/feature_union.py`
     """)

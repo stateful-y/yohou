@@ -51,7 +51,7 @@ def _(mo):
     ## Prerequisites
 
     Panel data conventions (`__` separator) and basic forecasting
-    (see `examples/quickstart.py`, `examples/datasets/dominick.py`).
+    (see `examples/quickstart.py`).
     """)
     return
 
