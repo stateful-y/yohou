@@ -16,44 +16,33 @@ def on_page_markdown(markdown, page, config, files):
     On local builds, converts absolute paths like /examples/ to relative paths
     based on page depth so the locally exported HTML/WASM notebooks are served.
 
-    On Read the Docs (where notebook exports are skipped), rewrites View/Editable
-    links to open the notebook in the marimo online playground via marimo.app.
+    On Read the Docs, static HTML exports are available via [View] links (same
+    relative rewriting as local). [Editable] links are rewritten to open the
+    notebook in the marimo online playground via marimo.app.
     """
+    # Calculate relative path based on page depth (used on all builds)
+    src_parts = page.file.src_path.split("/")
+    depth = len(src_parts) if src_parts[-1] != "index.md" else len(src_parts) - 1
+    prefix = "../" * depth
+
     if os.environ.get("READTHEDOCS"):
         repo_url = config.get("repo_url", "").rstrip("/")
-        # repo_url is e.g. "https://github.com/stateful-y/yohou"
-        # Strip "https://" to form the marimo.app prefix
         github_path = repo_url.removeprefix("https://")
         # Use the branch/tag being built so PR previews link to the PR branch
         git_ref = os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main")
         playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
 
-        # Rewrite editable links first (more specific pattern)
-        # [Editable](/examples/{path}/edit/) → [Open in marimo](playground/{path}.py)
+        # Rewrite [Editable] → marimo.app playground (no WASM export on RTD)
         markdown = re.sub(
             r"\[Editable\]\(/examples/([^)]+?)/edit/\)",
             rf"[Open in marimo]({playground_base}/examples/\1.py)",
             markdown,
         )
-        # Rewrite view links
-        # [View](/examples/{path}/) → [View on marimo](playground/{path}.py?mode=read)
-        markdown = re.sub(
-            r"\[View\]\(/examples/([^)]+?)/\)",
-            rf"[View on marimo]({playground_base}/examples/\1.py?mode=read)",
-            markdown,
-        )
+        # Rewrite [View] to relative paths pointing to local HTML exports
+        markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
         return markdown
 
     # Local build: convert absolute paths to relative paths
-    src_parts = page.file.src_path.split("/")
-
-    # Calculate depth (pages/examples.md has depth 2, index.md has depth 0)
-    depth = len(src_parts) if src_parts[-1] != "index.md" else len(src_parts) - 1
-
-    # Build relative prefix: '../' repeated for each directory level
-    prefix = "../" * depth
-
-    # Replace absolute paths with relative paths
     markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
     return markdown
 
@@ -63,9 +52,7 @@ def on_pre_build(config):
 
     This ensures standalone HTML versions are available when mkdocs processes files.
     """
-    if os.environ.get("READTHEDOCS"):
-        print("[hooks] Skipping notebook export on Read the Docs")
-        return
+    is_rtd = bool(os.environ.get("READTHEDOCS"))
 
     project_root = Path(__file__).parent.parent
     examples_dir = project_root / "examples"
@@ -85,7 +72,6 @@ def on_pre_build(config):
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
-    # Export each notebook in both static HTML and interactive WASM formats
     for notebook in notebooks:
         output_dir = docs_examples / notebook.stem
 
@@ -94,7 +80,7 @@ def on_pre_build(config):
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Export static HTML (read-only view)
+        # Export static HTML (read-only view) — always
         static_file = output_dir / "index.html"
         try:
             subprocess.run(
@@ -125,7 +111,11 @@ def on_pre_build(config):
             print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
             break
 
-        # Export interactive WASM (editable in-browser)
+        # Export interactive WASM (editable in-browser) — skip on RTD to stay
+        # within the 15-minute build time limit
+        if is_rtd:
+            continue
+
         edit_dir = output_dir / "edit"
         edit_file = edit_dir / "index.html"
         edit_dir.mkdir(parents=True, exist_ok=True)
