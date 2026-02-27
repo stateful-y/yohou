@@ -82,8 +82,6 @@ from .interval import (
     check_interval_prediction_columns,
     check_interval_prediction_types,
 )
-
-# Metadata routing utilities
 from .metadata_routing import (
     _Registry,
     assert_request_equal,
@@ -171,6 +169,7 @@ from .transformer import (
     check_observe_transform_equivalence,
     check_observe_transform_sequential_consistency,
     check_panel_data_support,
+    check_panel_group_preservation,
     check_rewind_transform_behavior,
     check_rewind_updates_memory,
     check_tags_accessible_before_fit,
@@ -196,6 +195,7 @@ __all__ = [
     "check_observation_horizon_after_fit",
     "check_observation_horizon_not_fitted",
     "check_panel_data_support",
+    "check_panel_group_preservation",
     "check_rewind_transform_behavior",
     "check_rewind_updates_memory",
     "check_tags_accessible_before_fit",
@@ -288,7 +288,6 @@ __all__ = [
     "_yield_yohou_splitter_checks",
     "_yield_yohou_scorer_checks",
     "_yield_yohou_search_checks",
-    # Metadata routing utilities (6)
     "_Registry",
     "assert_request_equal",
     "assert_request_is_empty",

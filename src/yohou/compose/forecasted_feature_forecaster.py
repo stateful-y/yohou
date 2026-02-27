@@ -282,17 +282,17 @@ class ForecastedFeatureForecaster(BaseForecaster):
             # Rewind feature forecaster to minimal observation horizon
             obs_horizon = self.feature_forecaster_.observation_horizon
             # Need obs_horizon + 1 rows: obs_horizon for transformer memory + 1 for transform
-            reset_size = obs_horizon + 1
-            if obs_horizon <= 0 or len(X) <= reset_size:
+            rewind_size = obs_horizon + 1
+            if obs_horizon <= 0 or len(X) <= rewind_size:
                 raise ValueError(
                     f"Cannot use strategy='rewind': observation_horizon={obs_horizon} "
                     f"but len(X)={len(X)}. Need len(X) > observation_horizon + 1 to rewind."
                 )
-            self.feature_forecaster_.rewind(y=X[:reset_size], X=None)
+            self.feature_forecaster_.rewind(y=X[:rewind_size], X=None)
 
             # Predict X from rewind point to end
             X_pred = self.feature_forecaster_.predict(
-                forecasting_horizon=len(X) - reset_size,
+                forecasting_horizon=len(X) - rewind_size,
             )
 
             # Prepare X for target forecaster (drop observed_time, keep time)
@@ -300,14 +300,14 @@ class ForecastedFeatureForecaster(BaseForecaster):
 
             # Fit target forecaster with predicted X
             self.target_forecaster_.fit(
-                y=y[reset_size:],
+                y=y[rewind_size:],
                 X=X_for_target,
                 forecasting_horizon=forecasting_horizon,
                 **routed_params.target_forecaster.fit,
             )
 
             # Sync feature_forecaster to same observation time as target_forecaster
-            self.feature_forecaster_.observe(y=X[reset_size:], X=None)
+            self.feature_forecaster_.observe(y=X[rewind_size:], X=None)
 
         else:  # strategy == "predicted"
             n_split = int(len(y) * self.split_ratio)

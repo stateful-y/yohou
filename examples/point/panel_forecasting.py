@@ -5,22 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Panel Point Forecasting.
-
-Demonstrates global vs local models, ColumnForecaster specialisation,
-groupwise scoring, and selective group training on panel data.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Panel Point Forecasting",
+    "description": "Global models, per-group specialisation with ColumnForecaster, selective group operations, and groupwise scoring on multi-series panel time series.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -29,30 +30,31 @@ def _(mo):
 
     When panel data is passed to a forecaster, each group (`__`-separated
     column prefix) is modelled independently. This notebook compares
-    global models, per-group specialisation with `ColumnForecaster`,
+    global models, per-group specialisation with [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/),
     and selective group operations.
 
     ## What You'll Learn
 
-    - Global model: one hyperparameter set for all groups
-    - `ColumnForecaster`: assign different models per group
-    - Selective training/prediction with `panel_group_names`
+    - Global model: one shared model for all groups
+    - [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/): assign different models per group
+    - Selective `predict`, `observe`, and `rewind` with `panel_group_names`
     - Groupwise scoring to identify weak groups
     """)
 
+
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeRegressor
 
     from yohou.compose import ColumnForecaster
-    from yohou.datasets import fetch_dominick
+    from yohou.datasets import fetch_kdd_cup
     from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
-    from yohou.plotting import plot_forecast, plot_time_series
+    from yohou.plotting import plot_forecast, plot_model_comparison_bar, plot_score_time_series, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
-    from yohou.utils.panel import inspect_locality
+    from yohou.utils.panel import inspect_panel
 
     return (
         ColumnForecaster,
@@ -63,80 +65,102 @@ def _():
         Ridge,
         RootMeanSquaredError,
         SeasonalNaive,
-        inspect_locality,
-        fetch_dominick,
-        pl,
+        fetch_kdd_cup,
+        inspect_panel,
         plot_forecast,
+        plot_model_comparison_bar,
+        plot_score_time_series,
         plot_time_series,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
+
+    We load the KDD Cup 2018 air quality dataset with 3 Beijing stations
+    each monitoring 6 pollutants. [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/) discovers the panel
+    groups from the `__` separator in column names. The data is split
+    85/15 into train and test sets.
     """)
 
-@app.cell
-def _(inspect_locality, fetch_dominick, mo, pl):
-    _bunch = fetch_dominick()
-    # Select 9 series with complete data (no nulls) for a manageable panel demo
-    _selected = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
-    store = _bunch.frame.select("time", *_selected).drop_nulls()
-    _globals, groups = inspect_locality(store)
-    _target_cols = [c for c in store.columns if c.endswith("__profit")]
-    y = store.select("time", *_target_cols)
 
-    _split = int(len(y) * 0.85)
-    y_train = y.head(_split)
-    y_test = y.tail(len(y) - _split)
+@app.cell
+def _(fetch_kdd_cup, inspect_panel, mo, plot_time_series, train_test_split):
+    _bunch = fetch_kdd_cup(n_groups=3)
+    _df = _bunch.frame.drop_nulls().tail(300)
+    _globals, groups = inspect_panel(_df)
+    _target_cols = [c for c in _df.columns if c != "time"]
+    y = _df.select("time", *_target_cols)
+
+    y_train, y_test = train_test_split(y, test_size=0.15, shuffle=False)
     horizon = len(y_test)
 
-    mo.md(
-        f"**Panel groups**: {list(groups.keys())}\n\n"
-        f"**Target columns**: {_target_cols}\n\n"
-        f"**Train**: {len(y_train)} weeks, **Test**: {len(y_test)} weeks, "
-        f"**Horizon**: {horizon}"
-    )
-    return groups, horizon, store, y, y_test, y_train
+    mo.vstack([
+        mo.md(
+            f"**Panel groups**: {list(groups.keys())}\n\n"
+            f"**Target columns**: {len(_target_cols)} pollutant series\n\n"
+            f"**Train**: {len(y_train)} hours, **Test**: {len(y_test)} hours, "
+            f"**Horizon**: {horizon}"
+        ),
+        plot_time_series(y, title="KDD Cup 2018: Air Quality (3 Stations)"),
+    ])
+    return groups, horizon, y_test, y_train
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Global Model
 
-    A single `PointReductionForecaster` applies the same model template
+    A single [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) applies the same model template
     to every group. Each group gets its own fitted parameters, but shares
     the same hyperparameters.
     """)
+
 
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     fc_global = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 7]),
+        feature_transformer=LagTransformer(lag=[1, 24]),
     )
     fc_global.fit(y_train, forecasting_horizon=horizon)
     y_pred_global = fc_global.predict(forecasting_horizon=horizon)
     return fc_global, y_pred_global
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) with `panel_group_names` and `n_history` shows predictions
+    for selected groups in a faceted layout, trimmed to the last 48 time steps.
+    """)
+
+
 @app.cell
 def _(plot_forecast, y_pred_global, y_test, y_train):
+    _groups = sorted({c.split("__")[0] for c in y_train.columns if "__" in c})
     plot_forecast(
         y_test,
         y_pred_global,
         y_train=y_train,
-        n_history=30,
-        panel_group_names=["T7", "T13", "T22"],
-        title="Global Ridge Model: Selected Groups",
+        n_history=48,
+        panel_group_names=_groups[:2],
+        title="Global Ridge Model: Selected Stations",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. ColumnForecaster: Per-Group Specialisation
 
-    Assign different model families to different store groups.
+    Assign different model families to different station groups.
     """)
+
 
 @app.cell
 def _(
@@ -146,30 +170,31 @@ def _(
     PointReductionForecaster,
     Ridge,
     SeasonalNaive,
+    groups,
     horizon,
-    y,
     y_train,
 ):
-    _g1_cols = ["T7__profit", "T11__profit", "T12__profit"]
-    _g2_cols = ["T13__profit", "T15__profit", "T19__profit"]
-    _g3_cols = ["T22__profit", "T23__profit", "T24__profit"]
+    _group_names = sorted(groups.keys())
+    _g1_cols = groups[_group_names[0]]
+    _g2_cols = groups[_group_names[1]]
+    _g3_cols = groups[_group_names[2]]
 
     fc_column = ColumnForecaster(
         forecasters=[
             (
-                "group_1_ridge",
+                "station_1_ridge",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 7]),
+                    feature_transformer=LagTransformer(lag=[1, 24]),
                 ),
                 _g1_cols,
             ),
-            ("group_2_naive", SeasonalNaive(seasonality=7), _g2_cols),
+            ("station_2_naive", SeasonalNaive(seasonality=24), _g2_cols),
             (
-                "group_3_tree",
+                "station_3_tree",
                 PointReductionForecaster(
                     estimator=DecisionTreeRegressor(max_depth=5),
-                    feature_transformer=LagTransformer(lag=[1, 7, 14]),
+                    feature_transformer=LagTransformer(lag=[1, 24, 48]),
                 ),
                 _g3_cols,
             ),
@@ -177,84 +202,171 @@ def _(
     )
     fc_column.fit(y_train, forecasting_horizon=horizon)
     y_pred_column = fc_column.predict(forecasting_horizon=horizon)
-    return fc_column, y_pred_column
+    return (y_pred_column,)
 
-@app.cell
-def _(plot_forecast, y_pred_column, y_test, y_train):
-    plot_forecast(
-        y_test,
-        y_pred_column,
-        y_train=y_train,
-        n_history=30,
-        panel_group_names=["T7", "T13", "T22"],
-        title="ColumnForecaster: Per-Group Specialisation",
-    )
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Selective Group Prediction
-
-    Use `panel_group_names` to train or predict on a subset of groups.
-    Useful when new groups appear or you want group-specific analysis.
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) for the [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) lets you visually compare how
+    per-group model specialisation affects predictions for the same groups.
     """)
 
+
 @app.cell
-def _(fc_global, mo, plot_forecast, y_pred_global, y_test, y_train):
-    # Predict only T7-T12 groups
-    y_pred_s1 = fc_global.predict(
-        forecasting_horizon=len(y_test),
-        panel_group_names=["T7", "T11", "T12"],
+def _(plot_forecast, y_pred_column, y_test, y_train):
+    _groups = sorted({c.split("__")[0] for c in y_train.columns if "__" in c})
+    plot_forecast(
+        y_test,
+        y_pred_column,
+        y_train=y_train,
+        n_history=48,
+        panel_group_names=_groups[:2],
+        title="ColumnForecaster: Per-Group Specialisation",
     )
-    mo.md(
-        f"**Selective prediction columns**: {y_pred_s1.columns}\n\n"
-        f"Only T7, T11, T12 groups are predicted; other groups are omitted."
-    )
-    return (y_pred_s1,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 4. Selective Group Operations
+
+    `predict`, `observe`, and `rewind` all accept a `panel_group_names`
+    parameter.  This lets you predict a subset of groups, observe new
+    data for only the groups that have reported so far (e.g. some stations
+    report with different delays), or rewind specific groups without
+    touching the rest.
+
+    Below we demonstrate this on the first station: predict from the
+    training window, then observe new data and predict again (the
+    forecast origin moves forward), and finally rewind back and predict
+    once more (the origin returns to where it was).
+    """)
+
+
+@app.cell
+def _(fc_global, groups, mo, plot_forecast, y_test, y_train):
+    from copy import deepcopy
+
+    _fc = deepcopy(fc_global)
+    _group_name = sorted(groups.keys())[0]
+    _group = [_group_name]
+    _group_cols = groups[_group_name]
+    _horizon = 12
+
+    # 1) Predict from training window
+    _y_pred_before = _fc.predict(forecasting_horizon=_horizon, panel_group_names=_group)
+
+    # 2) Observe the first half of test data for this station only
+    _half = len(y_test) // 2
+    _y_obs = y_test.select("time", *_group_cols).head(_half)
+    _fc.observe(_y_obs, panel_group_names=_group)
+    _y_pred_after_obs = _fc.predict(forecasting_horizon=_horizon, panel_group_names=_group)
+
+    # 3) Rewind back: the forecast origin returns to the training window
+    _fc.rewind(y_test.select("time", *_group_cols), panel_group_names=_group)
+    _y_pred_after_rwd = _fc.predict(forecasting_horizon=_horizon, panel_group_names=_group)
+
+    mo.vstack([
+        mo.md("**After fit**: forecast starts right after training data"),
+        plot_forecast(
+            y_test,
+            _y_pred_before,
+            y_train=y_train,
+            panel_group_names=_group,
+            n_history=24,
+            title=f"{_group_name}: Predict from Training Window",
+        ),
+        mo.md(f"**After observe({_half} rows)**: forecast origin moves forward"),
+        plot_forecast(
+            y_test,
+            _y_pred_after_obs,
+            y_train=y_train,
+            panel_group_names=_group,
+            n_history=24,
+            title=f"{_group_name}: Predict After Observe",
+        ),
+        mo.md("**After rewind**: forecast origin returns to the training window"),
+        plot_forecast(
+            y_test,
+            _y_pred_after_rwd,
+            y_train=y_train,
+            panel_group_names=_group,
+            n_history=24,
+            title=f"{_group_name}: Predict After Rewind",
+        ),
+    ])
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Groupwise Scoring
 
-    Score each group individually to identify which groups perform best
-    and worst under each model.
+    Use [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) with `panel_group_names` to visualise
+    per-group error over time.  Each group gets its own subplot, making
+    it easy to spot which groups are well-served by the global model
+    and which would benefit from specialisation.
+
+    [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/) summarises the overall MAE per model
+    in a single grouped bar chart.
     """)
 
+
 @app.cell
-def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y_train):
+def _(
+    MeanAbsoluteError,
+    plot_score_time_series,
+    y_pred_column,
+    y_pred_global,
+    y_test,
+    y_train,
+):
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
-    _rows = []
-    for _group in sorted(groups.keys()):
-        _s_global = float(_scorer.score(y_test, y_pred_global))
-        _s_column = float(_scorer.score(y_test, y_pred_column))
-        _rows.append({
-            "Group": _group,
-            "Global MAE": round(_s_global, 2),
-            "ColumnForecaster MAE": round(_s_column, 2),
-        })
+    _groups = sorted({c.split("__")[0] for c in y_train.columns if "__" in c})
+    plot_score_time_series(
+        _scorer,
+        y_test,
+        {"Global Ridge": y_pred_global, "ColumnForecaster": y_pred_column},
+        panel_group_names=_groups[:2],
+        title="MAE Over Time by Station",
+    )
 
-    comparison_df = pl.DataFrame(_rows)
-    mo.ui.table(comparison_df)
-    return (comparison_df,)
 
 @app.cell
-def _(MeanAbsoluteError, RootMeanSquaredError, mo, y_pred_global, y_test, y_train):
-    # Aggregation modes: "groupwise", "componentwise", "timewise", "all"
-    _mae_groupwise = MeanAbsoluteError(aggregation_method="groupwise")
-    _rmse_groupwise = RootMeanSquaredError(aggregation_method="groupwise")
+def _(
+    MeanAbsoluteError,
+    RootMeanSquaredError,
+    groups,
+    plot_model_comparison_bar,
+    y_pred_column,
+    y_pred_global,
+    y_test,
+    y_train,
+):
+    _mae = MeanAbsoluteError()
+    _rmse = RootMeanSquaredError()
+    _mae.fit(y_train)
+    _rmse.fit(y_train)
 
-    _mae_groupwise.fit(y_train)
-    _rmse_groupwise.fit(y_train)
-    _s_mae = _mae_groupwise.score(y_test, y_pred_global)
-    _s_rmse = _rmse_groupwise.score(y_test, y_pred_global)
+    # Build per-group MAE comparison dict for the bar chart
+    _results = {}
+    for _group in sorted(groups.keys()):
+        _s_global = _mae.score(y_test, y_pred_global, panel_group_names=[_group])
+        _s_column = _mae.score(y_test, y_pred_column, panel_group_names=[_group])
+        _results[_group] = {
+            "Global Ridge": round(float(_s_global), 2),
+            "ColumnForecaster": round(float(_s_column), 2),
+        }
 
-    mo.md(
-        f"**Groupwise MAE columns**: {_s_mae.columns}\n\n"
-        f"**Groupwise RMSE columns**: {_s_rmse.columns}\n\n"
-        "Groupwise aggregation returns one score per group (aggregated over time)."
+    plot_model_comparison_bar(
+        _results,
+        group_by="model",
+        title="Groupwise MAE: Global vs ColumnForecaster",
+        y_label="MAE",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -263,16 +375,17 @@ def _(mo):
 
     - **Global models** apply the same hyperparameters across all groups (each group still fitted independently)
     - **ColumnForecaster** enables per-group model specialisation (different algorithms, different hyperparameters)
-    - **`panel_group_names`** parameter enables selective fit/predict/score on group subsets
+    - **`panel_group_names`** is accepted by `predict`, `observe`, `rewind`, and scoring enabling the update or query a subset of groups without touching the rest
     - **Groupwise scoring** reveals which groups benefit from specialised models
-    - Always compare against a simple baseline (`SeasonalNaive`) per group
+    - Always compare against a simple baseline ([`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/)) per group
 
     ## Next Steps
 
-    - **Panel intervals**: See `examples/interval/panel_intervals.py`
-    - **Aggregation modes**: See `examples/metrics/aggregation_modes.py`
-    - **Panel cross-validation**: See `examples/model_selection/panel_cross_validation.py`
+    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/)
+    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/)
+    - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

@@ -341,7 +341,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     ----------
     seasonality : float
         Seasonal period length (can be non-integer, e.g., 365.25 for yearly).
-    harmonics : list of int, default=[1, 2, 3]
+    harmonics : list of int, default=[1]
         List of Fourier harmonics to use (e.g., [1, 2, 3] uses first 3 harmonics).
     estimator : RegressorMixin, default=ElasticNet()
         Regression model used to fit Fourier coefficients.
@@ -355,6 +355,8 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     estimator_ : Pipeline or dict[str, Pipeline]
         Fitted sklearn Pipeline with a fourier feature transformer and the provided
         a clone of the `estimator` model.
+    harmonics_ : list of int
+        Effective list of harmonics used for Fourier features.
 
     Examples
     --------
@@ -417,7 +419,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         )
 
         self.seasonality = seasonality
-        self.harmonics = harmonics if harmonics is not None else [1, 2, 3]
+        self.harmonics = harmonics
         self.estimator = estimator
 
     def _build_fourier_features(self, X_time_indices: np.ndarray) -> np.ndarray:
@@ -436,7 +438,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         """
         features = []
 
-        for k in self.harmonics:
+        for k in self.harmonics_:
             features.append(np.sin(2 * np.pi * k * X_time_indices / self.seasonality))
             features.append(np.cos(2 * np.pi * k * X_time_indices / self.seasonality))
         return np.column_stack(features)
@@ -472,11 +474,15 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
 
         # Domain-specific validation: harmonics must be positive and not exceed
         # seasonality/2 (Nyquist limit)
-        if not self.harmonics:
+
+        if self.harmonics is not None and not self.harmonics:
             raise ValueError("harmonics list cannot be empty")
-        if any(h < 1 for h in self.harmonics):
+
+        self.harmonics_ = self.harmonics if self.harmonics else [1]
+
+        if any(h < 1 for h in self.harmonics_):
             raise ValueError("All harmonics must be positive integers")
-        max_harmonic = max(self.harmonics)
+        max_harmonic = max(self.harmonics_)
         if max_harmonic > self.seasonality / 2:
             raise ValueError(
                 f"Maximum harmonic ({max_harmonic}) cannot exceed seasonality/2 "

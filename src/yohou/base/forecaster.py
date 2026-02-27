@@ -21,7 +21,7 @@ from yohou.base.transformer import BaseTransformer
 from yohou.utils import (
     Tags,
     cast,
-    inspect_locality,
+    inspect_panel,
     validate_forecaster_data,
 )
 
@@ -238,13 +238,13 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         See Also
         --------
-        [utils.panel.inspect_locality][] : Detects group columns
+        `inspect_panel` : Detects group columns.
 
         """
-        y_global_names, y_panel_groups = inspect_locality(y)
+        y_global_names, y_panel_groups = inspect_panel(y)
         X_panel_groups = None
         if X is not None:
-            _, X_panel_groups = inspect_locality(X)
+            _, X_panel_groups = inspect_panel(X)
 
             if len(X_panel_groups) and list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
                 raise ValueError("`X` and `y` do not have the same local group names.")
@@ -299,10 +299,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         y, X, _ = validate_forecaster_data(self, y, X, reset=True)
         self.fit_forecasting_horizon_ = forecasting_horizon
 
-        _, y_panel_groups = inspect_locality(y)
+        _, y_panel_groups = inspect_panel(y)
         X_panel_groups = None
         if X is not None:
-            _, X_panel_groups = inspect_locality(X)
+            _, X_panel_groups = inspect_panel(X)
 
             if len(X_panel_groups) and list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
                 raise ValueError("`X` and `y` do not have the same local group names.")
@@ -407,6 +407,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         -------
         self
             The fitted forecaster instance.
+
+        Raises
+        ------
+        ValueError
+            If ``y`` is missing the ``"time"`` column, if ``y`` and ``X``
+            have mismatched panel group names, or if
+            ``target_as_feature=None`` without exogenous features when the
+            forecaster requires them.
 
         """
 

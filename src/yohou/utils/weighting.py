@@ -46,6 +46,14 @@ def exponential_decay_weight(
         Function accepting time series (datetime) and returning weight series
         (float64). Most recent time has weight 1.0, older times decay exponentially.
 
+    See Also
+    --------
+    `linear_decay_weight` : Linear decay weights for recent times.
+    `seasonal_emphasis_weight` : Weights emphasizing seasonal positions.
+    `compose_weights` : Compose multiple weight functions by multiplication.
+    `validate_callable_signature` : Validate callable signature for time weighting.
+    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
+
     Examples
     --------
     >>> import polars as pl
@@ -125,6 +133,14 @@ def linear_decay_weight(
     Callable[[pl.Series], pl.Series]
         Function accepting time series (datetime) and returning weight series
         (float64). Most recent time has weight 1.0, weights decrease linearly.
+
+    See Also
+    --------
+    `exponential_decay_weight` : Exponential decay weights for recent times.
+    `seasonal_emphasis_weight` : Weights emphasizing seasonal positions.
+    `compose_weights` : Compose multiple weight functions by multiplication.
+    `validate_callable_signature` : Validate callable signature for time weighting.
+    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
 
     Examples
     --------
@@ -219,6 +235,14 @@ def seasonal_emphasis_weight(
         (float64). Times matching the most recent seasonal position(s) receive
         higher weights.
 
+    See Also
+    --------
+    `exponential_decay_weight` : Exponential decay weights for recent times.
+    `linear_decay_weight` : Linear decay weights for recent times.
+    `compose_weights` : Compose multiple weight functions by multiplication.
+    `validate_callable_signature` : Validate callable signature for time weighting.
+    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
+
     Examples
     --------
     >>> import polars as pl
@@ -312,6 +336,14 @@ def compose_weights(
     Callable[[pl.Series], pl.Series]
         Composed function that multiplies weights from all input functions.
 
+    See Also
+    --------
+    `exponential_decay_weight` : Exponential decay weights for recent times.
+    `linear_decay_weight` : Linear decay weights for recent times.
+    `seasonal_emphasis_weight` : Weights emphasizing seasonal positions.
+    `validate_callable_signature` : Validate callable signature for time weighting.
+    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
+
     Examples
     --------
     >>> import polars as pl
@@ -384,6 +416,14 @@ def validate_callable_signature(
     ------
     ValueError
         If callable signature is invalid (not 1 or 2 parameters).
+
+    See Also
+    --------
+    `exponential_decay_weight` : Exponential decay weights for recent times.
+    `linear_decay_weight` : Linear decay weights for recent times.
+    `seasonal_emphasis_weight` : Weights emphasizing seasonal positions.
+    `compose_weights` : Compose multiple weight functions by multiplication.
+    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
 
     Examples
     --------

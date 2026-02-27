@@ -1,7 +1,5 @@
 """Tests for diagnostic plotting functions (ACF, PACF, spectrum, etc.)."""
 
-import importlib.util
-
 import numpy as np
 import polars as pl
 import pytest
@@ -15,7 +13,6 @@ from yohou.plotting import (
     plot_partial_autocorrelation,
     plot_scatter_matrix,
     plot_seasonality,
-    plot_stl_components,
     plot_subseasonality,
 )
 
@@ -396,40 +393,6 @@ class TestPlotSubseasonality:
         """Test custom number of columns in subplot grid."""
         fig = plot_subseasonality(sample_df, columns="y", seasonality="month", facet_n_cols=3)
         assert isinstance(fig, go.Figure)
-
-
-_has_statsmodels = importlib.util.find_spec("statsmodels") is not None
-
-
-@pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
-class TestPlotStlComponents:
-    """Tests for plot_stl_components function."""
-
-    @pytest.fixture
-    def monthly_df(self):
-        """Create monthly data suitable for STL decomposition."""
-        return pl.DataFrame({
-            "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2023, 12, 1), "1mo", eager=True),
-            "y": [100 + 2 * i + 10 * np.sin(2 * np.pi * i / 12) + np.random.randn() for i in range(72)],
-        })
-
-    def test_basic(self, monthly_df):
-        """Test basic STL decomposition plot."""
-        fig = plot_stl_components(monthly_df, columns="y")
-        assert isinstance(fig, go.Figure)
-        # Should have traces for at least observed, trend, seasonal, residual
-        assert len(fig.data) >= 4
-
-    def test_explicit_period(self, monthly_df):
-        """Test with explicit period parameter."""
-        fig = plot_stl_components(monthly_df, columns="y", period=12)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 4
-
-    def test_subset_components(self, monthly_df):
-        """Test showing only a subset of components."""
-        fig = plot_stl_components(monthly_df, columns="y", components=["trend", "seasonal"])
-        assert len(fig.data) == 2
 
 
 class TestPlotScatterMatrix:

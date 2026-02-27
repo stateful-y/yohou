@@ -6,9 +6,8 @@ import pytest
 from yohou.plotting._utils import (
     _normalize_y_pred,
     resolve_color_palette,
-    validate_plotting_params,
 )
-from yohou.utils import validate_plotting_data
+from yohou.utils import validate_plotting_data, validate_plotting_params
 
 
 class TestResolveColorPalette:

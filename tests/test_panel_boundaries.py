@@ -10,36 +10,36 @@ from __future__ import annotations
 import polars as pl
 
 from yohou.point.naive import SeasonalNaive
-from yohou.utils.panel import get_group_df, inspect_locality
+from yohou.utils.panel import get_group_df, inspect_panel
 
 
-class TestInspectLocalityBoundaries:
-    """Boundary conditions for inspect_locality utility."""
+class TestInspectPanelBoundaries:
+    """Boundary conditions for inspect_panel utility."""
 
     def test_single_panel_group(self, y_X_panel_factory):
         """A single panel group should produce exactly one group entry."""
         y, _ = y_X_panel_factory(n_groups=1, length=50, n_targets=2, n_features=0)
-        global_cols, panels = inspect_locality(y)
+        global_cols, panels = inspect_panel(y)
         assert len(panels) == 1, f"Expected 1 group, got {len(panels)}"
         assert len(global_cols) == 0
 
     def test_many_panel_groups(self, y_X_panel_factory):
         """Many groups should all be detected."""
         y, _ = y_X_panel_factory(n_groups=10, length=50, n_targets=1, n_features=0)
-        _, panels = inspect_locality(y)
+        _, panels = inspect_panel(y)
         assert len(panels) == 10, f"Expected 10 groups, got {len(panels)}"
 
     def test_no_panel_columns(self, y_X_factory):
         """Non-panel data should return empty panel dict."""
         y, _ = y_X_factory(length=50, n_targets=2, n_features=0, panel=False)
-        global_cols, panels = inspect_locality(y)
+        global_cols, panels = inspect_panel(y)
         assert len(panels) == 0
         assert len(global_cols) == 2  # y_0, y_1
 
     def test_mixed_global_and_panel_columns(self, panel_time_series_factory):
         """Mixed global + panel columns should be separated correctly."""
         df = panel_time_series_factory(length=50, n_series=2, n_groups=2, n_global=3)
-        global_cols, panels = inspect_locality(df)
+        global_cols, panels = inspect_panel(df)
         assert len(global_cols) == 3, f"Expected 3 global columns, got {len(global_cols)}"
         assert len(panels) == 2, f"Expected 2 panel groups, got {len(panels)}"
 

@@ -120,37 +120,43 @@ class TestLagTransformer:
         assert len(X_trans) == expected_length, f"Expected {expected_length} rows, got {len(X_trans)}"
 
 
-def create_time_series_data(length: int = 50, seed: int = 42) -> pl.DataFrame:
-    """Create time series data for testing.
+@pytest.fixture
+def window_data_factory():
+    """Fixture factory providing time series data for window tests."""
 
-    Parameters
-    ----------
-    length : int
-        Number of samples.
-    seed : int
-        Random seed.
+    def _create(length: int = 50, seed: int = 42) -> pl.DataFrame:
+        """Create time series data for testing.
 
-    Returns
-    -------
-    pl.DataFrame
-        DataFrame with time column and numeric columns.
+        Parameters
+        ----------
+        length : int
+            Number of samples.
+        seed : int
+            Random seed.
 
-    """
-    np.random.seed(seed)
-    time = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(length)]
-    return pl.DataFrame({
-        "time": time,
-        "value": np.cumsum(np.random.randn(length)).tolist(),
-        "other": np.cumsum(np.random.randn(length)).tolist(),
-    })
+        Returns
+        -------
+        pl.DataFrame
+            DataFrame with time column and numeric columns.
+
+        """
+        np.random.seed(seed)
+        time = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(length)]
+        return pl.DataFrame({
+            "time": time,
+            "value": np.cumsum(np.random.randn(length)).tolist(),
+            "other": np.cumsum(np.random.randn(length)).tolist(),
+        })
+
+    return _create
 
 
 class TestSlidingWindowFunctionTransformerBasic:
     """Basic functionality tests for SlidingWindowFunctionTransformer."""
 
-    def test_basic_rolling_mean(self):
+    def test_basic_rolling_mean(self, window_data_factory):
         """Test basic rolling mean computation."""
-        X = create_time_series_data(length=20)
+        X = window_data_factory(length=20)
 
         def rolling_mean(window):
             return window.select(pl.all().exclude("time").mean()).to_numpy().flatten()
@@ -169,9 +175,9 @@ class TestSlidingWindowFunctionTransformerBasic:
         # Value column should be present
         assert "value" in X_t.columns
 
-    def test_window_size_1(self):
+    def test_window_size_1(self, window_data_factory):
         """Test window size 1 (identity)."""
-        X = create_time_series_data(length=20)
+        X = window_data_factory(length=20)
 
         def identity(window):
             return window.select(pl.all().exclude("time")).to_numpy().flatten()
@@ -184,9 +190,9 @@ class TestSlidingWindowFunctionTransformerBasic:
         # Output length should equal input
         assert len(X_t) == len(X)
 
-    def test_observation_horizon(self):
+    def test_observation_horizon(self, window_data_factory):
         """Test observation_horizon is set correctly."""
-        X = create_time_series_data()
+        X = window_data_factory()
 
         def rolling_mean(window):
             return window.select(pl.all().exclude("time").mean()).to_numpy().flatten()
@@ -197,9 +203,9 @@ class TestSlidingWindowFunctionTransformerBasic:
         # observation_horizon should be window_size - 1
         assert transformer.observation_horizon == 4
 
-    def test_kw_args(self):
+    def test_kw_args(self, window_data_factory):
         """Test kw_args passed to function."""
-        X = create_time_series_data(length=20)
+        X = window_data_factory(length=20)
 
         def power_mean(window, power=1):
             # Calculate mean then apply power
@@ -330,9 +336,9 @@ class TestRollingStatisticsTransformerSystematic:
 class TestRollingStatisticsTransformerBasic:
     """Basic functionality tests for RollingStatisticsTransformer."""
 
-    def test_single_statistic_mean(self):
+    def test_single_statistic_mean(self, window_data_factory):
         """Test single rolling mean statistic."""
-        X = create_time_series_data(length=20)
+        X = window_data_factory(length=20)
         transformer = RollingStatisticsTransformer(window_size=3, statistics="mean")
         transformer.fit(X)
 
@@ -350,9 +356,9 @@ class TestRollingStatisticsTransformerBasic:
         # Warmup rows are dropped (observation_horizon = window_size - 1)
         assert len(X_t) == len(X) - transformer.observation_horizon
 
-    def test_multiple_statistics(self):
+    def test_multiple_statistics(self, window_data_factory):
         """Test multiple rolling statistics."""
-        X = create_time_series_data(length=20)
+        X = window_data_factory(length=20)
         transformer = RollingStatisticsTransformer(window_size=3, statistics=["mean", "std", "min", "max"])
         transformer.fit(X)
 
@@ -366,9 +372,9 @@ class TestRollingStatisticsTransformerBasic:
         # Total: time + 2 columns * 4 stats = 9 columns
         assert len(X_t.columns) == 9
 
-    def test_all_statistics(self):
+    def test_all_statistics(self, window_data_factory):
         """Test all supported statistics."""
-        X = create_time_series_data(length=50)
+        X = window_data_factory(length=50)
         transformer = RollingStatisticsTransformer(
             window_size=3,
             statistics=["mean", "std", "min", "max", "median", "sum", "var", "q25", "q75"],
@@ -427,9 +433,9 @@ class TestRollingStatisticsTransformerValues:
 class TestRollingStatisticsTransformerParams:
     """Test parameter handling for RollingStatisticsTransformer."""
 
-    def test_min_samples_equals_window_size(self):
+    def test_min_samples_equals_window_size(self, window_data_factory):
         """Test min_samples defaults to window_size."""
-        X = create_time_series_data(length=20)
+        X = window_data_factory(length=20)
         transformer = RollingStatisticsTransformer(window_size=5, statistics="mean")
         transformer.fit(X)
 
@@ -439,17 +445,17 @@ class TestRollingStatisticsTransformerParams:
         assert X_t["value_mean"][0] is not None
         assert len(X_t) == len(X) - transformer.observation_horizon
 
-    def test_invalid_statistic(self):
+    def test_invalid_statistic(self, window_data_factory):
         """Test invalid statistic raises ValueError."""
-        X = create_time_series_data()
+        X = window_data_factory()
         transformer = RollingStatisticsTransformer(window_size=3, statistics="invalid")
 
         with pytest.raises(ValueError, match="Invalid statistics"):
             transformer.fit(X)
 
-    def test_observation_horizon(self):
+    def test_observation_horizon(self, window_data_factory):
         """Test observation_horizon is set correctly."""
-        X = create_time_series_data()
+        X = window_data_factory()
         transformer = RollingStatisticsTransformer(window_size=5, statistics="mean")
         transformer.fit(X)
 
@@ -459,9 +465,9 @@ class TestRollingStatisticsTransformerParams:
 class TestRollingStatisticsTransformerFeatureNames:
     """Test feature name handling for RollingStatisticsTransformer."""
 
-    def test_feature_names_single_stat(self):
+    def test_feature_names_single_stat(self, window_data_factory):
         """Test feature names with single statistic."""
-        X = create_time_series_data()
+        X = window_data_factory()
         transformer = RollingStatisticsTransformer(window_size=3, statistics="mean")
         transformer.fit(X)
 
@@ -469,9 +475,9 @@ class TestRollingStatisticsTransformerFeatureNames:
 
         assert list(names) == ["value_mean", "other_mean"]
 
-    def test_feature_names_multiple_stats(self):
+    def test_feature_names_multiple_stats(self, window_data_factory):
         """Test feature names with multiple statistics."""
-        X = create_time_series_data()
+        X = window_data_factory()
         transformer = RollingStatisticsTransformer(window_size=3, statistics=["mean", "std"])
         transformer.fit(X)
 
@@ -495,9 +501,9 @@ class TestRollingStatisticsTransformerSklearn:
 class TestWindowTransformersIntegration:
     """Integration tests for window transformers."""
 
-    def test_rolling_mean_consistency(self):
+    def test_rolling_mean_consistency(self, window_data_factory):
         """Test RollingStatisticsTransformer produces same results as manual computation."""
-        X = create_time_series_data(length=20)
+        X = window_data_factory(length=20)
 
         # Using RollingStatisticsTransformer
         transformer = RollingStatisticsTransformer(window_size=3, statistics="mean")
@@ -513,9 +519,9 @@ class TestWindowTransformersIntegration:
 
         assert_frame_equal(X_t, manual)
 
-    def test_sliding_vs_rolling_mean(self):
+    def test_sliding_vs_rolling_mean(self, window_data_factory):
         """Compare SlidingWindowFunctionTransformer and RollingStatisticsTransformer for mean."""
-        X = create_time_series_data(length=20)
+        X = window_data_factory(length=20)
 
         # Using SlidingWindowFunctionTransformer
         def rolling_mean(window):

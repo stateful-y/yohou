@@ -5,22 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Time-Weighted Scoring.
-
-Demonstrates weighting functions (exponential, linear, seasonal) that
-emphasise different time regions when evaluating forecasts.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Time-Weighted Scoring",
+    "description": "Apply exponential decay, linear decay, and seasonal emphasis weighting to forecast evaluation, prioritising recent or periodic time steps.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -40,14 +41,15 @@ def _(mo):
     - Panel data with time weights
     """)
 
+
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_time_weight
+    from yohou.plotting import plot_score_time_series, plot_time_series, plot_time_weight
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.utils.weighting import (
@@ -64,27 +66,41 @@ def _():
         Ridge,
         compose_weights,
         exponential_decay_weight,
-        linear_decay_weight,
-        fetch_tourism_monthly,
         fetch_dominick,
-        pl,
-        plot_forecast,
+        fetch_tourism_monthly,
+        linear_decay_weight,
+        plot_score_time_series,
+        plot_time_series,
         plot_time_weight,
         seasonal_emphasis_weight,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data and Predictions
+
+    We load the Tourism Monthly dataset, fit a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with
+    a `Ridge` regressor, and generate predictions. The scorer will then evaluate
+    these predictions with different time-weighting strategies.
     """)
 
+
 @app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, fetch_tourism_monthly, mo):
-    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
-    _split = int(len(tourism) * 0.85)
-    y_train = tourism.head(_split)
-    y_test = tourism.tail(len(tourism) - _split)
+def _(
+    LagTransformer,
+    PointReductionForecaster,
+    Ridge,
+    fetch_tourism_monthly,
+    mo,
+    train_test_split,
+):
+    tourism = (
+        fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    )
+    y_train, y_test = train_test_split(tourism, test_size=0.15, shuffle=False)
     horizon = len(y_test)
 
     fc = PointReductionForecaster(
@@ -95,7 +111,13 @@ def _(LagTransformer, PointReductionForecaster, Ridge, fetch_tourism_monthly, mo
     y_pred = fc.predict(forecasting_horizon=horizon)
 
     mo.md(f"**Tourism Monthly**: Train={len(y_train)}, Test={len(y_test)}")
-    return tourism, fc, horizon, y_pred, y_test, y_train
+    return tourism, y_pred, y_test, y_train
+
+
+@app.cell
+def _(plot_time_series, tourism):
+    plot_time_series(tourism, title="Tourism Monthly")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -106,51 +128,51 @@ def _(mo):
     exponentially with a configurable `half_life`.
     """)
 
+
 @app.cell
 def _(exponential_decay_weight, plot_time_weight, y_test):
     w_exp = exponential_decay_weight(half_life=6)
-    _weights_df = y_test.select("time").with_columns(
-        w_exp(y_test["time"]).alias("time_weight")
-    )
+    _weights_df = y_test.select("time").with_columns(w_exp(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Exponential Decay (half_life=6)")
     return (w_exp,)
+
 
 @app.cell
 def _(MeanAbsoluteError, mo, w_exp, y_pred, y_test, y_train):
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
     _unweighted = float(_scorer.score(y_test, y_pred))
-    _weighted = float(
-        _scorer.score(y_test, y_pred, time_weight=w_exp)
-    )
-    mo.md(
-        f"**Unweighted MAE**: {_unweighted:.2f}\n\n"
-        f"**Exponential-weighted MAE**: {_weighted:.2f}"
-    )
+    _weighted = float(_scorer.score(y_test, y_pred, time_weight=w_exp))
+    mo.md(f"**Unweighted MAE**: {_unweighted:.2f}\n\n**Exponential-weighted MAE**: {_weighted:.2f}")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Linear Decay Weight
+
+    [`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/) assigns weights that decrease linearly from the most
+    recent observation to the oldest. The optional `max_steps` parameter limits
+    how far back the decay extends; when set to `None`, the full test range
+    is used.
     """)
+
 
 @app.cell
 def _(linear_decay_weight, plot_time_weight, y_test):
     w_lin = linear_decay_weight(max_steps=None)
-    _weights_df = y_test.select("time").with_columns(
-        w_lin(y_test["time"]).alias("time_weight")
-    )
+    _weights_df = y_test.select("time").with_columns(w_lin(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Linear Decay (full range)")
     return (w_lin,)
+
 
 @app.cell
 def _(MeanAbsoluteError, mo, w_lin, y_pred, y_test, y_train):
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
-    _weighted_lin = float(
-        _scorer.score(y_test, y_pred, time_weight=w_lin)
-    )
+    _weighted_lin = float(_scorer.score(y_test, y_pred, time_weight=w_lin))
     mo.md(f"**Linear-weighted MAE**: {_weighted_lin:.2f}")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -161,14 +183,13 @@ def _(mo):
     months for annual cycles).
     """)
 
+
 @app.cell
 def _(plot_time_weight, seasonal_emphasis_weight, y_test):
     w_season = seasonal_emphasis_weight(seasonality=12, emphasis=3.0)
-    _weights_df = y_test.select("time").with_columns(
-        w_season(y_test["time"]).alias("time_weight")
-    )
+    _weights_df = y_test.select("time").with_columns(w_season(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Seasonal Emphasis (period=12, emphasis=3x)")
-    return (w_season,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -178,6 +199,7 @@ def _(mo):
     Multiply multiple weight functions together: e.g., exponential
     decay AND seasonal emphasis.
     """)
+
 
 @app.cell
 def _(
@@ -191,20 +213,18 @@ def _(
         exponential_decay_weight(half_life=6),
         seasonal_emphasis_weight(seasonality=12, emphasis=2.0),
     )
-    _weights_df = y_test.select("time").with_columns(
-        w_composed(y_test["time"]).alias("time_weight")
-    )
+    _weights_df = y_test.select("time").with_columns(w_composed(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Composed: Exponential + Seasonal")
     return (w_composed,)
+
 
 @app.cell
 def _(MeanAbsoluteError, mo, w_composed, y_pred, y_test, y_train):
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
-    _weighted_comp = float(
-        _scorer.score(y_test, y_pred, time_weight=w_composed)
-    )
+    _weighted_comp = float(_scorer.score(y_test, y_pred, time_weight=w_composed))
     mo.md(f"**Composed-weighted MAE**: {_weighted_comp:.2f}")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -215,24 +235,38 @@ def _(mo):
     all groups.
     """)
 
+
 @app.cell
 def _(
     LagTransformer,
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
+    compose_weights,
     exponential_decay_weight,
     fetch_dominick,
+    linear_decay_weight,
     mo,
+    plot_score_time_series,
+    seasonal_emphasis_weight,
+    train_test_split,
 ):
     _full = fetch_dominick().frame
-    _selected = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
+    _selected = [
+        "T7__profit",
+        "T11__profit",
+        "T12__profit",
+        "T13__profit",
+        "T15__profit",
+        "T19__profit",
+        "T22__profit",
+        "T23__profit",
+        "T24__profit",
+    ]
     _store = _full.select("time", *_selected)
     _target_cols = [c for c in _store.columns if c.endswith("__profit")]
     _y = _store.select("time", *_target_cols)
-    _split_p = int(len(_y) * 0.85)
-    _y_train_p = _y.head(_split_p)
-    _y_test_p = _y.tail(len(_y) - _split_p)
+    _y_train_p, _y_test_p = train_test_split(_y, test_size=0.15, shuffle=False)
     _horizon_p = len(_y_test_p)
 
     _fc_p = PointReductionForecaster(
@@ -242,19 +276,32 @@ def _(
     _fc_p.fit(_y_train_p, forecasting_horizon=_horizon_p)
     _y_pred_p = _fc_p.predict(forecasting_horizon=_horizon_p)
 
-    _scorer = MeanAbsoluteError()
-    _scorer.fit(_y_test_p)
-    _w_panel = exponential_decay_weight(half_life=10)
-    _unweighted_p = float(_scorer.score(_y_test_p, _y_pred_p))
-    _weighted_p = float(
-        _scorer.score(_y_test_p, _y_pred_p, time_weight=_w_panel)
-    )
+    _weights = [
+        ("Exponential Decay (half_life=10)", exponential_decay_weight(half_life=10)),
+        ("Linear Decay", linear_decay_weight(max_steps=None)),
+        ("Seasonal Emphasis (period=7, 3×)", seasonal_emphasis_weight(seasonality=7, emphasis=3.0)),
+        (
+            "Composed: Exponential + Seasonal",
+            compose_weights(
+                exponential_decay_weight(half_life=10),
+                seasonal_emphasis_weight(seasonality=7, emphasis=2.0),
+            ),
+        ),
+    ]
 
-    mo.md(
-        f"**Panel unweighted MAE**: {_unweighted_p:.2f}\n\n"
-        f"**Panel exp-weighted MAE**: {_weighted_p:.2f}\n\n"
-        "Time weights apply uniformly across all panel groups."
-    )
+    _plots = []
+    for _label, _w in _weights:
+        _fig = plot_score_time_series(
+            MeanAbsoluteError(),
+            _y_test_p,
+            _y_pred_p,
+            time_weight=_w,
+            title=f"Panel MAE - {_label}",
+        )
+        _plots.append(_fig)
+
+    mo.vstack(_plots)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -271,9 +318,10 @@ def _(mo):
     ## Next Steps
 
     - **Time-weighted forecasting**: See `examples/time_weighted_forecasting.py`
-    - **Aggregation modes**: See `examples/metrics/aggregation_modes.py`
+    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/)
     - **Scoring**: See `examples/scoring.py`
     """)
+
 
 if __name__ == "__main__":
     app.run()

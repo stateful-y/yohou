@@ -11,7 +11,7 @@ This chapter covers advanced capabilities for power users: panel data workflows,
 
 ### Column Naming Convention
 
-### inspect_locality and get_group_df
+### inspect_panel and get_group_df
 
 ### Panel-Aware Forecasting
 

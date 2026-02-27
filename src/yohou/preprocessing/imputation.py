@@ -81,6 +81,9 @@ class SimpleImputer(SklearnTransformer):
 
     _estimator_default_class = sklearn_SimpleImputer
 
+    def __init__(self, strategy="mean", fill_value=None, missing_values=np.nan, copy=True, **kwargs):
+        super().__init__(strategy=strategy, fill_value=fill_value, missing_values=missing_values, copy=copy, **kwargs)
+
     @property
     def statistics_(self):
         """Get imputation statistics from fitted imputer."""

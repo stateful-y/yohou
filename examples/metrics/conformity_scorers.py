@@ -5,23 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Conformity Scorers for Conformal Prediction.
-
-Demonstrates the four concrete conformity scorers (Residual, AbsoluteResidual,
-GammaResidual, AbsoluteGammaResidual) and how they shape prediction intervals
-in SplitConformalForecaster.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Conformity Scorers",
+    "description": "Compare Residual, AbsoluteResidual, GammaResidual, and AbsoluteGammaResidual conformity scorers for calibrating conformal prediction intervals.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -35,10 +35,10 @@ def _(mo):
 
     | Scorer | Formula | Interval | Best For |
     |--------|---------|----------|----------|
-    | `Residual` | $y - \hat{y}$ | Asymmetric | General use |
-    | `AbsoluteResidual` | $\|y - \hat{y}\|$ | Symmetric | Balanced errors |
-    | `GammaResidual` | $(y - \hat{y}) / (\hat{y} + \varepsilon)$ | Asymmetric, adaptive | Proportional errors |
-    | `AbsoluteGammaResidual` | $\|(y - \hat{y}) / (\hat{y} + \varepsilon)\|$ | Symmetric, adaptive | Proportional + balanced |
+    | [`Residual`](/pages/api/generated/yohou.metrics.conformity.Residual/) | $y - \hat{y}$ | Asymmetric | General use |
+    | [`AbsoluteResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteResidual/) | $\|y - \hat{y}\|$ | Symmetric | Balanced errors |
+    | [`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/) | $(y - \hat{y}) / (\hat{y} + \varepsilon)$ | Asymmetric, adaptive | Proportional errors |
+    | [`AbsoluteGammaResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteGammaResidual/) | $\|(y - \hat{y}) / (\hat{y} + \varepsilon)\|$ | Symmetric, adaptive | Proportional + balanced |
 
     ## What You'll Learn
 
@@ -50,59 +50,71 @@ def _(mo):
 
     ## Prerequisites
 
-    Familiarity with `SplitConformalForecaster`
-    (see `examples/interval/conformal_forecasting.py`).
+    Familiarity with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/).
     """)
+
 
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
-    from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
+    from yohou.metrics import IntervalScore
     from yohou.metrics.conformity import (
         AbsoluteGammaResidual,
         AbsoluteResidual,
         GammaResidual,
         Residual,
     )
-    from yohou.plotting import plot_forecast
+    from yohou.plotting import plot_forecast, plot_score_time_series, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
     return (
         AbsoluteGammaResidual,
         AbsoluteResidual,
-        EmpiricalCoverage,
         GammaResidual,
         IntervalScore,
         LagTransformer,
-        MeanIntervalWidth,
         PointReductionForecaster,
         Residual,
         Ridge,
         SplitConformalForecaster,
         fetch_tourism_monthly,
-        pl,
         plot_forecast,
+        plot_score_time_series,
+        plot_time_series,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
+
+    We load the Tourism Monthly dataset and split it into training, calibration,
+    and test sets. All four conformity scorers will share the same underlying
+    [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) so that differences in interval shape come
+    solely from the choice of scorer.
     """)
 
+
 @app.cell
-def _(fetch_tourism_monthly):
+def _(fetch_tourism_monthly, train_test_split):
     df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
-    split_idx = int(len(df) * 0.85)
-    y_train = df.head(split_idx)
+    y_train, _y_rest = train_test_split(df, test_size=0.15, shuffle=False)
     # Cap test size at 24 so it fits within calibration_size
-    y_test = df[split_idx : split_idx + 24]
-    return df, split_idx, y_test, y_train
+    y_test = _y_rest.head(24)
+    return df, y_test, y_train
+
+
+@app.cell
+def _(df, plot_time_series):
+    plot_time_series(df, title="Tourism Monthly")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -113,6 +125,7 @@ def _(mo):
     This isolates the effect of the conformity scorer on interval quality.
     """)
 
+
 @app.cell
 def _(LagTransformer, PointReductionForecaster, Ridge):
     base_forecaster = PointReductionForecaster(
@@ -120,6 +133,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge):
         feature_transformer=LagTransformer(lag=[1, 6, 12]),
     )
     return (base_forecaster,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -130,6 +144,7 @@ def _(mo):
     **asymmetric** intervals (lower and upper bounds can differ in distance
     from the point prediction).
     """)
+
 
 @app.cell
 def _(
@@ -147,9 +162,9 @@ def _(
     )
     _horizon = len(y_test)
     fc_residual.fit(y_train, forecasting_horizon=_horizon)
-    y_pred_residual = fc_residual.predict_interval(
-        forecasting_horizon=_horizon, coverage_rates=[0.9]
-    )
+    y_pred_residual = fc_residual.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
+    _y_point = fc_residual.predict(forecasting_horizon=_horizon)
+    y_pred_residual = y_pred_residual.hstack(_y_point.drop("time", "observed_time"))
 
     plot_forecast(
         y_test,
@@ -159,7 +174,8 @@ def _(
         coverage_rates=[0.9],
         title="Residual: Asymmetric Intervals",
     )
-    return fc_residual, y_pred_residual
+    return (y_pred_residual,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -170,6 +186,7 @@ def _(mo):
     point prediction. This is the most common choice when you have no reason
     to expect directional bias.
     """)
+
 
 @app.cell
 def _(
@@ -187,9 +204,9 @@ def _(
     )
     _horizon = len(y_test)
     fc_abs.fit(y_train, forecasting_horizon=_horizon)
-    y_pred_abs = fc_abs.predict_interval(
-        forecasting_horizon=_horizon, coverage_rates=[0.9]
-    )
+    y_pred_abs = fc_abs.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
+    _y_point = fc_abs.predict(forecasting_horizon=_horizon)
+    y_pred_abs = y_pred_abs.hstack(_y_point.drop("time", "observed_time"))
 
     plot_forecast(
         y_test,
@@ -199,7 +216,8 @@ def _(
         coverage_rates=[0.9],
         title="AbsoluteResidual: Symmetric Intervals",
     )
-    return fc_abs, y_pred_abs
+    return (y_pred_abs,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -211,6 +229,7 @@ def _(mo):
     This is especially useful for data with **multiplicative** noise patterns
     like the Tourism Monthly series.
     """)
+
 
 @app.cell
 def _(
@@ -228,9 +247,9 @@ def _(
     )
     _horizon = len(y_test)
     fc_gamma.fit(y_train, forecasting_horizon=_horizon)
-    y_pred_gamma = fc_gamma.predict_interval(
-        forecasting_horizon=_horizon, coverage_rates=[0.9]
-    )
+    y_pred_gamma = fc_gamma.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
+    _y_point = fc_gamma.predict(forecasting_horizon=_horizon)
+    y_pred_gamma = y_pred_gamma.hstack(_y_point.drop("time", "observed_time"))
 
     plot_forecast(
         y_test,
@@ -240,7 +259,8 @@ def _(
         coverage_rates=[0.9],
         title="GammaResidual: Adaptive Asymmetric Intervals",
     )
-    return fc_gamma, y_pred_gamma
+    return (y_pred_gamma,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -249,6 +269,7 @@ def _(mo):
 
     Combines magnitude-adaptive scaling with symmetric intervals.
     """)
+
 
 @app.cell
 def _(
@@ -266,9 +287,9 @@ def _(
     )
     _horizon = len(y_test)
     fc_abs_gamma.fit(y_train, forecasting_horizon=_horizon)
-    y_pred_abs_gamma = fc_abs_gamma.predict_interval(
-        forecasting_horizon=_horizon, coverage_rates=[0.9]
-    )
+    y_pred_abs_gamma = fc_abs_gamma.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
+    _y_point = fc_abs_gamma.predict(forecasting_horizon=_horizon)
+    y_pred_abs_gamma = y_pred_abs_gamma.hstack(_y_point.drop("time", "observed_time"))
 
     plot_forecast(
         y_test,
@@ -278,62 +299,47 @@ def _(
         coverage_rates=[0.9],
         title="AbsoluteGammaResidual: Adaptive Symmetric Intervals",
     )
-    return fc_abs_gamma, y_pred_abs_gamma
+    return (y_pred_abs_gamma,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 7. Quantitative Comparison
 
-    Compare all four scorers on three key metrics:
-    - **Empirical Coverage**: Fraction of test points inside the interval (target: 0.90)
-    - **Interval Score**: Proper scoring rule penalising width + miscoverage
-    - **Mean Interval Width**: Average width (narrower is better, given adequate coverage)
+    Compare all four scorers visually with [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/).
+    Each line shows the per-timestep interval score for one conformity
+    scorer, making it easy to spot where specific scorers struggle.
     """)
+
 
 @app.cell
 def _(
-    EmpiricalCoverage,
     IntervalScore,
-    MeanIntervalWidth,
     mo,
-    pl,
+    plot_score_time_series,
     y_pred_abs,
     y_pred_abs_gamma,
     y_pred_gamma,
     y_pred_residual,
     y_test,
-    y_train,
 ):
-    _cov = EmpiricalCoverage()
-    _is = IntervalScore()
-    _miw = MeanIntervalWidth()
-    _coverage_rates = [0.9]
+    _preds = {
+        "Residual": y_pred_residual,
+        "AbsoluteResidual": y_pred_abs,
+        "GammaResidual": y_pred_gamma,
+        "AbsoluteGammaResidual": y_pred_abs_gamma,
+    }
 
-    _cov.fit(y_train)
-    _is.fit(y_train)
-    _miw.fit(y_train)
+    mo.vstack([
+        plot_score_time_series(
+            IntervalScore(coverage_rates=[0.9]),
+            y_test,
+            _preds,
+            title="Interval Score per Timestep",
+        ),
+    ])
 
-    _results = []
-    for _name, _pred in [
-        ("Residual", y_pred_residual),
-        ("AbsoluteResidual", y_pred_abs),
-        ("GammaResidual", y_pred_gamma),
-        ("AbsoluteGammaResidual", y_pred_abs_gamma),
-    ]:
-        _c = _cov.score(y_test, _pred, coverage_rates=_coverage_rates)
-        _s = _is.score(y_test, _pred, coverage_rates=_coverage_rates)
-        _w = _miw.score(y_test, _pred, coverage_rates=_coverage_rates)
-        _results.append({
-            "Scorer": _name,
-            "Coverage": round(float(_c), 3),
-            "Interval Score": round(float(_s), 1),
-            "Mean Width": round(float(_w), 1),
-        })
-
-    comparison_df = pl.DataFrame(_results)
-    mo.ui.table(comparison_df)
-    return (comparison_df,)
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -350,25 +356,26 @@ def _(mo):
     interval width adapts to the prediction magnitude.
     """)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **Four concrete conformity scorers** control interval shape in `SplitConformalForecaster`
+    - **Four concrete conformity scorers** control interval shape in [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
     - **Symmetric** scorers (AbsoluteResidual, AbsoluteGammaResidual) centre intervals on the point prediction
     - **Asymmetric** scorers (Residual, GammaResidual) allow unequal lower/upper widths
     - **Gamma** variants normalise by the prediction magnitude, producing **adaptive** interval widths
     - The `epsilon` parameter in Gamma scorers prevents division by zero
-    - Always evaluate with `EmpiricalCoverage`, `IntervalScore`, and `MeanIntervalWidth`
+    - Always evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
     - For multiplicative data, Gamma scorers typically produce better-calibrated intervals
 
     ## Next Steps
 
-    - **Distance-based weighting**: See `examples/interval/distance_similarity.py` for adaptive conformal intervals using `DistanceSimilarity`
-    - **Conformal prediction basics**: See `examples/interval/conformal_forecasting.py` for the full conformal workflow
-    - **Interval metrics**: See `examples/metrics/interval_metrics.py` for deep-dive into interval evaluation
+    - **Distance-based weighting**: See [`examples/interval/distance_similarity.py`](/examples/interval/distance_similarity/) for adaptive conformal intervals using [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/)
+    - **Interval metrics**: See [`examples/metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) for deep-dive into interval evaluation
     """)
+
 
 if __name__ == "__main__":
     app.run()

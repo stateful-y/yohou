@@ -7,16 +7,16 @@
 #     "yohou-optuna",
 # ]
 # ///
-"""Optuna Hyperparameter Optimisation.
-
-Demonstrates yohou-optuna integration for Bayesian hyperparameter search
-with OptunaSearchCV.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Optuna Search",
+    "description": "Bayesian hyperparameter optimisation with OptunaSearchCV using flexible parameter distributions, pruning callbacks, and per-trial result inspection.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -24,13 +24,14 @@ def _():
 
     return (mo,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Optuna Hyperparameter Optimisation
 
     Bayesian hyperparameter search using `OptunaSearchCV` from the
-    `yohou-optuna` workspace package.
+    `yohou-optuna` package.
 
     ## What You'll Learn
 
@@ -43,6 +44,7 @@ def _(mo):
     **Requires**: `yohou-optuna` package (install with `uv pip install yohou-optuna`)
     """)
 
+
 @app.cell(hide_code=True)
 def _():
     import polars as pl
@@ -53,7 +55,7 @@ def _():
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection.split import ExpandingWindowSplitter
-    from yohou.plotting import plot_cv_results_scatter, plot_forecast
+    from yohou.plotting import plot_cv_results_scatter, plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -72,24 +74,39 @@ def _():
         pl,
         plot_cv_results_scatter,
         plot_forecast,
+        plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
+
+    We load the Tourism Monthly dataset and split it into training and test
+    sets. The test length defines the forecasting horizon used for all
+    Optuna search experiments.
     """)
+
 
 @app.cell
 def _(fetch_tourism_monthly, mo):
-    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    tourism = (
+        fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    )
     _split = int(len(tourism) * 0.85)
     y_train = tourism.head(_split)
     y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
-    return tourism, horizon, y_test, y_train
+    return horizon, tourism, y_test, y_train
+
+
+@app.cell
+def _(plot_time_series, tourism):
+    plot_time_series(tourism, title="Tourism Monthly")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -101,6 +118,7 @@ def _(mo):
     using a Tree-structured Parzen Estimator (TPE) by default.
     """)
 
+
 @app.cell
 def _(CategoricalDistribution, FloatDistribution):
     param_distributions = {
@@ -111,17 +129,22 @@ def _(CategoricalDistribution, FloatDistribution):
         "estimator__alpha": FloatDistribution(0.001, 50.0, log=True),
     }
     lag_distributions = {
-        "feature_transformer__lag": CategoricalDistribution(
-            [[1, 12], [1, 6, 12], [1, 3, 6, 12]]
-        ),
+        "feature_transformer__lag": CategoricalDistribution([[1, 12], [1, 6, 12], [1, 3, 6, 12]]),
     }
     return lag_distributions, param_distributions, param_distributions_ridge
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. OptunaSearchCV with TPE Sampler
+
+    `OptunaSearchCV` wraps Optuna's study-based optimization into yohou's
+    search API. The `Sampler` wrapper makes the Optuna sampler reproducible
+    by accepting a `seed` parameter. TPE (Tree-structured Parzen Estimator)
+    is the default Bayesian sampler.
     """)
+
 
 @app.cell
 def _(
@@ -155,23 +178,40 @@ def _(
     optuna_search.fit(y_train, forecasting_horizon=horizon)
     return optuna, optuna_search
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Inspect Results
+
+    After fitting, `best_params_` and `best_score_` provide the optimal
+    configuration. The `cv_results_` dictionary stores all trial details,
+    similar to sklearn's search objects.
     """)
+
 
 @app.cell
 def _(mo, optuna_search):
-    mo.md(
-        f"**Best params**: {optuna_search.best_params_}\n\n"
+    mo.md(f"""
+    **Best params**: {optuna_search.best_params_}\n\n"
         f"**Best score (negated MAE)**: {optuna_search.best_score_:.4f}\n\n"
-        f"**Number of trials**: {len(optuna_search.cv_results_['params'])}"
-    )
+        f"**Number of trials**: {len(optuna_search.cv_results_["params"])}
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) plots each trial's alpha value against its
+    mean test score, revealing how the Bayesian sampler concentrated
+    trials in promising regions of the parameter space.
+    """)
+
 
 @app.cell
-def _(plot_cv_results_scatter, optuna_search):
+def _(optuna_search, plot_cv_results_scatter):
     plot_cv_results_scatter(optuna_search.cv_results_, "estimator__alpha")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -181,6 +221,7 @@ def _(mo):
     Each trial records the parameters sampled and resulting score.
     """)
 
+
 @app.cell
 def _(mo, optuna_search, pl):
     _trials = []
@@ -189,17 +230,21 @@ def _(mo, optuna_search, pl):
             "Trial": _i,
             "alpha": round(_params.get("estimator__alpha", 0), 4),
             "l1_ratio": round(_params.get("estimator__l1_ratio", 0), 4),
-            "Mean Test Score": round(
-                float(optuna_search.cv_results_["mean_test_score"][_i]), 4
-            ),
+            "Mean Test Score": round(float(optuna_search.cv_results_["mean_test_score"][_i]), 4),
         })
     mo.ui.table(pl.DataFrame(_trials))
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Best Model Forecast
+
+    After search, the `OptunaSearchCV` object acts as a forecaster using
+    the best parameters. We call `predict` and visualize the result with
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/).
     """)
+
 
 @app.cell
 def _(horizon, optuna_search, plot_forecast, y_test, y_train):
@@ -211,7 +256,7 @@ def _(horizon, optuna_search, plot_forecast, y_test, y_train):
         n_history=36,
         title="Best Forecaster (OptunaSearchCV)",
     )
-    return (y_pred_optuna,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -221,6 +266,7 @@ def _(mo):
     Combine continuous hyperparameter search with categorical
     choices like lag configurations.
     """)
+
 
 @app.cell
 def _(
@@ -253,11 +299,8 @@ def _(
     )
     optuna_lag_search.fit(y_train, forecasting_horizon=horizon)
 
-    mo.md(
-        f"**Best params**: {optuna_lag_search.best_params_}\n\n"
-        f"**Best score**: {optuna_lag_search.best_score_:.4f}"
-    )
-    return (optuna_lag_search,)
+    mo.md(f"**Best params**: {optuna_lag_search.best_params_}\n\n**Best score**: {optuna_lag_search.best_score_:.4f}")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -273,10 +316,11 @@ def _(mo):
 
     ## Next Steps
 
-    - **Multi-metric search**: See `examples/model_selection/multi_metric_search.py`
-    - **Interval search**: See `examples/model_selection/interval_search.py`
-    - **Hyperparameter search basics**: See `examples/model_selection/hyperparameter_search.py`
+    - **Multi-metric search**: See [`examples/model_selection/multi_metric_search.py`](/examples/model_selection/multi_metric_search/)
+    - **Interval search**: See [`examples/model_selection/interval_search.py`](/examples/model_selection/interval_search/)
+    - **Hyperparameter search basics**: See [`examples/model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

@@ -6,16 +6,17 @@
 #     "yohou",
 # ]
 # ///
-"""Point Forecasting with CatBoost.
-
-Demonstrates PointReductionForecaster with CatBoostRegressor as the wrapped
-sklearn-compatible estimator.
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "CatBoost Forecasting",
+    "description": "Plug CatBoostRegressor into PointReductionForecaster as a drop-in sklearn estimator and compare gradient-boosted versus Ridge linear baseline results.",
+}
+
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -23,20 +24,22 @@ def _():
 
     return (mo,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Point Forecasting with CatBoost
 
     [CatBoost](https://catboost.ai/) is a gradient-boosting library that works
-    seamlessly as a drop-in sklearn estimator inside `PointReductionForecaster`.
+    seamlessly as a drop-in sklearn estimator inside [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
 
     ## What You'll Learn
 
-    - Wrapping `CatBoostRegressor` in `PointReductionForecaster`
+    - Wrapping `CatBoostRegressor` in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
     - Silencing CatBoost training output with `verbose=0`
     - Comparing CatBoost with a linear baseline
     """)
+
 
 @app.cell(hide_code=True)
 def _():
@@ -47,7 +50,7 @@ def _():
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast
+    from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -61,16 +64,23 @@ def _():
         fetch_tourism_monthly,
         pl,
         plot_forecast,
+        plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
+
+    We load the Monthly Tourism dataset via [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/), extract a
+    single univariate series, and split it 80/20 into training and test sets
+    while preserving temporal order.
     """)
 
+
 @app.cell
-def _(fetch_tourism_monthly):
+def _(fetch_tourism_monthly, plot_time_series):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
     split_idx = int(len(y) * 0.8)
@@ -78,8 +88,9 @@ def _(fetch_tourism_monthly):
     y_test = y.tail(len(y) - split_idx)
     forecasting_horizon = len(y_test)
 
-    print(f"Train: {len(y_train)}, Test: {len(y_test)}")
+    plot_time_series(y, title="Monthly Tourism (T1)")
     return forecasting_horizon, y_test, y_train
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -87,9 +98,10 @@ def _(mo):
     ## 2. CatBoost Forecaster
 
     `CatBoostRegressor` implements the sklearn `fit`/`predict` API, so it
-    plugs directly into `PointReductionForecaster`.  Set `verbose=0` to
+    plugs directly into [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).  Set `verbose=0` to
     suppress per-iteration training logs.
     """)
+
 
 @app.cell
 def _(
@@ -118,6 +130,15 @@ def _(
     y_pred_cb.head()
     return catboost_fc, y_pred_cb
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) overlays the predicted values against the test actuals,
+    optionally showing the training history for context.
+    """)
+
+
 @app.cell
 def _(plot_forecast, y_pred_cb, y_test, y_train):
     plot_forecast(
@@ -127,11 +148,17 @@ def _(plot_forecast, y_pred_cb, y_test, y_train):
         title="CatBoost Point Forecast",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Compare with Linear Baseline
+
+    We fit a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) backed by `Ridge` regression using the
+    same lag features and compare its MAE against CatBoost to quantify the
+    benefit of gradient boosting on this dataset.
     """)
+
 
 @app.cell
 def _(
@@ -159,16 +186,18 @@ def _(
     print(f"CatBoost MAE: {mae_cb:.2f}")
     print(f"Ridge    MAE: {mae_ridge:.2f}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - Any sklearn-compatible regressor works with `PointReductionForecaster`
+    - Any sklearn-compatible regressor works with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
     - CatBoost often captures nonlinear patterns better than linear models
     - Use `verbose=0` to keep notebook output clean
-    - Consider `GridSearchCV` for tuning `iterations`, `depth`, `learning_rate`
+    - Consider [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) for tuning `iterations`, `depth`, `learning_rate`
     """)
+
 
 if __name__ == "__main__":
     app.run()

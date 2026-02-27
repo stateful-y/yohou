@@ -4,21 +4,23 @@
 #     "yohou",
 # ]
 # ///
-"""Stationarity Transformers: Differencing, Log, BoxCox, and Returns.
-
-Demonstrates transformations for making time series stationary.
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Stationarity Transforms",
+    "description": "Catalogue of variance-stabilising and detrending transforms: LogTransformer, BoxCox, SeasonalDifferencing, SeasonalReturn, and ASinh with inverse verification.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -31,17 +33,18 @@ def _(mo):
 
     ## What You'll Learn
 
-    - `LogTransformer` / `BoxCoxTransformer`: Stabilize variance
-    - `SeasonalDifferencing`: Remove seasonal patterns
-    - `SeasonalLogDifferencing`: Combined log + differencing
-    - `SeasonalReturn` / `AbsoluteSeasonalReturn`: Percentage and absolute changes
-    - `ASinhTransformer`: Robust symmetric transformation
+    - [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) / [`BoxCoxTransformer`](/pages/api/generated/yohou.stationarity.transformers.BoxCoxTransformer/): Stabilize variance
+    - [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/): Remove seasonal patterns
+    - [`SeasonalLogDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalLogDifferencing/): Combined log + differencing
+    - [`SeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.SeasonalReturn/) / [`AbsoluteSeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.AbsoluteSeasonalReturn/): Percentage and absolute changes
+    - [`ASinhTransformer`](/pages/api/generated/yohou.stationarity.transformers.ASinhTransformer/): Robust symmetric transformation
     - Inverse transforms to recover original scale
 
     ## Prerequisites
 
     Understanding of stationarity concepts in time series.
     """)
+
 
 @app.cell(hide_code=True)
 def _():
@@ -72,6 +75,7 @@ def _():
         plot_time_series,
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -81,15 +85,13 @@ def _(mo):
     clearly non-stationary.
     """)
 
+
 @app.cell
 def _(fetch_tourism_monthly, plot_time_series):
-    y = (
-        fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "tourists"})
-    )
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     plot_time_series(y, title="Monthly Tourism (Non-Stationary)")
     return (y,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -99,6 +101,7 @@ def _(mo):
     Takes the natural log to stabilize multiplicative variance.
     Stateless and invertible.
     """)
+
 
 @app.cell
 def _(LogTransformer, y):
@@ -117,6 +120,7 @@ def _(LogTransformer, y):
     log_inv_err = (y["tourists"] - y_recovered[rec_col]).abs().max()
     print(f"Max inverse error: {log_inv_err:.10f}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -125,6 +129,7 @@ def _(mo):
     Generalization of LogTransformer. `lmbda=0` is log, `lmbda=1` is identity,
     `lmbda=0.5` is square root.
     """)
+
 
 @app.cell
 def _(BoxCoxTransformer, y):
@@ -136,6 +141,7 @@ def _(BoxCoxTransformer, y):
         _rng = _y_bc[_data_col].max() - _y_bc[_data_col].min()
         print(f"lmbda={_lmbda:.2f}  range={_rng:.2f}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -144,6 +150,7 @@ def _(mo):
     Removes seasonal patterns by computing `y_t - y_{t-s}`.
     Stateful: `observation_horizon = seasonality`.
     """)
+
 
 @app.cell
 def _(SeasonalDifferencing, y):
@@ -156,6 +163,7 @@ def _(SeasonalDifferencing, y):
     y_diff.head()
     return diff_tf, y_diff
 
+
 @app.cell
 def _(diff_tf, y, y_diff):
     # Inverse transform requires X_p (the observation_horizon prefix from original data)
@@ -164,6 +172,7 @@ def _(diff_tf, y, y_diff):
     _inv_col = [c for c in y_inv.columns if c != "time"][0]
     diff_inv_err = (y["tourists"].tail(len(y_inv)) - y_inv[_inv_col]).abs().max()
     print(f"SeasonalDifferencing inverse error: {diff_inv_err:.10f}")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -174,6 +183,7 @@ def _(mo):
     `log(y_t) - log(y_{t-s})`. Particularly effective for multiplicative seasonality.
     """)
 
+
 @app.cell
 def _(SeasonalLogDifferencing, plot_time_series, y):
     sld = SeasonalLogDifferencing(seasonality=12, offset=0.0)
@@ -183,16 +193,18 @@ def _(SeasonalLogDifferencing, plot_time_series, y):
     print(f"observation_horizon: {sld.observation_horizon}")
     plot_time_series(y_sld, title="Seasonal Log Differenced (should look stationary)")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Seasonal Returns
 
-    - `SeasonalReturn`: Percentage change `(y_t / y_{t-s}) - 1`
-    - `AbsoluteSeasonalReturn`: Absolute change `y_t - y_{t-s}`
+    - [`SeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.SeasonalReturn/): Percentage change `(y_t / y_{t-s}) - 1`
+    - [`AbsoluteSeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.AbsoluteSeasonalReturn/): Absolute change `y_t - y_{t-s}`
 
     Both are invertible and stateful.
     """)
+
 
 @app.cell
 def _(AbsoluteSeasonalReturn, SeasonalReturn, y):
@@ -208,6 +220,7 @@ def _(AbsoluteSeasonalReturn, SeasonalReturn, y):
     _asr_col = [c for c in y_asr.columns if c != "time"][0]
     print(f"AbsoluteSeasonalReturn (first 5 values): {y_asr[_asr_col].head(5).to_list()}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -216,6 +229,7 @@ def _(mo):
     Inverse hyperbolic sine: `asinh((x - median) / MAD * scale)`.
     Robust, symmetric, works with zero and negative values.
     """)
+
 
 @app.cell
 def _(ASinhTransformer, y):
@@ -233,6 +247,7 @@ def _(ASinhTransformer, y):
     asinh_inv_err = (y["tourists"] - y_back[_back_col]).abs().max()
     print(f"Inverse error: {asinh_inv_err:.10f}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -240,6 +255,7 @@ def _(mo):
 
     We bring together the results from all transforms to compare their effectiveness at inducing stationarity.
     """)
+
 
 @app.cell
 def _(
@@ -266,28 +282,31 @@ def _(
         _has_inv = hasattr(_tf, "inverse_transform")
         print(f"{_name:<22s}  {_tf.observation_horizon:>11d}  {str(_has_inv):>10s}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **Variance stabilization**: `LogTransformer`, `BoxCoxTransformer`, `ASinhTransformer`
-    - **Seasonal removal**: `SeasonalDifferencing`, `SeasonalLogDifferencing`
-    - **Returns**: `SeasonalReturn` (percentage), `AbsoluteSeasonalReturn` (absolute)
+    - **Variance stabilization**: [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/), [`BoxCoxTransformer`](/pages/api/generated/yohou.stationarity.transformers.BoxCoxTransformer/), [`ASinhTransformer`](/pages/api/generated/yohou.stationarity.transformers.ASinhTransformer/)
+    - **Seasonal removal**: [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/), [`SeasonalLogDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalLogDifferencing/)
+    - **Returns**: [`SeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.SeasonalReturn/) (percentage), [`AbsoluteSeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.AbsoluteSeasonalReturn/) (absolute)
     - All are **invertible**, critical for `target_transformer` in forecasters
     - Stateful transformers have `observation_horizon > 0` (first rows are lost)
-    - Combine with `target_transformer` in `PointReductionForecaster` for automatic inverse
+    - Combine with `target_transformer` in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) for automatic inverse
     """)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Decomposition**: See `decomposition.py` for trend + seasonality forecasting
-    - **Using as target_transformer**: See `point/reduction_forecaster.py`
-    - **Preprocessing**: See `preprocessing/` for data cleaning and feature engineering
+    - **Decomposition**: See [`decomposition.py`](/examples/stationarity/decomposition/) for trend + seasonality forecasting
+    - **Using as target_transformer**: See [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/)
+    - **Preprocessing**: See [Preprocessing](/examples/#preprocessing) for data cleaning and feature engineering
     """)
+
 
 if __name__ == "__main__":
     app.run()

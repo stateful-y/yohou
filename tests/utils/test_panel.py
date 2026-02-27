@@ -5,49 +5,49 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 
-from yohou.utils.panel import dict_to_panel, inspect_locality, select_panel_columns
+from yohou.utils.panel import dict_to_panel, inspect_panel, select_panel_columns
 
 
-class TestInspectLocality:
-    """Tests for inspect_locality function."""
+class TestInspectPanel:
+    """Tests for inspect_panel function."""
 
-    def test_inspect_locality_global_data_single_column(self):
-        """Test inspect_locality with global data (single non-panel column)."""
+    def test_inspect_panel_global_data_single_column(self):
+        """Test inspect_panel with global data (single non-panel column)."""
         df = pl.DataFrame({"time": [1, 2, 3], "value": [10.0, 20.0, 30.0]})
 
-        global_names, panel_groups = inspect_locality(df)
+        global_names, panel_groups = inspect_panel(df)
 
         assert global_names == ["value"]
         assert panel_groups == {}
 
-    def test_inspect_locality_global_data_multiple_columns(self):
-        """Test inspect_locality with multiple global columns."""
+    def test_inspect_panel_global_data_multiple_columns(self):
+        """Test inspect_panel with multiple global columns."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "feature_1": [10.0, 20.0, 30.0],
             "feature_2": [100.0, 200.0, 300.0],
         })
 
-        global_names, panel_groups = inspect_locality(df)
+        global_names, panel_groups = inspect_panel(df)
 
         assert set(global_names) == {"feature_1", "feature_2"}
         assert panel_groups == {}
 
-    def test_inspect_locality_panel_data_single_group(self):
-        """Test inspect_locality with panel data (with __ separator)."""
+    def test_inspect_panel_panel_data_single_group(self):
+        """Test inspect_panel with panel data (with __ separator)."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "sales__store_1": [100, 110, 120],
             "sales__store_2": [150, 160, 170],
         })
 
-        global_names, panel_groups = inspect_locality(df)
+        global_names, panel_groups = inspect_panel(df)
 
         assert global_names == []
         assert panel_groups == {"sales": ["sales__store_1", "sales__store_2"]}
 
-    def test_inspect_locality_panel_data_multiple_groups(self):
-        """Test inspect_locality with multiple panel groups."""
+    def test_inspect_panel_panel_data_multiple_groups(self):
+        """Test inspect_panel with multiple panel groups."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "sales__store_1": [100, 110, 120],
@@ -56,7 +56,7 @@ class TestInspectLocality:
             "inventory__store_2": [75, 80, 85],
         })
 
-        global_names, panel_groups = inspect_locality(df)
+        global_names, panel_groups = inspect_panel(df)
 
         assert global_names == []
         assert panel_groups == {
@@ -64,8 +64,8 @@ class TestInspectLocality:
             "inventory": ["inventory__store_1", "inventory__store_2"],
         }
 
-    def test_inspect_locality_mixed_global_and_panel_data(self):
-        """Test inspect_locality with mix of global columns and panel columns."""
+    def test_inspect_panel_mixed_global_and_panel_data(self):
+        """Test inspect_panel with mix of global columns and panel columns."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "global_feature": [10.0, 20.0, 30.0],
@@ -73,26 +73,26 @@ class TestInspectLocality:
             "sales__store_2": [150, 160, 170],
         })
 
-        global_names, panel_groups = inspect_locality(df)
+        global_names, panel_groups = inspect_panel(df)
 
         assert global_names == ["global_feature"]
         assert panel_groups == {"sales": ["sales__store_1", "sales__store_2"]}
 
-    def test_inspect_locality_time_column_excluded(self):
-        """Test that 'time' column is always excluded from inspect_locality results."""
+    def test_inspect_panel_time_column_excluded(self):
+        """Test that 'time' column is always excluded from inspect_panel results."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "value": [10.0, 20.0, 30.0],
             "feature": [100.0, 200.0, 300.0],
         })
 
-        global_names, panel_groups = inspect_locality(df)
+        global_names, panel_groups = inspect_panel(df)
 
         assert "time" not in global_names
         assert "time" not in panel_groups
 
-    def test_inspect_locality_conflict_panel_and_global_same_name(self):
-        """Test that inspect_locality raises error when panel and global columns conflict."""
+    def test_inspect_panel_conflict_panel_and_global_same_name(self):
+        """Test that inspect_panel raises error when panel and global columns conflict."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "x__a": [1, 2, 3],
@@ -104,10 +104,10 @@ class TestInspectLocality:
             ValueError,
             match=r"Panel column names .* conflict with global column names: \['a'\]",
         ):
-            inspect_locality(df)
+            inspect_panel(df)
 
-    def test_inspect_locality_conflict_multiple_conflicts(self):
-        """Test that inspect_locality detects multiple name conflicts."""
+    def test_inspect_panel_conflict_multiple_conflicts(self):
+        """Test that inspect_panel detects multiple name conflicts."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "x__a": [1, 2, 3],
@@ -122,10 +122,10 @@ class TestInspectLocality:
             ValueError,
             match=r"Panel column names .* conflict with global column names",
         ):
-            inspect_locality(df)
+            inspect_panel(df)
 
-    def test_inspect_locality_no_conflict_different_names(self):
-        """Test that inspect_locality works when panel and global have different names."""
+    def test_inspect_panel_no_conflict_different_names(self):
+        """Test that inspect_panel works when panel and global have different names."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "x__sales": [1, 2, 3],
@@ -134,7 +134,7 @@ class TestInspectLocality:
             "holiday": [0, 1, 0],
         })
 
-        global_names, panel_groups = inspect_locality(df)
+        global_names, panel_groups = inspect_panel(df)
 
         assert set(global_names) == {"temperature", "holiday"}
         assert panel_groups == {"x": ["x__sales", "x__inventory"]}

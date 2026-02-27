@@ -63,10 +63,6 @@ def create_daily_data(length: int = 30, seed: int = 42) -> pl.DataFrame:
     })
 
 
-X_hourly = create_hourly_data(length=48)
-X_daily = create_daily_data(length=30)
-
-
 class TestDownsampler:
     """Tests for Downsampler transformer."""
 

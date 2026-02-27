@@ -32,6 +32,7 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseTransformer
 from yohou.utils import Tags
+from yohou.utils.panel import panel_aware_prefix
 
 from .utils import _hstack, _observe_transform_one, _rewind_transform_one
 
@@ -75,7 +76,11 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
     verbose_feature_names_out : bool, default=True
         If True, `get_feature_names_out` will prefix all feature names
-        with the name of the transformer that generated that feature.
+        with the name of the transformer that generated that feature
+        using a single underscore separator (e.g., ``lags_sales``).
+        For panel data columns, the prefix is inserted after the group
+        separator to preserve panel structure
+        (e.g., ``store_1__lags_sales``).
         If False, `get_feature_names_out` will not prefix any feature
         names and will error if feature names are not unique.
 
@@ -352,6 +357,11 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
     def _add_prefix_for_feature_names_out(self, feature_names_out: list[list[str]]) -> list[str]:
         """Add prefixes to feature names.
 
+        Uses single underscore ``_`` as separator (not ``__``) to avoid
+        conflicts with the panel data ``<GROUP>__<SERIES>`` convention.
+        For panel columns, the prefix is inserted after the group separator
+        (e.g., ``store_1__lags_sales``).
+
         Parameters
         ----------
         feature_names_out : list[list[str]]
@@ -363,7 +373,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             Feature names with prefixes.
 
         """
-        return sklearn_FeatureUnion._add_prefix_for_feature_names_out(self, feature_names_out)  # type: ignore[arg-type]
+        return [panel_aware_prefix(col, name) for name, cols in feature_names_out for col in cols]
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -609,7 +619,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         if self.verbose_feature_names_out:
             column_names = []
             for name, cols in zip(transformer_names, raw_column_names, strict=False):
-                column_names.append([f"{name}__{col}" for col in cols])
+                column_names.append([panel_aware_prefix(col, name) for col in cols])
         else:
             column_names = raw_column_names
             # Check for duplicates
@@ -667,7 +677,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         if self.verbose_feature_names_out:
             column_names = []
             for name, cols in zip(transformer_names, raw_column_names, strict=False):
-                column_names.append([f"{name}__{col}" for col in cols])
+                column_names.append([panel_aware_prefix(col, name) for col in cols])
         else:
             column_names = raw_column_names
 
@@ -723,7 +733,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         if self.verbose_feature_names_out:
             column_names = []
             for name, cols in zip(transformer_names, raw_column_names, strict=False):
-                column_names.append([f"{name}__{col}" for col in cols])
+                column_names.append([panel_aware_prefix(col, name) for col in cols])
         else:
             column_names = raw_column_names
 
@@ -784,7 +794,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         if self.verbose_feature_names_out:
             column_names = []
             for name, cols in zip(transformer_names, raw_column_names, strict=False):
-                column_names.append([f"{name}__{col}" for col in cols])
+                column_names.append([panel_aware_prefix(col, name) for col in cols])
         else:
             column_names = raw_column_names
 

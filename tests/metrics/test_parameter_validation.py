@@ -27,7 +27,7 @@ def panel_data_factory():
         data = {"time": time}
         for group in group_names:
             for i in range(n_targets):
-                # Using group as prefix to match inspect_locality behavior
+                # Using group as prefix to match inspect_panel behavior
                 # Component (y_0) becomes the suffix
                 target = f"y_{i}"
                 col_name = f"{group}__{target}"
@@ -465,7 +465,7 @@ class TestValidationOrdering:
             aggregation_method="invalid",
             panel_group_names="also_invalid",
         )
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="aggregation_method"):
             scorer.fit(y)
 
     def test_validation_ordering_interval_scorer_validation_order(self, panel_data_factory):

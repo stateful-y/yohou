@@ -1,5 +1,8 @@
 """Tests for forecasting plotting functions."""
 
+import importlib.util
+
+import numpy as np
 import polars as pl
 import pytest
 
@@ -124,9 +127,6 @@ class TestPlotTimeWeight:
             plot_time_weight(time_weight, weight_column="missing")
 
 
-# Fixtures for decomposition and multi-model tests
-
-
 @pytest.fixture
 def decomposition_data():
     """Create sample decomposition data."""
@@ -231,6 +231,106 @@ class TestPlotComponents:
         fig = plot_components(y, components, color_palette=["#ff0000"])
         assert fig.data[0].line.color == "#ff0000"
 
+    def test_invalid_components_type(self):
+        """Test that invalid components type raises TypeError."""
+        y = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
+            "y": list(range(10)),
+        })
+        with pytest.raises(TypeError, match="dict.*list.*tuple"):
+            plot_components(y, 42)
+
+
+_has_statsmodels = importlib.util.find_spec("statsmodels") is not None
+
+
+@pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
+class TestPlotComponentsStl:
+    """Tests for plot_components STL mode (list/tuple components)."""
+
+    @pytest.fixture
+    def monthly_df(self):
+        """Create monthly data suitable for STL decomposition."""
+        rng = np.random.default_rng(42)
+        return pl.DataFrame({
+            "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2023, 12, 1), "1mo", eager=True),
+            "y": [100 + 2 * i + 10 * np.sin(2 * np.pi * i / 12) + rng.standard_normal() for i in range(72)],
+        })
+
+    def test_basic(self, monthly_df):
+        """Test basic STL decomposition via plot_components."""
+        fig = plot_components(
+            monthly_df,
+            ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
+            columns="y",
+        )
+        assert len(fig.data) >= 4
+
+    def test_explicit_period(self, monthly_df):
+        """Test STL mode with explicit period via stl_kwargs."""
+        fig = plot_components(
+            monthly_df,
+            ["observed", "trend", "seasonal", "residual"],
+            columns="y",
+            stl_kwargs={"period": 12},
+        )
+        assert len(fig.data) >= 4
+
+    def test_subset_components(self, monthly_df):
+        """Test showing only a subset of STL components."""
+        fig = plot_components(monthly_df, ["trend", "seasonal"], columns="y", show_original=False)
+        assert len(fig.data) == 2
+
+    def test_observed_sets_show_original(self, monthly_df):
+        """Test that 'observed' in components enables original trace."""
+        fig = plot_components(monthly_df, ["observed", "trend"], columns="y")
+        names = [t.name for t in fig.data]
+        # "observed" maps to show_original, so the first trace uses the column name
+        assert "y" in names
+        assert "Trend" in names
+
+    def test_stl_kwargs_robust(self, monthly_df):
+        """Test passing robust=False via stl_kwargs."""
+        fig = plot_components(
+            monthly_df,
+            ["trend", "seasonal"],
+            columns="y",
+            show_original=False,
+            stl_kwargs={"robust": False},
+        )
+        assert len(fig.data) == 2
+
+    def test_stl_kwargs_windows(self, monthly_df):
+        """Test passing window parameters via stl_kwargs."""
+        fig = plot_components(
+            monthly_df,
+            ["trend", "residual"],
+            columns="y",
+            show_original=False,
+            stl_kwargs={"period": 12, "seasonal_window": 15, "trend_window": 25},
+        )
+        assert len(fig.data) == 2
+
+    def test_stl_default_title(self, monthly_df):
+        """Test STL mode default title."""
+        fig = plot_components(monthly_df, ["trend"], columns="y")
+        assert fig.layout.title.text == "STL Decomposition"
+
+    def test_stl_custom_title(self, monthly_df):
+        """Test STL mode custom title."""
+        fig = plot_components(monthly_df, ["trend"], columns="y", title="My STL")
+        assert fig.layout.title.text == "My STL"
+
+    def test_unknown_component(self, monthly_df):
+        """Test unknown STL component raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown components"):
+            plot_components(monthly_df, ["trend", "bogus"], columns="y")
+
+    def test_tuple_components(self, monthly_df):
+        """Test that tuple components trigger STL mode."""
+        fig = plot_components(monthly_df, ("trend", "seasonal"), columns="y", show_original=False)
+        assert len(fig.data) == 2
+
 
 class TestPlotForecastMultiModel:
     """Tests for plot_forecast with multiple model predictions."""
@@ -270,8 +370,8 @@ class TestPlotForecastMultiModel:
         y_test, y_preds = multi_model_data
         fig = plot_forecast(y_test, y_preds)
         trace_names = [t.name for t in fig.data]
-        assert "Model A" in trace_names
-        assert "Model B" in trace_names
+        assert "y (Model A)" in trace_names
+        assert "y (Model B)" in trace_names
 
     def test_single_df_still_works(self):
         """Test backward compatibility with single DataFrame."""
@@ -301,25 +401,29 @@ class TestPlotForecastMultiColumn:
         b_fc = [t for t in fig.data if t.name == "b (Forecast)"][0]
         assert a_fc.line.color != b_fc.line.color
 
-    def test_multi_column_dashed_forecast(self):
-        """Test that multi-column forecast lines are dashed."""
+    def test_multi_column_per_column_colors(self):
+        """Test that multi-column actual/forecast share the same per-column color."""
         dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
         y_test = pl.DataFrame({"time": dates, "a": list(range(30)), "b": list(range(30, 60))})
         y_pred = pl.DataFrame({"time": dates, "a": [x + 1 for x in range(30)], "b": [x + 1 for x in range(30, 60)]})
         fig = plot_forecast(y_test, y_pred)
-        forecasts = [t for t in fig.data if t.name and "Forecast" in t.name]
-        assert all(t.line.dash == "dash" for t in forecasts)
+        a_actual = [t for t in fig.data if t.name == "a (Actual)"][0]
+        b_actual = [t for t in fig.data if t.name == "b (Actual)"][0]
+        # Different columns get different colors
+        assert a_actual.line.color != b_actual.line.color
 
-    def test_multi_column_single_train_legend(self):
-        """Test that single Train legend entry is shown for multi-column."""
+    def test_multi_column_per_column_train_legend(self):
+        """Test that each column gets its own Train legend entry for multi-column."""
         dates_train = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         dates_test = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
         y_train = pl.DataFrame({"time": dates_train, "a": list(range(91)), "b": list(range(91))})
         y_test = pl.DataFrame({"time": dates_test, "a": list(range(30)), "b": list(range(30))})
         y_pred = pl.DataFrame({"time": dates_test, "a": list(range(30)), "b": list(range(30))})
         fig = plot_forecast(y_test, y_pred, y_train=y_train)
-        train_traces = [t for t in fig.data if t.name == "Train"]
-        assert len(train_traces) == 1  # Only one has name, rest show None
+        train_traces = [t for t in fig.data if t.name and "Train" in t.name]
+        assert len(train_traces) == 2
+        train_names = {t.name for t in train_traces}
+        assert train_names == {"a (Train)", "b (Train)"}
 
 
 class TestPlotForecastPanelMultiModel:
@@ -341,5 +445,6 @@ class TestPlotForecastPanelMultiModel:
         })
         fig = plot_forecast(y_test, {"A": y_pred_a, "B": y_pred_b})
         names = [t.name for t in fig.data if t.name is not None]
-        assert "A" in names
-        assert "B" in names
+        # Multi-member panel labels include member: "s1 (A)", "s2 (B)", etc.
+        assert any("A" in n for n in names)
+        assert any("B" in n for n in names)

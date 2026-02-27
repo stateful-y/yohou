@@ -13,6 +13,7 @@ from yohou.plotting._utils import (
     resolve_color_palette,
 )
 from yohou.utils import validate_plotting_data
+from yohou.utils.panel import inspect_panel
 
 __all__ = [
     "plot_phase",
@@ -99,6 +100,11 @@ def plot_phase(
     """
     use_degrees = angle_unit == "degree"
     validate_plotting_data(df)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     if panel_group_names is not None:
 
@@ -278,6 +284,11 @@ def plot_spectrum(
     """
     # Validate inputs
     validate_plotting_data(df)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     if panel_group_names is not None:
 

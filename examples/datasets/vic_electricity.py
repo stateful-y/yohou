@@ -4,18 +4,16 @@
 #     "yohou",
 # ]
 # ///
-"""Electricity Demand - Multi-State Panel Analysis.
-
-Half-hourly electricity demand from 5 Australian states.
-
-Dataset: 5 state-level demand series at 30-minute intervals
-Demonstrates: inspect_locality, plot_time_series, plot_cross_correlation, plot_seasonality, plot_rolling_statistics
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Electricity Demand Dataset",
+    "description": "High-frequency panel analysis of half-hourly Australian electricity demand across five states with cross-correlation diagnostics and rolling statistics.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -28,17 +26,18 @@ def _():
         plot_seasonality,
         plot_time_series,
     )
-    from yohou.utils.panel import inspect_locality
+    from yohou.utils.panel import inspect_panel
 
     return (
         fetch_electricity_demand,
-        inspect_locality,
+        inspect_panel,
         mo,
         plot_cross_correlation,
         plot_rolling_statistics,
         plot_seasonality,
         plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -57,14 +56,16 @@ def _(mo):
 
     ## Prerequisites
 
-    None. this is a standalone dataset exploration.
+    None; this is a standalone dataset exploration.
     """)
 
+
 @app.cell
-def _(fetch_electricity_demand):
-    df = fetch_electricity_demand().frame
-    df.head()
+def _(fetch_electricity_demand, plot_time_series):
+    df = fetch_electricity_demand().frame.head(10000)
+    plot_time_series(df, title="Victorian Electricity Demand")
     return (df,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -75,16 +76,18 @@ def _(mo):
     `state__demand` convention.
     """)
 
+
 @app.cell
-def _(df, inspect_locality, mo):
-    global_cols, panel_groups = inspect_locality(df)
+def _(df, inspect_panel, mo):
+    global_cols, panel_groups = inspect_panel(df)
     mo.md(f"""
     **Global columns**: {global_cols}
 
     **Panel groups** ({len(panel_groups)} groups):
 
-    {chr(10).join(f'- **{k}**: {v}' for k, v in panel_groups.items())}
+    {chr(10).join(f"- **{k}**: {v}" for k, v in panel_groups.items())}
     """)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -94,6 +97,7 @@ def _(mo):
     Plotting demand from all 5 states reveals scale differences: NSW and
     Victoria have the highest demand, while Tasmania is the smallest.
     """)
+
 
 @app.cell
 def _(df, plot_time_series):
@@ -105,6 +109,7 @@ def _(df, plot_time_series):
         title="Electricity Demand - All States (1 Week)",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -113,6 +118,7 @@ def _(mo):
     A 24-hour (48-step) rolling average of NSW demand highlights daily and
     weekly patterns beneath the noisy half-hourly readings.
     """)
+
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -125,6 +131,7 @@ def _(df, plot_rolling_statistics):
         title="NSW - 24-Hour Rolling Average",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -133,6 +140,7 @@ def _(mo):
     Cross-correlation quantifies how demand in one state relates to demand
     in another, revealing synchronised patterns.
     """)
+
 
 @app.cell
 def _(df, plot_cross_correlation):
@@ -143,6 +151,7 @@ def _(df, plot_cross_correlation):
         title="NSW vs Victoria Demand Cross-Correlation",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -152,6 +161,7 @@ def _(mo):
     consumption pattern across all states.
     """)
 
+
 @app.cell
 def _(df, plot_seasonality):
     plot_seasonality(
@@ -160,6 +170,7 @@ def _(df, plot_seasonality):
         seasonality="hour",
         title="NSW - Average Demand by Hour",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -174,10 +185,11 @@ def _(mo):
 
     ## Next Steps
 
-    - For monthly panel data, see `examples/datasets/hospital.py`
-    - For weekly panel data, see `examples/datasets/store_sales.py`
-    - For panel data forecasting, see `examples/datasets/australian_tourism_forecasting.py`
+    - For monthly panel data, see [`examples/datasets/hospital.py`](/examples/datasets/hospital/)
+    - For weekly panel data, see [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
+    - For advanced panel analytics, see [`examples/datasets/australian_tourism_forecasting.py`](/examples/datasets/australian_tourism_forecasting/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

@@ -46,6 +46,7 @@ tests = [
     "pytest-mock>=3.14",
     "pytest-xdist>=3.8",
     "covdefaults>=2.3",
+    "hypothesis>=6.100",
     "statsmodels>=0.14",
 ]
 lint = [
@@ -54,6 +55,7 @@ lint = [
 ]
 docs = [
     "mkdocs>=1.6.0,<2.0.0",
+    "mkdocs-autorefs>=1.0",
     "mkdocs-material>=9.7",
     "mkdocstrings[python]>=0.26.0",
     "pymdown-extensions>=10.20.1",
@@ -131,7 +133,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415"]  # Allow assert statements, prints, magic values, and imports not at the top
-"docs/**/*" = ["T201", "ARG001"]  # Allow prints and unused args in documentation hooks
+"docs/**/*" = ["T201", "ARG001", "PLW0603", "SIM105", "SIM108"]  # Allow prints, unused args, globals, and simplifiable patterns in documentation hooks
 
 [tool.ruff.lint.isort]
 known-first-party = ["yohou"]
@@ -210,6 +212,25 @@ include_namespace_packages = true
 [tool.coverage.html]
 show_contexts = true
 
+
+[tool.rumdl]
+flavor = "mkdocs"
+line-length = 120
+disable = [
+    "MD013",  # Line length (handled by formatter, many long URLs/tables)
+    "MD033",  # Inline HTML (needed for README logo, MkDocs grid cards)
+    "MD046",  # Code block style (indented blocks required inside MkDocs tabs)
+]
+exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv"]
+
+[tool.rumdl.per-file-ignores]
+# MD057 (relative links) suppressed for pages with links to build-time generated files.
+# These links are validated post-build by linkchecker (nox -s link_docs).
+"docs/pages/api/*.md" = ["MD001", "MD057"]  # mkdocstrings generates heading levels and files at build time
+"docs/pages/getting-started/installation.md" = ["MD057"]  # Links to not-yet-created extensions page
+".github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]  # PR template starts with checklist
+"README.md" = ["MD041"]  # README starts with logo, not heading
+"docs/index.md" = ["MD041"]  # Landing page starts with logo, not heading
 
 [tool.commitizen]
 name = "cz_conventional_commits"

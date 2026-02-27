@@ -54,10 +54,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    [point.PointReductionForecaster][] : Point forecaster using
-    reduction
-    [interval.IntervalReductionForecaster][] : Interval forecaster
-    using reduction
+    `PointReductionForecaster` : Point forecaster using reduction.
+    `IntervalReductionForecaster` : Interval forecaster using reduction.
     """
 
     def __init__(
@@ -343,7 +341,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         See Also
         --------
-        [utils.tabularization.tabularize][] : Creates lagged features
+        `tabularize` : Creates lagged features.
 
         """
         # Use provided y_columns or fall back to all columns from local_y_t_schema_

@@ -15,7 +15,7 @@ from yohou.plotting._utils import (
     resolve_color_palette,
 )
 from yohou.utils import validate_plotting_data
-from yohou.utils.panel import inspect_locality
+from yohou.utils.panel import inspect_panel
 
 __all__ = [
     "plot_autocorrelation",
@@ -25,7 +25,6 @@ __all__ = [
     "plot_partial_autocorrelation",
     "plot_scatter_matrix",
     "plot_seasonality",
-    "plot_stl_components",
     "plot_subseasonality",
 ]
 
@@ -109,6 +108,11 @@ def plot_autocorrelation(
     """
     # Validate inputs
     validate_plotting_data(df)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     if panel_group_names is not None:
 
@@ -367,8 +371,11 @@ def _compute_pacf(
 
     if alpha is not None:
         pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # type: ignore[arg-type]
-        ci_lo = confint[:, 0].tolist()
-        ci_hi = confint[:, 1].tolist()
+        # statsmodels returns CIs centered on the PACF values (pacf ± z/√n).
+        # For significance testing we need horizontal bands at ±z/√n (centered
+        # on zero), so subtract the PACF values from both bounds.
+        ci_lo = (confint[:, 0] - pacf_result).tolist()
+        ci_hi = (confint[:, 1] - pacf_result).tolist()
         return pacf_result.tolist(), ci_lo, ci_hi
 
     pacf_result = sm_pacf(values, nlags=nlags, method=method)  # type: ignore[arg-type]
@@ -464,6 +471,11 @@ def plot_partial_autocorrelation(
     """
     # Validate inputs
     validate_plotting_data(df)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     if panel_group_names is not None:
 
@@ -677,16 +689,19 @@ def plot_correlation_heatmap(
     # Validate inputs
     validate_plotting_data(df)
 
-    if panel_group_names is not None:
-        _, panel_groups = inspect_locality(df)
+    # Auto-detect panel data
+    _, panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and panel_groups:
+        panel_group_names = []
 
+    if panel_group_names is not None:
         # Normalize columns to list for member filtering
         col_filter = [columns] if isinstance(columns, str) else columns
 
         # Filter to requested groups and optionally by member postfix
         groups: dict[str, list[str]] = {}
         for g, gcols in panel_groups.items():
-            if g in panel_group_names:
+            if not panel_group_names or g in panel_group_names:
                 filtered = [c for c in gcols if c.split("__", 1)[1] in col_filter] if col_filter is not None else gcols
                 if filtered:
                     groups[g] = filtered
@@ -715,7 +730,7 @@ def plot_correlation_heatmap(
             # Strip prefix for display
             base_names = [c.split("__", 1)[1] if "__" in c else c for c in gcols]
             sub = df.select(gcols).rename(dict(zip(gcols, base_names, strict=False)))
-            corr = sub.corr()
+            corr = sub.drop_nulls().corr()
             text_ann = None
             if show_values:
                 text_ann = [[f"{v:.2f}" if v is not None else "" for v in row] for row in corr.rows()]
@@ -753,7 +768,7 @@ def plot_correlation_heatmap(
     show_values = kwargs.get("show_values", True)
 
     # Compute correlation matrix
-    corr_matrix = df.select(plot_columns).corr()
+    corr_matrix = df.select(plot_columns).drop_nulls().corr()
 
     # Create heatmap
     fig = go.Figure()
@@ -926,7 +941,11 @@ def plot_seasonality(
     # ── Validate ─────────────────────────────────────────────────────────
     validate_plotting_data(df)
 
-    # ── panel path ───────────────────────────────────────────────────────
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
+
     if panel_group_names is not None:
 
         def _render_season(
@@ -963,7 +982,7 @@ def plot_seasonality(
                         name=str(cyc),
                         legendgroup=str(cyc),
                         showlegend=False,
-                        hovertemplate=f"<b>{base} – {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
+                        hovertemplate=f"<b>{base} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
                     ),
                     row=row,
                     col=col,
@@ -975,7 +994,7 @@ def plot_seasonality(
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
-            title=title or f"Seasonal Plot – {seasonality} (Panel)",
+            title=title or f"Seasonal Plot - {seasonality} (Panel)",
             x_label=x_label or seasonality.capitalize(),
             y_label=y_label,
             width=width,
@@ -1014,7 +1033,7 @@ def plot_seasonality(
                     name=str(cyc),
                     legendgroup=str(cyc),
                     showlegend=(col_name == plot_columns[0]),
-                    hovertemplate=f"<b>{col_name} – {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
+                    hovertemplate=f"<b>{col_name} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
                 )
             )
 
@@ -1209,7 +1228,7 @@ def plot_subseasonality(
 
     fig = apply_default_layout(
         fig,
-        title=title or f"Seasonal Subseries – {seasonality}",
+        title=title or f"Seasonal Subseries - {seasonality}",
         x_label=x_label,
         y_label=y_label,
         width=width,
@@ -1308,6 +1327,11 @@ def plot_lag_scatter(
     """
     # Validate inputs
     validate_plotting_data(df)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     if panel_group_names is not None:
         _lag_list = [lags] if isinstance(lags, int) else lags
@@ -1723,9 +1747,11 @@ def plot_cross_correlation(
     marker_color = kwargs.get("marker_color", "#2563EB")
     line_color = kwargs.get("line_color", "#94a3b8")
 
-    # Get series
-    x = df[x_column].to_numpy()
-    y = df[y_column].to_numpy()
+    # Get series - drop rows where either column is null so NaN does not
+    # poison the mean / std / correlation calculations.
+    clean = df.select(x_column, y_column).drop_nulls()
+    x = clean[x_column].to_numpy()
+    y = clean[y_column].to_numpy()
     n = len(x)
 
     # Compute cross-correlation for each lag
@@ -1837,301 +1863,6 @@ def plot_cross_correlation(
     return fig
 
 
-# ── STL decomposition helpers ────────────────────────────────────────────
-
-_INTERVAL_TO_STL_PERIOD: dict[str, int] = {
-    "1h": 24,
-    "1d": 7,
-    "7d": 52,
-    "1mo": 12,
-    "2mo": 6,
-    "3mo": 4,
-    "6mo": 2,
-}
-
-
-def _compute_stl(
-    series: pl.Series,
-    *,
-    period: int,
-    trend_window: int | None = None,
-    seasonal_window: int | None = None,
-    low_pass_window: int | None = None,
-    robust: bool = True,
-) -> dict[str, list[float]]:
-    """Run STL decomposition on a single numeric series.
-
-    Parameters
-    ----------
-    series : pl.Series
-        Numeric values (NaN-interpolated before decomposition).
-    period : int
-        Seasonal period in observations.
-    trend_window : int | None
-        Trend smoother window.  Passed to ``STL(trend=...)``.
-    seasonal_window : int | None
-        Seasonal smoother window.  Passed to ``STL(seasonal=...)``.
-    low_pass_window : int | None
-        Low-pass filter window.  Passed to ``STL(low_pass=...)``.
-    robust : bool
-        Whether to use robust fitting (down-weights outliers).
-
-    Returns
-    -------
-    dict[str, list[float]]
-        Keys: ``observed``, ``trend``, ``seasonal``, ``residual``,
-        ``seasonal_adjusted``.
-
-    """
-    import warnings  # noqa: PLC0415
-
-    try:
-        from statsmodels.tsa.seasonal import STL  # noqa: PLC0415
-    except ImportError:
-        msg = (
-            "statsmodels is required for STL decomposition. "
-            "Install it with:  pip install yohou[plotting]  "
-            "or  pip install statsmodels"
-        )
-        raise ImportError(msg) from None
-
-    values = series.to_list()
-    clean = pl.Series(values).interpolate().forward_fill().backward_fill()
-    n_interpolated = sum(v is None or (isinstance(v, float) and np.isnan(v)) for v in values) - sum(
-        v is None or (isinstance(v, float) and np.isnan(v)) for v in clean.to_list()
-    )
-    if n_interpolated > 0:
-        warnings.warn(
-            f"Interpolated {n_interpolated} NaN value(s) before STL decomposition.",
-            UserWarning,
-            stacklevel=3,
-        )
-
-    clean_np = clean.to_numpy().astype(float)
-
-    stl_kwargs: dict = {"period": period, "robust": robust}
-    if trend_window is not None:
-        stl_kwargs["trend"] = trend_window if trend_window % 2 == 1 else trend_window + 1
-    if seasonal_window is not None:
-        stl_kwargs["seasonal"] = seasonal_window if seasonal_window % 2 == 1 else seasonal_window + 1
-    if low_pass_window is not None:
-        stl_kwargs["low_pass"] = low_pass_window if low_pass_window % 2 == 1 else low_pass_window + 1
-
-    result = STL(clean_np, **stl_kwargs).fit()
-
-    return {
-        "observed": clean_np.tolist(),
-        "trend": result.trend.tolist(),
-        "seasonal": result.seasonal.tolist(),
-        "residual": result.resid.tolist(),
-        "seasonal_adjusted": (clean_np - result.seasonal).tolist(),
-    }
-
-
-def plot_stl_components(
-    df: pl.DataFrame,
-    *,
-    columns: str | list[str] | None = None,
-    components: tuple[str, ...] | list[str] = (
-        "observed",
-        "trend",
-        "seasonal",
-        "residual",
-        "seasonal_adjusted",
-    ),
-    period: int | str = "auto",
-    trend_window: int | None = None,
-    seasonal_window: int | None = None,
-    low_pass_window: int | None = None,
-    robust: bool = True,
-    color_palette: list[str] | None = None,
-    title: str | None = None,
-    x_label: str | None = None,
-    y_label: str | None = None,
-    width: int | None = None,
-    height: int | None = None,
-    **kwargs,
-) -> go.Figure:
-    """Plot STL decomposition components.
-
-    Runs ``statsmodels.tsa.seasonal.STL`` on each selected column and renders
-    the components as vertically stacked subplots sharing the time axis.
-    Unlike `plot_components` (which visualises pre-computed Yohou
-    pipeline components), this function performs the decomposition internally
-    and is useful for quick diagnostic exploration before modelling.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input DataFrame with 'time' column and numeric columns.
-    columns : str | list[str] | None, default=None
-        Column(s) to decompose. If None, uses all numeric columns except
-        'time'.
-    components : tuple[str, ...] | list[str]
-        Which components to display.  Subset of ``("observed", "trend",
-        "seasonal", "residual", "seasonal_adjusted")``.
-    period : int | str, default="auto"
-        Seasonal period in observations (e.g. 12 for monthly data with yearly
-        seasonality).  ``"auto"`` infers the period from the data's time
-        frequency.
-    trend_window : int | None, default=None
-        Trend smoother window length (must be odd; auto-corrected if even).
-    seasonal_window : int | None, default=None
-        Seasonal smoother window length (must be odd).
-    low_pass_window : int | None, default=None
-        Low-pass filter window length (must be odd).
-    robust : bool, default=True
-        Use robust STL fitting to down-weight outliers.
-    color_palette : list[str] | None, default=None
-        Custom color palette (one color per component).
-    title : str | None, default=None
-        Plot title.
-    x_label : str | None, default=None
-        X-axis label.
-    y_label : str | None, default=None
-        Y-axis label.
-    width : int | None, default=None
-        Plot width in pixels.
-    height : int | None, default=None
-        Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=2.0
-        - line_dash : str, default="solid"
-
-    Returns
-    -------
-    go.Figure
-        Plotly figure with stacked component subplots.
-
-    Raises
-    ------
-    ImportError
-        When ``statsmodels`` is not installed.
-    ValueError
-        When *period* is ``"auto"`` and the data interval cannot be mapped
-        to a known STL period.
-
-    Examples
-    --------
-    >>> import polars as pl
-    >>> from yohou.plotting import plot_stl_components
-
-    >>> df = pl.DataFrame({
-    ...     "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2022, 12, 31), "1mo", eager=True),
-    ...     "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(60)],
-    ... })
-
-    >>> fig = plot_stl_components(df, columns="y")  # doctest: +SKIP
-    >>> len(fig.data) > 0  # doctest: +SKIP
-    True
-
-    See Also
-    --------
-    plot_components : Plot pre-computed Yohou decomposition components.
-    plot_seasonality : Plot seasonal overlay.
-    """
-    validate_plotting_data(df)
-
-    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-
-    # ── Resolve STL period ───────────────────────────────────────────────
-    if isinstance(period, str) and period == "auto":
-        from yohou.utils.validation import check_interval_consistency  # noqa: PLC0415
-
-        interval = check_interval_consistency(df)
-        stl_period = _INTERVAL_TO_STL_PERIOD.get(interval)
-        if stl_period is None:
-            msg = (
-                f"Cannot infer STL period for interval '{interval}'. "
-                f"Supported intervals: {sorted(_INTERVAL_TO_STL_PERIOD)}. "
-                f"Pass an explicit integer for 'period'."
-            )
-            raise ValueError(msg)
-    else:
-        stl_period = int(period)
-
-    # ── Validate components ──────────────────────────────────────────────
-    valid_components = {"observed", "trend", "seasonal", "residual", "seasonal_adjusted"}
-    components_list = list(components)
-    unknown = set(components_list) - valid_components
-    if unknown:
-        msg = f"Unknown components: {unknown}. Valid: {sorted(valid_components)}"
-        raise ValueError(msg)
-
-    n_components = len(components_list)
-    n_cols = len(plot_columns)
-    n_subplot_cols = max(n_cols, 1)
-    n_subplot_rows = n_components
-
-    time_vals = df["time"].to_list()
-
-    # ── Build subplot titles ─────────────────────────────────────────────
-    subplot_titles: list[str] = []
-    for comp in components_list:
-        for col_name in plot_columns:
-            label = comp.replace("_", " ").title()
-            subplot_titles.append(f"{label} – {col_name}" if n_cols > 1 else label)
-
-    fig = make_subplots(
-        rows=n_subplot_rows,
-        cols=n_subplot_cols,
-        subplot_titles=subplot_titles,
-        shared_xaxes=True,
-        vertical_spacing=0.04,
-    )
-
-    colors = resolve_color_palette(color_palette, n_components)
-    line_width = kwargs.get("line_width", 2.0)
-    line_dash = kwargs.get("line_dash", "solid")
-
-    for ci, col_name in enumerate(plot_columns):
-        stl_result = _compute_stl(
-            df[col_name],
-            period=stl_period,
-            trend_window=trend_window,
-            seasonal_window=seasonal_window,
-            low_pass_window=low_pass_window,
-            robust=robust,
-        )
-
-        for ri, comp in enumerate(components_list):
-            fig.add_trace(
-                go.Scatter(
-                    x=time_vals,
-                    y=stl_result[comp],
-                    mode="lines",
-                    line={
-                        "color": colors[ri % len(colors)],
-                        "width": line_width,
-                        "dash": line_dash,
-                    },
-                    name=comp.replace("_", " ").title(),
-                    legendgroup=comp,
-                    showlegend=(ci == 0),
-                    hovertemplate=(
-                        f"<b>{col_name} – {comp.replace('_', ' ').title()}</b><br>"
-                        f"Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>"
-                    ),
-                ),
-                row=ri + 1,
-                col=ci + 1,
-            )
-
-    auto_height = max(450, n_subplot_rows * 220)
-
-    fig = apply_default_layout(
-        fig,
-        title=title,
-        x_label=x_label,
-        y_label=y_label,
-        width=width,
-        height=height if height is not None else auto_height,
-    )
-
-    return fig
-
-
 def plot_scatter_matrix(
     df: pl.DataFrame,
     *,
@@ -2149,9 +1880,9 @@ def plot_scatter_matrix(
 
     Creates an N×N grid for selected numeric columns:
 
-    * **Lower triangle** – pairwise scatter plots.
-    * **Diagonal** – KDE curves (default), histograms, or nothing.
-    * **Upper triangle** – Pearson *r* annotations with font size
+    * **Lower triangle** - pairwise scatter plots.
+    * **Diagonal** - KDE curves (default), histograms, or nothing.
+    * **Upper triangle** - Pearson *r* annotations with font size
       scaled by ``|r|``.
 
     Points can optionally be coloured by season (``seasonality`` parameter).
@@ -2358,16 +2089,19 @@ def plot_scatter_matrix(
                 if len(sub) > 2:
                     r_val, _ = pearsonr(sub[col_x].to_numpy(), sub[col_y].to_numpy())
                     font_sz = max(10, int(corr_font_size * abs(r_val)))
-                    # xref / yref for the subplot cell
-                    axis_idx = (ri) * n + ci + 1
-                    x_ref = f"x{axis_idx}" if axis_idx > 1 else "x"
-                    y_ref = f"y{axis_idx}" if axis_idx > 1 else "y"
+                    # Use paper coordinates derived from subplot axis domains
+                    # so each annotation lands in its own cell.
+                    axis_idx = ri * n + ci + 1
+                    x_key = f"xaxis{axis_idx}" if axis_idx > 1 else "xaxis"
+                    y_key = f"yaxis{axis_idx}" if axis_idx > 1 else "yaxis"
+                    x_domain = fig.layout[x_key].domain
+                    y_domain = fig.layout[y_key].domain
                     fig.add_annotation(
                         text=f"{r_val:.2f}",
-                        xref=f"{x_ref} domain",
-                        yref=f"{y_ref} domain",
-                        x=0.5,
-                        y=0.5,
+                        xref="paper",
+                        yref="paper",
+                        x=(x_domain[0] + x_domain[1]) / 2,
+                        y=(y_domain[0] + y_domain[1]) / 2,
                         showarrow=False,
                         font={"size": font_sz},
                     )

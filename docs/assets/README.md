@@ -5,11 +5,13 @@ This directory contains visual assets for the documentation.
 ## Expected Images
 
 ### Screenshots
+
 - `screenshot_light.png` / `screenshot_dark.png` - Main product screenshot (800px+ width)
 - `feature_X_light.png` / `feature_X_dark.png` - Feature-specific screenshots
 - `example_N_light.png` / `example_N_dark.png` - Example output visualizations
 
 ### Diagrams
+
 - `architecture_light.png` / `architecture_dark.png` - System architecture diagram
 - `workflow_light.png` / `workflow_dark.png` - Workflow/process diagrams
 

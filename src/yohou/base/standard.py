@@ -26,6 +26,12 @@ class BaseStandardForecaster:
     (pl.DataFrame). Child classes that need type narrowing can explicitly
     call these methods via `BaseStandardForecaster._pre_fit_standard(self, ...)`.
 
+    See Also
+    --------
+    `BaseForecaster` : Main forecaster base combining standard and panel operations.
+    `BasePanelForecaster` : Panel (multi-series) forecaster mixin.
+    `BaseReductionForecaster` : Reduction-based forecaster using sklearn regressors.
+
     """
 
     # Type hints for attributes set by BaseForecaster

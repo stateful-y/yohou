@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import polars as pl
 from plotly.subplots import make_subplots
 
-from yohou.utils import inspect_locality
+from yohou.utils import inspect_panel
 
 __all__ = [
     "DEFAULT_LAYOUT",
@@ -15,7 +15,6 @@ __all__ = [
     "palette_yohou",
     "panel_facet_figure",
     "resolve_color_palette",
-    "validate_plotting_params",
 ]
 
 
@@ -43,10 +42,10 @@ def palette_yohou() -> dict[str, str]:
         "green": "#059669",  # Success green
         "purple": "#7C3AED",  # Accent purple
         "orange": "#EA580C",  # Warning orange
-        "teal": "#0D9488",  # Teal accent
         "pink": "#DB2777",  # Pink accent
-        "indigo": "#4F46E5",  # Indigo accent
         "yellow": "#CA8A04",  # Gold/yellow
+        "indigo": "#4F46E5",  # Indigo accent
+        "teal": "#0D9488",  # Teal accent
         "cyan": "#0891B2",  # Cyan accent
         "gray": "#64748B",  # Neutral gray
         "slate": "#475569",  # Dark slate
@@ -123,48 +122,6 @@ def resolve_color_palette(color_palette: list[str] | None, n: int) -> list[str]:
     if color_palette is None:
         return get_color_sequence(n)
     return [color_palette[i % len(color_palette)] for i in range(n)]
-
-
-def validate_plotting_params(
-    *,
-    kind: str | None = None,
-    valid_kinds: set[str] | None = None,
-    facet_n_cols: int | None = None,
-    n_bins: int | None = None,
-) -> None:
-    """Validate common plotting function parameters.
-
-    Parameters
-    ----------
-    kind : str or None
-        Plot sub-type to validate.
-    valid_kinds : set of str or None
-        Allowed values for *kind*.  Both must be provided together.
-    facet_n_cols : int or None
-        Number of facet columns (must be >= 1).
-    n_bins : int or None
-        Number of histogram bins (must be >= 1).
-
-    Raises
-    ------
-    ValueError
-        If any parameter is invalid.
-
-    Examples
-    --------
-    >>> from yohou.plotting._utils import validate_plotting_params
-    >>> validate_plotting_params(kind="line", valid_kinds={"line", "bar"})
-    >>> validate_plotting_params(facet_n_cols=2, n_bins=10)
-    """
-    if kind is not None and valid_kinds is not None and kind not in valid_kinds:
-        msg = f"kind must be one of {sorted(valid_kinds)!r}, got {kind!r}"
-        raise ValueError(msg)
-    if facet_n_cols is not None and facet_n_cols < 1:
-        msg = f"facet_n_cols must be >= 1, got {facet_n_cols}"
-        raise ValueError(msg)
-    if n_bins is not None and n_bins < 1:
-        msg = f"n_bins must be >= 1, got {n_bins}"
-        raise ValueError(msg)
 
 
 def _normalize_y_pred(
@@ -299,7 +256,8 @@ def resolve_panel_columns(
     df : pl.DataFrame
         Input DataFrame with panel columns (``group__member`` pattern).
     panel_group_names : list[str] | None, default=None
-        Group prefixes to include.  If ``None`` all groups are included.
+        Group prefixes to include.  If ``None`` or empty, all groups
+        are included.
     columns : str | list[str] | None, default=None
         Member names (postfixes after ``__``) to include within the
         selected groups.  If ``None``, all members of each group are
@@ -333,12 +291,12 @@ def resolve_panel_columns(
     >>> resolve_panel_columns(df, panel_group_names=["sales"], columns=["b"])
     ['sales__b']
     """
-    _, panels = inspect_locality(df)
+    _, panels = inspect_panel(df)
     if isinstance(columns, str):
         columns = [columns]
     cols: list[str] = []
     for prefix, members in panels.items():
-        if panel_group_names is None or prefix in panel_group_names:
+        if not panel_group_names or prefix in panel_group_names:
             if columns is not None:
                 for member in members:
                     _, _, postfix = member.partition("__")
@@ -355,8 +313,47 @@ def resolve_panel_columns(
     return cols
 
 
-def _panel_col_display(col: str) -> str:
-    """Turn ``group__member`` into a readable subplot title.
+def _group_panel_columns(
+    panel_cols: list[str],
+) -> tuple[dict[str, list[str]], list[str]]:
+    """Group panel columns by prefix and collect unique member names.
+
+    Parameters
+    ----------
+    panel_cols : list[str]
+        Flat list of panel column names (e.g. ``["T3__a", "T3__b", "T4__a"]``).
+
+    Returns
+    -------
+    groups : dict[str, list[str]]
+        Mapping from group prefix to its full column names,
+        preserving insertion order.
+    all_members : list[str]
+        Unique member postfixes in first-seen order, usable as a
+        stable colour index across groups.
+
+    Examples
+    --------
+    >>> _group_panel_columns(["T3__a", "T3__b", "T4__a", "T4__b"])
+    ({'T3': ['T3__a', 'T3__b'], 'T4': ['T4__a', 'T4__b']}, ['a', 'b'])
+
+    >>> _group_panel_columns(["plain_col"])
+    ({'plain_col': ['plain_col']}, ['plain_col'])
+    """
+    groups: dict[str, list[str]] = {}
+    all_members: list[str] = []
+    for col in panel_cols:
+        prefix, sep, member = col.partition("__")
+        key = prefix if sep else col
+        m = member if sep else col
+        groups.setdefault(key, []).append(col)
+        if m not in all_members:
+            all_members.append(m)
+    return groups, all_members
+
+
+def _member_name(col: str) -> str:
+    """Return the member postfix of a panel column (part after ``__``).
 
     Parameters
     ----------
@@ -366,9 +363,11 @@ def _panel_col_display(col: str) -> str:
     Returns
     -------
     str
-        Display-ready label with en-dash separator.
+        Member postfix, or the column name itself when there is no
+        ``__`` separator.
     """
-    return col.replace("__", " \u2013 ")
+    _, sep, member = col.partition("__")
+    return member if sep else col
 
 
 def panel_facet_figure(
@@ -388,16 +387,22 @@ def panel_facet_figure(
 ) -> go.Figure:
     """Create a faceted subplot figure for panel data.
 
-    For each panel column the *render_fn* callback is invoked with a
-    sub-DataFrame containing ``"time"`` and the single panel column
-    renamed to its unprefixed base name.
+    Panel columns are grouped by their group prefix (the part before
+    ``__``).  Each group gets one subplot titled with the group name.
+    Within each group, the *render_fn* callback is invoked once per
+    member column with a sub-DataFrame containing ``"time"`` and the
+    member column renamed to its member name (part after ``__``).
 
     Parameters
     ----------
     df : pl.DataFrame
         Input DataFrame with panel columns.
     render_fn : Callable
-        ``(fig, sub_df, display_name, panel_idx, row, col) -> None``.
+        ``(fig, sub_df, member_name, member_idx, row, col) -> None``.
+        *member_name* is the member postfix (e.g. ``"a"`` for
+        column ``"y__a"``).  *member_idx* is the index of that
+        member among all unique members, guaranteeing consistent
+        colouring across groups.
     panel_group_names : list[str] | None, default=None
         Group prefixes to include (``None`` means all).
     columns : str | list[str] | None, default=None
@@ -435,8 +440,9 @@ def panel_facet_figure(
     ...     "y__b": [40, 50, 60],
     ... })
     >>> def render(fig, sub_df, name, idx, row, col):
+    ...     base = [c for c in sub_df.columns if c != "time"][0]
     ...     fig.add_trace(
-    ...         go.Scatter(x=sub_df["time"], y=sub_df["y"], name=name),
+    ...         go.Scatter(x=sub_df["time"], y=sub_df[base], name=name),
     ...         row=row,
     ...         col=col,
     ...     )
@@ -445,31 +451,31 @@ def panel_facet_figure(
     2
     """
     panel_cols = resolve_panel_columns(df, panel_group_names, columns)
-    n_panels = len(panel_cols)
-    n_cols_grid = min(n_panels, facet_n_cols)
-    n_rows = (n_panels + n_cols_grid - 1) // n_cols_grid
+    groups, all_members = _group_panel_columns(panel_cols)
 
-    subplot_titles = [_panel_col_display(c) for c in panel_cols]
+    n_groups = len(groups)
+    n_cols_grid = min(n_groups, facet_n_cols)
+    n_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
 
     fig = make_subplots(
         rows=n_rows,
         cols=n_cols_grid,
-        subplot_titles=subplot_titles,
+        subplot_titles=list(groups.keys()),
         shared_xaxes=shared_xaxes,
         vertical_spacing=max(0.04, 0.3 / n_rows),
         horizontal_spacing=0.08,
     )
 
-    for idx, col in enumerate(panel_cols):
-        row = idx // n_cols_grid + 1
-        col_idx = idx % n_cols_grid + 1
+    for group_idx, (_, group_cols) in enumerate(groups.items()):
+        row = group_idx // n_cols_grid + 1
+        col_idx = group_idx % n_cols_grid + 1
 
-        parts = col.split("__", 1)
-        base_name = parts[0] if len(parts) == 2 else col
-        sub_df = df.select("time", pl.col(col).alias(base_name))
+        for col in group_cols:
+            member = _member_name(col)
+            member_idx = all_members.index(member)
 
-        display = _panel_col_display(col)
-        render_fn(fig, sub_df, display, idx, row, col_idx)
+            sub_df = df.select("time", pl.col(col).alias(member))
+            render_fn(fig, sub_df, member, member_idx, row, col_idx)
 
     default_height = max(row_height * n_rows, 400)
 

@@ -9,7 +9,7 @@ from yohou.metrics import MeanAbsoluteError
 from yohou.plotting import (
     plot_calibration,
     plot_model_comparison_bar,
-    plot_residual_time_series,
+    plot_residuals,
     plot_score_distribution,
     plot_score_per_horizon,
     plot_score_time_series,
@@ -148,28 +148,26 @@ def sample_comparison_results():
     }
 
 
-class TestPlotResidualTimeSeries:
-    """Tests for plot_residual_time_series function."""
+class TestPlotResiduals:
+    """Tests for plot_residuals function."""
 
     def test_basic(self, sample_residuals_data):
         """Test basic residual diagnostics plot."""
-        fig = plot_residual_time_series(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"])
+        fig = plot_residuals(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
         assert fig.layout.title.text == "Residual Diagnostics"
 
     def test_explicit_column(self, sample_residuals_data):
         """Test with explicit columns parameter."""
-        fig = plot_residual_time_series(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], columns="y")
+        fig = plot_residuals(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], columns="y")
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
     def test_missing_column(self, sample_residuals_data):
         """Test error when column is missing from y_pred."""
         with pytest.raises(ValueError, match="not found"):
-            plot_residual_time_series(
-                sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], columns="nonexistent"
-            )
+            plot_residuals(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], columns="nonexistent")
 
     def test_panel_residuals(self):
         """Test panel residuals plot with panel-formatted data."""
@@ -184,22 +182,20 @@ class TestPlotResidualTimeSeries:
             "y__a": [100 + i + (i % 3) for i in range(10)],
             "y__b": [200 + i - (i % 2) for i in range(10)],
         })
-        fig = plot_residual_time_series(y_pred, y_truth, panel_group_names=["y"])
+        fig = plot_residuals(y_pred, y_truth, panel_group_names=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1  # At least one trace for panel facets
 
     def test_custom_title(self, sample_residuals_data):
         """Test custom title."""
-        fig = plot_residual_time_series(
+        fig = plot_residuals(
             sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], title="Custom Residuals"
         )
         assert fig.layout.title.text == "Custom Residuals"
 
     def test_custom_dimensions(self, sample_residuals_data):
         """Test custom width and height."""
-        fig = plot_residual_time_series(
-            sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], width=1200, height=800
-        )
+        fig = plot_residuals(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], width=1200, height=800)
         assert fig.layout.width == 1200
         assert fig.layout.height == 800
 
@@ -216,7 +212,7 @@ class TestPlotResidualTimeSeries:
             "a": [i + 1 for i in range(20)],
             "b": [i + 20 - 1 for i in range(20)],
         })
-        fig = plot_residual_time_series(y_pred, y_truth, columns=["a", "b"])
+        fig = plot_residuals(y_pred, y_truth, columns=["a", "b"])
         assert isinstance(fig, go.Figure)
         # 2 scatter traces + 2 hline shapes (one per column facet)
         assert len(fig.data) == 2
@@ -236,7 +232,7 @@ class TestPlotResidualTimeSeries:
             "y": [i + 10 - 1 for i in range(10)],
         })
         # Two common columns -> faceted (not 4-panel)
-        fig = plot_residual_time_series(y_pred, y_truth)
+        fig = plot_residuals(y_pred, y_truth)
         assert len(fig.data) == 2
 
     def test_facet_n_cols(self):
@@ -254,7 +250,7 @@ class TestPlotResidualTimeSeries:
             "b": [i + 1 for i in range(10)],
             "c": [i + 1 for i in range(10)],
         })
-        fig = plot_residual_time_series(y_pred, y_truth, columns=["a", "b", "c"], facet_n_cols=3)
+        fig = plot_residuals(y_pred, y_truth, columns=["a", "b", "c"], facet_n_cols=3)
         # 3 columns in a single row → 3 traces
         assert len(fig.data) == 3
 
@@ -272,14 +268,14 @@ class TestPlotResidualTimeSeries:
             "y__b": [200 + i - 1 for i in range(10)],
         })
         # Filter to member "a" only
-        fig = plot_residual_time_series(y_pred, y_truth, panel_group_names=["y"], columns=["a"])
+        fig = plot_residuals(y_pred, y_truth, panel_group_names=["y"], columns=["a"])
         assert isinstance(fig, go.Figure)
         # Single panel column → 4-panel diagnostics (5 traces: scatter, scatter, hist, scatter, line)
         assert len(fig.data) >= 4
 
     def test_single_column_gives_four_panels(self, sample_residuals_data):
         """Test that single column still produces 4-panel diagnostics layout."""
-        fig = plot_residual_time_series(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"])
+        fig = plot_residuals(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"])
         # 4-panel: residual scatter, fitted scatter, histogram, QQ scatter, QQ ref line = 5
         assert len(fig.data) == 5
 

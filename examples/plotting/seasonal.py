@@ -4,26 +4,23 @@
 #     "yohou",
 # ]
 # ///
-"""Seasonal and Frequency Domain Analysis.
-
-Demonstrates seasonality overlays, subseries plots, ACF/PACF, power spectrum, and
-phase spectrum with varied parameter combinations.
-
-Datasets: tourism_monthly, sunspot, tourism_quarterly
-Demonstrates: plot_seasonality, plot_subseasonality, plot_autocorrelation,
-    plot_partial_autocorrelation
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Seasonal Analysis",
+    "description": "Seasonal overlays, subseasonal structure analysis, and ACF/PACF correlation patterns for monthly, quarterly, and long-cycle time series datasets.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _():
@@ -49,6 +46,7 @@ def _():
         plot_subseasonality,
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -56,8 +54,8 @@ def _(mo):
 
     ## What You'll Learn
 
-    - Overlaying seasonal cycles with `plot_seasonality` and highlighting specific years
-    - Inspecting subseasonal structure with `plot_subseasonality`
+    - Overlaying seasonal cycles with [`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/) and highlighting specific years
+    - Inspecting subseasonal structure with [`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)
     - Identifying autocorrelation and partial autocorrelation patterns for AR/MA order selection
     - Applying these diagnostics to monthly, quarterly, and long-cycle datasets
 
@@ -66,47 +64,67 @@ def _(mo):
     Basic understanding of seasonality, autocorrelation, and the frequency domain. Familiarity with time series terminology.
     """)
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Load Datasets
+
+    We load three datasets using [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/), [`fetch_tourism_quarterly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_quarterly/),
+    and [`fetch_sunspot`](/pages/api/generated/yohou.datasets._fetchers.fetch_sunspot/). The monthly tourism data provides a strong yearly cycle,
+    the quarterly data demonstrates coarser granularity, and the sunspot data
+    offers a long-cycle (approximately 11-year) periodic signal.
+    """)
+
+
 @app.cell
-def _(fetch_tourism_monthly, fetch_tourism_quarterly, fetch_sunspot):
-    tourism_monthly = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+def _(fetch_sunspot, fetch_tourism_monthly, fetch_tourism_quarterly):
+    tourism_monthly = (
+        fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    )
     sunspots = fetch_sunspot().frame
     tourism_quarterly = fetch_tourism_quarterly().frame
-    return tourism_monthly, tourism_quarterly, sunspots
+    return tourism_monthly, tourism_quarterly
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Seasonal Overlay
 
-    `plot_seasonality` overlays one line per cycle on the same seasonal axis (FPP3
+    [`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/) overlays one line per cycle on the same seasonal axis (FPP3
     gg_season style). Vary the **seasonality**, use **highlight** to emphasise
     specific years, and pass **panel_group_names** for panel data.
     """)
 
+
 @app.cell
-def _(tourism_monthly, plot_seasonality):
+def _(plot_seasonality, tourism_monthly):
     plot_seasonality(
         tourism_monthly,
         seasonality="month",
-        title="Seasonal Overlay -- Monthly",
+        title="Seasonal Overlay - Monthly",
     )
 
+
 @app.cell
-def _(tourism_monthly, plot_seasonality):
+def _(plot_seasonality, tourism_monthly):
     plot_seasonality(
         tourism_monthly,
         seasonality="quarter",
-        title="Seasonal Overlay -- Quarterly",
+        title="Seasonal Overlay - Quarterly",
     )
 
+
 @app.cell
-def _(tourism_monthly, plot_seasonality):
+def _(plot_seasonality, tourism_monthly):
     plot_seasonality(
         tourism_monthly,
         seasonality="month",
         highlight=[2000, 2005],
-        title="Seasonal Overlay -- Highlighting 2000 and 2005",
+        title="Seasonal Overlay - Highlighting 2000 and 2005",
     )
+
 
 @app.cell
 def _(plot_seasonality, tourism_quarterly):
@@ -114,133 +132,147 @@ def _(plot_seasonality, tourism_quarterly):
         tourism_quarterly,
         seasonality="quarter",
         panel_group_names=["T1", "T2"],
-        title="Seasonal Overlay -- Tourism Quarterly Panel (T1 & T2)",
+        title="Seasonal Overlay - Tourism Quarterly Panel (T1 & T2)",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Subseries Analysis
 
-    `plot_subseasonality` creates one mini-plot per season category (e.g. January
+    [`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/) creates one mini-plot per season category (e.g. January
     values across all years). Toggle **show_mean** for a horizontal reference, and
     adjust **n_cols** to change the grid layout.
     """)
 
+
 @app.cell
-def _(tourism_monthly, plot_subseasonality):
+def _(plot_subseasonality, tourism_monthly):
     plot_subseasonality(
         tourism_monthly,
         seasonality="month",
         show_mean=True,
-        title="Subseries -- Monthly with Mean Line",
+        title="Subseries - Monthly with Mean Line",
     )
 
+
 @app.cell
-def _(tourism_monthly, plot_subseasonality):
+def _(plot_subseasonality, tourism_monthly):
     plot_subseasonality(
         tourism_monthly,
         seasonality="quarter",
         facet_n_cols=2,
-        title="Subseries -- Quarterly (2-Column Grid)",
+        title="Subseries - Quarterly (2-Column Grid)",
     )
 
+
 @app.cell
-def _(tourism_monthly, plot_subseasonality):
+def _(plot_subseasonality, tourism_monthly):
     plot_subseasonality(
         tourism_monthly,
         seasonality="month",
         show_mean=False,
-        title="Subseries -- Monthly, No Mean Line",
+        title="Subseries - Monthly, No Mean Line",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Autocorrelation
 
-    `plot_autocorrelation` plots the ACF up to **max_lags**. Significant seasonal
+    [`plot_autocorrelation`](/pages/api/generated/yohou.plotting.diagnostics.plot_autocorrelation/) plots the ACF up to **max_lags**. Significant seasonal
     peaks appear at multiples of the seasonal period (lag 12, 24, 36 for monthly
     data). Vary **confidence_level** and toggle **show_confidence**.
     """)
 
+
 @app.cell
-def _(tourism_monthly, plot_autocorrelation):
+def _(plot_autocorrelation, tourism_monthly):
     plot_autocorrelation(
         tourism_monthly,
         max_lags=36,
-        title="ACF -- 36 Lags (Default 95% CI)",
+        title="ACF - 36 Lags (Default 95% CI)",
     )
 
+
 @app.cell
-def _(tourism_monthly, plot_autocorrelation):
+def _(plot_autocorrelation, tourism_monthly):
     plot_autocorrelation(
         tourism_monthly,
         max_lags=48,
         confidence_level=0.99,
-        title="ACF -- 48 Lags, 99% CI",
+        title="ACF - 48 Lags, 99% CI",
     )
 
+
 @app.cell
-def _(tourism_monthly, plot_autocorrelation):
+def _(plot_autocorrelation, tourism_monthly):
     plot_autocorrelation(
         tourism_monthly,
         max_lags=36,
         show_confidence=False,
-        title="ACF -- Bars Only, No Confidence Bands",
+        title="ACF - Bars Only, No Confidence Bands",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Partial Autocorrelation
 
-    `plot_partial_autocorrelation` estimates the PACF, removing the effect of
+    [`plot_partial_autocorrelation`](/pages/api/generated/yohou.plotting.diagnostics.plot_partial_autocorrelation/) estimates the PACF, removing the effect of
     intermediate lags. Compare **method** options (`"yw"` vs `"ols"`) and vary
     **confidence_level** to assess significance.
     """)
 
+
 @app.cell
-def _(tourism_monthly, plot_partial_autocorrelation):
+def _(plot_partial_autocorrelation, tourism_monthly):
     plot_partial_autocorrelation(
         tourism_monthly,
         max_lags=36,
-        title="PACF -- Yule-Walker (Default)",
+        title="PACF - Yule-Walker (Default)",
     )
 
+
 @app.cell
-def _(tourism_monthly, plot_partial_autocorrelation):
+def _(plot_partial_autocorrelation, tourism_monthly):
     plot_partial_autocorrelation(
         tourism_monthly,
         max_lags=36,
         method="ols",
-        title="PACF -- OLS Method",
+        title="PACF - OLS Method",
     )
 
+
 @app.cell
-def _(tourism_monthly, plot_partial_autocorrelation):
+def _(plot_partial_autocorrelation, tourism_monthly):
     plot_partial_autocorrelation(
         tourism_monthly,
         max_lags=24,
         confidence_level=0.70,
-        title="PACF -- 24 Lags, 90% CI",
+        title="PACF - 24 Lags, 90% CI",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **Seasonal overlays** (`plot_seasonality`) make year-over-year comparisons immediate; `highlight` draws attention to specific cycles
-    - **Subseries plots** (`plot_subseasonality`) reveal within-season trends over time; the mean line shows each season's average level
+    - **Seasonal overlays** ([`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/)) make year-over-year comparisons immediate; `highlight` draws attention to specific cycles
+    - **Subseries plots** ([`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)) reveal within-season trends over time; the mean line shows each season's average level
     - **ACF** identifies repeating correlation patterns at seasonal multiples; **PACF** isolates direct lag effects for AR order selection
 
     ## Next Steps
 
-    - **STL decomposition**: See `examples/plotting/decomposition.py` for trend/seasonal/residual decomposition
-    - **Correlation diagnostics**: See `examples/plotting/correlation.py` for scatter matrices and cross-correlation
-    - **Forecast visualization**: See `examples/plotting/forecasting_visualization.py` for model comparison
+    - **STL decomposition**: See [`examples/plotting/decomposition.py`](/examples/plotting/decomposition/) for trend/seasonal/residual decomposition
+    - **Correlation diagnostics**: See [`examples/plotting/correlation.py`](/examples/plotting/correlation/) for scatter matrices and cross-correlation
+    - **Forecast visualization**: See [`examples/plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/) for model comparison
     """)
+
 
 if __name__ == "__main__":
     app.run()

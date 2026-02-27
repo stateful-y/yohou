@@ -119,14 +119,6 @@ class TestPlotRollingStatistics:
             fig = plot_rolling_statistics(sample_df, columns="y", window_size=3, statistics=stat, show_original=False)
             assert len(fig.data) == 1
 
-    def test_fill_between(self, sample_df):
-        """Test fill_between with two statistics."""
-        fig = plot_rolling_statistics(
-            sample_df, columns="y", window_size=3, statistics=["min", "max"], fill_between=True, show_original=False
-        )
-        # Should have 2 traces for the band
-        assert len(fig.data) == 2
-
     def test_invalid_stat(self, sample_df):
         """Test that invalid statistic raises error."""
         with pytest.raises(ValueError, match="Invalid statistics"):

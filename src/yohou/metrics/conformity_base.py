@@ -21,9 +21,9 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    [metrics.conformity][] : Concrete conformity scorers
-    [interval.split_conformal.SplitConformalForecaster][] : Uses conformity
-    scores
+    `Residual` : Concrete conformity scorer.
+    `AbsoluteResidual` : Concrete conformity scorer.
+    `SplitConformalForecaster` : Uses conformity scores.
 
     """
 

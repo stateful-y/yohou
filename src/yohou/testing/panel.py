@@ -6,7 +6,7 @@ handling in forecasters.
 
 import polars as pl
 
-from yohou.utils import inspect_locality
+from yohou.utils import inspect_panel
 
 __all__ = ["check_panel_data", "check_panel_invalid_group_raises", "check_panel_single_group"]
 
@@ -67,7 +67,7 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | 
     y_pred = _call_predict(forecaster, X=X_panel, forecasting_horizon=3, panel_group=None)
 
     # Check that all local groups from training data are in predictions
-    _, y_panel_groups = inspect_locality(y_panel)
+    _, y_panel_groups = inspect_panel(y_panel)
 
     if len(y_panel_groups) > 0:
         # Should have predictions for all group columns (with __ separator)
@@ -101,7 +101,7 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.Data
 
     """
 
-    _, y_panel_groups = inspect_locality(y_panel)
+    _, y_panel_groups = inspect_panel(y_panel)
 
     if len(y_panel_groups) > 0:
         # Get first group prefix
@@ -142,7 +142,7 @@ def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel:
 
     """
 
-    _, y_panel_groups = inspect_locality(y_panel)
+    _, y_panel_groups = inspect_panel(y_panel)
 
     if len(y_panel_groups) > 0:
         # Try to predict with invalid group name

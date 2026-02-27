@@ -1,48 +1,22 @@
+---
+template: api-submodule.html
+---
+
 # yohou.base
 
-Base classes for building time series transformers and forecasters.
+Abstract base classes used internally by all Yohou estimators. See the concrete implementations in the submodule pages.
 
-**User guide**: See the [Core Concepts](../user-guide/core-concepts.md) section for further details.
+### Transformers
 
-## Transformers
+| Name | Description |
+| --- | --- |
+| [`BaseTransformer`](generated/yohou.base.transformer.BaseTransformer.md) | Base class for time series transformers. |
 
-::: yohou.base.BaseTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+### Forecasters
 
-## Forecasters
-
-::: yohou.base.BaseForecaster
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.base.BaseStandardForecaster
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.base.BasePanelForecaster
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Reduction
-
-::: yohou.base.BaseReductionForecaster
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Types
-
-::: yohou.base.PredictionType
-    options:
-      show_root_heading: true
-      show_source: false
+| Name | Description |
+| --- | --- |
+| [`BaseForecaster`](generated/yohou.base.forecaster.BaseForecaster.md) | Base class for forecasters. |
+| [`BaseStandardForecaster`](generated/yohou.base.standard.BaseStandardForecaster.md) | Mixin providing standard (single DataFrame) forecaster operations. |
+| [`BasePanelForecaster`](generated/yohou.base.panel.BasePanelForecaster.md) | Mixin providing panel (dict of DataFrames) forecaster operations. |
+| [`BaseReductionForecaster`](generated/yohou.base.reduction.BaseReductionForecaster.md) | Base class for forecasters using reduction to supervised learning. |

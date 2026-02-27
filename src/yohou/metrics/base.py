@@ -11,7 +11,7 @@ import polars as pl
 from sklearn.base import BaseEstimator, _fit_context
 from sklearn.utils._param_validation import StrOptions
 
-from yohou.utils import Tags, inspect_locality, validate_callable_signature, validate_scorer_data
+from yohou.utils import Tags, inspect_panel, validate_callable_signature, validate_scorer_data
 
 __all__ = ["BaseIntervalScorer", "BasePointScorer", "BaseScorer"]
 
@@ -274,6 +274,60 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return weighted_scores
 
+    def _aggregate_groupwise(self, raw_scores: pl.DataFrame) -> pl.DataFrame:
+        """Aggregate across panel groups, returning per-component columns.
+
+        For each component (suffix after ``__``), computes a weighted average
+        of the per-timestep scores across all panel groups that contain that
+        component.  When ``panel_group_weight`` is ``None``, all groups are
+        weighted equally.
+
+        For non-panel data the DataFrame is returned unchanged.
+
+        Parameters
+        ----------
+        raw_scores : pl.DataFrame
+            Per-timestep per-component scores (no ``"time"`` column).
+
+        Returns
+        -------
+        pl.DataFrame
+            DataFrame with panel prefixes removed and groups collapsed.
+
+        """
+        _, panel_groups = inspect_panel(raw_scores)
+        if len(panel_groups) == 0:
+            return raw_scores
+
+        # component -> [(group_name, column_name)]
+        components: dict[str, list[tuple[str, str]]] = {}
+        for group_name, group_cols in panel_groups.items():
+            for col in group_cols:
+                component = col.split("__", 1)[1]
+                if component not in components:
+                    components[component] = []
+                components[component].append((group_name, col))
+
+        # Get weight per group
+        weights: dict[str, float] = {}
+        for group_name in panel_groups:
+            w = 1.0
+            if self.panel_group_weight is not None:
+                w = self.panel_group_weight.get(group_name, 1.0)
+            weights[group_name] = w
+
+        # Weighted average across groups for each component
+        exprs: list[pl.Expr] = []
+        for component, group_cols in components.items():
+            total_weight = sum(weights[gn] for gn, _ in group_cols)
+            if total_weight == 0:
+                msg = "Total panel group weight is zero"
+                raise ValueError(msg)
+            weighted_terms = [pl.col(col_name) * (weights[gn] / total_weight) for gn, col_name in group_cols]
+            exprs.append(pl.sum_horizontal(weighted_terms).alias(component))
+
+        return raw_scores.select(exprs)
+
     def _validate_parameters(
         self,
         y_train: pl.DataFrame | None = None,
@@ -351,7 +405,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         # If y_train is provided, validate against actual data
         if y_train is not None:
-            _, panel_groups = inspect_locality(y_train)
+            _, panel_groups = inspect_panel(y_train)
             available_groups = set(panel_groups.keys())
 
             # Validate panel_group_names exist in data
@@ -416,6 +470,15 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             aggregations, or a ``dict`` mapping coverage rates to scores
             for interval scorers.
 
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            If the scorer has not been fitted yet (when calibration is
+            required).
+        ValueError
+            If ``y_truth`` and ``y_pred`` have mismatched columns or
+            incompatible shapes.
+
         """
 
     def __call__(
@@ -479,9 +542,9 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    [metrics.point][] : Concrete implementations (MeanAbsoluteError,
-        MeanSquaredError, RootMeanSquaredError, MeanAbsolutePercentageError, etc.)
-    [point.base.BasePointForecaster][] : Produces point forecasts
+    `MeanAbsoluteError` : Concrete point scorer implementation.
+    `MeanSquaredError` : Concrete point scorer implementation.
+    `BasePointForecaster` : Produces point forecasts.
 
     """
 
@@ -585,7 +648,7 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         if "timewise" in agg_methods and "componentwise" in agg_methods:
             # Check for groupwise aggregation on panel data
             if "groupwise" in agg_methods:
-                _, panel_groups = inspect_locality(raw_scores)
+                _, panel_groups = inspect_panel(raw_scores)
 
                 if len(panel_groups) > 0:
                     # 1. Aggregate time (mean per column)
@@ -603,17 +666,22 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
 
             # Aggregate both dimensions to scalar (flat aggregation)
             return float(np.nanmean(raw_scores.to_numpy()))
-        elif "timewise" in agg_methods:
+
+        # Apply groupwise pre-processing for partial combinations
+        if "groupwise" in agg_methods:
+            raw_scores = self._aggregate_groupwise(raw_scores)
+
+        if "timewise" in agg_methods:
             # Aggregate across time, return per-component scores (1 row)
             return raw_scores.select(pl.all().mean())
         elif "componentwise" in agg_methods:
             # Aggregate across components, return per-timestep scores
 
-            _, panel_groups = inspect_locality(raw_scores)
+            _, panel_groups = inspect_panel(raw_scores)
 
             if len(panel_groups) > 0:
                 # Panel data: Aggregate within each group separately
-                step_data = {"time": time_values}
+                step_data: dict[str, list | None] = {"time": time_values}
 
                 for group_name, group_cols in panel_groups.items():
                     group_scores = []
@@ -632,6 +700,12 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
                     step_scores.append(float(np.mean(step_errors)))
 
                 return pl.DataFrame({"time": time_values, "score": step_scores})
+        elif "groupwise" in agg_methods:
+            # Groupwise only: return per-component per-timestep DataFrame
+            result_data: dict[str, list] = {"time": time_values} if time_values is not None else {}
+            for col in raw_scores.columns:
+                result_data[col] = raw_scores[col].to_list()
+            return pl.DataFrame(result_data)
         else:
             # No aggregation specified, return raw scores
             return raw_scores
@@ -674,8 +748,9 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    [metrics.interval][] : Concrete implementations
-    [interval.base.BaseIntervalForecaster][] : Produces intervals
+    `IntervalScore` : Concrete interval scorer implementation.
+    `CoverageScore` : Concrete interval scorer implementation.
+    `BaseIntervalForecaster` : Produces interval forecasts.
 
     """
 
@@ -802,7 +877,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         self,
         raw_scores: dict[float, pl.DataFrame],
         time_values: list | None = None,
-    ) -> float | dict[float, float] | pl.DataFrame:
+    ) -> float | dict[float, float] | dict[float, pl.DataFrame] | pl.DataFrame:
         """Apply aggregation strategy to raw per-timestep per-component per-rate scores.
 
         Parameters
@@ -839,7 +914,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
                 # Check locality on first rate's dataframe
                 first_df = next(iter(raw_scores.values()))
 
-                _, panel_groups = inspect_locality(first_df)
+                _, panel_groups = inspect_panel(first_df)
                 if len(panel_groups) > 0:
                     use_groupwise = True
 
@@ -876,17 +951,21 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
                         all_scores.append(float(np.nanmean(rate_scores.to_numpy())))
                 return float(np.mean(all_scores))
 
-        elif "componentwise" in agg_methods:
+        # Apply groupwise pre-processing for partial combinations
+        if "groupwise" in agg_methods:
+            raw_scores = {rate: self._aggregate_groupwise(df) for rate, df in raw_scores.items()}
+
+        if "componentwise" in agg_methods:
             # Aggregate across components, return per-timestep scores
             assert time_values is not None, "time_values required for componentwise aggregation"
 
-            step_data = {"time": time_values}
+            step_data: dict[str, list] = {"time": time_values}
 
             n_steps = len(time_values)
 
             # Detect panel groups from first rate's data
             first_rate_df = next(iter(raw_scores.values()))
-            _, panel_groups = inspect_locality(first_rate_df)
+            _, panel_groups = inspect_panel(first_rate_df)
             is_panel = len(panel_groups) > 0
 
             if is_panel:
@@ -938,7 +1017,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         elif "timewise" in agg_methods:
             # Aggregate across time, return per-component scores
-            result_data = {}
+            result_data: dict[str, list] = {}
 
             if not aggregate_rates:
                 # One column per component per rate
@@ -961,8 +1040,33 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
             return pl.DataFrame(result_data)
 
-        # No aggregation or unhandled combination,
-        # aggregate both time and components to scalar/dict
+        elif "groupwise" in agg_methods:
+            # Groupwise only: return per-component per-timestep DataFrames
+            if not aggregate_rates:
+                result: dict[float, pl.DataFrame] = {}
+                for rate, rate_df in raw_scores.items():
+                    rate_data: dict[str, list] = {}
+                    if time_values is not None:
+                        rate_data["time"] = time_values
+                    for col in rate_df.columns:
+                        rate_data[col] = rate_df[col].to_list()
+                    result[rate] = pl.DataFrame(rate_data)
+                return result
+            else:
+                # Average across rates, return single DataFrame
+                first_df = next(iter(raw_scores.values()))
+                component_cols = first_df.columns
+
+                avg_data: dict[str, list] = {}
+                if time_values is not None:
+                    avg_data["time"] = time_values
+                for col in component_cols:
+                    all_rate_vals = np.array([raw_scores[r][col].to_numpy() for r in raw_scores])
+                    avg_data[col] = np.mean(all_rate_vals, axis=0).tolist()
+
+                return pl.DataFrame(avg_data)
+
+        # No spatial aggregation
         elif not aggregate_rates:
             # Return score per rate
             score_by_rate = {}

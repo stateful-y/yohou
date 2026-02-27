@@ -51,7 +51,7 @@ def tabularize(df_time_series: pl.DataFrame, lags: Sequence[int]) -> pl.DataFram
 
     See Also
     --------
-    [base.BaseReductionForecaster][] : Uses tabularize for forecasting
+    `BaseReductionForecaster` : Uses tabularize for forecasting
     LagTransformer : Transformer that applies similar lagging logic
 
     """

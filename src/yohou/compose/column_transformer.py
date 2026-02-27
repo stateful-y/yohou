@@ -29,7 +29,7 @@ try:
     from sklearn.utils._dataframe import is_pandas_df
 except ModuleNotFoundError:  # scikit-learn < 1.6 (e.g. pyodide)
 
-    def is_pandas_df(X: object) -> bool:  # type: ignore[misc]
+    def is_pandas_df(X: object) -> bool:
         """Return True if *X* is a pandas DataFrame."""
         return hasattr(X, "iloc") and hasattr(X, "columns")
 
@@ -56,6 +56,7 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseTransformer
 from yohou.utils import Tags
+from yohou.utils.panel import panel_aware_prefix
 
 from .utils import _hstack, _observe_transform_one, _rewind_transform_one
 
@@ -205,8 +206,11 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
     transformation.
 
     The `verbose_feature_names_out` parameter (default=True) prefixes output column
-    names with transformer names (e.g., 'deseason__sales') to prevent name collisions
-    when multiple transformers produce columns with the same names.
+    names with transformer names using a single underscore separator
+    (e.g., 'deseason_sales') to prevent name collisions when multiple
+    transformers produce columns with the same names. For panel data columns,
+    the prefix is inserted after the group separator to preserve panel structure
+    (e.g., 'store_1__deseason_sales').
 
     The `observation_horizon` property returns the MAXIMUM across all column
     transformers, as the transformer needs enough history to satisfy the most
@@ -534,8 +538,13 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         """
         return sklearn_ColumnTransformer._get_remainder_cols_dtype(self)  # type: ignore[arg-type]
 
-    def _add_prefix_for_feature_names_out(self, feature_names_out: Any) -> Any:
+    def _add_prefix_for_feature_names_out(self, feature_names_out: list) -> list[str]:
         """Add prefixes to feature names.
+
+        Uses single underscore ``_`` as separator (not ``__``) to avoid
+        conflicts with the panel data ``<GROUP>__<SERIES>`` convention.
+        For panel columns, the prefix is inserted after the group separator
+        (e.g., ``store_1__deseason_sales``).
 
         Parameters
         ----------
@@ -548,10 +557,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Feature names with prefixes.
 
         """
-        return sklearn_ColumnTransformer._add_prefix_for_feature_names_out(
-            cast(sklearn_ColumnTransformer, self),
-            feature_names_out,
-        )
+        return [panel_aware_prefix(col, name) for name, cols in feature_names_out for col in cols]
 
     def _sk_visual_block_(self) -> Any:
         """Get visual block representation.

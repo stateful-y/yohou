@@ -63,7 +63,7 @@ class _Registry(list):
         return self
 
 
-def record_metadata(obj, record_default: bool = True, **kwargs) -> None:
+def record_metadata(obj, record_default: bool = True, **params) -> None:
     """Utility function to store passed metadata to a method of obj.
 
     If record_default is False, kwargs whose values are "default" are skipped.
@@ -76,7 +76,7 @@ def record_metadata(obj, record_default: bool = True, **kwargs) -> None:
         Object to record metadata on (usually has a registry attribute)
     record_default : bool, default=True
         Whether to record kwargs with "default" values
-    **kwargs : dict
+    **params : dict
         Metadata to record
 
     """
@@ -86,15 +86,15 @@ def record_metadata(obj, record_default: bool = True, **kwargs) -> None:
     if not hasattr(obj, "_records"):
         obj._records = defaultdict(lambda: defaultdict(list))
     if not record_default:
-        kwargs = {key: val for key, val in kwargs.items() if not isinstance(val, str) or (val != "default")}
-    obj._records[callee][caller].append(kwargs)
+        params = {key: val for key, val in params.items() if not isinstance(val, str) or (val != "default")}
+    obj._records[callee][caller].append(params)
 
 
 # Partial application for common use case
 record_metadata_not_default = partial(record_metadata, record_default=False)
 
 
-def check_recorded_metadata(obj, method: str, parent: str, split_params: tuple = (), **kwargs) -> None:
+def check_recorded_metadata(obj, method: str, parent: str, split_params: tuple = (), **params) -> None:
     """Check whether the expected metadata is passed to the object's method.
 
     Parameters
@@ -108,7 +108,7 @@ def check_recorded_metadata(obj, method: str, parent: str, split_params: tuple =
     split_params : tuple, default=empty
         Parameters which should be checked as subsets of the original values
         (used for CV splits where each fold gets a subset)
-    **kwargs : dict
+    **params : dict
         Expected metadata that should have been passed
 
     Raises
@@ -120,8 +120,8 @@ def check_recorded_metadata(obj, method: str, parent: str, split_params: tuple =
     all_records = getattr(obj, "_records", {}).get(method, {}).get(parent, [])
     for record in all_records:
         # Check that metadata names match
-        assert set(kwargs.keys()) == set(record.keys()), f"Expected {kwargs.keys()} vs {record.keys()}"
-        for key, value in kwargs.items():
+        assert set(params.keys()) == set(record.keys()), f"Expected {params.keys()} vs {record.keys()}"
+        for key, value in params.items():
             expected_value = value
             recorded_value = record[key]
             # For split_params, check if recorded is a subset of original

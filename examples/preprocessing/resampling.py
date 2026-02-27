@@ -4,15 +4,16 @@
 #     "yohou",
 # ]
 # ///
-"""Resampling: Downsampler and Upsampler.
-
-Demonstrates changing time series frequency with aggregation or interpolation.
-"""
 
 import marimo
 
-__generated_with = "0.19.9"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Resampling",
+    "description": "Demonstrate Downsampler (mean, sum, min, max aggregation) and Upsampler (interpolation) for changing time series frequency on electricity demand data.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -20,18 +21,19 @@ def _():
 
     return (mo,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Resampling Time Series
 
     Time series data often needs frequency changes, downsampling (e.g., hourly → daily)
-    or upsampling (e.g., monthly → weekly). Yohou provides `Downsampler` and `Upsampler`.
+    or upsampling (e.g., monthly → weekly). Yohou provides [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/) and [`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/).
 
     ## What You'll Learn
 
-    - `Downsampler`: Aggregate to lower frequency (mean, sum, min, max, etc.)
-    - `Upsampler`: Interpolate to higher frequency
+    - [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/): Aggregate to lower frequency (mean, sum, min, max, etc.)
+    - [`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/): Interpolate to higher frequency
     - Controlling `closed` and `label` boundaries
     - When to use each transformer
 
@@ -39,6 +41,7 @@ def _(mo):
 
     None.
     """)
+
 
 @app.cell(hide_code=True)
 def _():
@@ -48,144 +51,173 @@ def _():
     from yohou.plotting import plot_time_series
     from yohou.preprocessing import Downsampler, Upsampler
 
-    return (Downsampler, Upsampler, fetch_electricity_demand, pl, plot_time_series)
+    return (
+        Downsampler,
+        Upsampler,
+        fetch_electricity_demand,
+        pl,
+        plot_time_series,
+    )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load High-Frequency Data
 
-    The Electricity Demand dataset has 30-minute intervals, ideal for demonstrating downsampling.
+    The Electricity Demand dataset contains 30-minute interval readings from
+    Australian states. We select the Victorian demand column and take a
+    30-day subset (about 1 440 observations) for a manageable demonstration.
     """)
 
+
 @app.cell
-def _(fetch_electricity_demand, pl):
-    raw = fetch_electricity_demand().frame.select(
-        "time", pl.col("vic__demand").alias("demand")
-    )
-    print(f"Shape: {raw.shape}")
-    print(f"Columns: {raw.columns}")
-    print(f"Time range: {raw['time'].min()} to {raw['time'].max()}")
+def _(fetch_electricity_demand, pl, plot_time_series):
+    raw = fetch_electricity_demand().frame.select("time", pl.col("vic__demand").alias("demand"))
 
     # Use a subset for speed
     y_hf = raw.head(48 * 30)  # ~30 days of 30-min data
-    print(f"Subset: {len(y_hf)} observations")
-    return raw, y_hf
+    plot_time_series(y_hf, title="Half-Hourly Electricity Demand (30 days)")
+    return (y_hf,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Downsampler
 
-    Aggregate from 30-minute to daily frequency. Choose aggregation method:
-    `"mean"`, `"sum"`, `"min"`, `"max"`, `"first"`, `"last"`, `"median"`.
+    [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/) aggregates a time series to a coarser frequency. You
+    specify the target `interval` (e.g. `"1d"` for daily) and the
+    `aggregation` method: `"mean"`, `"sum"`, `"min"`, `"max"`, `"first"`,
+    `"last"`, or `"median"`. Below we produce daily mean and daily sum
+    versions of the half-hourly demand data.
     """)
 
+
 @app.cell
-def _(Downsampler, y_hf):
+def _(Downsampler, plot_time_series, y_hf):
     daily_mean = Downsampler(interval="1d", aggregation="mean")
     daily_mean.fit(y_hf)
     y_daily_mean = daily_mean.transform(y_hf)
+    plot_time_series(y_daily_mean, title="Hourly -> Daily (mean aggregation)")
+    return (y_daily_mean,)
 
-    daily_sum = Downsampler(interval="1d", aggregation="sum")
-    daily_sum.fit(y_hf)
-    y_daily_sum = daily_sum.transform(y_hf)
-
-    print(f"30-min data: {len(y_hf)} rows → daily mean: {len(y_daily_mean)} rows")
-    print(f"First day mean demand: {y_daily_mean['demand'][0]:.1f}")
-    print(f"First day total demand: {y_daily_sum['demand'][0]:.1f}")
-    return daily_mean, daily_sum, y_daily_mean, y_daily_sum
-
-@app.cell
-def _(plot_time_series, y_daily_mean):
-    plot_time_series(y_daily_mean, title="Daily Mean Electricity Demand")
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### Comparing Aggregations
 
-    Let's compare how different aggregation strategies affect the resampled output.
+    Different aggregation strategies summarise each interval differently.
+    Joining the results into one DataFrame lets us overlay mean, min, max,
+    and median on a single [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) chart so the differences are
+    immediately visible.
     """)
 
+
 @app.cell
-def _(Downsampler, y_hf):
-    for _agg in ["mean", "sum", "min", "max", "median"]:
+def _(Downsampler, plot_time_series, y_hf):
+    _agg_dfs = {}
+    for _agg in ["mean", "min", "max", "median"]:
         _ds = Downsampler(interval="1d", aggregation=_agg)
         _ds.fit(y_hf)
-        _result = _ds.transform(y_hf)
-        _first_val = _result["demand"][0]
-        print(f"aggregation={_agg:>6s}  first day: {_first_val:.1f}  rows: {len(_result)}")
+        _agg_dfs[_agg] = _ds.transform(y_hf).rename({"demand": _agg})
+
+    _combined = _agg_dfs["mean"]
+    for _agg in ["min", "max", "median"]:
+        _combined = _combined.join(_agg_dfs[_agg], on="time")
+    plot_time_series(_combined, title="Daily Downsampling: Aggregation Comparison")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Upsampler
 
-    Interpolate from daily to hourly (or any higher frequency).
-    Methods: `"linear"`, `"nearest"`, `"forward"`, `"backward"`.
+    [`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/) increases the frequency by interpolating between existing
+    observations. The `interpolation` parameter controls the method used to
+    fill in the new time steps: `"linear"` draws straight lines between
+    neighbours, `"nearest"` copies the closest value, and `"forward"` /
+    `"backward"` carry the previous or next value.
     """)
 
+
 @app.cell
-def _(Upsampler, y_daily_mean):
+def _(Upsampler, plot_time_series, y_daily_mean):
     hourly = Upsampler(interval="1h", interpolation="linear")
     hourly.fit(y_daily_mean)
     y_hourly = hourly.transform(y_daily_mean)
+    plot_time_series(y_hourly, title="Daily → Hourly (linear interpolation)")
 
-    print(f"Daily: {len(y_daily_mean)} rows → hourly: {len(y_hourly)} rows")
-    y_hourly.head(30)
-    return hourly, y_hourly
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Comparing Interpolation Methods
+
+    Each interpolation strategy fills in new time steps differently. We
+    overlay `linear`, `nearest`, `forward`, and `backward` on one chart
+    so you can see how the shape and step patterns compare.
+    """)
+
 
 @app.cell
-def _(Upsampler, y_daily_mean):
+def _(Upsampler, plot_time_series, y_daily_mean):
+    _interp_dfs = {}
     for _method in ["linear", "nearest", "forward", "backward"]:
         _up = Upsampler(interval="1h", interpolation=_method)
         _up.fit(y_daily_mean)
-        _result = _up.transform(y_daily_mean)
-        # Show first few hourly values to compare methods
-        _vals = _result["demand"].head(5).to_list()
-        print(f"interpolation={_method:>10s}  first 5h: {[f'{v:.1f}' for v in _vals]}")
+        _interp_dfs[_method] = _up.transform(y_daily_mean).rename({"demand": _method})
+
+    _combined = _interp_dfs["linear"]
+    for _method in ["nearest", "forward", "backward"]:
+        _combined = _combined.join(_interp_dfs[_method], on="time")
+    plot_time_series(_combined, title="Hourly Upsampling: Interpolation Comparison")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Downsampling to Weekly
 
-    We apply the same downsampling approach at a weekly frequency to illustrate flexible interval selection.
+    [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/) accepts any polars duration string as the `interval`
+    parameter. Here we aggregate the half-hourly data to weekly mean values
+    and visualise the result with [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/).
     """)
+
 
 @app.cell
 def _(Downsampler, plot_time_series, y_hf):
     weekly = Downsampler(interval="1w", aggregation="mean")
     weekly.fit(y_hf)
     y_weekly = weekly.transform(y_hf)
-
-    print(f"30-min: {len(y_hf)} → weekly: {len(y_weekly)} rows")
     plot_time_series(y_weekly, title="Weekly Mean Electricity Demand")
-    return weekly, y_weekly
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - `Downsampler`: Reduces frequency with aggregation (mean, sum, etc.)
-    - `Upsampler`: Increases frequency with interpolation (linear, nearest, etc.)
+    - [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/): Reduces frequency with aggregation (mean, sum, etc.)
+    - [`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/): Increases frequency with interpolation (linear, nearest, etc.)
     - Both are stateless transformers (`observation_horizon = 0`)
     - Use downsampling to reduce noise and computation for high-frequency data
     - Use upsampling when models require uniform higher frequency
     - `interval` uses polars duration strings: `"1h"`, `"1d"`, `"1w"`, `"1mo"`
     """)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Window transformers**: See `window_transformers.py` for feature engineering
-    - **Data cleaning**: See `data_cleaning.py` for imputation and outliers
+    - **Window transformers**: See [`window_transformers.py`](/examples/preprocessing/window_transformers/) for feature engineering
+    - **Data cleaning**: See [`data_cleaning.py`](/examples/preprocessing/data_cleaning/) for imputation and outliers
     - **In forecasters**: Use resampled data as input to any forecaster
     """)
+
 
 if __name__ == "__main__":
     app.run()

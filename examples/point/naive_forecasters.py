@@ -5,21 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Naive Forecasters as Baselines.
-
-Demonstrates SeasonalNaive for baseline forecasting with update/predict workflow.
-"""
 
 import marimo
 
-__generated_with = "0.19.9"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Naive Forecasters",
+    "description": "Baseline forecasting with SeasonalNaive using different seasonality periods, the observe/predict streaming workflow, and rolling evaluation patterns.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -32,35 +34,36 @@ def _(mo):
 
     ## What You'll Learn
 
-    - Using `SeasonalNaive` to forecast by repeating the last seasonal cycle
-    - The `update` / `predict` workflow for rolling evaluation
+    - Using [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) to forecast by repeating the last seasonal cycle
+    - The `observe` / `predict` workflow for rolling evaluation
     - Comparing different seasonality periods
-    - Visualizing forecasts with `plot_forecast`
+    - Visualizing forecasts with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
 
     ## Prerequisites
 
     Basic understanding of seasonality in time series.
     """)
 
+
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
     from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_time_series
+    from yohou.plotting import plot_forecast, plot_score_time_series, plot_time_series
     from yohou.point import SeasonalNaive
 
     return (
         MeanAbsoluteError,
         SeasonalNaive,
         fetch_tourism_monthly,
-        pl,
         plot_forecast,
+        plot_score_time_series,
         plot_time_series,
         train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -70,32 +73,40 @@ def _(mo):
     We begin by loading the Monthly Tourism dataset and splitting it into training and test sets for evaluating the forecasters.
     """)
 
+
 @app.cell
 def _(fetch_tourism_monthly, train_test_split):
-    y = (
-        fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "tourists"})
-    )
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    y_train, y_test = train_test_split(y, test_size=36, shuffle=False)
     forecasting_horizon = 12
 
     print(f"Train: {len(y_train)} obs, Test: {len(y_test)} obs")
     return forecasting_horizon, y, y_test, y_train
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders the full dataset to reveal the yearly seasonal
+    pattern and upward trend that the naive forecaster will attempt to capture.
+    """)
+
+
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(y, title="Monthly Tourism")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. SeasonalNaive Forecaster
 
-    `SeasonalNaive` repeats the last `seasonality` observations cyclically.
+    [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) repeats the last `seasonality` observations cyclically.
     With `seasonality=12` on monthly data, it predicts each month
     using the same month from the previous year.
     """)
+
 
 @app.cell
 def _(SeasonalNaive, forecasting_horizon, y_train):
@@ -105,7 +116,8 @@ def _(SeasonalNaive, forecasting_horizon, y_train):
     y_pred_naive = naive.predict(forecasting_horizon=forecasting_horizon)
     print(f"Predicted {len(y_pred_naive)} steps ahead")
     y_pred_naive.head()
-    return naive, y_pred_naive
+    return (y_pred_naive,)
+
 
 @app.cell
 def _(MeanAbsoluteError, plot_forecast, y_pred_naive, y_test, y_train):
@@ -121,7 +133,7 @@ def _(MeanAbsoluteError, plot_forecast, y_pred_naive, y_test, y_train):
         y_train=y_train,
         title="Seasonal Naive Forecast (seasonality=12)",
     )
-    return mae, score, y_test_h
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -131,6 +143,7 @@ def _(mo):
     The `seasonality` parameter controls how far back the forecaster looks.
     Let's compare `seasonality=1` (repeat last value), `6`, and `12`.
     """)
+
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
@@ -150,6 +163,16 @@ def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
         print(f"seasonality={period:>2d}  MAE: {results[f'seasonality={period}']['mae']:.2f}")
     return (results,)
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) overlays predictions from all three seasonality settings
+    against the test actuals, making it easy to see which period best captures
+    the seasonal pattern.
+    """)
+
+
 @app.cell
 def _(plot_forecast, results, y_test, y_train):
     preds_dict = {name: r["pred"] for name, r in results.items()}
@@ -159,65 +182,69 @@ def _(plot_forecast, results, y_test, y_train):
         y_train=y_train,
         title="Comparing Seasonality Periods",
     )
-    return (preds_dict,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Update/Predict Workflow
+    ## 4. predict vs observe_predict
 
-    The `update` method adds new observations without refitting.
-    Combined with `predict`, this enables **rolling evaluation** -
-    simulating real-world deployment where new data arrives incrementally.
+    `predict` generates forecasts from the last fitted state.
+    `observe_predict` first ingests new observations, then predicts,
+    giving the model fresh data to work with. Comparing both on the
+    same test set reveals the benefit of incremental observation.
     """)
 
+
 @app.cell
-def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, pl, y_test, y_train):
-    naive_rolling = SeasonalNaive(seasonality=12)
-    naive_rolling.fit(y_train, forecasting_horizon=forecasting_horizon)
+def _(
+    MeanAbsoluteError,
+    SeasonalNaive,
+    plot_score_time_series,
+    y_test,
+    y_train,
+):
+    fc = SeasonalNaive(seasonality=12)
+    fc.fit(y_train, forecasting_horizon=12)
 
-    step = forecasting_horizon
-    rolling_preds = []
+    # predict: forecast from the last fitted state
+    _y_pred = fc.predict(forecasting_horizon=len(y_test))
 
-    for i in range(0, len(y_test), step):
-        chunk = y_test.slice(i, min(step, len(y_test) - i))
-        if len(chunk) == 0:
-            break
-        _rpred = naive_rolling.predict(forecasting_horizon=len(chunk))
-        rolling_preds.append(_rpred)
-        naive_rolling.observe(chunk)
+    # observe_predict: observe test data first, then predict
+    _y_obs_pred = fc.observe_predict(y_test, forecasting_horizon=12)
 
-    all_preds = pl.concat(rolling_preds)
-    y_test_aligned = y_test.head(len(all_preds))
+    _scorer = MeanAbsoluteError()
+    _scorer.fit(y_train)
+    plot_score_time_series(
+        _scorer,
+        y_test,
+        {"predict": _y_pred, "observe_predict": _y_obs_pred},
+        title="MAE Over Time: predict vs observe_predict",
+    )
 
-    mae_rolling = MeanAbsoluteError()
-    mae_rolling.fit(y_train)
-    score_rolling = mae_rolling.score(y_test_aligned, all_preds)
-
-    print(f"Rolling evaluation: {len(rolling_preds)} windows")
-    print(f"Rolling MAE: {score_rolling:.2f}")
-    return all_preds, mae_rolling, naive_rolling, score_rolling
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - `SeasonalNaive` repeats last season's values - a strong baseline for seasonal data
+    - [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) repeats last season's values - a strong baseline for seasonal data
     - `seasonality=12` matches monthly patterns (12 months = 1 year)
-    - `update()` adds new observations without refitting the model
+    - `observe_predict()` ingests new data then predicts, improving accuracy
     - Always compare ML forecasters against naive baselines to prove added value
     """)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Reduction forecasting**: See `reduction_forecaster.py` for ML-based approach
-    - **Scoring**: See `metrics/` for comprehensive evaluation metrics
-    - **Cross-validation**: See `model_selection/` for temporal CV strategies
+    - **Reduction forecasting**: See [`reduction_forecaster.py`](/examples/point/reduction_forecaster/) for ML-based approach
+    - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive evaluation metrics
+    - **Cross-validation**: See [Model Selection](/examples/#model-selection) for temporal CV strategies
     """)
+
 
 if __name__ == "__main__":
     app.run()

@@ -25,8 +25,6 @@ from yohou.plotting import (
     plot_time_weight,
 )
 
-# Exploration – panel scenarios
-
 
 class TestPanelTimeSeries:
     """Panel tests for plot_time_series."""
@@ -169,9 +167,6 @@ class TestPanelMissingData:
         assert len(fig.data) > 0
 
 
-# Diagnostics – panel scenarios
-
-
 class TestPanelACF:
     """Panel tests for plot_autocorrelation."""
 
@@ -307,9 +302,6 @@ class TestPanelSpectrum:
         assert len(fig.data) >= 1
 
 
-# Forecasting – panel scenarios
-
-
 class TestPanelForecast:
     """Panel tests for plot_forecast."""
 
@@ -329,6 +321,28 @@ class TestPanelForecast:
         fig = plot_forecast(y_test, y_pred, y_train=y_train, panel_group_names=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
+
+    def test_multivariate_panel_per_subplot_legend(self, panel_two_groups_df):
+        """Multivariate panel assigns per-member colours and deduplicates legend."""
+        y_test = panel_two_groups_df.tail(30)
+        y_pred = panel_two_groups_df.tail(30)
+        y_train = panel_two_groups_df.head(61)
+        fig = plot_forecast(y_test, y_pred, y_train=y_train)
+        assert isinstance(fig, go.Figure)
+        # Each group has 2 members → distinct colours per member.
+        names = [tr.name for tr in fig.data if tr.showlegend]
+        # Legend entries should be deduplicated across subplots.
+        assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
+
+    def test_multivariate_panel_member_names_in_legend(self, panel_two_groups_df):
+        """Member names appear in legend labels for multivariate panels."""
+        y_test = panel_two_groups_df.tail(30)
+        y_pred = panel_two_groups_df.tail(30)
+        fig = plot_forecast(y_test, y_pred)
+        names = [tr.name for tr in fig.data if tr.name]
+        # At least some names should contain member postfixes
+        assert any("city_a" in n for n in names)
+        assert any("city_b" in n for n in names)
 
 
 class TestPanelTimeWeight:

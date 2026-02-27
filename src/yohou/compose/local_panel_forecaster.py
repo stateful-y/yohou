@@ -20,7 +20,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
 from yohou.utils import Tags
-from yohou.utils.panel import get_group_df, inspect_locality
+from yohou.utils.panel import get_group_df, inspect_panel
 from yohou.utils.validation import check_interval_consistency
 
 __all__ = ["LocalPanelForecaster"]
@@ -238,7 +238,7 @@ class LocalPanelForecaster(BaseForecaster):
         routed_params = process_routing(self, "fit", **params)
 
         # Discover panel structure
-        global_cols, y_panel_groups = inspect_locality(y)
+        global_cols, y_panel_groups = inspect_panel(y)
         if not y_panel_groups:
             raise ValueError(
                 "LocalPanelForecaster requires panel data (columns with __ separator). "
@@ -254,7 +254,7 @@ class LocalPanelForecaster(BaseForecaster):
 
         # Handle X panel structure
         if X is not None:
-            _, X_panel_groups = inspect_locality(X)
+            _, X_panel_groups = inspect_panel(X)
             if X_panel_groups:
                 first_X_group = sorted(X_panel_groups.keys())[0]
                 self.local_X_schema_ = {col.split("__", 1)[1]: X[col].dtype for col in X_panel_groups[first_X_group]}

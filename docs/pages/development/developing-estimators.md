@@ -5,7 +5,7 @@
 
 ## Overview
 
-Yohou's estimator API extends scikit-learn's conventions with time series-specific operations. This guide covers how to implement custom components that integrate seamlessly with Yohou's ecosystem.
+Yohou's estimator API extends Scikit-Learn's conventions with time series-specific operations. This guide covers how to implement custom components that integrate seamlessly with Yohou's ecosystem.
 
 ## Creating a Custom Forecaster
 

@@ -1,20 +1,34 @@
 # Installation
 
-## Using uv (Recommended)
+## Install Yohou
 
-```bash
-# Add to an existing project
-uv add yohou
+=== "uv (recommended)"
 
-# Or install globally
-uv tool install yohou
-```
+    ```bash
+    # Add to an existing project
+    uv add yohou
 
-## Using pip
+    # Or install globally
+    uv tool install yohou
+    ```
 
-```bash
-pip install yohou
-```
+=== "pip"
+
+    ```bash
+    pip install yohou
+    ```
+
+=== "conda"
+
+    ```bash
+    conda install -c conda-forge yohou
+    ```
+
+=== "mamba"
+
+    ```bash
+    mamba install -c conda-forge yohou
+    ```
 
 ## Verify Installation
 
@@ -27,39 +41,60 @@ print(yohou.__version__)
 
 To contribute to Yohou or install from source:
 
-```bash
-git clone https://github.com/stateful-y/yohou.git
-cd yohou
-just install  # Installs dev dependencies + pre-commit hooks
-```
+=== "just"
 
-Or manually:
+    ```bash
+    git clone https://github.com/stateful-y/yohou.git
+    cd yohou
+    just install  # Installs dev dependencies + pre-commit hooks
+    ```
 
-```bash
-uv sync --group dev
-uv run pre-commit install
-```
+=== "uv"
+
+    ```bash
+    git clone https://github.com/stateful-y/yohou.git
+    cd yohou
+    uv sync --group dev
+    uv run pre-commit install
+    ```
 
 ## Optional Packages
 
-!!! info "Under Development"
-    Detailed installation and usage guides for optional integrations are coming soon.
+### Yohou-Optuna
 
-### yohou-optuna
+Hyperparameter tuning with [Optuna](https://optuna.org/). Provides `OptunaSearchCV` for Bayesian optimization of forecaster hyperparameters as an alternative to `GridSearchCV` and `RandomizedSearchCV`.
 
-Hyperparameter tuning with [Optuna](https://optuna.org/):
+=== "uv"
 
-```bash
-uv add yohou-optuna
-```
+    ```bash
+    uv add yohou-optuna
+    ```
 
-### yohou-nixtla
+=== "pip"
 
-Statistical, ML, and neural forecasting with [Nixtla](https://nixtla.io/):
+    ```bash
+    pip install yohou-optuna
+    ```
 
-```bash
-uv add yohou-nixtla
-```
+See [Extensions](../extensions/index.md) for usage details.
+
+### Yohou-Nixtla
+
+Statistical, ML, and neural forecasting with [Nixtla](https://nixtla.io/). Wraps `statsforecast`, `mlforecast`, and `neuralforecast` models into Yohou's sklearn-compatible API.
+
+=== "uv"
+
+    ```bash
+    uv add yohou-nixtla
+    ```
+
+=== "pip"
+
+    ```bash
+    pip install yohou-nixtla
+    ```
+
+See [Extensions](../extensions/index.md) for usage details.
 
 ## Python Version Support
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Literal, overload
 import polars as pl
 import polars.selectors as cs
 
-from yohou.utils.panel import inspect_locality
+from yohou.utils.panel import inspect_panel
 from yohou.utils.polars import get_numeric_columns
 from yohou.utils.validation import (
     check_continuity,
@@ -27,6 +27,7 @@ from yohou.utils.validation import (
 __all__ = [
     "validate_forecaster_data",
     "validate_plotting_data",
+    "validate_plotting_params",
     "validate_scorer_data",
     "validate_splitter_data",
     "validate_time_weight",
@@ -110,7 +111,7 @@ def validate_plotting_data(
         if isinstance(columns, str):
             columns = [columns]
 
-        _, panels = inspect_locality(df)
+        _, panels = inspect_panel(df)
         cols: list[str] = []
         for prefix, members in panels.items():
             if prefix not in panel_group_names:
@@ -144,6 +145,48 @@ def validate_plotting_data(
         raise ValueError(msg)
 
     return columns
+
+
+def validate_plotting_params(
+    *,
+    kind: str | None = None,
+    valid_kinds: set[str] | None = None,
+    facet_n_cols: int | None = None,
+    n_bins: int | None = None,
+) -> None:
+    """Validate common plotting function parameters.
+
+    Parameters
+    ----------
+    kind : str or None
+        Plot sub-type to validate.
+    valid_kinds : set of str or None
+        Allowed values for *kind*.  Both must be provided together.
+    facet_n_cols : int or None
+        Number of facet columns (must be >= 1).
+    n_bins : int or None
+        Number of histogram bins (must be >= 1).
+
+    Raises
+    ------
+    ValueError
+        If any parameter is invalid.
+
+    Examples
+    --------
+    >>> from yohou.utils.validate_data import validate_plotting_params
+    >>> validate_plotting_params(kind="line", valid_kinds={"line", "bar"})
+    >>> validate_plotting_params(facet_n_cols=2, n_bins=10)
+    """
+    if kind is not None and valid_kinds is not None and kind not in valid_kinds:
+        msg = f"kind must be one of {sorted(valid_kinds)!r}, got {kind!r}"
+        raise ValueError(msg)
+    if facet_n_cols is not None and facet_n_cols < 1:
+        msg = f"facet_n_cols must be >= 1, got {facet_n_cols}"
+        raise ValueError(msg)
+    if n_bins is not None and n_bins < 1:
+        msg = f"n_bins must be >= 1, got {n_bins}"
+        raise ValueError(msg)
 
 
 if TYPE_CHECKING:
@@ -411,8 +454,8 @@ def validate_scorer_data(
     check_time_column(y_pred)
 
     # Panel consistency check
-    _, y_groups = inspect_locality(y_true)
-    _, X_groups = inspect_locality(y_pred)
+    _, y_groups = inspect_panel(y_true)
+    _, X_groups = inspect_panel(y_pred)
     if set(y_groups.keys()) != set(X_groups.keys()):
         raise ValueError(
             f"Panel groups mismatch. `y_true` has {sorted(y_groups.keys())}. `y_pred` has {sorted(X_groups.keys())}."

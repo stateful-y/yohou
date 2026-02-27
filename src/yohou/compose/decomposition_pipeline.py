@@ -72,6 +72,13 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Residuals after each component (only if store_residuals=True).
         Keys are forecaster names, values are DataFrames with residuals.
 
+    See Also
+    --------
+    `ColumnForecaster` : Separate forecasters for target/feature columns.
+    `ForecastedFeatureForecaster` : Chains target and feature forecasters.
+    `PolynomialTrendForecaster` : Polynomial trend component for decomposition.
+    `FourierSeasonalityForecaster` : Fourier seasonality component for decomposition.
+
     Examples
     --------
     >>> import polars as pl
@@ -114,11 +121,32 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
     Notes
     -----
-    - Components are fitted sequentially (not in parallel) to maintain residual consistency
-    - Each component models residuals from all previous components
-    - All forecasters must be point forecasters (no interval forecasters)
-    - Use target_transformer=LogTransformer() for multiplicative decomposition
-    - Predictions are summed across all components
+    **Additive decomposition** (default)::
+
+        y = f_1(t) + f_2(t) + ... + f_k(t)
+
+    Each component ``f_i`` is fitted on the residuals from all
+    previous components.  Predictions are the sum of all component
+    forecasts.
+
+    **Multiplicative decomposition** can be achieved by wrapping the
+    pipeline with ``target_transformer=LogTransformer()``, which
+    converts the problem to additive in log-space::
+
+        log(y) = f_1(t) + f_2(t) + ... + f_k(t)
+
+    Additional details:
+
+    - Components are fitted sequentially (not in parallel) to maintain
+      residual consistency.
+    - All forecasters must be point forecasters (no interval forecasters).
+
+    Raises
+    ------
+    ValueError
+        If any forecaster in ``forecasters`` is not an instance of
+        `BasePointForecaster`, if forecaster names are not unique, or
+        if ``forecasting_horizon`` < 1.
 
     """
 
@@ -246,18 +274,27 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Parameters
         ----------
         y : pl.DataFrame
-            Target time series with "time" column (datetime type).
-        X : pl.DataFrame, optional
-            Exogenous features with "time" column.
+            Target time series with a ``"time"`` column (datetime) and one
+            or more numeric value columns.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
         forecasting_horizon : int, default=1
-            Number of steps ahead to forecast.
+            Number of time steps to forecast into the future.
         **params : dict
-            Additional metadata (routed via sklearn's metadata routing).
+            Metadata to route to nested estimators.
 
         Returns
         -------
         self
-            Fitted DecompositionPipeline.
+            The fitted DecompositionPipeline instance.
+
+        Raises
+        ------
+        ValueError
+            If any forecaster is not a `BasePointForecaster`, if
+            forecaster names are not unique, or if
+            ``forecasting_horizon`` < 1.
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
@@ -326,26 +363,26 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 forecaster_observation_horizon = max(forecaster_observation_horizon, feature_observation_horizon)
 
             if not forecaster_observation_horizon:
-                reset_time = add_interval(residuals["time"][0], interval=forecaster_clone_pred.interval_, n=-1)
-                y_reset = pl.DataFrame(
-                    {col: [reset_time] if col == "time" else [None] for col in y_t.columns},
+                rewind_time = add_interval(residuals["time"][0], interval=forecaster_clone_pred.interval_, n=-1)
+                y_rewind = pl.DataFrame(
+                    {col: [rewind_time] if col == "time" else [None] for col in y_t.columns},
                     schema=y_t.schema,
                 )
-                X_reset, X_pred = None, None
+                X_rewind, X_pred = None, None
                 if X_t is not None:
-                    X_reset = pl.DataFrame(
-                        {col: [reset_time] if col == "time" else [None] for col in X_t.columns},
+                    X_rewind = pl.DataFrame(
+                        {col: [rewind_time] if col == "time" else [None] for col in X_t.columns},
                         schema=X_t.schema,
                     )
                     X_pred = X_t
             else:
-                y_reset = residuals[:forecaster_observation_horizon]
-                X_reset, X_pred = None, None
+                y_rewind = residuals[:forecaster_observation_horizon]
+                X_rewind, X_pred = None, None
                 if X_t is not None:
-                    X_reset = X_t[:forecaster_observation_horizon]
+                    X_rewind = X_t[:forecaster_observation_horizon]
                     X_pred = X_t[forecaster_observation_horizon:]
 
-            forecaster_clone_pred.rewind(y=y_reset, X=X_reset)
+            forecaster_clone_pred.rewind(y=y_rewind, X=X_rewind)
 
             y_pred_train = forecaster_clone_pred.predict(
                 X=X_pred,
@@ -402,6 +439,13 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         -------
         pl.DataFrame
             Predictions with columns: "observed_time", "time", <target_columns>
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            If the pipeline has not been fitted yet.
+        ValueError
+            If no fitted forecasters are available.
 
         """
         check_is_fitted(self, ["forecasters_", "panel_group_names_"])
@@ -549,17 +593,22 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Parameters
         ----------
         y : pl.DataFrame
-            New target observations with "time" column.
-        X : pl.DataFrame, optional
-            New exogenous features with "time" column.
+            New target observations with a ``"time"`` column.
+        X : pl.DataFrame or None, default=None
+            New exogenous features with a ``"time"`` column.
         panel_group_names : list of str or None, default=None
-            Group prefixes for panel data (ignored - DecompositionPipeline observes all groups).
-            Parameter is ignored if the forecaster was not fitted on panel data.
+            Group prefixes for panel data.  Ignored for
+            DecompositionPipeline (all groups are always observed).
 
         Returns
         -------
         self
-            DecompositionPipeline with observed data.
+            DecompositionPipeline with updated observation state.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            If the pipeline has not been fitted yet.
 
         """
         check_is_fitted(self, ["forecasters_", "panel_group_names_"])
@@ -638,17 +687,22 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Parameters
         ----------
         y : pl.DataFrame
-            Target observations with "time" column.
-        X : pl.DataFrame, optional
-            Exogenous features with "time" column.
+            Target observations with a ``"time"`` column.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column.
         panel_group_names : list of str or None, default=None
-            Group prefixes for panel data (ignored - DecompositionPipeline rewinds all groups).
-            Parameter is ignored if the forecaster was not fitted on panel data.
+            Group prefixes for panel data.  Ignored for
+            DecompositionPipeline (all groups are always rewound).
 
         Returns
         -------
         self
-            Rewound DecompositionPipeline.
+            DecompositionPipeline with rewound observation state.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            If the pipeline has not been fitted yet.
 
         """
         check_is_fitted(self, ["forecasters_", "panel_group_names_"])

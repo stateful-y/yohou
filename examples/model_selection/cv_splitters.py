@@ -4,21 +4,23 @@
 #     "yohou",
 # ]
 # ///
-"""Cross-Validation Splitters for Time Series.
-
-Demonstrates ExpandingWindowSplitter and SlidingWindowSplitter with visualization.
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "CV Splitters",
+    "description": "Demonstrate ExpandingWindowSplitter and SlidingWindowSplitter for temporal cross-validation with configurable gap, test_size, and fold visualisation.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -30,15 +32,16 @@ def _(mo):
 
     ## What You'll Learn
 
-    - `ExpandingWindowSplitter`: Growing training window
-    - `SlidingWindowSplitter`: Fixed-size sliding window
+    - [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/): Growing training window
+    - [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/): Fixed-size sliding window
     - Controlling `gap` between train and test
-    - Visualizing splits with `plot_splits`
+    - Visualizing splits with [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/)
 
     ## Prerequisites
 
     Basic understanding of cross-validation concepts.
     """)
+
 
 @app.cell(hide_code=True)
 def _():
@@ -46,7 +49,7 @@ def _():
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.model_selection import ExpandingWindowSplitter, SlidingWindowSplitter
-    from yohou.plotting import plot_splits
+    from yohou.plotting import plot_splits, plot_time_series
 
     return (
         ExpandingWindowSplitter,
@@ -54,7 +57,9 @@ def _():
         fetch_tourism_monthly,
         pl,
         plot_splits,
+        plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -64,15 +69,18 @@ def _(mo):
     We create a time series dataset to demonstrate how each cross-validation splitter partitions the data into training and test folds.
     """)
 
+
 @app.cell
 def _(fetch_tourism_monthly):
-    y = (
-        fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "tourists"})
-    )
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     print(f"Total observations: {len(y)}")
     return (y,)
+
+
+@app.cell
+def _(plot_time_series, y):
+    plot_time_series(y, title="Tourism Monthly")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -83,6 +91,7 @@ def _(mo):
     `n_splits` controls how many train/test pairs are generated.
     """)
 
+
 @app.cell
 def _(ExpandingWindowSplitter, y):
     expanding = ExpandingWindowSplitter(n_splits=4, test_size=12)
@@ -92,9 +101,20 @@ def _(ExpandingWindowSplitter, y):
         print(f"  Split {_i}: train={len(_train_idx)}, test={len(_test_idx)}")
     return (expanding,)
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/) renders each CV fold as a horizontal bar, with training
+    periods in one colour and test periods in another. This makes it easy
+    to verify that the splitter respects temporal order.
+    """)
+
+
 @app.cell
 def _(expanding, plot_splits, y):
     plot_splits(y, expanding, title="Expanding Window Splitter (4 splits, test=12)")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -105,6 +125,7 @@ def _(mo):
     Older data is dropped, keeping model training focused on recent patterns.
     """)
 
+
 @app.cell
 def _(SlidingWindowSplitter, y):
     sliding = SlidingWindowSplitter(n_splits=5, test_size=12)
@@ -114,9 +135,19 @@ def _(SlidingWindowSplitter, y):
         print(f"  Split {_i}: train={len(_train_idx)}, test={len(_test_idx)}")
     return (sliding,)
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/) now shows the sliding window structure, where each fold
+    has a fixed-size training window that moves forward through time.
+    """)
+
+
 @app.cell
 def _(plot_splits, sliding, y):
     plot_splits(y, sliding, title="Sliding Window Splitter (5 folds, test=12)")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -127,6 +158,7 @@ def _(mo):
     forecasts are needed. The `gap` parameter simulates this.
     """)
 
+
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y):
     expanding_gap = ExpandingWindowSplitter(n_splits=3, test_size=12, gap=6)
@@ -136,14 +168,16 @@ def _(ExpandingWindowSplitter, plot_splits, y):
 
     plot_splits(y, expanding_gap, title="Expanding Window with gap=6")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Controlling Window Size
 
-    `max_train_size` on `ExpandingWindowSplitter` limits growth, effectively
+    `max_train_size` on [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) limits growth, effectively
     becoming a sliding window that fills up from the expanding start.
     """)
+
 
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y):
@@ -154,6 +188,7 @@ def _(ExpandingWindowSplitter, plot_splits, y):
 
     plot_splits(y, capped, title="Expanding Window capped at 80")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -163,6 +198,7 @@ def _(mo):
     Default is `test_size` (non-overlapping test sets).
     """)
 
+
 @app.cell
 def _(SlidingWindowSplitter, plot_splits, y):
     strided = SlidingWindowSplitter(n_splits=5, test_size=12, stride=6)
@@ -170,27 +206,30 @@ def _(SlidingWindowSplitter, plot_splits, y):
     print(f"Splits with stride=6: {strided.get_n_splits()}")
     plot_splits(y, strided, title="Sliding Window with stride=6 (overlapping tests)")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - `ExpandingWindowSplitter`: Training window grows: uses all historical data
-    - `SlidingWindowSplitter`: Fixed training window: focuses on recent data
+    - [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/): Training window grows: uses all historical data
+    - [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/): Fixed training window: focuses on recent data
     - `gap`: Simulates forecast delay between train and test periods
     - `max_train_size`: Caps expanding window growth
     - `stride`: Controls step size between splits (for overlapping test sets)
-    - `plot_splits` visualizes the temporal structure of CV splits
+    - [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/) visualizes the temporal structure of CV splits
     """)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Hyperparameter search**: See `hyperparameter_search.py` for GridSearchCV
-    - **Scoring**: See `metrics/` for evaluation metrics used in CV
+    - **Hyperparameter search**: See [`hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/) for GridSearchCV
+    - **Scoring**: See [Metrics](/examples/#metrics) for evaluation metrics used in CV
     """)
+
 
 if __name__ == "__main__":
     app.run()

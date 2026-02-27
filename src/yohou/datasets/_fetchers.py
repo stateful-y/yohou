@@ -15,6 +15,7 @@ from yohou.datasets._registry import (
     DOMINICK,
     ELECTRICITY_DEMAND,
     HOSPITAL,
+    KDD_CUP_2018,
     PEDESTRIAN_COUNTS,
     SUNSPOT,
     TOURISM_MONTHLY,
@@ -22,6 +23,8 @@ from yohou.datasets._registry import (
     RemoteFileMetadata,
 )
 from yohou.datasets._tsf_parser import parse_tsf
+
+_KDD_CUP_MEASUREMENTS = frozenset({"pm2.5", "pm10", "no2", "co", "o3", "so2"})
 
 
 def get_data_home(data_home: str | os.PathLike | None = None) -> str:
@@ -44,6 +47,10 @@ def get_data_home(data_home: str | os.PathLike | None = None) -> str:
     str
         The path to the data directory.
 
+    See Also
+    --------
+    `clear_data_home` : Delete all cached datasets.
+
     """
     if data_home is None:
         data_home = os.environ.get("YOHOU_DATA", os.path.join("~", "yohou_data"))
@@ -60,6 +67,10 @@ def clear_data_home(data_home: str | os.PathLike | None = None) -> None:
     data_home : str, PathLike, or None
         The path to the data directory. If ``None``, the default path
         is ``~/yohou_data``.
+
+    See Also
+    --------
+    `get_data_home` : Return the path of the data directory.
 
     """
     data_home = get_data_home(data_home)
@@ -219,6 +230,12 @@ def fetch_tourism_monthly(
         filename : str
             Path to the cached parquet file.
 
+    See Also
+    --------
+    `fetch_tourism_quarterly` : Quarterly tourism series from the same competition.
+    `fetch_hospital` : Monthly hospital patient count series.
+    `get_data_home` : Return the path of the data directory.
+
     References
     ----------
     .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
@@ -289,6 +306,12 @@ def fetch_sunspot(
             ``1``.
         filename : str
             Path to the cached parquet file.
+
+    See Also
+    --------
+    `fetch_tourism_monthly` : Monthly tourism series.
+    `fetch_electricity_demand` : Half-hourly electricity demand series.
+    `get_data_home` : Return the path of the data directory.
 
     References
     ----------
@@ -366,6 +389,12 @@ def fetch_tourism_quarterly(
         filename : str
             Path to the cached parquet file.
 
+    See Also
+    --------
+    `fetch_tourism_monthly` : Monthly tourism series from the same competition.
+    `fetch_hospital` : Monthly hospital patient count series.
+    `get_data_home` : Return the path of the data directory.
+
     References
     ----------
     .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
@@ -438,6 +467,12 @@ def fetch_electricity_demand(
             ``5``.
         filename : str
             Path to the cached parquet file.
+
+    See Also
+    --------
+    `fetch_pedestrian_counts` : Hourly pedestrian sensor series.
+    `fetch_kdd_cup` : Hourly air quality series.
+    `get_data_home` : Return the path of the data directory.
 
     References
     ----------
@@ -517,6 +552,12 @@ def fetch_dominick(
         filename : str
             Path to the cached parquet file.
 
+    See Also
+    --------
+    `fetch_tourism_monthly` : Monthly tourism series.
+    `fetch_hospital` : Monthly hospital patient count series.
+    `get_data_home` : Return the path of the data directory.
+
     References
     ----------
     .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
@@ -595,6 +636,12 @@ def fetch_pedestrian_counts(
         filename : str
             Path to the cached parquet file.
 
+    See Also
+    --------
+    `fetch_electricity_demand` : Half-hourly electricity demand series.
+    `fetch_kdd_cup` : Hourly air quality series.
+    `get_data_home` : Return the path of the data directory.
+
     References
     ----------
     .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
@@ -672,6 +719,12 @@ def fetch_hospital(
         filename : str
             Path to the cached parquet file.
 
+    See Also
+    --------
+    `fetch_tourism_monthly` : Monthly tourism series.
+    `fetch_dominick` : Weekly retail profit series.
+    `get_data_home` : Return the path of the data directory.
+
     References
     ----------
     .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
@@ -697,3 +750,127 @@ def fetch_hospital(
         n_retries=n_retries,
         delay=delay,
     )
+
+
+def _restructure_kdd_cup_columns(frame: pl.DataFrame) -> pl.DataFrame:
+    """Rename KDD Cup columns from ``station_measurement__value`` to ``station__measurement``.
+
+    The raw TSF parser produces column names like
+    ``beijing_aotizhongxin_aq_pm2.5__value`` where the measurement type
+    is embedded in the group prefix. This function restructures them
+    into ``beijing_aotizhongxin_aq__pm2.5`` so that each station becomes
+    a proper multivariate panel group with one member per measurement.
+
+    Columns that do not match the expected pattern (e.g. ``"time"`` or
+    mock columns like ``"T1__value"``) are left unchanged.
+    """
+    rename_map: dict[str, str] = {}
+    for col in frame.columns:
+        if "__" not in col:
+            continue
+        prefix, suffix = col.rsplit("__", 1)
+        if suffix != "value":
+            continue
+        for m in _KDD_CUP_MEASUREMENTS:
+            if prefix.endswith(f"_{m}"):
+                station = prefix[: -len(m) - 1]
+                rename_map[col] = f"{station}__{m}"
+                break
+    if rename_map:
+        frame = frame.rename(rename_map)
+    return frame
+
+
+def fetch_kdd_cup(
+    *,
+    n_groups: int | None = 5,
+    data_home: str | os.PathLike | None = None,
+    download_if_missing: bool = True,
+    n_retries: int = 3,
+    delay: float = 1.0,
+) -> Bunch:
+    """Fetch the KDD Cup 2018 air quality dataset from Monash/Zenodo.
+
+    Hourly time series of air quality measurements (PM2.5, PM10, NO2,
+    CO, O3, SO2) from 59 monitoring stations in Beijing and London.
+    This is a multivariate panel dataset: each station (panel group)
+    contains multiple measurement columns.
+
+    Column names use yohou's ``__`` separator convention with the
+    station as group prefix and the measurement as member suffix,
+    e.g. ``"beijing_dongsi_aq__pm2.5"``.
+
+    Parameters
+    ----------
+    n_groups : int or None, default=5
+        Maximum number of station groups to include. Each station has
+        6 measurement series (PM2.5, PM10, NO2, CO, O3, SO2), so
+        ``n_groups=5`` loads 30 raw series. ``None`` loads all 59
+        stations (270 series).
+    data_home : str, PathLike, or None
+        Specify another download and cache folder for the datasets.
+        By default all yohou data is stored in ``~/yohou_data/``.
+    download_if_missing : bool, default=True
+        If ``False``, raise an ``OSError`` if the data is not locally
+        available instead of trying to download it.
+    n_retries : int, default=3
+        Number of retries when HTTP errors are encountered.
+    delay : float, default=1.0
+        Number of seconds between retries.
+
+    Returns
+    -------
+    Bunch
+        Dictionary-like object with the following attributes:
+
+        frame : pl.DataFrame
+            DataFrame with ``"time"`` (Datetime) and up to 270 series
+            columns using the ``__`` separator convention
+            (e.g. ``"beijing_dongsi_aq__pm2.5"``).
+        feature_names : list of str
+            Non-time column names.
+        DESCR : str
+            Full description of the dataset.
+        frequency : str
+            ``"1h"``.
+        n_series : int
+            Number of series actually loaded.
+        filename : str
+            Path to the cached parquet file.
+
+    See Also
+    --------
+    `fetch_electricity_demand` : Half-hourly electricity demand series.
+    `fetch_pedestrian_counts` : Hourly pedestrian sensor series.
+    `get_data_home` : Return the path of the data directory.
+
+    References
+    ----------
+    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+       Neural Information Processing Systems Track on Datasets and
+       Benchmarks. https://doi.org/10.5281/zenodo.4656756
+
+    Examples
+    --------
+    >>> from yohou.datasets import fetch_kdd_cup
+    >>> bunch = fetch_kdd_cup()  # doctest: +SKIP
+    >>> bunch.frame.columns[:3]  # doctest: +SKIP
+    ['time', 'beijing_aotizhongxin_aq__pm2.5', 'beijing_aotizhongxin_aq__pm10']
+
+    """
+    _n_measurements = len(_KDD_CUP_MEASUREMENTS)
+    n_series = n_groups * _n_measurements if n_groups is not None else None
+    bunch = _fetch_dataset(
+        metadata=KDD_CUP_2018,
+        dataset_name="kdd_cup_2018",
+        value_column_name="value",
+        n_series=n_series,
+        data_home=data_home,
+        download_if_missing=download_if_missing,
+        n_retries=n_retries,
+        delay=delay,
+    )
+    bunch.frame = _restructure_kdd_cup_columns(bunch.frame)
+    bunch.feature_names = [c for c in bunch.frame.columns if c != "time"]
+    return bunch

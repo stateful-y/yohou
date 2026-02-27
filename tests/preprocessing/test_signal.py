@@ -20,7 +20,7 @@ from yohou.testing import _yield_yohou_transformer_checks
 
 # Generate high-frequency data for signal processing tests
 # Use 1ms intervals to simulate high-frequency signals
-length = 500
+LENGTH = 500
 
 
 def create_signal_data(length: int = 500, seed: int = 42) -> pl.DataFrame:
@@ -48,7 +48,10 @@ def create_signal_data(length: int = 500, seed: int = 42) -> pl.DataFrame:
     })
 
 
-X = create_signal_data(length=length)
+@pytest.fixture(scope="module")
+def signal_data() -> pl.DataFrame:
+    """Module-scoped fixture providing signal test data."""
+    return create_signal_data(length=LENGTH)
 
 
 class TestIntegrateTransformer:
@@ -147,12 +150,12 @@ class TestDifferentiateTransformer:
             expected_failures=set(expected_failures),
         )
 
-    def test_integrate_basic(self):
+    def test_integrate_basic(self, signal_data):
         """Test basic integration functionality."""
         transformer = NumericalIntegrator()
-        transformer.fit(X)
+        transformer.fit(signal_data)
 
-        X_t = transformer.transform(X)
+        X_t = transformer.transform(signal_data)
 
         # Should have time column
         assert "time" in X_t.columns
@@ -160,12 +163,12 @@ class TestDifferentiateTransformer:
         assert "signal_a_integrated" in X_t.columns
         assert "signal_b_integrated" in X_t.columns
         # Should have same length
-        assert len(X_t) == len(X)
+        assert len(X_t) == len(signal_data)
 
-    def test_integrate_detects_sampling_interval(self):
+    def test_integrate_detects_sampling_interval(self, signal_data):
         """Test that integration detects correct sampling interval."""
         transformer = NumericalIntegrator()
-        transformer.fit(X)
+        transformer.fit(signal_data)
 
         # 1ms interval = 0.001 seconds
         assert abs(transformer.sampling_interval_ - 0.001) < 1e-9
@@ -254,12 +257,12 @@ class TestDifferentiateTransformer:
         # Both should produce same result after rewind
         np.testing.assert_array_almost_equal(X_t1["value_integrated"].to_numpy(), X_t2["value_integrated"].to_numpy())
 
-    def test_integrate_inverse_transform(self):
+    def test_integrate_inverse_transform(self, signal_data):
         """Test inverse transform (differentiation)."""
         transformer = NumericalIntegrator()
-        transformer.fit(X)
+        transformer.fit(signal_data)
 
-        X_t = transformer.transform(X)
+        X_t = transformer.transform(signal_data)
         X_inv = transformer.inverse_transform(X_t)
 
         # Should have original column names
@@ -270,10 +273,10 @@ class TestDifferentiateTransformer:
         # Should have same length
         assert len(X_inv) == len(X_t)
 
-    def test_integrate_feature_names(self):
+    def test_integrate_feature_names(self, signal_data):
         """Test get_feature_names_out."""
         transformer = NumericalIntegrator()
-        transformer.fit(X)
+        transformer.fit(signal_data)
 
         feature_names = transformer.get_feature_names_out()
         assert feature_names == ["signal_a_integrated", "signal_b_integrated"]
@@ -284,10 +287,10 @@ class TestDifferentiateTransformer:
         cloned = clone(transformer)
         assert cloned.method == transformer.method
 
-    def test_invalid_method(self):
+    def test_invalid_method(self, signal_data):
         """Test that invalid method raises ValueError."""
         with pytest.raises(ValueError, match="method"):
-            NumericalIntegrator(method="invalid_method").fit(X)
+            NumericalIntegrator(method="invalid_method").fit(signal_data)
 
     def test_single_column(self):
         """Test integration with a single column."""
@@ -310,12 +313,12 @@ class TestDifferentiateTransformer:
 class TestDifferentiateTransformerBehavior:
     """Tests for NumericalDifferentiator."""
 
-    def test_differentiate_basic(self):
+    def test_differentiate_basic(self, signal_data):
         """Test basic differentiation functionality."""
         transformer = NumericalDifferentiator()
-        transformer.fit(X)
+        transformer.fit(signal_data)
 
-        X_t = transformer.transform(X)
+        X_t = transformer.transform(signal_data)
 
         # Should have time column
         assert "time" in X_t.columns
@@ -323,12 +326,12 @@ class TestDifferentiateTransformerBehavior:
         assert "signal_a_differentiated" in X_t.columns
         assert "signal_b_differentiated" in X_t.columns
         # Should have same length
-        assert len(X_t) == len(X)
+        assert len(X_t) == len(signal_data)
 
-    def test_differentiate_detects_sampling_interval(self):
+    def test_differentiate_detects_sampling_interval(self, signal_data):
         """Test that differentiation detects correct sampling interval."""
         transformer = NumericalDifferentiator()
-        transformer.fit(X)
+        transformer.fit(signal_data)
 
         # 1ms interval = 0.001 seconds
         assert abs(transformer.sampling_interval_ - 0.001) < 1e-9
@@ -365,30 +368,30 @@ class TestDifferentiateTransformerBehavior:
         diff_values = X_t["value_differentiated"].to_numpy()
         assert np.allclose(diff_values, 1.0)
 
-    def test_differentiate_edge_order_1(self):
+    def test_differentiate_edge_order_1(self, signal_data):
         """Test differentiation with order=1."""
         transformer = NumericalDifferentiator(order=1)
-        transformer.fit(X)
-        X_t = transformer.transform(X)
+        transformer.fit(signal_data)
+        X_t = transformer.transform(signal_data)
 
         # Should complete without error
-        assert len(X_t) == len(X)
+        assert len(X_t) == len(signal_data)
 
-    def test_differentiate_edge_order_2(self):
+    def test_differentiate_edge_order_2(self, signal_data):
         """Test differentiation with order=2."""
         transformer = NumericalDifferentiator(order=2)
-        transformer.fit(X)
-        X_t = transformer.transform(X)
+        transformer.fit(signal_data)
+        X_t = transformer.transform(signal_data)
 
         # Should complete without error
-        assert len(X_t) == len(X)
+        assert len(X_t) == len(signal_data)
 
-    def test_differentiate_inverse_transform(self):
+    def test_differentiate_inverse_transform(self, signal_data):
         """Test inverse transform (integration)."""
         transformer = NumericalDifferentiator()
-        transformer.fit(X)
+        transformer.fit(signal_data)
 
-        X_t = transformer.transform(X)
+        X_t = transformer.transform(signal_data)
         X_inv = transformer.inverse_transform(X_t)
 
         # Should have original column names
@@ -399,10 +402,10 @@ class TestDifferentiateTransformerBehavior:
         # Should have same length
         assert len(X_inv) == len(X_t)
 
-    def test_differentiate_feature_names(self):
+    def test_differentiate_feature_names(self, signal_data):
         """Test get_feature_names_out."""
         transformer = NumericalDifferentiator()
-        transformer.fit(X)
+        transformer.fit(signal_data)
 
         feature_names = transformer.get_feature_names_out()
         assert feature_names == ["signal_a_differentiated", "signal_b_differentiated"]
@@ -414,13 +417,13 @@ class TestDifferentiateTransformerBehavior:
 
         assert cloned.order == transformer.order
 
-    def test_invalid_edge_order(self):
+    def test_invalid_edge_order(self, signal_data):
         """Test that invalid order raises error."""
         with pytest.raises(ValueError, match="order"):
-            NumericalDifferentiator(order=0).fit(X)
+            NumericalDifferentiator(order=0).fit(signal_data)
 
         with pytest.raises(ValueError, match="order"):
-            NumericalDifferentiator(order=3).fit(X)
+            NumericalDifferentiator(order=3).fit(signal_data)
 
     def test_single_column(self):
         """Test differentiation with single column."""

@@ -192,7 +192,9 @@ class TestColumnTransformerFeatureNames:
         feature_names = ct.get_feature_names_out()
         assert isinstance(feature_names, list | type(None)) or hasattr(feature_names, "__iter__")
 
-    @pytest.mark.skip(reason="ColumnTransformer.get_feature_names_out returns None with verbose - needs fix")
+    @pytest.mark.skip(
+        reason="ColumnTransformer.get_feature_names_out returns None - pre-existing sklearn delegation issue"
+    )
     def test_verbose_feature_names(self, time_series_3col):
         """Test verbose_feature_names_out=True prefixes names."""
         ct = ColumnTransformer(
@@ -205,8 +207,8 @@ class TestColumnTransformerFeatureNames:
         ct.fit(time_series_3col)
         feature_names = ct.get_feature_names_out()
         assert feature_names is not None
-        # With verbose, names should be prefixed with transformer name
-        assert any("t1" in str(n) for n in feature_names)
+        # With verbose, names should be prefixed with transformer name using _
+        assert any("t1_" in str(n) for n in feature_names)
 
 
 class TestColumnTransformerPassthrough:

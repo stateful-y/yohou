@@ -6,17 +6,16 @@
 #     "yohou",
 # ]
 # ///
-"""Custom Function-Based Transforms.
-
-Demonstrates FunctionTransformer for wrapping arbitrary polars operations
-as sklearn-compatible transformers, including stateful (auto-warmup) and
-stateless patterns, inverse transforms, and check_inverse validation.
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Function Transformer",
+    "description": "Wrap arbitrary polars or numpy operations as sklearn transformers with FunctionTransformer, supporting stateful warmup, inverse transforms, and pipelines.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -24,12 +23,13 @@ def _():
 
     return (mo,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Custom Function-Based Transforms
 
-    `FunctionTransformer` wraps arbitrary polars operations as a full
+    [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) wraps arbitrary polars operations as a full
     sklearn-compatible transformer. This gives you `fit` / `transform` /
     `inverse_transform` lifecycle methods, automatic statefulness detection,
     and seamless composition with forecasters and pipelines.
@@ -40,19 +40,21 @@ def _(mo):
     - Wrapping a stateful function (differencing, rolling) with auto-warmup
     - Inverse transforms and round-trip verification via `check_inverse`
     - Custom `feature_names_out` for renamed columns
-    - Integrating `FunctionTransformer` inside a forecaster pipeline
+    - Integrating [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) inside a forecaster pipeline
 
     ## Prerequisites
 
-    Working knowledge of polars expressions and `PointReductionForecaster`
+    Working knowledge of polars expressions and [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
     (see `examples/quickstart.py`).
     """)
+
 
 @app.cell(hide_code=True)
 def _():
     import numpy as np
     import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
@@ -71,22 +73,28 @@ def _():
         pl,
         plot_forecast,
         plot_time_series,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load Data
+
+    We load the monthly tourism series and split it into train and test sets.
+    `train_test_split` with `shuffle=False` preserves temporal order, which is
+    essential for time series work.
     """)
 
+
 @app.cell
-def _(fetch_tourism_monthly):
+def _(fetch_tourism_monthly, plot_time_series, train_test_split):
     df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
-    split_idx = int(len(df) * 0.85)
-    y_train = df.head(split_idx).select("time", "tourists")
-    y_test = df.tail(len(df) - split_idx).select("time", "tourists")
-    y_train.head()
-    return df, split_idx, y_test, y_train
+    y_train, y_test = train_test_split(df, test_size=0.15, shuffle=False)
+    plot_time_series(y_train, title="Training Data")
+    return df, y_test, y_train
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -98,16 +106,22 @@ def _(mo):
     and must return a DataFrame (or array) with the same number of rows.
     """)
 
+
 @app.cell
-def _(FunctionTransformer, np, y_train):
+def _(FunctionTransformer, np, plot_time_series, y_train):
     log_transformer = FunctionTransformer(
         func=np.log,
         inverse_func=np.exp,
         check_inverse=False,
     )
     y_log = log_transformer.fit_transform(y_train)
-    y_log.head()
+    _combined = y_train.rename({"tourists": "original"}).join(
+        y_log.rename({"tourists": "log-scaled"}),
+        on="time",
+    )
+    plot_time_series(_combined, title="Log Transform")
     return log_transformer, y_log
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -116,6 +130,7 @@ def _(mo):
     (variable day counts). With daily or sub-daily data you can use
     `check_inverse=True` (default) to verify `exp(log(x)) ≈ x` at `fit()` time.
     """)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -128,8 +143,9 @@ def _(mo):
     `inverse_transform` can recover the original values.
     """)
 
+
 @app.cell
-def _(FunctionTransformer, mo, pl, y_train):
+def _(FunctionTransformer, mo, pl, plot_time_series, y_train):
     def _diff(df: pl.DataFrame) -> pl.DataFrame:
         return df.select(pl.all().diff())
 
@@ -147,31 +163,23 @@ def _(FunctionTransformer, mo, pl, y_train):
     )
     y_diff = diff_transformer.fit_transform(y_train)
 
-    mo.md(
-        f"**Original length**: {len(y_train)} rows\n\n"
-        f"**After fit_transform**: {len(y_diff)} rows "
-        f"(observation_horizon={diff_transformer._observation_horizon})\n\n"
-        f"The first row was consumed as warmup."
-    )
+    plot_time_series(y_diff, title="After Differencing")
     return diff_transformer, y_diff
+
 
 @app.cell
 def _(diff_transformer, mo, y_diff, y_train):
     # inverse_transform needs X_p (warmup data) when observation_horizon > 0
-    _y_recovered = diff_transformer.inverse_transform(
-        y_diff, y_train.head(diff_transformer._observation_horizon)
-    )
+    _y_recovered = diff_transformer.inverse_transform(y_diff, y_train.head(diff_transformer._observation_horizon))
     # Compare recovered vs. original (minus warmup)
     _y_orig_tail = y_train.tail(len(y_diff))
-    _max_diff = (
-        _y_recovered.select("tourists").to_series()
-        - _y_orig_tail.select("tourists").to_series()
-    ).abs().max()
+    _max_diff = (_y_recovered.select("tourists").to_series() - _y_orig_tail.select("tourists").to_series()).abs().max()
     mo.md(
         f"**Max absolute reconstruction error**: {_max_diff}\n\n"
         f"The round-trip is exact because `inverse_transform` uses stored "
         f"observation memory to recover the initial level."
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -183,6 +191,7 @@ def _(mo):
     - `"one-to-one"`: keep original names (same as default)
     - A **callable** `(transformer, input_features) -> list[str]`
     """)
+
 
 @app.cell
 def _(FunctionTransformer, mo, pl, y_train):
@@ -198,6 +207,7 @@ def _(FunctionTransformer, mo, pl, y_train):
     mo.md(f"**Output feature names**: {_names}")
     return (pct_transformer,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -207,8 +217,9 @@ def _(mo):
     `inv_kw_args`.
     """)
 
+
 @app.cell
-def _(FunctionTransformer, mo, pl, y_train):
+def _(FunctionTransformer, pl, plot_time_series, y_train):
     def _clip(df: pl.DataFrame, *, lower: float, upper: float) -> pl.DataFrame:
         return df.select(pl.all().clip(lower, upper))
 
@@ -217,21 +228,23 @@ def _(FunctionTransformer, mo, pl, y_train):
         kw_args={"lower": 100.0, "upper": 500.0},
     )
     _y_clipped = clip_transformer.fit_transform(y_train)
-    mo.md(
-        f"**Min before clip**: {y_train['tourists'].min()}\n\n"
-        f"**Min after clip**: {_y_clipped['tourists'].min()}\n\n"
-        f"**Max after clip**: {_y_clipped['tourists'].max()}"
+    _combined = _y_clipped.rename({"tourists": "clipped"}).join(
+        y_train.rename({"tourists": "original"}),
+        on="time",
     )
+    plot_time_series(_combined, title="Clip to [100, 500]")
     return (clip_transformer,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Inside a Forecaster
 
-    Use `FunctionTransformer` as `target_transformer` to log-transform the
+    Use [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) as `target_transformer` to log-transform the
     target before fitting and automatically back-transform predictions.
     """)
+
 
 @app.cell
 def _(
@@ -263,6 +276,15 @@ def _(
     _score = scorer.score(y_test, y_pred)
     return forecaster, scorer, y_pred
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) overlays the predicted values against the test actuals,
+    optionally showing a tail of the training history for context.
+    """)
+
+
 @app.cell
 def _(plot_forecast, y_pred, y_test, y_train):
     plot_forecast(
@@ -273,12 +295,13 @@ def _(plot_forecast, y_pred, y_test, y_train):
         title="Forecast with Log Target Transform",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - `FunctionTransformer` wraps any `polars DataFrame -> DataFrame` function as an sklearn-compatible transformer
+    - [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) wraps any `polars DataFrame -> DataFrame` function as an sklearn-compatible transformer
     - **func** receives the DataFrame **without** the `"time"` column; time is re-attached automatically
     - **Statefulness** is auto-detected: if `func` produces leading NaN rows, those become `observation_horizon` warmup
     - **check_inverse** verifies the round-trip `inverse_func(func(x)) ≈ x` at fit time (warns, does not raise)
@@ -288,10 +311,11 @@ def _(mo):
 
     ## Next Steps
 
-    - **Sklearn wrappers**: See `examples/preprocessing/sklearn_wrappers.py` for built-in StandardScaler, MinMaxScaler, etc.
+    - **Sklearn wrappers**: See [`examples/preprocessing/sklearn_wrappers.py`](/examples/preprocessing/sklearn_wrappers/) for built-in StandardScaler, MinMaxScaler, etc.
     - **Window transforms**: See `examples/preprocessing/window_transforms.py` for rolling and expanding windows
-    - **Signal processing**: See `examples/preprocessing/signal_processing.py` for numerical filters and differentiators
+    - **Signal processing**: See [`examples/preprocessing/signal_processing.py`](/examples/preprocessing/signal_processing/) for numerical filters and differentiators
     """)
+
 
 if __name__ == "__main__":
     app.run()

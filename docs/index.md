@@ -1,11 +1,7 @@
-![](assets/logo_dark.png#only-dark){width=800}
-![](assets/logo_light.png#only-light){width=800}
+![Yohou](assets/logo_dark.png#only-dark){width=800}
+![Yohou](assets/logo_light.png#only-light){width=800}
 
-# Yohou
-
-A time series forecasting package based on Scikit-Learn and Polars
-
-Yohou bridges scikit-learn's tabular machine learning ecosystem with time series forecasting. It treats forecasting as a supervised learning reduction problem while preserving temporal structure, giving you the full power of sklearn estimators, pipelines, and cross-validation with native polars DataFrames.
+Yohou bridges Scikit-Learn's tabular machine learning ecosystem with time series forecasting. It treats forecasting as a supervised learning reduction problem while preserving temporal structure, giving you the full power of sklearn estimators, pipelines, and cross-validation with native polars DataFrames.
 
 <div class="grid cards" markdown>
 
@@ -51,8 +47,8 @@ Yohou bridges scikit-learn's tabular machine learning ecosystem with time series
 - **Panel data**: First-class support for multiple related time series via the `__` column naming convention.
 - **Composition**: Pipelines, feature unions, column transformers, and decomposition pipelines that compose like sklearn.
 - **Time-weighted learning**: Metadata routing support for `time_weight` in fitting and scoring.
-- **Interactive visualization**: 30+ Plotly-based plotting functions for exploration, diagnostics, and evaluation.
-- **Remote datasets**: 7 `fetch_*` functions for Monash/Zenodo time series with local Parquet caching (univariate, multivariate, and panel).
+- **Interactive visualization**: Plotly-based plotting functions for exploration, diagnostics, and evaluation.
+- **Remote datasets**: 8 `fetch_*` functions for Monash/Zenodo time series with local Parquet caching (univariate, multivariate, and panel).
 
 ## What's New
 

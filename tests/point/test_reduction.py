@@ -11,43 +11,48 @@ from conftest import run_checks
 from yohou.point import PointReductionForecaster
 from yohou.testing import _yield_yohou_forecaster_checks
 
-length = 22
+LENGTH = 22
 
-time = pl.DataFrame({
-    "time": pl.datetime_range(
-        start=datetime(2021, 12, 16),
-        end=datetime(2021, 12, 16, 0, 0, length - 1),
-        interval="1s",
-        eager=True,
-    ),
-})
-y = pl.DataFrame(
-    {
-        "a": range(length),
-        "b": range(10, length + 10),
-    },
-    schema={
-        "a": pl.Float64,
-        "b": pl.Float64,
-    },
-)
-y = pl.concat([time, y], how="horizontal")
 
-X = pl.DataFrame(
-    {
-        "c": range(length),
-        "d": range(10, length + 10),
-        "e": range(20, length + 20),
-    },
-    schema={
-        "c": pl.Float64,
-        "d": pl.Float64,
-        "e": pl.Float64,
-    },
-)
-X = pl.concat([time, X], how="horizontal")
+@pytest.fixture(scope="module")
+def reduction_data():
+    """Module-scoped fixture for standard reduction test data."""
+    time = pl.DataFrame({
+        "time": pl.datetime_range(
+            start=datetime(2021, 12, 16),
+            end=datetime(2021, 12, 16, 0, 0, LENGTH - 1),
+            interval="1s",
+            eager=True,
+        ),
+    })
+    y = pl.DataFrame(
+        {
+            "a": range(LENGTH),
+            "b": range(10, LENGTH + 10),
+        },
+        schema={
+            "a": pl.Float64,
+            "b": pl.Float64,
+        },
+    )
+    y = pl.concat([time, y], how="horizontal")
 
-y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2, shuffle=False)
+    X = pl.DataFrame(
+        {
+            "c": range(LENGTH),
+            "d": range(10, LENGTH + 10),
+            "e": range(20, LENGTH + 20),
+        },
+        schema={
+            "c": pl.Float64,
+            "d": pl.Float64,
+            "e": pl.Float64,
+        },
+    )
+    X = pl.concat([time, X], how="horizontal")
+
+    y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2, shuffle=False)
+    return y_train, y_test, X_train, X_test
 
 
 class TestPredict:
@@ -59,7 +64,8 @@ class TestPredict:
             (3, 2, [17.0, 18.0]),
         ],
     )
-    def test_predict(self, fit_forecasting_horizon, predict_forecasting_horizon, expected_a):
+    def test_predict(self, reduction_data, fit_forecasting_horizon, predict_forecasting_horizon, expected_a):
+        y_train, y_test, X_train, X_test = reduction_data
         forecaster = PointReductionForecaster()
 
         forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
@@ -100,7 +106,10 @@ class TestObservePredict:
             (3, 2, 1, [22.0, 23.0]),
         ],
     )
-    def test_observe_predict(self, fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a):
+    def test_observe_predict(
+        self, reduction_data, fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a
+    ):
+        y_train, y_test, X_train, X_test = reduction_data
         forecaster = PointReductionForecaster()
 
         forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
@@ -117,7 +126,7 @@ class TestObservePredict:
         # Calculate start values for future features
         # X_test ends at index 21 (length-1)
         # So next values start at 22
-        start_val = length
+        start_val = LENGTH
         future_X = pl.DataFrame(
             {
                 "time": future_time,
@@ -162,25 +171,37 @@ class TestObservePredict:
         pl.testing.assert_frame_equal(y_pred, expected_y_pred)
 
 
-y_panel = pl.DataFrame({
-    "x__a": range(length),
-    "x__b": range(10, length + 10),
-    "y__a": range(10, length + 10),
-    "y__b": range(20, length + 20),
-})
-y_panel = pl.concat([time, y_panel], how="horizontal")
+@pytest.fixture(scope="module")
+def panel_reduction_data():
+    """Module-scoped fixture for panel reduction test data."""
+    time = pl.DataFrame({
+        "time": pl.datetime_range(
+            start=datetime(2021, 12, 16),
+            end=datetime(2021, 12, 16, 0, 0, LENGTH - 1),
+            interval="1s",
+            eager=True,
+        ),
+    })
+    y_panel = pl.DataFrame({
+        "x__a": range(LENGTH),
+        "x__b": range(10, LENGTH + 10),
+        "y__a": range(10, LENGTH + 10),
+        "y__b": range(20, LENGTH + 20),
+    })
+    y_panel = pl.concat([time, y_panel], how="horizontal")
 
-X_panel = pl.DataFrame({
-    "x__c": range(length),
-    "y__c": range(10, length + 10),
-    "d": range(10, length + 10),
-    "e": range(20, length + 20),
-})
-X_panel = pl.concat([time, X_panel], how="horizontal")
+    X_panel = pl.DataFrame({
+        "x__c": range(LENGTH),
+        "y__c": range(10, LENGTH + 10),
+        "d": range(10, LENGTH + 10),
+        "e": range(20, LENGTH + 20),
+    })
+    X_panel = pl.concat([time, X_panel], how="horizontal")
 
-y_train_panel, y_test_panel, X_train_panel, X_test_panel = train_test_split(
-    y_panel, X_panel, test_size=0.2, shuffle=False
-)
+    y_train_panel, y_test_panel, X_train_panel, X_test_panel = train_test_split(
+        y_panel, X_panel, test_size=0.2, shuffle=False
+    )
+    return y_train_panel, y_test_panel, X_train_panel, X_test_panel
 
 
 class TestObservePredictGlobal:
@@ -192,7 +213,10 @@ class TestObservePredictGlobal:
             (3, 2, 1, [22.0, 23.0]),
         ],
     )
-    def test_observe_predict_global(self, fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a):
+    def test_observe_predict_global(
+        self, panel_reduction_data, fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a
+    ):
+        y_train_panel, y_test_panel, X_train_panel, X_test_panel = panel_reduction_data
         forecaster = PointReductionForecaster()
 
         forecaster.fit(
@@ -210,7 +234,7 @@ class TestObservePredictGlobal:
             eager=True,
         )
 
-        start_val = length
+        start_val = LENGTH
         future_X_panel = pl.DataFrame(
             {
                 "time": future_time,

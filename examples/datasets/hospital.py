@@ -4,18 +4,16 @@
 #     "yohou",
 # ]
 # ///
-"""Hospital - Monthly Patient Counts Panel Analysis.
-
-Monthly patient counts for medical products in Yohou panel format.
-
-Dataset: 767 monthly patient count series (exploring first 6)
-Demonstrates: plot_time_series, plot_cross_correlation, plot_seasonality
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Hospital",
+    "description": "Explore the Hospital panel dataset (767 series) with multi-series visualisation, cross-correlation analysis across lags, and monthly seasonality.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -35,6 +33,7 @@ def _():
         plot_seasonality,
         plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -56,6 +55,7 @@ def _(mo):
     None. this is a standalone dataset exploration.
     """)
 
+
 @app.cell
 def _(fetch_hospital):
     _all = fetch_hospital().frame
@@ -65,6 +65,7 @@ def _(fetch_hospital):
     df.head(20)
     return (df,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -73,6 +74,7 @@ def _(mo):
     Plotting several patient count series together shows how different
     medical product categories co-move over time.
     """)
+
 
 @app.cell
 def _(df, plot_time_series):
@@ -85,6 +87,7 @@ def _(df, plot_time_series):
         y_label="Patients",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -93,6 +96,7 @@ def _(mo):
     Cross-correlation between T1 and T2 quantifies the strength and
     timing of the relationship between two patient count series.
     """)
+
 
 @app.cell
 def _(df, plot_cross_correlation):
@@ -104,6 +108,7 @@ def _(df, plot_cross_correlation):
     )
     return (df,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -112,6 +117,7 @@ def _(mo):
     Comparing cross-correlation with a different series reveals whether
     different categories have different lag structures.
     """)
+
 
 @app.cell
 def _(df, plot_cross_correlation):
@@ -122,6 +128,7 @@ def _(df, plot_cross_correlation):
         title="T1 vs T3 Patient Counts Cross-Correlation",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -130,6 +137,7 @@ def _(mo):
     Aggregating by month reveals seasonal healthcare demand patterns
     driven by illness seasonality and administrative cycles.
     """)
+
 
 @app.cell
 def _(df, plot_seasonality):
@@ -140,6 +148,7 @@ def _(df, plot_seasonality):
         title="T1 - Average Patient Count by Month",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -147,6 +156,7 @@ def _(mo):
 
     Quarterly aggregation shows broader seasonal trends in patient counts.
     """)
+
 
 @app.cell
 def _(df, plot_seasonality):
@@ -156,6 +166,7 @@ def _(df, plot_seasonality):
         seasonality="quarter",
         title="T1 - Average Patient Count by Quarter",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -170,10 +181,11 @@ def _(mo):
 
     ## Next Steps
 
-    - For high-frequency panel data, see `examples/datasets/vic_electricity.py`
-    - For weekly panel, see `examples/datasets/store_sales.py`
-    - For univariate cyclic patterns, see `examples/datasets/sunspots.py`
+    - For high-frequency panel data, see [`examples/datasets/vic_electricity.py`](/examples/datasets/vic_electricity/)
+    - For weekly panel, see [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
+    - For univariate cyclic patterns, see [`examples/datasets/sunspots.py`](/examples/datasets/sunspots/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

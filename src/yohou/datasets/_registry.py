@@ -162,3 +162,37 @@ Citation: Godahewa et al. (2021), "Monash Time Series Forecasting Archive"
     frequency="1mo",
     n_series=767,
 )
+
+KDD_CUP_2018 = RemoteFileMetadata(
+    url=_ZENODO_URL.format(
+        record_id="4656756",
+        filename="kdd_cup_2018_dataset_without_missing_values.zip",
+    ),
+    zip_filename="kdd_cup_2018_dataset_without_missing_values.zip",
+    tsf_filename="kdd_cup_2018_dataset_without_missing_values.tsf",
+    sha256="2ababea948fb1179eb3c5e0bed63611251278f5e8dca30dd8e8d658652720b01",
+    descr="""\
+KDD Cup 2018 Air Quality Dataset
+=================================
+
+270 hourly time series representing air quality measurements from
+59 monitoring stations across two cities: Beijing (35 stations) and
+London (24 stations), from January 2017 to March 2018.
+
+Each station records up to six pollutant measurements: PM2.5, PM10,
+NO2, CO, O3, and SO2. All Beijing stations have all six measurements;
+London stations have a subset (typically PM2.5, PM10, NO2).
+
+This is the only multivariate panel dataset in yohou: each panel
+group (station) contains multiple member columns (measurements),
+making it ideal for demonstrating groupwise aggregation, multivariate
+panel strategies, and composition patterns.
+
+Source: Monash Time Series Forecasting Archive (forecastingdata.org)
+License: CC BY 4.0
+DOI: 10.5281/zenodo.4656756
+Citation: Godahewa et al. (2021), "Monash Time Series Forecasting Archive"
+""",
+    frequency="1h",
+    n_series=270,
+)
