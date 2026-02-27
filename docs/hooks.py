@@ -114,11 +114,17 @@ def _linkify_see_also(html):
     )
 
 
-def _discover_abstract_base_classes():
-    """Find all abstract base classes and Base* mixins that inherit from BaseEstimator.
+def _discover_base_and_abstract_classes():
+    """Discover Base* classes and abstract non-Base estimators.
 
-    Also includes Base* mixins from the yohou.base package that may not
-    inherit from BaseEstimator directly (e.g., pure mixin classes).
+    Returns
+    -------
+    base_classes : list of (name, class)
+        Classes whose name starts with ``Base`` (shown as "Base Class" badge).
+    abstract_estimators : list of (name, class)
+        Abstract estimators that do not follow the ``Base*`` naming convention
+        (e.g. ``QuantileResidual``).  These are included as regular "Class"
+        entries so they are not missing from the API index.
     """
     import inspect
     import pkgutil
@@ -128,7 +134,8 @@ def _discover_abstract_base_classes():
     from sklearn.base import BaseEstimator
 
     root = str(Path(__file__).parent.parent / "src" / "yohou")
-    abstract_classes = []
+    base_classes = []
+    abstract_estimators = []
     seen = set()
     for _, module_name, _ in pkgutil.walk_packages(path=[root], prefix="yohou."):
         parts = module_name.split(".")
@@ -144,14 +151,18 @@ def _discover_abstract_base_classes():
             if name in seen:
                 continue
             is_estimator = issubclass(cls, BaseEstimator)
+            is_base = name.startswith("Base") and name != "BaseEstimator"
             is_abstract = is_estimator and hasattr(cls, "__abstractmethods__") and cls.__abstractmethods__
-            is_base_mixin = name.startswith("Base") and name != "BaseEstimator"
-            if is_abstract or (is_base_mixin and (is_estimator or module_name.startswith("yohou.base."))):
-                abstract_classes.append((name, cls))
+            if is_base and (is_estimator or module_name.startswith("yohou.base.")):
+                base_classes.append((name, cls))
+                seen.add(name)
+            elif is_abstract:
+                abstract_estimators.append((name, cls))
                 seen.add(name)
 
-    abstract_classes.sort(key=lambda x: (x[1].__module__, x[0]))
-    return abstract_classes
+    base_classes.sort(key=lambda x: (x[1].__module__, x[0]))
+    abstract_estimators.sort(key=lambda x: (x[1].__module__, x[0]))
+    return base_classes, abstract_estimators
 
 
 def _get_discovery_data():
@@ -163,8 +174,12 @@ def _get_discovery_data():
     from yohou.utils.discovery import all_displays, all_estimators, all_functions
 
     estimators = all_estimators()
-    estimator_names = {name for name, _ in estimators}
-    base_classes = [(name, cls) for name, cls in _discover_abstract_base_classes() if name not in estimator_names]
+    base_classes, abstract_estimators = _discover_base_and_abstract_classes()
+    base_names = {name for name, _ in base_classes}
+    # Base*-prefixed classes belong in the base class section only
+    estimators = [(name, cls) for name, cls in estimators if name not in base_names]
+    # Abstract non-Base estimators are not in all_estimators(); add as regular classes
+    estimators.extend(abstract_estimators)
 
     _DISCOVERY_CACHE = {
         "estimators": estimators,
