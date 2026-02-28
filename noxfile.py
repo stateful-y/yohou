@@ -212,11 +212,11 @@ def lint(session: nox.Session) -> None:
     # Run ruff check
     session.run("ruff", "check", "src", "tests", external=True)
 
-    # Run ty
-    session.run("ty", "check", "src", external=True)
-
     # Run rumdl (markdown linting)
     session.run("uvx", "rumdl", "check", ".", external=True)
+
+    # Run ty
+    session.run("ty", "check", "src", external=True)
 
 
 @nox.session(venv_backend="uv")

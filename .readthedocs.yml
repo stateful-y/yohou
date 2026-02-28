@@ -23,6 +23,9 @@ build:
       # Pre-download all datasets so marimo HTML exports read from parquet cache
       # instead of downloading and parsing large TSF archives during the build
       - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv run python docs/precache_datasets.py
+    post_build:
+      # Check for dead links in the built documentation
+      - uvx linkchecker "${READTHEDOCS_OUTPUT}html/index.html" --no-status --no-warnings --ignore-url material/overrides
 
 # MkDocs configuration
 mkdocs:

@@ -40,8 +40,8 @@ test-examples:
 # Run linters and type checkers
 lint:
     uv run ruff check src tests
-    uv run ty check src
     uvx rumdl check .
+    uv run ty check src
 
 # Format and fix code (via pre-commit)
 fix:

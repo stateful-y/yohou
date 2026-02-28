@@ -709,7 +709,7 @@ def _process_api_page_content(html, page):
 
     is_class_page = bool(re.search(r'<h3\s+id="yohou\.', html))
 
-    # --- Locate class-level content region ---
+    # Locate class-level content region
     h2_match = re.search(r'<h2\s+id="yohou\.', html)
     if not h2_match:
         return html
@@ -724,7 +724,7 @@ def _process_api_page_content(html, page):
     class_region = html[h2_pos:boundary_pos]
     sections_found = []  # (id, title) in document order
 
-    # --- Convert doc-section-title spans to h3 headings ---
+    # Convert doc-section-title spans to h3 headings
     def _span_to_h3(m):
         title = re.sub(r"<[^>]+>", "", m.group(1)).strip().rstrip(":")
         slug = _DOC_SECTION_TITLE_SLUGS.get(title)
@@ -739,7 +739,7 @@ def _process_api_page_content(html, page):
         class_region,
     )
 
-    # --- Convert <details> sections to h3 heading + unwrapped content ---
+    # Convert <details> sections to h3 heading + unwrapped content
     for detail_cls, (slug, title) in _DETAIL_SECTION_SLUGS.items():
         detail_re = re.compile(
             rf'<details\s+class="{re.escape(detail_cls)}"[^>]*>'
@@ -754,7 +754,7 @@ def _process_api_page_content(html, page):
             new_class_region = new_class_region[: m.start()] + heading + "\n" + inner + new_class_region[m.end() :]
             sections_found.append((slug, title))
 
-    # --- Convert <details class="mkdocstrings-source"> to Source Code h3 ---
+    # Convert <details class="mkdocstrings-source"> to Source Code h3
     src_re = re.compile(
         r'<details\s+class="mkdocstrings-source"[^>]*>'
         r"\s*<summary>.*?</summary>"
@@ -768,7 +768,7 @@ def _process_api_page_content(html, page):
         new_class_region = new_class_region[: src_m.start()] + heading + "\n" + inner + new_class_region[src_m.end() :]
         sections_found.append(("source-code", "Source Code"))
 
-    # --- Split See Also entries so each appears on its own line ---
+    # Split See Also entries so each appears on its own line
     def _split_see_also_p(m):
         content = m.group(1)
         # Split on newlines that separate entries (each entry starts with
@@ -789,7 +789,7 @@ def _process_api_page_content(html, page):
 
     html = html[:h2_pos] + new_class_region + html[boundary_pos:]
 
-    # --- Insert "Methods" h3 before doc-children ---
+    # Insert "Methods" h3 before doc-children
     if is_class_page:
         methods_heading = _make_section_heading("methods", "Methods") + "\n"
         html = re.sub(
@@ -799,7 +799,7 @@ def _process_api_page_content(html, page):
             count=1,
         )
 
-    # --- Increase method heading levels (h3 -> h5) in doc-children ---
+    # Increase method heading levels (h3 -> h5) in doc-children
     if is_class_page:
         dc_match = re.search(r'<div\s+class="doc doc-children"', html)
         if dc_match:
@@ -809,7 +809,7 @@ def _process_api_page_content(html, page):
             after = re.sub(r"</h3>", "</h5>", after)
             html = before + after
 
-    # --- Rename "Examples" h2 to "Tutorials" h3 ---
+    # Rename "Examples" h2 to "Tutorials" h3
     examples_h2 = re.search(r'<h2 id="examples">.*?</h2>', html, re.DOTALL)
     if examples_h2:
         old = examples_h2.group(0)
@@ -821,7 +821,7 @@ def _process_api_page_content(html, page):
         )
         html = html.replace(old, new, 1)
 
-    # --- Rebuild page.toc ---
+    # Rebuild page.toc
     old_toc = list(page.toc)
     if old_toc:
         h1 = old_toc[0]

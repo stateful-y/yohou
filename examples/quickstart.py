@@ -1097,7 +1097,7 @@ def _(
     y_panel_test,
     y_panel_train,
 ):
-    # --- Global panel strategy (default) ---
+    # Global panel strategy (default)
     # One Ridge model is trained on the pooled tabularised data from all groups.
     global_forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
