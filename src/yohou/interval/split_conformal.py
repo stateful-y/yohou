@@ -610,8 +610,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y_pred_intervals = pl.DataFrame()
         for step in range(1, 1 + forecasting_horizon):
             # Get step predictions
-            y_pred_step_values = y_pred_values[[step - 1]]
-            y_pred_step_time = y_pred_time[[step - 1]]
+            y_pred_step_values = y_pred_values.slice(step - 1, 1)
+            y_pred_step_time = y_pred_time.slice(step - 1, 1)
 
             # Combine time and values for inverse_score (conformity scorers need time)
             y_pred_step = y_pred_step_time.hstack(y_pred_step_values)

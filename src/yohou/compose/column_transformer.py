@@ -494,21 +494,42 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             feature_names_in,
         )
 
-    def get_feature_names_out(self, input_features: list[str] | None = None) -> Any:
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names.
+
+        Collects output feature names from each fitted sub-transformer,
+        optionally prefixing them with the transformer name when
+        ``verbose_feature_names_out`` is True.
 
         Parameters
         ----------
         input_features : list[str] | None, default=None
-            Input feature names.
+            Input feature names. If None, uses ``feature_names_in_`` from fit.
 
         Returns
         -------
-        feature_names_out : Any
+        list of str
             Output feature names.
 
         """
-        return super().get_feature_names_out(input_features)
+        check_is_fitted(self, "transformers_")
+        feature_names_out: list[str] = []
+        for name, trans, columns in self.transformers_:  # type: ignore[attr-defined]
+            if trans == "drop" or (isinstance(columns, list) and len(columns) == 0):
+                continue
+            col_list = list(columns) if isinstance(columns, list) else [columns]
+            names: list[str] = col_list
+            if hasattr(trans, "get_feature_names_out"):
+                result = trans.get_feature_names_out()
+                if result is not None:
+                    # Sub-transformers may include "time" in their output; strip it.
+                    filtered = [f for f in result if f != "time"]
+                    if filtered:
+                        names = filtered
+            if self.verbose_feature_names_out:
+                names = [f"{name}_{f}" for f in names]
+            feature_names_out.extend(names)
+        return feature_names_out
 
     def _get_remainder_cols(self, indices: Any) -> Any:
         """Get remainder columns.
@@ -1188,7 +1209,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             observation_horizons=self._get_observation_horizons(),
         )
         output_samples = output.shape[0]
-        if check_samples and output_samples != n_samples - self.observation_horizon:
+        if check_samples and output_samples > n_samples:
             raise ValueError(
                 "Concatenating DataFrames from the transformer's output lead to an inconsistent number of samples."
             )

@@ -404,7 +404,6 @@ class TestGridSearchConformalForecaster:
         assert search.best_params_ is not None
         check_is_fitted(search.best_forecaster_)
 
-    @pytest.mark.skip(reason="Polars indexing bug in SplitConformalForecaster.predict_interval()")
     def test_grid_search_conformal_predict_interval(self, linear_series):
         """Verify best_forecaster_ supports predict_interval()."""
         y = linear_series(slope=2.0, intercept=10.0, length=100)
@@ -427,13 +426,12 @@ class TestGridSearchConformalForecaster:
         search.fit(y, forecasting_horizon=5)
 
         # predict_interval should work on fitted search
-        y_pred = search.predict_interval(forecasting_horizon=8, coverage_rates=[0.9])
+        y_pred = search.predict_interval(forecasting_horizon=5, coverage_rates=[0.9])
 
-        assert len(y_pred) == 8
+        assert len(y_pred) == 5
         assert "time" in y_pred.columns
-        assert "value" in y_pred.columns
-        assert "lower_0.9" in y_pred.columns
-        assert "upper_0.9" in y_pred.columns
+        assert "value_lower_0.9" in y_pred.columns
+        assert "value_upper_0.9" in y_pred.columns
 
     def test_grid_search_conformal_conformity_scorer_params(self, linear_series):
         """Verify param_grid can tune conformity_scorer parameters."""
@@ -515,7 +513,6 @@ class TestGridSearchConfiguration:
 class TestNestedCVColumnForecaster:
     """Nested GridSearchCV inside ColumnForecaster for multi-column scenarios."""
 
-    @pytest.mark.skip(reason="GridSearchCV doesn't expose interval_ attribute required by ColumnForecaster")
     def test_nested_cv_column_forecaster_inner_search(self, linear_series):
         """Verify inner GridSearchCV fits during outer fit."""
         y_multi = linear_series(slope=2.0, intercept=10.0, length=100).rename({"value": "col_a"})
@@ -540,11 +537,11 @@ class TestNestedCVColumnForecaster:
 
         column_forecaster.fit(y_multi, forecasting_horizon=5)
 
-        # inner_search should be fitted
-        check_is_fitted(inner_search)
-        assert inner_search.best_params_ is not None
+        # inner_search clone should be fitted inside column_forecaster
+        _name, fitted_search, _cols = column_forecaster.forecasters_[0]
+        check_is_fitted(fitted_search)
+        assert fitted_search.best_params_ is not None
 
-    @pytest.mark.skip(reason="GridSearchCV doesn't expose interval_ attribute required by ColumnForecaster")
     def test_nested_cv_column_forecaster_best_forecaster_populated(self, linear_series):
         """Verify best_forecaster_ is populated inside ColumnForecaster."""
         y_multi = linear_series(slope=2.0, intercept=10.0, length=100).rename({"value": "col_a"})
@@ -567,11 +564,11 @@ class TestNestedCVColumnForecaster:
 
         column_forecaster.fit(y_multi, forecasting_horizon=5)
 
-        # best_forecaster_ should be accessible
-        assert hasattr(inner_search, "best_forecaster_")
-        check_is_fitted(inner_search.best_forecaster_)
+        # best_forecaster_ should be accessible on fitted clone
+        _name, fitted_search, _cols = column_forecaster.forecasters_[0]
+        assert hasattr(fitted_search, "best_forecaster_")
+        check_is_fitted(fitted_search.best_forecaster_)
 
-    @pytest.mark.skip(reason="GridSearchCV doesn't expose interval_ attribute required by ColumnForecaster")
     def test_nested_cv_column_forecaster_predictions_correct(self, linear_series):
         """Verify predictions work correctly with nested CV in ColumnForecaster."""
         y_multi = linear_series(slope=2.0, intercept=10.0, length=100).rename({"value": "col_a"})

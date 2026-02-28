@@ -597,11 +597,15 @@ def check_clone_preserves_forecaster_params(forecaster) -> None:
             for i, (orig_item, cloned_item) in enumerate(zip(orig_val, cloned_val, strict=False)):
                 assert isinstance(orig_item, tuple), f"Parameter {key}[{i}]: expected tuple"
                 assert isinstance(cloned_item, tuple), f"Parameter {key}[{i}]: expected tuple"
-                assert len(orig_item) == 2, f"Parameter {key}[{i}]: expected (name, estimator) tuple"
-                assert len(cloned_item) == 2, f"Parameter {key}[{i}]: expected (name, estimator) tuple"
+                assert len(orig_item) in (2, 3), (
+                    f"Parameter {key}[{i}]: expected (name, estimator) or (name, estimator, columns) tuple, got length {len(orig_item)}"
+                )
+                assert len(cloned_item) == len(orig_item), (
+                    f"Parameter {key}[{i}]: clone tuple length {len(cloned_item)} != original {len(orig_item)}"
+                )
 
-                orig_name, orig_est = orig_item
-                cloned_name, cloned_est = cloned_item
+                orig_name, orig_est = orig_item[0], orig_item[1]
+                cloned_name, cloned_est = cloned_item[0], cloned_item[1]
 
                 # Names should match exactly
                 assert orig_name == cloned_name, f"Parameter {key}[{i}]: different names {cloned_name} != {orig_name}"
@@ -629,7 +633,12 @@ def check_clone_preserves_forecaster_params(forecaster) -> None:
                             assert orig_param == cloned_param, (
                                 f"Parameter {key}[{i}]__{param_key}: {cloned_param} != {orig_param}"
                             )
-        # For class types (e.g., BaseClassWrapper exposes estimator class like Ridge)
+
+                # For 3-tuples (name, estimator, columns), compare the columns element
+                if len(orig_item) == 3:
+                    orig_cols = orig_item[2]
+                    cloned_cols = cloned_item[2]
+                    assert orig_cols == cloned_cols, f"Parameter {key}[{i}] columns: {cloned_cols} != {orig_cols}"
         elif isinstance(orig_val, type):
             assert orig_val is cloned_val, (
                 f"Parameter {key}: class type should be preserved by clone, got {cloned_val} vs {orig_val}"

@@ -9,36 +9,44 @@ import polars.selectors as cs
 def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]], observation_horizons: list[int]) -> pl.DataFrame:
     """Stack transformed features horizontally, aligning observation horizons.
 
+    Aligns transformer outputs by their ``"time"`` column, keeping only the
+    intersection of timestamps across all DataFrames.  This handles
+    transformers that may drop different numbers of initial rows (e.g.,
+    due to different ``observation_horizon`` values).
+
     Parameters
     ----------
     Xs : list of pl.DataFrame
-        List of transformed DataFrames.
+        List of transformed DataFrames, each containing a ``"time"`` column.
 
     column_names : list of list of str
         Column names for each DataFrame.
 
     observation_horizons : list of int
-        Observation horizon for each transformer.
+        Observation horizon for each transformer (used for fallback when
+        ``"time"`` column is absent).
 
     Returns
     -------
     pl.DataFrame
-        Horizontally concatenated features.
+        Horizontally concatenated features aligned by time.
 
     """
-    ref_observation_horizon = max(observation_horizons)
-    time = Xs[0].select(cs.by_name("time"))[ref_observation_horizon - observation_horizons[0] :]
+    # Find common time range across all transformer outputs
+    common_times = Xs[0].select(cs.by_name("time"))
+    for X in Xs[1:]:
+        common_times = common_times.join(X.select(cs.by_name("time")), on="time", how="inner")
 
-    # Rename columns before concat to avoid duplicates
+    # Align each output to common times, then rename columns
+    time = Xs[0].join(common_times, on="time", how="semi").select(cs.by_name("time"))
+
     Xs_renamed = []
-    col_idx = 0
-    for X, observation_horizon, cols in zip(Xs, observation_horizons, column_names, strict=False):
-        X_no_time = X.select(~cs.by_name("time"))[ref_observation_horizon - observation_horizon :]
-        # Create rename mapping for this transformer's columns
+    for X, cols in zip(Xs, column_names, strict=False):
+        X_aligned = X.join(common_times, on="time", how="semi")
+        X_no_time = X_aligned.select(~cs.by_name("time"))
         rename_map = dict(zip(X_no_time.columns, cols, strict=False))
         X_renamed = X_no_time.rename(rename_map)
         Xs_renamed.append(X_renamed)
-        col_idx += len(cols)
 
     Xs_concat = pl.concat(Xs_renamed, how="horizontal")
     result = pl.concat([time, Xs_concat], how="horizontal")

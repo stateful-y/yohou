@@ -573,10 +573,6 @@ class TestDecompositionConformalPipeline:
         assert "value_upper_0.9" in y_pred.columns
         assert len(y_pred) == 12
 
-    @pytest.mark.xfail(
-        reason="Known issue: conformal interval bounds not guaranteed monotonic across coverage rates",
-        raises=AssertionError,
-    )
     def test_pipeline_c_interval_monotonicity(self):
         """Pipeline C: Verify interval bound monotonicity."""
         # Generate data

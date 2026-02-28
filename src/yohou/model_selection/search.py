@@ -385,6 +385,18 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         check_is_fitted(self)
         return self.best_forecaster_.feature_names_in_
 
+    @property
+    def interval_(self):
+        """Time interval detected during fit."""
+        check_is_fitted(self)
+        return self.best_forecaster_.interval_
+
+    @property
+    def panel_group_names_(self):
+        """Panel group names detected during fit."""
+        check_is_fitted(self)
+        return self.best_forecaster_.panel_group_names_
+
     def _check_refit_for_multimetric(self, scores):
         """Check that refit parameter is valid for multimetric scoring.
 

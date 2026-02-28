@@ -280,10 +280,6 @@ class TestPointReductionPanel:
         # Reset only group_1
         y_reset = y[60:80]  # Last 20 rows
 
-        # FeaturePipeline does not support subset reset (NotFittedError)
-        if isinstance(feature_transformer, FeaturePipeline):
-            pytest.skip("FeaturePipeline does not support subset panel rewind")
-
         forecaster.rewind(y_reset, panel_group_names=["g1"])
 
         # Predict only the reset group (partial reset replaces internal state
