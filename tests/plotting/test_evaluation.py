@@ -869,3 +869,119 @@ class TestPlotScorePerHorizon:
             color_palette=["#FF0000"],
         )
         assert isinstance(fig, go.Figure)
+
+
+class TestPlotScoreTimeSeriesPanel:
+    """Panel data tests for plot_score_time_series."""
+
+    @pytest.fixture
+    def panel_forecast(self):
+        """Create panel forecast data for score time series."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(10)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "value__a": [10.0 + i for i in range(10)],
+            "value__b": [20.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "time": times,
+            "value__a": [12.0 + i for i in range(10)],
+            "value__b": [19.0 + i for i in range(10)],
+        })
+        return {"y_truth": y_truth, "y_pred": y_pred}
+
+    def test_panel_produces_figure(self, panel_forecast):
+        """Panel forecast data produces a valid figure."""
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(
+            scorer,
+            panel_forecast["y_truth"],
+            panel_forecast["y_pred"],
+            panel_group_names=["value"],
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_panel_has_traces(self, panel_forecast):
+        """Panel score time series has at least one trace."""
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(
+            scorer,
+            panel_forecast["y_truth"],
+            panel_forecast["y_pred"],
+            panel_group_names=["value"],
+        )
+        assert len(fig.data) >= 1
+
+
+class TestPlotScoreDistributionPanel:
+    """Panel data tests for plot_score_distribution."""
+
+    @pytest.fixture
+    def panel_forecast(self):
+        """Create panel forecast data for score distribution."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(20)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "value__a": [10.0 + i for i in range(20)],
+            "value__b": [20.0 + i for i in range(20)],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "time": times,
+            "value__a": [12.0 + i for i in range(20)],
+            "value__b": [19.0 + i for i in range(20)],
+        })
+        return {"y_truth": y_truth, "y_pred": y_pred}
+
+    def test_panel_produces_figure(self, panel_forecast):
+        """Panel data produces a valid score distribution figure."""
+        scorer = MeanAbsoluteError()
+        fig = plot_score_distribution(
+            scorer,
+            panel_forecast["y_truth"],
+            panel_forecast["y_pred"],
+            panel_group_names=["value"],
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestPlotScorePerHorizonPanel:
+    """Panel data tests for plot_score_per_horizon."""
+
+    @pytest.fixture
+    def panel_forecast(self):
+        """Create panel forecast data for score per horizon."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(10)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "value__a": [10.0 + i for i in range(10)],
+            "value__b": [20.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "time": times,
+            "value__a": [12.0 + i for i in range(10)],
+            "value__b": [19.0 + i for i in range(10)],
+        })
+        return {"y_truth": y_truth, "y_pred": y_pred}
+
+    def test_panel_produces_figure(self, panel_forecast):
+        """Panel data produces a valid score per horizon figure."""
+        scorer = MeanAbsoluteError()
+        fig = plot_score_per_horizon(
+            scorer,
+            panel_forecast["y_truth"],
+            panel_forecast["y_pred"],
+            panel_group_names=["value"],
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0

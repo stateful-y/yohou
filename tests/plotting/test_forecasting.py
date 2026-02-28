@@ -5,6 +5,7 @@ import importlib.util
 import numpy as np
 import polars as pl
 import pytest
+from plotly import graph_objects as go
 
 from yohou.plotting import (
     plot_components,
@@ -239,6 +240,41 @@ class TestPlotComponents:
         })
         with pytest.raises(TypeError, match="dict.*list.*tuple"):
             plot_components(y, 42)
+
+
+class TestPlotComponentsPanel:
+    """Panel data tests for plot_components."""
+
+    def test_panel_dict_components(self):
+        """Panel data with dict components produces a valid figure."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        n = len(dates)
+        y = pl.DataFrame({
+            "time": dates,
+            "y__a": list(range(n)),
+            "y__b": [i * 2 for i in range(n)],
+        })
+        components = {
+            "trend": pl.DataFrame({
+                "time": dates,
+                "y__a": [i * 0.5 for i in range(n)],
+                "y__b": [i * 1.0 for i in range(n)],
+            }),
+        }
+        fig = plot_components(y, components)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    def test_custom_dimensions(self):
+        """Custom dimensions are passed through."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        y = pl.DataFrame({"time": dates, "y": list(range(10))})
+        components = {
+            "trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(10)]}),
+        }
+        fig = plot_components(y, components, width=900, height=500)
+        assert fig.layout.width == 900
+        assert fig.layout.height == 500
 
 
 _has_statsmodels = importlib.util.find_spec("statsmodels") is not None

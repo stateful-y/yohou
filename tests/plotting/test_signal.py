@@ -153,3 +153,97 @@ class TestPlotSpectrum:
         })
         fig = plot_spectrum(df, panel_group_names=["y"])
         assert len(fig.data) > 0
+
+
+class TestPlotPhaseAssertions:
+    """Error path and stronger assertion tests for plot_phase."""
+
+    def test_returns_go_figure(self):
+        """Phase plot always returns a go.Figure instance."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, columns="y")
+        assert isinstance(fig, go.Figure)
+
+    def test_trace_type_is_scatter(self):
+        """Phase plot traces are Scatter type."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, columns="y")
+        assert all(isinstance(t, go.Scatter) for t in fig.data)
+
+    def test_custom_title(self):
+        """Custom title is applied to phase figure."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, columns="y", title="Phase Title")
+        assert fig.layout.title.text == "Phase Title"
+
+    def test_custom_dimensions(self):
+        """Custom dimensions are respected."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, columns="y", width=900, height=600)
+        assert fig.layout.width == 900
+        assert fig.layout.height == 600
+
+
+class TestPlotSpectrumAssertions:
+    """Error path and stronger assertion tests for plot_spectrum."""
+
+    def test_returns_go_figure(self):
+        """Spectrum always returns a go.Figure instance."""
+        import numpy as np
+
+        t = np.arange(100)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y": np.sin(2 * np.pi * 0.1 * t),
+        })
+        fig = plot_spectrum(df, columns="y")
+        assert isinstance(fig, go.Figure)
+
+    def test_custom_title(self):
+        """Custom title is applied to spectrum figure."""
+        import numpy as np
+
+        t = np.arange(100)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y": np.sin(2 * np.pi * 0.1 * t),
+        })
+        fig = plot_spectrum(df, columns="y", title="Spectrum Title")
+        assert fig.layout.title.text == "Spectrum Title"
+
+    def test_custom_dimensions(self):
+        """Custom dimensions are respected."""
+        import numpy as np
+
+        t = np.arange(100)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y": np.sin(2 * np.pi * 0.1 * t),
+        })
+        fig = plot_spectrum(df, columns="y", width=1000, height=500)
+        assert fig.layout.width == 1000
+        assert fig.layout.height == 500

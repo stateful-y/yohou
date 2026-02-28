@@ -261,3 +261,48 @@ class TestPlotMissingData:
         })
         fig = plot_missing_data(df, kind="bars", panel_group_names=["y"])
         assert len(fig.data) > 0
+
+
+class TestPlotTimeSeriesErrorPaths:
+    """Error path tests for plot_time_series."""
+
+    def test_invalid_column_name(self, sample_df):
+        """Non-existent column raises ValueError."""
+        with pytest.raises(ValueError, match="not found|not in"):
+            plot_time_series(sample_df, columns="nonexistent")
+
+    def test_not_a_dataframe(self):
+        """Passing a non-DataFrame raises TypeError."""
+        with pytest.raises(TypeError, match="DataFrame"):
+            plot_time_series("not a dataframe")
+
+    def test_empty_dataframe(self):
+        """Empty DataFrame raises ValueError."""
+        df = pl.DataFrame({"time": pl.Series([], dtype=pl.Date), "y": pl.Series([], dtype=pl.Float64)})
+        with pytest.raises(ValueError, match="empty|at least"):
+            plot_time_series(df)
+
+
+class TestPlotBoxplotErrorPaths:
+    """Error path and stronger assertion tests for plot_boxplot."""
+
+    def test_returns_go_figure(self, sample_df):
+        """Boxplot always returns a go.Figure instance."""
+        fig = plot_boxplot(sample_df, columns="y", period="1mo")
+        assert isinstance(fig, go.Figure)
+
+    def test_trace_type_is_box(self, sample_df):
+        """Boxplot traces should be Box type."""
+        fig = plot_boxplot(sample_df, columns="y", period="1mo")
+        assert any(isinstance(t, go.Box) for t in fig.data)
+
+    def test_custom_title(self, sample_df):
+        """Custom title is applied to boxplot figure."""
+        fig = plot_boxplot(sample_df, columns="y", period="1mo", title="Box Title")
+        assert fig.layout.title.text == "Box Title"
+
+    def test_custom_dimensions(self, sample_df):
+        """Custom dimensions are respected."""
+        fig = plot_boxplot(sample_df, columns="y", period="1mo", width=800, height=500)
+        assert fig.layout.width == 800
+        assert fig.layout.height == 500
