@@ -54,8 +54,6 @@ Yohou bridges Scikit-Learn's tabular machine learning ecosystem with time series
 
 See the [Changelog](pages/development/changelog.md) for the latest release notes and updates.
 
-Detailed reference for the Yohou API, including classes, functions, and configuration options.
-
 ## License
 
 Yohou is open source and licensed under the [Apache-2.0 License](https://opensource.org/licenses/Apache-2.0). You are free to use, modify, and distribute this software under the terms of this license.

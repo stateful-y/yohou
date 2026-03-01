@@ -24,7 +24,7 @@ build:
       # instead of downloading and parsing large TSF archives during the build
       - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv run python docs/precache_datasets.py
     post_build:
-      # Check for dead links in the built documentation
+      # Check for broken links
       - uvx linkchecker "${READTHEDOCS_OUTPUT}html/index.html" --no-status --no-warnings --ignore-url material/overrides
 
 # MkDocs configuration

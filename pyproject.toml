@@ -54,7 +54,7 @@ lint = [
     "ty>=0.0.12",
 ]
 docs = [
-    "mkdocs>=1.6.0,<2.0.0",
+    "mkdocs>=1.6.0",
     "mkdocs-autorefs>=1.0",
     "mkdocs-material>=9.7",
     "mkdocstrings[python]>=0.26.0",
@@ -210,16 +210,21 @@ fail_under = 80
 include_namespace_packages = true
 
 [tool.coverage.html]
-show_contexts = true
-
 
 [tool.rumdl]
 flavor = "mkdocs"
 line-length = 120
 disable = [
+    "MD012",  # Multiple consecutive blank lines (common in generated content)
     "MD013",  # Line length (handled by formatter, many long URLs/tables)
+    "MD022",  # Heading blank lines (varies by document style)
+    "MD031",  # No blank line before fenced code block
+    "MD032",  # List should be preceded by blank line
     "MD033",  # Inline HTML (needed for README logo, MkDocs grid cards)
+    "MD034",  # URL/email without angle brackets
+    "MD045",  # Image missing alt text (logos use empty alt intentionally)
     "MD046",  # Code block style (indented blocks required inside MkDocs tabs)
+    "MD051",  # Link fragments (cross-doc references resolved at MkDocs build time)
 ]
 exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv"]
 
@@ -231,6 +236,7 @@ exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv"]
 ".github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]  # PR template starts with checklist
 "README.md" = ["MD041"]  # README starts with logo, not heading
 "docs/index.md" = ["MD041"]  # Landing page starts with logo, not heading
+"CONTRIBUTING.md" = ["MD057"]  # Relative link to docs/ is valid at project level
 
 [tool.commitizen]
 name = "cz_conventional_commits"

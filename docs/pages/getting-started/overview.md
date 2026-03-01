@@ -69,7 +69,7 @@ Time series cross-validation splitters (expanding window, sliding window) and hy
 from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
 ```
 
-**Module**: [`yohou.model_selection`](../api/model-selection.md)
+**Module**: [`yohou.model_selection`](../api/model_selection.md)
 **Examples**: [CV splitters](../examples/index.md#model-selection) · [Hyperparameter search](../examples/index.md#model-selection)
 
 ## Visualization
