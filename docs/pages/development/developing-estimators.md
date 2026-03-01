@@ -29,7 +29,7 @@ Coming soon.
 
 Coming soon.
 
-**API Reference**: See [yohou.model_selection](../api/model-selection.md) for base classes and [yohou.testing](../api/testing.md) for systematic checks.
+**API Reference**: See [yohou.model_selection](../api/model_selection.md) for base classes and [yohou.testing](../api/testing.md) for systematic checks.
 
 ## Testing Your Estimator
 

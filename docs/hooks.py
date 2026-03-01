@@ -260,8 +260,14 @@ def _extract_module_docstring(py_file):
 def _get_module_members(py_file):
     """Discover public classes and functions in a Python module via AST.
 
+    For ``__init__.py`` files that only re-export names via
+    ``from .submodule import Name``, this function follows those imports and
+    discovers the definitions in the referenced submodule files.
+
     Returns a dict with *classes* and *functions* lists.  Each entry is a dict
-    with *name* and *doc* (first line of the docstring, or empty string).
+    with *name*, *doc* (first line of the docstring, or empty string), and
+    *source_module* (dotted relative submodule like ``"naive"`` for names
+    imported from a sibling file, or ``""`` for names defined directly).
     """
     classes = []
     functions = []
@@ -271,13 +277,53 @@ def _get_module_members(py_file):
     except (SyntaxError, UnicodeDecodeError):
         return {"classes": classes, "functions": functions}
 
+    # Collect direct definitions
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
             doc = ast.get_docstring(node) or ""
-            classes.append({"name": node.name, "doc": doc.strip().split("\n")[0]})
+            classes.append({"name": node.name, "doc": doc.strip().split("\n")[0], "source_module": ""})
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and not node.name.startswith("_"):
             doc = ast.get_docstring(node) or ""
-            functions.append({"name": node.name, "doc": doc.strip().split("\n")[0]})
+            functions.append({"name": node.name, "doc": doc.strip().split("\n")[0], "source_module": ""})
+
+    # For __init__.py: resolve relative imports to sibling module files
+    if py_file.name == "__init__.py" and not classes and not functions:
+        pkg_dir = py_file.parent
+        # Collect all imported public names grouped by source module
+        import_map: dict[str, list[str]] = {}
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and node.level == 1:
+                for alias in node.names:
+                    imported = alias.asname or alias.name
+                    if not imported.startswith("_"):
+                        import_map.setdefault(node.module, []).append(imported)
+
+        # Scan the referenced files and pick out the imported definitions
+        for rel_module, names in import_map.items():
+            target = pkg_dir / f"{rel_module}.py"
+            if not target.exists():
+                continue
+            try:
+                target_source = target.read_text(encoding="utf-8")
+                target_tree = ast.parse(target_source)
+            except (SyntaxError, UnicodeDecodeError):
+                continue
+            name_set = set(names)
+            for tnode in ast.iter_child_nodes(target_tree):
+                if isinstance(tnode, ast.ClassDef) and tnode.name in name_set:
+                    doc = ast.get_docstring(tnode) or ""
+                    classes.append({
+                        "name": tnode.name,
+                        "doc": doc.strip().split("\n")[0],
+                        "source_module": rel_module,
+                    })
+                elif isinstance(tnode, ast.FunctionDef | ast.AsyncFunctionDef) and tnode.name in name_set:
+                    doc = ast.get_docstring(tnode) or ""
+                    functions.append({
+                        "name": tnode.name,
+                        "doc": doc.strip().split("\n")[0],
+                        "source_module": rel_module,
+                    })
 
     return {"classes": classes, "functions": functions}
 
@@ -291,6 +337,12 @@ def _build_members_tables(package_name, module_name, members):
     """
     sections = []
 
+    def _qualified(member):
+        src = member.get("source_module", "")
+        if src:
+            return f"{package_name}.{module_name}.{src}.{member['name']}"
+        return f"{package_name}.{module_name}.{member['name']}"
+
     if members["classes"]:
         lines = [
             "### Classes",
@@ -299,7 +351,7 @@ def _build_members_tables(package_name, module_name, members):
             "|------|-------------|",
         ]
         for cls in members["classes"]:
-            qualified = f"{package_name}.{module_name}.{cls['name']}"
+            qualified = _qualified(cls)
             link = f"[`{cls['name']}`](generated/{qualified}.md)"
             lines.append(f"| {link} | {cls['doc']} |")
         sections.append("\n".join(lines))
@@ -312,7 +364,7 @@ def _build_members_tables(package_name, module_name, members):
             "|------|-------------|",
         ]
         for func in members["functions"]:
-            qualified = f"{package_name}.{module_name}.{func['name']}"
+            qualified = _qualified(func)
             link = f"[`{func['name']}`](generated/{qualified}.md)"
             lines.append(f"| {link} | {func['doc']} |")
         sections.append("\n".join(lines))
@@ -326,10 +378,14 @@ def _build_members_tables(package_name, module_name, members):
 def _generate_api_pages(project_root):
     """Generate per-submodule overview pages and per-class/function detail pages.
 
-    Reads ``docs/api-submodule.html`` and writes one ``.md`` overview page per
-    discovered submodule into ``docs/pages/api/``.  Each overview page uses
-    ``### Classes`` / ``### Functions`` headings with markdown tables linking
-    to dedicated per-member pages under ``docs/pages/api/generated/``.
+    Submodule overview pages (``docs/pages/api/<module>.md``) are built from
+    AST-based member discovery via ``_get_module_members`` and laid out using
+    the ``docs/api-submodule.html`` template.
+
+    Per-member detail pages (``docs/pages/api/generated/<qualified>.md``) are
+    built from runtime discovery via ``_get_discovery_data()`` so that every
+    public estimator, display, function, and base class gets a page with the
+    correct fully-qualified name.
     """
     template_file = project_root / "docs" / "api-submodule.html"
     if not template_file.exists():
@@ -342,6 +398,10 @@ def _generate_api_pages(project_root):
 
     generated_dir = api_dir / "generated"
     generated_dir.mkdir(parents=True, exist_ok=True)
+
+    gitignore = generated_dir / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text("# Auto-generated. Do not commit\n*\n!.gitignore\n")
 
     # Clean stale generated pages
     for old in generated_dir.glob("*.md"):
@@ -364,16 +424,14 @@ def _generate_api_pages(project_root):
         "<!-- EXAMPLES_FOR:{qualified} -->\n"
     )
 
-    member_count = 0
+    # --- Submodule overview pages (AST-based) ---
     for mod in modules:
-        # Determine the source file for member discovery
         mod_file = pkg_dir / f"{mod['module_name']}.py"
         if not mod_file.exists():
             mod_file = pkg_dir / mod["module_name"] / "__init__.py"
 
         members = _get_module_members(mod_file) if mod_file.exists() else {"classes": [], "functions": []}
 
-        # Generate submodule overview page with tables
         members_tables = _build_members_tables(
             "yohou",
             mod["module_name"],
@@ -387,37 +445,51 @@ def _generate_api_pages(project_root):
             members_tables=members_tables,
         )
         dest = api_dir / f"{mod['module_name']}.md"
-        dest.write_text(content, encoding="utf-8")
-        print(f"[hooks] generated api page: pages/api/{mod['module_name']}.md")
+        if not dest.exists():
+            # Only generate if no hand-maintained page exists
+            dest.write_text(content, encoding="utf-8")
+            print(f"[hooks] generated api page: pages/api/{mod['module_name']}.md")
 
-        # Generate per-class/function detail pages
-        for cls in members["classes"]:
-            qualified = f"yohou.{mod['module_name']}.{cls['name']}"
-            page = generated_dir / f"{qualified}.md"
-            page.write_text(_page_template.format(name=cls["name"], qualified=qualified))
-            member_count += 1
+    # --- Per-member detail pages (runtime discovery) ---
+    data = _get_discovery_data()
+    member_count = 0
 
-        for func in members["functions"]:
-            qualified = f"yohou.{mod['module_name']}.{func['name']}"
-            page = generated_dir / f"{qualified}.md"
-            page.write_text(_page_template.format(name=func["name"], qualified=qualified))
-            member_count += 1
+    for name, cls in data["abstract_base_classes"]:
+        module = cls.__module__
+        qualified = f"{module}.{name}"
+        page = generated_dir / f"{qualified}.md"
+        page.write_text(_page_template.format(name=name, qualified=qualified))
+        member_count += 1
+
+    for name, cls in data["estimators"]:
+        module = cls.__module__
+        qualified = f"{module}.{name}"
+        page = generated_dir / f"{qualified}.md"
+        page.write_text(_page_template.format(name=name, qualified=qualified))
+        member_count += 1
+
+    for name, cls in data["displays"]:
+        module = cls.__module__
+        qualified = f"{module}.{name}"
+        page = generated_dir / f"{qualified}.md"
+        page.write_text(_page_template.format(name=name, qualified=qualified))
+        member_count += 1
+
+    for name, func in data["functions"]:
+        module = func.__module__
+        qualified = f"{module}.{name}"
+        page = generated_dir / f"{qualified}.md"
+        page.write_text(_page_template.format(name=name, qualified=qualified))
+        member_count += 1
 
     if member_count:
         print(f"[hooks] generated {member_count} API member pages in pages/api/generated/")
 
-
-def _build_api_table_html(project_root):
-    """Build an HTML <table> for the API index with DataTables init.
-
-    Lists every public class and function across all submodules with
-    Name, Type, Module, and Description columns.  The table is initialised
-    with jQuery DataTables for client-side filtering and sorting.
-    """
-    modules = _get_submodules(project_root)
-    pkg_dir = project_root / "src" / "yohou"
-
-    rows = []
+    # --- Fill gaps: AST-discovered members not covered by runtime discovery ---
+    # Some classes (e.g., dataclasses, non-estimator types) appear in
+    # __init__.py re-exports but are not found by all_estimators/displays/functions.
+    # Generate pages for those so submodule overview links are not broken.
+    gap_count = 0
     for mod in modules:
         mod_file = pkg_dir / f"{mod['module_name']}.py"
         if not mod_file.exists():
@@ -426,33 +498,94 @@ def _build_api_table_html(project_root):
             continue
 
         members = _get_module_members(mod_file)
-        module_label = f"yohou.{mod['module_name']}"
-        module_href = f"../api/{mod['module_name']}/"
+        for entry in members["classes"] + members["functions"]:
+            src = entry.get("source_module", "")
+            if src:
+                qualified = f"yohou.{mod['module_name']}.{src}.{entry['name']}"
+            else:
+                qualified = f"yohou.{mod['module_name']}.{entry['name']}"
+            page = generated_dir / f"{qualified}.md"
+            if not page.exists():
+                page.write_text(_page_template.format(name=entry["name"], qualified=qualified))
+                gap_count += 1
 
-        for cls in members["classes"]:
-            qualified = f"yohou.{mod['module_name']}.{cls['name']}"
-            rows.append((cls["name"], "Class", module_label, module_href, cls["doc"], qualified))
+    if gap_count:
+        print(f"[hooks] generated {gap_count} additional API pages from AST discovery")
 
-        for func in members["functions"]:
-            qualified = f"yohou.{mod['module_name']}.{func['name']}"
-            rows.append((func["name"], "Function", module_label, module_href, func["doc"], qualified))
+
+def _build_api_table_html(project_root):
+    """Build an HTML <table> for the API index with DataTables init.
+
+    Lists every public class and function across all submodules with
+    Name, Type, Module, and Description columns.  Uses runtime discovery
+    via ``_get_discovery_data()`` for accurate type classification and
+    qualified names.  The table is initialised with jQuery DataTables for
+    client-side filtering and sorting.
+    """
+    data = _get_discovery_data()
+
+    # Map top-level submodule to its API page slug
+    _submodule_page = {mod["module_name"]: mod["module_name"] for mod in _get_submodules(project_root)}
+
+    def _submodule_label_and_href(full_module: str):
+        """Return (display_label, relative_href) for a full module path."""
+        parts = full_module.split(".")
+        # Take first two parts: yohou.<submodule>
+        submodule_key = parts[1] if len(parts) >= 2 else full_module
+        submodule = ".".join(parts[:2]) if len(parts) >= 2 else full_module
+        page = _submodule_page.get(submodule_key)
+        if page is not None:
+            return submodule, f"{page}/"
+        return submodule, None
+
+    rows = []
+    for name, cls in data["abstract_base_classes"]:
+        module = cls.__module__
+        qualified = f"{module}.{name}"
+        desc = _first_docstring_line(cls)
+        rows.append((name, "Base Class", module, desc, qualified))
+
+    for name, cls in data["estimators"]:
+        module = cls.__module__
+        qualified = f"{module}.{name}"
+        desc = _first_docstring_line(cls)
+        rows.append((name, "Class", module, desc, qualified))
+
+    for name, cls in data["displays"]:
+        module = cls.__module__
+        qualified = f"{module}.{name}"
+        desc = _first_docstring_line(cls)
+        rows.append((name, "Display", module, desc, qualified))
+
+    for name, func in data["functions"]:
+        module = func.__module__
+        qualified = f"{module}.{name}"
+        desc = _first_docstring_line(func)
+        rows.append((name, "Function", module, desc, qualified))
 
     rows.sort(key=lambda r: r[0].lower())
 
     _type_badge_cls = {
+        "Base Class": "api-badge--base",
         "Class": "api-badge--class",
+        "Display": "api-badge--display",
         "Function": "api-badge--function",
     }
 
     tbody_lines = []
-    for name, kind, module_label, module_href, desc, qualified in rows:
-        href = f"../api/generated/{qualified}/"
+    for name, kind, module, desc, qualified in rows:
+        href = f"generated/{qualified}/"
+        label, mod_href = _submodule_label_and_href(module)
+        if mod_href is not None:
+            mod_cell = f'<a href="{mod_href}">{label}</a>'
+        else:
+            mod_cell = label
         badge_cls = _type_badge_cls.get(kind, "")
         tbody_lines.append(
             f"      <tr>"
             f'<td><a href="{href}"><code>{name}</code></a></td>'
             f'<td><span class="api-badge {badge_cls}">{kind}</span></td>'
-            f'<td><a href="{module_href}">{module_label}</a></td>'
+            f"<td>{mod_cell}</td>"
             f"<td>{desc}</td>"
             f"</tr>"
         )

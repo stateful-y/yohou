@@ -85,8 +85,9 @@ src/yohou/_version.py
 # Documentation examples
 docs/examples/*/
 
-# Auto-generated API submodule pages (created by docs/hooks.py)
-docs/pages/api/
+# Auto-generated API detail pages (created by docs/hooks.py)
+# Submodule overview pages are hand-maintained and tracked.
+docs/pages/api/generated/
 
 # AI Assistant Instructions
 CLAUDE.md
