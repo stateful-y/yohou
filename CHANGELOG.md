@@ -24,12 +24,10 @@ This **minor release** includes 5 commits.
 - Add new examples: `kdd_cup.py`, `nixtla_forecasters.py`, `nixtla_panel.py` ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 
 ### Bug Fixes
-
 - Fix `ColumnTransformer` sample count check (relax to `output_samples > n_samples`) ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Fix `_detect_multiquantile_loss()` to search with `deep=True` for nested parameters ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 
 ### Refactoring
-
 - Rename `inspect_locality()` to `inspect_panel()` (alias retained) ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Change `FeatureUnion`/`ColumnTransformer` prefix separator from `__` to `_` to avoid panel separator collisions ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Rewrite `_hstack()` to join on `"time"` column instead of index-based slicing ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
@@ -42,7 +40,6 @@ This **minor release** includes 5 commits.
 - Move `validate_plotting_params` from `plotting/_utils.py` to `utils/validate_data.py` ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 
 ### Documentation
-
 - Add extensions page and auto-generated API reference ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Add MathJax support and `mkdocs-autorefs` plugin ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Add gallery CSS for example notebooks ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
@@ -50,14 +47,12 @@ This **minor release** includes 5 commits.
 - Add comprehensive `See Also` sections across base classes and utilities ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 
 ### Testing
-
 - Add property-based tests (Hypothesis) with strategies module ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Add serialization, thread-safety, and contract test suites ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Add feature pipeline/union, scorer aggregation, search CV, and signal plotting tests ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Refactor integration tests (~14 files, ~3400 lines) ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 
 ### Miscellaneous Tasks
-
 - Add `hypothesis` as test dependency ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Add `rumdl` markdown linter to pre-commit and nox ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
 - Add Justfile commands: `build-fast`, `serve-fast`, `link` ([#18](https://github.com/stateful-y/yohou/pull/18)) by @gtauzin
