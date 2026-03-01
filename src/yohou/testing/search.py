@@ -16,7 +16,7 @@ from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.model_selection import GridSearchCV, RandomizedSearchCV
-from yohou.utils import inspect_locality
+from yohou.utils import inspect_panel
 
 __all__ = [
     "check_grid_search_exhaustive",
@@ -924,7 +924,7 @@ def check_search_panel_data(
     if panel_group_names is not None:
         # Predictions should only include specified groups
 
-        _, panel_groups = inspect_locality(y_pred)
+        _, panel_groups = inspect_panel(y_pred)
 
         # Check that all requested groups are present
         pred_group_prefixes = set(panel_groups.keys())

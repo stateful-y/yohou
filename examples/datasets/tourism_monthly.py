@@ -4,18 +4,16 @@
 #     "yohou",
 # ]
 # ///
-"""Tourism Monthly - Trend and Seasonality Analysis.
-
-Monthly tourism time series from the Monash forecasting competition.
-
-Dataset: 366 monthly tourism series (exploring first series T1)
-Demonstrates: plot_time_series, plot_rolling_statistics, plot_seasonality
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Tourism Monthly",
+    "description": "Explore a single monthly tourism series with raw trend visualisation, 12-month rolling mean smoothing, and min/max envelope seasonality analysis.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -36,6 +34,7 @@ def _():
         plot_time_series,
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -49,8 +48,9 @@ def _(mo):
 
     ## Prerequisites
 
-    None -- this is a standalone dataset exploration.
+    None - this is a standalone dataset exploration.
     """)
+
 
 @app.cell
 def _(fetch_tourism_monthly):
@@ -59,6 +59,7 @@ def _(fetch_tourism_monthly):
     df.head()
     return (df,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -66,6 +67,7 @@ def _(mo):
 
     We explore the first series (T1) from the Tourism Monthly collection, renamed to "tourists" for readability. The data reveals trend and seasonal patterns in monthly tourism counts.
     """)
+
 
 @app.cell
 def _(df, plot_time_series):
@@ -76,6 +78,7 @@ def _(df, plot_time_series):
         y_label="tourists",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -83,6 +86,7 @@ def _(mo):
 
     A 12-month rolling average smooths out seasonal noise and highlights the underlying trend.
     """)
+
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -94,6 +98,7 @@ def _(df, plot_rolling_statistics):
         title="12-Month Rolling Average",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -102,16 +107,17 @@ def _(mo):
     The min/max envelope shows how the range of tourism counts varies over time, highlighting seasonality amplitude changes.
     """)
 
+
 @app.cell
 def _(df, plot_rolling_statistics):
     plot_rolling_statistics(
         df,
         window_size=12,
         statistics=["min", "max"],
-        fill_between=True,
         show_original=False,
         title="12-Month Range Envelope",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -121,14 +127,15 @@ def _(mo):
     Aggregating by month reveals the seasonal shape of tourism demand across the year.
     """)
 
+
 @app.cell
 def _(df, plot_seasonality):
     plot_seasonality(
         df,
-        feature="month",
-        aggregation="mean",
+        seasonality="month",
         title="Average Tourism by Month",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -138,14 +145,15 @@ def _(mo):
     - **Tourism Monthly**: 366 monthly tourism series from Monash competition, explored here via series T1
     - **Seasonal patterns**: Monthly aggregation reveals peak tourism periods
     - **Rolling statistics reveal trend**: 12-month moving average smooths seasonal noise
-    - **Parameter variability**: `show_original`, `fill_between`, and multiple statistics demonstrate function flexibility
+    - **Parameter variability**: `show_original` and multiple statistics demonstrate function flexibility
 
     ## Next Steps
 
-    - For cyclic patterns without trend, see `examples/datasets/sunspots.py`
-    - For panel data with multiple series, see `examples/datasets/store_sales.py`
-    - For high-frequency data, see `examples/datasets/vic_electricity.py`
+    - For cyclic patterns without trend, see [`examples/datasets/sunspots.py`](/examples/datasets/sunspots/)
+    - For panel data with multiple series, see [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
+    - For high-frequency data, see [`examples/datasets/vic_electricity.py`](/examples/datasets/vic_electricity/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

@@ -6,10 +6,16 @@
 #     "yohou",
 # ]
 # ///
+
 import marimo
 
-__generated_with = "0.20.1"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Quickstart",
+    "description": "End-to-end tour of yohou covering data loading, baseline forecasting, preprocessing pipelines, decomposition, cross-validation search, and interval prediction.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -17,12 +23,13 @@ def _():
 
     return (mo,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Yohou Quickstart: Time Series Forecasting with a Scikit-Learn API
 
-    Welcome to **yohou**, a scikit-learn-compatible time series forecasting framework built on **polars**.
+    Welcome to **Yohou**, a scikit-learn-compatible time series forecasting framework built on **Polars**.
 
     ## What You'll Learn
 
@@ -43,6 +50,8 @@ def _(mo):
 
     Basic Python and familiarity with sklearn's `fit` / `predict` API.
     """)
+    return
+
 
 @app.cell(hide_code=True)
 def _():
@@ -55,7 +64,7 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
-    from yohou.compose import DecompositionPipeline, FeaturePipeline
+    from yohou.compose import DecompositionPipeline, FeaturePipeline, LocalPanelForecaster
     from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import MeanAbsoluteError, MeanSquaredError
@@ -81,7 +90,7 @@ def _():
         PolynomialTrendForecaster,
         SeasonalDifferencing,
     )
-    from yohou.utils.panel import inspect_locality
+    from yohou.utils.panel import inspect_panel
     from yohou.utils.weighting import (
         compose_weights,
         exponential_decay_weight,
@@ -96,6 +105,7 @@ def _():
         FourierSeasonalityForecaster,
         GridSearchCV,
         LagTransformer,
+        LocalPanelForecaster,
         LogTransformer,
         MeanAbsoluteError,
         MeanSquaredError,
@@ -111,10 +121,10 @@ def _():
         compose_weights,
         copy,
         exponential_decay_weight,
-        go,
         fetch_dominick,
         fetch_tourism_monthly,
-        inspect_locality,
+        go,
+        inspect_panel,
         linear_decay_weight,
         pl,
         plot_calibration,
@@ -129,6 +139,7 @@ def _():
         uniform,
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -141,6 +152,8 @@ def _(mo):
 
     Yohou requires a polars DataFrame with a **`"time"` column** (datetime type).
     """)
+    return
+
 
 @app.cell
 def _(fetch_tourism_monthly):
@@ -149,22 +162,27 @@ def _(fetch_tourism_monthly):
     y.head()
     return (y,)
 
+
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(
         y,
         columns="tourists",
-        title="Monthly Tourism (1979 – 2007)",
+        title="Monthly Tourism (1979 - 2007)",
         y_label="Monthly tourists",
         height=380,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     **Observations**: clear yearly seasonality, a long-term upward trend,
-    and variance that grows with level — typical of many tourism time series.
+    and variance that grows with level, which is typical of many tourism time series.
     """)
+    return
+
 
 @app.cell
 def _(train_test_split, y):
@@ -173,6 +191,7 @@ def _(train_test_split, y):
 
     print(f"Train: {len(y_train)} rows  |  Test: {len(y_test)} rows  |  Horizon: {forecasting_horizon}")
     return forecasting_horizon, y_test, y_train
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -184,6 +203,8 @@ def _(mo):
 
     Every more complex model should **beat this baseline**.
     """)
+    return
+
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
@@ -197,6 +218,7 @@ def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
     print(f"Baseline MAE: {mae_baseline:.2f}")
     return mae_baseline, scorer, y_pred_baseline
 
+
 @app.cell
 def _(plot_forecast, y_pred_baseline, y_test, y_train):
     plot_forecast(
@@ -207,6 +229,8 @@ def _(plot_forecast, y_pred_baseline, y_test, y_train):
         y_label="Monthly tourists",
         height=380,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -216,18 +240,21 @@ def _(mo):
     Reduction forecasters convert time-series forecasting to supervised learning.
     A **FeaturePipeline** chains transforms:
 
-    1. `LogTransformer`: stabilises multiplicative variance
+    1. [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/): stabilises multiplicative variance
     2. `SeasonalDifferencing(12)`: removes yearly seasonality and trend
-    3. `LagTransformer`: creates autoregressive features from past values
+    3. [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/): creates autoregressive features from past values
 
-    When used as a `target_transformer`, all transformations are automatically inverted at prediction time. In the case of a `FeaturePipeline`, this means all transforms it includes have to be invertible.
+    When used as a `target_transformer`, all transformations are automatically inverted at prediction time. In the case of a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), this means all transforms it includes have to be invertible.
     """)
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
     max_lag_slider = mo.ui.slider(start=1, stop=12, value=3, label="Max lag", show_value=True)
     max_lag_slider
     return (max_lag_slider,)
+
 
 @app.cell
 def _(
@@ -265,6 +292,7 @@ def _(
     print(f"Reduction MAE: {mae_reduction:.2f}  ({improvement:+.1f}% vs baseline)")
     return reduction, y_pred_reduction
 
+
 @app.cell
 def _(plot_forecast, y_pred_baseline, y_pred_reduction, y_test, y_train):
     plot_forecast(
@@ -275,6 +303,8 @@ def _(plot_forecast, y_pred_baseline, y_pred_reduction, y_test, y_train):
         y_label="Monthly tourists",
         height=380,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -283,10 +313,12 @@ def _(mo):
 
     A **DecompositionPipeline** is a meta-forecaster made of several forecasters that sequentially fit on the residual of the previous forecaster. I can be used to explicitly models structural components:
 
-    - **Trend** via `PolynomialTrendForecaster`
-    - **Seasonality** via `FourierSeasonalityForecaster`
-    - **Residual** via any forecaster (here `PointReductionForecaster`)
+    - **Trend** via [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/)
+    - **Seasonality** via [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/)
+    - **Residual** via any forecaster (here [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/))
     """)
+    return
+
 
 @app.cell
 def _(
@@ -322,6 +354,7 @@ def _(
     print(f"Decomposition MAE: {mae_decomp:.2f}")
     return (y_pred_decomp,)
 
+
 @app.cell
 def _(
     plot_forecast,
@@ -343,6 +376,8 @@ def _(
         y_label="Monthly tourists",
         height=400,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -360,6 +395,8 @@ def _(mo):
     first calls `observe_predict` to absorb half the test period before predicting
     the remaining horizon:
     """)
+    return
+
 
 @app.cell
 def _(copy, forecasting_horizon, plot_forecast, reduction, y_test, y_train):
@@ -384,6 +421,8 @@ def _(copy, forecasting_horizon, plot_forecast, reduction, y_test, y_train):
         y_label="Monthly tourists",
         height=400,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -392,18 +431,22 @@ def _(mo):
 
     Standard k-fold CV destroys temporal order. Yohou provides **temporal splitters**:
 
-    - `ExpandingWindowSplitter`: training window grows each fold
-    - `SlidingWindowSplitter`: training window slides at fixed size
+    - [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/): training window grows each fold
+    - [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/): training window slides at fixed size
 
-    Pair with `GridSearchCV` or `RandomizedSearchCV` to tune hyperparameters.
+    Pair with [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) or [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) to tune hyperparameters.
     """)
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `plot_splits` visualizes the train/test structure across folds.
+    [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/) visualizes the train/test structure across folds.
     An **expanding window** grows the training set with each fold:
     """)
+    return
+
 
 @app.cell
 def _(ExpandingWindowSplitter, plot_splits, y_train):
@@ -413,12 +456,16 @@ def _(ExpandingWindowSplitter, plot_splits, y_train):
         title="Expanding Window (5 folds)",
         height=310,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    A **sliding window** keeps training size fixed — oldest data is dropped each fold:
+    A **sliding window** keeps training size fixed. The oldest data is dropped each fold:
     """)
+    return
+
 
 @app.cell
 def _(SlidingWindowSplitter, plot_splits, y_train):
@@ -428,6 +475,8 @@ def _(SlidingWindowSplitter, plot_splits, y_train):
         title="Sliding Window (5 folds)",
         height=310,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -437,6 +486,8 @@ def _(mo):
     Randomly sample from continuous / discrete parameter distributions.
     Efficient for larger search spaces.
     """)
+    return
+
 
 @app.cell
 def _(
@@ -471,6 +522,7 @@ def _(
     print(f"Best CV MAE:  {random_search.best_score_:.2f}")
     return (random_search,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -478,6 +530,8 @@ def _(mo):
 
     Exhaustively test every combination, best for small discrete grids.
     """)
+    return
+
 
 @app.cell
 def _(
@@ -507,6 +561,7 @@ def _(
     print(f"Best CV MAE:  {grid_search.best_score_:.2f}")
     return (grid_search,)
 
+
 @app.cell
 def _(forecasting_horizon, grid_search, random_search, scorer, y_test):
     y_pred_random = random_search.predict(forecasting_horizon=forecasting_horizon)
@@ -518,11 +573,14 @@ def _(forecasting_horizon, grid_search, random_search, scorer, y_test):
     print(f"GridSearchCV       test MAE: {mae_grid:.2f}")
     return y_pred_grid, y_pred_random
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     Compare the tuned models against the baseline on the test set:
     """)
+    return
+
 
 @app.cell
 def _(
@@ -545,13 +603,17 @@ def _(
         y_label="Monthly tourists",
         height=400,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `plot_cv_results_scatter` shows how each hyperparameter value affects the
+    [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) shows how each hyperparameter value affects the
     cross-validated score, making it easy to identify the optimal range:
     """)
+    return
+
 
 @app.cell
 def _(grid_search, plot_cv_results_scatter):
@@ -563,6 +625,8 @@ def _(grid_search, plot_cv_results_scatter):
         y_label="Mean MAE",
         height=380,
     )
+    return
+
 
 @app.cell
 def _(plot_cv_results_scatter, random_search):
@@ -574,6 +638,8 @@ def _(plot_cv_results_scatter, random_search):
         y_label="Mean MAE",
         height=380,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -588,6 +654,8 @@ def _(mo):
       - `"componentwise"` → per-timestep scores (DataFrame)
       - `"all"` → single scalar across all columns and timesteps
     """)
+    return
+
 
 @app.cell
 def _(MeanAbsoluteError, MeanSquaredError, y_pred_reduction, y_test, y_train):
@@ -600,6 +668,8 @@ def _(MeanAbsoluteError, MeanSquaredError, y_pred_reduction, y_test, y_train):
         _s.fit(y_train)
         _result = _s.score(y_test, y_pred_reduction)
         print(f"{_name}: {_result}")
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -609,18 +679,22 @@ def _(mo):
 
     See `examples/metrics/` for an exhaustive scorer survey.
     """)
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 8. Interval Forecasting: Prediction Intervals
 
-    `SplitConformalForecaster` wraps any point forecaster and produces
+    [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) wraps any point forecaster and produces
     **calibrated prediction intervals** using split conformal prediction.
 
     Pass `coverage_rates` to `predict_interval` to get intervals at the
     desired confidence levels.
     """)
+    return
+
 
 @app.cell
 def _(
@@ -660,12 +734,13 @@ def _(
     y_pred_interval.head()
     return conformal, coverage_rates, y_pred_interval
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### Conformality score distribution
 
-    Under the hood `SplitConformalForecaster` computes a **conformality score**
+    Under the hood [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) computes a **conformality score**
     for every point in the held-out calibration set:
 
     $$s_i = y_i - \hat{y}_i \quad \text{(signed residual, default scorer)}$$
@@ -678,8 +753,10 @@ def _(mo):
       forecaster is unbiased on the calibration window.
     * **Interval widths**: the spread sets the floor on achievable interval
       width.  The dashed lines mark the lower/upper quantiles used for each
-      coverage level — the further apart a pair, the wider that band.
+      coverage level. The further apart a pair, the wider that band.
     """)
+    return
+
 
 @app.cell
 def _(conformal, go):
@@ -688,31 +765,45 @@ def _(conformal, go):
     _vals = _scores[_col].drop_nulls()
 
     _fig_scores = go.Figure()
-    _fig_scores.add_trace(go.Histogram(
-        x=_vals.to_list(),
-        nbinsx=20,
-        name="Calibration scores",
-        marker_color="#4c78a8",
-        opacity=0.72,
-    ))
+    _fig_scores.add_trace(
+        go.Histogram(
+            x=_vals.to_list(),
+            nbinsx=20,
+            name="Calibration scores",
+            marker_color="#4c78a8",
+            opacity=0.72,
+        )
+    )
     _fig_scores.add_vline(
-        x=0, line_dash="dot", line_color="#888", line_width=1.5,
-        annotation_text="0", annotation_position="top",
+        x=0,
+        line_dash="dot",
+        line_color="#888",
+        line_width=1.5,
+        annotation_text="0",
+        annotation_position="top",
     )
     for _rate, _color in zip([0.5, 0.7, 0.9], ["#f28e2b", "#59a14f", "#e15759"]):
         _alpha = (1 - _rate) / 2
         _q_lo = float(_vals.quantile(_alpha))
         _q_hi = float(_vals.quantile(1 - _alpha))
         _fig_scores.add_vline(
-            x=_q_lo, line_dash="dash", line_color=_color, line_width=1.5,
-            annotation_text=f"{_rate:.0%} lo", annotation_position="bottom right",
+            x=_q_lo,
+            line_dash="dash",
+            line_color=_color,
+            line_width=1.5,
+            annotation_text=f"{_rate:.0%} lo",
+            annotation_position="bottom right",
         )
         _fig_scores.add_vline(
-            x=_q_hi, line_dash="dash", line_color=_color, line_width=1.5,
-            annotation_text=f"{_rate:.0%} hi", annotation_position="top right",
+            x=_q_hi,
+            line_dash="dash",
+            line_color=_color,
+            line_width=1.5,
+            annotation_text=f"{_rate:.0%} hi",
+            annotation_position="top right",
         )
     _fig_scores.update_layout(
-        title=f"Conformality Score Distribution — calibration set ({_col})",
+        title=f"Conformality Score Distribution, calibration set ({_col})",
         xaxis_title="Score  (y − ŷ)",
         yaxis_title="Count",
         bargap=0.05,
@@ -721,6 +812,8 @@ def _(conformal, go):
         showlegend=False,
     )
     _fig_scores
+    return
+
 
 @app.cell
 def _(plot_forecast, y_pred_interval, y_test, y_train):
@@ -733,6 +826,8 @@ def _(plot_forecast, y_pred_interval, y_test, y_train):
         y_label="Monthly tourists",
         height=400,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -746,6 +841,8 @@ def _(mo):
     indicate perfect calibration; points below mean the intervals are too narrow
     (under-coverage), points above mean they are too wide (over-coverage).
     """)
+    return
+
 
 @app.cell
 def _(coverage_rates, plot_calibration, y_pred_interval, y_test):
@@ -757,6 +854,8 @@ def _(coverage_rates, plot_calibration, y_pred_interval, y_test):
         title="Prediction Interval Calibration",
         height=400,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -775,6 +874,8 @@ def _(mo):
     | `seasonal_emphasis_weight(seasonality=…, emphasis=…)` | Boost specific seasonal positions |
     | `compose_weights(fn1, fn2, …)` | Multiply multiple weight functions element-wise |
     """)
+    return
+
 
 @app.cell
 def _(
@@ -791,8 +892,7 @@ def _(
         "seasonal": seasonal_emphasis_weight(seasonality=12, emphasis=3.0),
     }
     _weights_df = y_train.select("time").with_columns([
-        pl.Series(f"time_weight__{name}", fn(y_train["time"]).to_list())
-        for name, fn in _fns.items()
+        pl.Series(f"time_weight__{name}", fn(y_train["time"]).to_list()) for name, fn in _fns.items()
     ])
     plot_time_weight(
         _weights_df,
@@ -801,6 +901,8 @@ def _(
         title="Time Weight Functions",
         height=500,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -830,6 +932,8 @@ def _(mo):
     The framework converts `time_weight` to sklearn's `sample_weight` internally
     before passing it to the underlying estimator.
     """)
+    return
+
 
 @app.cell
 def _(
@@ -869,6 +973,7 @@ def _(
     print(f"Time-weighted MAE: {mae_weighted:.2f}")
     return (y_pred_weighted,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -877,10 +982,12 @@ def _(mo):
     Overlaying both forecasts shows the practical effect of the time weight:
     the weighted model tilts its extrapolation towards the most recent trend
     and the seasonal peak positions it was told to emphasise.
-    A lower MAE alone does not tell the whole story — the chart reveals *where*
+    A lower MAE alone does not tell the whole story. The chart reveals *where*
     the two models diverge and whether the weighted version tracks the
     actual trajectory more closely in the critical final months.
     """)
+    return
+
 
 @app.cell
 def _(
@@ -900,6 +1007,8 @@ def _(
         y_label="Monthly tourists",
         height=400,
     )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -914,18 +1023,21 @@ def _(mo):
 
     Any forecaster automatically handles all groups when it sees this pattern.
     """)
+    return
+
 
 @app.cell
-def _(fetch_dominick, inspect_locality):
+def _(fetch_dominick, inspect_panel):
     _bunch = fetch_dominick()
     # Select 3 series that have complete data (no nulls)
     _cols = ["T7__profit", "T11__profit", "T12__profit"]
     y_panel = _bunch.frame.select("time", *_cols)
 
-    _global, _groups = inspect_locality(y_panel)
+    _global, _groups = inspect_panel(y_panel)
     print(f"Panel groups: {list(_groups.keys())}")
     y_panel.head()
     return (y_panel,)
+
 
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, y_panel):
@@ -941,6 +1053,7 @@ def _(MeanAbsoluteError, SeasonalNaive, y_panel):
     print(f"Panel baseline MAE: {_scorer.score(y_panel_test, y_pred_panel):.2f}")
     return y_panel_test, y_panel_train, y_pred_panel
 
+
 @app.cell
 def _(plot_forecast, y_panel_test, y_panel_train, y_pred_panel):
     plot_forecast(
@@ -952,6 +1065,119 @@ def _(plot_forecast, y_panel_test, y_panel_train, y_pred_panel):
         y_label="Profit",
         height=700,
     )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Panel Strategies
+
+    When a reduction forecaster sees panel data, the `panel_strategy` parameter
+    controls how groups are handled:
+
+    | Strategy | Behaviour |
+    |----------|-----------|
+    | `"global"` (default) | Per-group transformers, but **one pooled model** trained on all groups |
+    | `"multivariate"` | Treat prefixed columns as ordinary multivariate columns (no panel logic) |
+
+    For **independent per-group models**, wrap any forecaster with
+    [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/), which clones a separate instance for each group.
+    """)
+    return
+
+
+@app.cell
+def _(
+    FeaturePipeline,
+    LagTransformer,
+    MeanAbsoluteError,
+    PointReductionForecaster,
+    Ridge,
+    y_panel_test,
+    y_panel_train,
+):
+    # Global panel strategy (default)
+    # One Ridge model is trained on the pooled tabularised data from all groups.
+    global_forecaster = PointReductionForecaster(
+        estimator=Ridge(alpha=1.0),
+        feature_transformer=FeaturePipeline([
+            ("lag", LagTransformer(lag=[1, 2, 3, 4])),
+        ]),
+        panel_strategy="global",  # default: pool groups into one model
+    )
+    global_forecaster.fit(y_panel_train, forecasting_horizon=13)
+    y_pred_global = global_forecaster.predict(forecasting_horizon=13)
+
+    _scorer = MeanAbsoluteError()
+    _scorer.fit(y_panel_test)
+    print(f"Global panel MAE: {_scorer.score(y_panel_test, y_pred_global):.2f}")
+    return (y_pred_global,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) takes the opposite approach: it **clones** the
+    wrapped forecaster once per panel group and fits each clone independently
+    on that group's data alone.  This is useful when groups are heterogeneous
+    and a single pooled model cannot capture group-specific dynamics.
+    """)
+    return
+
+
+@app.cell
+def _(
+    FeaturePipeline,
+    LagTransformer,
+    LocalPanelForecaster,
+    MeanAbsoluteError,
+    PointReductionForecaster,
+    Ridge,
+    y_panel_test,
+    y_panel_train,
+):
+    local_forecaster = LocalPanelForecaster(
+        forecaster=PointReductionForecaster(
+            estimator=Ridge(alpha=1.0),
+            feature_transformer=FeaturePipeline([
+                ("lag", LagTransformer(lag=[1, 2, 3, 4])),
+            ]),
+        ),
+    )
+    local_forecaster.fit(y_panel_train, forecasting_horizon=13)
+    y_pred_local = local_forecaster.predict(forecasting_horizon=13)
+
+    _scorer = MeanAbsoluteError()
+    _scorer.fit(y_panel_test)
+    print(f"Local panel MAE:  {_scorer.score(y_panel_test, y_pred_local):.2f}")
+    return (y_pred_local,)
+
+
+@app.cell
+def _(
+    plot_forecast,
+    y_panel_test,
+    y_panel_train,
+    y_pred_global,
+    y_pred_local,
+    y_pred_panel,
+):
+    plot_forecast(
+        y_panel_test,
+        {
+            "SeasonalNaive": y_pred_panel,
+            "Global (pooled)": y_pred_global,
+            "Local (per-group)": y_pred_local,
+        },
+        y_train=y_panel_train,
+        facet_n_cols=1,
+        title="Panel Strategies Comparison",
+        y_label="Profit",
+        height=700,
+    )
+    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -959,28 +1185,30 @@ def _(mo):
     ## Key Takeaways
 
     - **Scikit-learn API**: `fit(y, X, forecasting_horizon)` → `predict(forecasting_horizon)` → `score(y_truth, y_pred)`
-    - **Preprocessing**: `FeaturePipeline` chains invertible transforms (log, differencing, lags)
-    - **Decomposition**: `DecompositionPipeline` models trend + seasonality + residual
-    - **Cross-validation**: `ExpandingWindowSplitter` / `SlidingWindowSplitter` respect temporal order
-    - **Hyperparameter search**: `GridSearchCV` (exhaustive) and `RandomizedSearchCV` (efficient)
-    - **Time weighting**: `exponential_decay_weight`, `compose_weights` for recency emphasis
+    - **Preprocessing**: [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains invertible transforms (log, differencing, lags)
+    - **Decomposition**: [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) models trend + seasonality + residual
+    - **Cross-validation**: [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) / [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/) respect temporal order
+    - **Hyperparameter search**: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) (exhaustive) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) (efficient)
+    - **Time weighting**: [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/), [`compose_weights`](/pages/api/generated/yohou.utils.weighting.compose_weights/) for recency emphasis
     - **Streaming**: `observe_predict` updates memory without retraining
-    - **Intervals**: `SplitConformalForecaster` + `predict_interval(coverage_rates=[0.9])`
-    - **Panel data**: `__` separator convention: one forecaster handles all groups
+    - **Intervals**: [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) + `predict_interval(coverage_rates=[0.9])`
+    - **Panel data**: `__` separator convention; `panel_strategy="global"` pools groups; [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) fits per-group models
 
     ## Next Steps
 
     | Topic | Notebook |
     |-------|----------|
-    | Point forecasters | `point/naive_forecasters.py`, `point/reduction_forecaster.py` |
-    | Feature engineering | `point/feature_forecasting.py`, `preprocessing/window_transformers.py` |
-    | Interval forecasting | `interval/conformal_forecasting.py`, `interval/interval_reduction.py` |
-    | Decomposition deep dive | `stationarity/decomposition.py` |
-    | Metrics guide | `metrics/point_metrics.py`, `metrics/interval_metrics.py` |
-    | Splitters & search | `model_selection/cv_splitters.py`, `model_selection/hyperparameter_search.py` |
-    | Dataset explorers | `datasets/tourism_monthly.py`, `datasets/store_sales.py`, … |
-    | Plotting gallery | `plotting/exploration.py`, `plotting/forecasting_visualization.py`, … |
+    | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
+    | Feature engineering | [`point/feature_forecasting.py`](/examples/point/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/) |
+    | Interval forecasting | [`interval/interval_reduction.py`](/examples/interval/interval_reduction/), [`interval/conformal_conformity_scorers.py`](/examples/interval/conformal_conformity_scorers/) |
+    | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/stationarity/decomposition/) |
+    | Metrics guide | [`metrics/point_metrics.py`](/examples/metrics/point_metrics/), [`metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) |
+    | Splitters & search | [`model_selection/cv_splitters.py`](/examples/model_selection/cv_splitters/), [`model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/) |
+    | Dataset explorers | [`datasets/tourism_monthly.py`](/examples/datasets/tourism_monthly/), [`datasets/store_sales.py`](/examples/datasets/store_sales/), … |
+    | Plotting gallery | [`plotting/exploration.py`](/examples/plotting/exploration/), [`plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/), … |
     """)
+    return
+
 
 if __name__ == "__main__":
     app.run()

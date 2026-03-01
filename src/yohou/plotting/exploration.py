@@ -4,15 +4,16 @@ from typing import Literal
 
 import plotly.graph_objects as go
 import polars as pl
-from plotly.subplots import make_subplots
 
 from yohou.plotting._utils import (
+    _group_panel_columns,
     apply_default_layout,
     panel_facet_figure,
     resolve_color_palette,
+    resolve_panel_columns,
 )
 from yohou.preprocessing import RollingStatisticsTransformer
-from yohou.utils import inspect_locality, validate_plotting_data
+from yohou.utils import inspect_panel, validate_plotting_data
 
 __all__ = [
     "plot_boxplot",
@@ -123,76 +124,60 @@ def plot_time_series(
     hovermode = kwargs.get("hovermode", "closest")
 
     # Detect panel data
-    _, panel_groups = inspect_locality(df)
+    _, panel_groups = inspect_panel(df)
 
-    # Explicit panel mode when panel_group_names is provided
-    # Auto-detect panel mode when all resolved columns are panel columns
-    if panel_group_names is not None:
-        use_panel = bool(panel_groups)
-    else:
-        plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-        use_panel = bool(panel_groups) and (not plot_columns or all("__" in c for c in plot_columns))
+    # Auto-detect panel mode when data contains panel groups
+    if panel_group_names is None and columns is None and panel_groups:
+        panel_group_names = []
 
-    if use_panel:
-        # Collect panel columns to plot
-        all_panel_cols = validate_plotting_data(
-            df,
-            panel_group_names=panel_group_names,
-            columns=columns if panel_group_names is not None else None,
-        )
+    if panel_group_names is not None and panel_groups:
+        # Pre-compute palette for consistent member colouring
+        pn_cols = resolve_panel_columns(df, panel_group_names, columns if panel_group_names is not None else None)
+        _, all_members = _group_panel_columns(pn_cols)
+        color_palette = resolve_color_palette(color_palette, len(all_members))
+        seen: set[str] = set()
 
-        n_panels = len(all_panel_cols)
-        n_rows = (n_panels + facet_n_cols - 1) // facet_n_cols
-        n_cols_grid = min(n_panels, facet_n_cols)
-
-        # Get color palette
-        color_palette = resolve_color_palette(color_palette, n_panels)
-
-        fig = make_subplots(
-            rows=n_rows,
-            cols=n_cols_grid,
-            subplot_titles=[c.replace("__", " \u2013 ") for c in all_panel_cols],
-            vertical_spacing=0.12,
-            horizontal_spacing=0.08,
-        )
-
-        for idx, col in enumerate(all_panel_cols):
-            row = idx // facet_n_cols + 1
-            col_idx = idx % facet_n_cols + 1
-            color = line_color if line_color is not None else color_palette[idx]
-
+        def _render_ts(
+            fig: go.Figure,
+            sub_df: pl.DataFrame,
+            member_name: str,
+            member_idx: int,
+            row: int,
+            col_idx: int,
+        ) -> None:
+            """Render one member trace into the faceted figure."""
+            color = line_color if line_color is not None else color_palette[member_idx]
+            first_seen = member_name not in seen
+            seen.add(member_name)
             fig.add_trace(
                 go.Scatter(
-                    x=df["time"],
-                    y=df[col],
+                    x=sub_df["time"],
+                    y=sub_df[member_name],
                     mode="lines",
-                    name=col.replace("__", " \u2013 "),
-                    line={
-                        "color": color,
-                        "width": line_width,
-                        "dash": line_dash,
-                    },
+                    name=member_name,
+                    line={"color": color, "width": line_width, "dash": line_dash},
                     opacity=line_opacity,
-                    showlegend=False,
-                    hovertemplate=(f"<b>{col}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
+                    showlegend=first_seen and show_legend,
+                    legendgroup=member_name,
+                    hovertemplate=f"<b>{member_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
                 ),
                 row=row,
                 col=col_idx,
             )
 
-        # Update layout
-        fig.update_layout(
+        fig = panel_facet_figure(
+            df,
+            _render_ts,
+            panel_group_names=panel_group_names,
+            columns=columns if panel_group_names is not None else None,
+            facet_n_cols=facet_n_cols,
             title=title,
-            height=height or (300 * n_rows),
+            x_label=x_label or "time",
+            y_label=y_label,
             width=width,
-            hovermode=hovermode,
-            showlegend=show_legend,
+            height=height,
         )
-        for i in range(n_panels):
-            r = i // facet_n_cols + 1
-            c = i % facet_n_cols + 1
-            fig.update_xaxes(title_text=x_label or "time", row=r, col=c)
-            fig.update_yaxes(title_text=y_label, row=r, col=c)
+        fig.update_layout(hovermode=hovermode, showlegend=show_legend)
 
         return fig
 
@@ -300,8 +285,6 @@ def plot_rolling_statistics(
         - smooth_opacity : float, default=0.8
         - line_width : float, default=1.5
         - line_opacity : float, default=0.5
-        - fill_between : bool, default=False (fill area between statistics)
-        - band_opacity : float, default=0.2
 
     Returns
     -------
@@ -335,6 +318,11 @@ def plot_rolling_statistics(
     """
     # Validate inputs
     validate_plotting_data(df)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     if panel_group_names is not None:
 
@@ -405,8 +393,6 @@ def plot_rolling_statistics(
     smooth_opacity = kwargs.get("smooth_opacity", 0.8)
     line_width = kwargs.get("line_width", 1.5)
     line_opacity = kwargs.get("line_opacity", 0.5)
-    fill_between = kwargs.get("fill_between", False)
-    band_opacity = kwargs.get("band_opacity", 0.2)
 
     # Convert statistics to list
     if isinstance(statistics, str):
@@ -448,78 +434,22 @@ def plot_rolling_statistics(
             stat_col = f"{col}_{stat}"
             stat_data[stat] = df_stats.select(["time", stat_col])
 
-        if fill_between and len(statistics) >= 2:
-            stat_names = list(stat_data.keys())
-            first_stat = stat_data[stat_names[0]]
-            second_stat = stat_data[stat_names[1]]
-            first_col_name = [c for c in first_stat.columns if c != "time"][0]
-            second_col_name = [c for c in second_stat.columns if c != "time"][0]
-
-            fill_color = col_color if multi_col else (colors[0] if colors else "#3366FF")
-            _hex = fill_color.lstrip("#")
-            rgba = f"rgba({int(_hex[0:2], 16)}, {int(_hex[2:4], 16)}, {int(_hex[4:6], 16)}, {band_opacity})"
-
+        stat_colors = colors if not multi_col else [col_color] * len(statistics)
+        for s_idx, (stat, data) in enumerate(stat_data.items()):
+            col_name = [c for c in data.columns if c != "time"][0]
+            s_color = stat_colors[s_idx % len(stat_colors)]
             fig.add_trace(
                 go.Scatter(
-                    x=second_stat["time"],
-                    y=second_stat[second_col_name],
+                    x=data["time"],
+                    y=data[col_name],
                     mode="lines",
-                    line={"width": 0},
-                    showlegend=False,
-                    hoverinfo="skip",
+                    name=f"{col} ({stat})" if multi_col else stat,
+                    line={"color": s_color, "width": smooth_width},
+                    opacity=smooth_opacity,
                     legendgroup=col if multi_col else None,
+                    hovertemplate=f"<b>{stat}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
                 )
             )
-            band_label = (
-                f"{col} ({stat_names[0]}–{stat_names[1]})" if multi_col else f"{stat_names[0]}–{stat_names[1]} band"
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=first_stat["time"],
-                    y=first_stat[first_col_name],
-                    mode="lines",
-                    name=band_label,
-                    line={"width": 0},
-                    fill="tonexty",
-                    fillcolor=rgba,
-                    legendgroup=col if multi_col else None,
-                    hovertemplate=f"<b>{stat_names[0]}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
-                )
-            )
-
-            # If there's a third statistic (e.g., mean), plot it as a line
-            for extra in stat_names[2:]:
-                extra_data = stat_data[extra]
-                extra_col_name = [c for c in extra_data.columns if c != "time"][0]
-                fig.add_trace(
-                    go.Scatter(
-                        x=extra_data["time"],
-                        y=extra_data[extra_col_name],
-                        mode="lines",
-                        name=f"{col} ({extra})" if multi_col else extra,
-                        line={"color": fill_color, "width": smooth_width},
-                        opacity=smooth_opacity,
-                        legendgroup=col if multi_col else None,
-                        hovertemplate=f"<b>{extra}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
-                    )
-                )
-        else:
-            stat_colors = colors if not multi_col else [col_color] * len(statistics)
-            for s_idx, (stat, data) in enumerate(stat_data.items()):
-                col_name = [c for c in data.columns if c != "time"][0]
-                s_color = stat_colors[s_idx % len(stat_colors)]
-                fig.add_trace(
-                    go.Scatter(
-                        x=data["time"],
-                        y=data[col_name],
-                        mode="lines",
-                        name=f"{col} ({stat})" if multi_col else stat,
-                        line={"color": s_color, "width": smooth_width},
-                        opacity=smooth_opacity,
-                        legendgroup=col if multi_col else None,
-                        hovertemplate=f"<b>{stat}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
-                    )
-                )
 
     # Apply layout
     if x_label is None:
@@ -614,6 +544,11 @@ def plot_boxplot(
     """
     # Validate inputs
     validate_plotting_data(df)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     if panel_group_names is not None:
 
@@ -806,6 +741,11 @@ def plot_missing_data(
     """
     # Validate inputs
     validate_plotting_data(df)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(df)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     if panel_group_names is not None:
 

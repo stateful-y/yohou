@@ -4,22 +4,23 @@
 #     "yohou",
 # ]
 # ///
-"""Signal Processing Transformers.
-
-Demonstrates NumericalFilter, NumericalIntegrator, and NumericalDifferentiator
-on high-frequency electricity demand data.
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Signal Processing",
+    "description": "Apply NumericalFilter (Butterworth, Chebyshev, Bessel), NumericalDifferentiator, and NumericalIntegrator for signal smoothing and rate-of-change extraction.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -32,11 +33,12 @@ def _(mo):
 
     ## What You'll Learn
 
-    - `NumericalFilter`: Butterworth/Chebyshev/Bessel low/highpass filters
-    - `NumericalDifferentiator`: Rate-of-change estimation
-    - `NumericalIntegrator`: Cumulative integration
+    - [`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/): Butterworth/Chebyshev/Bessel low/highpass filters
+    - [`NumericalDifferentiator`](/pages/api/generated/yohou.preprocessing.signal.NumericalDifferentiator/): Rate-of-change estimation
+    - [`NumericalIntegrator`](/pages/api/generated/yohou.preprocessing.signal.NumericalIntegrator/): Cumulative integration
     - Chaining filters for bandpass-like behaviour
     """)
+
 
 @app.cell(hide_code=True)
 def _():
@@ -55,19 +57,23 @@ def _():
         plot_time_series,
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load High-Frequency Data
+
+    Signal processing transformers are most useful on high-frequency data
+    where noise and rapid fluctuations are present. We load a two-week slice
+    of the half-hourly electricity demand dataset from Victoria, Australia.
     """)
+
 
 @app.cell
 def _(fetch_electricity_demand, mo, pl):
     elec = fetch_electricity_demand().frame
     # Use a manageable subset (first 2 weeks = 672 half-hour periods)
-    elec_subset = elec.head(672).select(
-        "time", pl.col("vic__demand").alias("demand")
-    )
+    elec_subset = elec.head(672).select("time", pl.col("vic__demand").alias("demand"))
     mo.md(
         f"**Electricity Demand** (30-min intervals)\n\n"
         f"Full dataset: {len(elec)} rows, using first {len(elec_subset)} rows\n\n"
@@ -75,18 +81,32 @@ def _(fetch_electricity_demand, mo, pl):
     )
     return elec, elec_subset
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders the raw demand signal. The pronounced daily
+    cycles and intra-day noise are clearly visible.
+    """)
+
+
 @app.cell
 def _(elec_subset, plot_time_series):
     plot_time_series(elec_subset, title="Electricity Demand: Raw (2 Weeks)")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Low-Pass Filter (Smoothing)
 
-    A Butterworth low-pass filter removes high-frequency noise,
-    revealing the underlying demand trend.
+    [`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/) applies a digital IIR filter to every numeric column.
+    A Butterworth low-pass filter with `cutoff_frequency=0.05` (as a
+    fraction of the Nyquist rate) attenuates fast oscillations and reveals
+    the underlying demand trend. We overlay the filtered and raw signals
+    using [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) on a joined DataFrame.
     """)
+
 
 @app.cell
 def _(NumericalFilter, elec_subset, pl, plot_time_series):
@@ -107,14 +127,18 @@ def _(NumericalFilter, elec_subset, pl, plot_time_series):
     plot_time_series(_combined, title="Low-Pass Filter (cutoff=0.05)")
     return demand_smooth, lp_filter
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. High-Pass Filter (Residual Extraction)
 
-    A high-pass filter keeps only the fast-changing component, useful
-    for isolating noise or short-term fluctuations.
+    A high-pass [`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/) removes the slow-moving trend and keeps
+    only the fast-changing component. This is useful for isolating noise,
+    short-term demand spikes, or intra-day fluctuations away from the
+    baseline level.
     """)
+
 
 @app.cell
 def _(NumericalFilter, elec_subset, pl, plot_time_series):
@@ -134,20 +158,31 @@ def _(NumericalFilter, elec_subset, pl, plot_time_series):
     plot_time_series(_combined_hp, title="High-Pass Filter (cutoff=0.05)")
     return demand_residual, hp_filter
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Different Filter Designs
 
-    Compare Butterworth, Chebyshev Type 1, and Bessel filters.
+    [`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/) supports three classical IIR designs. **Butterworth**
+    has the flattest passband response. **Chebyshev Type 1** allows a
+    steeper transition band at the cost of passband ripple (controlled by
+    `passband_ripple`). **Bessel** preserves the signal's time-domain shape
+    best but has the gentlest cutoff. We compare all three on the first 200
+    samples using [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/).
     """)
+
 
 @app.cell
 def _(NumericalFilter, elec_subset, pl, plot_time_series):
     _designs = {
         "butterworth": NumericalFilter(design="butterworth", mode="lowpass", order=4, cutoff_frequency=0.05),
         "chebyshev1": NumericalFilter(
-            design="chebyshev1", mode="lowpass", order=4, cutoff_frequency=0.05, passband_ripple=1.0,
+            design="chebyshev1",
+            mode="lowpass",
+            order=4,
+            cutoff_frequency=0.05,
+            passband_ripple=1.0,
         ),
         "bessel": NumericalFilter(design="bessel", mode="lowpass", order=4, cutoff_frequency=0.05),
     }
@@ -163,13 +198,18 @@ def _(NumericalFilter, elec_subset, pl, plot_time_series):
         title="Filter Design Comparison (First 200 Samples)",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. NumericalDifferentiator: Rate of Change
 
-    Estimate the derivative (rate of change) of the demand signal.
+    [`NumericalDifferentiator`](/pages/api/generated/yohou.preprocessing.signal.NumericalDifferentiator/) estimates the time derivative of the signal
+    using `np.gradient`. The output column is suffixed with
+    `_differentiated`. The fitted attribute `sampling_interval_` records the
+    detected time step in seconds.
     """)
+
 
 @app.cell
 def _(NumericalDifferentiator, elec_subset, mo, plot_time_series):
@@ -183,17 +223,32 @@ def _(NumericalDifferentiator, elec_subset, mo, plot_time_series):
     )
     return demand_rate, diff
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders the first 200 samples of the differentiated
+    signal, showing how quickly demand rises or falls between half-hour
+    intervals.
+    """)
+
+
 @app.cell
 def _(demand_rate, plot_time_series):
     plot_time_series(demand_rate.head(200), title="Rate of Change: First 200 Samples")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. NumericalIntegrator: Cumulative Integration
 
-    Integrate the demand signal to get cumulative energy consumption.
+    [`NumericalIntegrator`](/pages/api/generated/yohou.preprocessing.signal.NumericalIntegrator/) computes the running trapezoidal (or Simpson)
+    integral of the signal. Applied to electricity demand, this gives
+    cumulative energy consumption over time. The output column is suffixed
+    with `_integrated`.
     """)
+
 
 @app.cell
 def _(NumericalIntegrator, elec_subset, mo, plot_time_series):
@@ -201,15 +256,22 @@ def _(NumericalIntegrator, elec_subset, mo, plot_time_series):
     integ.fit(elec_subset)
     demand_cumulative = integ.transform(elec_subset)
 
-    mo.md(
-        f"**Integrator output columns**: {demand_cumulative.columns}\n\n"
-        f"**Sampling interval**: {integ.interval_}"
-    )
+    mo.md(f"**Integrator output columns**: {demand_cumulative.columns}\n\n**Sampling interval**: {integ.interval_}")
     return demand_cumulative, integ
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) shows the monotonically increasing cumulative energy
+    curve. Steeper slopes correspond to periods of higher demand.
+    """)
+
 
 @app.cell
 def _(demand_cumulative, plot_time_series):
     plot_time_series(demand_cumulative, title="Cumulative Integration: Total Energy")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -219,6 +281,7 @@ def _(mo):
     Apply a low-pass filter first to remove noise, then differentiate
     for a cleaner rate-of-change estimate.
     """)
+
 
 @app.cell
 def _(NumericalDifferentiator, NumericalFilter, elec_subset, pl, plot_time_series):
@@ -244,24 +307,26 @@ def _(NumericalDifferentiator, NumericalFilter, elec_subset, pl, plot_time_serie
         title="Rate of Change: Raw vs Smoothed",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **`NumericalFilter`**: Butterworth, Chebyshev, Bessel filters in lowpass/highpass/bandpass/bandstop modes
-    - **`NumericalDifferentiator`**: Estimates rate of change using `np.gradient`
-    - **`NumericalIntegrator`**: Cumulative trapezoidal or Simpson integration
+    - **[`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/)**: Butterworth, Chebyshev, Bessel filters in lowpass/highpass/bandpass/bandstop modes
+    - **[`NumericalDifferentiator`](/pages/api/generated/yohou.preprocessing.signal.NumericalDifferentiator/)**: Estimates rate of change using `np.gradient`
+    - **[`NumericalIntegrator`](/pages/api/generated/yohou.preprocessing.signal.NumericalIntegrator/)**: Cumulative trapezoidal or Simpson integration
     - **Filter order**: Higher order = sharper cutoff but more phase distortion
     - **Cutoff frequency**: 0-1 as fraction of Nyquist frequency
     - **Chain transformers**: Smooth first, then differentiate for cleaner signals
 
     ## Next Steps
 
-    - **Resampling**: See `examples/preprocessing/resampling_advanced.py`
-    - **Window transformers**: See `examples/preprocessing/window_transformers.py`
-    - **Stationarity transforms**: See `examples/stationarity/stationarity_transforms.py`
+    - **Resampling**: See [`examples/preprocessing/resampling_advanced.py`](/examples/preprocessing/resampling_advanced/)
+    - **Window transformers**: See [`examples/preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/)
+    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

@@ -5,22 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Multi-Metric Hyperparameter Search.
-
-Demonstrates multi-metric scoring and refit strategies with GridSearchCV
-and RandomizedSearchCV.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Multi-Metric Search",
+    "description": "Evaluate hyperparameter configurations against multiple metrics simultaneously with dict-of-scorers, refit strategies, and Pareto-optimal selection.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -31,16 +32,17 @@ def _(mo):
 
     ## What You'll Learn
 
-    - Passing a **dict of scorers** to `GridSearchCV`
+    - Passing a **dict of scorers** to [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
     - Understanding `cv_results_` with multiple metrics
     - Refit strategies: select best by MAE, RMSE, or MAPE
-    - `RandomizedSearchCV` with distributions for efficient search
+    - [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) with distributions for efficient search
     """)
+
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
-    from scipy.stats import loguniform, randint
+    from scipy.stats import loguniform
     from sklearn.linear_model import ElasticNet, Ridge
 
     from yohou.datasets import fetch_tourism_monthly
@@ -51,7 +53,7 @@ def _():
     )
     from yohou.model_selection import GridSearchCV, RandomizedSearchCV
     from yohou.model_selection.split import ExpandingWindowSplitter
-    from yohou.plotting import plot_cv_results_scatter, plot_forecast
+    from yohou.plotting import plot_cv_results_scatter, plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -71,25 +73,39 @@ def _():
         pl,
         plot_cv_results_scatter,
         plot_forecast,
-        randint,
+        plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
+
+    We load the Tourism Monthly dataset and split it into training and test
+    partitions. The test length defines the forecasting horizon for all
+    search experiments below.
     """)
+
 
 @app.cell
 def _(fetch_tourism_monthly, mo):
-    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    tourism = (
+        fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    )
     _split = int(len(tourism) * 0.85)
     y_train = tourism.head(_split)
     y_test = tourism.tail(len(tourism) - _split)
     horizon = len(y_test)
 
     mo.md(f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months")
-    return tourism, horizon, y_test, y_train
+    return horizon, tourism, y_test, y_train
+
+
+@app.cell
+def _(plot_time_series, tourism):
+    plot_time_series(tourism, title="Tourism Monthly")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -103,6 +119,7 @@ def _(mo):
     Scores for "lower is better" metrics are **negated** internally
     (sklearn convention: higher = better).
     """)
+
 
 @app.cell
 def _(
@@ -133,10 +150,11 @@ def _(
         },
         scoring=multi_scoring,
         refit="mae",  # Best model selected by MAE
-        cv=ExpandingWindowSplitter(n_splits=3),
+        cv=ExpandingWindowSplitter(n_splits=2),
     )
     multi_gs.fit(y_train, forecasting_horizon=horizon)
-    return multi_gs, multi_scoring
+    return (multi_gs,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -147,11 +165,13 @@ def _(mo):
     `std_test_{name}`, and `rank_test_{name}` columns.
     """)
 
+
 @app.cell
 def _(mo, multi_gs, pl):
     _results = pl.DataFrame(multi_gs.cv_results_)
     _cols = [c for c in _results.columns if "mean_test" in c or "rank_test" in c or "param_" in c]
     mo.ui.table(_results.select(_cols))
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -160,6 +180,7 @@ def _(mo):
 
     Compare which alpha each metric selects as "best".
     """)
+
 
 @app.cell
 def _(
@@ -190,15 +211,16 @@ def _(
                 "mape": MeanAbsolutePercentageError(),
             },
             refit=_metric_name,
-            cv=ExpandingWindowSplitter(n_splits=3),
+            cv=ExpandingWindowSplitter(n_splits=2),
         )
         _gs.fit(y_train, forecasting_horizon=horizon)
         _rows.append({
             "Refit Metric": _metric_name.upper(),
             "Best Alpha": _gs.best_params_["estimator__alpha"],
-            "Best Score (negated)": round(float(_gs.best_score_), 4),
+            "Best Score": -round(float(_gs.best_score_), 4),
         })
     mo.ui.table(pl.DataFrame(_rows))
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -207,6 +229,7 @@ def _(mo):
 
     For larger parameter spaces, random sampling is more efficient.
     """)
+
 
 @app.cell
 def _(
@@ -237,19 +260,35 @@ def _(
         },
         refit="mae",
         n_iter=10,
-        cv=ExpandingWindowSplitter(n_splits=3),
+        cv=ExpandingWindowSplitter(n_splits=2),
     )
     rand_search.fit(y_train, forecasting_horizon=horizon)
 
-    mo.md(
-        f"**Best params**: {rand_search.best_params_}\n\n"
-        f"**Best MAE (negated)**: {rand_search.best_score_:.4f}"
-    )
+    mo.md(f"**Best params**: {rand_search.best_params_}\n\n**Best MAE (negated)**: {rand_search.best_score_:.4f}")
     return (rand_search,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) shows how each randomly sampled alpha value
+    performed according to the refit metric. This helps identify whether
+    the search has explored enough of the parameter space.
+    """)
+
 
 @app.cell
 def _(plot_cv_results_scatter, rand_search):
     plot_cv_results_scatter(rand_search.cv_results_, "estimator__alpha")
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) displays the best model's predictions against the actual
+    test values, along with a trailing window of training history for context.
+    """)
+
 
 @app.cell
 def _(horizon, plot_forecast, rand_search, y_test, y_train):
@@ -261,7 +300,7 @@ def _(horizon, plot_forecast, rand_search, y_test, y_train):
         n_history=36,
         title="Best Forecaster (RandomizedSearchCV, multi-metric)",
     )
-    return (y_pred_best,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -273,14 +312,15 @@ def _(mo):
     - Scores are **negated** for "lower is better" metrics
     - `cv_results_` contains per-metric mean/std/rank columns
     - Different metrics may select different best parameters
-    - `RandomizedSearchCV` efficiently samples continuous distributions
+    - [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) efficiently samples continuous distributions
 
     ## Next Steps
 
-    - **Interval search**: See `examples/model_selection/interval_search.py`
-    - **Optuna search**: See `examples/model_selection/optuna_search.py`
-    - **Panel CV**: See `examples/model_selection/panel_cross_validation.py`
+    - **Interval search**: See [`examples/model_selection/interval_search.py`](/examples/model_selection/interval_search/)
+    - **Optuna search**: See [`examples/model_selection/optuna_search.py`](/examples/model_selection/optuna_search/)
+    - **Panel CV**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

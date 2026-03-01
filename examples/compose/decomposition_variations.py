@@ -5,16 +5,16 @@
 #     "yohou",
 # ]
 # ///
-"""Decomposition Variations.
-
-Demonstrates DecompositionPipeline configurations: two-component,
-three-component, with target_transformer, and panel decomposition.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Decomposition Variations",
+    "description": "Build 2- and 3-component DecompositionPipeline forecasters chaining trend, seasonality, and residual models with target pre-transformation.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -22,12 +22,13 @@ def _():
 
     return (mo,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Decomposition Variations
 
-    `DecompositionPipeline` fits sequential forecasters where each
+    [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) fits sequential forecasters where each
     subsequent forecaster models the residual of the previous one.
     Final predictions are **summed** across all components.
 
@@ -40,16 +41,18 @@ def _(mo):
     - Panel data decomposition
     """)
 
+
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
 
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_sunspot, fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_time_series
-    from yohou.point import PointReductionForecaster, SeasonalNaive
+    from yohou.plotting import plot_components, plot_forecast, plot_time_series
+    from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.stationarity import (
         LogTransformer,
@@ -66,36 +69,52 @@ def _():
         PointReductionForecaster,
         PolynomialTrendForecaster,
         Ridge,
-        SeasonalNaive,
         fetch_sunspot,
         fetch_tourism_quarterly,
         pl,
+        plot_components,
         plot_forecast,
         plot_time_series,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Univariate Data
+
+    We load the Sunspot Numbers dataset and resample to monthly frequency.
+    This long series (200+ years) provides a good test case for decomposition
+    into trend, seasonality, and residual components.
     """)
 
+
 @app.cell
-def _(fetch_sunspot, mo, pl):
+def _(fetch_sunspot, mo, pl, train_test_split):
     _raw = fetch_sunspot().frame
     sunspots = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
-    _split = int(len(sunspots) * 0.85)
-    y_train = sunspots.head(_split)
-    y_test = sunspots.tail(len(sunspots) - _split)
+    y_train, y_test = train_test_split(sunspots, test_size=0.15, shuffle=False)
     horizon = len(y_test)
     mo.md(f"**Sunspots**: Train={len(y_train)}, Test={len(y_test)}")
     return horizon, sunspots, y_test, y_train
+
+
+@app.cell
+def _(plot_time_series, sunspots):
+    plot_time_series(sunspots, title="Monthly Sunspot Numbers")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Two-Component: Trend + Residual
+
+    [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) fits a [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) first, then
+    a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) on the residual. Final predictions are the
+    sum of both components.
     """)
+
 
 @app.cell
 def _(
@@ -129,16 +148,31 @@ def _(
         y_test,
         y_pred_two,
         y_train=y_train,
-        n_history=60,
+        n_history=600,
         title="Two-Component: Quadratic Trend + Residual",
     )
     return fc_two, y_pred_two
+
+
+@app.cell
+def _(fc_two, horizon, plot_components, y_test):
+    _components = {}
+    for _name, _forecaster in fc_two.forecasters_:
+        _pred = _forecaster.predict(forecasting_horizon=horizon)
+        _components[_name] = _pred.drop("observed_time")
+    plot_components(y_test, _components, title="Two-Component Decomposition")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Three-Component: Trend + Seasonality + Residual
+
+    Adding a [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) between trend and residual
+    captures the ~11-year solar cycle explicitly. The residual model then
+    only needs to handle irregular fluctuations.
     """)
+
 
 @app.cell
 def _(
@@ -173,10 +207,20 @@ def _(
         y_test,
         y_pred_three,
         y_train=y_train,
-        n_history=60,
+        n_history=600,
         title="Three-Component: Trend + Season + Residual",
     )
     return fc_three, y_pred_three
+
+
+@app.cell
+def _(fc_three, horizon, plot_components, y_test):
+    _components = {}
+    for _name, _forecaster in fc_three.forecasters_:
+        _pred = _forecaster.predict(forecasting_horizon=horizon)
+        _components[_name] = _pred.drop("observed_time")
+    plot_components(y_test, _components, title="Three-Component Decomposition")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -186,6 +230,7 @@ def _(mo):
     Apply a log transformation before decomposition, then invert after
     prediction. Useful for data with multiplicative trends.
     """)
+
 
 @app.cell
 def _(
@@ -220,19 +265,33 @@ def _(
         y_test,
         y_pred_log,
         y_train=y_train,
-        n_history=60,
+        n_history=600,
         title="Decomposition with Log Target Transformer",
     )
-    return fc_log, y_pred_log
+    return (y_pred_log,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. Compare All Variations
+
+    [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) scores each decomposition configuration on the
+    held-out test data, showing which combination best captures the
+    sunspot dynamics.
     """)
 
+
 @app.cell
-def _(MeanAbsoluteError, mo, y_pred_log, y_pred_three, y_pred_two, y_test, y_train):
+def _(
+    MeanAbsoluteError,
+    mo,
+    y_pred_log,
+    y_pred_three,
+    y_pred_two,
+    y_test,
+    y_train,
+):
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
     _mae_two = float(_scorer.score(y_test, y_pred_two))
@@ -247,6 +306,7 @@ def _(MeanAbsoluteError, mo, y_pred_log, y_pred_three, y_pred_two, y_test, y_tra
         f"| Log + Trend + Residual | {_mae_log:.2f} |"
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -255,6 +315,7 @@ def _(mo):
     Apply the same pipeline to panel data: each group gets its own
     trend and residual model.
     """)
+
 
 @app.cell
 def _(
@@ -265,14 +326,13 @@ def _(
     Ridge,
     fetch_tourism_quarterly,
     plot_forecast,
+    train_test_split,
 ):
     _tourism = fetch_tourism_quarterly().frame
     # Select 8 series with uniform length for a manageable panel demo
     _tourist_cols = [f"T{i}__tourists" for i in range(3, 11)]
     _tourism = _tourism.select("time", *_tourist_cols).drop_nulls()
-    _split_p = int(len(_tourism) * 0.8)
-    _y_train_p = _tourism.head(_split_p)
-    _y_test_p = _tourism.tail(len(_tourism) - _split_p)
+    _y_train_p, _y_test_p = train_test_split(_tourism, test_size=0.2, shuffle=False)
     _horizon_p = len(_y_test_p)
 
     _fc_panel = DecompositionPipeline(
@@ -299,12 +359,13 @@ def _(
         title="Panel Decomposition: Trend + Residual",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **Predictions are summed** across all components in `DecompositionPipeline`
+    - **Predictions are summed** across all components in [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
     - **`store_residuals=True`**: stores intermediate residuals for inspection
     - **`target_transformer`**: applied before decomposition, inverted after prediction
     - **Panel data**: each group gets independent decomposition
@@ -315,10 +376,11 @@ def _(mo):
 
     ## Next Steps
 
-    - **Pipeline composition**: See `examples/compose/pipeline_composition.py`
-    - **Stationarity transforms**: See `examples/stationarity/stationarity_transforms.py`
-    - **Panel stationarity**: See `examples/stationarity/panel_stationarity.py`
+    - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/compose/pipeline_composition/)
+    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
+    - **Panel stationarity**: See [`examples/stationarity/panel_stationarity.py`](/examples/stationarity/panel_stationarity/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

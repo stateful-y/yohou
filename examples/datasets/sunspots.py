@@ -4,18 +4,16 @@
 #     "yohou",
 # ]
 # ///
-"""Sunspots - Cyclic Pattern Analysis.
-
-Sunspot dataset demonstrating 11-year solar cycles.
-
-Dataset: Daily sunspot numbers, 1818-2020 (resampled to monthly)
-Demonstrates: plot_time_series, plot_rolling_statistics, plot_autocorrelation, plot_spectrum
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Sunspots",
+    "description": "Analyse 200+ years of monthly sunspot numbers with 11-year rolling smoothing, autocorrelation periodicity detection, and spectral frequency analysis.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -40,6 +38,7 @@ def _():
         plot_time_series,
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -57,18 +56,16 @@ def _(mo):
 
     ## Prerequisites
 
-    None -- this is a standalone dataset exploration.
+    None - this is a standalone dataset exploration.
     """)
+
 
 @app.cell
 def _(fetch_sunspot, pl):
-    df = (
-        fetch_sunspot()
-        .frame.group_by_dynamic("time", every="1mo")
-        .agg(pl.col("sunspot_number").mean())
-    )
+    df = fetch_sunspot().frame.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
     df.head()
     return (df,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -79,6 +76,7 @@ def _(mo):
     characteristic ~11-year solar cycle.
     """)
 
+
 @app.cell
 def _(df, plot_time_series):
     plot_time_series(
@@ -86,6 +84,7 @@ def _(df, plot_time_series):
         title="Sunspot Numbers (1818-2020)",
         y_label="Sunspot Count",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -95,6 +94,7 @@ def _(mo):
     An 11-year rolling average smooths out individual cycles and highlights
     longer-term trends in solar activity.
     """)
+
 
 @app.cell
 def _(df, plot_rolling_statistics):
@@ -106,6 +106,7 @@ def _(df, plot_rolling_statistics):
         title="11-Year Rolling Mean",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -115,16 +116,17 @@ def _(mo):
     activity within each cycle.
     """)
 
+
 @app.cell
 def _(df, plot_rolling_statistics):
     plot_rolling_statistics(
         df,
         window_size=132,
         statistics=["median", "q25", "q75"],
-        fill_between=True,
         show_original=False,
         title="11-Year Rolling Median with IQR",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -135,13 +137,15 @@ def _(mo):
     intervals confirming the ~11-year solar cycle.
     """)
 
+
 @app.cell
 def _(df, plot_autocorrelation):
     plot_autocorrelation(
         df,
-        lags=200,
+        max_lags=200,
         title="Autocorrelation Function",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -151,6 +155,7 @@ def _(mo):
     Spectral analysis identifies the dominant frequency components in the
     sunspot data.
     """)
+
 
 @app.cell
 def _(df, plot_spectrum):
@@ -163,6 +168,7 @@ def _(df, plot_spectrum):
         title="Periodogram - Dominant Frequencies",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -170,16 +176,17 @@ def _(mo):
 
     - **Solar cycles**: Clear ~11-year periodicity in sunspot activity
     - **Long series**: 200+ years of monthly data reveals secular patterns
-    - **Rolling IQR**: `fill_between=True` with quantiles shows uncertainty bands
+    - **Rolling IQR**: Quantile statistics (`q25`, `q75`) show variability bands
     - **ACF peaks**: Autocorrelation shows cyclical peaks at ~132-month intervals
     - **Spectral analysis**: Periodogram identifies dominant frequency components
 
     ## Next Steps
 
-    - For another long series, see `examples/datasets/tourism_monthly.py`
-    - For higher frequency with cycles, see `examples/datasets/vic_electricity.py`
-    - For panel data with cycles, see `examples/datasets/australian_tourism.py`
+    - For another long series, see [`examples/datasets/tourism_monthly.py`](/examples/datasets/tourism_monthly/)
+    - For higher frequency with cycles, see [`examples/datasets/vic_electricity.py`](/examples/datasets/vic_electricity/)
+    - For panel data with cycles, see [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

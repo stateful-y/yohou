@@ -5,22 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Panel Cross-Validation.
-
-Demonstrates time series cross-validation on panel data with
-ExpandingWindowSplitter, SlidingWindowSplitter, and GridSearchCV.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Panel Cross-Validation",
+    "description": "Time series cross-validation on panel data with GridSearchCV, selective group observation, rewind operations, and groupwise performance comparison.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -32,21 +33,25 @@ def _(mo):
 
     ## What You'll Learn
 
-    - `ExpandingWindowSplitter` and `SlidingWindowSplitter` on panel data
-    - Visualising panel CV splits with `plot_splits`
-    - `GridSearchCV` with panel data: hyperparameter search across groups
-    - Per-group results analysis from grid search
+    - Running [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) on panel data to find optimal hyperparameters
+    - Using `observe` and `predict` with `panel_group_names` on the best
+      model returned by the search
+    - Using `rewind` to reset the forecast origin for specific groups
+    - Visualising how observation shifts the forecast origin per group
     """)
+
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.linear_model import Ridge
 
     from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, SlidingWindowSplitter
-    from yohou.plotting import plot_splits
+    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
+    from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -57,69 +62,53 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        SlidingWindowSplitter,
+        deepcopy,
         fetch_tourism_quarterly,
         pl,
-        plot_splits,
+        plot_forecast,
+        plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
+
+    We load the Tourism Quarterly dataset and select eight panel groups.
+    Each column follows the `GROUP__MEMBER` naming convention, which yohou
+    uses to identify panel structure automatically.
     """)
+
 
 @app.cell
 def _(fetch_tourism_quarterly, mo):
     tourism = fetch_tourism_quarterly().frame.select("time", *[f"T{i}__tourists" for i in range(3, 11)]).drop_nulls()
+    fh = 8
+    y_train = tourism.head(len(tourism) - fh)
+    y_test = tourism.tail(fh)
     mo.md(
         f"**Shape**: {tourism.shape}\n\n"
         f"**Columns**: {tourism.columns}\n\n"
-        f"**Quarterly**: {len(tourism)} observations"
+        f"**Quarterly**: {len(tourism)} observations, last {fh} held out for testing"
     )
-    return (tourism,)
+    return fh, tourism, y_test, y_train
+
+
+@app.cell
+def _(plot_time_series, tourism):
+    plot_time_series(tourism, title="Australian Tourism Quarterly (Panel)")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Expanding Window Splits
-
-    Each fold trains on an expanding window and tests on a fixed-size
-    window. All panel groups share the same time splits.
-    """)
-
-@app.cell
-def _(ExpandingWindowSplitter, tourism):
-    ew_splitter = ExpandingWindowSplitter(n_splits=3, test_size=8, gap=0)
-    ew_splitter
-    return (ew_splitter,)
-
-@app.cell
-def _(ew_splitter, plot_splits, tourism):
-    plot_splits(tourism, ew_splitter, title="Expanding Window: 3 Splits")
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 3. Sliding Window Splits
-
-    Fixed-size train and test windows that slide forward.
-    """)
-
-@app.cell
-def _(SlidingWindowSplitter, plot_splits, tourism):
-    sw_splitter = SlidingWindowSplitter(n_splits=3, test_size=8, stride=8, gap=0)
-    plot_splits(tourism, sw_splitter, title="Sliding Window: Fixed Size")
-    return (sw_splitter,)
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 4. GridSearchCV on Panel Data
+    ## 2. GridSearchCV on Panel Data
 
     Search over forecaster hyperparameters using time series CV. The
     scorer evaluates all panel groups together.
     """)
+
 
 @app.cell
 def _(
@@ -129,7 +118,8 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    tourism,
+    fh,
+    y_train,
 ):
     _forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
@@ -149,23 +139,9 @@ def _(
         cv=_cv,
         refit=True,
     )
-    search.fit(tourism, forecasting_horizon=8)
+    search.fit(y_train, forecasting_horizon=fh)
     return (search,)
 
-@app.cell
-def _(mo, pl, search):
-    _results = search.cv_results_
-    _table = pl.DataFrame({
-        "alpha": [p["estimator__alpha"] for p in _results["params"]],
-        "mean_score": _results["mean_test_score"],
-        "std_score": _results["std_test_score"],
-        "rank": _results["rank_test_score"],
-    }).sort("rank")
-
-    mo.md(
-        f"**Best parameters**: {search.best_params_}\n\n"
-        f"**Best score**: {search.best_score_:.4f}"
-    )
 
 @app.cell
 def _(mo, pl, search):
@@ -176,44 +152,106 @@ def _(mo, pl, search):
         "std_score": _results["std_test_score"],
         "rank": _results["rank_test_score"],
     }).sort("rank")
-    mo.ui.table(_table)
+
+    mo.vstack([
+        mo.md(f"**Best parameters**: `{search.best_params_}`\n\n**Best score**: {search.best_score_:.4f}"),
+        mo.ui.table(_table),
+    ])
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 5. Predict with Best Model
+    ## 3. Observe, Predict, and Rewind the Best Model
 
-    When `refit=True`, the search object can predict directly using the
-    best estimator fitted on the full training data.
+    After `refit=True`, the search object delegates `predict`, `observe`,
+    and `rewind` to its `best_forecaster_`. All three accept
+    `panel_group_names` for selective group operations.
+
+    We demonstrate three steps on groups **T5** and **T8**:
+
+    1. **Predict from training window**: baseline forecast
+    2. **Observe** the first half of test data for those groups, then
+       predict again: the forecast origin moves forward
+    3. **Rewind** those groups back to the training window and predict
+       once more: the origin returns to its original position
     """)
 
+
 @app.cell
-def _(mo, search, tourism):
-    _y_pred_best = search.predict(forecasting_horizon=8)
-    mo.md(
-        f"**Prediction columns**: {_y_pred_best.columns}\n\n"
-        f"**Prediction shape**: {_y_pred_best.shape}\n\n"
-        "All panel groups are predicted using the best hyperparameters."
+def _(deepcopy, fh, mo, plot_forecast, search, y_test, y_train):
+    _groups = ["T5", "T8"]
+    _search = deepcopy(search)
+
+    # 1) Predict from training window
+    _y_pred_baseline = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _fig_baseline = plot_forecast(
+        y_test,
+        _y_pred_baseline,
+        y_train=y_train,
+        panel_group_names=_groups,
+        n_history=16,
+        title="Step 1 - Predict from training window",
     )
+
+    # 2) Observe first half of test data for those groups, then predict
+    _y_obs = y_test.head(fh // 2)
+    _search.observe(_y_obs, panel_group_names=_groups)
+    _y_pred_observed = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _fig_observed = plot_forecast(
+        y_test,
+        _y_pred_observed,
+        y_train=y_train,
+        panel_group_names=_groups,
+        n_history=16,
+        title="Step 2 - After observing first half of test (origin moves forward)",
+    )
+
+    # 3) Rewind back and predict again
+    _search.rewind(y_train, panel_group_names=_groups)
+    _y_pred_rewound = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _fig_rewound = plot_forecast(
+        y_test,
+        _y_pred_rewound,
+        y_train=y_train,
+        panel_group_names=_groups,
+        n_history=16,
+        title="Step 3 - After rewind (origin returns)",
+    )
+
+    mo.vstack([
+        _fig_baseline,
+        mo.md("**After `observe`**: the forecast origin shifts forward by 4 quarters for T5 and T8:"),
+        _fig_observed,
+        mo.md("**After `rewind`**: the forecast origin resets to the end of the training window:"),
+        _fig_rewound,
+    ])
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **Panel CV splits by time**: All groups share the same train/test time boundaries
-    - **`ExpandingWindowSplitter`**: Growing train window, fixed test window
-    - **`SlidingWindowSplitter`**: Fixed train + test windows sliding forward
-    - **`GridSearchCV`**: Evaluates all groups together using the scorer's aggregation mode
-    - **`refit=True`**: Best model is fitted on full data after search, ready for prediction
-    - **Scoring**: Pass `BaseScorer` instances (not strings) to `scoring=`
+    - **Panel CV splits by time**: All groups share the same train/test time
+      boundaries; [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates them together
+    - **`refit=True`**: The best model is fitted on all training data after
+      search, ready for `predict` / `observe` / `rewind`
+    - **`observe` with `panel_group_names`**: Feed new data to specific
+      groups, shifting their forecast origin forward
+    - **`rewind` with `panel_group_names`**: Reset specific groups back to
+      a previous observation window without refitting
+    - **`predict` with `panel_group_names`**: Generate forecasts for a
+      subset of groups only
 
     ## Next Steps
 
-    - **Multi-metric search**: See `examples/model_selection/multi_metric_search.py`
-    - **Interval search**: See `examples/model_selection/interval_search.py`
-    - **CV splitters**: See `examples/model_selection/cv_splitters.py`
+    - **Multi-metric search**: See [`examples/model_selection/multi_metric_search.py`](/examples/model_selection/multi_metric_search/)
+    - **Interval search**: See [`examples/model_selection/interval_search.py`](/examples/model_selection/interval_search/)
+    - **CV splitters**: See [`examples/model_selection/cv_splitters.py`](/examples/model_selection/cv_splitters/)
+    - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

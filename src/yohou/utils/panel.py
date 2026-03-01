@@ -1,6 +1,7 @@
 """Utilities for panel data inspection and filtering."""
 
 import re
+from collections.abc import Callable
 
 import polars as pl
 
@@ -8,11 +9,15 @@ __all__ = [
     "dict_to_panel",
     "get_group_df",
     "inspect_locality",
+    "inspect_panel",
+    "panel_aware_prefix",
+    "panel_aware_rename",
+    "panel_aware_suffix",
     "select_panel_columns",
 ]
 
 
-def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]:
+def inspect_panel(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]:
     """Inspect DataFrame columns to distinguish global and local (panel) data.
 
     Global columns apply to all time series (e.g., single univariate series or
@@ -40,7 +45,7 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
     >>> import polars as pl
     >>> # Global time series (single series)
     >>> df_global = pl.DataFrame({"time": [1, 2, 3], "value": [10, 20, 30]})
-    >>> global_names, panel_groups = inspect_locality(df_global)
+    >>> global_names, panel_groups = inspect_panel(df_global)
     >>> global_names
     ['value']
     >>> panel_groups
@@ -52,7 +57,7 @@ def inspect_locality(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]
     ...     "store_1__sales": [100, 110, 120],
     ...     "store_2__sales": [150, 160, 170],
     ... })
-    >>> global_names, panel_groups = inspect_locality(df_panel)
+    >>> global_names, panel_groups = inspect_panel(df_panel)
     >>> global_names
     []
     >>> panel_groups
@@ -160,7 +165,7 @@ def get_group_df(
 
     See Also
     --------
-    inspect_locality : Inspect DataFrame to identify global and local columns
+    inspect_panel : Inspect DataFrame to identify global and local columns
     select_panel_columns : Filter DataFrame to panel group columns and global columns
 
     Notes
@@ -275,7 +280,7 @@ def select_panel_columns(
 
     See Also
     --------
-    inspect_locality : Inspect DataFrame to identify global and local columns
+    inspect_panel : Inspect DataFrame to identify global and local columns
     """
     # If no local groups, return DataFrame unchanged (no filtering needed)
     if panel_group_names is None:
@@ -353,7 +358,7 @@ def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.Dat
 
     See Also
     --------
-    inspect_locality : Inspect DataFrame to identify global and local columns
+    inspect_panel : Inspect DataFrame to identify global and local columns
     get_group_df : Extract a single panel group from a combined DataFrame
 
     Notes
@@ -390,3 +395,121 @@ def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.Dat
         result = result.join(renamed_df, on="time", how="inner")
 
     return result
+
+
+def panel_aware_rename(col: str, fn: Callable[[str], str]) -> str:
+    """Apply a rename function to a column name while preserving the panel group prefix.
+
+    For panel data columns following the ``<GROUP>__<SERIES>`` convention,
+    the rename function is applied only to the series (member) portion,
+    leaving the group prefix intact: ``<GROUP>__fn(<SERIES>)``.
+
+    For global columns (no ``__`` separator), the rename function is applied
+    to the entire column name: ``fn(<COLUMN>)``.
+
+    Parameters
+    ----------
+    col : str
+        Column name to rename.
+    fn : callable
+        Function that takes a string and returns a string.
+        Applied to the series part of panel columns or the full name
+        for global columns.
+
+    Returns
+    -------
+    str
+        Renamed column name with panel group prefix preserved.
+
+    Examples
+    --------
+    >>> panel_aware_rename("sales", lambda s: f"log_{s}")
+    'log_sales'
+    >>> panel_aware_rename("store_1__sales", lambda s: f"log_{s}")
+    'store_1__log_sales'
+    >>> panel_aware_rename("store_1__sales", lambda s: f"{s}_lag_1")
+    'store_1__sales_lag_1'
+
+    See Also
+    --------
+    panel_aware_prefix : Convenience wrapper for adding a prefix.
+    panel_aware_suffix : Convenience wrapper for adding a suffix.
+
+    """
+    if "__" in col:
+        group, member = col.split("__", 1)
+        return f"{group}__{fn(member)}"
+    return fn(col)
+
+
+def panel_aware_prefix(col: str, prefix: str) -> str:
+    """Add a prefix to a column name while preserving the panel group prefix.
+
+    For panel data columns (``<GROUP>__<SERIES>``), the prefix is inserted
+    after the group separator: ``<GROUP>__<PREFIX>_<SERIES>``.
+
+    For global columns, the prefix is prepended: ``<PREFIX>_<COLUMN>``.
+
+    Parameters
+    ----------
+    col : str
+        Column name to prefix.
+    prefix : str
+        Prefix string to add (joined with ``_``).
+
+    Returns
+    -------
+    str
+        Column name with prefix added in the panel-safe position.
+
+    Examples
+    --------
+    >>> panel_aware_prefix("sales", "boxcox")
+    'boxcox_sales'
+    >>> panel_aware_prefix("store_1__sales", "boxcox")
+    'store_1__boxcox_sales'
+
+    See Also
+    --------
+    panel_aware_rename : General-purpose panel-aware rename utility.
+
+    """
+    return panel_aware_rename(col, lambda member: f"{prefix}_{member}")
+
+
+def panel_aware_suffix(col: str, suffix: str) -> str:
+    """Add a suffix to a column name while preserving the panel group prefix.
+
+    For panel data columns (``<GROUP>__<SERIES>``), the suffix is appended
+    to the series part: ``<GROUP>__<SERIES>_<SUFFIX>``.
+
+    For global columns, the suffix is appended: ``<COLUMN>_<SUFFIX>``.
+
+    Parameters
+    ----------
+    col : str
+        Column name to suffix.
+    suffix : str
+        Suffix string to add (joined with ``_``).
+
+    Returns
+    -------
+    str
+        Column name with suffix added.
+
+    Examples
+    --------
+    >>> panel_aware_suffix("sales", "lag_1")
+    'sales_lag_1'
+    >>> panel_aware_suffix("store_1__sales", "lag_1")
+    'store_1__sales_lag_1'
+
+    See Also
+    --------
+    panel_aware_rename : General-purpose panel-aware rename utility.
+
+    """
+    return panel_aware_rename(col, lambda member: f"{member}_{suffix}")
+
+
+inspect_locality = inspect_panel

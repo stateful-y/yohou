@@ -6,7 +6,6 @@
   </picture>
 </p>
 
-
 [![Python Version](https://img.shields.io/pypi/pyversions/yohou)](https://pypi.org/project/yohou/)
 [![License](https://img.shields.io/github/license/stateful-y/yohou)](https://github.com/stateful-y/yohou/blob/main/LICENSE)
 [![PyPI Version](https://img.shields.io/pypi/v/yohou)](https://pypi.org/project/yohou/)
@@ -15,7 +14,7 @@
 
 ## What is Yohou?
 
-Yohou is a scikit-learn-compatible time series forecasting framework built on [Polars](https://pola.rs/). It treats forecasting as a supervised learning reduction problem: wrap any sklearn regressor and Yohou handles windowing, tabularization, and recursive prediction while preserving temporal structure. It supports both point and interval forecasting with native panel data capabilities.
+Yohou is a Scikit-Learn-compatible time series forecasting framework built on [Polars](https://pola.rs/). It treats forecasting as a supervised learning reduction problem: wrap any sklearn regressor and Yohou handles windowing, tabularization, and recursive prediction while preserving temporal structure. It supports both point and interval forecasting with native panel data capabilities.
 
 Yohou extends sklearn's API with time series-specific operations (`observe`, `rewind`, `observe_predict`) so fitted forecasters can ingest new data incrementally without retraining. After fitting, every forecaster exposes the same `predict` / `predict_interval` / `observe_predict` interface whether it wraps a simple baseline or a full decomposition pipeline.
 
@@ -23,16 +22,16 @@ Currently, Yohou supports Python 3.11+.
 
 ## What are the features of Yohou?
 
-- **Reduction forecasting**: Wrap any scikit-learn regressor (`Ridge`, `XGBRegressor`, ...) and Yohou tabularizes, fits, and predicts recursively via `PointReductionForecaster` and `IntervalReductionForecaster`.
+- **Reduction forecasting**: Wrap any Scikit-Learn regressor (`Ridge`, `XGBRegressor`, ...) and Yohou tabularizes, fits, and predicts recursively via `PointReductionForecaster` and `IntervalReductionForecaster`.
 - **Incremental observation**: Call `observe()` to feed new data, `rewind()` to roll back state, and `observe_predict()` to fast-forward and forecast in one step, no refitting required.
 - **Composable pipelines**: Chain trend, seasonality, and residual forecasters with `DecompositionPipeline`, or build feature pipelines with `FeaturePipeline`, `FeatureUnion`, and `ColumnTransformer`.
 - **Preprocessing & stationarity**: Lag, rolling, and EMA window transforms, signal filters, sklearn scaler wrappers, imputation, outlier handling, and stationarity transforms like `SeasonalDifferencing`, `BoxCoxTransformer`, and Fourier seasonality estimation.
 - **Panel data support**: Prefix columns with `group__` and forecasters, transformers, and metrics operate across all groups automatically. Use `ColumnForecaster` or `LocalPanelForecaster` for per-group models.
 - **Interval forecasting**: Get calibrated prediction intervals via `SplitConformalForecaster`, `IntervalReductionForecaster` with `DistanceSimilarity`, and conformity scorers.
+- **Time-weighted training**: Weight recent or seasonal observations with `exponential_decay_weight`, `linear_decay_weight`, `seasonal_emphasis_weight`, and `compose_weights`, propagated via sklearn metadata routing.
 - **Cross-validation & tuning**: Temporal splitters (`ExpandingWindowSplitter`, `SlidingWindowSplitter`) and `GridSearchCV` / `RandomizedSearchCV` designed for time series with no data leakage across time.
-- **Metrics & visualization**: Point and interval scorers with timewise, componentwise, and groupwise aggregation. Over 25 Plotly-based plotting functions for exploration, diagnostics, forecasting, and evaluation.
-- **Remote datasets**: Seven `fetch_*` functions download Monash/Zenodo time series on demand (`tourism_monthly`, `sunspot`, `tourism_quarterly`, `electricity_demand`, `dominick`, `pedestrian_counts`, `hospital`) with local Parquet caching.
-- **(Experimental) Time-weighted training**: Weight recent or seasonal observations with `exponential_decay_weight`, `linear_decay_weight`, `seasonal_emphasis_weight`, and `compose_weights`, propagated via sklearn metadata routing.
+- **Metrics & visualization**: Point and interval scorers with timewise, componentwise, and groupwise aggregation. Plotly-based plotting functions for exploration, diagnostics, forecasting, and evaluation.
+- **Remote datasets**: Eight `fetch_*` functions download Monash/Zenodo time series on demand (`tourism_monthly`, `sunspot`, `tourism_quarterly`, `electricity_demand`, `dominick`, `pedestrian_counts`, `hospital`, `kdd_cup`) with local Parquet caching.
 
 ## How to install Yohou?
 
@@ -78,7 +77,7 @@ y_train, y_test = y[:280], y[280:]
 
 ### 2. Fit a forecaster
 
-Wrap an sklearn regressor in a `PointReductionForecaster` with a feature pipeline.
+Wrap an sklearn regressor in a `PointReductionForecaster` with preprocessing pipelines.
 
 ```python
 from sklearn.linear_model import Ridge
@@ -86,11 +85,17 @@ from sklearn.linear_model import Ridge
 from yohou.compose import FeaturePipeline
 from yohou.point import PointReductionForecaster
 from yohou.preprocessing import LagTransformer
+from yohou.stationarity import LogTransformer, SeasonalDifferencing
 
 forecaster = PointReductionForecaster(
-    estimator=Ridge(),
-    y_transformers=FeaturePipeline(steps=[("lags", LagTransformer(lags=[1, 12]))]),
-    observation_horizon=12,
+    estimator=Ridge(alpha=10),
+    target_transformer=FeaturePipeline([
+        ("log", LogTransformer(offset=1.0)),
+        ("diff", SeasonalDifferencing(seasonality=12)),
+    ]),
+    feature_transformer=FeaturePipeline([
+        ("lag", LagTransformer(lag=[1, 2, 3])),
+    ]),
 )
 forecaster.fit(y_train, X=None, forecasting_horizon=len(y_test))
 ```
@@ -104,7 +109,9 @@ from yohou.metrics import MeanAbsoluteError
 from yohou.plotting import plot_forecast
 
 y_pred = forecaster.predict(forecasting_horizon=len(y_test))
-MeanAbsoluteError().score(y_test, y_pred)
+scorer = MeanAbsoluteError()
+scorer.fit(y_train)
+scorer.score(y_test, y_pred)
 plot_forecast(y_test, y_pred, y_train=y_train)
 ```
 
@@ -112,12 +119,10 @@ plot_forecast(y_test, y_pred, y_train=y_train)
 
 Full documentation is available at [https://yohou.readthedocs.io/](https://yohou.readthedocs.io/).
 
-
 Interactive examples are available in the `examples/` directory:
 
 - **Online**: [https://yohou.readthedocs.io/en/latest/pages/examples/](https://yohou.readthedocs.io/en/latest/pages/examples/)
 - **Locally**: Run `marimo edit examples/quickstart.py` to open an interactive notebook
-
 
 ## Can I contribute?
 

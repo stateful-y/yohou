@@ -62,12 +62,10 @@ class TestSystematicChecks:
         forecaster_fitted = clone(forecaster)
         forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
 
-        skip_checks = {"check_clone_preserves_forecaster_params"}
-
         run_checks(
             forecaster_fitted,
             _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
-            expected_failures=skip_checks,
+            expected_failures=set(),
         )
 
 

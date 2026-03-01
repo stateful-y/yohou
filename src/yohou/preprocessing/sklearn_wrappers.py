@@ -114,6 +114,9 @@ class StandardScaler(SklearnScaler):
 
     _estimator_default_class = sklearn_StandardScaler
 
+    def __init__(self, with_mean=True, with_std=True, copy=True, **kwargs):
+        super().__init__(with_mean=with_mean, with_std=with_std, copy=copy, **kwargs)
+
     @property
     def scale_(self) -> np.ndarray:
         """Per feature relative scaling of the data."""
@@ -213,6 +216,9 @@ class MinMaxScaler(SklearnScaler):
     """
 
     _estimator_default_class = sklearn_MinMaxScaler
+
+    def __init__(self, feature_range=(0, 1), copy=True, clip=False, **kwargs):
+        super().__init__(feature_range=feature_range, copy=copy, clip=clip, **kwargs)
 
     @property
     def min_(self) -> np.ndarray:
@@ -319,6 +325,24 @@ class RobustScaler(SklearnScaler):
 
     _estimator_default_class = sklearn_RobustScaler
 
+    def __init__(
+        self,
+        with_centering=True,
+        with_scaling=True,
+        quantile_range=(25.0, 75.0),
+        copy=True,
+        unit_variance=False,
+        **kwargs,
+    ):
+        super().__init__(
+            with_centering=with_centering,
+            with_scaling=with_scaling,
+            quantile_range=quantile_range,
+            copy=copy,
+            unit_variance=unit_variance,
+            **kwargs,
+        )
+
     @property
     def center_(self) -> np.ndarray:
         """The median value for each feature in the training set."""
@@ -389,6 +413,9 @@ class MaxAbsScaler(SklearnScaler):
 
     _estimator_default_class = sklearn_MaxAbsScaler
 
+    def __init__(self, copy=True, clip=False, **kwargs):
+        super().__init__(copy=copy, clip=clip, **kwargs)
+
     @property
     def scale_(self) -> np.ndarray:
         """Per feature relative scaling of the data."""
@@ -452,6 +479,9 @@ class Normalizer(SklearnTransformer):
     """
 
     _estimator_default_class = sklearn_Normalizer
+
+    def __init__(self, norm="l2", copy=True, **kwargs):
+        super().__init__(norm=norm, copy=copy, **kwargs)
 
 
 class PolynomialFeatures(SklearnTransformer):
@@ -522,6 +552,11 @@ class PolynomialFeatures(SklearnTransformer):
     """
 
     _estimator_default_class = sklearn_PolynomialFeatures
+
+    def __init__(self, degree=2, interaction_only=False, include_bias=True, order="C", **kwargs):
+        super().__init__(
+            degree=degree, interaction_only=interaction_only, include_bias=include_bias, order=order, **kwargs
+        )
 
     @property
     def n_output_features_(self) -> int:
@@ -602,6 +637,9 @@ class PowerTransformer(SklearnTransformer):
     """
 
     _estimator_default_class = sklearn_PowerTransformer
+
+    def __init__(self, method="yeo-johnson", standardize=True, copy=True, **kwargs):
+        super().__init__(method=method, standardize=standardize, copy=copy, **kwargs)
 
     @property
     def lambdas_(self) -> np.ndarray:
@@ -690,6 +728,26 @@ class QuantileTransformer(SklearnTransformer):
     """
 
     _estimator_default_class = sklearn_QuantileTransformer
+
+    def __init__(
+        self,
+        n_quantiles=1000,
+        output_distribution="uniform",
+        ignore_implicit_zeros=False,
+        subsample=10_000,
+        random_state=None,
+        copy=True,
+        **kwargs,
+    ):
+        super().__init__(
+            n_quantiles=n_quantiles,
+            output_distribution=output_distribution,
+            ignore_implicit_zeros=ignore_implicit_zeros,
+            subsample=subsample,
+            random_state=random_state,
+            copy=copy,
+            **kwargs,
+        )
 
     @property
     def n_quantiles_(self) -> int:
@@ -788,6 +846,30 @@ class SplineTransformer(SklearnTransformer):
     """
 
     _estimator_default_class = sklearn_SplineTransformer
+
+    def __init__(
+        self,
+        n_knots=5,
+        degree=3,
+        knots="uniform",
+        extrapolation="constant",
+        include_bias=True,
+        order="C",
+        sparse_output=False,
+        handle_missing="error",
+        **kwargs,
+    ):
+        super().__init__(
+            n_knots=n_knots,
+            degree=degree,
+            knots=knots,
+            extrapolation=extrapolation,
+            include_bias=include_bias,
+            order=order,
+            sparse_output=sparse_output,
+            handle_missing=handle_missing,
+            **kwargs,
+        )
 
     @property
     def bsplines_(self) -> list:

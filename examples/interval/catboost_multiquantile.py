@@ -6,23 +6,23 @@
 #     "yohou",
 # ]
 # ///
-"""Interval Forecasting with CatBoost MultiQuantile.
-
-Demonstrates IntervalReductionForecaster using CatBoost's native
-multi-quantile loss to fit all quantiles in a single model, instead
-of training separate lower/upper models per coverage rate.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "CatBoost MultiQuantile",
+    "description": "Predict all quantiles in a single CatBoost model with MultiQuantile loss, avoiding the 2N-model overhead of separate quantile regressors.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -33,7 +33,7 @@ def _(mo):
     quantiles in a single model**, avoiding the 2N-model overhead of
     standard quantile regression (where N = number of coverage rates).
 
-    `IntervalReductionForecaster` automatically detects this loss and
+    [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) automatically detects this loss and
     activates the optimised code path.
 
     ## What You'll Learn
@@ -44,17 +44,16 @@ def _(mo):
 
     ## Prerequisites
 
-    Familiarity with `IntervalReductionForecaster` (see `interval_reduction.py`).
+    Familiarity with [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) (see `interval_reduction.py`).
     """)
+
 
 @app.cell(hide_code=True)
 def _():
     import time
 
-    import polars as pl
     from catboost import CatBoostRegressor
-    from sklearn.linear_model import QuantileRegressor
-    from sklearn.multioutput import MultiOutputRegressor
+    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
@@ -69,31 +68,33 @@ def _():
         IntervalScore,
         LagTransformer,
         MeanIntervalWidth,
-        MultiOutputRegressor,
-        QuantileRegressor,
         fetch_tourism_monthly,
-        pl,
         plot_forecast,
         time,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
+
+    We load the Monthly Tourism dataset (series T1) and split it into training
+    and test sets for interval forecasting.
     """)
 
+
 @app.cell
-def _(fetch_tourism_monthly):
+def _(fetch_tourism_monthly, train_test_split):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    split_idx = int(len(y) * 0.8)
-    y_train = y.head(split_idx)
-    y_test = y.tail(len(y) - split_idx)
+    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
     forecasting_horizon = len(y_test)
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return forecasting_horizon, y_test, y_train
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -101,15 +102,15 @@ def _(mo):
     ## 2. CatBoost MultiQuantile Forecaster
 
     Pass `CatBoostRegressor(loss_function='MultiQuantile:alpha=...')` to
-    `IntervalReductionForecaster`.  The `alpha` values in the loss function
+    [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/).  The `alpha` values in the loss function
     are **ignored**, the forecaster rewrites them at fit time to match the
     requested `coverage_rates`.  Any placeholder value is fine.
 
-    Because CatBoost's `MultiQuantile` loss does not support
-    multi-dimensional targets, we fit with `forecasting_horizon=1` and
-    let the forecaster apply **recursive** multi-step prediction at
-    inference time.
+    Because CatBoost's `MultiQuantile` loss produces a 2D output (one
+    column per quantile), it cannot be wrapped in `MultiOutputRegressor`
+    and requires `forecasting_horizon=1` with recursive prediction.
     """)
+
 
 @app.cell
 def _(
@@ -148,7 +149,17 @@ def _(
 
     print(f"MultiQuantile fit time: {elapsed_mq:.2f}s (single model)")
     print(f"Prediction columns: {y_pred_mq.columns}")
-    return catboost_fc, coverage_rates, elapsed_mq, y_pred_mq
+    return coverage_rates, y_pred_mq
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) visualises the prediction intervals alongside the training
+    history and test data. The `coverage_rates` parameter controls which
+    interval bands are shown.
+    """)
+
 
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_mq, y_test, y_train):
@@ -160,14 +171,15 @@ def _(coverage_rates, plot_forecast, y_pred_mq, y_test, y_train):
         title="CatBoost MultiQuantile Intervals",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Compare with Standard Quantile Regression
 
-    The standard path trains **2 × len(coverage_rates)** separate models.
-    With CatBoost `MultiQuantile`, only **one** model is needed.
+    The default estimator is `MultiOutputRegressor(QuantileRegressor())`, let's compare it with our `MultiOutputRegressor(CatBoostRegressor())`.
     """)
+
 
 @app.cell
 def _(
@@ -175,7 +187,10 @@ def _(
     LagTransformer,
     coverage_rates,
     forecasting_horizon,
+    plot_forecast,
     time,
+    y_pred_mq,
+    y_test,
     y_train,
 ):
     standard_fc = IntervalReductionForecaster(
@@ -185,36 +200,35 @@ def _(
     t0_std = time.perf_counter()
     standard_fc.fit(
         y_train,
-        forecasting_horizon=1,
+        forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage_rates,
     )
-    elapsed_std = time.perf_counter() - t0_std
 
     y_pred_std = standard_fc.predict_interval(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage_rates,
     )
 
-    print(f"Standard quantile fit time: {elapsed_std:.2f}s ({2 * len(coverage_rates)} models)")
-    return elapsed_std, y_pred_std
-
-@app.cell
-def _(elapsed_mq, elapsed_std, mo):
-    mo.md(
-        f"""
-        **Timing comparison** (this run):\n
-        | Approach | Models | Fit time |
-        |---|---|---|
-        | CatBoost MultiQuantile | 1 | {elapsed_mq:.2f}s |
-        | Standard QuantileRegressor | {4} | {elapsed_std:.2f}s |
-        """
+    plot_forecast(
+        y_test,
+        {"CatBoost with MultiQuantile loss": y_pred_mq, "Standard quantile regression": y_pred_std},
+        y_train=y_train,
+        coverage_rates=coverage_rates,
+        title="CatBoost MultiQuantile Intervals",
     )
+    return (y_pred_std,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Evaluate Interval Quality
+
+    We evaluate both approaches using [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) (does the interval
+    contain the true value at the target rate?), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) (penalises
+    width and miscoverage), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) (average band width).
     """)
+
 
 @app.cell
 def _(
@@ -239,17 +253,19 @@ def _(
     table = "| Approach | Metric | Score |\n|---|---|---|\n" + "\n".join(rows)
     mo.md(table)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
     - Set `loss_function='MultiQuantile:alpha=...'` on `CatBoostRegressor`
-    - `IntervalReductionForecaster` detects this and fits **one** model
+    - [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) detects this and fits **one** model
     - The alpha placeholder is overwritten: just specify `coverage_rates`
     - Multi-quantile is faster when many coverage rates are needed
     - Interval quality is comparable to separate quantile models
     """)
+
 
 if __name__ == "__main__":
     app.run()

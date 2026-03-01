@@ -10,7 +10,7 @@ from typing import Any
 import polars as pl
 
 from yohou.model_selection import GridSearchCV
-from yohou.utils import inspect_locality
+from yohou.utils import inspect_panel
 
 from .common import (
     check_metadata_routing_default_request,
@@ -103,6 +103,7 @@ from .transformer import (
     check_observe_transform_equivalence,
     check_observe_transform_sequential_consistency,
     check_panel_data_support,
+    check_panel_group_preservation,
     check_rewind_transform_behavior,
     check_rewind_updates_memory,
     check_tags_accessible_before_fit,
@@ -309,11 +310,16 @@ def _yield_yohou_transformer_checks(
 
     # Panel data check
     if tags.get("supports_panel_data", False):
-        _, X_panel_groups = inspect_locality(X_train)
+        _, X_panel_groups = inspect_panel(X_train)
         if len(X_panel_groups) > 0:
             yield (
                 "check_panel_data_support",
                 check_panel_data_support,
+                {"X_panel": X_train, "y": y_train},
+            )
+            yield (
+                "check_panel_group_preservation",
+                check_panel_group_preservation,
                 {"X_panel": X_train, "y": y_train},
             )
 
@@ -535,7 +541,7 @@ def _yield_yohou_forecaster_checks(
     if tags.get("supports_panel_data", False):
         # Need to check if we have panel data available
 
-        _, y_panel_groups = inspect_locality(y_train)
+        _, y_panel_groups = inspect_panel(y_train)
         if len(y_panel_groups) > 0:
             # We have panel data, run cross-learning checks
             yield (
@@ -997,7 +1003,7 @@ def _yield_yohou_search_checks(
 
     # Panel data checks (if panel data available)
     if tags.get("supports_panel_data", True):
-        _, y_panel_groups = inspect_locality(y_train)
+        _, y_panel_groups = inspect_panel(y_train)
         if len(y_panel_groups) > 0:
             # Extract first group name for testing
             panel_group_names = list(y_panel_groups.keys())[:1]

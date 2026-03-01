@@ -109,6 +109,12 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
     _estimator_base_class = TransformerMixin
     _estimator_default_class: type | None = None
 
+    def __init__(self, transformer=None, **params):
+        if transformer is not None:
+            super().__init__(transformer=transformer, **params)
+        else:
+            super().__init__(**params)
+
     def __sklearn_tags__(self):
         """Get estimator tags.
 
@@ -324,6 +330,12 @@ class SklearnScaler(SklearnTransformer):
     _estimator_name = "scaler"
     _estimator_base_class = TransformerMixin
     _estimator_default_class: type | None = None
+
+    def __init__(self, scaler=None, **params):
+        if scaler is not None:
+            super().__init__(scaler=scaler, **params)
+        else:
+            super().__init__(**params)
 
     def __sklearn_tags__(self):
         """Get estimator tags.

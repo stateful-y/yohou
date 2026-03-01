@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 import polars.selectors as cs
 
-from yohou.utils.panel import inspect_locality
+from yohou.utils.panel import inspect_panel
 
 __all__ = [
     "add_interval",
@@ -49,6 +49,12 @@ def check_time_column(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
     ------
     ValueError
         If time column is missing, has wrong dtype, contains nulls, or is not sorted.
+
+    See Also
+    --------
+    `check_interval_consistency` : Validate uniform time spacing.
+    `check_continuity` : Validate temporal continuity between DataFrames.
+    `check_inputs` : Validate consistent intervals across y and X.
 
     """
     if "time" not in df.columns:
@@ -106,6 +112,11 @@ def check_scorer_column_selection(
     ValueError
         If panel_group_names or component_names are invalid.
 
+    See Also
+    --------
+    `inspect_panel` : Detect panel groups in a DataFrame.
+    `check_panel_group_names` : Validate panel group names for forecaster operations.
+
     """
 
     has_panel_specs = hasattr(scorer, "panel_group_names") and scorer.panel_group_names is not None
@@ -131,7 +142,7 @@ def check_scorer_column_selection(
                 f"Available rates: {sorted(available_rates)}"
             )
 
-    _, y_groups = inspect_locality(y_true)
+    _, y_groups = inspect_panel(y_true)
 
     # Validate panel groups if specified (must exist in data)
     if has_panel_specs:
@@ -299,6 +310,11 @@ def check_sufficient_rows(
     ValueError
         If DataFrame has fewer rows than required.
 
+    See Also
+    --------
+    `check_forecasting_horizon_positive` : Validate forecasting horizon is positive.
+    `check_exogenous_required` : Validate exogenous features for recursive prediction.
+
     """
     actual_rows = len(df)
     if actual_rows < min_rows:
@@ -353,6 +369,12 @@ def check_panel_group_names(
     ... )
     ['sales']
 
+    See Also
+    --------
+    `check_panel_group_names_exist` : Validate requested panel groups exist (deprecated).
+    `check_panel_groups_match` : Validate y and X have matching panel groups.
+    `inspect_panel` : Detect panel groups in a DataFrame.
+
     """
     # If no groups requested, use all fitted groups
     if requested_panel_groups is None:
@@ -398,6 +420,11 @@ def check_panel_group_names_exist(
     ------
     ValueError
         If any requested panel group was not present during fit.
+
+    See Also
+    --------
+    `check_panel_group_names` : Preferred replacement for this function.
+    `check_panel_groups_match` : Validate y and X have matching panel groups.
 
     """
     if requested_panel_groups is None:
@@ -453,9 +480,15 @@ def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame
         ...
     ValueError: Panel structure mismatch in y...
 
+    See Also
+    --------
+    `check_panel_groups_match` : Validate y and X have matching panel groups.
+    `check_panel_group_names` : Validate panel group names for forecaster operations.
+    `inspect_panel` : Detect panel groups in a DataFrame.
+
     """
 
-    _, groups = inspect_locality(df)
+    _, groups = inspect_panel(df)
     if not groups:
         return  # No panel data, nothing to check
 
@@ -523,12 +556,18 @@ def check_panel_groups_match(
         ...
     ValueError: Panel groups mismatch between y and X...
 
+    See Also
+    --------
+    `check_panel_internal_consistency` : Validate panel groups have consistent structure.
+    `check_panel_group_names` : Validate panel group names for forecaster operations.
+    `inspect_panel` : Detect panel groups in a DataFrame.
+
     """
     if y is None or X is None:
         return  # Can't check if one is missing
 
-    _, y_groups = inspect_locality(y)
-    _, X_groups = inspect_locality(X)
+    _, y_groups = inspect_panel(y)
+    _, X_groups = inspect_panel(X)
 
     if set(y_groups.keys()) != set(X_groups.keys()):
         raise ValueError(
@@ -555,6 +594,11 @@ def check_forecasting_horizon_positive(
     ------
     ValueError
         If horizon is not positive or is None when not allowed.
+
+    See Also
+    --------
+    `check_exogenous_required` : Validate exogenous features for recursive prediction.
+    `check_sufficient_rows` : Validate DataFrame has enough rows for an operation.
 
     """
     if horizon is None:
@@ -588,6 +632,11 @@ def check_exogenous_required(
     ------
     ValueError
         If X is None but observation_horizon > 0 (recursive prediction needs X).
+
+    See Also
+    --------
+    `check_forecasting_horizon_positive` : Validate forecasting horizon is positive.
+    `check_sufficient_rows` : Validate DataFrame has enough rows for an operation.
 
     """
     if observation_horizon > 0 and X is None:
@@ -892,7 +941,10 @@ def validate_column_names(df: pl.DataFrame) -> None:
                 f"Column '{col_name}' contains multiple __ separators. "
                 f"The __ separator is reserved for panel data groups and must appear "
                 f"exactly once, following the pattern '<GROUP>__<SERIES>' "
-                f"(e.g., 'sales__store_1'). Please rename columns to avoid using __ "
+                f"(e.g., 'sales__store_1'). If this column was produced by a "
+                f"meta-transformer (FeatureUnion, ColumnTransformer), ensure it "
+                f"uses panel-safe prefixing with single underscore separators. "
+                f"Please rename columns to avoid using __ "
                 f"or use it only for panel data groups."
             )
 
@@ -1391,6 +1443,12 @@ def parse_interval(interval: str) -> tuple[int, str]:
     >>> parse_interval(\"50us\")
     (50, 'us')
 
+    See Also
+    --------
+    `interval_to_timedelta` : Convert interval string to timedelta.
+    `add_interval` : Add intervals to a datetime value.
+    `check_interval_consistency` : Validate uniform time spacing.
+
     """
     match = re.match(r"(\d+)(mo|q|y|w|d|h|min|ms|us|m|s)", interval)
     if not match:
@@ -1427,6 +1485,12 @@ def interval_to_timedelta(interval: str) -> timedelta | None:
     datetime.timedelta(microseconds=100000)
     >>> interval_to_timedelta(\"50us\")
     datetime.timedelta(microseconds=50)
+
+    See Also
+    --------
+    `parse_interval` : Parse interval string into multiplier and unit.
+    `add_interval` : Add intervals to a datetime value.
+    `check_interval_consistency` : Validate uniform time spacing.
 
     """
     multiplier, unit = parse_interval(interval)
@@ -1480,6 +1544,12 @@ def add_interval(start: datetime, interval: str | timedelta, n: int = 1) -> date
     datetime.datetime(2020, 2, 29, 0, 0)
     >>> add_interval(datetime(2020, 1, 31), \"2mo\", 2)
     datetime.datetime(2020, 5, 31, 0, 0)
+
+    See Also
+    --------
+    `parse_interval` : Parse interval string into multiplier and unit.
+    `interval_to_timedelta` : Convert interval string to timedelta.
+    `check_interval_consistency` : Validate uniform time spacing.
 
     """
     if isinstance(interval, timedelta):

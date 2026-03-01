@@ -116,7 +116,7 @@ class TestParseTsf:
         assert meta["n_series"] == 2
 
     def test_panel_unequal_length(self):
-        """Parse panel with series of different lengths — shorter padded with null."""
+        """Parse panel with series of different lengths."""
         tsf = self._make_tsf(
             "@attribute series_name string\n"
             "@attribute start_timestamp date\n"

@@ -109,9 +109,6 @@ class TestColumnTransformerBasic:
 class TestColumnTransformerObservationHorizon:
     """Test observation_horizon property."""
 
-    @pytest.mark.skip(
-        reason="ColumnTransformer column selection with non-passthrough transformers needs 'time' column handling review"
-    )
     def test_observation_horizon_max(self, time_series_3col):
         """Test that observation_horizon is max of component horizons."""
         ct = ColumnTransformer(
@@ -152,7 +149,6 @@ class TestColumnTransformerUpdateReset:
         result = ct.observe_transform(time_series_3col)
         assert isinstance(result, pl.DataFrame)
 
-    @pytest.mark.skip(reason="ColumnTransformer.rewind_transform: sub-transformers not fitted in rewind_transform flow")
     def test_rewind_transform(self, time_series_3col):
         """Test rewind_transform method."""
         ct = ColumnTransformer(
@@ -192,7 +188,6 @@ class TestColumnTransformerFeatureNames:
         feature_names = ct.get_feature_names_out()
         assert isinstance(feature_names, list | type(None)) or hasattr(feature_names, "__iter__")
 
-    @pytest.mark.skip(reason="ColumnTransformer.get_feature_names_out returns None with verbose - needs fix")
     def test_verbose_feature_names(self, time_series_3col):
         """Test verbose_feature_names_out=True prefixes names."""
         ct = ColumnTransformer(
@@ -205,8 +200,8 @@ class TestColumnTransformerFeatureNames:
         ct.fit(time_series_3col)
         feature_names = ct.get_feature_names_out()
         assert feature_names is not None
-        # With verbose, names should be prefixed with transformer name
-        assert any("t1" in str(n) for n in feature_names)
+        # With verbose, names should be prefixed with transformer name using _
+        assert any("t1_" in str(n) for n in feature_names)
 
 
 class TestColumnTransformerPassthrough:

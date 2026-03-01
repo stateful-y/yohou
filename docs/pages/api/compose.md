@@ -1,57 +1,24 @@
+---
+template: api-submodule.html
+---
+
 # yohou.compose
 
 Composition classes for combining forecasters and transformers into complex workflows.
 
-**User guide**: See the [Forecasting](../user-guide/forecasting.md), [Preprocessing](../user-guide/preprocessing.md), and [Stationarity](../user-guide/stationarity.md) sections for further details.
+### Transformers
 
-## Pipelines
+| Name | Description |
+| --- | --- |
+| [`ColumnTransformer`](generated/yohou.compose.column_transformer.ColumnTransformer.md) | Applies transformers to columns of a polars DataFrame. |
+| [`FeaturePipeline`](generated/yohou.compose.feature_pipeline.FeaturePipeline.md) | A sequence of time series transformers. |
+| [`FeatureUnion`](generated/yohou.compose.feature_union.FeatureUnion.md) | Concatenates results of multiple transformer objects. |
 
-::: yohou.compose.FeaturePipeline
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+### Forecasters
 
-::: yohou.compose.FeatureUnion
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Column Operations
-
-::: yohou.compose.ColumnTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.compose.ColumnForecaster
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Decomposition
-
-::: yohou.compose.DecompositionPipeline
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Feature Forecasting
-
-::: yohou.compose.ForecastedFeatureForecaster
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Panel Forecasting
-
-::: yohou.compose.LocalPanelForecaster
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+| Name | Description |
+| --- | --- |
+| [`DecompositionPipeline`](generated/yohou.compose.decomposition_pipeline.DecompositionPipeline.md) | Meta-forecaster that decomposes time series into sequential components. |
+| [`ColumnForecaster`](generated/yohou.compose.column_forecaster.ColumnForecaster.md) | Applies different forecasters to different column subsets. |
+| [`ForecastedFeatureForecaster`](generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster.md) | Meta-forecaster that chains feature forecasting into target forecasting. |
+| [`LocalPanelForecaster`](generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster.md) | Fits independent forecaster clones per panel group. |

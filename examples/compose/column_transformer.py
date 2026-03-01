@@ -5,22 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Column-Wise Feature Transformation.
-
-Demonstrates ColumnTransformer for applying different transforms to different
-columns, including panel-aware column selection.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Column Transformer",
+    "description": "Route columns through distinct transformers with ColumnTransformer, including remainder handling and automatic panel-aware column detection.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -30,52 +31,52 @@ def _(mo):
     When forecasting with multivariate data, different columns often need
     different preprocessing, demands from different regions should be scaled,
     and some features may pass through untouched.
-    `ColumnTransformer` applies **distinct transformers to distinct columns**
+    [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) applies **distinct transformers to distinct columns**
     in a single step.
 
     ## What You'll Learn
 
-    - Building a `ColumnTransformer` with named transformer-column pairs
+    - Building a [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) with named transformer-column pairs
     - Remainder handling: `"drop"` vs `"passthrough"`
     - Inspecting output feature names
-    - Combining `ColumnTransformer` with `PointReductionForecaster`
-    - Using `ColumnTransformer` inside a panel forecaster for automatic per-group application
+    - Combining [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
+    - Using [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) inside a panel forecaster for automatic per-group application
 
     ## Prerequisites
 
-    Familiarity with `PointReductionForecaster` and basic transformers
+    Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) and basic transformers
     (see `examples/point/reduction_forecaster.py`).
     """)
+
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
 
     from yohou.compose import ColumnTransformer
     from yohou.datasets import fetch_dominick, fetch_electricity_demand
-    from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer, StandardScaler
-    from yohou.stationarity import LogTransformer
-    from yohou.utils.panel import inspect_locality
+    from yohou.utils.panel import inspect_panel
 
     return (
         ColumnTransformer,
         LagTransformer,
-        LogTransformer,
-        MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
         StandardScaler,
-        inspect_locality,
         fetch_dominick,
         fetch_electricity_demand,
+        inspect_panel,
         pl,
         plot_forecast,
         plot_time_series,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -87,24 +88,35 @@ def _(mo):
     We use Victoria as the target and other states as exogenous features.
     """)
 
+
 @app.cell
-def _(fetch_electricity_demand, pl):
+def _(fetch_electricity_demand, pl, train_test_split):
     _elec = fetch_electricity_demand().frame
     # Downsample to daily for manageable size (drop trailing all-null days)
-    vic_daily = _elec.group_by_dynamic("time", every="1d").agg(
-        pl.col("vic__demand").mean().alias("Demand"),
-        pl.col("nsw__demand").mean().alias("NSW_Demand"),
-        pl.col("sa__demand").mean().alias("SA_Demand"),
-    ).drop_nulls()
+    vic_daily = (
+        _elec
+        .group_by_dynamic("time", every="1d")
+        .agg(
+            pl.col("vic__demand").mean().alias("Demand"),
+            pl.col("nsw__demand").mean().alias("NSW_Demand"),
+            pl.col("sa__demand").mean().alias("SA_Demand"),
+        )
+        .drop_nulls()
+    )
 
-    split_idx = int(len(vic_daily) * 0.85)
-    y_train = vic_daily.head(split_idx).select("time", "Demand")
-    X_train = vic_daily.head(split_idx).select("time", "NSW_Demand", "SA_Demand")
-    y_test = vic_daily.tail(len(vic_daily) - split_idx).select("time", "Demand")
-    X_test = vic_daily.tail(len(vic_daily) - split_idx).select("time", "NSW_Demand", "SA_Demand")
+    _train_df, _test_df = train_test_split(vic_daily, test_size=0.15, shuffle=False)
+    y_train = _train_df.select("time", "Demand")
+    X_train = _train_df.select("time", "NSW_Demand", "SA_Demand")
+    y_test = _test_df.select("time", "Demand")
+    X_test = _test_df.select("time", "NSW_Demand", "SA_Demand")
 
-    y_train.head()
-    return X_test, X_train, split_idx, vic_daily, y_test, y_train
+    return X_test, X_train, vic_daily, y_test, y_train
+
+
+@app.cell
+def _(plot_time_series, vic_daily):
+    plot_time_series(vic_daily, title="Daily Victorian Electricity Demand")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -112,9 +124,10 @@ def _(mo):
     ## 2. Build a ColumnTransformer
 
     Each tuple is `(name, transformer, columns)`. We scale NSW_Demand with
-    `StandardScaler`, pass SA_Demand through unchanged, and drop any remaining
+    [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/), pass SA_Demand through unchanged, and drop any remaining
     columns.
     """)
+
 
 @app.cell
 def _(ColumnTransformer, StandardScaler):
@@ -128,36 +141,54 @@ def _(ColumnTransformer, StandardScaler):
     ct
     return (ct,)
 
+
+@app.cell
+def _(X_train, ct, pl, plot_time_series):
+    _ct_fitted = ct.fit(X_train)
+    _X_transformed = _ct_fitted.transform(X_train)
+    _combined = pl.concat(
+        [
+            X_train.rename({"NSW_Demand": "NSW (raw)", "SA_Demand": "SA (raw)"}),
+            _X_transformed.drop("time").rename({
+                c: c.split("__", 1)[-1] + " (scaled)" for c in _X_transformed.columns if c != "time"
+            }),
+        ],
+        how="horizontal",
+    )
+    plot_time_series(_combined, title="Raw vs Scaled Features")
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. ColumnTransformer Inside a Forecaster
 
-    Pass the `ColumnTransformer` as `feature_transformer` to
-    `PointReductionForecaster`. The forecaster calls `.fit_transform()` on `X`
+    Pass the [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) as `feature_transformer` to
+    [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/). The forecaster calls `.fit_transform()` on `X`
     at fit time and `.transform()` on `X` at predict time.
     """)
 
+
 @app.cell
-def _(
-    LagTransformer,
-    PointReductionForecaster,
-    Ridge,
-    ct,
-    X_test,
-    X_train,
-    y_test,
-    y_train,
-):
+def _(PointReductionForecaster, Ridge, X_test, X_train, ct, y_test, y_train):
     forecaster_ct = PointReductionForecaster(
-        estimator=Ridge(alpha=1.0),
+        estimator=Ridge(alpha=1e-3),
         feature_transformer=ct,
     )
 
     forecasting_horizon = len(y_test)
     forecaster_ct.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
     y_pred_ct = forecaster_ct.predict(X_test, forecasting_horizon=forecasting_horizon)
-    return forecaster_ct, forecasting_horizon, y_pred_ct
+    return (y_pred_ct,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) visualises how the [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/)-equipped
+    forecaster performs on the held-out test data.
+    """)
+
 
 @app.cell
 def _(plot_forecast, y_pred_ct, y_test, y_train):
@@ -169,6 +200,7 @@ def _(plot_forecast, y_pred_ct, y_test, y_train):
         title="Forecast with ColumnTransformer (NSW scaled, SA passthrough)",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -179,6 +211,7 @@ def _(mo):
     feature availability.
     """)
 
+
 @app.cell
 def _(ColumnTransformer, StandardScaler, mo):
     ct_pass = ColumnTransformer(
@@ -188,10 +221,9 @@ def _(ColumnTransformer, StandardScaler, mo):
         remainder="passthrough",
     )
     mo.md(
-        f"**With `remainder='passthrough'`**: SA_Demand is kept automatically.\n\n"
-        f"Transformer configuration: {ct_pass}"
+        f"**With `remainder='passthrough'`**: SA_Demand is kept automatically.\n\nTransformer configuration: {ct_pass}"
     )
-    return (ct_pass,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -202,6 +234,7 @@ def _(mo):
     which include the transformer name prefix when `verbose_feature_names_out=True`
     (the default).
     """)
+
 
 @app.cell
 def _(ColumnTransformer, StandardScaler, X_train, mo):
@@ -215,7 +248,7 @@ def _(ColumnTransformer, StandardScaler, X_train, mo):
     ct_verbose.fit(X_train)
     _names = ct_verbose.get_feature_names_out()
     mo.md(f"**Feature names (verbose=True)**: {_names}")
-    return (ct_verbose,)
+
 
 @app.cell
 def _(ColumnTransformer, StandardScaler, X_train, mo):
@@ -230,12 +263,13 @@ def _(ColumnTransformer, StandardScaler, X_train, mo):
     _names = _ct_short.get_feature_names_out()
     mo.md(f"**Feature names (verbose=False)**: {_names}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. With Panel Data
 
-    When a `ColumnTransformer` is used as the `feature_transformer` inside a
+    When a [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) is used as the `feature_transformer` inside a
     panel-aware forecaster, _yohou automatically applies it per group_.
     The forecaster decomposes the panel into individual groups, applies the
     transformer to each group's unprefixed columns, and reassembles the result.
@@ -243,28 +277,31 @@ def _(mo):
     Here we use the Dominick dataset (9 panel groups).
     """)
 
+
 @app.cell
-def _(inspect_locality, fetch_dominick, mo, pl):
+def _(fetch_dominick, inspect_panel, mo, train_test_split):
     _dom_full = fetch_dominick().frame
-    _profit_cols = ["T7__profit", "T11__profit", "T12__profit", "T13__profit", "T15__profit", "T19__profit", "T22__profit", "T23__profit", "T24__profit"]
+    _profit_cols = [
+        "T7__profit",
+        "T11__profit",
+        "T12__profit",
+        "T13__profit",
+        "T15__profit",
+        "T19__profit",
+        "T22__profit",
+        "T23__profit",
+        "T24__profit",
+    ]
     store = _dom_full.select("time", *_profit_cols)
-    _globals, _groups = inspect_locality(store)
-    mo.md(
-        f"**Panel groups**: {len(_groups)} groups\n\n"
-        f"**First group columns**: {list(_groups.values())[0]}"
-    )
+    _globals, _groups = inspect_panel(store)
+    mo.md(f"**Panel groups**: {len(_groups)} groups\n\n**First group columns**: {list(_groups.values())[0]}")
 
     # Panel data: y contains all `__profit` columns, no separate X needed
-    _split = int(len(store) * 0.9)
-    y_train_panel = store.head(_split).select(
-        "time", *[c for c in store.columns if c.endswith("__profit")]
-    )
-    y_test_panel = store.tail(len(store) - _split).select(
-        "time", *[c for c in store.columns if c.endswith("__profit")]
-    )
+    y_train_panel, y_test_panel = train_test_split(store, test_size=0.1, shuffle=False)
 
     y_train_panel.head()
-    return store, y_test_panel, y_train_panel
+    return y_test_panel, y_train_panel
+
 
 @app.cell
 def _(
@@ -292,7 +329,7 @@ def _(
         panel_group_names=["T7", "T11", "T12"],
         title="Panel Forecast: First 3 Groups",
     )
-    return (forecaster_panel,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -303,14 +340,15 @@ def _(mo):
     - **Remainder handling** controls what happens to unlisted columns: `"drop"` (default) discards them, `"passthrough"` keeps them
     - **verbose_feature_names_out** prefixes output names with transformer names for traceability
     - **Panel integration** is automatic: when used inside a forecaster, ColumnTransformer is applied per group to unprefixed columns
-    - **Forecaster composition**: Pass ColumnTransformer as `feature_transformer` to `PointReductionForecaster`
+    - **Forecaster composition**: Pass ColumnTransformer as `feature_transformer` to [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
 
     ## Next Steps
 
-    - **Parallel features**: See `examples/compose/feature_union.py` for combining transformers in parallel
-    - **Pipeline composition**: See `examples/compose/pipeline_composition.py` for nesting ColumnTransformer in larger pipelines
-    - **Panel pipelines**: See `examples/compose/panel_pipelines.py` for comprehensive panel composition patterns
+    - **Parallel features**: See [`examples/compose/feature_union.py`](/examples/compose/feature_union/) for combining transformers in parallel
+    - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/compose/pipeline_composition/) for nesting ColumnTransformer in larger pipelines
+    - **Panel pipelines**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/) for comprehensive panel composition patterns
     """)
+
 
 if __name__ == "__main__":
     app.run()

@@ -1,6 +1,6 @@
 # Preprocessing
 
-This chapter covers time series transformers and the pipeline infrastructure for composing them. Yohou provides windowing, signal processing, sklearn scaler wrappers, imputation, outlier handling, and resampling, all with stateful `update`/`reset` support.
+This chapter covers time series transformers and the pipeline infrastructure for composing them. Yohou provides windowing, signal processing, sklearn scaler wrappers, imputation, outlier handling, and resampling, all with stateful `observe`/`rewind` support.
 
 !!! info "Under Development"
     This chapter is being written. Section headings show the planned structure.
@@ -12,7 +12,7 @@ This chapter covers time series transformers and the pipeline infrastructure for
 
 ### Stateful vs. Stateless
 
-### The update/reset Lifecycle
+### The observe/rewind Lifecycle
 
 ### Observation Horizon
 

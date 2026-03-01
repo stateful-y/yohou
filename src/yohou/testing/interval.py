@@ -7,7 +7,7 @@ This module provides validation functions specific to interval forecasters
 import polars as pl
 from sklearn.base import clone
 
-from yohou.utils import inspect_locality
+from yohou.utils import inspect_panel
 
 __all__ = [
     "check_coverage_rates_parameter",
@@ -46,7 +46,7 @@ def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame, X_test: 
     coverage_rates = forecaster.fit_coverage_rates_
 
     # Check if we have panel data (columns with __ separator)
-    _, y_panel_groups = inspect_locality(y_test)
+    _, y_panel_groups = inspect_panel(y_test)
 
     if len(y_panel_groups) > 0:
         # For panel data, interval columns use __ separator
@@ -101,7 +101,7 @@ def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame
     coverage_rates = forecaster.fit_coverage_rates_
 
     # Check if we have panel data (columns with __ separator)
-    _, y_panel_groups = inspect_locality(y_test)
+    _, y_panel_groups = inspect_panel(y_test)
 
     if len(y_panel_groups) > 0:
         # For panel data, interval columns use __ separator

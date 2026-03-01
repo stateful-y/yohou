@@ -1,54 +1,32 @@
+---
+template: api-submodule.html
+---
+
 # yohou.datasets
 
-Remote time series dataset fetchers. Each function downloads data from [Monash/Zenodo](https://forecastingdata.org) (CC BY 4.0) and returns a `sklearn.utils.Bunch` with a `.frame` attribute containing a `polars.DataFrame` with a `"time"` column. Data is cached locally after the first download.
+Remote time series dataset fetchers and related utilities.
 
 **User guide**: See the [Core Concepts](../user-guide/core-concepts.md) section for data format details.
 
-## Dataset Fetchers
+### Loaders
 
-::: yohou.datasets.fetch_tourism_monthly
-    options:
-      show_root_heading: true
-      show_source: false
+Each function downloads data from [Monash/Zenodo](https://forecastingdata.org) (CC BY 4.0) and returns a `sklearn.utils.Bunch` with a `.frame` attribute containing a `polars.DataFrame` with a `"time"` column. Data is cached locally after the first download.
 
-::: yohou.datasets.fetch_sunspot
-    options:
-      show_root_heading: true
-      show_source: false
+| Name | Description |
+| --- | --- |
+| [`fetch_dominick`](generated/yohou.datasets._fetchers.fetch_dominick.md) | Fetch the Dominick dataset from Monash/Zenodo. |
+| [`fetch_electricity_demand`](generated/yohou.datasets._fetchers.fetch_electricity_demand.md) | Fetch the Australian Electricity Demand dataset from Monash/Zenodo. |
+| [`fetch_hospital`](generated/yohou.datasets._fetchers.fetch_hospital.md) | Fetch the Hospital dataset from Monash/Zenodo. |
+| [`fetch_kdd_cup`](generated/yohou.datasets._fetchers.fetch_kdd_cup.md) | Fetch the KDD Cup 2018 air quality dataset from Monash/Zenodo. |
+| [`fetch_pedestrian_counts`](generated/yohou.datasets._fetchers.fetch_pedestrian_counts.md) | Fetch the Melbourne Pedestrian Counts dataset from Monash/Zenodo. |
+| [`fetch_sunspot`](generated/yohou.datasets._fetchers.fetch_sunspot.md) | Fetch the Sunspot dataset (without missing values) from Monash/Zenodo. |
+| [`fetch_tourism_monthly`](generated/yohou.datasets._fetchers.fetch_tourism_monthly.md) | Fetch the Tourism Monthly dataset from Monash/Zenodo. |
+| [`fetch_tourism_quarterly`](generated/yohou.datasets._fetchers.fetch_tourism_quarterly.md) | Fetch the Tourism Quarterly dataset from Monash/Zenodo. |
 
-::: yohou.datasets.fetch_tourism_quarterly
-    options:
-      show_root_heading: true
-      show_source: false
+### Utilities
 
-::: yohou.datasets.fetch_electricity_demand
-    options:
-      show_root_heading: true
-      show_source: false
-
-::: yohou.datasets.fetch_dominick
-    options:
-      show_root_heading: true
-      show_source: false
-
-::: yohou.datasets.fetch_pedestrian_counts
-    options:
-      show_root_heading: true
-      show_source: false
-
-::: yohou.datasets.fetch_hospital
-    options:
-      show_root_heading: true
-      show_source: false
-
-## Utilities
-
-::: yohou.datasets.get_data_home
-    options:
-      show_root_heading: true
-      show_source: false
-
-::: yohou.datasets.clear_data_home
-    options:
-      show_root_heading: true
-      show_source: false
+| Name | Description |
+| --- | --- |
+| [`clear_data_home`](generated/yohou.datasets._fetchers.clear_data_home.md) | Delete all the content of the data home cache. |
+| [`get_data_home`](generated/yohou.datasets._fetchers.get_data_home.md) | Return the path of the yohou data directory. |
+| [`parse_tsf`](generated/yohou.datasets._tsf_parser.parse_tsf.md) | Parse a Monash `.tsf` file into a wide polars DataFrame. |

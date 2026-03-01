@@ -359,14 +359,14 @@ def _fit_and_score(
         if return_train_score:
             # forecaster is stateful and needs to be rewound to predict the past
             score_params_train = _check_method_params(y, params=score_params, indices=train)
-            train_reset = train[: -len(test)]
-            test_reset = train[-len(test) :]
-            y_train_reset, X_train_reset = _safe_split(forecaster, y_train, X_train, train_reset)
-            y_train_test, X_train_test = _safe_split(forecaster, y_train, X_train, test_reset, train_reset)
-            forecaster.rewind(y_train_reset, X_train_reset)
+            train_rewind = train[: -len(test)]
+            test_rewind = train[-len(test) :]
+            y_train_rewind, X_train_rewind = _safe_split(forecaster, y_train, X_train, train_rewind)
+            y_train_test, X_train_test = _safe_split(forecaster, y_train, X_train, test_rewind, train_rewind)
+            forecaster.rewind(y_train_rewind, X_train_rewind)
             train_scores = _score(
                 forecaster,
-                y_train_reset,
+                y_train_rewind,
                 y_train_test,
                 X_train_test,
                 predict_params,

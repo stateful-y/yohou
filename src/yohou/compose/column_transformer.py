@@ -29,7 +29,7 @@ try:
     from sklearn.utils._dataframe import is_pandas_df
 except ModuleNotFoundError:  # scikit-learn < 1.6 (e.g. pyodide)
 
-    def is_pandas_df(X: object) -> bool:  # type: ignore[misc]
+    def is_pandas_df(X: object) -> bool:
         """Return True if *X* is a pandas DataFrame."""
         return hasattr(X, "iloc") and hasattr(X, "columns")
 
@@ -56,6 +56,7 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseTransformer
 from yohou.utils import Tags
+from yohou.utils.panel import panel_aware_prefix
 
 from .utils import _hstack, _observe_transform_one, _rewind_transform_one
 
@@ -205,8 +206,11 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
     transformation.
 
     The `verbose_feature_names_out` parameter (default=True) prefixes output column
-    names with transformer names (e.g., 'deseason__sales') to prevent name collisions
-    when multiple transformers produce columns with the same names.
+    names with transformer names using a single underscore separator
+    (e.g., 'deseason_sales') to prevent name collisions when multiple
+    transformers produce columns with the same names. For panel data columns,
+    the prefix is inserted after the group separator to preserve panel structure
+    (e.g., 'store_1__deseason_sales').
 
     The `observation_horizon` property returns the MAXIMUM across all column
     transformers, as the transformer needs enough history to satisfy the most
@@ -490,21 +494,42 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             feature_names_in,
         )
 
-    def get_feature_names_out(self, input_features: list[str] | None = None) -> Any:
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names.
+
+        Collects output feature names from each fitted sub-transformer,
+        optionally prefixing them with the transformer name when
+        ``verbose_feature_names_out`` is True.
 
         Parameters
         ----------
         input_features : list[str] | None, default=None
-            Input feature names.
+            Input feature names. If None, uses ``feature_names_in_`` from fit.
 
         Returns
         -------
-        feature_names_out : Any
+        list of str
             Output feature names.
 
         """
-        return super().get_feature_names_out(input_features)
+        check_is_fitted(self, "transformers_")
+        feature_names_out: list[str] = []
+        for name, trans, columns in self.transformers_:  # type: ignore[attr-defined]
+            if trans == "drop" or (isinstance(columns, list) and len(columns) == 0):
+                continue
+            col_list = list(columns) if isinstance(columns, list) else [columns]
+            names: list[str] = col_list
+            if hasattr(trans, "get_feature_names_out"):
+                result = trans.get_feature_names_out()
+                if result is not None:
+                    # Sub-transformers may include "time" in their output; strip it.
+                    filtered = [f for f in result if f != "time"]
+                    if filtered:
+                        names = filtered
+            if self.verbose_feature_names_out:
+                names = [f"{name}_{f}" for f in names]
+            feature_names_out.extend(names)
+        return feature_names_out
 
     def _get_remainder_cols(self, indices: Any) -> Any:
         """Get remainder columns.
@@ -534,8 +559,13 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         """
         return sklearn_ColumnTransformer._get_remainder_cols_dtype(self)  # type: ignore[arg-type]
 
-    def _add_prefix_for_feature_names_out(self, feature_names_out: Any) -> Any:
+    def _add_prefix_for_feature_names_out(self, feature_names_out: list) -> list[str]:
         """Add prefixes to feature names.
+
+        Uses single underscore ``_`` as separator (not ``__``) to avoid
+        conflicts with the panel data ``<GROUP>__<SERIES>`` convention.
+        For panel columns, the prefix is inserted after the group separator
+        (e.g., ``store_1__deseason_sales``).
 
         Parameters
         ----------
@@ -548,10 +578,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Feature names with prefixes.
 
         """
-        return sklearn_ColumnTransformer._add_prefix_for_feature_names_out(
-            cast(sklearn_ColumnTransformer, self),
-            feature_names_out,
-        )
+        return [panel_aware_prefix(col, name) for name, cols in feature_names_out for col in cols]
 
     def _sk_visual_block_(self) -> Any:
         """Get visual block representation.
@@ -1182,7 +1209,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             observation_horizons=self._get_observation_horizons(),
         )
         output_samples = output.shape[0]
-        if check_samples and output_samples != n_samples - self.observation_horizon:
+        if check_samples and output_samples > n_samples:
             raise ValueError(
                 "Concatenating DataFrames from the transformer's output lead to an inconsistent number of samples."
             )

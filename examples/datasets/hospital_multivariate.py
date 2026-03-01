@@ -1,264 +1,275 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "scikit-learn",
 #     "yohou",
 # ]
 # ///
-"""Hospital Multivariate Forecasting.
-
-Demonstrates multivariate forecasting on the Hospital patient-count
-dataset using ForecastedFeatureForecaster and exogenous features.
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Hospital Multivariate Analytics",
+    "description": "Multivariate analytics on hospital patient data with scatter matrices, correlation heatmaps, STL decomposition, and cross-correlation diagnostics.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
-
-    return (mo,)
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Hospital Multivariate Forecasting
-
-    The Hospital dataset contains 767 monthly patient count series
-    related to medical products (2000-2006). This notebook picks one
-    series as the target and uses other series as exogenous covariates,
-    demonstrating multivariate forecasting.
-
-    ## What You'll Learn
-
-    - Dataset exploration: target and covariate series
-    - Univariate baseline: target-only forecasting
-    - Multivariate: using covariates as exogenous features (X)
-    - `ForecastedFeatureForecaster`: chain target and feature forecasters
-    """)
-
-@app.cell(hide_code=True)
-def _():
     import polars as pl
-    from sklearn.linear_model import Ridge
 
-    from yohou.compose import ForecastedFeatureForecaster
     from yohou.datasets import fetch_hospital
-    from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
-    from yohou.plotting import plot_forecast, plot_time_series
-    from yohou.point import PointReductionForecaster
-    from yohou.preprocessing import LagTransformer
-
-    return (
-        ForecastedFeatureForecaster,
-        LagTransformer,
-        MeanAbsoluteError,
-        PointReductionForecaster,
-        Ridge,
-        RootMeanSquaredError,
-        fetch_hospital,
-        pl,
-        plot_forecast,
+    from yohou.plotting import (
+        plot_autocorrelation,
+        plot_components,
+        plot_correlation_heatmap,
+        plot_cross_correlation,
+        plot_lag_scatter,
+        plot_rolling_statistics,
+        plot_scatter_matrix,
         plot_time_series,
     )
 
+    return (
+        fetch_hospital,
+        mo,
+        pl,
+        plot_autocorrelation,
+        plot_components,
+        plot_correlation_heatmap,
+        plot_cross_correlation,
+        plot_lag_scatter,
+        plot_rolling_statistics,
+        plot_scatter_matrix,
+        plot_time_series,
+    )
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 1. Explore the Dataset
+    # Hospital - Multivariate Descriptive Analytics
+
+    The Hospital dataset contains 767 monthly patient count series related
+    to medical products (2000-2006). This notebook picks four series and
+    examines the **relationships between them** using multivariate
+    diagnostic plots.
+
+    ## What You'll Learn
+
+    - Scatter matrix for pairwise relationships and distributions
+    - Correlation heatmap across multiple series
+    - STL decomposition to separate trend, seasonality, and residuals
+    - Cross-correlation for lead/lag relationships
+    - Lag scatter and rolling statistics for individual series
+
+    ## Prerequisites
+
+    See `examples/datasets/hospital.py` for basic panel exploration
+    (single-series seasonality and cross-correlation).
     """)
 
+
 @app.cell
-def _(fetch_hospital, mo, pl):
+def _(fetch_hospital, pl, plot_time_series):
     _all = fetch_hospital().frame
-    # Use T1 as target, T2-T4 as covariates (rename to non-panel columns)
+    # Pick 4 series and rename to readable names
     hospital = _all.select(
         "time",
-        pl.col("T1__patients").alias("patients"),
-        pl.col("T2__patients").alias("cov_1"),
-        pl.col("T3__patients").alias("cov_2"),
-        pl.col("T4__patients").alias("cov_3"),
+        pl.col("T1__patients").alias("patients_A"),
+        pl.col("T2__patients").alias("patients_B"),
+        pl.col("T3__patients").alias("patients_C"),
+        pl.col("T4__patients").alias("patients_D"),
     ).drop_nulls()
-    mo.md(
-        f"**Hospital**: {len(_all)} rows, {len(_all.columns) - 1} series\n\n"
-        f"**Selected**: {len(hospital)} months\n\n"
-        f"**Target**: patients (from T1)\n\n"
-        f"**Covariates**: cov_1 (T2), cov_2 (T3), cov_3 (T4)"
-    )
+
+    plot_time_series(hospital, title="Hospital Patient Counts (4 Series)")
     return (hospital,)
 
-@app.cell
-def _(hospital, plot_time_series):
-    plot_time_series(hospital.select("time", "patients"), title="Hospital: Target Patient Counts (T1)")
-
-@app.cell
-def _(hospital, plot_time_series):
-    plot_time_series(
-        hospital.select("time", "cov_1", "cov_2", "cov_3"),
-        title="Hospital: Covariate Series (T2-T4)",
-    )
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Train/Test Split
+    ## 1. Scatter Matrix
+
+    The scatter matrix shows pairwise scatter plots (lower triangle),
+    KDE density on the diagonal, and Pearson correlation coefficients
+    in the upper triangle. This is a single-glance multivariate overview.
     """)
 
+
 @app.cell
-def _(hospital, mo):
-    _split = int(len(hospital) * 0.85)
-    _covariates = ["cov_1", "cov_2", "cov_3"]
-
-    y_train = hospital.head(_split).select("time", "patients")
-    y_test = hospital.tail(len(hospital) - _split).select("time", "patients")
-    X_train = hospital.head(_split).select("time", *_covariates)
-    X_test = hospital.tail(len(hospital) - _split).select("time", *_covariates)
-    horizon = len(y_test)
-
-    mo.md(
-        f"**Train**: {len(y_train)} months, **Test**: {len(y_test)} months\n\n"
-        f"**y columns**: {y_train.columns}\n\n"
-        f"**X columns**: {X_train.columns}"
+def _(hospital, plot_scatter_matrix):
+    plot_scatter_matrix(
+        hospital,
+        title="Hospital - Pairwise Scatter Matrix",
     )
-    return X_test, X_train, horizon, y_test, y_train
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 3. Univariate Baseline (Target Only)
+    ## 2. Correlation Heatmap
+
+    A focused view of the pairwise Pearson correlation coefficients.
+    Strongly correlated series may share common medical drivers.
     """)
 
-@app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_test, y_train):
-    fc_univariate = PointReductionForecaster(
-        estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 12]),
-    )
-    fc_univariate.fit(y_train, forecasting_horizon=horizon)
-    y_pred_uni = fc_univariate.predict(forecasting_horizon=horizon)
-    return fc_univariate, y_pred_uni
 
 @app.cell
-def _(plot_forecast, y_pred_uni, y_test, y_train):
-    plot_forecast(
-        y_test, y_pred_uni, y_train=y_train, n_history=24,
-        title="Univariate Baseline (Target Only)",
+def _(hospital, plot_correlation_heatmap):
+    plot_correlation_heatmap(
+        hospital,
+        title="Hospital - Correlation Heatmap",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Multivariate with Known Exogenous Features
+    ## 3. STL Decomposition
 
-    When test-time covariates are available (known future values), pass
-    them as `X` to both `fit()` and `predict()`.
+    Seasonal-Trend decomposition using Loess (STL) separates each series
+    into trend, seasonal, and residual components. Monthly data has a
+    natural period of 12.
     """)
 
-@app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, X_test, X_train, horizon, y_test, y_train):
-    fc_multi = PointReductionForecaster(
-        estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 12]),
-    )
-    fc_multi.fit(y_train, X_train, forecasting_horizon=horizon)
-    y_pred_multi = fc_multi.predict(X_test, forecasting_horizon=horizon)
-    return fc_multi, y_pred_multi
 
 @app.cell
-def _(plot_forecast, y_pred_multi, y_test, y_train):
-    plot_forecast(
-        y_test, y_pred_multi, y_train=y_train, n_history=24,
-        title="Multivariate (Known Exogenous)",
+def _(hospital, plot_components):
+    plot_components(
+        hospital,
+        ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
+        columns="patients_A",
+        stl_kwargs={"period": 12},
+        title="Patients A (T1) - STL Decomposition",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 5. ForecastedFeatureForecaster
+    ## 4. Cross-Correlation Between Series
 
-    When covariates are NOT known at prediction time, forecast them
-    separately and use those forecasts as inputs.
+    Cross-correlation between patients A and B quantifies lead/lag
+    relationships. A peak at lag 0 suggests synchronous co-movement;
+    a peak at positive lag means B leads A.
     """)
 
-@app.cell
-def _(
-    ForecastedFeatureForecaster,
-    LagTransformer,
-    PointReductionForecaster,
-    Ridge,
-    X_train,
-    horizon,
-    y_test,
-    y_train,
-):
-    fc_ff = ForecastedFeatureForecaster(
-        target_forecaster=PointReductionForecaster(
-            estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 12]),
-        ),
-        feature_forecaster=PointReductionForecaster(
-            estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 12]),
-        ),
-        strategy="predicted",
-        split_ratio=0.6,
-    )
-    fc_ff.fit(y_train, X_train, forecasting_horizon=6)
-    y_pred_ff = fc_ff.predict(forecasting_horizon=horizon)
-    return fc_ff, y_pred_ff
 
 @app.cell
-def _(plot_forecast, y_pred_ff, y_test, y_train):
-    plot_forecast(
-        y_test, y_pred_ff, y_train=y_train, n_history=24,
-        title="ForecastedFeatureForecaster (strategy='predicted')",
+def _(hospital, plot_cross_correlation):
+    plot_cross_correlation(
+        hospital,
+        columns=["patients_A", "patients_B"],
+        max_lags=24,
+        title="Patients A vs B - Cross-Correlation",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 6. Compare Approaches
+    ## 5. Cross-Correlation: A vs C
+
+    Comparing the cross-correlation pattern with a different pair
+    reveals whether different product categories have different lag
+    structures.
     """)
 
-@app.cell
-def _(MeanAbsoluteError, RootMeanSquaredError, mo, pl, y_pred_ff, y_pred_multi, y_pred_uni, y_test, y_train):
-    _mae = MeanAbsoluteError()
-    _rmse = RootMeanSquaredError()
-    _mae.fit(y_train)
-    _rmse.fit(y_train)
-    _preds = {
-        "Univariate": y_pred_uni,
-        "Multivariate (known X)": y_pred_multi,
-        "ForecastedFeature": y_pred_ff,
-    }
-    _rows = []
-    for _name, _pred in _preds.items():
-        _m = float(_mae.score(y_test, _pred))
-        _r = float(_rmse.score(y_test, _pred))
-        _rows.append({"Method": _name, "MAE": round(_m, 3), "RMSE": round(_r, 3)})
 
-    mo.ui.table(pl.DataFrame(_rows))
+@app.cell
+def _(hospital, plot_cross_correlation):
+    plot_cross_correlation(
+        hospital,
+        columns=["patients_A", "patients_C"],
+        max_lags=24,
+        title="Patients A vs C - Cross-Correlation",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 6. Autocorrelation
+
+    ACF for a single series reveals the internal temporal dependence
+    structure. Strong spikes at lag 12 confirm annual seasonality.
+    """)
+
+
+@app.cell
+def _(hospital, plot_autocorrelation):
+    plot_autocorrelation(
+        hospital,
+        columns="patients_A",
+        max_lags=36,
+        title="Patients A - Autocorrelation",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Lag Scatter
+
+    Scatter y(t) vs y(t-lag) shows the strength of the temporal
+    relationship at different horizons. Lags 1 and 12 are compared.
+    """)
+
+
+@app.cell
+def _(hospital, plot_lag_scatter):
+    plot_lag_scatter(
+        hospital,
+        columns="patients_A",
+        lags=[1, 12],
+        show_regression=True,
+        title="Patients A - Lag Scatter (1 and 12 months)",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 8. Rolling Statistics
+
+    A 12-month rolling mean and standard deviation track the trend
+    and volatility over time.
+    """)
+
+
+@app.cell
+def _(hospital, plot_rolling_statistics):
+    plot_rolling_statistics(
+        hospital,
+        columns="patients_A",
+        window_size=12,
+        statistics=["mean", "std"],
+        title="Patients A - Rolling Mean and Std (12-month window)",
+    )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **Hospital dataset**: 767 monthly patient count series; here T1 is target, T2-T4 are covariates
-    - **Known exogenous** (X at test time): Best accuracy when future values are available
-    - **ForecastedFeatureForecaster**: Handles unknown-at-test-time covariates by chaining forecasters
-    - **`strategy="predicted"`**: Uses forecasted features during prediction
-    - **Monthly frequency**: Seasonal lags of 12 capture annual patterns
+    - **Scatter matrix**: Quick multivariate overview of pairwise relationships
+    - **Correlation heatmap**: Some patient count series are strongly correlated
+    - **STL decomposition**: Decomposes trend, seasonality, and residuals clearly
+    - **Cross-correlation**: Different series pairs show different lag structures
+    - **ACF and lag scatter**: Annual seasonality (lag 12) is prominent
+    - **Rolling statistics**: 12-month window reveals long-term trends
 
     ## Next Steps
 
-    - **Forecasted feature strategies**: See `examples/compose/forecasted_feature_advanced.py`
-    - **Feature union**: See `examples/compose/feature_union.py`
-    - **Pipeline composition**: See `examples/compose/pipeline_composition.py`
+    - **Basic panel exploration**: See [`examples/datasets/hospital.py`](/examples/datasets/hospital/)
+    - **Panel data analysis**: See [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
+    - **Signal processing**: See [`examples/datasets/sunspots.py`](/examples/datasets/sunspots/) for spectral analysis
     """)
+
 
 if __name__ == "__main__":
     app.run()

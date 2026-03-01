@@ -131,9 +131,7 @@ class StatelessTransformer(BaseTransformer):
         return 0
 
     def fit(self, X, y=None):
-        # Set minimal attributes for sklearn compatibility
-        self.feature_names_in_ = [col for col in X.columns if col != "time"]
-        self.n_features_in_ = len(self.feature_names_in_)
+        BaseTransformer.fit(self, X, y)
         return self
 
     def transform(self, X):

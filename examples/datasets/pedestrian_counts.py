@@ -4,18 +4,16 @@
 #     "yohou",
 # ]
 # ///
-"""Pedestrian Counts - Sensor-Level Panel Analysis.
-
-Hourly pedestrian counts from Melbourne sensors.
-
-Dataset: 20 hourly count series by default (exploring first 6)
-Demonstrates: inspect_locality, plot_time_series, plot_boxplot, plot_seasonality
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Pedestrian Counts Dataset",
+    "description": "Sensor-level panel exploration of Melbourne pedestrian counts with per-sensor boxplots, hourly seasonal patterns, and panel structure inspection.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -27,16 +25,17 @@ def _():
         plot_seasonality,
         plot_time_series,
     )
-    from yohou.utils.panel import inspect_locality
+    from yohou.utils.panel import inspect_panel
 
     return (
         fetch_pedestrian_counts,
-        inspect_locality,
+        inspect_panel,
         mo,
         plot_boxplot,
         plot_seasonality,
         plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -49,7 +48,7 @@ def _(mo):
     Pedestrian Counts dataset, pre-formatted in Yohou's native `__` panel
     convention. You'll learn how to:
 
-    - Inspect panel structure with `inspect_locality`
+    - Inspect panel structure with [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)
     - Compare hourly pedestrian counts across sensors
     - Visualize distributions across sensors with boxplots
     - Analyze hour-of-day effects
@@ -59,14 +58,16 @@ def _(mo):
     None. this is a standalone dataset exploration.
     """)
 
+
 @app.cell
-def _(fetch_pedestrian_counts):
+def _(fetch_pedestrian_counts, plot_time_series):
     _all = fetch_pedestrian_counts().frame
     # Select first 6 sensors for a manageable panel
     _cols = ["time"] + [c for c in _all.columns if c != "time"][:6]
-    df = _all.select(_cols)
-    df.head(10)
+    df = _all.select(_cols).head(24 * 7 * 52)
+    plot_time_series(df, title="Pedestrian Counts (6 Sensors)")
     return (df,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -78,16 +79,18 @@ def _(mo):
     with the first 6 sensors.
     """)
 
+
 @app.cell
-def _(df, inspect_locality, mo):
-    global_cols, panel_groups = inspect_locality(df)
+def _(df, inspect_panel, mo):
+    global_cols, panel_groups = inspect_panel(df)
     mo.md(f"""
     **Global columns**: {global_cols}
 
     **Panel groups** ({len(panel_groups)} groups):
 
-    {chr(10).join(f'- **{k}**: {v}' for k, v in panel_groups.items())}
+    {chr(10).join(f"- **{k}**: {v}" for k, v in panel_groups.items())}
     """)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -98,6 +101,7 @@ def _(mo):
     by location. Some sensors are in high-traffic areas while others
     capture quieter streets.
     """)
+
 
 @app.cell
 def _(df, plot_time_series):
@@ -110,6 +114,7 @@ def _(df, plot_time_series):
         y_label="Count",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -118,6 +123,7 @@ def _(mo):
     Plotting all 6 selected sensors reveals scale differences and shared
     temporal patterns across locations.
     """)
+
 
 @app.cell
 def _(df, plot_time_series):
@@ -130,6 +136,7 @@ def _(df, plot_time_series):
         y_label="Count",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -139,6 +146,7 @@ def _(mo):
     making it easy to compare traffic levels and variability.
     """)
 
+
 @app.cell
 def _(df, plot_boxplot):
     plot_boxplot(
@@ -146,6 +154,7 @@ def _(df, plot_boxplot):
         title="Pedestrian Count Distribution by Sensor",
         y_label="Count",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -156,17 +165,18 @@ def _(mo):
     peaks during commute hours and lunch time.
     """)
 
+
 @app.cell
 def _(df, plot_seasonality):
     _first_col = [c for c in df.columns if c.endswith("__count")][0]
     plot_seasonality(
         df,
         columns=_first_col,
-        feature="hour",
-        aggregation="mean",
+        seasonality="hour",
         title="T1 - Average Pedestrian Count by Hour",
         y_label="Average Count",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -177,14 +187,15 @@ def _(mo):
     - **Hourly frequency**: 20 pedestrian count sensors by default (pass `n_series=None` for all 66)
     - **Sensor comparison**: Direct multi-series plotting without manual pivoting
     - **Intraday patterns**: Clear hour-of-day effects with commute and lunch-time peaks
-    - **`inspect_locality`**: Automatically discovers panel groups from column names
+    - **[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)**: Automatically discovers panel groups from column names
 
     ## Next Steps
 
-    - **Weekly panel**: See `examples/datasets/store_sales.py`
-    - **Quarterly panel data**: See `examples/datasets/australian_tourism.py`
-    - **Panel forecasting**: See `examples/datasets/pedestrian_counts_forecasting.py` for panel forecasting on this dataset
+    - **Weekly panel**: See [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
+    - **Quarterly panel data**: See [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
+    - **Advanced analytics**: See [`examples/datasets/pedestrian_counts_forecasting.py`](/examples/datasets/pedestrian_counts_forecasting/) for ACF, PACF, spectral diagnostics
     """)
+
 
 if __name__ == "__main__":
     app.run()

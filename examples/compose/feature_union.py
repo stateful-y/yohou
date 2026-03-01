@@ -5,16 +5,16 @@
 #     "yohou",
 # ]
 # ///
-"""Parallel Feature Engineering with FeatureUnion.
-
-Demonstrates FeatureUnion to combine multiple transformers in parallel,
-including observation_horizon behaviour and verbose feature names.
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Feature Union",
+    "description": "Combine lag features, rolling statistics, EMA, and scaling in parallel with FeatureUnion and automatic observation horizon resolution.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -22,12 +22,13 @@ def _():
 
     return (mo,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Parallel Feature Engineering with FeatureUnion
 
-    `FeatureUnion` applies multiple transformers in parallel to the
+    [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) applies multiple transformers in parallel to the
     same input and concatenates the results column-wise. The resulting
     `observation_horizon` is the **maximum** across all transformers.
 
@@ -36,13 +37,15 @@ def _(mo):
     - Combine lag features, rolling statistics, and scaling in parallel
     - `observation_horizon` = max of child transformers
     - `verbose_feature_names_out` for prefixed column names
-    - Using `FeatureUnion` as `feature_transformer` in a forecaster
+    - Using [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) as `feature_transformer` in a forecaster
     """)
+
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
 
     from yohou.compose import FeatureUnion
     from yohou.datasets import fetch_sunspot
@@ -70,27 +73,34 @@ def _():
         pl,
         plot_forecast,
         plot_time_series,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Load Data
+
+    We load the Sunspot Numbers dataset and resample to monthly frequency.
+    The data is split 85/15 into training and test sets.
     """)
 
+
 @app.cell
-def _(fetch_sunspot, mo, pl):
+def _(fetch_sunspot, mo, pl, train_test_split):
     _raw = fetch_sunspot().frame
     sunspots = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
-    _split = int(len(sunspots) * 0.85)
-    y_train = sunspots.head(_split)
-    y_test = sunspots.tail(len(sunspots) - _split)
+    y_train, y_test = train_test_split(sunspots, test_size=0.15, shuffle=False)
     horizon = len(y_test)
-    mo.md(
-        f"**Sunspots**: {len(sunspots)} months, "
-        f"**Train**: {len(y_train)}, **Test**: {len(y_test)}"
-    )
+    mo.md(f"**Sunspots**: {len(sunspots)} months, **Train**: {len(y_train)}, **Test**: {len(y_test)}")
     return horizon, sunspots, y_test, y_train
+
+
+@app.cell
+def _(plot_time_series, sunspots):
+    plot_time_series(sunspots, title="Monthly Sunspot Numbers")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -99,6 +109,7 @@ def _(mo):
 
     Combine lag features with rolling statistics.
     """)
+
 
 @app.cell
 def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
@@ -109,15 +120,21 @@ def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
         ],
     )
     union_basic.fit(y_train)
-    _y_features = union_basic.transform(y_train)
+    basic_features = union_basic.transform(y_train)
 
     mo.md(
-        f"**Output columns**: {_y_features.columns}\n\n"
-        f"**Output shape**: {_y_features.shape}\n\n"
+        f"**Output columns**: {basic_features.columns}\n\n"
+        f"**Output shape**: {basic_features.shape}\n\n"
         f"**observation_horizon**: {union_basic.observation_horizon} "
         f"(max of lag=12 and window=12)"
     )
-    return (union_basic,)
+    return basic_features, union_basic
+
+
+@app.cell
+def _(basic_features, plot_time_series):
+    plot_time_series(basic_features, title="Basic FeatureUnion: Lags + Rolling Stats")
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -127,6 +144,7 @@ def _(mo):
     When `verbose_feature_names_out=True` (default), each output column
     is prefixed with the transformer name.
     """)
+
 
 @app.cell
 def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
@@ -157,6 +175,7 @@ def _(FeatureUnion, LagTransformer, RollingStatisticsTransformer, mo, y_train):
         "similarly-named features."
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -164,6 +183,7 @@ def _(mo):
 
     Combine lags, rolling statistics, and exponential moving average.
     """)
+
 
 @app.cell
 def _(
@@ -182,23 +202,30 @@ def _(
         ],
     )
     union_three.fit(y_train)
-    _y_three = union_three.transform(y_train)
+    three_features = union_three.transform(y_train)
 
     mo.md(
-        f"**Three-way union output**: {_y_three.shape}\n\n"
-        f"**Columns**: {_y_three.columns}\n\n"
+        f"**Three-way union output**: {three_features.shape}\n\n"
+        f"**Columns**: {three_features.columns}\n\n"
         f"**observation_horizon**: {union_three.observation_horizon}"
     )
-    return (union_three,)
+    return three_features, union_three
+
+
+@app.cell
+def _(plot_time_series, three_features):
+    plot_time_series(three_features, title="Three-Way Union: Lags + Rolling + EMA")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. FeatureUnion in a Forecaster
 
-    Use `FeatureUnion` as the `feature_transformer` to produce rich
+    Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) as the `feature_transformer` to produce rich
     feature sets for the reduction-based forecaster.
     """)
+
 
 @app.cell
 def _(
@@ -227,18 +254,20 @@ def _(
 
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
-    _mae_union = float(
-        _scorer.score(y_test, _y_pred_union)
-    )
-    _mae_naive = float(
-        _scorer.score(y_test, _y_pred_naive)
-    )
+    _mae_union = float(_scorer.score(y_test, _y_pred_union))
+    _mae_naive = float(_scorer.score(y_test, _y_pred_naive))
 
-    mo.md(
-        f"**FeatureUnion + Ridge MAE**: {_mae_union:.2f}\n\n"
-        f"**SeasonalNaive MAE**: {_mae_naive:.2f}"
-    )
+    mo.md(f"**FeatureUnion + Ridge MAE**: {_mae_union:.2f}\n\n**SeasonalNaive MAE**: {_mae_naive:.2f}")
     return (fc_union,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) displays the predictions produced by the
+    [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)-powered forecaster against the test data.
+    """)
+
 
 @app.cell
 def _(fc_union, horizon, plot_forecast, y_test, y_train):
@@ -251,23 +280,25 @@ def _(fc_union, horizon, plot_forecast, y_test, y_train):
         title="FeatureUnion (Lags + Rolling + EMA): Sunspots",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **`FeatureUnion`** applies transformers in parallel and concatenates outputs
+    - **[`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)** applies transformers in parallel and concatenates outputs
     - **`observation_horizon`** = MAX across all child transformers
     - **`verbose_feature_names_out=True`** prefixes columns with transformer name
-    - Use as **`feature_transformer`** in `PointReductionForecaster` for rich feature engineering
-    - Combine `LagTransformer`, `RollingStatisticsTransformer`, `ExponentialMovingAverage`, etc.
+    - Use as **`feature_transformer`** in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) for rich feature engineering
+    - Combine [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/), [`ExponentialMovingAverage`](/pages/api/generated/yohou.preprocessing.window.ExponentialMovingAverage/), etc.
 
     ## Next Steps
 
-    - **FeaturePipeline**: See `examples/compose/pipeline_composition.py` for sequential pipelines
-    - **Decomposition**: See `examples/compose/decomposition_variations.py`
-    - **Panel feature union**: See `examples/compose/panel_pipelines.py`
+    - **FeaturePipeline**: See [`examples/compose/pipeline_composition.py`](/examples/compose/pipeline_composition/) for sequential pipelines
+    - **Decomposition**: See [`examples/compose/decomposition_variations.py`](/examples/compose/decomposition_variations/)
+    - **Panel feature union**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

@@ -391,7 +391,13 @@ class AbsoluteGammaResidual(GammaResidual):
     Produces **symmetric** prediction intervals that are proportional
     to the prediction magnitude.
 
-    See Also
+    Parameters
+    ----------
+    epsilon : float, default=1e-8
+        Small constant added to the denominator to prevent division by
+        zero.
+
+            See Also
     --------
     GammaResidual : Asymmetric variant using signed relative errors.
     AbsoluteResidual : Scale-independent symmetric variant.

@@ -7,7 +7,7 @@ The User Guide covers Yohou's design, core concepts, and best practices in depth
 
 ## Chapters
 
-1. **[Core Concepts](core-concepts.md)**: Data format, time column conventions, the fit/update/predict/reset lifecycle, observation horizons, and tags.
+1. **[Core Concepts](core-concepts.md)**: Data format, time column conventions, the fit/observe/predict/rewind lifecycle, observation horizons, and tags.
 
 2. **[Forecasting](forecasting.md)**: Point forecasting with naive baselines, reduction-based forecasters, tabularization, column and feature forecasting.
 

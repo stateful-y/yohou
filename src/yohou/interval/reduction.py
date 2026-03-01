@@ -36,8 +36,6 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         includes the raw target, and ``None`` uses only exogenous features.
     feature_transformer : BaseTransformer or None, default=None
         Transformer used to transform the feature time series into features.
-    update_strategy : {"average", "constant"}, default="average"
-        How to update intervals with new observations.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
 
@@ -137,21 +135,31 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     def _detect_multiquantile_loss(self) -> str | None:
         """Detect a multi-quantile loss function on the estimator.
 
-        Checks whether the wrapped estimator exposes a ``loss_function``
-        parameter whose value starts with ``"MultiQuantile"`` (the
-        convention used by CatBoost).
+        Checks whether the wrapped estimator (or any nested sub-estimator)
+        exposes a ``loss_function`` parameter whose value starts with
+        ``"MultiQuantile"`` (the convention used by CatBoost).
+
+        When the estimator is wrapped (e.g. inside
+        ``MultiOutputRegressor``), the deep parameter name is returned
+        (e.g. ``"estimator__loss_function"``) so that ``set_params``
+        can reach the nested parameter.
 
         Returns
         -------
         str or None
-            The parameter name (e.g. ``"loss_function"``) if detected,
-            ``None`` otherwise.
+            The parameter name (e.g. ``"loss_function"`` or
+            ``"estimator__loss_function"``) if detected, ``None``
+            otherwise.
 
         """
-        params = self.estimator.get_params(deep=False)
-        loss = params.get("loss_function")
-        if isinstance(loss, str) and loss.startswith("MultiQuantile"):
-            return "loss_function"
+        params = self.estimator.get_params(deep=True)
+        for param_name, value in params.items():
+            if (
+                param_name.split("__")[-1] == "loss_function"
+                and isinstance(value, str)
+                and value.startswith("MultiQuantile")
+            ):
+                return param_name
         return None
 
     @_fit_context(prefer_skip_nested_validation=True)

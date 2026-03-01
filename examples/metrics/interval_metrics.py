@@ -5,22 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Interval Metrics for Prediction Interval Evaluation.
-
-Demonstrates interval scorers: EmpiricalCoverage, IntervalScore, MeanIntervalWidth,
-PinballLoss, and CalibrationError.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Interval Metrics",
+    "description": "Evaluate prediction intervals with EmpiricalCoverage, IntervalScore, MeanIntervalWidth, PinballLoss, and CalibrationError across coverage levels.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -32,11 +33,11 @@ def _(mo):
 
     ## What You'll Learn
 
-    - `EmpiricalCoverage`: Does the interval contain the actual value at the expected rate?
-    - `IntervalScore` (Winkler score): Penalizes wide intervals and miscoverage
-    - `MeanIntervalWidth`: Average interval width (narrower = better)
-    - `PinballLoss`: Quantile-specific loss
-    - `CalibrationError`: Gap between nominal and empirical coverage
+    - [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/): Does the interval contain the actual value at the expected rate?
+    - [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) (Winkler score): Penalizes wide intervals and miscoverage
+    - [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/): Average interval width (narrower = better)
+    - [`PinballLoss`](/pages/api/generated/yohou.metrics.interval.PinballLoss/): Quantile-specific loss
+    - [`CalibrationError`](/pages/api/generated/yohou.metrics.interval.CalibrationError/): Gap between nominal and empirical coverage
     - Aggregation across coverage rates with `"coveragewise"`
 
     ## Prerequisites
@@ -44,10 +45,11 @@ def _(mo):
     Understanding of prediction intervals from `interval/` examples.
     """)
 
+
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
     from sklearn.linear_model import QuantileRegressor
+    from sklearn.model_selection import train_test_split
     from sklearn.multioutput import MultiOutputRegressor
 
     from yohou.datasets import fetch_tourism_monthly
@@ -59,7 +61,7 @@ def _():
         MeanIntervalWidth,
         PinballLoss,
     )
-    from yohou.plotting import plot_calibration, plot_forecast
+    from yohou.plotting import plot_calibration, plot_forecast, plot_score_time_series, plot_time_series
     from yohou.preprocessing import LagTransformer
 
     return (
@@ -73,18 +75,24 @@ def _():
         PinballLoss,
         QuantileRegressor,
         fetch_tourism_monthly,
-        pl,
         plot_calibration,
         plot_forecast,
+        plot_score_time_series,
+        plot_time_series,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Generate Interval Predictions
 
-    We fit an interval forecaster and produce prediction intervals to evaluate with the metrics below.
+    We fit an [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) that wraps a `QuantileRegressor` with
+    a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/), then produce prediction intervals at multiple coverage
+    rates. These intervals serve as input for all the interval metrics below.
     """)
+
 
 @app.cell
 def _(
@@ -93,15 +101,11 @@ def _(
     MultiOutputRegressor,
     QuantileRegressor,
     fetch_tourism_monthly,
+    train_test_split,
 ):
-    y = (
-        fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "tourists"})
-    )
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train = y.head(115)
-    y_test = y.tail(29)
+    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
     fh = len(y_test)
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.8, 0.9, 0.95]
 
@@ -109,12 +113,8 @@ def _(
         estimator=MultiOutputRegressor(QuantileRegressor(solver="highs")),
         feature_transformer=LagTransformer(lag=list(range(1, 13))),
     )
-    interval_forecaster.fit(
-        y_train, forecasting_horizon=fh, coverage_rates=coverage_rates
-    )
-    y_pred_int = interval_forecaster.predict_interval(
-        forecasting_horizon=fh, coverage_rates=coverage_rates
-    )
+    interval_forecaster.fit(y_train, forecasting_horizon=fh, coverage_rates=coverage_rates)
+    y_pred_int = interval_forecaster.predict_interval(forecasting_horizon=fh, coverage_rates=coverage_rates)
 
     # Drop observed_time: not needed for metrics/plotting
     if "observed_time" in y_pred_int.columns:
@@ -122,7 +122,22 @@ def _(
 
     print(f"Coverage rates: {coverage_rates}")
     print(f"Prediction columns: {y_pred_int.columns}")
-    return coverage_rates, y_pred_int, y_test, y_train
+    return coverage_rates, y, y_pred_int, y_test, y_train
+
+
+@app.cell
+def _(plot_time_series, y):
+    plot_time_series(y, title="Tourism Monthly")
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) renders the prediction intervals as shaded bands around the
+    point forecast, with one band per coverage rate. This gives a visual check
+    that the intervals are reasonable before computing numeric metrics.
+    """)
+
 
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
@@ -134,6 +149,7 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
         title="Intervals for Evaluation",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -143,9 +159,10 @@ def _(mo):
     A 90% interval should contain ~90% of observations.
     """)
 
+
 @app.cell
 def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
-    ec = EmpiricalCoverage(coverage_rates=coverage_rates)
+    ec = EmpiricalCoverage(coverage_rates=[0.9])
     ec.fit(y_train)
     coverage_result = ec.score(y_test, y_pred_int)
     print("Empirical Coverage:")
@@ -153,6 +170,23 @@ def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
     for rate in coverage_rates:
         print(f"  {rate:.0%}     → result included")
     print(f"\n  Result: {coverage_result}")
+
+
+@app.cell
+def _(
+    EmpiricalCoverage,
+    coverage_rates,
+    plot_score_time_series,
+    y_pred_int,
+    y_test,
+):
+    plot_score_time_series(
+        EmpiricalCoverage(coverage_rates=coverage_rates),
+        y_test,
+        y_pred_int,
+        title="Empirical Coverage for an Expected Coverage of 90% per Timestep",
+    )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -163,12 +197,30 @@ def _(mo):
     Lower is better. Combines both sharpness and calibration.
     """)
 
+
 @app.cell
-def _(IntervalScore, coverage_rates, y_pred_int, y_test, y_train):
-    is_scorer = IntervalScore(coverage_rates=coverage_rates)
+def _(IntervalScore, y_pred_int, y_test, y_train):
+    is_scorer = IntervalScore(coverage_rates=[0.9])
     is_scorer.fit(y_train)
     is_result = is_scorer.score(y_test, y_pred_int)
     print(f"Interval Score: {is_result}")
+
+
+@app.cell
+def _(
+    IntervalScore,
+    coverage_rates,
+    plot_score_time_series,
+    y_pred_int,
+    y_test,
+):
+    plot_score_time_series(
+        IntervalScore(coverage_rates=coverage_rates),
+        y_test,
+        y_pred_int,
+        title="Interval Score per Timestep",
+    )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -179,24 +231,56 @@ def _(mo):
     Narrower is better **given adequate coverage**.
     """)
 
+
 @app.cell
-def _(MeanIntervalWidth, coverage_rates, y_pred_int, y_test, y_train):
-    miw = MeanIntervalWidth(coverage_rates=coverage_rates)
+def _(MeanIntervalWidth, y_pred_int, y_test, y_train):
+    miw = MeanIntervalWidth(coverage_rates=[0.9])
     miw.fit(y_train)
     width_result = miw.score(y_test, y_pred_int)
     print(f"Mean Interval Width: {width_result}")
+
+
+@app.cell
+def _(
+    MeanIntervalWidth,
+    coverage_rates,
+    plot_score_time_series,
+    y_pred_int,
+    y_test,
+):
+    plot_score_time_series(
+        MeanIntervalWidth(coverage_rates=coverage_rates),
+        y_test,
+        y_pred_int,
+        title="Mean Interval Width per Timestep",
+    )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. PinballLoss and CalibrationError
 
-    We examine two additional metrics that assess quantile accuracy and coverage reliability.
+    [`PinballLoss`](/pages/api/generated/yohou.metrics.interval.PinballLoss/) measures quantile-specific accuracy: it penalizes under-prediction
+    and over-prediction asymmetrically according to the quantile level. Lower
+    values indicate better-calibrated quantile estimates.
+
+    [`CalibrationError`](/pages/api/generated/yohou.metrics.interval.CalibrationError/) computes the absolute gap between nominal coverage rates
+    and empirical coverage. A perfectly calibrated model has zero calibration
+    error at every coverage level.
     """)
 
+
 @app.cell
-def _(CalibrationError, PinballLoss, coverage_rates, y_pred_int, y_test, y_train):
-    pb = PinballLoss(coverage_rates=coverage_rates)
+def _(
+    CalibrationError,
+    PinballLoss,
+    coverage_rates,
+    y_pred_int,
+    y_test,
+    y_train,
+):
+    pb = PinballLoss(coverage_rates=[0.9])
     pb.fit(y_train)
     pinball_result = pb.score(y_test, y_pred_int)
     print(f"Pinball Loss: {pinball_result}")
@@ -206,6 +290,17 @@ def _(CalibrationError, PinballLoss, coverage_rates, y_pred_int, y_test, y_train
     cal_result = ce.score(y_test, y_pred_int)
     print(f"Calibration Error: {cal_result}")
 
+
+@app.cell
+def _(PinballLoss, coverage_rates, plot_score_time_series, y_pred_int, y_test):
+    plot_score_time_series(
+        PinballLoss(coverage_rates=coverage_rates),
+        y_test,
+        y_pred_int,
+        title="Pinball Loss per Timestep",
+    )
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -214,6 +309,7 @@ def _(mo):
     Like point scorers, interval scorers support aggregation.
     `"coveragewise"` gives per-coverage-rate scores.
     """)
+
 
 @app.cell
 def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
@@ -226,13 +322,18 @@ def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
     print("Coverage-wise Empirical Coverage:")
     print(cw_result)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 7. Calibration Plot
 
-    `plot_calibration` shows nominal vs. empirical coverage, ideal is the diagonal.
+    [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) plots nominal coverage (x-axis) against empirical coverage
+    (y-axis). A well-calibrated forecaster produces points along the diagonal.
+    Deviations above the diagonal indicate over-coverage (intervals too wide),
+    while deviations below indicate under-coverage (intervals too narrow).
     """)
+
 
 @app.cell
 def _(coverage_rates, plot_calibration, y_pred_int, y_test):
@@ -244,29 +345,32 @@ def _(coverage_rates, plot_calibration, y_pred_int, y_test):
         title="Calibration: Nominal vs Empirical Coverage",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - `EmpiricalCoverage`: Checks if intervals achieve target coverage
-    - `IntervalScore`: Combined sharpness + coverage (lower = better)
-    - `MeanIntervalWidth`: Sharpness only (narrower = better)
-    - `PinballLoss`: Quantile-specific loss
-    - `CalibrationError`: Gap between nominal and realized coverage
+    - [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/): Checks if intervals achieve target coverage
+    - [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/): Combined sharpness + coverage (lower = better)
+    - [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/): Sharpness only (narrower = better)
+    - [`PinballLoss`](/pages/api/generated/yohou.metrics.interval.PinballLoss/): Quantile-specific loss
+    - [`CalibrationError`](/pages/api/generated/yohou.metrics.interval.CalibrationError/): Gap between nominal and realized coverage
     - Use `aggregation_method="coveragewise"` for per-rate breakdown
-    - `plot_calibration` visualizes calibration quality
+    - [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) visualizes calibration quality
     """)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Point metrics**: See `point_metrics.py` for forecast accuracy metrics
-    - **Model selection**: See `model_selection/` for CV with scoring
+    - **Point metrics**: See [`point_metrics.py`](/examples/metrics/point_metrics/) for forecast accuracy metrics
+    - **Model selection**: See [Model Selection](/examples/#model-selection) for CV with scoring
     - **Time weighting**: See `examples/time_weighted_forecasting.py`
     """)
+
 
 if __name__ == "__main__":
     app.run()

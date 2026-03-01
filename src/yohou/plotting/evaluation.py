@@ -1,6 +1,7 @@
 """Model evaluation and diagnostic visualization functions."""
 
 import copy
+from collections.abc import Callable
 from typing import Literal
 
 import numpy as np
@@ -13,20 +14,21 @@ from scipy import stats
 from yohou.metrics import BaseIntervalScorer
 from yohou.metrics.base import BaseScorer
 from yohou.plotting._utils import (
+    _group_panel_columns,
+    _member_name,
     _normalize_y_pred,
-    _panel_col_display,
     apply_default_layout,
     panel_facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
-    validate_plotting_params,
 )
-from yohou.utils import validate_plotting_data
+from yohou.utils import validate_plotting_data, validate_plotting_params
+from yohou.utils.panel import inspect_panel
 
 __all__ = [
     "plot_calibration",
     "plot_model_comparison_bar",
-    "plot_residual_time_series",
+    "plot_residuals",
     "plot_score_distribution",
     "plot_score_per_horizon",
     "plot_score_time_series",
@@ -130,15 +132,18 @@ def _render_residual_diagnostics(
         col=1,
     )
 
-    # Q-Q Plot
-    sorted_residuals = np.sort(residuals)
-    n = len(sorted_residuals)
+    # Q-Q Plot (z-scored residuals so both axes share the same scale)
+    res_mean = np.nanmean(residuals)
+    res_std = np.nanstd(residuals, ddof=1)
+    z_residuals = residuals - res_mean if res_std == 0 or np.isnan(res_std) else (residuals - res_mean) / res_std
+    sorted_z = np.sort(z_residuals)
+    n = len(sorted_z)
     theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, n))
 
     fig.add_trace(
         go.Scatter(
             x=theoretical_quantiles,
-            y=sorted_residuals,
+            y=sorted_z,
             mode="markers",
             marker={
                 "size": marker_size,
@@ -152,8 +157,8 @@ def _render_residual_diagnostics(
     )
 
     # Reference line for Q-Q plot
-    min_val = min(theoretical_quantiles.min(), sorted_residuals.min())
-    max_val = max(theoretical_quantiles.max(), sorted_residuals.max())
+    min_val = min(theoretical_quantiles.min(), sorted_z.min())
+    max_val = max(theoretical_quantiles.max(), sorted_z.max())
     fig.add_trace(
         go.Scatter(
             x=[min_val, max_val],
@@ -174,7 +179,7 @@ def _render_residual_diagnostics(
     fig.update_xaxes(title_text="Residuals", row=2, col=1)
     fig.update_yaxes(title_text="Frequency", row=2, col=1)
     fig.update_xaxes(title_text="Theoretical Quantiles", row=2, col=2)
-    fig.update_yaxes(title_text="Sample Quantiles", row=2, col=2)
+    fig.update_yaxes(title_text="Standardised Quantiles", row=2, col=2)
 
     fig = apply_default_layout(
         fig,
@@ -189,7 +194,7 @@ def _render_residual_diagnostics(
     return fig
 
 
-def plot_residual_time_series(
+def plot_residuals(
     y_pred: pl.DataFrame,
     y_truth: pl.DataFrame,
     *,
@@ -259,13 +264,13 @@ def plot_residual_time_series(
     Examples
     --------
     >>> import polars as pl
-    >>> from yohou.plotting import plot_residual_time_series
+    >>> from yohou.plotting import plot_residuals
 
     >>> dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
     >>> y_truth = pl.DataFrame({"time": dates, "y": [100 + i for i in range(91)]})
     >>> y_pred = pl.DataFrame({"time": dates, "y": [100 + i + (i % 3) for i in range(91)]})
 
-    >>> fig = plot_residual_time_series(y_pred, y_truth)
+    >>> fig = plot_residuals(y_pred, y_truth)
     >>> len(fig.data) > 0
     True
 
@@ -275,6 +280,11 @@ def plot_residual_time_series(
     """
     validate_plotting_data(y_pred)
     validate_plotting_data(y_truth)
+
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(y_truth)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
 
     # Resolve target columns
     if panel_group_names is not None:
@@ -582,7 +592,7 @@ def plot_calibration(
     See Also
     --------
     plot_forecast : Plot forecast with optional prediction intervals.
-    plot_residual_time_series : Residual diagnostics with panel facets.
+    plot_residuals : Residual diagnostics with panel facets.
     """
     # Styling kwargs
     line_width = kwargs.get("line_width", 2.0)
@@ -592,45 +602,62 @@ def plot_calibration(
     reference_dash = kwargs.get("reference_dash", "dash")
     show_legend = kwargs.get("show_legend", True)
 
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(y_truth)
+    if panel_group_names is None and columns is None and _panel_groups:
+        panel_group_names = []
+
     if panel_group_names is not None:
         panel_cols = resolve_panel_columns(y_truth, panel_group_names, columns)
-        n_panels = len(panel_cols)
-        n_cols_grid = min(n_panels, facet_n_cols)
-        n_rows = (n_panels + n_cols_grid - 1) // n_cols_grid
 
-        subplot_titles = [_panel_col_display(c) for c in panel_cols]
+        # Group columns by panel prefix, collect unique members
+        groups, all_members = _group_panel_columns(panel_cols)
+
+        n_groups = len(groups)
+        n_cols_grid = min(n_groups, facet_n_cols)
+        n_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
+
         fig = make_subplots(
             rows=n_rows,
             cols=n_cols_grid,
-            subplot_titles=subplot_titles,
+            subplot_titles=list(groups.keys()),
             shared_xaxes=True,
             shared_yaxes=True,
             vertical_spacing=max(0.04, 0.3 / n_rows),
             horizontal_spacing=0.08,
         )
 
-        palette = resolve_color_palette(color_palette, 1)
-        for idx, panel_col in enumerate(panel_cols):
-            row = idx // n_cols_grid + 1
-            col_idx = idx % n_cols_grid + 1
+        palette = resolve_color_palette(color_palette, len(all_members))
+        seen_members: set[str] = set()
+        for group_idx, (_, group_cols) in enumerate(groups.items()):
+            row = group_idx // n_cols_grid + 1
+            col_idx = group_idx % n_cols_grid + 1
 
-            truth_vals = y_truth[panel_col].to_numpy().flatten()
-            emp_cov = _compute_empirical_coverages(truth_vals, y_pred_int, panel_col, coverage_rates)
+            for panel_col in group_cols:
+                member_name = _member_name(panel_col)
+                member_idx = all_members.index(member_name)
+                first_seen = member_name not in seen_members
+                seen_members.add(member_name)
 
-            fig.add_trace(
-                go.Scatter(
-                    x=list(coverage_rates),
-                    y=emp_cov,
-                    mode="lines+markers",
-                    name=_panel_col_display(panel_col),
-                    line={"color": palette[0], "width": line_width},
-                    opacity=line_opacity,
-                    showlegend=False,
-                    hovertemplate="<b>%{fullData.name}</b><br>Nominal: %{x:.2f}<br>Coverage: %{y:.3f}<extra></extra>",
-                ),
-                row=row,
-                col=col_idx,
-            )
+                truth_vals = y_truth[panel_col].to_numpy().flatten()
+                emp_cov = _compute_empirical_coverages(truth_vals, y_pred_int, panel_col, coverage_rates)
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=list(coverage_rates),
+                        y=emp_cov,
+                        mode="lines+markers",
+                        name=member_name,
+                        line={"color": palette[member_idx], "width": line_width},
+                        opacity=line_opacity,
+                        showlegend=first_seen and show_legend,
+                        legendgroup=member_name,
+                        hovertemplate="<b>%{fullData.name}</b><br>Nominal: %{x:.2f}<br>Coverage: %{y:.3f}<extra></extra>",
+                    ),
+                    row=row,
+                    col=col_idx,
+                )
+
             fig.add_trace(
                 go.Scatter(
                     x=list(coverage_rates),
@@ -638,7 +665,8 @@ def plot_calibration(
                     mode="lines",
                     name="Perfect",
                     line={"color": reference_color, "width": reference_width, "dash": reference_dash},
-                    showlegend=False,
+                    showlegend=(group_idx == 0),
+                    legendgroup="perfect",
                 ),
                 row=row,
                 col=col_idx,
@@ -715,11 +743,169 @@ def plot_calibration(
     return fig
 
 
+def _plot_score_time_series_panel(
+    *,
+    scorer_componentwise: BaseScorer,
+    y_truth: pl.DataFrame,
+    y_pred_dict: dict[str, pl.DataFrame],
+    panel_group_names: list[str],
+    facet_n_cols: int,
+    colors: list[str],
+    scorer: BaseScorer,
+    show_legend: bool,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+    time_weight: Callable | pl.DataFrame | None = None,
+    **kwargs,
+) -> go.Figure:
+    """Render faceted per-group score time series.
+
+    Parameters
+    ----------
+    scorer_componentwise : BaseScorer
+        Scorer clone already configured for componentwise aggregation.
+    y_truth : pl.DataFrame
+        Ground truth values.
+    y_pred_dict : dict[str, pl.DataFrame]
+        Model name to prediction DataFrame mapping.
+    panel_group_names : list[str]
+        Panel group prefixes to facet by.
+    facet_n_cols : int
+        Number of columns in the facet grid.
+    colors : list[str]
+        Resolved color palette (one per model).
+    scorer : BaseScorer
+        Original scorer (used for title generation).
+    show_legend : bool
+        Whether to show legend.
+    title : str | None
+        Plot title override.
+    x_label : str | None
+        X-axis label override.
+    y_label : str | None
+        Y-axis label override.
+    width : int | None
+        Plot width in pixels.
+    height : int | None
+        Plot height in pixels.
+    time_weight : callable or pl.DataFrame or None, default=None
+        Time weighting function or DataFrame forwarded to
+        ``scorer.score()``.
+    **kwargs : dict
+        Styling overrides forwarded from the public API.
+
+    Returns
+    -------
+    go.Figure
+        Faceted figure with one subplot per panel group.
+
+    """
+    line_width = kwargs.get("line_width", 2.0)
+    line_dash = kwargs.get("line_dash", "solid")
+    line_opacity = kwargs.get("line_opacity", 1.0)
+    hovermode = kwargs.get("hovermode", "x unified")
+    show_markers = kwargs.get("show_markers", False)
+    mode = "lines+markers" if show_markers else "lines"
+
+    _, all_groups = inspect_panel(y_truth)
+    groups = list(all_groups) if not panel_group_names else [g for g in panel_group_names if g in all_groups]
+    if not groups:
+        msg = f"No panel groups found matching {panel_group_names}. Available: {list(all_groups)}"
+        raise ValueError(msg)
+
+    n_groups = len(groups)
+    n_cols_grid = min(n_groups, facet_n_cols)
+    n_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
+
+    fig = make_subplots(
+        rows=n_rows,
+        cols=n_cols_grid,
+        subplot_titles=list(groups),
+        shared_xaxes=True,
+        vertical_spacing=max(0.04, 0.3 / n_rows),
+        horizontal_spacing=0.08,
+    )
+
+    score_kwargs: dict = {}
+    if time_weight is not None:
+        score_kwargs["time_weight"] = time_weight
+
+    for model_idx, (model_name, y_pred_model) in enumerate(y_pred_dict.items()):
+        validate_plotting_data(y_pred_model)
+        scores_df = scorer_componentwise.score(y_truth, y_pred_model, **score_kwargs)
+
+        if not isinstance(scores_df, pl.DataFrame):
+            msg = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
+            raise TypeError(msg)
+
+        if "time" not in scores_df.columns:
+            msg = "Scorer must return DataFrame with 'time' column for componentwise aggregation"
+            raise ValueError(msg)
+
+        score_cols = [c for c in scores_df.columns if c != "time"]
+
+        for group_idx, group_name in enumerate(groups):
+            row = group_idx // n_cols_grid + 1
+            col = group_idx % n_cols_grid + 1
+
+            group_score_cols = [c for c in score_cols if c.startswith(f"{group_name}__")]
+            if not group_score_cols:
+                continue
+
+            if len(group_score_cols) == 1:
+                score_values = scores_df[group_score_cols[0]]
+            else:
+                score_values = scores_df.select(group_score_cols).mean_horizontal()
+
+            fig.add_trace(
+                go.Scatter(
+                    x=scores_df["time"],
+                    y=score_values,
+                    mode=mode,
+                    name=model_name,
+                    legendgroup=model_name,
+                    showlegend=(group_idx == 0),
+                    line={"color": colors[model_idx], "width": line_width, "dash": line_dash},
+                    opacity=line_opacity,
+                    marker={"size": 6} if show_markers else None,
+                    hovertemplate=(
+                        f"<b>{model_name}</b><br>Time: %{{x}}<br>Score: %{{y:.3f}}<extra>{group_name}</extra>"
+                    ),
+                ),
+                row=row,
+                col=col,
+            )
+
+    scorer_name = scorer.__class__.__name__
+    default_title = title or f"{scorer_name} Over Time (per group)"
+
+    row_height = 300
+    default_height = max(row_height * n_rows, 400)
+
+    fig = apply_default_layout(
+        fig,
+        title=default_title,
+        x_label=x_label or "time",
+        y_label=y_label or scorer_name,
+        width=width,
+        height=height or default_height,
+    )
+    fig.update_layout(hovermode=hovermode, showlegend=show_legend)
+
+    return fig
+
+
 def plot_score_time_series(
     scorer: BaseScorer,
     y_truth: pl.DataFrame,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
+    time_weight: Callable | pl.DataFrame | None = None,
+    panel_group_names: list[str] | None = None,
+    facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
     title: str | None = None,
@@ -729,8 +915,7 @@ def plot_score_time_series(
     height: int | None = None,
     **kwargs,
 ) -> go.Figure:
-    """
-    Plot scorer values over time for one or more forecasts.
+    """Plot scorer values over time for one or more forecasts.
 
     Evaluates forecast quality at each timestep by computing the scorer with
     componentwise aggregation, then plots the resulting score time series.
@@ -747,6 +932,18 @@ def plot_score_time_series(
         Predicted values with 'observed_time' and 'time' columns.
         - If DataFrame: single forecast to plot
         - If dict: multiple forecasts with keys as model names
+    time_weight : callable or pl.DataFrame or None, default=None
+        Time weighting function or DataFrame forwarded to
+        ``scorer.score()``.  When provided, per-timestep scores are
+        weighted before being plotted.
+    panel_group_names : list[str] | None, default=None
+        Panel group prefixes for faceted subplots.  When provided, each
+        group gets its own subplot showing the score time series for that
+        group.  Groups are resolved via ``inspect_panel`` against
+        *y_truth*.
+    facet_n_cols : int, default=2
+        Number of columns in the facet grid when *panel_group_names* is
+        used.
     color_palette : list[str] | None, default=None
         Custom color palette as hex codes. If None, uses yohou palette.
     show_legend : bool, default=True
@@ -817,7 +1014,7 @@ def plot_score_time_series(
 
     See Also
     --------
-    plot_residual_time_series : Plot residual diagnostics.
+    plot_residuals : Plot residual diagnostics.
     plot_forecast : Plot forecasts with historical data.
 
     Notes
@@ -861,16 +1058,44 @@ def plot_score_time_series(
     else:
         colors = resolve_color_palette(color_palette, len(y_pred_dict))
 
+    # Auto-detect panel data
+    _, _panel_groups = inspect_panel(y_truth)
+    if panel_group_names is None and _panel_groups:
+        panel_group_names = []
+
+    if panel_group_names is not None:
+        return _plot_score_time_series_panel(
+            scorer_componentwise=scorer_componentwise,
+            y_truth=y_truth,
+            y_pred_dict=y_pred_dict,
+            panel_group_names=panel_group_names,
+            facet_n_cols=facet_n_cols,
+            colors=colors,
+            scorer=scorer,
+            show_legend=show_legend,
+            title=title,
+            x_label=x_label,
+            y_label=y_label,
+            width=width,
+            height=height,
+            time_weight=time_weight,
+            **kwargs,
+        )
+
     # Create figure
     fig = go.Figure()
 
     # Compute and plot scores for each model
+    score_kwargs: dict = {}
+    if time_weight is not None:
+        score_kwargs["time_weight"] = time_weight
+
     for idx, (model_name, y_pred_model) in enumerate(y_pred_dict.items()):
         # Validate prediction DataFrame
         validate_plotting_data(y_pred_model)
 
         # Compute componentwise scores
-        scores_df = scorer_componentwise.score(y_truth, y_pred_model)
+        scores_df = scorer_componentwise.score(y_truth, y_pred_model, **score_kwargs)
 
         # Type narrow: ensure scores_df is a DataFrame
         if not isinstance(scores_df, pl.DataFrame):

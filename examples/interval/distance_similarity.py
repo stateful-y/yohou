@@ -5,15 +5,16 @@
 #     "yohou",
 # ]
 # ///
-"""Distance-Based Similarity Weighting for Conformal Prediction.
-
-Demonstrates DistanceSimilarity and its role in adaptive conformal intervals.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Distance-Based Similarity",
+    "description": "Adaptive prediction intervals via similarity-weighted conformal prediction using DistanceSimilarity with configurable distance metrics and bandwidths.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -21,13 +22,14 @@ def _():
 
     return (mo,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Distance-Based Similarity Weighting
 
     Standard conformal prediction gives every calibration residual equal weight.
-    `DistanceSimilarity` instead up-weights residuals from calibration points
+    [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/) instead up-weights residuals from calibration points
     **similar** to the current test point, yielding **adaptive** prediction
     intervals that narrow where the model is confident and widen where it
     is uncertain.
@@ -35,27 +37,26 @@ def _(mo):
     ## What You'll Learn
 
     - What similarity-based conformal prediction is and why it matters
-    - Configuring `DistanceSimilarity` with different distance metrics
-    - Plugging it into `SplitConformalForecaster` via the `similarity` parameter
+    - Configuring [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/) with different distance metrics
+    - Plugging it into [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) via the `similarity` parameter
     - Comparing interval widths and calibration with vs without similarity weighting
     - Tuning `metric_params` for metrics like Minkowski
 
     ## Prerequisites
 
-    Familiarity with `SplitConformalForecaster` and basic conformal prediction
-    (see `examples/interval/conformal_forecasting.py`).
+    Familiarity with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) and basic conformal prediction.
     """)
+
 
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import DistanceSimilarity, SplitConformalForecaster
     from yohou.metrics import (
         AbsoluteResidual,
-        EmpiricalCoverage,
         IntervalScore,
         MeanIntervalWidth,
     )
@@ -66,7 +67,6 @@ def _():
     return (
         AbsoluteResidual,
         DistanceSimilarity,
-        EmpiricalCoverage,
         IntervalScore,
         LagTransformer,
         MeanIntervalWidth,
@@ -74,11 +74,12 @@ def _():
         Ridge,
         SplitConformalForecaster,
         fetch_tourism_monthly,
-        pl,
         plot_calibration,
         plot_forecast,
         plot_score_per_horizon,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -89,29 +90,25 @@ def _(mo):
     similarity effects visible because the error structure changes over time.
     """)
 
-@app.cell
-def _(fetch_tourism_monthly):
-    y = (
-        fetch_tourism_monthly()
-        .frame.select("time", "T1__tourists").drop_nulls()
-        .rename({"T1__tourists": "tourists"})
-    )
 
-    split_idx = int(len(y) * 0.8)
-    y_train = y.head(split_idx)
-    y_test = y.tail(len(y) - split_idx)
-    forecasting_horizon = min(len(y_test), 24)  # Cap below calibration_size
-    y_test = y_test.head(forecasting_horizon)
-    return forecasting_horizon, split_idx, y, y_test, y_train
+@app.cell
+def _(fetch_tourism_monthly, train_test_split):
+    y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+
+    y_train, y_test = train_test_split(y, test_size=24, shuffle=False)
+    forecasting_horizon = len(y_test)
+    return forecasting_horizon, y_test, y_train
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Baseline: Standard Conformal (No Similarity)
 
-    First we build a standard `SplitConformalForecaster` **without** similarity
+    First we build a standard [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) **without** similarity
     weighting. All calibration residuals get equal weight.
     """)
+
 
 @app.cell
 def _(
@@ -123,7 +120,7 @@ def _(
     forecasting_horizon,
     y_train,
 ):
-    coverage = [0.80, 0.90, 0.95]
+    coverage = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
 
     base_forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
@@ -146,7 +143,18 @@ def _(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage,
     )
-    return conformal_standard, coverage, y_pred_standard
+    _y_point = conformal_standard.predict(forecasting_horizon=forecasting_horizon)
+    y_pred_standard = y_pred_standard.hstack(_y_point.drop("time", "observed_time"))
+    return coverage, y_pred_standard
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) displays the standard conformal intervals with uniform
+    weighting across all calibration residuals.
+    """)
+
 
 @app.cell
 def _(plot_forecast, y_pred_standard, y_test, y_train):
@@ -159,6 +167,7 @@ def _(plot_forecast, y_pred_standard, y_test, y_train):
         title="Standard Conformal (Uniform Weights)",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -168,6 +177,7 @@ def _(mo):
     whose lag features are close to the test point get higher weight, producing
     intervals that adapt to local error structure.
     """)
+
 
 @app.cell
 def _(
@@ -200,7 +210,18 @@ def _(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage,
     )
-    return conformal_euclidean, y_pred_euclidean
+    _y_point = conformal_euclidean.predict(forecasting_horizon=forecasting_horizon)
+    y_pred_euclidean = y_pred_euclidean.hstack(_y_point.drop("time", "observed_time"))
+    return (y_pred_euclidean,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) shows how Euclidean similarity weighting narrows or
+    widens intervals depending on the local calibration residuals.
+    """)
+
 
 @app.cell
 def _(plot_forecast, y_pred_euclidean, y_test, y_train):
@@ -213,15 +234,17 @@ def _(plot_forecast, y_pred_euclidean, y_test, y_train):
         title="Euclidean Similarity Weighting",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Comparing Distance Metrics
 
-    `DistanceSimilarity` accepts any metric from `scipy.spatial.distance.cdist`.
+    [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/) accepts any metric from `scipy.spatial.distance.cdist`.
     Let us compare **euclidean**, **cosine**, and **cityblock** (Manhattan distance)
     side by side.
     """)
+
 
 @app.cell
 def _(
@@ -259,10 +282,11 @@ def _(
         )
     return (similarity_predictions,)
 
+
 @app.cell
 def _(
-    mo,
     MeanIntervalWidth,
+    mo,
     similarity_predictions,
     y_pred_euclidean,
     y_pred_standard,
@@ -281,11 +305,8 @@ def _(
         _width = float(_width_scorer.score(y_test, _pred))
         _rows.append(f"| {_name} | {_width:.2f} |")
 
-    mo.md(
-        "### Mean Interval Width (90% coverage)\n\n"
-        "| Method | Width |\n|--------|-------|\n"
-        + "\n".join(_rows)
-    )
+    mo.md("### Mean Interval Width (90% coverage)\n\n| Method | Width |\n|--------|-------|\n" + "\n".join(_rows))
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -293,11 +314,12 @@ def _(mo):
     ## 5. Calibration Assessment
 
     Good intervals should achieve empirical coverage close to the nominal rate.
-    `plot_calibration` shows whether each method is over- or under-covering.
+    [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) shows whether each method is over- or under-covering.
     """)
 
+
 @app.cell
-def _(plot_calibration, coverage, y_pred_standard, y_test):
+def _(coverage, plot_calibration, y_pred_standard, y_test):
     plot_calibration(
         y_pred_standard,
         y_test,
@@ -305,8 +327,17 @@ def _(plot_calibration, coverage, y_pred_standard, y_test):
         title="Calibration: Standard Conformal",
     )
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) for the Euclidean similarity approach shows whether
+    the locally-weighted intervals achieve their nominal coverage.
+    """)
+
+
 @app.cell
-def _(plot_calibration, coverage, y_pred_euclidean, y_test):
+def _(coverage, plot_calibration, y_pred_euclidean, y_test):
     plot_calibration(
         y_pred_euclidean,
         y_test,
@@ -314,17 +345,25 @@ def _(plot_calibration, coverage, y_pred_euclidean, y_test):
         title="Calibration: Euclidean Similarity",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Horizon Degradation
 
-    Prediction intervals typically widen at longer horizons. `plot_score_per_horizon`
+    Prediction intervals typically widen at longer horizons. [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/)
     shows how interval scores change across forecast steps.
     """)
 
+
 @app.cell
-def _(IntervalScore, plot_score_per_horizon, y_pred_euclidean, y_pred_standard, y_test):
+def _(
+    IntervalScore,
+    plot_score_per_horizon,
+    y_pred_euclidean,
+    y_pred_standard,
+    y_test,
+):
     plot_score_per_horizon(
         IntervalScore(coverage_rates=[0.90]),
         y_test,
@@ -332,6 +371,7 @@ def _(IntervalScore, plot_score_per_horizon, y_pred_euclidean, y_pred_standard, 
         kind="line",
         title="Interval Score per Horizon Step (90% Coverage)",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -342,6 +382,7 @@ def _(mo):
     `metric_params={"p": 1.5}` gives a p-norm between Manhattan (p=1) and
     Euclidean (p=2).
     """)
+
 
 @app.cell
 def _(
@@ -361,10 +402,8 @@ def _(
             feature_transformer=LagTransformer(lag=[1, 2, 3, 12]),
         ),
         conformity_scorer=AbsoluteResidual(),
-        calibration_size=30,
-        similarity=DistanceSimilarity(
-            metric="minkowski", metric_params={"p": 1.5}
-        ),
+        calibration_size=36,
+        similarity=DistanceSimilarity(metric="minkowski", metric_params={"p": 2.5}),
     )
     conformal_minkowski.fit(
         y_train,
@@ -376,7 +415,18 @@ def _(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage,
     )
-    return conformal_minkowski, y_pred_minkowski
+    _y_point = conformal_minkowski.predict(forecasting_horizon=forecasting_horizon)
+    y_pred_minkowski = y_pred_minkowski.hstack(_y_point.drop("time", "observed_time"))
+    return (y_pred_minkowski,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) shows how the Minkowski distance (p=1.5) affects
+    the resulting interval shape.
+    """)
+
 
 @app.cell
 def _(plot_forecast, y_pred_minkowski, y_test, y_train):
@@ -388,6 +438,7 @@ def _(plot_forecast, y_pred_minkowski, y_test, y_train):
         n_history=36,
         title="Minkowski (p=1.5) Similarity",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -402,10 +453,11 @@ def _(mo):
 
     ## Next Steps
 
-    - **Conformity scorers**: See `examples/interval/conformal_conformity_scorers.py` for comparing Residual, GammaResidual, etc.
-    - **Panel intervals**: See `examples/interval/panel_intervals.py` for prediction intervals on panel data
-    - **Interval metrics**: See `examples/metrics/interval_metrics.py` for EmpiricalCoverage, IntervalScore, and more
+    - **Conformity scorers**: See [`examples/interval/conformal_conformity_scorers.py`](/examples/interval/conformal_conformity_scorers/) for comparing Residual, GammaResidual, etc.
+    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/) for prediction intervals on panel data
+    - **Interval metrics**: See [`examples/metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) for EmpiricalCoverage, IntervalScore, and more
     """)
+
 
 if __name__ == "__main__":
     app.run()

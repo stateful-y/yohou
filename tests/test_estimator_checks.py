@@ -8,8 +8,6 @@ import polars as pl
 import pytest
 from sklearn.base import clone
 
-# TIME SERIES-SPECIFIC CHECKS
-
 
 def check_time_column_required(estimator, time_series_factory):
     """Check that transformer requires 'time' column.

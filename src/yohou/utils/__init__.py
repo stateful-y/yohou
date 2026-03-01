@@ -1,13 +1,23 @@
 """Utility functions for data manipulation, validation, and tabularization."""
 
 from .discovery import all_displays, all_estimators, all_functions
-from .panel import dict_to_panel, get_group_df, inspect_locality, select_panel_columns
+from .panel import (
+    dict_to_panel,
+    get_group_df,
+    inspect_locality,
+    inspect_panel,
+    panel_aware_prefix,
+    panel_aware_rename,
+    panel_aware_suffix,
+    select_panel_columns,
+)
 from .polars import cast, get_numeric_columns
 from .tabularization import tabularize
 from .tags import ForecasterTags, InputTags, SplitterTags, Tags, TargetTags, TransformerTags
 from .validate_data import (
     validate_forecaster_data,
     validate_plotting_data,
+    validate_plotting_params,
     validate_scorer_data,
     validate_splitter_data,
     validate_time_weight,
@@ -72,8 +82,12 @@ __all__ = [
     "get_group_df",
     "get_numeric_columns",
     "inspect_locality",
+    "inspect_panel",
     "interval_to_timedelta",
     "linear_decay_weight",
+    "panel_aware_prefix",
+    "panel_aware_rename",
+    "panel_aware_suffix",
     "parse_interval",
     "seasonal_emphasis_weight",
     "select_panel_columns",
@@ -82,6 +96,7 @@ __all__ = [
     "validate_column_names",
     "validate_forecaster_data",
     "validate_plotting_data",
+    "validate_plotting_params",
     "validate_scorer_data",
     "validate_search_data",
     "validate_splitter_data",

@@ -1,183 +1,64 @@
+---
+template: api-submodule.html
+---
+
 # yohou.preprocessing
 
 Time series transformers for feature engineering, scaling, imputation, outlier handling, and resampling.
 
-**User guide**: See the [Preprocessing](../user-guide/preprocessing.md) section for further details.
+### Data imputation
 
-## Function Transformers
+| Name | Description |
+| --- | --- |
+| [`SeasonalImputer`](generated/yohou.preprocessing.imputation.SeasonalImputer.md) | Seasonal decomposition-based imputation for missing values. |
+| [`SimpleImputer`](generated/yohou.preprocessing.imputation.SimpleImputer.md) | Simple imputation using sklearn's SimpleImputer. |
+| [`SimpleTimeImputer`](generated/yohou.preprocessing.imputation.SimpleTimeImputer.md) | Time series imputation using interpolation or filling methods. |
+| [`TransformedSpaceKNNImputer`](generated/yohou.preprocessing.imputation.TransformedSpaceKNNImputer.md) | K-nearest neighbors imputation in a transformed feature space. |
 
-::: yohou.preprocessing.FunctionTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+### Handling outliers
 
-## Window Transformers
+| Name | Description |
+| --- | --- |
+| [`OutlierPercentileHandler`](generated/yohou.preprocessing.outlier.OutlierPercentileHandler.md) | Handle outliers based on percentile thresholds. |
+| [`OutlierThresholdHandler`](generated/yohou.preprocessing.outlier.OutlierThresholdHandler.md) | Handle outliers based on fixed threshold values. |
 
-::: yohou.preprocessing.RollingStatisticsTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+### Resampling
 
-::: yohou.preprocessing.ExponentialMovingAverage
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+| Name | Description |
+| --- | --- |
+| [`Downsampler`](generated/yohou.preprocessing.resampling.Downsampler.md) | Downsample time series to a lower frequency using aggregation. |
+| [`Upsampler`](generated/yohou.preprocessing.resampling.Upsampler.md) | Upsample time series to a higher frequency using interpolation. |
 
-::: yohou.preprocessing.LagTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+### Scaling
 
-::: yohou.preprocessing.SlidingWindowFunctionTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+| Name | Description |
+| --- | --- |
+| [`SklearnScaler`](generated/yohou.preprocessing.sklearn_base.SklearnScaler.md) | Wrapper to integrate sklearn scalers into the Yohou pipeline. |
+| [`StandardScaler`](generated/yohou.preprocessing.sklearn_wrappers.StandardScaler.md) | Standardize features by removing the mean and scaling to unit variance. |
+| [`MaxAbsScaler`](generated/yohou.preprocessing.sklearn_wrappers.MaxAbsScaler.md) | Scale each feature by its maximum absolute value. |
+| [`MinMaxScaler`](generated/yohou.preprocessing.sklearn_wrappers.MinMaxScaler.md) | Transform features by scaling each feature to a given range. |
+| [`Normalizer`](generated/yohou.preprocessing.sklearn_wrappers.Normalizer.md) | Normalize samples individually to unit norm. |
+| [`RobustScaler`](generated/yohou.preprocessing.sklearn_wrappers.RobustScaler.md) | Scale features using statistics that are robust to outliers. |
 
-## Signal Processing
+### Feature engineering
 
-::: yohou.preprocessing.NumericalFilter
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+| Name | Description |
+| --- | --- |
+| [`SklearnTransformer`](generated/yohou.preprocessing.sklearn_base.SklearnTransformer.md) | Wrapper to integrate sklearn transformers into the Yohou pipeline. |
+| [`LagTransformer`](generated/yohou.preprocessing.window.LagTransformer.md) | Create lagged features from time series data. |
+| [`ExponentialMovingAverage`](generated/yohou.preprocessing.window.ExponentialMovingAverage.md) | Exponentially Weighted Moving Average (EWMA) transformer. |
+| [`PolynomialFeatures`](generated/yohou.preprocessing.sklearn_wrappers.PolynomialFeatures.md) | Generate polynomial and interaction features. |
+| [`PowerTransformer`](generated/yohou.preprocessing.sklearn_wrappers.PowerTransformer.md) | Apply a power transform featurewise to make data more Gaussian-like. |
+| [`QuantileTransformer`](generated/yohou.preprocessing.sklearn_wrappers.QuantileTransformer.md) | Transform features using quantiles information. |
+| [`SplineTransformer`](generated/yohou.preprocessing.sklearn_wrappers.SplineTransformer.md) | Generate univariate B-spline bases for features. |
+| [`FunctionTransformer`](generated/yohou.preprocessing.function.FunctionTransformer.md) | Constructs a transformer from an arbitrary callable. |
+| [`SlidingWindowFunctionTransformer`](generated/yohou.preprocessing.window.SlidingWindowFunctionTransformer.md) | Transform time series by applying a function over sliding windows. |
+| [`RollingStatisticsTransformer`](generated/yohou.preprocessing.window.RollingStatisticsTransformer.md) | Compute rolling window statistics for time series. |
 
-::: yohou.preprocessing.NumericalDifferentiator
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+### Signal processing
 
-::: yohou.preprocessing.NumericalIntegrator
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Resampling
-
-::: yohou.preprocessing.Downsampler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.Upsampler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Sklearn Scalers
-
-::: yohou.preprocessing.SklearnScaler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.StandardScaler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.MinMaxScaler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.RobustScaler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.MaxAbsScaler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Sklearn Transformers
-
-::: yohou.preprocessing.SklearnTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.Normalizer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.PolynomialFeatures
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.PowerTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.QuantileTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.SplineTransformer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Imputation
-
-::: yohou.preprocessing.SimpleImputer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.TransformedSpaceKNNImputer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.SimpleTimeImputer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.SeasonalImputer
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-## Outlier Handling
-
-::: yohou.preprocessing.OutlierThresholdHandler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
-
-::: yohou.preprocessing.OutlierPercentileHandler
-    options:
-      show_root_heading: true
-      show_source: true
-      members_order: source
+| Name | Description |
+| --- | --- |
+| [`NumericalDifferentiator`](generated/yohou.preprocessing.signal.NumericalDifferentiator.md) | Numerical differentiation transformer for time series signals. |
+| [`NumericalFilter`](generated/yohou.preprocessing.signal.NumericalFilter.md) | Apply digital IIR or FIR filters to time series data. |
+| [`NumericalIntegrator`](generated/yohou.preprocessing.signal.NumericalIntegrator.md) | Numerical integration transformer for time series signals. |

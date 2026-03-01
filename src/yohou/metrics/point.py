@@ -9,7 +9,7 @@ from sklearn.base import _fit_context
 from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.utils import inspect_locality, validate_scorer_data
+from yohou.utils import inspect_panel, validate_scorer_data
 
 from .base import BasePointScorer
 
@@ -185,7 +185,7 @@ class MeanAbsoluteError(BasePointScorer):
 
         # Apply time weights if provided
         if time_weight is not None:
-            _, panel_groups = inspect_locality(scores)
+            _, panel_groups = inspect_panel(scores)
 
             if len(panel_groups) > 0:
                 # Panel data: apply weights per group

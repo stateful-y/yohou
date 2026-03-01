@@ -11,7 +11,7 @@ from yohou.base.utils import (
     _observe_transformers_one,
     _rewind_transformers_one,
 )
-from yohou.utils import add_interval, get_group_df, inspect_locality
+from yohou.utils import add_interval, get_group_df, inspect_panel
 
 if TYPE_CHECKING:
     from yohou.base.transformer import BaseTransformer
@@ -25,6 +25,12 @@ class BasePanelForecaster:
     This mixin provides methods with narrow return types for panel data
     (dict[str, pl.DataFrame]). Child classes that need type narrowing can
     explicitly call these methods via `BasePanelForecaster._pre_fit_panel(self, ...)`.
+
+    See Also
+    --------
+    `BaseForecaster` : Main forecaster base combining standard and panel operations.
+    `BaseStandardForecaster` : Standard (single DataFrame) forecaster mixin.
+    `BaseReductionForecaster` : Reduction-based forecaster using sklearn regressors.
 
     """
 
@@ -85,7 +91,7 @@ class BasePanelForecaster:
         self.local_X_schema_ = None
         self.shared_X_schema_ = None
         if X is not None and X_panel_groups is not None:
-            X_shared_names, _ = inspect_locality(X)
+            X_shared_names, _ = inspect_panel(X)
 
             # Validate X groups have same suffixes
             first_X_group_cols = X_panel_groups[self.panel_group_names_[0]]

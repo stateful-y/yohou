@@ -5,22 +5,23 @@
 #     "yohou",
 # ]
 # ///
-"""Panel Prediction Intervals.
-
-Demonstrates SplitConformalForecaster and IntervalReductionForecaster
-on panel time series with per-group calibration and coverage analysis.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Panel Prediction Intervals",
+    "description": "Combine conformal and quantile regression intervals on panel data with per-group coverage analysis, calibration plots, and groupwise interval scoring.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -33,24 +34,26 @@ def _(mo):
 
     ## What You'll Learn
 
-    - `SplitConformalForecaster` with per-group calibration
-    - `IntervalReductionForecaster` on panel data
+    - [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) with per-group calibration
+    - [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) on panel data
     - Per-group coverage analysis
     - Comparing interval width across groups
     """)
+
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
 
-    from yohou.datasets import fetch_tourism_quarterly
+    from yohou.datasets import fetch_kdd_cup
     from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, MeanIntervalWidth
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
-    from yohou.utils.panel import inspect_locality
+    from yohou.utils.panel import inspect_panel
 
     return (
         EmpiricalCoverage,
@@ -60,46 +63,51 @@ def _():
         PointReductionForecaster,
         Ridge,
         SplitConformalForecaster,
-        inspect_locality,
-        fetch_tourism_quarterly,
+        fetch_kdd_cup,
+        inspect_panel,
         pl,
         plot_forecast,
+        train_test_split,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Prepare Panel Data
+
+    We load the KDD Cup 2018 air quality dataset with 3 Beijing stations,
+    each monitoring 6 pollutants. Each station is a panel group with
+    6 measurement members.
     """)
 
+
 @app.cell
-def _(inspect_locality, fetch_tourism_quarterly, mo):
-    _bunch = fetch_tourism_quarterly()
-    # Select T3-T10 (same length series, 88 rows after drop_nulls)
-    _selected = [f"T{i}__tourists" for i in range(3, 11)]
-    tourism = _bunch.frame.select("time", *_selected).drop_nulls()
-    _globals, groups = inspect_locality(tourism)
-    _split = int(len(tourism) * 0.8)
-    y_train = tourism.head(_split)
-    y_test = tourism.tail(len(tourism) - _split)
+def _(fetch_kdd_cup, inspect_panel, mo, train_test_split):
+    _bunch = fetch_kdd_cup(n_groups=3)
+    aq = _bunch.frame.drop_nulls().tail(300)
+    _globals, groups = inspect_panel(aq)
+    y_train, y_test = train_test_split(aq, test_size=0.15, shuffle=False)
     horizon = len(y_test)
     coverage_rates = [0.9]
 
     mo.md(
         f"**Groups**: {list(groups.keys())}\n\n"
-        f"**Train**: {len(y_train)} quarters, **Test**: {len(y_test)} quarters\n\n"
+        f"**Train**: {len(y_train)} hours, **Test**: {len(y_test)} hours\n\n"
         f"**Coverage target**: {coverage_rates}"
     )
-    return coverage_rates, groups, horizon, tourism, y_test, y_train
+    return coverage_rates, groups, horizon, y_test, y_train
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Split Conformal Forecaster on Panel Data
 
-    `SplitConformalForecaster` calibrates per-group: each panel group
+    [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) calibrates per-group: each panel group
     gets its own conformal quantile based on its residual distribution.
     """)
+
 
 @app.cell
 def _(
@@ -119,53 +127,74 @@ def _(
         calibration_size=horizon + 5,
     )
     fc_conformal.fit(y_train, forecasting_horizon=horizon, coverage_rates=coverage_rates)
-    y_pred_conf = fc_conformal.predict_interval(
-        forecasting_horizon=horizon, coverage_rates=coverage_rates
-    )
-    return fc_conformal, y_pred_conf
+    y_pred_conf = fc_conformal.predict_interval(forecasting_horizon=horizon, coverage_rates=coverage_rates)
+    _y_point = fc_conformal.predict(forecasting_horizon=horizon)
+    y_pred_conf = y_pred_conf.hstack(_y_point.drop("time", "observed_time"))
+    return (y_pred_conf,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) renders per-group prediction intervals. Use
+    `panel_group_names` to select which groups to display.
+    """)
+
 
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_conf, y_test, y_train):
+    _groups = sorted({c.split("__")[0] for c in y_train.columns if "__" in c})
     plot_forecast(
         y_test,
         y_pred_conf,
         y_train=y_train,
-        n_history=8,
+        n_history=48,
         coverage_rates=coverage_rates,
-        panel_group_names=["T3", "T4", "T5"],
+        panel_group_names=_groups[:2],
         title="Split Conformal: Panel (90% Interval)",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Interval Reduction Forecaster on Panel Data
 
-    `IntervalReductionForecaster` uses quantile regression to produce
+    [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) uses quantile regression to produce
     prediction intervals. Each panel group gets independent quantile
     estimates.
     """)
+
 
 @app.cell
 def _(IntervalReductionForecaster, coverage_rates, horizon, y_train):
     fc_interval = IntervalReductionForecaster()
     fc_interval.fit(y_train, forecasting_horizon=horizon, coverage_rates=coverage_rates)
-    y_pred_interval = fc_interval.predict_interval(
-        forecasting_horizon=horizon, coverage_rates=coverage_rates
-    )
-    return fc_interval, y_pred_interval
+    y_pred_interval = fc_interval.predict_interval(forecasting_horizon=horizon, coverage_rates=coverage_rates)
+    return (y_pred_interval,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) for the quantile reduction approach shows the same
+    groups, allowing visual comparison of interval width and shape.
+    """)
+
 
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
+    _groups = sorted({c.split("__")[0] for c in y_train.columns if "__" in c})
     plot_forecast(
         y_test,
         y_pred_interval,
         y_train=y_train,
-        n_history=8,
+        n_history=48,
         coverage_rates=coverage_rates,
-        panel_group_names=["T3", "T4", "T5"],
+        panel_group_names=_groups[:2],
         title="Interval Reduction: Panel (90% Interval)",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -175,6 +204,7 @@ def _(mo):
     Check whether each group achieves the target coverage rate and
     compare interval widths.
     """)
+
 
 @app.cell
 def _(
@@ -202,7 +232,7 @@ def _(
         _w_i = float(_width_scorer.score(y_test, y_pred_interval, panel_group_names=[_state]))
 
         _rows.append({
-            "Group": _state,
+            "Station": _state,
             "Conformal Coverage": round(_cov_c, 3),
             "Reduction Coverage": round(_cov_i, 3),
             "Conformal Width": round(_w_c, 1),
@@ -212,6 +242,7 @@ def _(
     _results = pl.DataFrame(_rows)
     mo.ui.table(_results)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -219,16 +250,16 @@ def _(mo):
 
     - **Per-group calibration**: Both conformal and quantile regression methods calibrate independently per group
     - **Coverage varies by group**: Some groups may have wider/narrower intervals depending on their variance
-    - **`SplitConformalForecaster`** wraps any point forecaster with conformal calibration
-    - **`IntervalReductionForecaster`** uses quantile regression directly
-    - Use `EmpiricalCoverage` and `MeanIntervalWidth` for per-group coverage/width analysis
+    - **[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)** wraps any point forecaster with conformal calibration
+    - **[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)** uses quantile regression directly
+    - Use [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) for per-group coverage/width analysis
 
     ## Next Steps
 
-    - **Aggregation modes**: See `examples/metrics/aggregation_modes.py` for coveragewise scoring
-    - **Conformal variations**: See `examples/interval/conformal_forecasting.py`
-    - **Conformity scorers**: See `examples/metrics/conformity_scorers.py`
+    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/) for coveragewise scoring
+    - **Conformity scorers**: See [`examples/metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

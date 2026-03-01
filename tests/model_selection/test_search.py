@@ -462,3 +462,54 @@ class TestScorerDirectionCorrectness:
 
         # best_index_ should point to least negative score
         assert search.best_index_ == np.argmax(mean_scores)
+
+
+class TestBestParamsConsistency:
+    """Tests for best_params_, best_index_, and best_forecaster_ consistency."""
+
+    def test_best_params_matches_best_index(self, y_X_factory):
+        """best_params_ must correspond to the candidate at best_index_."""
+        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 3, 5, 10]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(y[:80], X=None, forecasting_horizon=3)
+
+        # best_params_ should match the params at best_index_
+        cv_params = search.cv_results_["params"][search.best_index_]
+        assert search.best_params_ == cv_params
+
+    def test_best_forecaster_uses_best_params(self, y_X_factory):
+        """best_forecaster_ must be parameterized with best_params_."""
+        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5, 10]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(y[:80], X=None, forecasting_horizon=3)
+
+        best = search.best_forecaster_
+        for param, value in search.best_params_.items():
+            assert getattr(best, param) == value
+
+    def test_best_score_matches_cv_results_at_best_index(self, y_X_factory):
+        """best_score_ must equal mean_test_score at best_index_."""
+        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5, 10]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(y[:80], X=None, forecasting_horizon=3)
+
+        expected = search.cv_results_["mean_test_score"][search.best_index_]
+        assert search.best_score_ == expected

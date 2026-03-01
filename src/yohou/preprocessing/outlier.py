@@ -116,7 +116,7 @@ class OutlierThresholdHandler(BaseTransformer):
 
     See Also
     --------
-    OutlierPercentileHandler : Handle outliers based on percentiles.
+    `OutlierPercentileHandler` : Handle outliers based on percentiles.
 
     """
 
@@ -289,7 +289,7 @@ class OutlierPercentileHandler(BaseTransformer):
 
     See Also
     --------
-    OutlierThresholdHandler : Handle outliers based on fixed thresholds.
+    `OutlierThresholdHandler` : Handle outliers based on fixed thresholds.
 
     """
 

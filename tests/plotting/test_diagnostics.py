@@ -1,7 +1,5 @@
 """Tests for diagnostic plotting functions (ACF, PACF, spectrum, etc.)."""
 
-import importlib.util
-
 import numpy as np
 import polars as pl
 import pytest
@@ -15,7 +13,6 @@ from yohou.plotting import (
     plot_partial_autocorrelation,
     plot_scatter_matrix,
     plot_seasonality,
-    plot_stl_components,
     plot_subseasonality,
 )
 
@@ -398,40 +395,6 @@ class TestPlotSubseasonality:
         assert isinstance(fig, go.Figure)
 
 
-_has_statsmodels = importlib.util.find_spec("statsmodels") is not None
-
-
-@pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
-class TestPlotStlComponents:
-    """Tests for plot_stl_components function."""
-
-    @pytest.fixture
-    def monthly_df(self):
-        """Create monthly data suitable for STL decomposition."""
-        return pl.DataFrame({
-            "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2023, 12, 1), "1mo", eager=True),
-            "y": [100 + 2 * i + 10 * np.sin(2 * np.pi * i / 12) + np.random.randn() for i in range(72)],
-        })
-
-    def test_basic(self, monthly_df):
-        """Test basic STL decomposition plot."""
-        fig = plot_stl_components(monthly_df, columns="y")
-        assert isinstance(fig, go.Figure)
-        # Should have traces for at least observed, trend, seasonal, residual
-        assert len(fig.data) >= 4
-
-    def test_explicit_period(self, monthly_df):
-        """Test with explicit period parameter."""
-        fig = plot_stl_components(monthly_df, columns="y", period=12)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 4
-
-    def test_subset_components(self, monthly_df):
-        """Test showing only a subset of components."""
-        fig = plot_stl_components(monthly_df, columns="y", components=["trend", "seasonal"])
-        assert len(fig.data) == 2
-
-
 class TestPlotScatterMatrix:
     """Tests for plot_scatter_matrix function."""
 
@@ -529,3 +492,148 @@ class TestPlotScatterMatrix:
             corr_font_size=40,
         )
         assert isinstance(fig, go.Figure)
+
+
+class TestPlotSubseasonalityPanel:
+    """Panel and error-path tests for plot_subseasonality."""
+
+    @pytest.fixture
+    def panel_df(self):
+        """Create panel DataFrame for subseasonality."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "y__a": [100 + i % 30 for i in range(n)],
+            "y__b": [200 + (i % 20) * 2 for i in range(n)],
+        })
+
+    def test_panel_produces_figure(self, panel_df):
+        """Panel data with subseasonality returns a valid figure."""
+        fig = plot_subseasonality(panel_df, seasonality="month")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_trace_type_is_scatter(self):
+        """Traces produced by subseasonality are Scatter type."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i % 30 for i in range(366)],
+        })
+        fig = plot_subseasonality(df, columns="y", seasonality="month")
+        assert all(isinstance(t, go.Scatter) for t in fig.data)
+
+    def test_custom_title(self):
+        """Custom title is applied to subseasonality figure."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i % 30 for i in range(366)],
+        })
+        fig = plot_subseasonality(df, columns="y", seasonality="month", title="My Title")
+        assert fig.layout.title.text == "My Title"
+
+    def test_custom_dimensions(self):
+        """Custom width/height apply to figure layout."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i % 30 for i in range(366)],
+        })
+        fig = plot_subseasonality(df, columns="y", seasonality="month", width=1000, height=600)
+        assert fig.layout.width == 1000
+        assert fig.layout.height == 600
+
+
+class TestPlotCrossCorrelationPanel:
+    """Panel and error-path tests for plot_cross_correlation."""
+
+    @pytest.fixture
+    def panel_df(self):
+        """Create panel DataFrame for cross-correlation."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "x__a": [100 + i % 20 for i in range(n)],
+            "y__a": [150 + (i % 15) * 2 for i in range(n)],
+        })
+
+    def test_custom_title(self):
+        """Custom title is applied to cross-correlation figure."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "x": [100 + i % 20 for i in range(91)],
+            "y": [150 + (i % 15) * 2 for i in range(91)],
+        })
+        fig = plot_cross_correlation(df, columns=["x", "y"], title="CCF Title")
+        assert fig.layout.title.text == "CCF Title"
+
+    def test_custom_dimensions(self):
+        """Custom width/height apply to cross-correlation figure."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "x": [100 + i % 20 for i in range(91)],
+            "y": [150 + (i % 15) * 2 for i in range(91)],
+        })
+        fig = plot_cross_correlation(df, columns=["x", "y"], width=900, height=500)
+        assert fig.layout.width == 900
+        assert fig.layout.height == 500
+
+    def test_trace_count(self):
+        """Cross-correlation produces bar and confidence band traces."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "x": [100 + i % 20 for i in range(91)],
+            "y": [150 + (i % 15) * 2 for i in range(91)],
+        })
+        fig = plot_cross_correlation(df, columns=["x", "y"], max_lags=10)
+        # Should have at least bar trace + confidence bands
+        assert len(fig.data) >= 1
+
+
+class TestPlotScatterMatrixPanel:
+    """Panel and edge-case tests for plot_scatter_matrix."""
+
+    def test_custom_title(self):
+        """Custom title is applied to scatter matrix figure."""
+        rng = np.random.default_rng(42)
+        n = 100
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "a": rng.standard_normal(n),
+            "b": rng.standard_normal(n),
+        })
+        fig = plot_scatter_matrix(df, columns=["a", "b"], title="Matrix Title")
+        assert fig.layout.title.text == "Matrix Title"
+
+
+class TestPlotSeasonalityAssertions:
+    """Stronger assertion tests for plot_seasonality."""
+
+    def test_month_produces_traces(self):
+        """Seasonality with month produces multiple traces."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i % 30 for i in range(366)],
+        })
+        fig = plot_seasonality(df, columns="y", seasonality="month")
+        assert len(fig.data) >= 1
+        assert all(isinstance(t, go.Scatter | go.Box) for t in fig.data)
+
+    def test_returns_go_figure(self):
+        """Seasonality always returns a go.Figure."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i % 30 for i in range(366)],
+        })
+        fig = plot_seasonality(df, columns="y", seasonality="month")
+        assert isinstance(fig, go.Figure)
+
+    def test_custom_dimensions(self):
+        """Custom dimensions are respected."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i % 30 for i in range(366)],
+        })
+        fig = plot_seasonality(df, columns="y", seasonality="month", width=800, height=500)
+        assert fig.layout.width == 800
+        assert fig.layout.height == 500

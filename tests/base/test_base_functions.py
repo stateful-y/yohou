@@ -210,7 +210,7 @@ class TestFitTransformTransformersOne:
         y = time_series_factory(length=50, n_components=2)
         target_transformer = SimpleTransformer(observation_horizon=5)
 
-        with pytest.raises((NotFittedError, AttributeError)):
+        with pytest.raises((NotFittedError, AttributeError), match="feature_names_in_|not fitted"):
             _ = target_transformer.feature_names_in_
 
         y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
@@ -222,7 +222,7 @@ class TestFitTransformTransformersOne:
         )
 
         assert hasattr(target_tf, "feature_names_in_")
-        with pytest.raises((NotFittedError, AttributeError)):
+        with pytest.raises((NotFittedError, AttributeError), match="feature_names_in_|not fitted"):
             _ = target_transformer.feature_names_in_
 
     def test_target_as_feature_raw(self, time_series_factory, SimpleTransformer):

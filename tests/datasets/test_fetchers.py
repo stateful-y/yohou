@@ -10,10 +10,12 @@ import pytest
 from sklearn.utils import Bunch
 
 from yohou.datasets._fetchers import (
+    _restructure_kdd_cup_columns,
     clear_data_home,
     fetch_dominick,
     fetch_electricity_demand,
     fetch_hospital,
+    fetch_kdd_cup,
     fetch_pedestrian_counts,
     fetch_sunspot,
     fetch_tourism_monthly,
@@ -29,6 +31,7 @@ ALL_FETCHERS = [
     fetch_dominick,
     fetch_pedestrian_counts,
     fetch_hospital,
+    fetch_kdd_cup,
 ]
 
 
@@ -237,3 +240,50 @@ class TestFetchIntegration:
         assert isinstance(bunch.frame, pl.DataFrame)
         assert "time" in bunch.frame.columns
         assert bunch.n_series == 50
+
+    @pytest.mark.slow
+    @pytest.mark.integration
+    def test_real_download_kdd_cup(self, tmp_path):
+        """Real download of the KDD Cup 2018 dataset (default subset)."""
+        bunch = fetch_kdd_cup(data_home=tmp_path)
+        assert isinstance(bunch.frame, pl.DataFrame)
+        assert "time" in bunch.frame.columns
+        assert bunch.n_series == 30  # default n_groups=5 × 6 measurements
+        for col in bunch.feature_names:
+            assert "__" in col
+            assert not col.endswith("__value")
+
+
+class TestRestructureKddCup:
+    """Tests for the _restructure_kdd_cup_columns helper."""
+
+    def test_renames_measurement_columns(self):
+        """Columns matching the KDD Cup pattern are restructured."""
+        frame = pl.DataFrame({
+            "time": [1, 2],
+            "beijing_dongsi_aq_pm2.5__value": [10.0, 20.0],
+            "beijing_dongsi_aq_co__value": [1.0, 2.0],
+        }).cast({"time": pl.Datetime})
+        result = _restructure_kdd_cup_columns(frame)
+        assert "beijing_dongsi_aq__pm2.5" in result.columns
+        assert "beijing_dongsi_aq__co" in result.columns
+        assert "beijing_dongsi_aq_pm2.5__value" not in result.columns
+
+    def test_preserves_time_column(self):
+        """The time column is never renamed."""
+        frame = pl.DataFrame({
+            "time": [1, 2],
+            "beijing_dongsi_aq_o3__value": [3.0, 4.0],
+        }).cast({"time": pl.Datetime})
+        result = _restructure_kdd_cup_columns(frame)
+        assert "time" in result.columns
+
+    def test_no_op_on_non_matching_columns(self):
+        """Non-matching columns pass through unchanged."""
+        frame = pl.DataFrame({
+            "time": [1, 2],
+            "T1__value": [10.0, 20.0],
+            "T2__value": [30.0, 40.0],
+        }).cast({"time": pl.Datetime})
+        result = _restructure_kdd_cup_columns(frame)
+        assert result.columns == ["time", "T1__value", "T2__value"]

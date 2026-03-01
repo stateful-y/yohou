@@ -4,22 +4,23 @@
 #     "yohou",
 # ]
 # ///
-"""Advanced Imputation.
-
-Demonstrates SimpleTimeImputer, SeasonalImputer, and sklearn-wrapped
-imputers (SimpleImputer, TransformedSpaceKNNImputer) on time series with synthetic gaps.
-"""
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Advanced Imputation",
+    "description": "Compare SimpleTimeImputer, SeasonalImputer, SimpleImputer, and TransformedSpaceKNNImputer on synthetic block and scattered gaps in monthly tourism data.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -31,18 +32,19 @@ def _(mo):
 
     ## What You'll Learn
 
-    - `SimpleTimeImputer`: linear, forward, backward, nearest, fill_both
-    - `SeasonalImputer`: seasonal mean/median fill
-    - `SimpleImputer` / `TransformedSpaceKNNImputer` (sklearn wrappers)
+    - [`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/): linear, forward, backward, nearest, fill_both
+    - [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/): seasonal mean/median fill
+    - [`SimpleImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleImputer/) / [`TransformedSpaceKNNImputer`](/pages/api/generated/yohou.preprocessing.imputation.TransformedSpaceKNNImputer/) (sklearn wrappers)
     - Comparing methods on synthetic gaps
     """)
+
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
 
     from yohou.datasets import fetch_tourism_monthly
-    from yohou.plotting import plot_time_series
+    from yohou.plotting import plot_model_comparison_bar, plot_time_series
     from yohou.preprocessing import SeasonalImputer, SimpleImputer, SimpleTimeImputer, TransformedSpaceKNNImputer
 
     return (
@@ -52,18 +54,28 @@ def _():
         TransformedSpaceKNNImputer,
         fetch_tourism_monthly,
         pl,
+        plot_model_comparison_bar,
         plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 1. Create Data with Synthetic Gaps
+    ## 1. Prepare the Data: Synthetic Gaps in Monthly Tourism
+
+    We load the monthly tourism dataset with `fetch_tourism_monthly()`, pick a
+    single series, and punch holes in it: a contiguous block of 5 missing months
+    plus 4 scattered single-month gaps. This mix of gap patterns lets us compare
+    how each imputer handles short isolated gaps versus longer contiguous ones.
     """)
+
 
 @app.cell
 def _(fetch_tourism_monthly, mo, pl):
-    tourism = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    tourism = (
+        fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+    )
 
     # Create gaps: indices 30-34 (block), and scattered singles
     _gap_indices = list(range(30, 35)) + [50, 70, 90, 110]
@@ -80,37 +92,72 @@ def _(fetch_tourism_monthly, mo, pl):
     )
     return tourism, tourism_missing
 
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders one or more numeric columns against the `"time"`
+    axis. Gaps in the data appear as breaks in the line, making missing regions
+    easy to spot visually.
+    """)
+
+
 @app.cell
-def _(tourism_missing, plot_time_series):
+def _(plot_time_series, tourism_missing):
     plot_time_series(tourism_missing, title="Monthly Tourism: With Synthetic Gaps")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. SimpleTimeImputer: Linear Interpolation
+
+    [`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/) fills missing values using time-aware strategies.
+    With `method="linear"`, it draws a straight line between the last known
+    value before a gap and the first known value after it, then places the
+    missing points along that line. This works well for short, smooth gaps.
+
+    After imputation we use [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) to confirm the gaps are filled.
     """)
 
+
 @app.cell
-def _(SimpleTimeImputer, tourism_missing, plot_time_series):
+def _(SimpleTimeImputer, plot_time_series, tourism_missing):
     imp_linear = SimpleTimeImputer(method="linear")
     imp_linear.fit(tourism_missing)
     filled_linear = imp_linear.transform(tourism_missing)
-    plot_time_series(filled_linear, title="Linear Interpolation")
-    return filled_linear, imp_linear
+    _combined = filled_linear.rename({"tourists": "imputed"}).join(
+        tourism_missing.rename({"tourists": "with gaps"}),
+        on="time",
+    )
+    plot_time_series(_combined, title="Linear Interpolation")
+    return (filled_linear,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. SimpleTimeImputer: Forward Fill
+
+    Forward fill (`method="forward"`) carries the last observed value forward
+    through each gap. It preserves the level before the gap but introduces a
+    flat segment, so it is most appropriate when gradual drift between
+    observations is unlikely.
     """)
 
+
 @app.cell
-def _(SimpleTimeImputer, tourism_missing, plot_time_series):
+def _(SimpleTimeImputer, plot_time_series, tourism_missing):
     imp_forward = SimpleTimeImputer(method="forward")
     imp_forward.fit(tourism_missing)
     filled_forward = imp_forward.transform(tourism_missing)
-    plot_time_series(filled_forward, title="Forward Fill")
-    return filled_forward, imp_forward
+    _combined = filled_forward.rename({"tourists": "imputed"}).join(
+        tourism_missing.rename({"tourists": "with gaps"}),
+        on="time",
+    )
+    plot_time_series(_combined, title="Forward Fill")
+    return (filled_forward,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -119,74 +166,159 @@ def _(mo):
 
     The `limit` parameter caps the maximum number of consecutive NaN
     values that are filled. Useful when you don't want to interpolate
-    across long gaps.
+    across long gaps. Here we set `limit=2`, so the block of 5
+    consecutive missing values is only partially filled while shorter
+    gaps are handled completely.
     """)
 
-@app.cell
-def _(SimpleTimeImputer, tourism_missing, mo):
-    _imp_limited = SimpleTimeImputer(method="linear", limit=2)
-    _imp_limited.fit(tourism_missing)
-    _filled_limited = _imp_limited.transform(tourism_missing)
-    _remaining_nulls = _filled_limited.null_count()["tourists"][0]
 
-    mo.md(
-        f"**limit=2**: {_remaining_nulls} nulls remain\n\n"
-        "The block gap (5 consecutive) is only partially filled."
+@app.cell
+def _(SimpleTimeImputer, plot_time_series, tourism_missing):
+    imp_limited = SimpleTimeImputer(method="forward", limit=2)
+    imp_limited.fit(tourism_missing)
+    filled_limited = imp_limited.transform(tourism_missing)
+    _combined = filled_limited.rename({"tourists": "imputed (limit=2)"}).join(
+        tourism_missing.rename({"tourists": "with gaps"}),
+        on="time",
     )
+    plot_time_series(_combined, title="Linear Interpolation with limit=2")
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 5. SeasonalImputer
 
-    Fill missing values using seasonal patterns (e.g., same month from
-    other years).
+    [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/) fills missing values by looking at the same position in
+    previous seasonal cycles. Setting `period=12` on monthly data means a
+    missing January is filled with the average of all other Januaries in the
+    series. The `fill_method` parameter controls the aggregation:
+    `"seasonal_mean"` uses the mean, while `"seasonal_median"` uses the median.
+    This approach is effective when the series has strong, repeating seasonal
+    patterns.
     """)
 
+
 @app.cell
-def _(SeasonalImputer, tourism_missing, plot_time_series):
+def _(SeasonalImputer, plot_time_series, tourism_missing):
     imp_seasonal = SeasonalImputer(period=12, fill_method="seasonal_mean")
     imp_seasonal.fit(tourism_missing)
     filled_seasonal = imp_seasonal.transform(tourism_missing)
-    plot_time_series(filled_seasonal, title="Seasonal Imputer (period=12, seasonal_mean)")
-    return filled_seasonal, imp_seasonal
+    _combined = filled_seasonal.rename({"tourists": "imputed"}).join(
+        tourism_missing.rename({"tourists": "with gaps"}),
+        on="time",
+    )
+    plot_time_series(_combined, title="Seasonal Imputer (period=12, seasonal_mean)")
+    return (filled_seasonal,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 6. Sklearn-Wrapped Imputers
 
-    `SimpleImputer` (mean/median fill) and `TransformedSpaceKNNImputer` (neighbour-based)
-    are wrapped for yohou time series compatibility.
+    Yohou wraps several Scikit-Learn imputers so they work seamlessly with
+    time-indexed Polars DataFrames.
+
+    [`SimpleImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleImputer/) replaces every missing value with a single summary
+    statistic of the column (controlled by the `strategy` parameter:
+    `"mean"`, `"median"`, or `"constant"`). It ignores temporal order
+    entirely, which makes it a useful baseline.
     """)
 
+
 @app.cell
-def _(SimpleImputer, tourism_missing, plot_time_series):
+def _(SimpleImputer, plot_time_series, tourism_missing):
     imp_mean = SimpleImputer(strategy="mean")
     imp_mean.fit(tourism_missing)
     filled_mean = imp_mean.transform(tourism_missing)
-    plot_time_series(filled_mean, title="SimpleImputer (strategy='mean')")
-    return filled_mean, imp_mean
+    _combined = filled_mean.rename({"tourists": "imputed"}).join(
+        tourism_missing.rename({"tourists": "with gaps"}),
+        on="time",
+    )
+    plot_time_series(_combined, title="SimpleImputer (strategy='mean')")
+    return (filled_mean,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    [`TransformedSpaceKNNImputer`](/pages/api/generated/yohou.preprocessing.imputation.TransformedSpaceKNNImputer/) estimates each missing value from its
+    `n_neighbors` nearest complete observations in feature space. This
+    produces locally adaptive fills that can follow nonlinear patterns
+    better than a global mean or median.
+    """)
+
 
 @app.cell
-def _(TransformedSpaceKNNImputer, tourism_missing, plot_time_series):
+def _(TransformedSpaceKNNImputer, plot_time_series, tourism_missing):
     imp_knn = TransformedSpaceKNNImputer(n_neighbors=5)
     imp_knn.fit(tourism_missing)
     filled_knn = imp_knn.transform(tourism_missing)
-    plot_time_series(filled_knn, title="TransformedSpaceKNNImputer (n_neighbors=5)")
-    return filled_knn, imp_knn
+    _combined = filled_knn.rename({"tourists": "imputed"}).join(
+        tourism_missing.rename({"tourists": "with gaps"}),
+        on="time",
+    )
+    plot_time_series(_combined, title="TransformedSpaceKNNImputer (n_neighbors=5)")
+    return (filled_knn,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 7. Compare Methods
 
-    Measure imputation error against the known true values at gap
-    positions.
+    Because we created the gaps ourselves, we can measure each method's
+    quality both visually and numerically.
+
+    First we overlay all five imputed series on a single interactive chart.
+    Click legend entries to toggle individual methods on and off, making it
+    easy to compare how each one fills the same gaps.
     """)
 
+
 @app.cell
-def _(tourism, filled_forward, filled_knn, filled_linear, filled_mean, filled_seasonal, mo, pl):
+def _(
+    filled_forward,
+    filled_knn,
+    filled_linear,
+    filled_mean,
+    filled_seasonal,
+    plot_time_series,
+    tourism_missing,
+):
+    _all_methods = (
+        tourism_missing
+        .rename({"tourists": "with gaps"})
+        .join(filled_linear.rename({"tourists": "Linear"}), on="time")
+        .join(filled_forward.rename({"tourists": "Forward"}), on="time")
+        .join(filled_seasonal.rename({"tourists": "Seasonal (12)"}), on="time")
+        .join(filled_mean.rename({"tourists": "Mean"}), on="time")
+        .join(filled_knn.rename({"tourists": "KNN (5)"}), on="time")
+    )
+    plot_time_series(_all_methods, title="All Imputation Methods")
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Next we compute the Mean Absolute Error (MAE) between the imputed
+    values and the original (pre-gap) values at the nine gap positions.
+    [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/) turns the scores into an interactive bar
+    chart so the ranking is immediately visible.
+    """)
+
+
+@app.cell
+def _(
+    filled_forward,
+    filled_knn,
+    filled_linear,
+    filled_mean,
+    filled_seasonal,
+    plot_model_comparison_bar,
+    tourism,
+):
     _gap_indices = list(range(30, 35)) + [50, 70, 90, 110]
     _true_vals = tourism["tourists"].gather(_gap_indices)
 
@@ -198,31 +330,39 @@ def _(tourism, filled_forward, filled_knn, filled_linear, filled_mean, filled_se
         "KNN (5)": filled_knn,
     }
 
-    _rows = []
+    _results = {}
     for _name, _filled in _methods.items():
         _filled_vals = _filled["tourists"].gather(_gap_indices)
-        _mae = ((_filled_vals - _true_vals).abs()).mean()
-        _rows.append({"Method": _name, "MAE at Gaps": round(float(_mae), 2)})
+        _mae = float((_filled_vals - _true_vals).abs().mean())
+        _results[_name] = {"MAE": round(_mae, 2)}
 
-    mo.ui.table(pl.DataFrame(_rows))
+    plot_model_comparison_bar(
+        _results,
+        sort_by="MAE",
+        ascending=True,
+        title="Imputation MAE at Gap Positions",
+        y_label="MAE",
+    )
+
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **`SimpleTimeImputer`**: Best for temporal data (linear, forward, backward, nearest)
-    - **`SeasonalImputer`**: Uses seasonal patterns when periodicity is known
+    - **[`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/)**: Best for temporal data (linear, forward, backward, nearest)
+    - **[`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/)**: Uses seasonal patterns when periodicity is known
     - **`limit`**: Prevents filling across long gaps
-    - **`SimpleImputer`/`TransformedSpaceKNNImputer`**: sklearn wrappers for non-temporal strategies
+    - **[`SimpleImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleImputer/)/[`TransformedSpaceKNNImputer`](/pages/api/generated/yohou.preprocessing.imputation.TransformedSpaceKNNImputer/)**: sklearn wrappers for non-temporal strategies
     - **Linear interpolation** typically best for short gaps; seasonal imputation for long gaps with known periodicity
 
     ## Next Steps
 
-    - **Data cleaning**: See `examples/preprocessing/data_cleaning.py`
-    - **Resampling**: See `examples/preprocessing/resampling_advanced.py`
-    - **Sklearn wrappers**: See `examples/preprocessing/sklearn_wrappers.py`
+    - **Data cleaning**: See [`examples/preprocessing/data_cleaning.py`](/examples/preprocessing/data_cleaning/)
+    - **Resampling**: See [`examples/preprocessing/resampling_advanced.py`](/examples/preprocessing/resampling_advanced/)
+    - **Sklearn wrappers**: See [`examples/preprocessing/sklearn_wrappers.py`](/examples/preprocessing/sklearn_wrappers/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

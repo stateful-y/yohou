@@ -40,6 +40,7 @@ test-examples:
 # Run linters and type checkers
 lint:
     uv run ruff check src tests
+    uvx rumdl check .
     uv run ty check src
 
 # Format and fix code (via pre-commit)
@@ -50,10 +51,24 @@ fix:
 build:
     uv run mkdocs build --clean
 
+# Build documentation without exporting notebooks
+build-fast:
+    MKDOCS_SKIP_NOTEBOOKS=1 uv run mkdocs build --clean
+
 # Serve documentation locally
 serve:
     @echo "###### Starting local server. Press Control+C to stop server ######"
     uv run mkdocs serve -a localhost:8080
+
+# Serve documentation locally without exporting notebooks
+serve-fast:
+    @echo "###### Starting local server. Press Control+C to stop server ######"
+    MKDOCS_SKIP_NOTEBOOKS=1 uv run mkdocs serve -a localhost:8080
+
+# Check built docs for dead links (build first with 'just build' or 'just build-fast')
+link:
+    uvx linkchecker site/index.html --no-status --no-warnings --ignore-url 'material/overrides'
+
 
 # Clean build artifacts
 clean:

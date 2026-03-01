@@ -569,6 +569,158 @@ class TestValidation:
         assert mae.aggregation_method == "all"
 
 
+class TestGroupwiseAggregation:
+    """Tests for groupwise aggregation on panel data."""
+
+    @pytest.fixture
+    def panel_multivariate(self):
+        """Panel data with 2 groups × 2 members."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "g1__val_a": [10.0, 20.0, 30.0],
+            "g1__val_b": [100.0, 200.0, 300.0],
+            "g2__val_a": [12.0, 22.0, 32.0],
+            "g2__val_b": [110.0, 210.0, 310.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            # g1__val_a errors: |10-11|=1, |20-19|=1, |30-31|=1 → all 1.0
+            "g1__val_a": [11.0, 19.0, 31.0],
+            # g1__val_b errors: |100-103|=3, |200-197|=3, |300-303|=3 → all 3.0
+            "g1__val_b": [103.0, 197.0, 303.0],
+            # g2__val_a errors: |12-17|=5, |22-17|=5, |32-37|=5 → all 5.0
+            "g2__val_a": [17.0, 17.0, 37.0],
+            # g2__val_b errors: |110-117|=7, |210-203|=7, |310-317|=7 → all 7.0
+            "g2__val_b": [117.0, 203.0, 317.0],
+        })
+        return y_true, y_pred
+
+    def test_groupwise_only_returns_per_component_dataframe(self, panel_multivariate):
+        """Groupwise alone returns per-component per-timestep DataFrame."""
+        y_true, y_pred = panel_multivariate
+        mae = MeanAbsoluteError(aggregation_method="groupwise")
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        # Columns: time + unprefixed component names
+        assert "time" in result.columns
+        assert "val_a" in result.columns
+        assert "val_b" in result.columns
+        assert len(result.columns) == 3
+        assert len(result) == 3  # 3 timesteps
+
+    def test_groupwise_only_values_are_group_means(self, panel_multivariate):
+        """Groupwise averages errors across groups (g1, g2) for each component."""
+        y_true, y_pred = panel_multivariate
+        mae = MeanAbsoluteError(aggregation_method="groupwise")
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+
+        # val_a: mean(g1=1.0, g2=5.0) = 3.0 at every timestep
+        assert result["val_a"].to_list() == [3.0, 3.0, 3.0]
+        # val_b: mean(g1=3.0, g2=7.0) = 5.0 at every timestep
+        assert result["val_b"].to_list() == [5.0, 5.0, 5.0]
+
+    def test_groupwise_with_panel_group_weight(self, panel_multivariate):
+        """Groupwise respects panel_group_weight."""
+        y_true, y_pred = panel_multivariate
+        mae = MeanAbsoluteError(
+            aggregation_method="groupwise",
+            panel_group_weight={"g1": 3.0, "g2": 1.0},
+        )
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+
+        # val_a: weighted mean = (1.0*3 + 5.0*1) / 4 = 8/4 = 2.0
+        assert result["val_a"].to_list() == [2.0, 2.0, 2.0]
+        # val_b: weighted mean = (3.0*3 + 7.0*1) / 4 = 16/4 = 4.0
+        assert result["val_b"].to_list() == [4.0, 4.0, 4.0]
+
+    def test_groupwise_timewise_returns_single_row(self, panel_multivariate):
+        """Groupwise + timewise → single row with component means."""
+        y_true, y_pred = panel_multivariate
+        mae = MeanAbsoluteError(aggregation_method=["groupwise", "timewise"])
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        assert len(result) == 1
+        assert "val_a" in result.columns
+        assert "val_b" in result.columns
+        # val_a mean across time: 3.0, val_b mean across time: 5.0
+        assert result["val_a"][0] == 3.0
+        assert result["val_b"][0] == 5.0
+
+    def test_groupwise_componentwise_returns_per_timestep_scalar(self, panel_multivariate):
+        """Groupwise + componentwise → per-timestep DataFrame with single score col."""
+        y_true, y_pred = panel_multivariate
+        mae = MeanAbsoluteError(aggregation_method=["groupwise", "componentwise"])
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+        # After groupwise (val_a=3, val_b=5) then componentwise: mean(3,5)=4.0
+        assert result["mae"].to_list() == [4.0, 4.0, 4.0]
+
+    def test_groupwise_differs_from_componentwise_on_panel(self):
+        """Groupwise and componentwise give different results on panel data."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "g1__val_a": [10.0],
+            "g1__val_b": [100.0],
+            "g2__val_a": [10.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "g1__val_a": [11.0],  # error 1
+            "g1__val_b": [103.0],  # error 3
+            "g2__val_a": [15.0],  # error 5
+        })
+
+        # Componentwise: g1 mean = (1+3)/2 = 2.0, g2 mean = 5.0
+        mae_cw = MeanAbsoluteError(aggregation_method=["componentwise"])
+        mae_cw.fit(y_true)
+        result_cw = mae_cw.score(y_true, y_pred)
+        assert "g1__mae" in result_cw.columns
+        assert "g2__mae" in result_cw.columns
+
+        # Groupwise: val_a = mean(1,5) = 3.0, val_b = 3.0 (only g1)
+        mae_gw = MeanAbsoluteError(aggregation_method="groupwise")
+        mae_gw.fit(y_true)
+        result_gw = mae_gw.score(y_true, y_pred)
+        assert "val_a" in result_gw.columns
+        assert "val_b" in result_gw.columns
+
+    def test_groupwise_interval_scorer(self):
+        """Groupwise works for interval scorers on panel data."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "g1__val": [10.0, 20.0],
+            "g2__val": [15.0, 25.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "g1__val_lower_0.9": [8.0, 18.0],
+            "g1__val_upper_0.9": [12.0, 22.0],
+            "g2__val_lower_0.9": [13.0, 23.0],
+            "g2__val_upper_0.9": [17.0, 27.0],
+        })
+
+        coverage = EmpiricalCoverage(aggregation_method=["groupwise", "coveragewise"])
+        coverage.fit(y_true)
+        result = coverage.score(y_true, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+        assert "val" in result.columns
+        assert len(result) == 2
+
+
 class TestEquivalence:
     def test_equivalence_all_equals_manual_aggregation_timewise(self, equivalence_simple_data):
         """Test that 'all' equals manual aggregation of timewise results."""

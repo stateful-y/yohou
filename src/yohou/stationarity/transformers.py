@@ -12,6 +12,7 @@ from sklearn.utils.validation import _check_feature_names_in, check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.utils import Tags, validate_transformer_data
+from yohou.utils.panel import panel_aware_prefix
 
 __all__ = [
     "ASinhTransformer",
@@ -230,7 +231,7 @@ class BoxCoxTransformer(BaseTransformer):
 
         """
         input_features = _check_feature_names_in(self, input_features)
-        feature_names = [f"boxcox_l_{self.lmbda}_off_{self.offset}_{col}" for col in input_features]
+        feature_names = [panel_aware_prefix(col, f"boxcox_l_{self.lmbda}_off_{self.offset}") for col in input_features]
 
         return feature_names
 
@@ -300,7 +301,7 @@ class LogTransformer(BoxCoxTransformer):
 
         """
         input_features = _check_feature_names_in(self, input_features)
-        feature_names = [f"log_off_{self.offset}_{col}" for col in input_features]
+        feature_names = [panel_aware_prefix(col, f"log_off_{self.offset}") for col in input_features]
 
         return feature_names
 
@@ -506,7 +507,7 @@ class SeasonalDifferencing(BaseTransformer):
 
         """
         input_features = _check_feature_names_in(self, input_features)
-        feature_names = [f"diff_s_{self.seasonality}_{col}" for col in input_features]
+        feature_names = [panel_aware_prefix(col, f"diff_s_{self.seasonality}") for col in input_features]
 
         return feature_names
 
@@ -691,7 +692,9 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
 
         """
         input_features = _check_feature_names_in(self, input_features)
-        feature_names = [f"log_off_{self.offset}_diff_s_{self.seasonality}_{col}" for col in input_features]
+        feature_names = [
+            panel_aware_prefix(col, f"log_off_{self.offset}_diff_s_{self.seasonality}") for col in input_features
+        ]
 
         return feature_names
 
@@ -914,7 +917,9 @@ class SeasonalReturn(BaseTransformer):
 
         """
         input_features = _check_feature_names_in(self, input_features)
-        feature_names = [f"return_s_{self.seasonality}_off_{self.offset}_{col}" for col in input_features]
+        feature_names = [
+            panel_aware_prefix(col, f"return_s_{self.seasonality}_off_{self.offset}") for col in input_features
+        ]
 
         return feature_names
 
@@ -1125,7 +1130,9 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
         """
         input_features = _check_feature_names_in(self, input_features)
-        feature_names = [f"abs_return_s_{self.seasonality}_off_{self.offset}_{col}" for col in input_features]
+        feature_names = [
+            panel_aware_prefix(col, f"abs_return_s_{self.seasonality}_off_{self.offset}") for col in input_features
+        ]
 
         return feature_names
 
@@ -1266,7 +1273,7 @@ class ASinhTransformer(BaseTransformer):
         for col in X_numeric.columns:
             col_data = X_numeric.get_column(col).to_numpy()
             normalized = (col_data - self.median_[col]) / self.mad_[col]
-            transformed = pl.Series(f"asinh_{col}", np.arcsinh(normalized))
+            transformed = pl.Series(panel_aware_prefix(col, "asinh"), np.arcsinh(normalized))
             transformed_cols.append(transformed)
 
         X_t = pl.DataFrame(transformed_cols)
@@ -1337,4 +1344,4 @@ class ASinhTransformer(BaseTransformer):
 
         """
         input_features = _check_feature_names_in(self, input_features)
-        return [f"asinh_{col}" for col in input_features]
+        return [panel_aware_prefix(col, "asinh") for col in input_features]

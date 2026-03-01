@@ -2,16 +2,19 @@
 
 import re
 
+import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 from plotly.subplots import make_subplots
 
 from yohou.plotting._utils import (
+    _group_panel_columns,
+    _member_name,
     apply_default_layout,
     palette_yohou,
     resolve_color_palette,
 )
-from yohou.utils import inspect_locality, validate_plotting_data
+from yohou.utils import inspect_panel, validate_plotting_data
 
 # The full palette list is used as the default effective palette in every
 # plot_forecast code path. Slots 0/1/2 are reserved for the three semantic
@@ -138,7 +141,7 @@ def plot_forecast(
 
     See Also
     --------
-    plot_residual_time_series : Plot residual diagnostics.
+    plot_residuals : Plot residual diagnostics.
     plot_model_comparison_bar : Grouped bar chart for scorer comparison.
     """
     # Validate inputs
@@ -154,7 +157,6 @@ def plot_forecast(
     # Semantic colors always come from the effective palette: slot 0 = history,
     # slot 1 = single-model forecast, slot 2 = actual, slot 3+ = model comparison.
     eff_palette = color_palette if color_palette is not None else _PALETTE
-    history_color = eff_palette[0]
     forecast_color = eff_palette[1 % len(eff_palette)]
     actual_color = eff_palette[2 % len(eff_palette)]
     line_width = kwargs.get("line_width", 2.0)
@@ -162,7 +164,7 @@ def plot_forecast(
     show_transition = kwargs.get("show_transition", True)
 
     # Detect panel data
-    _, y_test_panels = inspect_locality(y_test)
+    _, y_test_panels = inspect_panel(y_test)
     is_panel = bool(y_test_panels)
 
     # For panel data, delegate to faceted handler (single or multi-model)
@@ -223,44 +225,43 @@ def plot_forecast(
         # Colour & legend setup: per-column colours for multi-column plots
         if multi_col:
             col_color = col_colors[col_idx]
-            actual_c, forecast_c = col_color, col_color
+            actual_c = col_color
+            forecast_c = col_color
             f_dash: str | None = "dash"
-            train_name: str | None = "Train" if col_idx == 0 else None
-            train_show = col_idx == 0
-            actual_name = f"{col} (Actual)"
-            forecast_name = f"{col} (Forecast)"
         else:
             actual_c, forecast_c = actual_color, forecast_color
             f_dash = None
-            train_name = "Train"
-            train_show = True
-            actual_name = "Actual"
-            forecast_name = "Forecast"
+
+        actual_name = f"{col} (Actual)"
+        forecast_name = f"{col} (Forecast)"
 
         # Compute pred_col early so interval rendering can hoist before Actual.
         pred_col = col if col in pred_value_cols else (pred_value_cols[0] if pred_value_cols else None)
-        fc_group = f"forecast_{col}" if multi_col else "forecast"
+        fc_group = f"forecast_{col}" if multi_col else ""
 
         # Training data
         if y_train is not None and col in y_train.columns:
             train_df = y_train.tail(n_history) if n_history is not None else y_train
+            _hex = actual_c.lstrip("#")
+            _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+            _train_color = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+            _train_name = f"{col} (Train)"
             fig.add_trace(
                 go.Scatter(
                     x=train_df["time"],
                     y=train_df[col],
                     mode="lines",
-                    line={"color": history_color, "width": line_width},
-                    name=train_name,
-                    showlegend=train_show,
-                    legendgroup="train",
-                    legendrank=1,
+                    line={"color": _train_color, "width": line_width},
+                    name=_train_name,
+                    legendgroup=fc_group,
+                    legendrank=0,
                     hovertemplate=f"<b>{col} Train</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
                 )
             )
 
-        # Prediction intervals – rendered before Actual so the actual line sits on top.
+        # Prediction intervals - rendered before Actual so the actual line sits on top.
         # Works even when there is no point forecast (predict_interval-only DataFrames).
-        # legendrank >= 3 places them after Train (1) and Actual (2) in the legend.
+        # legendrank >= 11 places them after Train (0), Actual (1), and Forecast (10).
         if coverage_rates:
             interval_base = pred_col if pred_col is not None else col
             _hex = forecast_c.lstrip("#")
@@ -281,7 +282,7 @@ def plot_forecast(
                     y_lower = y_pred[lower_col].to_list()
                     x_band = t + t[::-1]
                     y_band = y_upper + y_lower[::-1]
-                    pi_name = f"{col} ({rate:.0%} PI)" if multi_col else f"Forecast ({rate:.0%} PI)"
+                    pi_name = f"{col} ({rate:.0%} PI)"
                     fig.add_trace(
                         go.Scatter(
                             x=x_band,
@@ -292,21 +293,26 @@ def plot_forecast(
                             line={"width": 0, "color": rgba},
                             name=pi_name,
                             legendgroup=fc_group,
-                            legendrank=3 + sort_idx,
+                            legendrank=11 + sort_idx,
                             hoverinfo="skip",
                         )
                     )
 
-        # Actual test data
+        # Actual test data (prepend last train point to close the gap)
+        _x_actual = y_test["time"]
+        _y_actual = y_test[col]
+        if y_train is not None and col in y_train.columns:
+            _x_actual = pl.concat([pl.Series("time", [y_train["time"][-1]]), _x_actual])
+            _y_actual = pl.concat([pl.Series([y_train[col][-1]], dtype=_y_actual.dtype), _y_actual])
         fig.add_trace(
             go.Scatter(
-                x=y_test["time"],
-                y=y_test[col],
+                x=_x_actual,
+                y=_y_actual,
                 mode="lines",
                 line={"color": actual_c, "width": line_width},
                 name=actual_name,
-                legendgroup=f"actual_{col}" if multi_col else "actual",
-                legendrank=2,
+                legendgroup=fc_group,
+                legendrank=1,
                 hovertemplate=f"<b>{col} Actual</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
             )
         )
@@ -408,9 +414,10 @@ def _plot_forecast_multi_model(
 
     """
     eff_palette = color_palette if color_palette is not None else _PALETTE
-    history_color = eff_palette[0]
     actual_color = eff_palette[2 % len(eff_palette)]
     _model_pal = eff_palette[3:] or eff_palette
+    # Per-column colors for multivariate actual/train traces
+    _actual_pal = eff_palette[3:] or eff_palette
 
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
     test_value_cols = [c for c in y_test.columns if c != "time"]
@@ -420,21 +427,29 @@ def _plot_forecast_multi_model(
     colors = resolve_color_palette(_model_pal, len(model_names))
 
     fig = go.Figure()
+    multi_col = len(plot_columns) > 1
+    _col_colors = resolve_color_palette(_actual_pal, len(plot_columns)) if multi_col else []
 
-    for col in plot_columns:
+    for _, col in enumerate(plot_columns):
         # Train data once
         if y_train is not None and col in y_train.columns:
             train_df = y_train
             if n_history is not None:
                 train_df = train_df.tail(n_history)
+            _ac = _col_colors[list(plot_columns).index(col)] if multi_col else actual_color
+            _hex = _ac.lstrip("#")
+            _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+            _train_color = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+            _train_name = f"{col} (Train)"
             fig.add_trace(
                 go.Scatter(
                     x=train_df["time"],
                     y=train_df[col],
                     mode="lines",
-                    line={"color": history_color, "width": line_width},
-                    name=f"{col} (Train)" if len(plot_columns) > 1 else "Train",
-                    legendgroup="train",
+                    line={"color": _train_color, "width": line_width},
+                    name=_train_name,
+                    legendgroup=f"col_{col}" if multi_col else "actual",
+                    legendrank=0,
                     hovertemplate="<b>Train</b><br>Time: %{x}<br>Value: %{y:.2f}<extra></extra>",
                 )
             )
@@ -449,7 +464,7 @@ def _plot_forecast_multi_model(
             interval_base = pred_col if (pred_col is not None and pred_col in y_pred.columns) else col
             if not coverage_rates:
                 continue
-            for rate in sorted(coverage_rates):
+            for sort_idx, rate in enumerate(sorted(coverage_rates)):
                 lower_col = f"{interval_base}_lower_{rate}"
                 upper_col = f"{interval_base}_upper_{rate}"
                 if lower_col in y_pred.columns and upper_col in y_pred.columns:
@@ -470,19 +485,29 @@ def _plot_forecast_multi_model(
                             line={"width": 0, "color": rgba},
                             name=f"{model_name} ({rate:.0%} PI)",
                             legendgroup=model_name,
+                            legendrank=10 + model_idx * 100 + sort_idx + 1,
                             hoverinfo="skip",
                         )
                     )
 
         # Actual data
+        _actual_group = f"col_{col}" if multi_col else "actual"
+        _ac = _col_colors[list(plot_columns).index(col)] if multi_col else actual_color
+        # Prepend last train point to close the gap between train and actual
+        _x_actual = y_test["time"]
+        _y_actual = y_test[col]
+        if y_train is not None and col in y_train.columns:
+            _x_actual = pl.concat([pl.Series("time", [y_train["time"][-1]]), _x_actual])
+            _y_actual = pl.concat([pl.Series([y_train[col][-1]], dtype=_y_actual.dtype), _y_actual])
         fig.add_trace(
             go.Scatter(
-                x=y_test["time"],
-                y=y_test[col],
+                x=_x_actual,
+                y=_y_actual,
                 mode="lines",
-                line={"color": actual_color, "width": line_width},
-                name=f"{col} (Actual)" if len(plot_columns) > 1 else "Actual",
-                legendgroup="actual",
+                line={"color": _ac, "width": line_width},
+                name=f"{col} (Actual)",
+                legendgroup=_actual_group,
+                legendrank=1,
                 hovertemplate="<b>Actual</b><br>Time: %{x}<br>Value: %{y:.2f}<extra></extra>",
             )
         )
@@ -512,15 +537,17 @@ def _plot_forecast_multi_model(
                     x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), y_pred["time"]])
                     y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
 
+                _fc_name = f"{col} ({model_name})"
                 fig.add_trace(
                     go.Scatter(
                         x=x_fc,
                         y=y_fc,
                         mode="lines",
                         line={"color": model_color, "width": line_width},
-                        name=model_name,
+                        name=_fc_name,
                         legendgroup=model_name,
-                        hovertemplate=(f"<b>{model_name}</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>"),
+                        legendrank=10 + model_idx * 100,
+                        hovertemplate=(f"<b>{_fc_name}</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>"),
                     )
                 )
 
@@ -562,6 +589,9 @@ def _plot_forecast_panel(
     """Plot forecast with panel data as faceted subplots.
 
     Supports both single-model (DataFrame) and multi-model (dict) predictions.
+    Each subplot receives its own legend positioned inside the subplot area.
+    When a panel group contains multiple members (multivariate), each member
+    is drawn in a distinct colour with dashed lines for forecasts.
 
     Parameters
     ----------
@@ -611,19 +641,30 @@ def _plot_forecast_panel(
     forecast_color = eff_palette[1 % len(eff_palette)]
     _model_pal = eff_palette[3:] or eff_palette
 
-    _, test_panels = inspect_locality(y_test)
+    _, test_panels = inspect_panel(y_test)
 
-    # Get all panel columns (one per group member)
-    all_panel_cols: list[str] = []
+    # Group panel columns by group prefix
+    groups: dict[str, list[str]] = {}
     for prefix, cols in test_panels.items():
         if panel_group_names is None or prefix in panel_group_names:
-            all_panel_cols.extend(cols)
+            groups.setdefault(prefix, []).extend(cols)
 
-    if not all_panel_cols:
+    if not groups:
         msg = f"No panel columns found for groups: {panel_group_names}"
         raise ValueError(msg)
 
-    # Normalise y_pred into a model-name → DataFrame mapping
+    # Detect multivariate panels (multiple members in any group)
+    multi_member = any(len(cols) > 1 for cols in groups.values())
+
+    if multi_member:
+        all_flat_cols = [c for cols in groups.values() for c in cols]
+        _, all_members = _group_panel_columns(all_flat_cols)
+        member_palette = resolve_color_palette(_model_pal, len(all_members))
+    else:
+        all_members = []
+        member_palette = []
+
+    # Normalise y_pred into a model-name -> DataFrame mapping
     is_multi_model = isinstance(y_pred, dict)
     if is_multi_model:
         assert isinstance(y_pred, dict)
@@ -636,14 +677,14 @@ def _plot_forecast_panel(
         model_names = ["Forecast"]
         model_colors = [forecast_color]
 
-    n_panels = len(all_panel_cols)
-    n_rows = (n_panels + facet_n_cols - 1) // facet_n_cols
-    n_cols_grid = min(n_panels, facet_n_cols)
+    n_groups = len(groups)
+    n_rows = (n_groups + facet_n_cols - 1) // facet_n_cols
+    n_cols_grid = min(n_groups, facet_n_cols)
 
     fig = make_subplots(
         rows=n_rows,
         cols=n_cols_grid,
-        subplot_titles=[c.replace("__", " \u2013 ") for c in all_panel_cols],
+        subplot_titles=list(groups.keys()),
         shared_xaxes=True,
         vertical_spacing=0.08,
         horizontal_spacing=0.08,
@@ -651,121 +692,177 @@ def _plot_forecast_panel(
 
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
 
-    for idx, col in enumerate(all_panel_cols):
-        row = idx // facet_n_cols + 1
-        col_grid = idx % facet_n_cols + 1
+    # Track which legend entries we have already shown globally
+    # to avoid duplicates when multiple groups share the same labels.
+    seen_legend: set[str] = set()
 
-        # Train
-        if y_train is not None and col in y_train.columns:
-            train_df = y_train.tail(n_history) if n_history is not None else y_train
-            fig.add_trace(
-                go.Scatter(
-                    x=train_df["time"],
-                    y=train_df[col],
-                    mode="lines",
-                    line={"color": history_color, "width": line_width},
-                    name="Train" if idx == 0 else None,
-                    showlegend=(idx == 0),
-                    legendgroup="train",
-                ),
-                row=row,
-                col=col_grid,
-            )
+    for group_idx, (_, group_cols) in enumerate(groups.items()):
+        row = group_idx // facet_n_cols + 1
+        col_grid = group_idx % facet_n_cols + 1
 
-        # Interval bands first (behind Actual and forecast lines).
-        for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
-            m_color = model_colors[m_idx % len(model_colors)]
-            pred_value_cols = [
-                c for c in m_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
-            ]
-            pred_col = col if col in pred_value_cols else None
-            interval_base = pred_col if pred_col is not None else col
-            if not coverage_rates:
-                continue
-            _hex = m_color.lstrip("#")
-            rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-            for rate in sorted(coverage_rates):
-                lower_c = f"{interval_base}_lower_{rate}"
-                upper_c = f"{interval_base}_upper_{rate}"
-                if lower_c in m_pred.columns and upper_c in m_pred.columns:
-                    rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
-                    t = m_pred["time"].to_list()
-                    y_upper = m_pred[upper_c].to_list()
-                    y_lower = m_pred[lower_c].to_list()
-                    x_band = t + t[::-1]
-                    y_band = y_upper + y_lower[::-1]
-                    pi_label = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
-                    fig.add_trace(
-                        go.Scatter(
-                            x=x_band,
-                            y=y_band,
-                            fill="toself",
-                            fillcolor=rgba,
-                            mode="lines",
-                            line={"width": 0, "color": rgba},
-                            name=pi_label if idx == 0 else None,
-                            showlegend=(idx == 0),
-                            legendgroup=m_name,
-                            hoverinfo="skip",
-                        ),
-                        row=row,
-                        col=col_grid,
-                    )
+        for col in group_cols:
+            member = _member_name(col)
 
-        # Actual
-        if col in y_test.columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=y_test["time"],
-                    y=y_test[col],
-                    mode="lines",
-                    line={"color": actual_color, "width": line_width},
-                    name="Actual" if idx == 0 else None,
-                    showlegend=(idx == 0),
-                    legendgroup="actual",
-                ),
-                row=row,
-                col=col_grid,
-            )
+            # Resolve per-trace colours and labels
+            if multi_member:
+                member_idx = all_members.index(member)
+                base_color = member_palette[member_idx]
+                _hex = base_color.lstrip("#")
+                _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+                train_c: str = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+                actual_c = base_color
+                train_label = f"{member} (Train)"
+                actual_label = f"{member} (Actual)"
+                lg_key: str | None = member
+            else:
+                train_c = history_color
+                actual_c = actual_color
+                train_label = "Train"
+                actual_label = "Actual"
+                lg_key = None
 
-        # Forecast lines on top of bands and actual.
-        for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
-            m_color = model_colors[m_idx % len(model_colors)]
-            pred_value_cols = [
-                c for c in m_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
-            ]
-            pred_col = col if col in pred_value_cols else None
-
-            has_point = pred_col is not None
-            interval_base = pred_col if has_point else col
-            has_intervals = bool(
-                coverage_rates and any(f"{interval_base}_lower_{rate}" in m_pred.columns for rate in coverage_rates)
-            )
-
-            if not has_point and not has_intervals:
-                continue
-
-            if has_point:
-                assert pred_col is not None
-                x_fc = m_pred["time"]
-                y_fc = m_pred[pred_col]
-                if show_transition and y_train is not None and col in y_train.columns:
-                    x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), m_pred["time"]])
-                    y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
-
+            # Train
+            if y_train is not None and col in y_train.columns:
+                train_df = y_train.tail(n_history) if n_history is not None else y_train
+                _show = train_label not in seen_legend
+                seen_legend.add(train_label)
                 fig.add_trace(
                     go.Scatter(
-                        x=x_fc,
-                        y=y_fc,
+                        x=train_df["time"],
+                        y=train_df[col],
                         mode="lines",
-                        line={"color": m_color, "width": line_width},
-                        name=m_name if idx == 0 else None,
-                        showlegend=(idx == 0),
-                        legendgroup=m_name,
+                        line={"color": train_c, "width": line_width},
+                        name=train_label,
+                        showlegend=_show,
+                        legendgroup=lg_key or "train",
+                        legendrank=0,
                     ),
                     row=row,
                     col=col_grid,
                 )
+
+            # Interval bands first (behind Actual and forecast lines).
+            for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
+                m_color = model_colors[m_idx % len(model_colors)]
+                pred_value_cols = [
+                    c for c in m_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+                ]
+                pred_col = col if col in pred_value_cols else None
+                interval_base = pred_col if pred_col is not None else col
+                if not coverage_rates:
+                    continue
+                band_c = base_color if (multi_member and not is_multi_model) else m_color
+                _hex_b = band_c.lstrip("#")
+                rgb = tuple(int(_hex_b[i : i + 2], 16) for i in (0, 2, 4))
+                for sort_idx, rate in enumerate(sorted(coverage_rates)):
+                    lower_c = f"{interval_base}_lower_{rate}"
+                    upper_c = f"{interval_base}_upper_{rate}"
+                    if lower_c in m_pred.columns and upper_c in m_pred.columns:
+                        rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
+                        t = m_pred["time"].to_list()
+                        y_upper = m_pred[upper_c].to_list()
+                        y_lower = m_pred[lower_c].to_list()
+                        x_band = t + t[::-1]
+                        y_band = y_upper + y_lower[::-1]
+                        if multi_member:
+                            pi_label = (
+                                f"{member} {m_name} ({rate:.0%} PI)" if is_multi_model else f"{member} ({rate:.0%} PI)"
+                            )
+                        else:
+                            pi_label = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
+                        _show_pi = pi_label not in seen_legend
+                        seen_legend.add(pi_label)
+                        fig.add_trace(
+                            go.Scatter(
+                                x=x_band,
+                                y=y_band,
+                                fill="toself",
+                                fillcolor=rgba,
+                                mode="lines",
+                                line={"width": 0, "color": rgba},
+                                name=pi_label,
+                                showlegend=_show_pi,
+                                legendgroup=lg_key or m_name,
+                                legendrank=10 + m_idx * 100 + sort_idx + 1,
+                                hoverinfo="skip",
+                            ),
+                            row=row,
+                            col=col_grid,
+                        )
+
+            # Actual
+            if col in y_test.columns:
+                _show_actual = actual_label not in seen_legend
+                seen_legend.add(actual_label)
+                fig.add_trace(
+                    go.Scatter(
+                        x=y_test["time"],
+                        y=y_test[col],
+                        mode="lines",
+                        line={"color": actual_c, "width": line_width},
+                        name=actual_label,
+                        showlegend=_show_actual,
+                        legendgroup=lg_key or "actual",
+                        legendrank=1,
+                    ),
+                    row=row,
+                    col=col_grid,
+                )
+
+            # Forecast lines on top of bands and actual.
+            for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
+                m_color = model_colors[m_idx % len(model_colors)]
+                pred_value_cols = [
+                    c for c in m_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+                ]
+                pred_col = col if col in pred_value_cols else None
+
+                has_point = pred_col is not None
+                interval_base = pred_col if has_point else col
+                has_intervals = bool(
+                    coverage_rates and any(f"{interval_base}_lower_{rate}" in m_pred.columns for rate in coverage_rates)
+                )
+
+                if not has_point and not has_intervals:
+                    continue
+
+                if has_point:
+                    assert pred_col is not None
+                    x_fc = m_pred["time"]
+                    y_fc = m_pred[pred_col]
+                    if show_transition and y_train is not None and col in y_train.columns:
+                        x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), m_pred["time"]])
+                        y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
+
+                    if multi_member:
+                        fc_color = base_color if not is_multi_model else m_color
+                        fc_label = f"{member} (Forecast)" if not is_multi_model else f"{member} ({m_name})"
+                        fc_dash: str | None = "dash"
+                    else:
+                        fc_color = m_color
+                        fc_label = m_name
+                        fc_dash = None
+
+                    line_spec: dict = {"color": fc_color, "width": line_width}
+                    if fc_dash:
+                        line_spec["dash"] = fc_dash
+
+                    _show_fc = fc_label not in seen_legend
+                    seen_legend.add(fc_label)
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x_fc,
+                            y=y_fc,
+                            mode="lines",
+                            line=line_spec,
+                            name=fc_label,
+                            showlegend=_show_fc,
+                            legendgroup=lg_key or m_name,
+                            legendrank=10 + m_idx * 100,
+                        ),
+                        row=row,
+                        col=col_grid,
+                    )
 
     fig = apply_default_layout(
         fig,
@@ -773,6 +870,7 @@ def _plot_forecast_panel(
         width=width,
         height=height or (300 * n_rows),
     )
+
     # X-axis title only on the bottom row (axes are shared above it).
     for c in range(1, n_cols_grid + 1):
         fig.update_xaxes(title_text=x_label or "Time", row=n_rows, col=c)
@@ -884,7 +982,7 @@ def plot_time_weight(
     fill_opacity = kwargs.get("fill_opacity", 0.3)
 
     # Detect panel data structure
-    _, panel_groups = inspect_locality(df)
+    _, panel_groups = inspect_panel(df)
 
     # Check if this is panel data with prefixed weight columns
     weight_panel_cols: dict[str, list[str]] = {}
@@ -906,53 +1004,60 @@ def plot_time_weight(
             msg = f"No weight columns found for panel groups: {panel_group_names}"
             raise ValueError(msg)
 
-        # Get all weight columns to plot
-        all_weight_cols: list[str] = []
-        for cols in weight_panel_cols.values():
-            all_weight_cols.extend(cols)
+        # Collect unique member names for consistent colouring
+        flat_cols = [c for cols in weight_panel_cols.values() for c in cols]
+        _, all_members = _group_panel_columns(flat_cols)
 
-        n_groups = len(all_weight_cols)
+        n_groups = len(weight_panel_cols)
 
-        # Get colors
+        # Get colors (one per unique member)
         if color_palette is None:
-            color_palette = resolve_color_palette(None, n_groups)
+            color_palette = resolve_color_palette(None, len(all_members))
 
-        # Create subplots
+        # Create subplots (one per group)
         n_rows = (n_groups + facet_n_cols - 1) // facet_n_cols
         n_cols_grid = min(n_groups, facet_n_cols)
         fig = make_subplots(
             rows=n_rows,
             cols=n_cols_grid,
-            subplot_titles=[c.replace("__", " \u2013 ") for c in all_weight_cols],
+            subplot_titles=list(weight_panel_cols.keys()),
             shared_xaxes=True,
             vertical_spacing=0.08,
             horizontal_spacing=0.1,
         )
 
-        for idx, col in enumerate(all_weight_cols):
-            row = idx // facet_n_cols + 1
-            col_idx = idx % facet_n_cols + 1
-            color = color_palette[idx % len(color_palette)]
+        seen_members: set[str] = set()
+        for group_idx, (_, group_cols) in enumerate(weight_panel_cols.items()):
+            row = group_idx // facet_n_cols + 1
+            col_idx = group_idx % facet_n_cols + 1
 
-            # Convert hex to rgba for fill
-            rgb = tuple(int(color[i : i + 2], 16) for i in (1, 3, 5))
-            rgba_fill = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {fill_opacity})"
+            for col in group_cols:
+                member_name = _member_name(col)
+                member_idx = all_members.index(member_name)
+                color = color_palette[member_idx % len(color_palette)]
+                first_seen = member_name not in seen_members
+                seen_members.add(member_name)
 
-            fig.add_trace(
-                go.Scatter(
-                    x=df["time"],
-                    y=df[col],
-                    mode="lines",
-                    line={"color": color, "width": line_width},
-                    fill="tozeroy" if fill else None,
-                    fillcolor=rgba_fill if fill else None,
-                    name=col.replace("__", " \u2013 "),
-                    showlegend=False,
-                    hovertemplate=(f"{col}<br>Time: %{{x}}<br>Weight: %{{y:.3f}}<extra></extra>"),
-                ),
-                row=row,
-                col=col_idx,
-            )
+                # Convert hex to rgba for fill
+                rgb = tuple(int(color[i : i + 2], 16) for i in (1, 3, 5))
+                rgba_fill = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {fill_opacity})"
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=df["time"],
+                        y=df[col],
+                        mode="lines",
+                        line={"color": color, "width": line_width},
+                        fill="tozeroy" if fill else None,
+                        fillcolor=rgba_fill if fill else None,
+                        name=member_name,
+                        showlegend=first_seen,
+                        legendgroup=member_name,
+                        hovertemplate=(f"{member_name}<br>Time: %{{x}}<br>Weight: %{{y:.3f}}<extra></extra>"),
+                    ),
+                    row=row,
+                    col=col_idx,
+                )
 
         # Update layout
         title_default = title or "Time Weights by Panel"
@@ -1017,12 +1122,102 @@ def plot_time_weight(
     return fig
 
 
+_INTERVAL_TO_STL_PERIOD: dict[str, int] = {
+    "1h": 24,
+    "1d": 7,
+    "7d": 52,
+    "1mo": 12,
+    "2mo": 6,
+    "3mo": 4,
+    "6mo": 2,
+}
+
+
+def _compute_stl(
+    series: pl.Series,
+    *,
+    period: int,
+    trend_window: int | None = None,
+    seasonal_window: int | None = None,
+    low_pass_window: int | None = None,
+    robust: bool = True,
+) -> dict[str, list[float]]:
+    """Run STL decomposition on a single numeric series.
+
+    Parameters
+    ----------
+    series : pl.Series
+        Numeric values (NaN-interpolated before decomposition).
+    period : int
+        Seasonal period in observations.
+    trend_window : int | None
+        Trend smoother window.  Passed to ``STL(trend=...)``.
+    seasonal_window : int | None
+        Seasonal smoother window.  Passed to ``STL(seasonal=...)``.
+    low_pass_window : int | None
+        Low-pass filter window.  Passed to ``STL(low_pass=...)``.
+    robust : bool
+        Whether to use robust fitting (down-weights outliers).
+
+    Returns
+    -------
+    dict[str, list[float]]
+        Keys: ``observed``, ``trend``, ``seasonal``, ``residual``,
+        ``seasonal_adjusted``.
+
+    """
+    import warnings  # noqa: PLC0415
+
+    try:
+        from statsmodels.tsa.seasonal import STL  # noqa: PLC0415
+    except ImportError:
+        msg = (
+            "statsmodels is required for STL decomposition. "
+            "Install it with:  pip install yohou[plotting]  "
+            "or  pip install statsmodels"
+        )
+        raise ImportError(msg) from None
+
+    values = series.to_list()
+    clean = pl.Series(values).interpolate().forward_fill().backward_fill()
+    n_interpolated = sum(v is None or (isinstance(v, float) and np.isnan(v)) for v in values) - sum(
+        v is None or (isinstance(v, float) and np.isnan(v)) for v in clean.to_list()
+    )
+    if n_interpolated > 0:
+        warnings.warn(
+            f"Interpolated {n_interpolated} NaN value(s) before STL decomposition.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    clean_np = clean.to_numpy().astype(float)
+
+    stl_kwargs: dict = {"period": period, "robust": robust}
+    if trend_window is not None:
+        stl_kwargs["trend"] = trend_window if trend_window % 2 == 1 else trend_window + 1
+    if seasonal_window is not None:
+        stl_kwargs["seasonal"] = seasonal_window if seasonal_window % 2 == 1 else seasonal_window + 1
+    if low_pass_window is not None:
+        stl_kwargs["low_pass"] = low_pass_window if low_pass_window % 2 == 1 else low_pass_window + 1
+
+    result = STL(clean_np, **stl_kwargs).fit()
+
+    return {
+        "observed": clean_np.tolist(),
+        "trend": result.trend.tolist(),
+        "seasonal": result.seasonal.tolist(),
+        "residual": result.resid.tolist(),
+        "seasonal_adjusted": (clean_np - result.seasonal).tolist(),
+    }
+
+
 def plot_components(
     y: pl.DataFrame,
-    components: dict[str, pl.DataFrame],
+    components: dict[str, pl.DataFrame] | list[str] | tuple[str, ...],
     *,
     columns: str | list[str] | None = None,
     show_original: bool = True,
+    stl_kwargs: dict | None = None,
     color_palette: list[str] | None = None,
     title: str | None = None,
     x_label: str | None = None,
@@ -1036,23 +1231,53 @@ def plot_components(
     Displays the original series and its decomposed components (e.g. trend,
     seasonal, residual) in separate panels sharing the same time axis.
 
+    There are two modes of operation:
+
+    **Pre-computed mode** (default) -- pass *components* as a ``dict`` mapping
+    component names to DataFrames produced by a Yohou decomposition pipeline.
+
+    **STL mode** -- pass *components* as a ``list`` or ``tuple`` of component
+    names (subset of ``"observed"``, ``"trend"``, ``"seasonal"``,
+    ``"residual"``, ``"seasonal_adjusted"``).  The function runs
+    ``statsmodels.tsa.seasonal.STL`` internally and renders the requested
+    components.  Use *stl_kwargs* to configure the decomposition.
+
     Parameters
     ----------
     y : pl.DataFrame
         Original time series with ``"time"`` column.
-    components : dict[str, pl.DataFrame]
-        Mapping of component names to DataFrames. Each DataFrame must have a
-        ``"time"`` column plus value columns matching *y*. Typical keys are
-        ``"trend"``, ``"seasonality"``, ``"residual"``.
+    components : dict[str, pl.DataFrame] | list[str] | tuple[str, ...]
+        **dict** -- mapping of component names to DataFrames (pre-computed
+        mode).  Each DataFrame must have a ``"time"`` column plus value
+        columns matching *y*.  Typical keys are ``"trend"``,
+        ``"seasonality"``, ``"residual"``.
+
+        **list/tuple of str** -- STL component names to compute and display.
+        Valid names: ``"observed"``, ``"trend"``, ``"seasonal"``,
+        ``"residual"``, ``"seasonal_adjusted"``.  When ``"observed"`` is
+        included it is equivalent to ``show_original=True``.
     columns : str | list[str] | None, default=None
         Value columns to plot. If None, all numeric non-time columns of *y*
         are used.
     show_original : bool, default=True
-        Include the original series as the first subplot.
+        Include the original series as the first subplot.  In STL mode this
+        is automatically set to ``True`` when ``"observed"`` appears in
+        *components*.
+    stl_kwargs : dict | None, default=None
+        Extra keyword arguments forwarded to the internal STL computation.
+        Only used in STL mode (ignored when *components* is a dict).
+        Supported keys:
+
+        - ``period`` (int | str): seasonal period (default ``"auto"``).
+        - ``trend_window`` (int | None): trend smoother window length.
+        - ``seasonal_window`` (int | None): seasonal smoother window length.
+        - ``low_pass_window`` (int | None): low-pass filter window length.
+        - ``robust`` (bool): use robust fitting (default ``True``).
     color_palette : list[str] | None, default=None
         Custom color palette. Falls back to the default yohou palette.
     title : str | None, default=None
-        Plot title. Defaults to ``"Time Series Decomposition"``.
+        Plot title. Defaults to ``"Time Series Decomposition"`` (pre-computed)
+        or ``"STL Decomposition"`` (STL mode).
     x_label : str | None, default=None
         X-axis label shown on the bottom subplot. Defaults to ``"Time"``.
     y_label : str | None, default=None
@@ -1063,7 +1288,9 @@ def plot_components(
         Plot height in pixels.
     **kwargs : dict
         Additional styling:
+
         - line_width : float, default=2.0
+        - line_dash : str, default="solid" (STL mode only)
 
     Returns
     -------
@@ -1075,11 +1302,16 @@ def plot_components(
     TypeError
         If *y* is not a Polars DataFrame.
     ValueError
-        If DataFrames are empty, missing ``"time"`` column, or *components*
-        is empty.
+        If DataFrames are empty, missing ``"time"`` column, *components*
+        is empty, or unknown STL component names are given.
+    ImportError
+        When *components* is a list/tuple and ``statsmodels`` is not
+        installed.
 
     Examples
     --------
+    Pre-computed mode:
+
     >>> import polars as pl
     >>> from yohou.plotting import plot_components
 
@@ -1093,12 +1325,62 @@ def plot_components(
     >>> len(fig.data) >= 3
     True
 
+    STL mode:
+
+    >>> df = pl.DataFrame({
+    ...     "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2022, 12, 31), "1mo", eager=True),
+    ...     "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(60)],
+    ... })
+    >>> fig = plot_components(df, ["trend", "seasonal"])  # doctest: +SKIP
+    >>> len(fig.data) > 0  # doctest: +SKIP
+    True
+
     See Also
     --------
-    plot_forecast : Forecast visualization.
-    plot_seasonality : Seasonal pattern analysis.
+    `plot_forecast` : Forecast visualization.
+    `plot_seasonality` : Seasonal pattern analysis.
     """
     validate_plotting_data(y)
+    line_width = kwargs.get("line_width", 2.0)
+    line_dash = kwargs.get("line_dash", "solid")
+
+    stl_mode = isinstance(components, list | tuple) and (not components or isinstance(components[0], str))
+
+    # -- STL mode: compute decomposition, then convert to dict ---------------
+    if stl_mode:
+        components_list = list(components)
+
+        # "observed" in the list maps to show_original
+        if "observed" in components_list:
+            show_original = True
+            components_list.remove("observed")
+
+        # Validate component names early
+        valid_stl = {"trend", "seasonal", "residual", "seasonal_adjusted"}
+        unknown = set(components_list) - valid_stl
+        if unknown:
+            all_valid = sorted(valid_stl | {"observed"})
+            msg = f"Unknown components: {unknown}. Valid: {all_valid}"
+            raise ValueError(msg)
+
+        if not components_list and not show_original:
+            msg = "components must contain at least one displayable component"
+            raise ValueError(msg)
+
+        value_cols = validate_plotting_data(y, columns=columns, exclude=["time"])
+
+        components = _stl_to_component_dict(y, components_list, value_cols, stl_kwargs)
+        title = title or "STL Decomposition"
+
+        # Fall through to the shared dict plotting below
+
+    # -- Dict validation -----------------------------------------------------
+    if not isinstance(components, dict):
+        msg = (
+            "components must be a dict[str, pl.DataFrame] (pre-computed mode) or a list[str]/tuple[str, ...] (STL mode)"
+        )
+        raise TypeError(msg)
+
     if not components:
         msg = "components dict must be non-empty"
         raise ValueError(msg)
@@ -1106,13 +1388,12 @@ def plot_components(
         validate_plotting_data(comp_df)
 
     value_cols = validate_plotting_data(y, columns=columns)
-    line_width = kwargs.get("line_width", 2.0)
 
-    # Build subplot structure
+    # -- Build subplot structure (shared by both modes) ----------------------
     panel_names: list[str] = []
     if show_original:
         panel_names.append("Original")
-    panel_names.extend(components.keys())
+    panel_names.extend(name.replace("_", " ").title() if stl_mode else name for name in components)
 
     n_rows = len(panel_names)
     fig = make_subplots(
@@ -1140,8 +1421,12 @@ def plot_components(
                         x=y["time"],
                         y=y[col],
                         mode="lines",
-                        line={"color": colors[i % len(colors)], "width": line_width},
-                        name=col if len(value_cols) > 1 else "Original",
+                        line={
+                            "color": colors[i % len(colors)],
+                            "width": line_width,
+                            "dash": line_dash,
+                        },
+                        name=col,
                         legendgroup=col,
                         showlegend=True,
                     ),
@@ -1150,23 +1435,37 @@ def plot_components(
                 )
 
     # Component panels
+    _meta_cols = {"time", "observed_time"}
     for comp_idx, (comp_name, comp_df) in enumerate(components.items()):
         row = comp_idx + 1 + row_offset
-        for i, col in enumerate(value_cols):
-            if col in comp_df.columns:
-                fig.add_trace(
-                    go.Scatter(
-                        x=comp_df["time"],
-                        y=comp_df[col],
-                        mode="lines",
-                        line={"color": colors[i % len(colors)], "width": line_width},
-                        name=f"{col} ({comp_name})" if len(value_cols) > 1 else comp_name,
-                        legendgroup=col,
-                        showlegend=(comp_idx == 0 and not show_original) or False,
-                    ),
-                    row=row,
-                    col=1,
-                )
+        # Resolve value columns for this component: prefer names matching y,
+        # otherwise fall back to the component's own numeric columns (handles
+        # renamed columns from transformers, e.g. "log_off_0.0_tourists").
+        comp_value_cols = [c for c in value_cols if c in comp_df.columns]
+        if not comp_value_cols:
+            comp_value_cols = [c for c in comp_df.columns if c not in _meta_cols]
+        for i, col in enumerate(comp_value_cols):
+            # Use the original value_cols name for legend when available,
+            # otherwise use the component column name.
+            legend_col = value_cols[i] if i < len(value_cols) else col
+            display_name = comp_name.replace("_", " ").title() if stl_mode else legend_col
+            fig.add_trace(
+                go.Scatter(
+                    x=comp_df["time"],
+                    y=comp_df[col],
+                    mode="lines",
+                    line={
+                        "color": colors[i % len(colors)],
+                        "width": line_width,
+                        "dash": line_dash,
+                    },
+                    name=display_name,
+                    legendgroup=display_name if stl_mode else legend_col,
+                    showlegend=(comp_idx == 0 and not show_original),
+                ),
+                row=row,
+                col=1,
+            )
 
     title_default = title or "Time Series Decomposition"
     default_height = max(300 * n_rows, 400)
@@ -1186,3 +1485,72 @@ def plot_components(
     fig.layout[bottom_xaxis].title = {"text": x_label_text}
 
     return fig
+
+
+def _stl_to_component_dict(
+    y: pl.DataFrame,
+    components: list[str],
+    columns: list[str],
+    stl_kwargs: dict | None,
+) -> dict[str, pl.DataFrame]:
+    """Compute STL decomposition and return as component DataFrames.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        Input DataFrame with ``"time"`` column and numeric columns.
+    components : list[str]
+        STL component names to compute (e.g. ``"trend"``, ``"seasonal"``).
+    columns : list[str]
+        Numeric column names from *y* to decompose.
+    stl_kwargs : dict | None
+        Extra keyword arguments forwarded to `_compute_stl`.
+
+    Returns
+    -------
+    dict[str, pl.DataFrame]
+        Mapping from component name to a DataFrame with ``"time"`` plus
+        one column per decomposed series.
+
+    """
+    stl_opts = stl_kwargs or {}
+    period = stl_opts.get("period", "auto")
+    trend_window = stl_opts.get("trend_window")
+    seasonal_window = stl_opts.get("seasonal_window")
+    low_pass_window = stl_opts.get("low_pass_window")
+    robust = stl_opts.get("robust", True)
+
+    # Resolve STL period
+    if isinstance(period, str) and period == "auto":
+        from yohou.utils.validation import check_interval_consistency  # noqa: PLC0415
+
+        interval = check_interval_consistency(y)
+        stl_period = _INTERVAL_TO_STL_PERIOD.get(interval)
+        if stl_period is None:
+            msg = (
+                f"Cannot infer STL period for interval '{interval}'. "
+                f"Supported intervals: {sorted(_INTERVAL_TO_STL_PERIOD)}. "
+                f"Pass an explicit integer via stl_kwargs={{'period': <int>}}."
+            )
+            raise ValueError(msg)
+    else:
+        stl_period = int(period)
+
+    # Compute STL for each column and collect per-component values
+    result_data: dict[str, dict[str, list[float]]] = {comp: {} for comp in components}
+
+    for col_name in columns:
+        stl_result = _compute_stl(
+            y[col_name],
+            period=stl_period,
+            trend_window=trend_window,
+            seasonal_window=seasonal_window,
+            low_pass_window=low_pass_window,
+            robust=robust,
+        )
+        for comp in components:
+            result_data[comp][col_name] = stl_result[comp]
+
+    # Build a DataFrame per component
+    time_col = y["time"]
+    return {comp: pl.DataFrame({"time": time_col, **col_values}) for comp, col_values in result_data.items()}

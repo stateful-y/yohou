@@ -16,7 +16,7 @@ from yohou.compose import LocalPanelForecaster
 from yohou.interval import SplitConformalForecaster
 from yohou.point import PointReductionForecaster, SeasonalNaive
 from yohou.stationarity import PolynomialTrendForecaster
-from yohou.utils.panel import inspect_locality
+from yohou.utils.panel import inspect_panel
 
 
 @pytest.fixture
@@ -115,7 +115,7 @@ class TestBasicFitPredict:
     def test_not_fitted_error(self, panel_y):
         """Should raise NotFittedError before fit."""
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
-        with pytest.raises(NotFittedError):
+        with pytest.raises(NotFittedError, match="is not fitted"):
             f.predict(forecasting_horizon=5)
 
 
@@ -330,5 +330,5 @@ class TestMultipleGroups:
         assert len(f.panel_group_names_) == 5
 
         y_pred = f.predict(forecasting_horizon=5)
-        _, panel_groups = inspect_locality(y_pred)
+        _, panel_groups = inspect_panel(y_pred)
         assert len(panel_groups) == 5

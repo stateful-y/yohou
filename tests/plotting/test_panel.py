@@ -18,14 +18,14 @@ from yohou.plotting import (
     plot_lag_scatter,
     plot_missing_data,
     plot_partial_autocorrelation,
+    plot_phase,
     plot_rolling_statistics,
     plot_seasonality,
     plot_spectrum,
+    plot_subseasonality,
     plot_time_series,
     plot_time_weight,
 )
-
-# Exploration – panel scenarios
 
 
 class TestPanelTimeSeries:
@@ -169,9 +169,6 @@ class TestPanelMissingData:
         assert len(fig.data) > 0
 
 
-# Diagnostics – panel scenarios
-
-
 class TestPanelACF:
     """Panel tests for plot_autocorrelation."""
 
@@ -307,9 +304,6 @@ class TestPanelSpectrum:
         assert len(fig.data) >= 1
 
 
-# Forecasting – panel scenarios
-
-
 class TestPanelForecast:
     """Panel tests for plot_forecast."""
 
@@ -329,6 +323,28 @@ class TestPanelForecast:
         fig = plot_forecast(y_test, y_pred, y_train=y_train, panel_group_names=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
+
+    def test_multivariate_panel_per_subplot_legend(self, panel_two_groups_df):
+        """Multivariate panel assigns per-member colours and deduplicates legend."""
+        y_test = panel_two_groups_df.tail(30)
+        y_pred = panel_two_groups_df.tail(30)
+        y_train = panel_two_groups_df.head(61)
+        fig = plot_forecast(y_test, y_pred, y_train=y_train)
+        assert isinstance(fig, go.Figure)
+        # Each group has 2 members → distinct colours per member.
+        names = [tr.name for tr in fig.data if tr.showlegend]
+        # Legend entries should be deduplicated across subplots.
+        assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
+
+    def test_multivariate_panel_member_names_in_legend(self, panel_two_groups_df):
+        """Member names appear in legend labels for multivariate panels."""
+        y_test = panel_two_groups_df.tail(30)
+        y_pred = panel_two_groups_df.tail(30)
+        fig = plot_forecast(y_test, y_pred)
+        names = [tr.name for tr in fig.data if tr.name]
+        # At least some names should contain member postfixes
+        assert any("city_a" in n for n in names)
+        assert any("city_b" in n for n in names)
 
 
 class TestPanelTimeWeight:
@@ -381,3 +397,35 @@ class TestPanelInvalidGroups:
                 panel_group_names=["y"],
                 columns=["nonexistent"],
             )
+
+
+class TestPanelSubseasonality:
+    """Panel tests for plot_subseasonality."""
+
+    def test_two_groups(self, panel_daily_df):
+        """Two-group panel subseasonality produces a valid figure."""
+        fig = plot_subseasonality(panel_daily_df, seasonality="month")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_three_groups(self, panel_monthly_3groups):
+        """Three-group panel subseasonality produces traces."""
+        fig = plot_subseasonality(panel_monthly_3groups, seasonality="month")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestPanelPhase:
+    """Panel tests for plot_phase."""
+
+    def test_two_groups(self, panel_daily_df):
+        """Two-group panel phase plot produces a valid figure."""
+        fig = plot_phase(panel_daily_df, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    def test_columns_filter_member(self, panel_daily_df):
+        """Columns filter selects specific member within phase panel."""
+        fig = plot_phase(panel_daily_df, panel_group_names=["y"], columns=["a"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1

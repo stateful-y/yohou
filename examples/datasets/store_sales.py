@@ -4,18 +4,16 @@
 #     "yohou",
 # ]
 # ///
-"""Dominick - Weekly Retail Panel Analysis.
-
-Weekly retail profit for SKUs from Dominick's Finer Foods in Yohou panel format.
-
-Dataset: 50 weekly profit series by default (exploring first 9)
-Demonstrates: inspect_locality, plot_time_series, plot_boxplot, plot_seasonality
-"""
 
 import marimo
 
 __generated_with = "0.19.11"
+__gallery__ = {
+    "title": "Dominick Store Sales",
+    "description": "Explore the Dominick's Finer Foods panel dataset with per-SKU profit visualisation, cross-group distribution boxplots, and weekly seasonality.",
+}
 app = marimo.App(width="medium")
+
 
 @app.cell(hide_code=True)
 def _():
@@ -28,17 +26,18 @@ def _():
         plot_seasonality,
         plot_time_series,
     )
-    from yohou.utils.panel import inspect_locality
+    from yohou.utils.panel import inspect_panel
 
     return (
         fetch_dominick,
-        inspect_locality,
+        inspect_panel,
         mo,
         pl,
         plot_boxplot,
         plot_seasonality,
         plot_time_series,
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -51,24 +50,26 @@ def _(mo):
     (Dominick's Finer Foods), pre-formatted in Yohou's native `__` panel
     convention. You'll learn how to:
 
-    - Inspect panel structure with `inspect_locality`
+    - Inspect panel structure with [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)
     - Visualize panel columns directly without manual pivoting
     - Compare profit across SKUs
     - Analyze distributions across panel groups with boxplots
 
     ## Prerequisites
 
-    None -- this is a standalone dataset exploration.
+    None - this is a standalone dataset exploration.
     """)
 
+
 @app.cell
-def _(fetch_dominick):
+def _(fetch_dominick, plot_time_series):
     _all = fetch_dominick().frame
     # Select first 9 series for a manageable panel
     _cols = ["time"] + [c for c in _all.columns if c != "time"][:9]
     df = _all.select(_cols)
-    df.head(10)
+    plot_time_series(df, title="Dominick Store Sales (9 Series)")
     return (df,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -80,17 +81,19 @@ def _(mo):
     first 9 series.
     """)
 
+
 @app.cell
-def _(df, inspect_locality, mo):
-    global_cols, panel_groups = inspect_locality(df)
+def _(df, inspect_panel, mo):
+    global_cols, panel_groups = inspect_panel(df)
     mo.md(f"""
     **Global columns**: {global_cols}
 
     **Panel groups** ({len(panel_groups)} groups):
 
-    {chr(10).join(f'- **{k}**: {v}' for k, v in panel_groups.items())}
+    {chr(10).join(f"- **{k}**: {v}" for k, v in panel_groups.items())}
     """)
     return (panel_groups,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -100,6 +103,7 @@ def _(mo):
     Visualizing the first three SKU profit series shows how different products
     behave over time.
     """)
+
 
 @app.cell
 def _(df, plot_time_series):
@@ -112,6 +116,7 @@ def _(df, plot_time_series):
         y_label="Profit",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -120,6 +125,7 @@ def _(mo):
     Comparing all 9 selected series reveals scale differences and shared
     patterns across SKUs.
     """)
+
 
 @app.cell
 def _(df, plot_time_series):
@@ -132,6 +138,7 @@ def _(df, plot_time_series):
         y_label="Profit",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
@@ -141,6 +148,7 @@ def _(mo):
     making it easy to compare variability and outliers.
     """)
 
+
 @app.cell
 def _(df, plot_boxplot):
     plot_boxplot(
@@ -148,6 +156,7 @@ def _(df, plot_boxplot):
         title="Profit Distribution by SKU",
         y_label="Profit",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -157,16 +166,17 @@ def _(mo):
     Aggregating by month shows seasonal profit cycles across the year.
     """)
 
+
 @app.cell
 def _(df, plot_seasonality):
     _first_col = [c for c in df.columns if c.endswith("__profit")][0]
     plot_seasonality(
         df,
         columns=_first_col,
-        feature="month",
-        aggregation="mean",
+        seasonality="month",
         title="T1 - Average Profit by Month",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -174,17 +184,18 @@ def _(mo):
     ## Key Takeaways
 
     - **Native panel format**: Columns use `Tn__profit` convention: no pivoting needed
-    - **`inspect_locality`**: Automatically discovers panel groups from column names
-    - **Direct plotting**: Panel columns can be plotted directly with `plot_time_series`
+    - **[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)**: Automatically discovers panel groups from column names
+    - **Direct plotting**: Panel columns can be plotted directly with [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/)
     - **Boxplots**: Compare distributions across panel groups to spot outliers and variability
     - **Large dataset**: 50 series loaded by default; pass `n_series=None` for all 115704
 
     ## Next Steps
 
-    - **Hourly panel**: See `examples/datasets/pedestrian_counts.py`
-    - **Quarterly panel data**: See `examples/datasets/australian_tourism.py`
-    - **Panel forecasting**: See `examples/point/panel_forecasting.py` for global vs local models
+    - **Hourly panel**: See [`examples/datasets/pedestrian_counts.py`](/examples/datasets/pedestrian_counts/)
+    - **Quarterly panel data**: See [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
+    - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/) for global vs local models
     """)
+
 
 if __name__ == "__main__":
     app.run()

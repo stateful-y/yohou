@@ -657,7 +657,7 @@ def check_cv(
         Possible inputs for cv are:
         - None, to use the default 5-fold time series cross validation,
         - integer, to specify the number of folds in a time series `Splitter`,
-        - [model_selection.Splitter][] instance,
+        - `BaseSplitter` instance,
         - An iterable yielding (train, test) splits as arrays of indices.
     forecasting_horizon : int >= 1, default=1
         Horizon to forecast recursively.

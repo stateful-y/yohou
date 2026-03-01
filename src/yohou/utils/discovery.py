@@ -28,9 +28,9 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
 
     Parameters
     ----------
-type_filter : {"forecaster", "point", "interval", \
-        "transformer", "splitter", "scorer", "point_scorer", \
-        "interval_scorer", "conformity_scorer"} or list of such str, default=None
+    type_filter : {"forecaster", "point", "interval", \
+            "transformer", "splitter", "scorer", "point_scorer", \
+            "interval_scorer", "conformity_scorer"} or list of such str, default=None
         Which kind of estimators should be returned. If None, no filter is
         applied and all estimators are returned. Possible values are:
 
@@ -58,6 +58,11 @@ type_filter : {"forecaster", "point", "interval", \
     <class 'list'>
     >>> forecasters = all_estimators(type_filter='forecaster')
     >>> points = all_estimators(type_filter='point')
+
+    See Also
+    --------
+    `all_displays` : Get all display classes from yohou.
+    `all_functions` : Get all public functions from yohou.
     """
 
     def is_abstract(c: type) -> bool:
@@ -195,6 +200,11 @@ def all_displays() -> list[tuple[str, type]]:
     --------
     >>> from yohou.utils.discovery import all_displays
     >>> displays = all_displays()
+
+    See Also
+    --------
+    `all_estimators` : Get all estimator classes from yohou.
+    `all_functions` : Get all public functions from yohou.
     """
     all_classes = []
     root = str(Path(__file__).parent.parent)  # yohou package
@@ -242,6 +252,11 @@ def all_functions() -> list[tuple[str, object]]:
     --------
     >>> from yohou.utils.discovery import all_functions
     >>> functions = all_functions()
+
+    See Also
+    --------
+    `all_estimators` : Get all estimator classes from yohou.
+    `all_displays` : Get all display classes from yohou.
     """
     all_functions = []
     root = str(Path(__file__).parent.parent)  # yohou package
