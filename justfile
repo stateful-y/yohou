@@ -69,7 +69,6 @@ serve-fast:
 link:
     uvx linkchecker site/index.html --no-status --no-warnings --ignore-url 'material/overrides'
 
-
 # Clean build artifacts
 clean:
     rm -rf .nox

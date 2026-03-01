@@ -202,21 +202,153 @@ def _first_docstring_line(obj):
     return ""
 
 
-def _generate_api_pages(docs_dir):
-    """Generate per-class/function .md pages under docs/pages/api/generated/."""
-    generated_dir = Path(docs_dir) / "pages" / "api" / "generated"
+_SUBMODULE_CACHE = None
+
+
+def _get_submodules(project_root):
+    """Discover public submodules in the package (cached).
+
+    Scans ``src/yohou/`` for ``.py`` files (excluding ``__init__``)
+    and sub-packages with an ``__init__.py``.  Returns a sorted list of dicts
+    with *module_name* and *module_doc* keys.
+    """
+    global _SUBMODULE_CACHE  # noqa: PLW0603
+    if _SUBMODULE_CACHE is not None:
+        return _SUBMODULE_CACHE
+
+    pkg_dir = project_root / "src" / "yohou"
+    if not pkg_dir.exists():
+        _SUBMODULE_CACHE = []
+        return _SUBMODULE_CACHE
+
+    modules = []
+    # Single-file modules
+    for py_file in sorted(pkg_dir.glob("*.py")):
+        if py_file.name.startswith("_"):
+            continue
+        module_name = py_file.stem
+        module_doc = _extract_module_docstring(py_file)
+        modules.append({"module_name": module_name, "module_doc": module_doc})
+
+    # Sub-packages (directories with __init__.py)
+    for child in sorted(pkg_dir.iterdir()):
+        if not child.is_dir() or child.name.startswith("_"):
+            continue
+        init = child / "__init__.py"
+        if init.exists():
+            module_doc = _extract_module_docstring(init)
+            modules.append({"module_name": child.name, "module_doc": module_doc})
+
+    _SUBMODULE_CACHE = modules
+    return _SUBMODULE_CACHE
+
+
+def _extract_module_docstring(py_file):
+    """Extract the module-level docstring from a Python file."""
+    try:
+        source = py_file.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        docstring = ast.get_docstring(tree)
+        if docstring:
+            # Return only the first line
+            return docstring.strip().split("\n")[0]
+    except (SyntaxError, UnicodeDecodeError):
+        pass
+    return ""
+
+
+def _get_module_members(py_file):
+    """Discover public classes and functions in a Python module via AST.
+
+    Returns a dict with *classes* and *functions* lists.  Each entry is a dict
+    with *name* and *doc* (first line of the docstring, or empty string).
+    """
+    classes = []
+    functions = []
+    try:
+        source = py_file.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+    except (SyntaxError, UnicodeDecodeError):
+        return {"classes": classes, "functions": functions}
+
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
+            doc = ast.get_docstring(node) or ""
+            classes.append({"name": node.name, "doc": doc.strip().split("\n")[0]})
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and not node.name.startswith("_"):
+            doc = ast.get_docstring(node) or ""
+            functions.append({"name": node.name, "doc": doc.strip().split("\n")[0]})
+
+    return {"classes": classes, "functions": functions}
+
+
+def _build_members_tables(package_name, module_name, members):
+    """Build markdown tables linking to generated per-class/function pages.
+
+    Produces a markdown string with ``### Classes`` and ``### Functions``
+    sections, each containing a markdown table with links to dedicated
+    pages under ``generated/``, matching the yohou submodule page style.
+    """
+    sections = []
+
+    if members["classes"]:
+        lines = [
+            "### Classes",
+            "",
+            "| Name | Description |",
+            "|------|-------------|",
+        ]
+        for cls in members["classes"]:
+            qualified = f"{package_name}.{module_name}.{cls['name']}"
+            link = f"[`{cls['name']}`](generated/{qualified}.md)"
+            lines.append(f"| {link} | {cls['doc']} |")
+        sections.append("\n".join(lines))
+
+    if members["functions"]:
+        lines = [
+            "### Functions",
+            "",
+            "| Name | Description |",
+            "|------|-------------|",
+        ]
+        for func in members["functions"]:
+            qualified = f"{package_name}.{module_name}.{func['name']}"
+            link = f"[`{func['name']}`](generated/{qualified}.md)"
+            lines.append(f"| {link} | {func['doc']} |")
+        sections.append("\n".join(lines))
+
+    if not sections:
+        return ""
+
+    return "\n\n".join(sections)
+
+
+def _generate_api_pages(project_root):
+    """Generate per-submodule overview pages and per-class/function detail pages.
+
+    Reads ``docs/api-submodule.html`` and writes one ``.md`` overview page per
+    discovered submodule into ``docs/pages/api/``.  Each overview page uses
+    ``### Classes`` / ``### Functions`` headings with markdown tables linking
+    to dedicated per-member pages under ``docs/pages/api/generated/``.
+    """
+    template_file = project_root / "docs" / "api-submodule.html"
+    if not template_file.exists():
+        print("[hooks] docs/api-submodule.html not found, skipping API page generation")
+        return
+
+    template = template_file.read_text(encoding="utf-8")
+    api_dir = project_root / "docs" / "pages" / "api"
+    api_dir.mkdir(parents=True, exist_ok=True)
+
+    generated_dir = api_dir / "generated"
     generated_dir.mkdir(parents=True, exist_ok=True)
 
-    gitignore = generated_dir / ".gitignore"
-    if not gitignore.exists():
-        gitignore.write_text("# Auto-generated. Do not commit\n*\n!.gitignore\n")
-
-    # Clean stale pages from previous builds
+    # Clean stale generated pages
     for old in generated_dir.glob("*.md"):
         old.unlink()
 
-    data = _get_discovery_data()
-    count = 0
+    pkg_dir = project_root / "src" / "yohou"
+    modules = _get_submodules(project_root)
 
     _page_template = (
         "---\n"
@@ -232,142 +364,95 @@ def _generate_api_pages(docs_dir):
         "<!-- EXAMPLES_FOR:{qualified} -->\n"
     )
 
-    for name, cls in data["abstract_base_classes"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        page = generated_dir / f"{qualified}.md"
-        page.write_text(_page_template.format(name=name, qualified=qualified))
-        count += 1
+    member_count = 0
+    for mod in modules:
+        # Determine the source file for member discovery
+        mod_file = pkg_dir / f"{mod['module_name']}.py"
+        if not mod_file.exists():
+            mod_file = pkg_dir / mod["module_name"] / "__init__.py"
 
-    for name, cls in data["estimators"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        page = generated_dir / f"{qualified}.md"
-        page.write_text(_page_template.format(name=name, qualified=qualified))
-        count += 1
+        members = _get_module_members(mod_file) if mod_file.exists() else {"classes": [], "functions": []}
 
-    for name, cls in data["displays"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        page = generated_dir / f"{qualified}.md"
-        page.write_text(_page_template.format(name=name, qualified=qualified))
-        count += 1
+        # Generate submodule overview page with tables
+        members_tables = _build_members_tables(
+            "yohou",
+            mod["module_name"],
+            members,
+        )
 
-    for name, func in data["functions"]:
-        module = func.__module__
-        qualified = f"{module}.{name}"
-        page = generated_dir / f"{qualified}.md"
-        page.write_text(_page_template.format(name=name, qualified=qualified))
-        count += 1
+        content = template.format(
+            package_name="yohou",
+            module_name=mod["module_name"],
+            module_doc=mod["module_doc"],
+            members_tables=members_tables,
+        )
+        dest = api_dir / f"{mod['module_name']}.md"
+        dest.write_text(content, encoding="utf-8")
+        print(f"[hooks] generated api page: pages/api/{mod['module_name']}.md")
 
-    print(f"[hooks] generated {count} API pages in pages/api/generated/")
+        # Generate per-class/function detail pages
+        for cls in members["classes"]:
+            qualified = f"yohou.{mod['module_name']}.{cls['name']}"
+            page = generated_dir / f"{qualified}.md"
+            page.write_text(_page_template.format(name=cls["name"], qualified=qualified))
+            member_count += 1
 
+        for func in members["functions"]:
+            qualified = f"yohou.{mod['module_name']}.{func['name']}"
+            page = generated_dir / f"{qualified}.md"
+            page.write_text(_page_template.format(name=func["name"], qualified=qualified))
+            member_count += 1
 
-# Mapping from top-level module prefix to nav section label
-_MODULE_NAV_LABEL = {
-    "yohou.base": "yohou.base",
-    "yohou.compose": "yohou.compose",
-    "yohou.point": "yohou.point",
-    "yohou.interval": "yohou.interval",
-    "yohou.metrics": "yohou.metrics",
-    "yohou.model_selection": "yohou.model_selection",
-    "yohou.preprocessing": "yohou.preprocessing",
-    "yohou.stationarity": "yohou.stationarity",
-    "yohou.plotting": "yohou.plotting",
-    "yohou.datasets": "yohou.datasets",
-    "yohou.utils": "yohou.utils",
-    "yohou.testing": "yohou.testing",
-}
+    if member_count:
+        print(f"[hooks] generated {member_count} API member pages in pages/api/generated/")
 
 
-def _inject_generated_pages_into_nav(config, docs_dir):
-    """Inject generated API pages into the nav under their parent module sections.
+def _build_api_table_html(project_root):
+    """Build an HTML <table> for the API index with DataTables init.
 
-    Currently disabled: generated pages are accessed via table links on
-    submodule pages to keep the sidebar clean.  The pages are built but
-    excluded from nav via ``not_in_nav`` in mkdocs.yml.
+    Lists every public class and function across all submodules with
+    Name, Type, Module, and Description columns.  The table is initialised
+    with jQuery DataTables for client-side filtering and sorting.
     """
-    return
-
-
-def _build_api_table_html():
-    """Build an HTML <table> for the API index with DataTables init."""
-    data = _get_discovery_data()
-
-    # Map top-level submodule to its API page slug
-    _submodule_page = {
-        "yohou.base": "base",
-        "yohou.compose": "compose",
-        "yohou.point": "point",
-        "yohou.interval": "interval",
-        "yohou.metrics": "metrics",
-        "yohou.model_selection": "model-selection",
-        "yohou.preprocessing": "preprocessing",
-        "yohou.stationarity": "stationarity",
-        "yohou.plotting": "plotting",
-        "yohou.datasets": "datasets",
-        "yohou.utils": "utils",
-        "yohou.testing": "testing",
-    }
-
-    def _submodule_label_and_href(full_module: str):
-        """Return (display_label, relative_href) for a full module path."""
-        parts = full_module.split(".")
-        # Take first two parts: yohou.<submodule>
-        submodule = ".".join(parts[:2]) if len(parts) >= 2 else full_module
-        page = _submodule_page.get(submodule)
-        if page is not None:
-            return submodule, f"{page}/"
-        return submodule, None
+    modules = _get_submodules(project_root)
+    pkg_dir = project_root / "src" / "yohou"
 
     rows = []
-    for name, cls in data["abstract_base_classes"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        desc = _first_docstring_line(cls)
-        rows.append((name, "Base Class", module, desc, qualified))
+    for mod in modules:
+        mod_file = pkg_dir / f"{mod['module_name']}.py"
+        if not mod_file.exists():
+            mod_file = pkg_dir / mod["module_name"] / "__init__.py"
+        if not mod_file.exists():
+            continue
 
-    for name, cls in data["estimators"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        desc = _first_docstring_line(cls)
-        rows.append((name, "Class", module, desc, qualified))
+        members = _get_module_members(mod_file)
+        module_label = f"yohou.{mod['module_name']}"
+        module_href = f"../api/{mod['module_name']}/"
 
-    for name, cls in data["displays"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        desc = _first_docstring_line(cls)
-        rows.append((name, "Display", module, desc, qualified))
+        for cls in members["classes"]:
+            qualified = f"yohou.{mod['module_name']}.{cls['name']}"
+            rows.append((cls["name"], "Class", module_label, module_href, cls["doc"], qualified))
 
-    for name, func in data["functions"]:
-        module = func.__module__
-        qualified = f"{module}.{name}"
-        desc = _first_docstring_line(func)
-        rows.append((name, "Function", module, desc, qualified))
+        for func in members["functions"]:
+            qualified = f"yohou.{mod['module_name']}.{func['name']}"
+            rows.append((func["name"], "Function", module_label, module_href, func["doc"], qualified))
 
     rows.sort(key=lambda r: r[0].lower())
 
     _type_badge_cls = {
-        "Base Class": "api-badge--base",
         "Class": "api-badge--class",
-        "Display": "api-badge--display",
         "Function": "api-badge--function",
     }
 
     tbody_lines = []
-    for name, kind, module, desc, qualified in rows:
-        href = f"generated/{qualified}/"
-        label, mod_href = _submodule_label_and_href(module)
-        if mod_href is not None:
-            mod_cell = f'<a href="{mod_href}">{label}</a>'
-        else:
-            mod_cell = label
+    for name, kind, module_label, module_href, desc, qualified in rows:
+        href = f"../api/generated/{qualified}/"
         badge_cls = _type_badge_cls.get(kind, "")
         tbody_lines.append(
             f"      <tr>"
             f'<td><a href="{href}"><code>{name}</code></a></td>'
             f'<td><span class="api-badge {badge_cls}">{kind}</span></td>'
-            f"<td>{mod_cell}</td>"
+            f'<td><a href="{module_href}">{module_label}</a></td>'
             f"<td>{desc}</td>"
             f"</tr>"
         )
@@ -417,7 +502,6 @@ def _build_api_table_html():
 
 
 _GALLERY_CACHE = None
-_NOTEBOOK_API_USAGE_CACHE = None
 
 
 def _get_gallery_items(project_root):
@@ -485,25 +569,65 @@ def _get_gallery_items(project_root):
     return _GALLERY_CACHE
 
 
+def _build_gallery_html(project_root, category=None):
+    """Build gallery card grid as Material 'grid cards' markdown."""
+    items = _get_gallery_items(project_root)
+
+    if category:
+        items = [i for i in items if i["category"] == category]
+
+    if not items:
+        return "<!-- no gallery items found -->\n"
+
+    cards = []
+    for item in items:
+        desc = item["description"] or "No description."
+        cards.append(
+            f"-   **{item['title']}**\n"
+            f"\n"
+            f"    ---\n"
+            f"\n"
+            f"    {desc}\n"
+            f"\n"
+            f"    [View]({item['view_path']}) · "
+            f"[Open in marimo]({item['open_path']})"
+        )
+
+    return '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
+
+
+_NOTEBOOK_API_USAGE_CACHE = None
+
+
 def _get_notebook_api_usage(project_root):
-    """Build reverse map: qualified API name -> list of gallery items that use it."""
-    global _NOTEBOOK_API_USAGE_CACHE
+    """Build reverse map: qualified API name → list of gallery items that use it.
+
+    Scans example notebooks for ``from yohou.* import …``
+    statements and maps each imported name back to its fully-qualified
+    API identifier.
+    """
+    global _NOTEBOOK_API_USAGE_CACHE  # noqa: PLW0603
     if _NOTEBOOK_API_USAGE_CACHE is not None:
         return _NOTEBOOK_API_USAGE_CACHE
 
-    data = _get_discovery_data()
+    pkg_dir = project_root / "src" / "yohou"
+    modules = _get_submodules(project_root)
 
-    # Build name -> qualified_name lookup from all discovered API objects
+    # Build short name → qualified lookup from discovered module members
     name_to_qualified: dict[str, str] = {}
-    for name, cls in data["estimators"]:
-        name_to_qualified[name] = f"{cls.__module__}.{name}"
-    for name, cls in data["displays"]:
-        name_to_qualified[name] = f"{cls.__module__}.{name}"
-    for name, func in data["functions"]:
-        name_to_qualified[name] = f"{func.__module__}.{name}"
+    for mod in modules:
+        mod_file = pkg_dir / f"{mod['module_name']}.py"
+        if not mod_file.exists():
+            mod_file = pkg_dir / mod["module_name"] / "__init__.py"
+        if not mod_file.exists():
+            continue
+        members = _get_module_members(mod_file)
+        for cls in members["classes"]:
+            name_to_qualified[cls["name"]] = f"yohou.{mod['module_name']}.{cls['name']}"
+        for func in members["functions"]:
+            name_to_qualified[func["name"]] = f"yohou.{mod['module_name']}.{func['name']}"
 
     gallery_items = _get_gallery_items(project_root)
-    # Build stem -> gallery item lookup
     stem_to_item = {item["stem"]: item for item in gallery_items}
 
     usage: dict[str, list[dict]] = {}
@@ -529,14 +653,13 @@ def _get_notebook_api_usage(project_root):
         except (SyntaxError, UnicodeDecodeError):
             continue
 
-        # Extract all names imported from yohou.*
+        # Extract names imported from yohou.*
         imported_names: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("yohou"):
                 for alias in node.names:
                     imported_names.add(alias.name)
 
-        # Map imported names to qualified API names
         for imp_name in imported_names:
             qualified = name_to_qualified.get(imp_name)
             if qualified is not None:
@@ -586,97 +709,92 @@ def _build_api_examples_html(project_root, qualified_name):
     )
 
 
-def _build_gallery_html(project_root, category=None):
-    """Build gallery card grid as Material 'grid cards' markdown."""
-    items = _get_gallery_items(project_root)
+def _build_module_toc(config, current_src_path=None):
+    """Build the module TOC list used by the api-submodule sidebar template.
 
-    if category:
-        items = [i for i in items if i["category"] == category]
+    Parameters
+    ----------
+    config : dict
+        MkDocs config with ``docs_dir``.
+    current_src_path : str or None
+        Source path of the current page (e.g. ``pages/api/hello.md``).
+        When set, the matching entry gets ``active: True``.
 
-    if not items:
-        return "<!-- no gallery items found -->\n"
-
-    cards = []
-    for item in items:
-        desc = item["description"] or "No description."
-        cards.append(
-            f"-   **{item['title']}**\n"
-            f"\n"
-            f"    ---\n"
-            f"\n"
-            f"    {desc}\n"
-            f"\n"
-            f"    [View]({item['view_path']}) · "
-            f"[Open in marimo]({item['open_path']})"
-        )
-
-    return '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
-
-
-def on_page_markdown(markdown, page, config, files):
-    """Rewrite example links and inject generated API / gallery content.
-
-    Link rewriting
-    --------------
-    [View] links are converted to relative paths pointing to locally exported
-    static HTML notebooks.
-
-    [Open in marimo] placeholder links are resolved to the marimo online
-    playground via marimo.app. On RTD the commit SHA being built is used so
-    PR previews link to the correct revision; locally, ``main`` is used.
-
-    Placeholder injection
-    ---------------------
-    ``<!-- API_TABLE -->``         → searchable DataTables HTML table
-    ``<!-- GALLERY -->``           → all-categories card grid
-    ``<!-- GALLERY:category -->``  → single-category card grid
+    Returns
+    -------
+    list[dict]
+        TOC entries with keys *title*, *url*, *children*, and optionally
+        *active*.
     """
-    project_root = Path(__file__).parent.parent
+    docs_dir = Path(config["docs_dir"])
+    api_dir = docs_dir / "pages" / "api"
+    project_root = docs_dir.parent
 
-    src_parts = page.file.src_path.split("/")
-    depth = len(src_parts) if src_parts[-1] != "index.md" else len(src_parts) - 1
-    prefix = "../" * depth
+    is_index = current_src_path is None or current_src_path == "pages/api/index.md"
 
-    repo_url = config.get("repo_url", "").rstrip("/")
-    github_path = repo_url.removeprefix("https://")
-    git_ref = os.environ.get(
-        "READTHEDOCS_GIT_COMMIT_HASH",
-        os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main"),
-    )
-    playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
+    modules = _get_submodules(project_root)
+    module_toc = []
 
-    # API_TABLE placeholder
-    if "<!-- API_TABLE -->" in markdown:
-        table_html = _build_api_table_html()
-        markdown = markdown.replace("<!-- API_TABLE -->", table_html)
+    for mod in modules:
+        md_filename = f"{mod['module_name']}.md"
+        md_path = api_dir / md_filename
+        if not md_path.exists():
+            continue
 
-    # GALLERY placeholders: all categories
-    if "<!-- GALLERY -->" in markdown:
-        gallery_html = _build_gallery_html(project_root)
-        markdown = markdown.replace("<!-- GALLERY -->", gallery_html)
+        # Compute relative URL
+        if is_index:
+            # api/index.md is at pages/api/, submodule pages at pages/api/<module>/
+            page_url = f"{md_filename.replace('.md', '/')}"
+        else:
+            page_url = f"../{md_filename.replace('.md', '/')}".replace("//", "/")
 
-    # Per-category: <!-- GALLERY:point -->, <!-- GALLERY:interval -->, etc.
-    for match in re.finditer(r"<!-- GALLERY:(\w+) -->", markdown):
-        cat = match.group(1)
-        gallery_html = _build_gallery_html(project_root, category=cat)
-        markdown = markdown.replace(match.group(0), gallery_html)
+        active = current_src_path == f"pages/api/{md_filename}" if current_src_path else False
 
-    # EXAMPLES_FOR placeholders on generated API pages
-    for match in re.finditer(r"<!-- EXAMPLES_FOR:([\w.]+) -->", markdown):
-        qualified = match.group(1)
-        examples_html = _build_api_examples_html(project_root, qualified)
-        markdown = markdown.replace(match.group(0), examples_html)
+        entry = {
+            "title": f"yohou.{mod['module_name']}",
+            "url": page_url,
+            "active": active,
+            "children": [],
+        }
 
-    # Rewrite [Open in marimo] links (after gallery injection so gallery links are included)
-    markdown = re.sub(
-        r"\[Open in marimo\]\(/examples/([^)]+?)/edit/\)",
-        rf"[Open in marimo]({playground_base}/examples/\1.py)",
-        markdown,
-    )
+        # Parse h3 subsections from the module markdown for sidebar children
+        content = md_path.read_text(encoding="utf-8")
+        for m in re.finditer(r"^###\s+(.+)$", content, re.MULTILINE):
+            sub_title = m.group(1).strip()
+            sub_slug = re.sub(r"[^\w]+", "-", sub_title.lower()).strip("-")
+            child_url = f"{page_url}#{sub_slug}" if not active else f"#{sub_slug}"
+            entry["children"].append({"title": sub_title, "url": child_url, "active": False})
 
-    markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
+        module_toc.append(entry)
 
-    return markdown
+    return module_toc
+
+
+# ---------------------------------------------------------------------------
+# API page content post-processing
+# ---------------------------------------------------------------------------
+
+_GIT_REF_CACHE = None
+
+
+def _get_git_ref():
+    """Return the current git commit hash (short) for GitHub source links.
+
+    Falls back to ``"main"`` when git is unavailable or the working directory
+    is not a repository.  The result is cached for the lifetime of the build.
+    """
+    global _GIT_REF_CACHE  # noqa: PLW0603
+    if _GIT_REF_CACHE is not None:
+        return _GIT_REF_CACHE
+    try:
+        _GIT_REF_CACHE = subprocess.check_output(  # noqa: S603
+            ["git", "rev-parse", "HEAD"],  # noqa: S607
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        _GIT_REF_CACHE = "main"
+    return _GIT_REF_CACHE
 
 
 # Numpydoc section types to surface in the TOC.
@@ -694,17 +812,27 @@ _DETAIL_SECTION_SLUGS = {
 }
 
 
-def _make_section_heading(slug, title):
-    """Build an h3 heading element for an API page section."""
+def _make_section_heading(slug, title, level=3):
+    """Build a heading element for an API page section."""
     return (
-        f'<h3 id="{slug}" class="doc-section-heading">{title}'
+        f'<h{level} id="{slug}" class="doc-section-heading">{title}'
         f'<a class="headerlink" href="#{slug}" '
-        f'title="Permanent link">&para;</a></h3>'
+        f'title="Permanent link">&para;</a></h{level}>'
     )
 
 
-def _process_api_page_content(html, page):
-    """Convert numpydoc sections to h3 headings under mkdocstrings h2."""
+def _process_api_page_content(html, page, config):
+    """Convert numpydoc sections to h3 headings under mkdocstrings h2.
+
+    Restructures the rendered HTML produced by mkdocstrings so that
+    Parameters, Attributes, Returns, Raises, Notes, See Also,
+    References, and Source Code become proper ``<h3>`` headings.
+    The Source Code section is kept collapsible and preceded by a
+    link to the source file on GitHub.
+    For class pages a "Methods" heading is inserted before
+    ``doc-children`` and method headings are re-levelled h3 → h5.
+    Finally the page TOC is rebuilt to reflect the new structure.
+    """
     from mkdocs.structure.toc import AnchorLink
 
     is_class_page = bool(re.search(r'<h3\s+id="yohou\.', html))
@@ -754,7 +882,8 @@ def _process_api_page_content(html, page):
             new_class_region = new_class_region[: m.start()] + heading + "\n" + inner + new_class_region[m.end() :]
             sections_found.append((slug, title))
 
-    # Convert <details class="mkdocstrings-source"> to Source Code h3
+    # Convert <details class="mkdocstrings-source"> to collapsible Source Code
+    # with a GitHub link preceding the code block
     src_re = re.compile(
         r'<details\s+class="mkdocstrings-source"[^>]*>'
         r"\s*<summary>.*?</summary>"
@@ -765,27 +894,37 @@ def _process_api_page_content(html, page):
     if src_m:
         heading = _make_section_heading("source-code", "Source Code")
         inner = src_m.group(1).strip()
-        new_class_region = new_class_region[: src_m.start()] + heading + "\n" + inner + new_class_region[src_m.end() :]
+
+        # Build GitHub source link from page path and config
+        github_link = ""
+        repo_url = config.get("repo_url", "").rstrip("/")
+        if repo_url:
+            # Extract qualified name from page source path
+            src_path = page.file.src_path  # pages/api/generated/{qualified}.md
+            qualified = src_path.split("/")[-1].removesuffix(".md")
+            # qualified = package.module.Name → module path = package/module.py
+            parts = qualified.split(".")
+            if len(parts) >= 2:
+                module_path = "/".join(parts[:-1])
+                git_ref = _get_git_ref()
+                github_link = (
+                    f'<p class="github-source-link">'
+                    f'<a href="{repo_url}/blob/{git_ref}/src/{module_path}.py">'
+                    f"View on GitHub</a></p>\n"
+                )
+
+        source_block = (
+            heading
+            + "\n"
+            + github_link
+            + '<details class="source-code-details">\n'
+            + "<summary>Show/Hide source</summary>\n"
+            + inner
+            + "\n"
+            + "</details>"
+        )
+        new_class_region = new_class_region[: src_m.start()] + source_block + new_class_region[src_m.end() :]
         sections_found.append(("source-code", "Source Code"))
-
-    # Split See Also entries so each appears on its own line
-    def _split_see_also_p(m):
-        content = m.group(1)
-        # Split on newlines that separate entries (each entry starts with
-        # a link <a, a <code> tag, or a plain identifier followed by " :")
-        entries = re.split(r"\n(?=<a\s|<code>|[A-Za-z_][\w.]*\s*:)", content.strip())
-        if len(entries) <= 1:
-            return m.group(0)
-        return "\n".join(f"<p>{e.strip()}</p>" for e in entries if e.strip())
-
-    see_also_heading = '<h3 id="see-also"'
-    if see_also_heading in new_class_region:
-        # Only replace <p> tags that follow the See Also heading
-        sa_pos = new_class_region.index(see_also_heading)
-        before_sa = new_class_region[:sa_pos]
-        after_sa = new_class_region[sa_pos:]
-        after_sa = re.sub(r"<p>(.*?)</p>", _split_see_also_p, after_sa, count=1, flags=re.DOTALL)
-        new_class_region = before_sa + after_sa
 
     html = html[:h2_pos] + new_class_region + html[boundary_pos:]
 
@@ -799,15 +938,106 @@ def _process_api_page_content(html, page):
             count=1,
         )
 
-    # Increase method heading levels (h3 -> h5) in doc-children
+    # Increase method heading levels (h3 -> h4) in doc-children
     if is_class_page:
         dc_match = re.search(r'<div\s+class="doc doc-children"', html)
         if dc_match:
             before = html[: dc_match.start()]
             after = html[dc_match.start() :]
-            after = re.sub(r"<h3(\s)", r"<h5\1", after)
-            after = re.sub(r"</h3>", "</h5>", after)
+            after = re.sub(r"<h3(\s)", r"<h4\1", after)
+            after = re.sub(r"</h3>", "</h4>", after)
             html = before + after
+
+    # Process method numpydoc sections and source code in doc-children
+    if is_class_page:
+        dc_match2 = re.search(r'<div\s+class="doc doc-children"', html)
+        if dc_match2:
+            dc_start = dc_match2.start()
+            dc_content = html[dc_start:]
+
+            # Build GitHub link once (same source file for all methods)
+            method_github_link = ""
+            repo_url = config.get("repo_url", "").rstrip("/")
+            if repo_url:
+                _src_path = page.file.src_path
+                _qualified = _src_path.split("/")[-1].removesuffix(".md")
+                _parts = _qualified.split(".")
+                if len(_parts) >= 2:
+                    _module_path = "/".join(_parts[:-1])
+                    _git_ref = _get_git_ref()
+                    method_github_link = (
+                        f'<p class="github-source-link">'
+                        f'<a href="{repo_url}/blob/{_git_ref}/src/{_module_path}.py">'
+                        f"View on GitHub</a></p>\n"
+                    )
+
+            # Find all method headings (h4) with their IDs
+            method_positions = [(m.start(), m.group(1)) for m in re.finditer(r'<h4\s+id="([^"]+)"', dc_content)]
+
+            if method_positions:
+                new_dc = dc_content[: method_positions[0][0]]
+                for idx, (pos, method_id) in enumerate(method_positions):
+                    end_pos = method_positions[idx + 1][0] if idx + 1 < len(method_positions) else len(dc_content)
+                    method_short = method_id.split(".")[-1]
+                    section = dc_content[pos:end_pos]
+
+                    # Convert numpydoc section-title spans to h5 headings
+                    def _method_span_to_h5(m, _ms=method_short):
+                        title = re.sub(r"<[^>]+>", "", m.group(1)).strip().rstrip(":")
+                        base_slug = _DOC_SECTION_TITLE_SLUGS.get(title)
+                        if base_slug:
+                            slug = f"{_ms}-{base_slug}"
+                            return _make_section_heading(slug, title, level=5)
+                        return m.group(0)
+
+                    section = re.sub(
+                        r"<p>\s*<span\s+class=\"doc-section-title\"[^>]*>(.*?)</span>\s*</p>",
+                        _method_span_to_h5,
+                        section,
+                    )
+
+                    # Convert detail sections (Notes, See Also, References) to h6
+                    for detail_cls, (base_slug, title) in _DETAIL_SECTION_SLUGS.items():
+                        _slug = f"{method_short}-{base_slug}"
+                        detail_re_m = re.compile(
+                            rf'<details\s+class="{re.escape(detail_cls)}"[^>]*>'
+                            rf"\s*<summary>{re.escape(title)}</summary>"
+                            rf"(.*?)</details>",
+                            re.DOTALL,
+                        )
+                        dm = detail_re_m.search(section)
+                        if dm:
+                            heading = _make_section_heading(_slug, title, level=5)
+                            inner = dm.group(1).strip()
+                            section = section[: dm.start()] + heading + "\n" + inner + section[dm.end() :]
+
+                    # Convert source code to collapsible block with GitHub link
+                    method_src_re = re.compile(
+                        r'<details\s+class="mkdocstrings-source"[^>]*>'
+                        r"\s*<summary>.*?</summary>"
+                        r"(.*?)</details>",
+                        re.DOTALL,
+                    )
+                    msrc_m = method_src_re.search(section)
+                    if msrc_m:
+                        _slug = f"{method_short}-source-code"
+                        heading = _make_section_heading(_slug, "Source Code", level=5)
+                        inner = msrc_m.group(1).strip()
+                        source_block = (
+                            heading
+                            + "\n"
+                            + method_github_link
+                            + '<details class="source-code-details">\n'
+                            + "<summary>Show/Hide source</summary>\n"
+                            + inner
+                            + "\n"
+                            + "</details>"
+                        )
+                        section = section[: msrc_m.start()] + source_block + section[msrc_m.end() :]
+
+                    new_dc += section
+
+                html = html[:dc_start] + new_dc
 
     # Rename "Examples" h2 to "Tutorials" h3
     examples_h2 = re.search(r'<h2 id="examples">.*?</h2>', html, re.DOTALL)
@@ -828,10 +1058,8 @@ def _process_api_page_content(html, page):
         old_h2s = list(h1.children)
 
         # The first h2 child is the mkdocstrings class/func heading
-        method_items = []
         if old_h2s:
             main_h2 = old_h2s[0]
-            method_items = list(main_h2.children)
 
         # All sections nest inside the mkdocstrings h2
         section_children = []
@@ -841,11 +1069,16 @@ def _process_api_page_content(html, page):
             section_children.append(AnchorLink(title=title, id=slug, level=3))
 
         # Methods with individual methods nested underneath (level 3 + 4)
-        if is_class_page and method_items:
+        if is_class_page:
             methods_entry = AnchorLink(title="Methods", id="methods", level=3)
-            for mi in method_items:
-                mi.level = 4
-            methods_entry.children = method_items
+            # Recover method names from the HTML h4 headings
+            dc_match_toc = re.search(r'<div\s+class="doc doc-children"', html)
+            if dc_match_toc:
+                for m_toc in re.finditer(r'<h4[^>]+id="([^"]+)"[^>]*>', html[dc_match_toc.start() :]):
+                    method_id = m_toc.group(1)
+                    method_short = method_id.split(".")[-1]
+                    badge = '<code class="doc-symbol doc-symbol-method"></code> '
+                    methods_entry.children.append(AnchorLink(title=badge + method_short, id=method_id, level=4))
             section_children.append(methods_entry)
 
         # Tutorials (level 3)
@@ -863,117 +1096,96 @@ def _process_api_page_content(html, page):
     return html
 
 
-# Module page files in display order, mapping module label -> markdown filename.
-_MODULE_PAGE_FILES = [
-    ("yohou.base", "base.md"),
-    ("yohou.compose", "compose.md"),
-    ("yohou.point", "point.md"),
-    ("yohou.interval", "interval.md"),
-    ("yohou.metrics", "metrics.md"),
-    ("yohou.model_selection", "model-selection.md"),
-    ("yohou.preprocessing", "preprocessing.md"),
-    ("yohou.stationarity", "stationarity.md"),
-    ("yohou.plotting", "plotting.md"),
-    ("yohou.datasets", "datasets.md"),
-    ("yohou.utils", "utils.md"),
-    ("yohou.testing", "testing.md"),
-]
-
-
-def _build_module_toc(config, current_src_path=None):
-    """Build the module TOC list used by API index and submodule templates.
-
-    Parameters
-    ----------
-    config : dict
-        MkDocs config with ``docs_dir``.
-    current_src_path : str or None
-        Source path of the current page (e.g. ``pages/api/point.md``).
-        When set, the matching entry gets ``active: True``.
-
-    Returns
-    -------
-    list[dict]
-        TOC entries with keys *title*, *url*, *children*, and optionally *active*.
-    """
-    docs_dir = Path(config["docs_dir"])
-    api_dir = docs_dir / "pages" / "api"
-
-    # Determine URL prefix based on whether we're on the index or a submodule page
-    is_index = current_src_path is None or current_src_path == "pages/api/index.md"
-
-    module_toc = []
-    for module_label, md_filename in _MODULE_PAGE_FILES:
-        md_path = api_dir / md_filename
-        if not md_path.exists():
-            continue
-
-        # Compute relative URL
-        if is_index:
-            page_url = md_filename.replace(".md", "/")
-        else:
-            # From a sibling submodule page, link to adjacent page
-            page_url = f"../{md_filename.replace('.md', '/')}".replace("//", "/")
-
-        # Check if this is the currently active module
-        active = current_src_path == f"pages/api/{md_filename}" if current_src_path else False
-
-        entry = {"title": module_label, "url": page_url, "active": active, "children": []}
-
-        # Parse h3 subsections from the module markdown
-        content = md_path.read_text(encoding="utf-8")
-        for m in re.finditer(r"^###\s+(.+)$", content, re.MULTILINE):
-            sub_title = m.group(1).strip()
-            sub_slug = re.sub(r"[^\w]+", "-", sub_title.lower()).strip("-")
-            child_url = f"{page_url}#{sub_slug}" if not active else f"#{sub_slug}"
-            entry["children"].append({"title": sub_title, "url": child_url, "active": False})
-
-        module_toc.append(entry)
-
-    return module_toc
-
-
-def _process_api_index_toc(page, config):
-    """Build a module TOC for the API index page stored in page.meta."""
-    page.meta["module_toc"] = _build_module_toc(config, current_src_path="pages/api/index.md")
-
-
-def _process_api_submodule_toc(page, config):
-    """Build a module TOC for an API submodule page stored in page.meta."""
-    page.meta["module_toc"] = _build_module_toc(config, current_src_path=page.file.src_path)
-
-
 def on_page_content(html, page, config, files):
-    """Post-process HTML: See Also links and API page TOC restructuring."""
-    if '<details class="see-also' in html:
+    """Post-process HTML: API page TOC and content restructuring."""
+    src = page.file.src_path
+
+    # Process generated API member pages (per-class/function detail pages)
+    if src.startswith("pages/api/generated/"):
+        html = _process_api_page_content(html, page, config)
+
+    if src.startswith("pages/api/"):
         html = _linkify_see_also(html)
 
-    if page.file.src_path.startswith("pages/api/generated/"):
-        html = _process_api_page_content(html, page)
-
-    if page.file.src_path == "pages/api/index.md":
-        _process_api_index_toc(page, config)
+    if src == "pages/api/index.md":
+        # API index: flat module list (api-index.html template)
+        page.meta["module_toc"] = _build_module_toc(config, current_src_path=src)
     elif (
-        page.file.src_path.startswith("pages/api/")
-        and page.file.src_path != "pages/api/index.md"
-        and not page.file.src_path.startswith("pages/api/generated/")
+        src.startswith("pages/api/")
+        and not src.startswith("pages/api/generated/")
         and page.meta.get("template") == "api-submodule.html"
     ):
-        _process_api_submodule_toc(page, config)
+        # Submodule page: module list with active/children expansion
+        page.meta["module_toc"] = _build_module_toc(config, current_src_path=src)
 
     return html
+
+
+def on_page_markdown(markdown, page, config, files):
+    """Inject dynamic content into markdown pages.
+
+    Placeholder injection
+    ---------------------
+    ``<!-- API_TABLE -->``         → submodule table for API index
+    ``<!-- GALLERY -->``           → flat card grid of example notebooks
+    """
+    project_root = Path(__file__).parent.parent
+
+    # API_TABLE placeholder
+    if "<!-- API_TABLE -->" in markdown:
+        table = _build_api_table_html(project_root)
+        markdown = markdown.replace("<!-- API_TABLE -->", table)
+
+    # EXAMPLES_FOR placeholders on generated API pages
+    for match in re.finditer(r"<!-- EXAMPLES_FOR:([\w.]+) -->", markdown):
+        qualified = match.group(1)
+        examples_html = _build_api_examples_html(project_root, qualified)
+        markdown = markdown.replace(match.group(0), examples_html)
+
+    src_parts = page.file.src_path.split("/")
+    depth = len(src_parts) if src_parts[-1] != "index.md" else len(src_parts) - 1
+    prefix = "../" * depth
+
+    repo_url = config.get("repo_url", "").rstrip("/")
+    github_path = repo_url.removeprefix("https://")
+    git_ref = os.environ.get(
+        "READTHEDOCS_GIT_COMMIT_HASH",
+        os.environ.get("READTHEDOCS_GIT_IDENTIFIER", "main"),
+    )
+    playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
+
+    # GALLERY placeholder
+    if "<!-- GALLERY -->" in markdown:
+        gallery_html = _build_gallery_html(project_root)
+        markdown = markdown.replace("<!-- GALLERY -->", gallery_html)
+
+    # Per-category: <!-- GALLERY:point -->, <!-- GALLERY:interval -->, etc.
+    for match in re.finditer(r"<!-- GALLERY:(\w+) -->", markdown):
+        cat = match.group(1)
+        gallery_html = _build_gallery_html(project_root, category=cat)
+        markdown = markdown.replace(match.group(0), gallery_html)
+
+    # Resolve [Open in marimo] placeholder URLs → full marimo.app playground URLs
+    markdown = re.sub(
+        r"\[Open in marimo\]\(/examples/([^)]+?)/edit/\)",
+        rf"[Open in marimo]({playground_base}/examples/\1.py)",
+        markdown,
+    )
+
+    # Rewrite [View] to relative paths pointing to local HTML exports
+    markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
+
+    return markdown
 
 
 def on_pre_build(config):
     """Export marimo notebooks and generate API pages before building docs."""
     project_root = Path(__file__).parent.parent
-    docs_dir = Path(config["docs_dir"])
 
     # Generate per-class API pages and inject them into nav
-    _generate_api_pages(docs_dir)
-    _inject_generated_pages_into_nav(config, docs_dir)
+    _generate_api_pages(project_root)
 
-    # Export marimo notebooks
+    # Allow skipping slow notebook export during development
     if os.environ.get("MKDOCS_SKIP_NOTEBOOKS"):
         print("[hooks] MKDOCS_SKIP_NOTEBOOKS set, skipping notebook export")
         return
@@ -989,13 +1201,11 @@ def on_pre_build(config):
     except ModuleNotFoundError:
         _skip_stems |= {"nixtla_forecasters", "nixtla_panel"}
 
+    # Find all marimo notebooks (recursively, excluding __marimo__ and bugs dirs)
     notebooks = [
         p
         for p in examples_dir.rglob("*.py")
-        if "__marimo__" not in p.parts
-        and "bugs" not in p.parts
-        and "__init__" not in p.name
-        and p.stem not in _skip_stems
+        if "__marimo__" not in p.parts and "bugs" not in p.parts and "__init__" not in p.name
     ]
     if not notebooks:
         return
@@ -1041,10 +1251,7 @@ def on_pre_build(config):
                 print(e.stderr, file=sys.stderr)
             continue
         except FileNotFoundError:
-            print(
-                "[hooks] marimo not found, skipping notebook export",
-                file=sys.stderr,
-            )
+            print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
             break
 
     if failed:
@@ -1335,24 +1542,6 @@ def _is_excluded(relative_posix: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(relative_posix, pattern) for pattern in patterns)
 
 
-def _rewrite_api_links_in_html(html_file: Path) -> None:
-    """Rewrite absolute /pages/api/ links to relative paths in exported HTML."""
-    if not html_file.exists():
-        return
-
-    html_content = html_file.read_text(encoding="utf-8")
-
-    # All exported notebooks live at site/examples/<slug>/index.html
-    # so relative path to site root is ../../
-    html_content = re.sub(
-        r'href="/pages/api/',
-        'href="../../pages/api/',
-        html_content,
-    )
-
-    html_file.write_text(html_content, encoding="utf-8")
-
-
 def _inject_rtd_css(html_file: Path) -> None:
     """Inject CSS to hide Read The Docs version menu flyout in marimo notebooks."""
     if not html_file.exists():
@@ -1380,6 +1569,7 @@ def on_post_build(config):
     project_root = Path(__file__).parent.parent
     docs_examples = project_root / "docs" / "examples"
 
+    # Copy standalone HTML example exports to site
     if docs_examples.exists():
         for html_dir in docs_examples.iterdir():
             if not html_dir.is_dir() or html_dir.name.startswith("."):
@@ -1392,15 +1582,18 @@ def on_post_build(config):
             target_dir = site_dir / "examples" / html_dir.name
             target_dir.mkdir(parents=True, exist_ok=True)
 
+            # Copy exported HTML files
             for file in html_dir.iterdir():
                 if file.name == "CLAUDE.md" or file.is_dir():
                     continue
                 shutil.copy2(file, target_dir / file.name)
 
+            # Inject CSS to hide RTD version menu in exported HTML
             _inject_rtd_css(target_dir / "index.html")
-            _rewrite_api_links_in_html(target_dir / "index.html")
-            print(f"[hooks] copied examples/{html_dir.name}/ to site")
 
+            print(f"[hooks] copied examples/{html_dir.name}/ to site")
+    # Get exclude patterns from config
+    # Note: mkdocs converts exclude_docs to a GitIgnoreSpec object, so we hardcode patterns
     exclude_patterns = ["examples/**/CLAUDE.md"]
 
     legacy_dir = site_dir / "llm"
