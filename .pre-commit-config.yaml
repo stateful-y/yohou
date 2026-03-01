@@ -38,10 +38,11 @@ repos:
       # Run the formatter
       - id: ruff-format
 
-  # Markdown linting with rumdl
+  # Markdown linting and formatting with rumdl
   - repo: https://github.com/rvben/rumdl-pre-commit
-    rev: v0.1.31
+    rev: v0.1.33
     hooks:
+      - id: rumdl
       - id: rumdl-fmt
 
   # Type checking with ty

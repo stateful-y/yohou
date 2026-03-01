@@ -36,9 +36,9 @@ class Residual(BaseConformityScorer):
 
     See Also
     --------
-    AbsoluteResidual : Symmetric variant using absolute residuals.
-    GammaResidual : Scale-dependent variant using relative errors.
-    yohou.interval.split_conformal.SplitConformalForecaster :
+    `AbsoluteResidual` : Symmetric variant using absolute residuals.
+    `GammaResidual` : Scale-dependent variant using relative errors.
+    `yohou.interval.split_conformal.SplitConformalForecaster` :
         Conformal prediction forecaster that uses conformity scorers.
 
     Examples
@@ -397,10 +397,10 @@ class AbsoluteGammaResidual(GammaResidual):
         Small constant added to the denominator to prevent division by
         zero.
 
-            See Also
+    See Also
     --------
-    GammaResidual : Asymmetric variant using signed relative errors.
-    AbsoluteResidual : Scale-independent symmetric variant.
+    `GammaResidual` : Asymmetric variant using signed relative errors.
+    `AbsoluteResidual` : Scale-independent symmetric variant.
 
     Examples
     --------
@@ -464,8 +464,8 @@ class QuantileResidual(BaseConformityScorer):
 
     See Also
     --------
-    AbsoluteQuantileResidual : Absolute variant of quantile residuals.
-    Residual : Point-prediction conformity scorer.
+    `AbsoluteQuantileResidual` : Absolute variant of quantile residuals.
+    `Residual` : Point-prediction conformity scorer.
 
     """
 
@@ -496,8 +496,8 @@ class AbsoluteQuantileResidual(BaseConformityScorer):
 
     See Also
     --------
-    QuantileResidual : Signed variant of quantile residuals.
-    AbsoluteResidual : Point-prediction absolute conformity scorer.
+    `QuantileResidual` : Signed variant of quantile residuals.
+    `AbsoluteResidual` : Point-prediction absolute conformity scorer.
 
     """
 
