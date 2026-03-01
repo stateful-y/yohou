@@ -424,7 +424,7 @@ def _generate_api_pages(project_root):
         "<!-- EXAMPLES_FOR:{qualified} -->\n"
     )
 
-    # --- Submodule overview pages (AST-based) ---
+    # Submodule overview pages (AST-based)
     for mod in modules:
         mod_file = pkg_dir / f"{mod['module_name']}.py"
         if not mod_file.exists():
@@ -450,7 +450,7 @@ def _generate_api_pages(project_root):
             dest.write_text(content, encoding="utf-8")
             print(f"[hooks] generated api page: pages/api/{mod['module_name']}.md")
 
-    # --- Per-member detail pages (runtime discovery) ---
+    # Per-member detail pages (runtime discovery)
     data = _get_discovery_data()
     member_count = 0
 
@@ -485,7 +485,7 @@ def _generate_api_pages(project_root):
     if member_count:
         print(f"[hooks] generated {member_count} API member pages in pages/api/generated/")
 
-    # --- Fill gaps: AST-discovered members not covered by runtime discovery ---
+    # Fill gaps: AST-discovered members not covered by runtime discovery
     # Some classes (e.g., dataclasses, non-estimator types) appear in
     # __init__.py re-exports but are not found by all_estimators/displays/functions.
     # Generate pages for those so submodule overview links are not broken.
@@ -903,10 +903,7 @@ def _build_module_toc(config, current_src_path=None):
     return module_toc
 
 
-# ---------------------------------------------------------------------------
 # API page content post-processing
-# ---------------------------------------------------------------------------
-
 _GIT_REF_CACHE = None
 
 
