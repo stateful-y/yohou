@@ -11,7 +11,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Interval Search",
-    "description": "Tune SplitConformalForecaster parameters (calibration_size, conformity_scorer) with GridSearchCV, then evaluate interval coverage and width separately.",
+    "description": "Tune interval forecaster parameters directly with interval metrics in GridSearchCV, including mixed point+interval multimetric search.",
 }
 app = marimo.App(width="medium")
 
@@ -28,14 +28,15 @@ def _(mo):
     mo.md(r"""
     # Hyperparameter Search for Interval Forecasters
 
-    Tune interval forecaster parameters using GridSearchCV.
+    Tune interval forecaster parameters using interval metrics
+    **directly** in [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/).
 
     ## What You'll Learn
 
-    - Searching over `calibration_size` and `conformity_scorer`
-    - GridSearchCV uses **point predictions** internally for scoring
-    - Evaluating interval quality separately after search
-    - Balancing coverage vs interval width
+    - Scoring with interval metrics (`IntervalScore`, `EmpiricalCoverage`) during CV
+    - Mixed multimetric search: point + interval metrics together
+    - How `GridSearchCV` automatically routes `coverage_rates` to the forecaster
+    - Comparing calibration parameters with interval-aware selection
     """)
 
 
@@ -43,15 +44,14 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_sunspot
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import (
         EmpiricalCoverage,
+        IntervalScore,
         MeanAbsoluteError,
         MeanIntervalWidth,
-        RootMeanSquaredError,
     )
     from yohou.metrics.conformity import AbsoluteResidual, Residual
     from yohou.model_selection import GridSearchCV
@@ -65,19 +65,18 @@ def _():
         EmpiricalCoverage,
         ExpandingWindowSplitter,
         GridSearchCV,
+        IntervalScore,
         LagTransformer,
         MeanAbsoluteError,
         MeanIntervalWidth,
         PointReductionForecaster,
         Residual,
         Ridge,
-        RootMeanSquaredError,
         SplitConformalForecaster,
         fetch_sunspot,
         pl,
         plot_forecast,
         plot_time_series,
-        train_test_split,
     )
 
 
@@ -86,21 +85,21 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We load the Sunspots dataset, aggregate to monthly resolution, and split
-    into training and test sets. The test set length defines the forecasting
-    horizon used throughout the search.
+    We load the Sunspots dataset, aggregate to monthly, and split
+    into training and test sets.
     """)
 
 
 @app.cell
-def _(fetch_sunspot, mo, pl, train_test_split):
+def _(fetch_sunspot, mo, pl):
     _raw = fetch_sunspot().frame
     ss = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
-    y_train, _y_rest = train_test_split(ss, test_size=0.15, shuffle=False)
-    y_test = _y_rest.head(24)
-    horizon = len(y_test)
+    n_test = 24
+    y_train = ss.head(len(ss) - n_test)
+    y_test = ss.tail(n_test)
+    horizon = n_test
 
-    mo.md(f"**Sunspots**: {len(ss)} observations\n\n**Train**: {len(y_train)}, **Test**: {len(y_test)}")
+    mo.md(f"**Sunspots**: {len(ss)} rows | **Train**: {len(y_train)} | **Test**: {len(y_test)}")
     return horizon, ss, y_test, y_train
 
 
@@ -112,11 +111,16 @@ def _(plot_time_series, ss):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Search over Calibration Parameters
+    ## 2. Search with Interval Metrics
 
-    [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) scores using **point predictions** from
-    `observe_predict`. We use point metrics (MAE, RMSE) for
-    the search, then evaluate interval quality separately.
+    Pass an interval scorer like [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/)
+    to `GridSearchCV`. The search automatically:
+
+    1. Collects `coverage_rates` from all interval scorers
+    2. Passes them to `forecaster.fit()` and `observe_predict_interval()`
+    3. Scores each fold with interval predictions
+
+    No manual `predict_interval` call is needed during the search.
     """)
 
 
@@ -125,12 +129,11 @@ def _(
     AbsoluteResidual,
     ExpandingWindowSplitter,
     GridSearchCV,
+    IntervalScore,
     LagTransformer,
-    MeanAbsoluteError,
     PointReductionForecaster,
     Residual,
     Ridge,
-    RootMeanSquaredError,
     SplitConformalForecaster,
     horizon,
     y_train,
@@ -143,37 +146,33 @@ def _(
         calibration_size=50,
         conformity_scorer=Residual(),
     )
-    interval_gs = GridSearchCV(
+    gs_interval = GridSearchCV(
         forecaster=_base,
         param_grid={
             "calibration_size": [30, 50, 80, 120],
             "conformity_scorer": [Residual(), AbsoluteResidual()],
         },
-        scoring={
-            "mae": MeanAbsoluteError(),
-            "rmse": RootMeanSquaredError(),
-        },
-        refit="mae",
+        scoring=IntervalScore(coverage_rates=[0.9]),
+        refit=True,
         cv=ExpandingWindowSplitter(n_splits=3),
     )
-    interval_gs.fit(y_train, forecasting_horizon=horizon)
-    return (interval_gs,)
+    gs_interval.fit(y_train, forecasting_horizon=horizon)
+    return (gs_interval,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 3. Search Results
+    ## 3. Results
 
-    The `cv_results_` dictionary contains per-parameter-combination scores
-    for each metric. We extract the parameter columns and score columns into
-    a table to compare configurations.
+    The search used `IntervalScore` to rank parameters. Lower (more negative)
+    interval score means tighter intervals with good coverage.
     """)
 
 
 @app.cell
-def _(interval_gs, mo, pl):
-    _raw = interval_gs.cv_results_
+def _(gs_interval, mo, pl):
+    _raw = gs_interval.cv_results_
     _safe = {
         k: [
             str(v) if hasattr(v, "__class__") and not isinstance(v, (int, float, str, bool, type(None))) else v
@@ -189,20 +188,131 @@ def _(interval_gs, mo, pl):
 
 
 @app.cell
-def _(interval_gs, mo):
+def _(gs_interval, mo):
     mo.md(f"""
-    **Best params**: {interval_gs.best_params_}\n\n"
-        f"**Best MAE (negated)**: {interval_gs.best_score_:.4f}
+    **Best params**: {gs_interval.best_params_}
+
+    **Best IntervalScore (negated)**: {gs_interval.best_score_:.4f}
     """)
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Evaluate Interval Quality
+    ## 4. Predict and Visualize
 
-    After selecting the best model via point metrics, evaluate the
-    interval predictions using coverage and width metrics.
+    The best forecaster was refitted on all training data with the
+    `coverage_rates` collected from the scorer.
+    """)
+
+
+@app.cell
+def _(gs_interval, horizon, plot_forecast, y_test, y_train):
+    y_pred_interval = gs_interval.predict_interval(
+        forecasting_horizon=horizon,
+        coverage_rates=[0.9],
+    )
+    plot_forecast(
+        y_test,
+        y_pred_interval,
+        y_train=y_train,
+        coverage_rates=[0.9],
+        n_history=50,
+        title="Best Interval Forecaster (Interval Score Search)",
+    )
+    return (y_pred_interval,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 5. Mixed Multimetric: Point + Interval
+
+    You can combine point and interval scorers in a single search.
+    `GridSearchCV` handles this transparently:
+
+    - **Interval scorers** receive interval predictions (`_lower_`/`_upper_` columns)
+    - **Point scorers** receive midpoint estimates derived from the tightest interval
+
+    Use `refit` to select which metric determines the best model.
+    """)
+
+
+@app.cell
+def _(
+    AbsoluteResidual,
+    EmpiricalCoverage,
+    ExpandingWindowSplitter,
+    GridSearchCV,
+    IntervalScore,
+    LagTransformer,
+    MeanAbsoluteError,
+    PointReductionForecaster,
+    Residual,
+    Ridge,
+    SplitConformalForecaster,
+    horizon,
+    y_train,
+):
+    _base_mixed = SplitConformalForecaster(
+        point_forecaster=PointReductionForecaster(
+            estimator=Ridge(),
+            feature_transformer=LagTransformer(lag=[1, 12]),
+        ),
+        calibration_size=50,
+        conformity_scorer=Residual(),
+    )
+    gs_mixed = GridSearchCV(
+        forecaster=_base_mixed,
+        param_grid={
+            "calibration_size": [30, 50, 80],
+            "conformity_scorer": [Residual(), AbsoluteResidual()],
+        },
+        scoring={
+            "interval_score": IntervalScore(coverage_rates=[0.9]),
+            "coverage": EmpiricalCoverage(coverage_rates=[0.9]),
+            "mae": MeanAbsoluteError(),
+        },
+        refit="interval_score",
+        cv=ExpandingWindowSplitter(n_splits=3),
+    )
+    gs_mixed.fit(y_train, forecasting_horizon=horizon)
+    return (gs_mixed,)
+
+
+@app.cell
+def _(gs_mixed, mo, pl):
+    _raw_m = gs_mixed.cv_results_
+    _safe_m = {
+        k: [
+            str(v) if hasattr(v, "__class__") and not isinstance(v, (int, float, str, bool, type(None))) else v
+            for v in vals
+        ]
+        if isinstance(vals, list)
+        else vals
+        for k, vals in _raw_m.items()
+    }
+    _results_m = pl.DataFrame(_safe_m)
+    _cols_m = [c for c in _results_m.columns if "param_" in c or "mean_test" in c or "rank_test" in c]
+    mo.ui.table(_results_m.select(_cols_m))
+
+
+@app.cell
+def _(gs_mixed, mo):
+    mo.md(f"""
+    **Best params (by interval score)**: {gs_mixed.best_params_}
+
+    **Best IntervalScore**: {gs_mixed.best_score_:.4f}
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 6. Evaluate Interval Width
+
+    After selecting the best model, evaluate coverage and width on the
+    held-out test set.
     """)
 
 
@@ -210,73 +320,25 @@ def _(mo):
 def _(
     EmpiricalCoverage,
     MeanIntervalWidth,
+    gs_mixed,
     horizon,
-    interval_gs,
     mo,
     y_test,
     y_train,
 ):
-    coverage_rates = [0.9, 0.95]
-    y_pred_interval = interval_gs.predict_interval(
+    y_pred_mixed = gs_mixed.predict_interval(
         forecasting_horizon=horizon,
-        coverage_rates=coverage_rates,
+        coverage_rates=[0.9],
     )
-    _cov_scorer_90 = EmpiricalCoverage(coverage_rates=[0.9])
-    _cov_scorer_95 = EmpiricalCoverage(coverage_rates=[0.95])
-    _width_scorer_90 = MeanIntervalWidth(coverage_rates=[0.9])
-    _cov_scorer_90.fit(y_train)
-    _cov_scorer_95.fit(y_train)
-    _width_scorer_90.fit(y_train)
+    _cov = EmpiricalCoverage(coverage_rates=[0.9])
+    _width = MeanIntervalWidth(coverage_rates=[0.9])
+    _cov.fit(y_train)
+    _width.fit(y_train)
 
-    _metrics = {
-        "Coverage 90%": round(float(_cov_scorer_90.score(y_test, y_pred_interval)), 3),
-        "Coverage 95%": round(float(_cov_scorer_95.score(y_test, y_pred_interval)), 3),
-        "Mean Width 90%": round(float(_width_scorer_90.score(y_test, y_pred_interval)), 1),
-    }
-    mo.md("\n".join(f"- **{k}**: {v}" for k, v in _metrics.items()))
-    return coverage_rates, y_pred_interval
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) renders the best interval forecaster's prediction bands
-    alongside the actual test values. The shaded regions represent the
-    prediction intervals at each requested coverage rate.
+    mo.md(f"""
+    - **Empirical coverage (90%)**: {float(_cov.score(y_test, y_pred_mixed)):.3f}
+    - **Mean interval width**: {float(_width.score(y_test, y_pred_mixed)):.1f}
     """)
-
-
-@app.cell
-def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
-    plot_forecast(
-        y_test,
-        y_pred_interval,
-        y_train=y_train,
-        coverage_rates=coverage_rates,
-        n_history=50,
-        title="Best Interval Forecaster (GridSearchCV)",
-    )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 5. Point Forecast from Best Interval Model
-
-    Interval forecasters also produce point predictions.
-    """)
-
-
-@app.cell
-def _(horizon, interval_gs, plot_forecast, y_test, y_train):
-    y_pred_point = interval_gs.predict(forecasting_horizon=horizon)
-    plot_forecast(
-        y_test,
-        y_pred_point,
-        y_train=y_train,
-        n_history=50,
-        title="Point Prediction from Best Interval Forecaster",
-    )
 
 
 @app.cell(hide_code=True)
@@ -284,17 +346,17 @@ def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - GridSearchCV scores interval forecasters using **point predictions** via `observe_predict`
-    - Use **point metrics** (MAE, RMSE) for the search scoring
-    - Evaluate **interval quality** separately after search using `predict_interval`
-    - Tune `calibration_size` and `conformity_scorer` for conformal forecasters
-    - Larger calibration sets tend to improve coverage but reduce training data
+    - **Interval metrics work directly** in `GridSearchCV` - no workaround needed
+    - `coverage_rates` are automatically collected from interval scorers and routed
+    - **Mixed multimetric** search combines point and interval metrics in one call
+    - Point scorers receive midpoint estimates `(lower + upper) / 2` from the tightest interval
+    - Use `refit` to pick which metric selects the best configuration
 
     ## Next Steps
 
-    - **Multi-metric search**: See [`examples/model_selection/multi_metric_search.py`](/examples/model_selection/multi_metric_search/)
-    - **Optuna search**: See [`examples/model_selection/optuna_search.py`](/examples/model_selection/optuna_search/)
-    - **Conformity scorers**: See [`examples/interval/conformal_conformity_scorers.py`](/examples/interval/conformal_conformity_scorers/)
+    - [`multi_metric_search.py`](/examples/model_selection/multi_metric_search/) for more on multi-metric strategies
+    - [`optuna_search.py`](/examples/model_selection/optuna_search/) for Optuna-based search
+    - [`conformal_conformity_scorers.py`](/examples/interval/conformal_conformity_scorers/) for conformity scorer details
     """)
 
 

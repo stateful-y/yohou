@@ -41,14 +41,10 @@ Using individual check functions::
 
 """
 
-# Transformer checks (23 functions)
-# Common checks (2 functions)
 from .common import (
     check_metadata_routing_default_request,
     check_metadata_routing_get_metadata_routing,
 )
-
-# Forecaster checks (12 functions)
 from .forecaster import (
     check_clone_preserves_forecaster_params,
     check_fit_sets_forecaster_attributes,
@@ -64,8 +60,6 @@ from .forecaster import (
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
 )
-
-# Generator functions (5 functions)
 from .generators import (
     _yield_yohou_forecaster_checks,
     _yield_yohou_scorer_checks,
@@ -73,8 +67,6 @@ from .generators import (
     _yield_yohou_splitter_checks,
     _yield_yohou_transformer_checks,
 )
-
-# Interval forecaster checks (5 functions)
 from .interval import (
     check_coverage_rates_parameter,
     check_coverage_rates_validation,
@@ -90,21 +82,13 @@ from .metadata_routing import (
     record_metadata,
     record_metadata_not_default,
 )
-
-# Panel data checks (3 functions)
 from .panel import (
     check_panel_data,
     check_panel_invalid_group_raises,
     check_panel_single_group,
 )
-
-# Point forecaster checks (2 functions)
 from .point import check_point_prediction_structure, check_point_prediction_types
-
-# Reduction forecaster checks (2 functions)
 from .reduction import check_estimator_parameter, check_reduction_strategy
-
-# Scorer checks (10 functions)
 from .scorer import (
     check_scorer_aggregation_methods,
     check_scorer_component_subselection,
@@ -118,8 +102,6 @@ from .scorer import (
     check_scorer_tags_match_capabilities,
     check_scorer_tags_static_after_fit,
 )
-
-# Search CV checks (19 functions)
 from .search import (
     check_grid_search_exhaustive,
     check_grid_search_param_grid_validation,
@@ -130,6 +112,7 @@ from .search import (
     check_search_cv_results_structure,
     check_search_error_score_handling,
     check_search_fit_sets_attributes,
+    check_search_interval_predict_delegates,
     check_search_method_availability,
     check_search_multimetric_scoring,
     check_search_not_fitted_error,
@@ -139,10 +122,7 @@ from .search import (
     check_search_refit_false_no_forecaster,
     check_search_return_train_score,
     check_search_rewind_delegates,
-    check_search_score_delegates,
 )
-
-# Splitter checks (8 functions)
 from .splitter import (
     check_splitter_n_splits_consistency,
     check_splitter_non_overlapping_tests,
@@ -182,7 +162,6 @@ from .transformer import (
 )
 
 __all__ = [
-    # Transformer checks (24)
     "check_feature_names_out_match",
     "check_fit_idempotent",
     "check_fit_sets_attributes",
@@ -208,7 +187,6 @@ __all__ = [
     "check_observe_concatenates_memory",
     "check_observe_transform_equivalence",
     "check_observe_transform_sequential_consistency",
-    # Forecaster checks (12)
     "check_clone_preserves_forecaster_params",
     "check_fit_sets_forecaster_attributes",
     "check_forecaster_methods_call_check_is_fitted",
@@ -222,23 +200,18 @@ __all__ = [
     "check_rewind_propagates_to_transformers",
     "check_rewind_replaces_observations",
     "check_observe_extends_observations",
-    # Point forecaster checks (2)
     "check_point_prediction_structure",
     "check_point_prediction_types",
-    # Interval forecaster checks (5)
     "check_coverage_rates_parameter",
     "check_coverage_rates_validation",
     "check_interval_bounds",
     "check_interval_prediction_columns",
     "check_interval_prediction_types",
-    # Reduction forecaster checks (2)
     "check_estimator_parameter",
     "check_reduction_strategy",
-    # Panel data checks (3)
     "check_panel_data",
     "check_panel_invalid_group_raises",
     "check_panel_single_group",
-    # Splitter checks (8)
     "check_splitter_n_splits_consistency",
     "check_splitter_non_overlapping_tests",
     "check_splitter_panel_data_support",
@@ -247,7 +220,6 @@ __all__ = [
     "check_splitter_tags_accessible_before_fit",
     "check_splitter_tags_match_capabilities",
     "check_splitter_tags_static_after_fit",
-    # Scorer checks (10)
     "check_scorer_aggregation_methods",
     "check_scorer_component_subselection",
     "check_scorer_coverage_rate_subselection",
@@ -259,7 +231,6 @@ __all__ = [
     "check_scorer_tags_accessible_before_fit",
     "check_scorer_tags_match_capabilities",
     "check_scorer_tags_static_after_fit",
-    # Search CV checks (19)
     "check_grid_search_exhaustive",
     "check_grid_search_param_grid_validation",
     "check_randomized_search_distributions",
@@ -269,6 +240,7 @@ __all__ = [
     "check_search_cv_results_structure",
     "check_search_error_score_handling",
     "check_search_fit_sets_attributes",
+    "check_search_interval_predict_delegates",
     "check_search_method_availability",
     "check_search_multimetric_scoring",
     "check_search_not_fitted_error",
@@ -277,12 +249,9 @@ __all__ = [
     "check_search_refit_false_no_forecaster",
     "check_search_rewind_delegates",
     "check_search_return_train_score",
-    "check_search_score_delegates",
     "check_search_observe_delegates",
-    # Common checks (2)
     "check_metadata_routing_default_request",
     "check_metadata_routing_get_metadata_routing",
-    # Generator functions (5)
     "_yield_yohou_forecaster_checks",
     "_yield_yohou_transformer_checks",
     "_yield_yohou_splitter_checks",

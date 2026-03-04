@@ -28,6 +28,7 @@ __all__ = [
     "check_search_cv_results_structure",
     "check_search_error_score_handling",
     "check_search_fit_sets_attributes",
+    "check_search_interval_predict_delegates",
     "check_search_method_availability",
     "check_search_multimetric_scoring",
     "check_search_not_fitted_error",
@@ -36,7 +37,6 @@ __all__ = [
     "check_search_refit_false_no_forecaster",
     "check_search_rewind_delegates",
     "check_search_return_train_score",
-    "check_search_score_delegates",
     "check_search_observe_delegates",
 ]
 
@@ -411,52 +411,6 @@ def check_search_rewind_delegates(
     else:
         # Non-panel case
         assert reset_observed_time != initial_observed_time, "observed_time should change after rewind"
-
-
-def check_search_score_delegates(
-    search_cv,
-    y_train: pl.DataFrame,
-    y_test: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_test: pl.DataFrame | None = None,
-) -> None:
-    """Check score() uses internal scorer correctly.
-
-    Parameters
-    ----------
-    search_cv : BaseSearchCV
-        Fitted search CV instance
-    y_train : pl.DataFrame
-        Training target data
-    y_test : pl.DataFrame
-        Test target data
-    X_train : pl.DataFrame, optional
-        Training features
-    X_test : pl.DataFrame, optional
-        Test features
-
-    Raises
-    ------
-    AssertionError
-        If score() doesn't compute scores correctly
-
-    """
-    # Get score from search CV
-    score = search_cv.score(y_test, X_test)
-
-    # Check score type
-    if search_cv.multimetric_:
-        assert isinstance(score, dict), f"score() should return dict for multimetric, got {type(score)}"
-        for metric_name, metric_score in score.items():
-            assert isinstance(metric_score, int | float | np.number), (
-                f"score['{metric_name}'] should be numeric, got {type(metric_score)}"
-            )
-            assert not np.isnan(metric_score), f"score['{metric_name}'] should not be NaN"
-    else:
-        assert isinstance(score, int | float | np.number), (
-            f"score() should return numeric for single metric, got {type(score)}"
-        )
-        assert not np.isnan(score), "score() should not return NaN"
 
 
 def check_search_multimetric_scoring(
@@ -981,3 +935,47 @@ def check_search_method_availability(
     except AttributeError:
         # Expected behavior
         pass
+
+
+def check_search_interval_predict_delegates(
+    search_cv,
+    y_train: pl.DataFrame,
+    y_test: pl.DataFrame,
+    X_train: pl.DataFrame | None = None,
+    X_test: pl.DataFrame | None = None,
+) -> None:
+    """Check predict_interval() works after interval search with refit.
+
+    Validates that the best forecaster supports ``predict_interval`` and
+    returns a valid interval prediction DataFrame.
+
+    Parameters
+    ----------
+    search_cv : BaseSearchCV
+        Fitted search CV instance (interval scorer, refit=True).
+    y_train : pl.DataFrame
+        Training target data.
+    y_test : pl.DataFrame
+        Test target data.
+    X_train : pl.DataFrame, optional
+        Training features.
+    X_test : pl.DataFrame, optional
+        Test features.
+
+    Raises
+    ------
+    AssertionError
+        If predict_interval() fails or returns invalid predictions.
+
+    """
+    check_is_fitted(search_cv)
+
+    coverage_rates = [0.9]
+
+    y_pred = search_cv.predict_interval(X=X_test, coverage_rates=coverage_rates)
+
+    assert isinstance(y_pred, pl.DataFrame), f"predict_interval should return pl.DataFrame, got {type(y_pred)}"
+    assert "time" in y_pred.columns, "Interval predictions should have 'time' column"
+
+    interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
+    assert len(interval_cols) > 0, f"Interval predictions should have _lower_/_upper_ columns, got {y_pred.columns}"

@@ -66,6 +66,7 @@ from .search import (
     check_search_cv_results_structure,
     check_search_error_score_handling,
     check_search_fit_sets_attributes,
+    check_search_interval_predict_delegates,
     check_search_method_availability,
     check_search_multimetric_scoring,
     check_search_not_fitted_error,
@@ -75,7 +76,6 @@ from .search import (
     check_search_refit_false_no_forecaster,
     check_search_return_train_score,
     check_search_rewind_delegates,
-    check_search_score_delegates,
 )
 from .splitter import (
     check_splitter_n_splits_consistency,
@@ -859,11 +859,22 @@ def _yield_yohou_search_checks(
     if tags is None:
         # Infer tags from search CV instance
 
+        # Detect interval scoring from scorer type
+        from yohou.metrics.base import BaseIntervalScorer  # noqa: PLC0415
+
+        _scorer = getattr(search_cv, "scoring", None)
+        _needs_interval = False
+        if isinstance(_scorer, dict):
+            _needs_interval = any(isinstance(s, BaseIntervalScorer) for s in _scorer.values())
+        elif isinstance(_scorer, BaseIntervalScorer):
+            _needs_interval = True
+
         tags = {
             "search_type": "grid" if isinstance(search_cv, GridSearchCV) else "randomized",
             "refit": getattr(search_cv, "refit", True),
             "multimetric": isinstance(getattr(search_cv, "scoring", None), dict),
             "supports_panel_data": True,  # All search CVs support panel data
+            "interval_scoring": _needs_interval,
         }
 
     # Common search CV checks (always yield)
@@ -930,12 +941,6 @@ def _yield_yohou_search_checks(
                     check_search_rewind_delegates,
                     {"y_train": y_train, "y_reset": y_reset, "X_train": X_train, "X_reset": X_reset},
                 )
-
-        yield (
-            "check_search_score_delegates",
-            check_search_score_delegates,
-            {"y_train": y_train, "y_test": y_test, "X_train": X_train, "X_test": X_test},
-        )
     else:
         # refit=False checks
         yield (
@@ -957,6 +962,14 @@ def _yield_yohou_search_checks(
             "check_search_multimetric_scoring",
             check_search_multimetric_scoring,
             {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        )
+
+    # Interval scoring checks (when interval scorers are used)
+    if tags.get("interval_scoring", False) and tags.get("refit", True):
+        yield (
+            "check_search_interval_predict_delegates",
+            check_search_interval_predict_delegates,
+            {"y_train": y_train, "y_test": y_test, "X_train": X_train, "X_test": X_test},
         )
 
     # Return train score check (parameterized)
