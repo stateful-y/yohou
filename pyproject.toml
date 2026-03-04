@@ -21,7 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "scikit-learn>=1.7.0",
+    "scikit-learn>=1.6.0",
     "sklearn-wrap",
     "scipy>=1.13",
     "polars>=0.20",

@@ -445,6 +445,56 @@ class TestValidateScorerData:
             scorer.fit(y_valid)
             scorer.score(y_valid, None)
 
+    def test_point_scorer_strips_interval_columns(self):
+        """Point scorer validation strips _lower_/_upper_ columns from y_pred."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 10),
+            interval="1d",
+            eager=True,
+        )
+        y_true = pl.DataFrame({
+            "time": time,
+            "target": list(range(10)),
+        })
+        # y_pred with extra interval columns (as in mixed multimetric scenarios)
+        y_pred = pl.DataFrame({
+            "observed_time": time,
+            "time": time,
+            "target": [float(x) for x in range(10)],
+            "target_lower_0.9": [float(x - 1) for x in range(10)],
+            "target_upper_0.9": [float(x + 1) for x in range(10)],
+        })
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_true)
+        # Should not raise despite extra _lower_/_upper_ columns
+        score = scorer.score(y_true, y_pred)
+        assert isinstance(score, float | int)
+
+    def test_point_scorer_no_extra_columns_unchanged(self):
+        """Point scorer with matching columns does not strip anything."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 10),
+            interval="1d",
+            eager=True,
+        )
+        y_true = pl.DataFrame({
+            "time": time,
+            "target": list(range(10)),
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": time,
+            "time": time,
+            "target": [float(x) for x in range(10)],
+        })
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert isinstance(score, float | int)
+
 
 class TestValidateSplitterData:
     """Tests for validate_splitter_data."""

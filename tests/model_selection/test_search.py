@@ -104,16 +104,32 @@ class TestSystematicChecks:
                 {"search_type": "randomized", "refit": True, "multimetric": True},
                 [],
             ),
+            # GridSearchCV with interval scorer (interval search)
+            (
+                GridSearchCV,
+                {
+                    "param_grid": {"point_forecaster__seasonality": [1, 5]},
+                    "scoring": IntervalScore(coverage_rates=[0.9]),
+                    "cv": 2,
+                    "refit": True,
+                },
+                {"search_type": "grid", "refit": True, "multimetric": False, "interval_scoring": True},
+                ["check_search_observe_delegates", "check_search_rewind_delegates"],
+            ),
         ],
     )
     @pytest.mark.slow
     def test_search_cv_systematic_checks(self, search_cv_class, params, tags, expected_failures, y_X_factory):
         """Run systematic checks on search CV classes using generator pattern."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
-        y_train, y_test = y[:80], y[80:]
-        X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
+        y, X = y_X_factory(length=200, n_targets=1, n_features=2, seed=42)
+        y_train, y_test = y[:180], y[180:]
+        X_train, X_test = (X[:180], X[180:]) if X is not None else (None, None)
 
-        forecaster = SeasonalNaive()
+        if tags.get("interval_scoring", False):
+            forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=20)
+        else:
+            forecaster = SeasonalNaive()
+
         search_cv = search_cv_class(forecaster=forecaster, **params)
         search_cv_fitted = clone(search_cv)
         search_cv_fitted.fit(y_train, X_train, forecasting_horizon=3)

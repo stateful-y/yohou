@@ -8,9 +8,11 @@ data shape, and estimator attributes.
 from __future__ import annotations
 
 import polars as pl
+import pytest
 from sklearn.tree import DecisionTreeRegressor
 
 from yohou.interval.split_conformal import SplitConformalForecaster
+from yohou.metrics.interval import IntervalScore
 from yohou.metrics.point import MeanAbsoluteError
 from yohou.model_selection import GridSearchCV, RandomizedSearchCV
 from yohou.model_selection.split import ExpandingWindowSplitter
@@ -538,3 +540,84 @@ class TestSearchGeneratorConditions:
         )
         assert "check_search_refit_false_no_forecaster" in names
         assert "check_search_predict_delegates" not in names
+
+    @pytest.mark.slow
+    def test_interval_scoring_yields_interval_check(self, y_X_factory):
+        """interval_scoring=True + refit=True should yield interval predict check."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1, 5]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=2,
+        )
+        search.fit(y[:180], forecasting_horizon=3)
+
+        names = _check_names(
+            _yield_yohou_search_checks(
+                search,
+                y[:170],
+                None,
+                y[170:180],
+                None,
+                tags={"search_type": "grid", "refit": True, "interval_scoring": True},
+            )
+        )
+        assert "check_search_interval_predict_delegates" in names
+
+    def test_no_interval_scoring_omits_interval_check(self, y_X_factory):
+        """interval_scoring=False should NOT yield interval predict check."""
+        y, _ = y_X_factory(length=80, n_targets=1, n_features=0, seed=42)
+        f = SeasonalNaive(seasonality=5)
+        search = GridSearchCV(
+            forecaster=f,
+            param_grid={"seasonality": [3, 5]},
+            scoring=MeanAbsoluteError(),
+            cv=ExpandingWindowSplitter(n_splits=2, test_size=5),
+        )
+        search.fit(y[:60], forecasting_horizon=5)
+
+        names = _check_names(
+            _yield_yohou_search_checks(
+                search,
+                y[:50],
+                None,
+                y[50:60],
+                None,
+                tags={"search_type": "grid", "refit": True, "interval_scoring": False},
+            )
+        )
+        assert "check_search_interval_predict_delegates" not in names
+
+    @pytest.mark.slow
+    def test_interval_scoring_tag_auto_inferred(self, y_X_factory):
+        """When tags=None, interval_scoring is auto-inferred from scorer."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1, 5]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=2,
+        )
+        search.fit(y[:180], forecasting_horizon=3)
+
+        # tags=None triggers auto-inference
+        names = _check_names(
+            _yield_yohou_search_checks(
+                search,
+                y[:170],
+                None,
+                y[170:180],
+                None,
+                tags=None,
+            )
+        )
+        assert "check_search_interval_predict_delegates" in names
