@@ -129,7 +129,6 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_search_predict_delegates`](generated/yohou.testing.search.check_search_predict_delegates.md) | Check predict() delegates to best_forecaster_.predict() correctly. |
 | [`check_search_observe_delegates`](generated/yohou.testing.search.check_search_observe_delegates.md) | Check observe() delegates to best_forecaster_.observe() correctly. |
 | [`check_search_rewind_delegates`](generated/yohou.testing.search.check_search_rewind_delegates.md) | Check rewind() delegates to best_forecaster_.rewind() correctly. |
-| [`check_search_score_delegates`](generated/yohou.testing.search.check_search_score_delegates.md) | Check score() uses internal scorer correctly. |
 | [`check_search_multimetric_scoring`](generated/yohou.testing.search.check_search_multimetric_scoring.md) | Check multi-metric scoring with dict scorer works correctly. |
 | [`check_search_error_score_handling`](generated/yohou.testing.search.check_search_error_score_handling.md) | Check error_score parameter handles failing fits correctly. |
 | [`check_search_refit_false_no_forecaster`](generated/yohou.testing.search.check_search_refit_false_no_forecaster.md) | Check refit=False doesn't create best_forecaster_. |

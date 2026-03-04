@@ -511,7 +511,6 @@ class TestSearchGeneratorConditions:
             )
         )
         assert "check_search_predict_delegates" in names
-        assert "check_search_score_delegates" in names
         assert "check_search_refit_false_no_forecaster" not in names
 
     def test_refit_false_yields_no_forecaster_check(self, y_X_factory):
