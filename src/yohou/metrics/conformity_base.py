@@ -4,10 +4,10 @@ import abc
 
 import numpy as np
 import polars as pl
-from sklearn.base import _fit_context
 
 from yohou.metrics.base import BaseScorer
 from yohou.utils import Tags
+from yohou.utils._compat import _fit_context
 
 __all__ = ["BaseConformityScorer"]
 

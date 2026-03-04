@@ -5,11 +5,10 @@ from collections.abc import Callable
 
 import numpy as np
 import polars as pl
-from sklearn.base import _fit_context
-from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.utils import inspect_panel, validate_scorer_data
+from yohou.utils._compat import Interval, _fit_context
 
 from .base import BasePointScorer
 

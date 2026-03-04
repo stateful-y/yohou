@@ -10,21 +10,14 @@ import polars.selectors as cs
 from sklearn.pipeline import (
     FeatureUnion as sklearn_FeatureUnion,
 )
-from sklearn.pipeline import (
-    _fit_one,
-    _fit_transform_one,
-    _transform_one,
-)
 from sklearn.utils import (
     Bunch,
 )
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
-    _raise_for_params,
     process_routing,
 )
-from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.parallel import Parallel, delayed
 from sklearn.utils.validation import (
     check_is_fitted,
@@ -32,6 +25,13 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseTransformer
 from yohou.utils import Tags
+from yohou.utils._compat import (
+    _BaseComposition,
+    _fit_one,
+    _fit_transform_one,
+    _raise_for_params,
+    _transform_one,
+)
 from yohou.utils.panel import panel_aware_prefix
 
 from .utils import _hstack, _observe_transform_one, _rewind_transform_one

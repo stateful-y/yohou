@@ -3,16 +3,14 @@
 import abc
 
 import polars as pl
-from sklearn.base import (
-    BaseEstimator,
-    _fit_context,
-)
+from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.utils import (
     Tags,
     validate_transformer_data,
 )
+from yohou.utils._compat import _fit_context
 
 __all__ = [
     "BaseTransformer",

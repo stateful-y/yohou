@@ -3,7 +3,8 @@
 from importlib.metadata import version
 
 from sklearn import set_config
-from sklearn.utils._metadata_requests import COMPOSITE_METHODS, METHODS, SIMPLE_METHODS
+
+from yohou.utils._compat import COMPOSITE_METHODS, METHODS, SIMPLE_METHODS
 
 __version__ = version(__name__)
 

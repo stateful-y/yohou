@@ -7,12 +7,10 @@ from typing import Literal
 
 import polars as pl
 from pydantic import StrictInt
-from sklearn.base import _fit_context, clone
-from sklearn.utils._param_validation import Interval, StrOptions
+from sklearn.base import clone
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
-    _raise_for_params,
     process_routing,
 )
 from sklearn.utils.metaestimators import available_if
@@ -20,6 +18,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
 from yohou.utils import Tags
+from yohou.utils._compat import Interval, StrOptions, _fit_context, _raise_for_params
 
 __all__ = ["ForecastedFeatureForecaster"]
 

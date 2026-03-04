@@ -7,11 +7,10 @@ from typing import Any
 
 import polars as pl
 from pydantic import StrictInt
-from sklearn.base import _fit_context, clone
+from sklearn.base import clone
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
-    _raise_for_params,
     process_routing,
 )
 from sklearn.utils.metaestimators import available_if
@@ -20,6 +19,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
 from yohou.utils import Tags
+from yohou.utils._compat import _fit_context, _raise_for_params
 from yohou.utils.panel import get_group_df, inspect_panel
 from yohou.utils.validation import check_interval_consistency
 

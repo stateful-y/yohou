@@ -199,6 +199,56 @@ def test_docstrings(session: nox.Session) -> None:
 
 
 @nox.session(venv_backend="uv")
+def test_compat(session: nox.Session) -> None:
+    """Run fast tests against a specific scikit-learn version.
+
+    Usage::
+
+        uvx nox -s test_compat -- 1.6.0
+
+    The positional argument is the scikit-learn version to test against.
+    If omitted, runs with the default (latest compatible) version.
+    """
+    # Install dependencies
+    session.run_install(
+        "uv",
+        "sync",
+        "--no-default-groups",
+        "--group",
+        "tests",
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+    )
+
+    # Downgrade scikit-learn if a version was specified
+    if session.posargs:
+        sklearn_version = session.posargs[0]
+        session.run(
+            "uv",
+            "pip",
+            "install",
+            f"scikit-learn=={sklearn_version}",
+            "--python",
+            session.virtualenv.location + "/bin/python",
+        )
+        extra_posargs = session.posargs[1:]
+    else:
+        extra_posargs = []
+
+    # Run fast tests
+    session.run(
+        "pytest",
+        "tests",
+        "--no-cov",
+        "-m",
+        "not slow and not integration and not example",
+        "-n",
+        "auto",
+        "-v",
+        *extra_posargs,
+    )
+
+
+@nox.session(venv_backend="uv")
 def lint(session: nox.Session) -> None:
     """Run linters and type checkers."""
     # Install dependencies

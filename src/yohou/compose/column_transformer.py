@@ -8,59 +8,52 @@ from typing import Any, cast
 
 import polars as pl
 import polars.selectors as cs
-from sklearn.base import _fit_context, clone
-from sklearn.compose._column_transformer import (
-    ColumnTransformer as sklearn_ColumnTransformer,
-)
-from sklearn.compose._column_transformer import (
-    _check_X,
-)
-from sklearn.pipeline import (
-    _fit_transform_one,
-    _transform_one,
-)
+from sklearn.base import clone
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.utils import (
     Bunch,
-    _safe_indexing,
-)
-
-try:
-    from sklearn.utils._dataframe import is_pandas_df
-except ModuleNotFoundError:  # scikit-learn < 1.6 (e.g. pyodide)
-
-    def is_pandas_df(X: object) -> bool:
-        """Return True if *X* is a pandas DataFrame."""
-        return hasattr(X, "iloc") and hasattr(X, "columns")
-
-
-from sklearn.utils._param_validation import HasMethods, Hidden, StrOptions
-from sklearn.utils._set_output import (
-    _get_output_config,
 )
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
-    _raise_for_params,
     process_routing,
 )
-from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.parallel import Parallel, delayed
 from sklearn.utils.validation import (
-    _check_feature_names,
-    _check_n_features,
-    _get_feature_names,
-    _num_samples,
     check_is_fitted,
 )
 
 from yohou.base import BaseTransformer
 from yohou.utils import Tags
+from yohou.utils._compat import (
+    HasMethods,
+    Hidden,
+    StrOptions,
+    _BaseComposition,
+    _check_feature_names,
+    _check_n_features,
+    _check_X,
+    _fit_context,
+    _fit_transform_one,
+    _get_feature_names,
+    _get_output_config,
+    _num_samples,
+    _raise_for_params,
+    _safe_indexing,
+    _transform_one,
+    sklearn_ColumnTransformer,
+)
 from yohou.utils.panel import panel_aware_prefix
 
 from .utils import _hstack, _observe_transform_one, _rewind_transform_one
 
 __all__ = ["ColumnTransformer"]
+
+
+def _is_pandas_df(X: object) -> bool:
+    """Return True if *X* is a pandas DataFrame."""
+    return hasattr(X, "iloc") and hasattr(X, "columns")
+
 
 _ERR_MSG_1DCOLUMN = (
     "1D data passed to a transformer that expects 2D data. "
@@ -981,7 +974,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         # were not present in fit time, and the order of the columns doesn't
         # matter.
         fit_dataframe_and_transform_dataframe = hasattr(self, "feature_names_in_") and (
-            is_pandas_df(X_no_time) or hasattr(X_no_time, "__dataframe__")
+            _is_pandas_df(X_no_time) or hasattr(X_no_time, "__dataframe__")
         )
 
         n_samples = _num_samples(X_no_time)

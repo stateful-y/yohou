@@ -29,6 +29,10 @@ test-cov:
 test-docstrings:
     uv run pytest --doctest-modules --doctest-continue-on-failure --no-cov src/yohou
 
+# Run fast tests against a specific scikit-learn version (default: 1.6.0)
+test-compat version='1.6.0':
+    uvx nox -s test_compat -- {{version}}
+
 # Run marimo example notebook interactively
 example file='':
     uv run marimo edit examples/{{file}}

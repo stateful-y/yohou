@@ -9,12 +9,11 @@ import polars.selectors as cs
 import scipy.integrate
 import scipy.signal
 from pydantic import StrictInt
-from sklearn.base import _fit_context
-from sklearn.utils._param_validation import Interval, StrOptions
-from sklearn.utils.validation import _check_feature_names_in, check_is_fitted
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.utils import validate_transformer_data
+from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in, _fit_context
 from yohou.utils.tags import Tags
 from yohou.utils.validation import check_interval_consistency, interval_to_timedelta
 

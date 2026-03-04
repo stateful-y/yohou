@@ -7,11 +7,7 @@ from typing import cast as typing_cast
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
-from sklearn.base import (
-    BaseEstimator,
-    _fit_context,
-)
-from sklearn.utils._param_validation import StrOptions
+from sklearn.base import BaseEstimator
 from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.validation import check_is_fitted
 
@@ -24,6 +20,7 @@ from yohou.utils import (
     inspect_panel,
     validate_forecaster_data,
 )
+from yohou.utils._compat import StrOptions, _fit_context
 
 PredictionType = Literal["point", "interval"]
 

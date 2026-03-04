@@ -6,19 +6,18 @@ from typing import Literal
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
-from sklearn.base import _fit_context, clone
+from sklearn.base import clone
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
-    _raise_for_params,
     process_routing,
 )
-from sklearn.utils.metaestimators import _BaseComposition
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils import Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
+from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
 
 __all__ = ["DecompositionPipeline"]
 
