@@ -22,7 +22,7 @@ from sklearn.utils.metaestimators import _safe_split
 from sklearn.utils.validation import _check_method_params, _num_samples
 
 from yohou.base import BaseForecaster
-from yohou.metrics.base import BaseIntervalScorer, BaseScorer
+from yohou.metrics.base import BaseIntervalScorer, BasePointScorer, BaseScorer
 
 
 def _check_scoring(forecastor: BaseForecaster, scoring: object) -> BaseScorer | _MultimetricScorer:
@@ -172,7 +172,7 @@ def _fit_and_score(
     verbose: int,
     parameters: dict[str, object] | None,
     fit_params: dict[str, object] | None,
-    predict_params: dict[str, object] | None,
+    predict_func_params: dict[str, object] | None,
     score_params: dict[str, object] | None,
     return_train_score: bool = False,
     return_parameters: bool = False,
@@ -182,98 +182,74 @@ def _fit_and_score(
     split_progress: tuple[int, int] | None = None,
     candidate_progress: tuple[int, int] | None = None,
     error_score: float | str = np.nan,
+    coverage_rates: list[float] | None = None,
 ) -> dict[str, object]:
     """Fit forecaster and compute scores for a given dataset split.
 
     Parameters
     ----------
-    forecaster : forecaster object implementing 'fit'
-        The object to use to fit the data.
-
+    forecaster : BaseForecaster
+        The forecaster to fit and evaluate.
     y : pl.DataFrame
-        Target time series.
-
+        Target time series with a ``"time"`` column.
     X : pl.DataFrame or None
-        Feature time series.
-
-    forecasting_horizon : int >= 1
-        Horizon to forecast.
-
-    scorer : A single callable or dict mapping scorer name to the callable
-        If it is a single callable, the return value for ``train_scores`` and
-        ``test_scores`` is a single float.
-
-        For a dict, it should be one mapping the scorer name to the scorer
-        callable object / function.
-
-    train : array-like of shape (n_train_samples,)
-        Indices of training samples.
-
-    test : array-like of shape (n_test_samples,)
-        Indices of test samples.
-
+        Exogenous features with a ``"time"`` column, or ``None``.
+    forecasting_horizon : int
+        Number of time steps to forecast.
+    scorer : BaseScorer or _MultimetricScorer
+        Scorer (single or multi-metric) used to evaluate predictions.
+        A single scorer returns a float; a ``_MultimetricScorer`` returns
+        a dict mapping scorer names to floats.
+    train : np.ndarray
+        Row indices of training samples.
+    test : np.ndarray
+        Row indices of test samples.
     verbose : int
-        The verbosity level.
-
-    error_score : 'raise' or numeric, default=np.nan
-        Value to assign to the score if an error occurs in forecaster fitting.
-        If set to 'raise', the error is raised.
-        If a numeric value is given, FitFailedWarning is raised.
-
+        Verbosity level for progress messages.
     parameters : dict or None
-        Parameters to be set on the forecaster.
-
+        Hyperparameters to set on the forecaster via ``set_params``.
     fit_params : dict or None
-        Parameters that will be passed to ``forecaster.fit``.
-
-    predict_params : dict or None
-        Parameters that will be passed to ``forecaster.predict``.
-
+        Routed metadata passed to ``forecaster.fit``.
+    predict_func_params : dict or None
+        Routed metadata passed to the prediction function
+        (``observe_predict`` or ``observe_predict_interval``).
     score_params : dict or None
-        Parameters that will be passed to the scorer.
-
+        Routed metadata passed to the scorer.
     return_train_score : bool, default=False
-        Whether to return the train scores.
-
+        Whether to include training scores in the result.
     return_parameters : bool, default=False
-        Return parameters that has been used for the forecaster.
-
-    split_progress : {list, tuple} of int, default=None
-        A list or tuple of format (<current_split_id>, <total_num_of_splits>).
-
-    candidate_progress : {list, tuple} of int, default=None
-        A list or tuple of format
-        (<current_candidate_id>, <total_number_of_candidates>).
-
+        Whether to include the evaluated parameters in the result.
     return_n_test_samples : bool, default=False
-        Whether to return the ``n_test_samples``.
-
+        Whether to include the number of test samples in the result.
     return_times : bool, default=False
-        Whether to return the fit/score times.
-
+        Whether to include fit and score wall-clock times in the result.
     return_forecaster : bool, default=False
-        Whether to return the fitted forecaster.
+        Whether to include the fitted forecaster in the result.
+    split_progress : tuple of (int, int) or None, default=None
+        ``(current_split, total_splits)`` for verbose logging.
+    candidate_progress : tuple of (int, int) or None, default=None
+        ``(current_candidate, total_candidates)`` for verbose logging.
+    error_score : float or "raise", default=np.nan
+        Value to assign if an error occurs during fitting.  If ``"raise"``,
+        the error is re-raised.
+    coverage_rates : list of float or None, default=None
+        Coverage levels for interval prediction (e.g. ``[0.9, 0.95]``).
+        Passed to ``forecaster.fit`` when the scorer requires intervals.
 
     Returns
     -------
-    result : dict with the following attributes
-        test_scores : dict of scorer name -> float
-            Score on testing set (for all the scorers).
-        train_scores : dict of scorer name -> float, optional
-            Score on training set (for all the scorers).
-            Only returned if `return_train_score` is True.
-        n_test_samples : int
-            Number of test samples.
-        fit_time : float
-            Time spent for fitting in seconds.
-        score_time : float
-            Time spent for scoring in seconds.
-        parameters : dict or None
-            The parameters that have been evaluated.
-        forecaster : forecaster object
-            The fitted forecaster.
-        fit_error : str or None
-            Traceback str if the fit failed, None if the fit succeeded.
+    result : dict
+        Dictionary with the following keys (presence depends on flags):
+
+        - ``"test_scores"`` - float or dict of scorer name to float.
+        - ``"train_scores"`` - same format, only if *return_train_score*.
+        - ``"n_test_samples"`` - int, only if *return_n_test_samples*.
+        - ``"fit_time"`` - float (seconds), only if *return_times*.
+        - ``"score_time"`` - float (seconds), only if *return_times*.
+        - ``"parameters"`` - dict or None, only if *return_parameters*.
+        - ``"forecaster"`` - fitted forecaster, only if *return_forecaster*.
+        - ``"fit_error"`` - traceback string or ``None``.
+
     """
     if not isinstance(error_score, numbers.Number) and error_score != "raise":
         raise ValueError(
@@ -322,6 +298,8 @@ def _fit_and_score(
     fit_time: float
     score_time: float
     try:
+        if coverage_rates is not None:
+            fit_params["coverage_rates"] = coverage_rates
         forecaster.fit(y=y_train, X=X_train, forecasting_horizon=forecasting_horizon, **fit_params)
 
     except Exception:  # noqa: BLE001
@@ -349,7 +327,7 @@ def _fit_and_score(
             y_train,
             y_test,
             X_test,
-            predict_params,
+            predict_func_params,
             scorer,
             score_params_test,
             error_score,
@@ -369,7 +347,7 @@ def _fit_and_score(
                 y_train_rewind,
                 y_train_test,
                 X_train_test,
-                predict_params,
+                predict_func_params,
                 scorer,
                 score_params_train,
                 error_score,
@@ -415,6 +393,13 @@ def _needs_interval_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool
     return isinstance(scorer, BaseIntervalScorer)
 
 
+def _needs_point_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
+    """Check if any scorer requires point predictions."""
+    if isinstance(scorer, _MultimetricScorer):
+        return any(isinstance(s, BasePointScorer) for s in scorer._scorers.values())
+    return isinstance(scorer, BasePointScorer)
+
+
 def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[float] | None:
     """Collect coverage rates from interval scorers.
 
@@ -429,12 +414,57 @@ def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[flo
     return sorted(all_rates) if all_rates else None
 
 
+def _validate_forecaster_scorer_compatibility(
+    forecaster: BaseForecaster, scorer: BaseScorer | _MultimetricScorer
+) -> None:
+    """Validate that forecaster and scorer types are compatible.
+
+    Raises ``ValueError`` when:
+
+    * An interval scorer is used with a point-only forecaster (which lacks
+      ``predict_interval`` / ``observe_predict_interval``).
+    * Point-only scorers are used with an interval-only forecaster (which
+      lacks ``observe_predict``).
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        The forecaster to validate.
+    scorer : BaseScorer or _MultimetricScorer
+        The scorer(s) to validate against.
+
+    Raises
+    ------
+    ValueError
+        If the forecaster/scorer combination is incompatible.
+    """
+    tags = forecaster.__sklearn_tags__()
+    forecaster_type = getattr(tags.forecaster_tags, "forecaster_type", None)
+
+    needs_interval = _needs_interval_predictions(scorer)
+    needs_point = _needs_point_predictions(scorer)
+
+    if needs_interval and forecaster_type == "point":
+        raise ValueError(
+            "Scorer requires interval predictions but forecaster "
+            f"(type='{forecaster_type}') does not support predict_interval. "
+            "Use an interval or 'both'-type forecaster."
+        )
+
+    if not needs_interval and needs_point and forecaster_type == "interval":
+        raise ValueError(
+            "Forecaster (type='interval') does not support observe_predict "
+            "required by point-only scorers. "
+            "Use a 'both'-type forecaster or interval scorers."
+        )
+
+
 def _score(
     forecaster: BaseForecaster,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
     X_test: pl.DataFrame | None,
-    predict_params: dict[str, object] | None,
+    predict_func_params: dict[str, object] | None,
     scorer: BaseScorer | _MultimetricScorer,
     score_params: dict[str, object] | None,
     error_score: str | float = "raise",
@@ -445,18 +475,20 @@ def _score(
     float is returned.
     """
     score_params = {} if score_params is None else score_params
-    predict_params = {} if predict_params is None else predict_params
+    predict_func_params = {} if predict_func_params is None else predict_func_params
 
     scores: float | dict[str, float | str] | str
     try:
         # Detect whether interval predictions are needed
-        if _needs_interval_predictions(scorer):
-            coverage_rates = _collect_coverage_rates(scorer)
+        needs_interval = _needs_interval_predictions(scorer)
+
+        if needs_interval:
+            coverage_rates_for_predict = _collect_coverage_rates(scorer)
             y_pred = forecaster.observe_predict_interval(  # type: ignore[union-attr]
-                y_test, X_test, coverage_rates=coverage_rates, **predict_params
+                y_test, X_test, coverage_rates=coverage_rates_for_predict, **predict_func_params
             )
         else:
-            y_pred = forecaster.observe_predict(y_test, X_test, **predict_params)  # type: ignore[arg-type]
+            y_pred = forecaster.observe_predict(y_test, X_test, **predict_func_params)  # type: ignore[arg-type]
 
         # observe_predict produces overlapping prediction windows when the last
         # observation chunk is smaller than stride. Deduplicate (keeping the most

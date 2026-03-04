@@ -50,8 +50,11 @@ from yohou.utils import validate_search_data
 from .split import check_cv
 from .utils import (
     _check_scoring,
+    _collect_coverage_rates,
     _fit_and_score,
     _MultimetricScorer,
+    _needs_interval_predictions,
+    _validate_forecaster_scorer_compatibility,
 )
 
 __all__ = ["BaseSearchCV", "GridSearchCV", "RandomizedSearchCV"]
@@ -192,12 +195,10 @@ def _yield_masked_array_for_each_param(candidate_params):
 
 
 class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
-    """Abstract base class for hyperparameter search with time series cross-validation.
-
-    Important members are fit, predict, predict_interval, observe, and score.
+    """Abstract base class for hyperparameter search with cross-validation.
 
     Warning: This class should not be used directly. Use derived classes
-    GridSearchCV and RandomizedSearchCV instead.
+    ``GridSearchCV`` and ``RandomizedSearchCV`` instead.
 
     Attributes
     ----------
@@ -325,8 +326,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
     See Also
     --------
-    GridSearchCV : Exhaustive search over specified parameter values.
-    RandomizedSearchCV : Randomized search over parameter distributions.
+    `GridSearchCV` : Exhaustive search over specified parameter values.
+    `RandomizedSearchCV` : Randomized search over parameter distributions.
 
     """
 
@@ -738,8 +739,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict_interval")
             .add(caller="observe_predict", callee="observe_predict")
-            .add(caller="observe_predict_interval", callee="observe_predict_interval")
-            .add(caller="score", callee="predict"),
+            .add(caller="observe_predict_interval", callee="observe_predict_interval"),
         )
 
         # Add scorer routing
@@ -774,184 +774,21 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Parameters
         ----------
         y : pl.DataFrame
-            Target time series to forecast. Must contain a ``"time"`` column
-            with datetime values and one or more numeric columns for the
-            target variable(s).
-
-            For panel data (forecasting multiple related time series), use
-            prefixed column names with the pattern ``prefix__suffix``, where
-            ``prefix`` identifies the variable type and ``suffix`` identifies
-            the specific series. For example::
-
-                y = pl.DataFrame({
-                    "time": dates,
-                    "sales__store_1": [100, 110, ...],
-                    "sales__store_2": [150, 160, ...],
-                })
-
-            The ``"time"`` column must be sorted in ascending order and have
-            consistent intervals (e.g., daily, hourly).
-
-        X : pl.DataFrame, optional
-            Exogenous features (known in advance) used as additional inputs
-            for forecasting. Must contain a ``"time"`` column matching ``y``'s
-            time index.
-
-            If provided:
-            - Must have the same time index as ``y``
-            - May contain different columns than ``y``
-            - For panel data, may also use prefixed columns with the same
-              suffixes as ``y``
-
-            If None, the forecaster only uses lagged values of ``y`` (autoregressive
-            forecasting).
-
-            Example::
-
-                X = pl.DataFrame({
-                    "time": dates,
-                    "temperature": [20, 22, ...],
-                    "is_weekend": [0, 0, 1, ...],
-                })
-
+            Target time series with a ``"time"`` column (datetime) and one
+            or more numeric value columns.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
         forecasting_horizon : int, default=1
-            Number of time steps into the future to forecast.
-
-            Unlike sklearn, yohou requires specifying the forecasting horizon
-            at fit time (not predict time) because cross-validation must evaluate
-            the forecaster's performance at the target horizon. The forecaster
-            learns horizon-specific patterns during training.
-
-            For example, ``forecasting_horizon=7`` trains the forecaster to
-            predict 7 steps ahead, and cross-validation evaluates 7-step-ahead
-            predictions.
-
-            You can still call ``predict`` with a different horizon after fitting,
-            but the model is optimized for the horizon specified here.
-
-        **params : dict of str -> object
-            Parameters passed to the ``fit``, ``predict``, and ``score`` methods
-            of the forecaster, scorer, and CV splitter.
-
-            Uses sklearn's metadata routing to control parameter flow. Common
-            parameters include:
-
-            - ``sample_weight`` : Per-sample weights for the forecaster's fit method
-            - ``time_weight`` : Time-based weights (planned feature)
-            - Splitter-specific parameters (e.g., ``initial_train_size`` for
-              ``ExpandingWindowSplitter``)
-
-            Examples::
-
-                # Pass sample weights to forecaster
-                search.fit(y, X, forecasting_horizon=5, sample_weight=weights)
-
-                # Pass parameters to both forecaster and scorer
-                search.fit(
-                    y, X, forecasting_horizon=5, sample_weight=train_weights, scorer__sample_weight=score_weights
-                )
-
-                # Pass parameters to splitter
-                search.fit(y, X, forecasting_horizon=5, splitter__initial_train_size=50)
-
-            See sklearn's metadata routing documentation for details on the
-            routing syntax (``forecaster__param``, ``scorer__param``, etc.).
+            Number of time steps to forecast into the future.
+        **params : dict
+            Metadata to route to nested estimators.
 
         Returns
         -------
-        self : object
-            Fitted search instance with the following fitted attributes:
+        self
+            The fitted search instance.
 
-            - ``cv_results_`` : dict of ndarrays with all CV results
-            - ``best_forecaster_`` : Refitted forecaster (if ``refit=True``)
-            - ``best_score_`` : Best cross-validated score (negated for
-              ``lower_is_better`` scorers as per sklearn sign convention)
-            - ``best_params_`` : Best parameter setting
-            - ``best_index_`` : Index of best parameter setting
-            - ``scorer_`` : Validated scorer(s)
-            - ``n_splits_`` : Number of CV folds used
-            - ``refit_time_`` : Time to refit best forecaster (if ``refit=True``)
-
-            After fitting with ``refit=True``, you can use the search object
-            like a fitted forecaster::
-
-                search.fit(y, X, forecasting_horizon=5)
-                y_pred = search.predict(forecasting_horizon=5)
-
-        See Also
-        --------
-        predict : Generate point forecasts using the best forecaster.
-        predict_interval : Generate interval forecasts (if forecaster supports it).
-        observe : Observe new data with the best forecaster.
-
-        Notes
-        -----
-        The ``cv_results_`` attribute contains extensive information about all
-        parameter combinations evaluated. For multi-metric scoring, separate
-        results are stored for each scorer with keys like ``'mean_test_mae'``,
-        ``'mean_test_rmse'``, ``'rank_test_mae'``, etc.
-
-        **Score sign convention**: Following sklearn, scores for
-        ``lower_is_better`` metrics (MAE, RMSE, etc.) are **negated** in
-        ``cv_results_`` and ``best_score_``.  This ensures that higher
-        numeric values always indicate better performance, regardless of
-        metric direction.  To recover the raw metric value, negate the
-        stored score: ``raw_mae = -cv_results_["mean_test_score"]``.
-
-        Time series cross-validation differs from standard CV: each training
-        fold only uses data before the test fold, preserving temporal order.
-        The default ``ExpandingWindowSplitter`` increases training size with
-        each fold, while ``SlidingWindowSplitter`` maintains fixed training size.
-
-        Memory usage: If ``n_jobs > 1``, data is copied for each parameter
-        setting (not for each job). Control memory with ``pre_dispatch`` to
-        limit concurrent evaluations.
-
-        Examples
-        --------
-        >>> from yohou.point import PointReductionForecaster
-        >>> from yohou.model_selection import GridSearchCV
-        >>> from yohou.metrics import MeanAbsoluteError
-        >>> import polars as pl
-        >>> from datetime import datetime, timedelta
-        >>> # Create sample data
-        >>> dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(100)]
-        >>> y = pl.DataFrame({"time": dates, "value": range(100)})
-        >>> X = pl.DataFrame({"time": dates, "feature": range(100, 200)})
-        >>> # Basic fit
-        >>> param_grid = {"estimator__alpha": [0.1, 1.0, 10.0]}
-        >>> search = GridSearchCV(
-        ...     forecaster=PointReductionForecaster(),
-        ...     param_grid=param_grid,
-        ...     scoring=MeanAbsoluteError(),
-        ...     cv=3,
-        ... )
-        >>> search.fit(y, X, forecasting_horizon=5)  # doctest: +SKIP
-        >>> search.best_params_  # doctest: +SKIP
-        {'estimator__alpha': 1.0}
-        >>>
-        >>> # Multi-metric evaluation
-        >>> from yohou.metrics import RootMeanSquaredError
-        >>> scoring = {"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()}
-        >>> search = GridSearchCV(
-        ...     forecaster=PointReductionForecaster(),
-        ...     param_grid=param_grid,
-        ...     scoring=scoring,
-        ...     refit="mae",  # Use MAE to select best parameters
-        ...     cv=3,
-        ... )
-        >>> search.fit(y, X, forecasting_horizon=5)  # doctest: +SKIP
-        >>> # Access both metrics in cv_results_
-        >>> import numpy as np
-        >>> mae_scores = search.cv_results_["mean_test_mae"]  # doctest: +SKIP
-        >>> rmse_scores = search.cv_results_["mean_test_rmse"]  # doctest: +SKIP
-        >>> # Best parameters selected using MAE
-        >>> search.best_params_  # doctest: +SKIP
-        {'estimator__alpha': 1.0}
-        >>>
-        >>> # With metadata routing (sample weights)
-        >>> sample_weight = np.linspace(0.5, 1.0, len(y))
-        >>> search.fit(y, X, forecasting_horizon=5, sample_weight=sample_weight)  # doctest: +SKIP
         """
         _raise_for_params(params, self, "fit")
 
@@ -960,6 +797,13 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         validate_search_data(y, X)
 
         scorers, refit_metric = self._get_scorers()
+
+        # Validate forecaster/scorer type compatibility (step 1)
+        _validate_forecaster_scorer_compatibility(self.forecaster, scorers)
+
+        # Determine interval scoring context
+        needs_interval = _needs_interval_predictions(scorers)
+        collected_coverage_rates = _collect_coverage_rates(scorers) if needs_interval else None
 
         y, X = indexable(y, X)
         params = _check_method_params(y, params=params)
@@ -977,7 +821,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         fit_and_score_kwargs = {
             "scorer": scorers,
             "fit_params": routed_params.forecaster.fit,
-            "predict_params": routed_params.forecaster.predict,
+            "predict_func_params": (
+                routed_params.forecaster.predict_interval if needs_interval else routed_params.forecaster.predict
+            ),
             "score_params": routed_params.scorer.score,
             "return_train_score": self.return_train_score,
             "return_n_test_samples": True,
@@ -985,6 +831,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             "return_parameters": False,
             "error_score": self.error_score,
             "verbose": self.verbose,
+            "coverage_rates": collected_coverage_rates,
         }
         results = {}
         with parallel:
@@ -1075,9 +922,11 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             self.best_forecaster_ = clone(base_forecaster).set_params(**clone(self.best_params_, safe=False))
 
             refit_start_time = time.time()
-            # Don't pass y/X in routed params - they're positional
-            fit_params_filtered = {k: v for k, v in routed_params.forecaster.fit.items() if k not in ["y", "X"]}
-            self.best_forecaster_.fit(y, X, forecasting_horizon, **fit_params_filtered)
+
+            refit_params = dict(routed_params.forecaster.fit.items())
+            if collected_coverage_rates is not None:
+                refit_params["coverage_rates"] = collected_coverage_rates
+            self.best_forecaster_.fit(y, X, forecasting_horizon, **refit_params)
             refit_end_time = time.time()
             self.refit_time_ = refit_end_time - refit_start_time
 
@@ -1104,26 +953,28 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
-        """Make predictions using the best forecaster.
+        """Generate point forecasts using the best forecaster.
 
         Parameters
         ----------
-        forecasting_horizon : int, optional
-            Number of time steps to forecast. If None, uses the horizon from fit.
-
-        X : pl.DataFrame, optional
-            Exogenous feature time series.
-
-        panel_group_names : list of str, optional
-            Panel group names to predict for.
-
+        forecasting_horizon : int or None, default=None
+            Number of time steps to forecast into the future.  If ``None``,
+            uses the horizon specified at fit time.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
+        panel_group_names : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
         **params : dict
-            Parameters passed to the predict method.
+            Metadata to route to nested estimators.
 
         Returns
         -------
-        y_pred : pl.DataFrame
-            Predicted time series.
+        pl.DataFrame
+            Point predictions with ``"observed_time"``, ``"time"``, and one
+            column per target variable.
+
         """
         check_is_fitted(self)
         _raise_for_params(params, self, "predict")
@@ -1143,29 +994,32 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
-        """Make interval predictions using the best forecaster.
+        """Generate interval forecasts using the best forecaster.
 
         Parameters
         ----------
-        forecasting_horizon : int, optional
-            Number of time steps to forecast.
-
-        X : pl.DataFrame, optional
-            Exogenous feature time series.
-
-        coverage_rates : list of float, optional
-            Coverage rates for prediction intervals.
-
-        panel_group_names : list of str, optional
-            Panel group names to predict for.
-
+        forecasting_horizon : int or None, default=None
+            Number of time steps to forecast into the future.  If ``None``,
+            uses the horizon specified at fit time.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
+        coverage_rates : list of float or None, default=None
+            Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
+            for 90 % and 95 % intervals).  If ``None``, defaults to the rates
+            used at fit time.
+        panel_group_names : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
         **params : dict
-            Parameters passed to the predict_interval method.
+            Metadata to route to nested estimators.
 
         Returns
         -------
-        y_pred : pl.DataFrame
-            Predicted intervals.
+        pl.DataFrame
+            Interval predictions with ``"observed_time"``, ``"time"``, and
+            lower/upper bound columns for each target at each coverage rate.
+
         """
         check_is_fitted(self)
         _raise_for_params(params, self, "predict_interval")
@@ -1181,23 +1035,25 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     def observe(
         self, y: pl.DataFrame, X: pl.DataFrame | None = None, panel_group_names: list[str] | None = None
     ) -> BaseSearchCV:
-        """Observe new data with the best forecaster.
+        """Observe new data with the best forecaster without refitting.
 
         Parameters
         ----------
         y : pl.DataFrame
-            New target observations.
-
-        X : pl.DataFrame, optional
-            New exogenous features.
-
-        panel_group_names : list of str, optional
-            Panel group names to observe.
+            Target time series with a ``"time"`` column (datetime) and one
+            or more numeric value columns.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
+        panel_group_names : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
 
         Returns
         -------
-        self : BaseSearchCV
-            Updated search object.
+        self
+            The search object with updated observation buffers.
+
         """
         check_is_fitted(self)
         self.best_forecaster_.observe(y, X, panel_group_names)
@@ -1207,23 +1063,25 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     def rewind(
         self, y: pl.DataFrame, X: pl.DataFrame | None = None, panel_group_names: list[str] | None = None
     ) -> BaseSearchCV:
-        """Rewind the best forecaster observation horizon.
+        """Rewind the best forecaster observation buffers.
 
         Parameters
         ----------
         y : pl.DataFrame
-            Target observations to rewind to.
-
-        X : pl.DataFrame, optional
-            Exogenous features to rewind to.
-
-        panel_group_names : list of str, optional
-            Panel group names to rewind.
+            Target time series with a ``"time"`` column (datetime) and one
+            or more numeric value columns.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
+        panel_group_names : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
 
         Returns
         -------
-        self : BaseSearchCV
-            Rewound search object.
+        self
+            The search object with rewound observation buffers.
+
         """
         check_is_fitted(self)
         self.best_forecaster_.rewind(y, X, panel_group_names)
@@ -1240,36 +1098,39 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
-        """Observe new data and make predictions with the best forecaster.
+        """Observe new data and generate point forecasts.
+
+        Equivalent to calling ``observe(y, X)`` then ``predict(X)``.
 
         Parameters
         ----------
         y : pl.DataFrame
-            New target observations.
-
-        X : pl.DataFrame, optional
-            New exogenous features and future features.
-
-        forecasting_horizon : int >= 1 or None, default=None
-            Horizon to forecast recursively. If None, uses ``fit_forecasting_horizon_``.
-
-        panel_group_names : list of str, optional
-            Panel group names to observe and predict.
-
-        stride : int >= 1 or None, default=None
-            Number of new observations to use for each observe step. If None, uses
-            ``fit_forecasting_horizon_``.
-
+            Target time series with a ``"time"`` column (datetime) and one
+            or more numeric value columns.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
+        forecasting_horizon : int or None, default=None
+            Number of time steps to forecast into the future.  If ``None``,
+            uses the horizon specified at fit time.
+        panel_group_names : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
+        stride : int or None, default=None
+            Step size for rolling update-predict.  If ``None``, defaults to
+            ``forecasting_horizon``.
         predict_transformed : bool, default=False
-            Whether to return transformed predictions.
-
+            If ``True``, return predictions in the transformed space without
+            applying inverse target transformation.
         **params : dict
-            Parameters passed to the observe_predict method.
+            Metadata to route to nested estimators.
 
         Returns
         -------
-        y_pred : pl.DataFrame
-            Predicted time series.
+        pl.DataFrame
+            Point predictions with ``"observed_time"``, ``"time"``, and one
+            column per target variable.
+
         """
         check_is_fitted(self)
         _raise_for_params(params, self, "observe_predict")
@@ -1286,73 +1147,45 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
-        """Observe new data and make interval predictions with the best forecaster.
+        """Observe new data and generate interval forecasts.
+
+        Equivalent to calling ``observe(y, X)`` then
+        ``predict_interval(X)``.
 
         Parameters
         ----------
         y : pl.DataFrame
-            New target observations.
-
-        X : pl.DataFrame, optional
-            New exogenous features and future features.
-
-        coverage_rates : list of float, optional
-            Coverage rates for prediction intervals.
-
-        panel_group_names : list of str, optional
-            Panel group names to observe and predict.
-
+            Target time series with a ``"time"`` column (datetime) and one
+            or more numeric value columns.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
+        coverage_rates : list of float or None, default=None
+            Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
+            for 90 % and 95 % intervals).  If ``None``, defaults to the rates
+            used at fit time.
+        panel_group_names : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
         **params : dict
-            Parameters passed to the observe_predict_interval method.
+            Metadata to route to nested estimators.
 
         Returns
         -------
-        y_pred : pl.DataFrame
-            Predicted intervals.
+        pl.DataFrame
+            Interval predictions with ``"observed_time"``, ``"time"``, and
+            lower/upper bound columns for each target at each coverage rate.
+
         """
         check_is_fitted(self)
         _raise_for_params(params, self, "observe_predict_interval")
         return self.best_forecaster_.observe_predict_interval(y, X, coverage_rates, panel_group_names, **params)
 
-    def score(self, y: pl.DataFrame, X: pl.DataFrame | None = None, **params) -> float | dict[str, float]:
-        """Score the best forecaster on the given data.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series.
-
-        X : pl.DataFrame, optional
-            Exogenous features.
-
-        **params : dict
-            Parameters passed to the scorer.
-
-        Returns
-        -------
-        score : float or dict
-            Score or dictionary of scores.
-        """
-        check_is_fitted(self)
-        _raise_for_params(params, self, "score")
-
-        # Make predictions (don't pass score params to predict)
-        y_pred = self.best_forecaster_.predict(X=X)
-
-        # Score using the fitted scorer
-        if isinstance(self.scorer_, dict):
-            scores = {}
-            for name, scorer in self.scorer_.items():
-                scores[name] = scorer(y, y_pred, **params)
-            return scores
-        else:
-            return self.scorer_(y, y_pred, **params)
-
 
 class GridSearchCV(BaseSearchCV):
     """Exhaustive search over specified parameter values for a forecaster.
 
-    Important members are fit, predict, predict_interval, observe, and score.
+    Important members are fit, predict, predict_interval, observe, and rewind.
 
     GridSearchCV implements a "fit" method that evaluates all parameter
     combinations specified in param_grid using time series cross-validation.

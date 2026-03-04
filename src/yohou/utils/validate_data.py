@@ -529,6 +529,13 @@ def validate_scorer_data(
     if "time" in y_pred.columns:
         y_pred = y_pred.drop("time")
 
+    # For point scorers, strip extra columns (e.g. interval _lower_/_upper_ columns
+    # that may be present in mixed multimetric scenarios) to prevent schema mismatches.
+    if pred_type == "point":
+        extra_cols = [c for c in y_pred.columns if c not in y_true.columns]
+        if extra_cols:
+            y_pred = y_pred.drop(extra_cols)
+
     return y_true, y_pred, time_values
 
 

@@ -6,7 +6,9 @@ from scipy.stats import randint
 from sklearn.base import clone
 
 from conftest import run_checks
+from yohou.interval import SplitConformalForecaster
 from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
+from yohou.metrics.interval import EmpiricalCoverage, IntervalScore
 from yohou.model_selection import GridSearchCV, RandomizedSearchCV
 from yohou.point import SeasonalNaive
 from yohou.testing import _yield_yohou_search_checks
@@ -102,16 +104,32 @@ class TestSystematicChecks:
                 {"search_type": "randomized", "refit": True, "multimetric": True},
                 [],
             ),
+            # GridSearchCV with interval scorer (interval search)
+            (
+                GridSearchCV,
+                {
+                    "param_grid": {"point_forecaster__seasonality": [1, 5]},
+                    "scoring": IntervalScore(coverage_rates=[0.9]),
+                    "cv": 2,
+                    "refit": True,
+                },
+                {"search_type": "grid", "refit": True, "multimetric": False, "interval_scoring": True},
+                ["check_search_observe_delegates", "check_search_rewind_delegates"],
+            ),
         ],
     )
     @pytest.mark.slow
     def test_search_cv_systematic_checks(self, search_cv_class, params, tags, expected_failures, y_X_factory):
         """Run systematic checks on search CV classes using generator pattern."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
-        y_train, y_test = y[:80], y[80:]
-        X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
+        y, X = y_X_factory(length=200, n_targets=1, n_features=2, seed=42)
+        y_train, y_test = y[:180], y[180:]
+        X_train, X_test = (X[:180], X[180:]) if X is not None else (None, None)
 
-        forecaster = SeasonalNaive()
+        if tags.get("interval_scoring", False):
+            forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=20)
+        else:
+            forecaster = SeasonalNaive()
+
         search_cv = search_cv_class(forecaster=forecaster, **params)
         search_cv_fitted = clone(search_cv)
         search_cv_fitted.fit(y_train, X_train, forecasting_horizon=3)
@@ -235,22 +253,6 @@ class TestEdgeCases:
         search.observe(y_test[:5], X=None)
         search.rewind(y_test[:10], X=None)
 
-    def test_search_cv_score_without_X(self, y_X_factory):
-        """Test score() method with X=None."""
-        y, _ = y_X_factory(length=100, n_features=0, seed=42)
-        y_train, y_test = y[:80], y[80:]
-
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5]},
-            scoring=MeanAbsoluteError(),
-            cv=2,
-        )
-        search.fit(y_train, X=None, forecasting_horizon=3)
-
-        score = search.score(y_test, X=None)
-        assert isinstance(score, int | float)
-
 
 class TestMultiMetric:
     """Tests for multi-metric search CV."""
@@ -275,33 +277,6 @@ class TestMultiMetric:
 
         expected_score = search.cv_results_["mean_test_rmse"][search.best_index_]
         assert abs(search.best_score_ - expected_score) < 1e-6
-
-    def test_multimetric_score_returns_dict(self, y_X_factory):
-        """Test that score() returns dict for multi-metric search."""
-        y, X = y_X_factory(length=100, seed=42)
-        y_train, y_test = y[:80], y[80:]
-        X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
-
-        forecasting_horizon = 3
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5]},
-            scoring={
-                "mae": MeanAbsoluteError(),
-                "rmse": RootMeanSquaredError(),
-            },
-            cv=2,
-            refit="mae",
-        )
-        search.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
-
-        scores = search.score(
-            y_test[:forecasting_horizon],
-            X_test[:forecasting_horizon] if X_test is not None else None,
-        )
-        assert isinstance(scores, dict)
-        assert "mae" in scores
-        assert "rmse" in scores
 
 
 class TestReturnTrainScore:
@@ -513,3 +488,206 @@ class TestBestParamsConsistency:
 
         expected = search.cv_results_["mean_test_score"][search.best_index_]
         assert search.best_score_ == expected
+
+
+class TestIntervalSearch:
+    """Tests for interval forecaster tuning with interval metrics."""
+
+    @pytest.mark.slow
+    def test_grid_search_interval_scorer(self, y_X_factory):
+        """GridSearchCV with interval scorer tunes SplitConformalForecaster."""
+        y, X = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train = y[:180]
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1, 5, 10]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=2,
+        )
+        search.fit(y_train, X=None, forecasting_horizon=3)
+
+        assert hasattr(search, "best_params_")
+        assert hasattr(search, "best_forecaster_")
+        assert hasattr(search, "best_score_")
+
+        # Predict interval from best forecaster
+        y_pred = search.predict_interval(X=None, coverage_rates=[0.9])
+        assert "time" in y_pred.columns
+        interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
+        assert len(interval_cols) > 0, "Should have interval prediction columns"
+
+    @pytest.mark.slow
+    def test_grid_search_empirical_coverage_scorer(self, y_X_factory):
+        """GridSearchCV with EmpiricalCoverage (higher_is_better) selects correctly."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train = y[:180]
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1, 5]},
+            scoring=EmpiricalCoverage(coverage_rates=[0.9]),
+            cv=2,
+        )
+        search.fit(y_train, X=None, forecasting_horizon=3)
+
+        # EmpiricalCoverage is NOT lower_is_better, scores should be positive
+        mean_scores = search.cv_results_["mean_test_score"]
+        assert np.all(mean_scores >= 0), f"EmpiricalCoverage scores should be >= 0, got {mean_scores}"
+
+    @pytest.mark.slow
+    def test_randomized_search_interval_scorer(self, y_X_factory):
+        """RandomizedSearchCV works with interval scorers."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train = y[:180]
+
+        search = RandomizedSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_distributions={"point_forecaster__seasonality": [1, 5, 10, 15]},
+            n_iter=3,
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=2,
+            random_state=42,
+        )
+        search.fit(y_train, X=None, forecasting_horizon=3)
+
+        assert hasattr(search, "best_params_")
+
+    @pytest.mark.slow
+    def test_interval_search_coverage_rates_propagated(self, y_X_factory):
+        """Coverage rates from scorer propagated to forecaster.fit()."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train = y[:180]
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1, 5]},
+            scoring=IntervalScore(coverage_rates=[0.9, 0.95]),
+            cv=2,
+        )
+        search.fit(y_train, X=None, forecasting_horizon=3)
+
+        # Verify the best forecaster was refit with coverage_rates
+        y_pred = search.predict_interval(X=None, coverage_rates=[0.9, 0.95])
+        lower_cols = [c for c in y_pred.columns if "_lower_" in c]
+        upper_cols = [c for c in y_pred.columns if "_upper_" in c]
+        assert len(lower_cols) >= 2, "Should have lower bounds for both coverage rates"
+        assert len(upper_cols) >= 2, "Should have upper bounds for both coverage rates"
+
+
+class TestMixedMultimetric:
+    """Tests for mixed point + interval multimetric search."""
+
+    @pytest.mark.slow
+    def test_mixed_multimetric_point_and_interval(self, y_X_factory):
+        """Multimetric search with both point and interval scorers on a both-type forecaster."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train = y[:180]
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1, 5]},
+            scoring={
+                "mae": MeanAbsoluteError(),
+                "interval_score": IntervalScore(coverage_rates=[0.9]),
+            },
+            cv=2,
+            refit="mae",
+        )
+        search.fit(y_train, X=None, forecasting_horizon=3)
+
+        assert hasattr(search, "best_params_")
+        assert "mean_test_mae" in search.cv_results_
+        assert "mean_test_interval_score" in search.cv_results_
+
+    @pytest.mark.slow
+    def test_mixed_multimetric_refit_on_interval(self, y_X_factory):
+        """Refit selects based on interval metric in mixed multimetric."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train = y[:180]
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1, 5]},
+            scoring={
+                "mae": MeanAbsoluteError(),
+                "interval_score": IntervalScore(coverage_rates=[0.9]),
+            },
+            cv=2,
+            refit="interval_score",
+        )
+        search.fit(y_train, X=None, forecasting_horizon=3)
+
+        expected_score = search.cv_results_["mean_test_interval_score"][search.best_index_]
+        assert abs(search.best_score_ - expected_score) < 1e-6
+
+
+class TestIncompatibleForecasterScorer:
+    """Tests for validation of forecaster/scorer type compatibility."""
+
+    def test_point_forecaster_with_interval_scorer_raises(self, y_X_factory):
+        """Point-only forecaster with interval scorer raises ValueError."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y_train = y[:80]
+
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=2,
+        )
+        with pytest.raises(ValueError, match="does not support predict_interval"):
+            search.fit(y_train, X=None, forecasting_horizon=3)
+
+    def test_point_forecaster_with_multimetric_interval_raises(self, y_X_factory):
+        """Point-only forecaster with multimetric containing interval scorer raises."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y_train = y[:80]
+
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring={
+                "mae": MeanAbsoluteError(),
+                "interval_score": IntervalScore(coverage_rates=[0.9]),
+            },
+            cv=2,
+            refit="mae",
+        )
+        with pytest.raises(ValueError, match="does not support predict_interval"):
+            search.fit(y_train, X=None, forecasting_horizon=3)
+
+    def test_both_type_forecaster_with_point_scorer_ok(self, y_X_factory):
+        """Both-type forecaster with point-only scorer should work."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train = y[:180]
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1, 5]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(y_train, X=None, forecasting_horizon=3)
+        assert hasattr(search, "best_params_")

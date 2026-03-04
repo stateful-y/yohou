@@ -110,3 +110,116 @@ class TestCheckCv:
         cv = check_cv()
         assert isinstance(cv, ExpandingWindowSplitter)
         assert cv.n_splits == 5
+
+
+class TestNeedsPointPredictions:
+    """Tests for _needs_point_predictions utility."""
+
+    def test_single_point_scorer(self):
+        """Single point scorer returns True."""
+        from yohou.model_selection.utils import _needs_point_predictions
+
+        assert _needs_point_predictions(MeanAbsoluteError()) is True
+
+    def test_single_interval_scorer(self):
+        """Single interval scorer returns False."""
+        from yohou.metrics.interval import IntervalScore
+        from yohou.model_selection.utils import _needs_point_predictions
+
+        assert _needs_point_predictions(IntervalScore(coverage_rates=[0.9])) is False
+
+    def test_multimetric_with_point_scorer(self):
+        """Multimetric containing a point scorer returns True."""
+        from yohou.metrics.interval import IntervalScore
+        from yohou.model_selection.utils import _needs_point_predictions
+
+        ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "is": IntervalScore(coverage_rates=[0.9])})
+        assert _needs_point_predictions(ms) is True
+
+    def test_multimetric_only_interval_scorers(self):
+        """Multimetric with only interval scorers returns False."""
+        from yohou.metrics.interval import IntervalScore
+        from yohou.model_selection.utils import _needs_point_predictions
+
+        ms = _MultimetricScorer(scorers={"is": IntervalScore(coverage_rates=[0.9])})
+        assert _needs_point_predictions(ms) is False
+
+
+class TestNeedsIntervalPredictions:
+    """Tests for _needs_interval_predictions utility."""
+
+    def test_single_point_scorer(self):
+        """Single point scorer returns False."""
+        from yohou.model_selection.utils import _needs_interval_predictions
+
+        assert _needs_interval_predictions(MeanAbsoluteError()) is False
+
+    def test_single_interval_scorer(self):
+        """Single interval scorer returns True."""
+        from yohou.metrics.interval import IntervalScore
+        from yohou.model_selection.utils import _needs_interval_predictions
+
+        assert _needs_interval_predictions(IntervalScore(coverage_rates=[0.9])) is True
+
+    def test_multimetric_with_interval_scorer(self):
+        """Multimetric containing an interval scorer returns True."""
+        from yohou.metrics.interval import IntervalScore
+        from yohou.model_selection.utils import _needs_interval_predictions
+
+        ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "is": IntervalScore(coverage_rates=[0.9])})
+        assert _needs_interval_predictions(ms) is True
+
+    def test_multimetric_only_point_scorers(self):
+        """Multimetric with only point scorers returns False."""
+        from yohou.model_selection.utils import _needs_interval_predictions
+
+        ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "mse": MeanSquaredError()})
+        assert _needs_interval_predictions(ms) is False
+
+
+class TestValidateForecasterScorerCompatibility:
+    """Tests for _validate_forecaster_scorer_compatibility."""
+
+    def test_interval_scorer_with_point_forecaster_raises(self):
+        """Interval scorer + point-only forecaster raises ValueError."""
+        from yohou.metrics.interval import IntervalScore
+        from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
+        from yohou.point.naive import SeasonalNaive
+
+        forecaster = SeasonalNaive()
+        scorer = IntervalScore(coverage_rates=[0.9])
+        with pytest.raises(ValueError, match="does not support predict_interval"):
+            _validate_forecaster_scorer_compatibility(forecaster, scorer)
+
+    def test_point_scorer_with_interval_only_forecaster_raises(self):
+        """Point scorer + interval-only forecaster raises ValueError."""
+        from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
+
+        # Mock a pure interval-only forecaster
+        forecaster = MagicMock()
+        mock_tags = MagicMock()
+        mock_tags.forecaster_tags.forecaster_type = "interval"
+        forecaster.__sklearn_tags__ = MagicMock(return_value=mock_tags)
+
+        scorer = MeanAbsoluteError()
+        with pytest.raises(ValueError, match="does not support observe_predict"):
+            _validate_forecaster_scorer_compatibility(forecaster, scorer)
+
+    def test_point_scorer_with_both_type_forecaster_ok(self):
+        """Point scorer + both-type forecaster passes."""
+        from yohou.interval.split_conformal import SplitConformalForecaster
+        from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
+        from yohou.point.naive import SeasonalNaive
+
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=10)
+        _validate_forecaster_scorer_compatibility(forecaster, MeanAbsoluteError())
+
+    def test_interval_scorer_with_both_type_forecaster_ok(self):
+        """Interval scorer + both-type forecaster passes."""
+        from yohou.interval.split_conformal import SplitConformalForecaster
+        from yohou.metrics.interval import IntervalScore
+        from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
+        from yohou.point.naive import SeasonalNaive
+
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=10)
+        _validate_forecaster_scorer_compatibility(forecaster, IntervalScore(coverage_rates=[0.9]))
