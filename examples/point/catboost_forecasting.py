@@ -194,10 +194,20 @@ def _(mo):
     mo.md(r"""
     ## 4. CatBoost with Direct Strategy
 
-    Tree-based estimators are natural single-output models. The `"direct"`
-    strategy trains **H independent models** (one per horizon step),
-    which avoids wrapping CatBoost in `MultiOutputRegressor` and lets
-    each model specialise in its own step.
+    Gradient-boosted trees optimise a scalar loss per boosting round, so
+    they are inherently single-output learners. The default `"multi-output"`
+    strategy wraps CatBoost in `MultiOutputRegressor`, which clones one
+    model per horizon step anyway.
+
+    For a **univariate** target, `reduction_strategy="direct"` removes
+    this redundancy: yohou trains **H independent CatBoost models**
+    directly, each predicting a single scalar. Every model's splits are
+    optimised exclusively for its own horizon step, giving it full
+    capacity to capture step-specific patterns.
+
+    With a **multivariate** target (multiple columns in `y`), each
+    per-step model still faces a multi-output problem, so a
+    `MultiOutputRegressor` wrapper remains necessary.
     """)
 
 

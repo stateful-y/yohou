@@ -13,6 +13,7 @@ from pydantic import StrictInt
 from sklearn.base import BaseEstimator, clone
 from sklearn.linear_model import LinearRegression
 from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
+from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base.forecaster import BaseForecaster
 from yohou.base.transformer import BaseTransformer
@@ -42,6 +43,12 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Transformer used to transform the target time series into features.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
+    n_jobs : int or None, default=None
+        Number of jobs to run in parallel for the ``"direct"`` strategy
+        (fitting and predicting H independent models). ``None`` means 1
+        unless in a ``joblib.parallel_backend`` context. ``-1`` means
+        using all processors. Has no effect for ``"multi-output"`` or
+        ``"dir-rec"`` strategies.
 
     Notes
     -----
@@ -81,6 +88,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
+        n_jobs: int | None = None,
     ):
         BaseForecaster.__init__(
             self,
@@ -92,6 +100,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         self.estimator = estimator
         self.reduction_strategy = reduction_strategy
+        self.n_jobs = n_jobs
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -711,22 +720,22 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             else len(self.local_y_t_schema_)
         )
 
-        estimators: list[BaseEstimator] = []
-        for step in range(forecasting_horizon):
-            # Extract columns for this step: for each target, take col at index step
+        def _fit_step(step: int) -> BaseEstimator:
             step_cols = [step + t * forecasting_horizon for t in range(n_targets)]
             y_step = y_tab[:, step_cols]
-            # Squeeze to 1D if single target
             if y_step.shape[1] == 1:
                 y_step = y_step.ravel()
-            est = self._fit_single_estimator(
+            return self._fit_single_estimator(
                 X_tab,
                 y_step,
                 sample_weight,
                 estimator_params,
                 estimator_fit_params,
             )
-            estimators.append(est)
+
+        estimators: list[BaseEstimator] = Parallel(n_jobs=self.n_jobs)(
+            delayed(_fit_step)(step) for step in range(forecasting_horizon)
+        )
         return estimators
 
     def _estimator_fit_dir_rec(
@@ -982,13 +991,15 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_cols = list(self.local_y_t_schema_.keys())
         n_targets = len(y_cols)
 
+        def _predict_step(est: BaseEstimator, X_tab: np.ndarray) -> np.ndarray:
+            pred = est.predict(X_tab)  # type: ignore[attr-defined]
+            return np.atleast_1d(pred.ravel())[:n_targets]
+
         if self.panel_group_names_ is None:
             X_tab = self._get_predict_features()
-            rows = []
-            for est in estimators:
-                pred = est.predict(X_tab)  # type: ignore[attr-defined]
-                pred = np.atleast_1d(pred.ravel())
-                rows.append(pred[:n_targets])
+            rows: list[np.ndarray] = Parallel(n_jobs=self.n_jobs)(
+                delayed(_predict_step)(est, X_tab) for est in estimators
+            )
             y_pred_arr = np.vstack(rows)
             y_pred = pl.DataFrame(y_pred_arr, schema=y_cols)
             return cast(y_pred, self.local_y_t_schema_)
@@ -996,11 +1007,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_pred_dict = {}
         for panel_group_name in panel_group_names:
             X_tab = self._get_predict_features(panel_group_name)
-            rows = []
-            for est in estimators:
-                pred = est.predict(X_tab)
-                pred = np.atleast_1d(pred.ravel())
-                rows.append(pred[:n_targets])
+            rows = Parallel(n_jobs=self.n_jobs)(
+                delayed(_predict_step)(est, X_tab) for est in estimators
+            )
             y_pred_arr = np.vstack(rows)
             y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
             y_pred_local = cast(y_pred_local, self.local_y_t_schema_)

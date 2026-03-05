@@ -38,6 +38,12 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         a feature.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
+    n_jobs : int or None, default=None
+        Number of jobs to run in parallel for the ``"direct"`` strategy
+        (fitting and predicting H independent models). ``None`` means 1
+        unless in a ``joblib.parallel_backend`` context. ``-1`` means
+        using all processors. Has no effect for ``"multi-output"`` or
+        ``"dir-rec"`` strategies.
 
     Examples
     --------
@@ -114,6 +120,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
+        n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ) -> None:
         BaseReductionForecaster.__init__(
@@ -121,6 +128,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             estimator=estimator,
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
+            n_jobs=n_jobs,
             panel_strategy=panel_strategy,
         )
 

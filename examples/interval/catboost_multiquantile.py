@@ -12,7 +12,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "CatBoost MultiQuantile",
-    "description": "Predict all quantiles in a single CatBoost model with MultiQuantile loss, avoiding the 2N-model overhead of separate quantile regressors. Includes reduction_strategy interaction notes.",
+    "description": "Predict all quantiles in a single CatBoost model with MultiQuantile loss, avoiding the 2N-model overhead of separate quantile regressors.",
 }
 app = marimo.App(width="medium")
 
