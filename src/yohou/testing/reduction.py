@@ -49,6 +49,6 @@ def check_reduction_strategy(forecaster) -> None:
         return
 
     strategy = forecaster.reduction_strategy
-    valid_strategies = ["direct", "multi-output"]
+    valid_strategies = ["direct", "dir-rec", "multi-output"]
 
     assert strategy in valid_strategies, f"reduction_strategy should be in {valid_strategies}, got '{strategy}'"

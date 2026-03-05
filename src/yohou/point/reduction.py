@@ -25,7 +25,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     ----------
     estimator : BaseEstimator, default=LinearRegression()
         Point estimator used to fit the tabularized data.
-    reduction_strategy : {"direct", "multi-output"}, default="multi-output"
+    reduction_strategy : {"direct", "dir-rec", "multi-output"}, default="multi-output"
         Strategy for multi-step forecasting.
     target_transformer : BaseTransformer or None, default=None
         Transformer for target preprocessing.
@@ -70,16 +70,31 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     Notes
     -----
     Reduction strategies:
-    - Direct: Separate model for each horizon step; predicts directly from inputs.
-    - Multi-output: Single model predicts all horizon steps simultaneously.
 
-    All models can be applied recursively for multi-step forecasting by specifying
-    the forecasting horizon during prediction.
+    - **Multi-output**: A single model predicts all H horizon steps
+      simultaneously. Simple and fast, but assumes the same model
+      structure is appropriate for every step.
+    - **Direct**: H independent models, one per horizon step. Each
+      model specialises in its own step, avoiding error accumulation
+      from recursive prediction but ignoring inter-step dependencies.
+    - **Dir-Rec** (direct-recursive hybrid): H models are fitted
+      sequentially. Model h predicts step h using the original features
+      augmented with in-sample predictions from models 1 to h-1. This
+      combines the specialised per-step training of the direct
+      strategy with inter-step information flow.
+
+    For direct and dir-rec strategies, ``estimator_`` becomes a
+    ``list[BaseEstimator]`` of length H (one per horizon step) instead
+    of a single estimator.
+
+    All strategies can be applied recursively for multi-step forecasting
+    beyond the fit horizon by specifying a larger forecasting horizon
+    during prediction.
 
     See Also
     --------
-    BaseReductionForecaster : Base class for reduction forecasters
-    LagTransformer : Create lagged features for reduction strategies
+    `BaseReductionForecaster` : Base class for reduction forecasters.
+    `LagTransformer` : Create lagged features for reduction strategies.
 
     """
 
@@ -87,7 +102,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         **BaseReductionForecaster._parameter_constraints,
         **BasePointForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
-        "reduction_strategy": [StrOptions({"direct", "multi-output"})],
+        "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
     }
 
     _supports_panel = True
@@ -95,7 +110,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     def __init__(
         self,
         estimator: BaseEstimator = LinearRegression(),
-        reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
+        reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",

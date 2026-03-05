@@ -30,7 +30,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     ----------
     estimator : instance of `BaseEstimator`, default=LinearRegression()
         Estimator used to fit the tabularized data.
-    reduction_strategy : {"direct", "multi-output"}, default="multi-output"
+    reduction_strategy : {"direct", "dir-rec", "multi-output"}, default="multi-output"
         Reduction strategy to use.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
@@ -46,11 +46,26 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     Notes
     -----
     Reduction strategies:
-    - Direct: Separate model for each horizon step; predicts directly from inputs.
-    - Multi-output: Single model predicts all horizon steps simultaneously.
 
-    All models can be applied recursively for multi-step forecasting by specifying
-    the forecasting horizon during prediction.
+    - **Multi-output**: A single model predicts all H horizon steps
+      simultaneously. Simple and fast, but assumes the same model
+      structure is appropriate for every step.
+    - **Direct**: H independent models, one per horizon step. Each
+      model specialises in its own step, avoiding error accumulation
+      from recursive prediction but ignoring inter-step dependencies.
+    - **Dir-Rec** (direct-recursive hybrid): H models are fitted
+      sequentially. Model h predicts step h using the original features
+      augmented with in-sample predictions from models 1 to h-1. This
+      combines the specialised per-step training of the direct
+      strategy with inter-step information flow.
+
+    For direct and dir-rec strategies, ``estimator_`` becomes a
+    ``list[BaseEstimator]`` of length H (one per horizon step) instead
+    of a single estimator.
+
+    All strategies can be applied recursively for multi-step forecasting
+    beyond the fit horizon by specifying a larger forecasting horizon
+    during prediction.
 
     See Also
     --------
@@ -61,7 +76,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def __init__(
         self,
         estimator: BaseEstimator = LinearRegression(),
-        reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
+        reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
@@ -369,105 +384,199 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sample_weight_alignment: str = "first_step",
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
-    ) -> BaseEstimator:
-        """Fit an sklearn estimator on tabularized time series data.
+    ) -> BaseEstimator | list[BaseEstimator]:
+        """Dispatch estimator fitting to the strategy-specific method.
 
-        Converts time series to supervised learning format and trains the estimator.
-        Handles both global (single series) and local (panel data) cases, stacking
-        panel data vertically for training a single global model.
+        Routes to `_estimator_fit_multi_output`, `_estimator_fit_direct`,
+        or `_estimator_fit_dir_rec` based on ``self.reduction_strategy``.
 
         Parameters
         ----------
-        y_t : pl.DataFrame
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
             Transformed target time series.
-        X_t : pl.DataFrame
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
             Transformed feature matrix.
         forecasting_horizon : int
             Number of steps to forecast.
         time_weight : callable or pl.DataFrame or None, default=None
             Time weighting function or DataFrame to weight samples.
-            Converted to sample_weight during tabularization.
-        sample_weight_alignment : {"first_step", "mean_step", "weighted_mean_step", "max_weight_step", "min_weight_step"}, default="first_step"
+        sample_weight_alignment : str, default="first_step"
             Strategy for aligning time weights to tabularized samples.
-        estimator_params : dict
+        estimator_params : dict or None
             Additional parameters to pass to the estimator's set_params method.
-        estimator_fit_params : dict
+        estimator_fit_params : dict or None
             Additional parameters to pass to the estimator's fit method.
 
         Returns
         -------
-        BaseEstimator
-            Fitted sklearn regressor.
-
-        Notes
-        -----
-        For panel data (panel_group_names_ is not None):
-        - Unnests each panel column
-        - Tabularizes each local time series separately
-        - Stacks all series vertically (X_tab = vstack of all local X_tabs)
-        - Trains single model across all series (global model)
-
-        For global data:
-        - Directly tabularizes and fits
-
-        This enables "global forecasting" where patterns learned from multiple
-        series can benefit predictions for all series.
+        BaseEstimator or list[BaseEstimator]
+            For ``"multi-output"``: a single fitted estimator.
+            For ``"direct"`` or ``"dir-rec"``: a list of H fitted estimators
+            (one per horizon step).
 
         See Also
         --------
-        `_get_tabularized_dataset` : Creates supervised learning matrices
-        `_estimator_predict_one` : Uses fitted model for prediction
+        `_estimator_fit_multi_output` : Multi-output strategy.
+        `_estimator_fit_direct` : Direct strategy.
+        `_estimator_fit_dir_rec` : Dir-Rec (direct-recursive) strategy.
 
         """
-        estimator = clone(self.estimator).set_params(**(estimator_params or {}))
-
-        if self.panel_group_names_ is None:
-            # Global time series
-            assert isinstance(y_t, pl.DataFrame)
-            assert isinstance(X_t, pl.DataFrame)
-            X_tab, y_tab = self._get_tabularized_dataset(
+        if self.reduction_strategy == "direct":
+            return self._estimator_fit_direct(
                 y_t,
                 X_t,
                 forecasting_horizon,
+                time_weight=time_weight,
+                sample_weight_alignment=sample_weight_alignment,
+                estimator_params=estimator_params,
+                estimator_fit_params=estimator_fit_params,
             )
+        if self.reduction_strategy == "dir-rec":
+            return self._estimator_fit_dir_rec(
+                y_t,
+                X_t,
+                forecasting_horizon,
+                time_weight=time_weight,
+                sample_weight_alignment=sample_weight_alignment,
+                estimator_params=estimator_params,
+                estimator_fit_params=estimator_fit_params,
+            )
+        return self._estimator_fit_multi_output(
+            y_t,
+            X_t,
+            forecasting_horizon,
+            time_weight=time_weight,
+            sample_weight_alignment=sample_weight_alignment,
+            estimator_params=estimator_params,
+            estimator_fit_params=estimator_fit_params,
+        )
 
-        else:
-            # Panel data: stack all series
-            # y_t and X_t are dicts mapping group_name to DataFrames
-            assert isinstance(y_t, dict)
-            assert isinstance(X_t, dict)
-            X_tab_list, y_tab_list = [], []
-            for panel_group_name in self.panel_group_names_:
-                # Get DataFrames for this group (already have unprefixed columns)
-                y_t_local = y_t[panel_group_name]
-                X_t_local = X_t[panel_group_name]
+    def _get_stacked_tabularized_data(
+        self,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Tabularize and stack data for fitting (handles both standard and panel).
 
-                # Get column names (excluding "time") for tabularization
-                y_columns = [c for c in y_t_local.columns if c != "time"]
+        Parameters
+        ----------
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed feature matrix.
+        forecasting_horizon : int
+            Number of steps to forecast.
 
-                # Pass the group's DataFrame to tabularize
-                X_tab_local, y_tab_local = self._get_tabularized_dataset(
-                    y_t_local,
-                    X_t_local,
-                    forecasting_horizon,
-                    y_columns=y_columns,
-                )
+        Returns
+        -------
+        X_tab : np.ndarray of shape (n_samples, n_features)
+            Stacked feature matrix.
+        y_tab : np.ndarray of shape (n_samples, H * n_targets)
+            Stacked target matrix with all horizon steps.
 
-                X_tab_list.append(X_tab_local)
-                y_tab_list.append(y_tab_local)
+        """
+        if self.panel_group_names_ is None:
+            assert isinstance(y_t, pl.DataFrame)
+            assert isinstance(X_t, pl.DataFrame)
+            return self._get_tabularized_dataset(y_t, X_t, forecasting_horizon)
 
-            X_tab = np.vstack(X_tab_list)
-            y_tab = np.vstack(y_tab_list)
+        assert isinstance(y_t, dict)
+        assert isinstance(X_t, dict)
+        X_tab_list, y_tab_list = [], []
+        for panel_group_name in self.panel_group_names_:
+            y_t_local = y_t[panel_group_name]
+            X_t_local = X_t[panel_group_name]
+            y_columns = [c for c in y_t_local.columns if c != "time"]
+            X_tab_local, y_tab_local = self._get_tabularized_dataset(
+                y_t_local,
+                X_t_local,
+                forecasting_horizon,
+                y_columns=y_columns,
+            )
+            X_tab_list.append(X_tab_local)
+            y_tab_list.append(y_tab_local)
+        return np.vstack(X_tab_list), np.vstack(y_tab_list)
 
-        # Process time_weight to sample_weight
-        sample_weight = self._process_time_weight_to_sample_weight(
+    def _validate_and_prepare_fit(
+        self,
+        X_tab: np.ndarray,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        time_weight: Callable | pl.DataFrame | None,
+        sample_weight_alignment: str,
+        forecasting_horizon: int,
+    ) -> np.ndarray | None:
+        """Validate training data and compute sample weights.
+
+        Parameters
+        ----------
+        X_tab : np.ndarray
+            Feature matrix.
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target (for weight computation).
+        time_weight : callable or pl.DataFrame or None
+            Time weighting specification.
+        sample_weight_alignment : str
+            Alignment strategy for time weights.
+        forecasting_horizon : int
+            Number of forecast steps.
+
+        Returns
+        -------
+        np.ndarray or None
+            Sample weights, or None.
+
+        Raises
+        ------
+        ValueError
+            If training dataset is empty.
+
+        """
+        if len(X_tab) == 0:
+            raise ValueError(
+                "Training dataset is empty (0 samples). This typically occurs when "
+                "the feature transformer reduces the data size below the minimum "
+                "required for the forecasting horizon. Please check your "
+                "transformer settings and ensure sufficient data length."
+            )
+        return self._process_time_weight_to_sample_weight(
             y_t=y_t,
             time_weight=time_weight,
             sample_weight_alignment=sample_weight_alignment,
             forecasting_horizon=forecasting_horizon,
         )
 
-        # Check if estimator supports sample_weight
+    def _fit_single_estimator(
+        self,
+        X_tab: np.ndarray,
+        y_tab: np.ndarray,
+        sample_weight: np.ndarray | None,
+        estimator_params: dict[str, Any] | None = None,
+        estimator_fit_params: dict[str, Any] | None = None,
+    ) -> BaseEstimator:
+        """Clone, configure, and fit a single estimator instance.
+
+        Parameters
+        ----------
+        X_tab : np.ndarray
+            Feature matrix.
+        y_tab : np.ndarray
+            Target matrix (single or multi-output).
+        sample_weight : np.ndarray or None
+            Sample weights.
+        estimator_params : dict or None
+            Parameters to pass to set_params.
+        estimator_fit_params : dict or None
+            Additional parameters for the fit call.
+
+        Returns
+        -------
+        BaseEstimator
+            Fitted estimator.
+
+        """
+        estimator = clone(self.estimator).set_params(**(estimator_params or {}))
+
         if sample_weight is not None:
             fit_signature = inspect.signature(estimator.fit)
             if "sample_weight" not in fit_signature.parameters:
@@ -476,29 +585,350 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     f"sample_weight parameter. Cannot use time_weight for training."
                 )
 
-        # Fit estimator with sample_weight if provided
         fit_params = estimator_fit_params or {}
         if sample_weight is not None:
             fit_params = {**fit_params, "sample_weight": sample_weight}
 
-        if len(X_tab) == 0:
-            raise ValueError(
-                "Training dataset is empty (0 samples). This typically occurs when "
-                "the feature transformer reduces the data size below the minimum "
-                "required for the forecasting horizon. Please check your "
-                "transformer settings and ensure sufficient data length."
-            )
-
         estimator.fit(X_tab, y_tab, **fit_params)
-
         return estimator
 
+    def _estimator_fit_multi_output(
+        self,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: StrictInt,
+        time_weight: Callable | pl.DataFrame | None = None,
+        sample_weight_alignment: str = "first_step",
+        estimator_params: dict[str, Any] | None = None,
+        estimator_fit_params: dict[str, Any] | None = None,
+    ) -> BaseEstimator:
+        """Fit a single multi-output estimator on tabularized time series data.
+
+        A single model predicts all H horizon steps simultaneously. The
+        target matrix has shape ``(n_samples, H * n_targets)``.
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed feature matrix.
+        forecasting_horizon : int
+            Number of steps to forecast.
+        time_weight : callable or pl.DataFrame or None, default=None
+            Time weighting function or DataFrame to weight samples.
+        sample_weight_alignment : str, default="first_step"
+            Strategy for aligning time weights to tabularized samples.
+        estimator_params : dict or None
+            Additional parameters to pass to the estimator's set_params method.
+        estimator_fit_params : dict or None
+            Additional parameters to pass to the estimator's fit method.
+
+        Returns
+        -------
+        BaseEstimator
+            Fitted sklearn regressor.
+
+        See Also
+        --------
+        `_get_tabularized_dataset` : Creates supervised learning matrices.
+        `_estimator_predict_multi_output` : Uses fitted model for prediction.
+
+        """
+        X_tab, y_tab = self._get_stacked_tabularized_data(y_t, X_t, forecasting_horizon)
+        sample_weight = self._validate_and_prepare_fit(
+            X_tab,
+            y_t,
+            time_weight,
+            sample_weight_alignment,
+            forecasting_horizon,
+        )
+        return self._fit_single_estimator(
+            X_tab,
+            y_tab,
+            sample_weight,
+            estimator_params,
+            estimator_fit_params,
+        )
+
+    def _estimator_fit_direct(
+        self,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: StrictInt,
+        time_weight: Callable | pl.DataFrame | None = None,
+        sample_weight_alignment: str = "first_step",
+        estimator_params: dict[str, Any] | None = None,
+        estimator_fit_params: dict[str, Any] | None = None,
+    ) -> list[BaseEstimator]:
+        """Fit H independent estimators, one per horizon step.
+
+        Each model ``h`` is trained to predict step ``h`` only
+        (single-output regression). The feature matrix is the same for
+        all models; only the target column differs.
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed feature matrix.
+        forecasting_horizon : int
+            Number of steps to forecast.
+        time_weight : callable or pl.DataFrame or None, default=None
+            Time weighting function or DataFrame to weight samples.
+        sample_weight_alignment : str, default="first_step"
+            Strategy for aligning time weights to tabularized samples.
+        estimator_params : dict or None
+            Additional parameters to pass to each estimator's set_params.
+        estimator_fit_params : dict or None
+            Additional parameters to pass to each estimator's fit.
+
+        Returns
+        -------
+        list[BaseEstimator]
+            List of H fitted estimators, one per horizon step.
+
+        See Also
+        --------
+        `_estimator_predict_direct` : Uses fitted models for prediction.
+
+        """
+        X_tab, y_tab = self._get_stacked_tabularized_data(y_t, X_t, forecasting_horizon)
+        sample_weight = self._validate_and_prepare_fit(
+            X_tab,
+            y_t,
+            time_weight,
+            sample_weight_alignment,
+            forecasting_horizon,
+        )
+
+        n_targets = (
+            len(self.local_y_t_schema_)
+            if self.panel_group_names_ is None
+            else len([c for c in next(iter(y_t.values())).columns if c != "time"])
+            if isinstance(y_t, dict)
+            else len(self.local_y_t_schema_)
+        )
+
+        estimators: list[BaseEstimator] = []
+        for step in range(forecasting_horizon):
+            # Extract columns for this step: for each target, take col at index step
+            step_cols = [step + t * forecasting_horizon for t in range(n_targets)]
+            y_step = y_tab[:, step_cols]
+            # Squeeze to 1D if single target
+            if y_step.shape[1] == 1:
+                y_step = y_step.ravel()
+            est = self._fit_single_estimator(
+                X_tab,
+                y_step,
+                sample_weight,
+                estimator_params,
+                estimator_fit_params,
+            )
+            estimators.append(est)
+        return estimators
+
+    def _estimator_fit_dir_rec(
+        self,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: StrictInt,
+        time_weight: Callable | pl.DataFrame | None = None,
+        sample_weight_alignment: str = "first_step",
+        estimator_params: dict[str, Any] | None = None,
+        estimator_fit_params: dict[str, Any] | None = None,
+    ) -> list[BaseEstimator]:
+        """Fit H estimators sequentially with recursive feature augmentation.
+
+        Model ``h`` predicts step ``h`` using the original features
+        augmented with in-sample predictions from models
+        ``1, 2, ..., h-1``. This combines the direct strategy's
+        per-step specialization with recursive information flow.
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed feature matrix.
+        forecasting_horizon : int
+            Number of steps to forecast.
+        time_weight : callable or pl.DataFrame or None, default=None
+            Time weighting function or DataFrame to weight samples.
+        sample_weight_alignment : str, default="first_step"
+            Strategy for aligning time weights to tabularized samples.
+        estimator_params : dict or None
+            Additional parameters to pass to each estimator's set_params.
+        estimator_fit_params : dict or None
+            Additional parameters to pass to each estimator's fit.
+
+        Returns
+        -------
+        list[BaseEstimator]
+            List of H fitted estimators with progressively augmented features.
+
+        See Also
+        --------
+        `_estimator_predict_dir_rec` : Uses fitted models for prediction.
+
+        """
+        X_tab, y_tab = self._get_stacked_tabularized_data(y_t, X_t, forecasting_horizon)
+        sample_weight = self._validate_and_prepare_fit(
+            X_tab,
+            y_t,
+            time_weight,
+            sample_weight_alignment,
+            forecasting_horizon,
+        )
+
+        n_targets = (
+            len(self.local_y_t_schema_)
+            if self.panel_group_names_ is None
+            else len([c for c in next(iter(y_t.values())).columns if c != "time"])
+            if isinstance(y_t, dict)
+            else len(self.local_y_t_schema_)
+        )
+
+        self._dir_rec_n_original_features_ = X_tab.shape[1]
+
+        estimators: list[BaseEstimator] = []
+        X_aug = X_tab.copy()  # Progressively augmented feature matrix
+        for step in range(forecasting_horizon):
+            step_cols = [step + t * forecasting_horizon for t in range(n_targets)]
+            y_step = y_tab[:, step_cols]
+            if y_step.shape[1] == 1:
+                y_step = y_step.ravel()
+            est = self._fit_single_estimator(
+                X_aug,
+                y_step,
+                sample_weight,
+                estimator_params,
+                estimator_fit_params,
+            )
+            estimators.append(est)
+
+            # Augment features with in-sample predictions for next step
+            if step < forecasting_horizon - 1:
+                preds = est.predict(X_aug)  # type: ignore[attr-defined]
+                if preds.ndim == 1:
+                    preds = preds.reshape(-1, 1)
+                X_aug = np.hstack([X_aug, preds])
+
+        return estimators
+
     def _estimator_predict_one(
+        self,
+        estimator: BaseEstimator | list[BaseEstimator],
+        panel_group_names: list[str],
+    ) -> pl.DataFrame:
+        """Dispatch estimator prediction to the strategy-specific method.
+
+        Routes to `_estimator_predict_multi_output`,
+        `_estimator_predict_direct`, or `_estimator_predict_dir_rec`
+        based on ``self.reduction_strategy``.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator or list[BaseEstimator]
+            For ``"multi-output"``: a single fitted estimator.
+            For ``"direct"`` or ``"dir-rec"``: a list of H fitted estimators.
+        panel_group_names : list of str
+            Panel group names to predict for.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predictions for the forecasting horizon.
+
+        See Also
+        --------
+        `_estimator_predict_multi_output` : Multi-output strategy.
+        `_estimator_predict_direct` : Direct strategy.
+        `_estimator_predict_dir_rec` : Dir-Rec (direct-recursive) strategy.
+
+        """
+        if self.reduction_strategy == "direct":
+            assert isinstance(estimator, list)
+            return self._estimator_predict_direct(
+                typing_cast(list[BaseEstimator], estimator),
+                panel_group_names,
+            )
+        if self.reduction_strategy == "dir-rec":
+            assert isinstance(estimator, list)
+            return self._estimator_predict_dir_rec(
+                typing_cast(list[BaseEstimator], estimator),
+                panel_group_names,
+            )
+        assert isinstance(estimator, BaseEstimator)
+        return self._estimator_predict_multi_output(estimator, panel_group_names)
+
+    def _get_predict_features(
+        self,
+        panel_group_name: str | None = None,
+    ) -> np.ndarray:
+        """Extract the last-row feature vector for prediction.
+
+        Parameters
+        ----------
+        panel_group_name : str or None
+            If None, uses global ``_X_t_observed``. Otherwise, uses
+            the panel group's DataFrame.
+
+        Returns
+        -------
+        np.ndarray of shape (1, n_features)
+            Feature row for prediction.
+
+        """
+        assert self._X_t_observed is not None
+        assert self.local_X_t_schema_ is not None
+        if panel_group_name is None:
+            assert isinstance(self._X_t_observed, pl.DataFrame)
+            X_t = self._X_t_observed[[-1]].select(~cs.by_name("time"))
+        else:
+            assert isinstance(self._X_t_observed, dict)
+            X_t_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
+            X_t = X_t_dict[panel_group_name][[-1]].select(~cs.by_name("time"))
+        return X_t.select(list(self.local_X_t_schema_.keys())).to_numpy()
+
+    def _reshape_predictions(
+        self,
+        y_tab_pred: np.ndarray,
+        panel_group_name: str | None = None,
+    ) -> pl.DataFrame:
+        """Reshape raw prediction array into a polars DataFrame.
+
+        Parameters
+        ----------
+        y_tab_pred : np.ndarray
+            Raw prediction output from estimator.predict.
+        panel_group_name : str or None
+            If not None, re-prefix columns for panel data.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predictions with proper column names and dtypes.
+
+        """
+        assert self.local_y_t_schema_ is not None
+        y_cols = list(self.local_y_t_schema_.keys())
+        y_pred = pl.DataFrame(
+            y_tab_pred.reshape(self.fit_forecasting_horizon_, len(y_cols)),
+            schema=y_cols,
+        )
+        y_pred = cast(y_pred, self.local_y_t_schema_)
+        if panel_group_name is not None:
+            y_pred = y_pred.rename({col: f"{panel_group_name}__{col}" for col in y_cols})
+        return y_pred
+
+    def _estimator_predict_multi_output(
         self,
         estimator: BaseEstimator,
         panel_group_names: list[str],
     ) -> pl.DataFrame:
-        """Generate predictions using fitted estimator on tabularized data.
+        """Generate predictions using a fitted multi-output estimator.
 
         Parameters
         ----------
@@ -513,55 +943,128 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predictions for the forecasting horizon.
 
         """
-        # Non-panel data
         if self.panel_group_names_ is None:
-            # Global data: _X_t_observed is a DataFrame
-            assert self._X_t_observed is not None
-            assert isinstance(self._X_t_observed, pl.DataFrame)
-            X_t = self._X_t_observed[[-1]].select(~cs.by_name("time"))
-            assert self.local_X_t_schema_ is not None
-            X_tab = X_t.select(list(self.local_X_t_schema_.keys())).to_numpy()
-            assert self.local_y_t_schema_ is not None
+            X_tab = self._get_predict_features()
             y_tab_pred = estimator.predict(X_tab)  # type: ignore[attr-defined]
-            y_pred = pl.DataFrame(
-                y_tab_pred.reshape(self.fit_forecasting_horizon_, len(list(self.local_y_t_schema_.keys()))),
-                schema=list(self.local_y_t_schema_.keys()),
-            )
-            # Cast to preserve dtypes from transformed target schema
-            y_pred = cast(y_pred, self.local_y_t_schema_)
+            return self._reshape_predictions(y_tab_pred)
 
-        # Panel data
-        else:
-            # Panel data: _X_t_observed is a dict (one DataFrame per group)
-            # Each DataFrame has unprefixed columns (after get_group_df applied)
-            assert self._X_t_observed is not None
-            y_pred_dict = {}
-            for panel_group_name in panel_group_names:
-                # Get X_t for this group (already unprefixed)
-                X_t_group = self._X_t_observed[panel_group_name][[-1]].select(~cs.by_name("time"))
+        y_pred_dict = {}
+        for panel_group_name in panel_group_names:
+            X_tab = self._get_predict_features(panel_group_name)
+            y_tab_pred = estimator.predict(X_tab)
+            y_pred_dict[panel_group_name] = self._reshape_predictions(y_tab_pred, panel_group_name)
+        return pl.concat(list(y_pred_dict.values()), how="horizontal")
 
-                # Use transformed schema to get feature order
-                X_tab = X_t_group.select(list(self.local_X_t_schema_.keys())).to_numpy()
+    def _estimator_predict_direct(
+        self,
+        estimators: list[BaseEstimator],
+        panel_group_names: list[str],
+    ) -> pl.DataFrame:
+        """Generate predictions using H independent direct estimators.
 
-                # Get y columns from transformed schema (unprefixed)
-                group_y_cols = list(self.local_y_t_schema_.keys())
+        Each estimator predicts a single horizon step. Results are
+        stacked row-wise to form the full forecast.
 
-                y_tab_pred = estimator.predict(X_tab)
-                y_pred_local = pl.DataFrame(
-                    y_tab_pred.reshape(self.fit_forecasting_horizon_, len(group_y_cols)),
-                    schema=group_y_cols,
-                )
-                # Cast to preserve dtypes from transformed target schema
-                y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
+        Parameters
+        ----------
+        estimators : list[BaseEstimator]
+            H fitted estimators, one per horizon step.
+        panel_group_names : list of str
+            Panel group names to predict for.
 
-                # Re-prefix column names for concatenation (e.g., "a" → "x__a")
-                y_pred_local = y_pred_local.rename({col: f"{panel_group_name}__{col}" for col in group_y_cols})
+        Returns
+        -------
+        pl.DataFrame
+            Predictions for the forecasting horizon.
 
-                y_pred_dict[panel_group_name] = y_pred_local
+        """
+        assert self.local_y_t_schema_ is not None
+        y_cols = list(self.local_y_t_schema_.keys())
+        n_targets = len(y_cols)
 
-            y_pred = pl.concat(list(y_pred_dict.values()), how="horizontal")
+        if self.panel_group_names_ is None:
+            X_tab = self._get_predict_features()
+            rows = []
+            for est in estimators:
+                pred = est.predict(X_tab)  # type: ignore[attr-defined]
+                pred = np.atleast_1d(pred.ravel())
+                rows.append(pred[:n_targets])
+            y_pred_arr = np.vstack(rows)
+            y_pred = pl.DataFrame(y_pred_arr, schema=y_cols)
+            return cast(y_pred, self.local_y_t_schema_)
 
-        return y_pred
+        y_pred_dict = {}
+        for panel_group_name in panel_group_names:
+            X_tab = self._get_predict_features(panel_group_name)
+            rows = []
+            for est in estimators:
+                pred = est.predict(X_tab)
+                pred = np.atleast_1d(pred.ravel())
+                rows.append(pred[:n_targets])
+            y_pred_arr = np.vstack(rows)
+            y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
+            y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
+            y_pred_local = y_pred_local.rename({col: f"{panel_group_name}__{col}" for col in y_cols})
+            y_pred_dict[panel_group_name] = y_pred_local
+        return pl.concat(list(y_pred_dict.values()), how="horizontal")
+
+    def _estimator_predict_dir_rec(
+        self,
+        estimators: list[BaseEstimator],
+        panel_group_names: list[str],
+    ) -> pl.DataFrame:
+        """Generate predictions using H dir-rec estimators with feature augmentation.
+
+        Model 1 predicts on original features. Model h predicts on
+        original features augmented with predictions from models 1..h-1.
+
+        Parameters
+        ----------
+        estimators : list[BaseEstimator]
+            H fitted estimators with progressively augmented features.
+        panel_group_names : list of str
+            Panel group names to predict for.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predictions for the forecasting horizon.
+
+        """
+        assert self.local_y_t_schema_ is not None
+        y_cols = list(self.local_y_t_schema_.keys())
+        n_targets = len(y_cols)
+
+        if self.panel_group_names_ is None:
+            X_tab = self._get_predict_features()
+            X_aug = X_tab.copy()
+            rows = []
+            for est in estimators:
+                pred = est.predict(X_aug)  # type: ignore[attr-defined]
+                pred = np.atleast_1d(pred.ravel())
+                rows.append(pred[:n_targets])
+                # Augment features for next model
+                X_aug = np.hstack([X_aug, pred.reshape(1, -1)])
+            y_pred_arr = np.vstack(rows)
+            y_pred = pl.DataFrame(y_pred_arr, schema=y_cols)
+            return cast(y_pred, self.local_y_t_schema_)
+
+        y_pred_dict = {}
+        for panel_group_name in panel_group_names:
+            X_tab = self._get_predict_features(panel_group_name)
+            X_aug = X_tab.copy()
+            rows = []
+            for est in estimators:
+                pred = est.predict(X_aug)
+                pred = np.atleast_1d(pred.ravel())
+                rows.append(pred[:n_targets])
+                X_aug = np.hstack([X_aug, pred.reshape(1, -1)])
+            y_pred_arr = np.vstack(rows)
+            y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
+            y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
+            y_pred_local = y_pred_local.rename({col: f"{panel_group_name}__{col}" for col in y_cols})
+            y_pred_dict[panel_group_name] = y_pred_local
+        return pl.concat(list(y_pred_dict.values()), how="horizontal")
 
     def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing including wrapped estimator.

@@ -9,10 +9,10 @@
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
 __gallery__ = {
     "title": "CatBoost Forecasting",
-    "description": "Plug CatBoostRegressor into PointReductionForecaster as a drop-in sklearn estimator and compare gradient-boosted versus Ridge linear baseline results.",
+    "description": "Plug CatBoostRegressor into PointReductionForecaster as a drop-in sklearn estimator, compare gradient-boosted versus Ridge linear baseline, and demonstrate the direct reduction strategy with tree-based models.",
 }
 
 app = marimo.App(width="medium")
@@ -38,6 +38,7 @@ def _(mo):
     - Wrapping `CatBoostRegressor` in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
     - Silencing CatBoost training output with `verbose=0`
     - Comparing CatBoost with a linear baseline
+    - Using `reduction_strategy="direct"` with tree-based estimators
     """)
 
 
@@ -185,6 +186,61 @@ def _(
     mae_ridge = scorer.score(y_test, y_pred_ridge)
     print(f"CatBoost MAE: {mae_cb:.2f}")
     print(f"Ridge    MAE: {mae_ridge:.2f}")
+    return (y_pred_ridge,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 4. CatBoost with Direct Strategy
+
+    Tree-based estimators are natural single-output models. The `"direct"`
+    strategy trains **H independent models** (one per horizon step),
+    which avoids wrapping CatBoost in `MultiOutputRegressor` and lets
+    each model specialise in its own step.
+    """)
+
+
+@app.cell
+def _(
+    CatBoostRegressor,
+    LagTransformer,
+    MeanAbsoluteError,
+    PointReductionForecaster,
+    forecasting_horizon,
+    plot_forecast,
+    y_pred_cb,
+    y_pred_ridge,
+    y_test,
+    y_train,
+):
+    catboost_direct_fc = PointReductionForecaster(
+        estimator=CatBoostRegressor(
+            iterations=200,
+            depth=4,
+            learning_rate=0.1,
+            verbose=0,
+        ),
+        reduction_strategy="direct",
+        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+    )
+    catboost_direct_fc.fit(y_train, forecasting_horizon=forecasting_horizon)
+    y_pred_cb_direct = catboost_direct_fc.predict(forecasting_horizon=forecasting_horizon)
+
+    _scorer = MeanAbsoluteError()
+    _scorer.fit(y_train)
+    print(f"CatBoost Direct MAE: {_scorer.score(y_test, y_pred_cb_direct):.2f}")
+
+    plot_forecast(
+        y_test,
+        {
+            "CatBoost (multi-output)": y_pred_cb,
+            "CatBoost (direct)": y_pred_cb_direct,
+            "Ridge": y_pred_ridge,
+        },
+        y_train=y_train,
+        title="CatBoost Multi-Output vs Direct vs Ridge",
+    )
 
 
 @app.cell(hide_code=True)
@@ -194,8 +250,10 @@ def _(mo):
 
     - Any sklearn-compatible regressor works with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
     - CatBoost often captures nonlinear patterns better than linear models
+    - Tree-based models pair well with `reduction_strategy="direct"` (no `MultiOutputRegressor` wrapper needed)
     - Use `verbose=0` to keep notebook output clean
     - Consider [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) for tuning `iterations`, `depth`, `learning_rate`
+    - See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for a full strategy comparison
     """)
 
 

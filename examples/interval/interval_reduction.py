@@ -8,10 +8,10 @@
 
 import marimo
 
-__generated_with = "0.19.11"
+__generated_with = "0.20.2"
 __gallery__ = {
     "title": "Interval Reduction Forecasting",
-    "description": "Build prediction intervals directly via quantile regression with IntervalReductionForecaster, comparing multiple coverage rates and scoring metrics.",
+    "description": "Build prediction intervals directly via quantile regression with IntervalReductionForecaster, comparing multiple coverage rates, reduction strategies (multi-output vs direct), and scoring metrics.",
 }
 app = marimo.App(width="medium")
 
@@ -36,6 +36,7 @@ def _(mo):
 
     - Using [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) with quantile regressors
     - Specifying `coverage_rates` at fit and predict time
+    - Using `reduction_strategy` to control multi-step interval forecasting
     - Comparing quantile vs. conformal interval approaches
     - Evaluating interval quality
 
@@ -48,6 +49,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _():
     import polars as pl
+    from sklearn.linear_model import QuantileRegressor
     from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
@@ -62,6 +64,7 @@ def _():
         IntervalScore,
         LagTransformer,
         MeanIntervalWidth,
+        QuantileRegressor,
         fetch_tourism_monthly,
         pl,
         plot_forecast,
@@ -95,7 +98,9 @@ def _(mo):
     mo.md(r"""
     ## 2. IntervalReductionForecaster Basics
 
-    The default estimator is `MultiOutputRegressor(QuantileRegressor())`.
+    The default estimator is `MultiOutputRegressor(QuantileRegressor())` - a
+    separate linear quantile model for each output step. For each coverage rate,
+    two models are trained: one for the lower quantile and one for the upper quantile.
     `coverage_rates` are specified at **fit time** to train the needed quantile models.
     """)
 
@@ -262,10 +267,70 @@ def _(MeanIntervalWidth, many_rates, plot_model_comparison_bar, y_pred_many, y_t
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 6. Reduction Strategies for Intervals
+
+    Like [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/), the interval
+    forecaster supports `reduction_strategy`. With `"direct"`, each horizon step
+    gets its own pair of quantile models, letting each step specialise independently.
+
+    When using `"direct"`, pass a base estimator like `QuantileRegressor()` instead of the
+    default `MultiOutputRegressor(QuantileRegressor())` - direct already handles one
+    step at a time, so the multi-output wrapper is unnecessary.
+    """)
+
+
+@app.cell
+def _(
+    EmpiricalCoverage,
+    IntervalReductionForecaster,
+    IntervalScore,
+    LagTransformer,
+    QuantileRegressor,
+    forecasting_horizon,
+    plot_model_comparison_bar,
+    y_test,
+    y_train,
+):
+    _coverage = [0.5, 0.9]
+    _strategy_scores = {}
+
+    for _strat, _est in [
+        ("multi-output", None),
+        ("direct", QuantileRegressor()),
+    ]:
+        _fc = IntervalReductionForecaster(
+            feature_transformer=LagTransformer(lag=list(range(1, 13))),
+            reduction_strategy=_strat,
+            **({"estimator": _est} if _est is not None else {}),
+        )
+        _fc.fit(y_train, forecasting_horizon=forecasting_horizon, coverage_rates=_coverage)
+        _pred = _fc.predict_interval(forecasting_horizon=forecasting_horizon, coverage_rates=_coverage)
+
+        _emp = EmpiricalCoverage(coverage_rates=_coverage)
+        _emp.fit(y_train)
+        _iscore = IntervalScore(coverage_rates=_coverage)
+        _iscore.fit(y_train)
+
+        _strategy_scores[_strat] = {
+            "EmpiricalCoverage": _emp.score(y_test, _pred),
+            "IntervalScore": _iscore.score(y_test, _pred),
+        }
+
+    plot_model_comparison_bar(
+        _strategy_scores,
+        group_by="scorer",
+        title="Interval Quality: Multi-Output vs Direct",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Key Takeaways
 
     - [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) uses quantile regression for native intervals
     - `coverage_rates` are specified at **fit time** (models for each quantile)
+    - `reduction_strategy` works with intervals: `"direct"` gives each step its own quantile models
     - No separate calibration set needed (unlike conformal prediction)
     - More coverage rates = more quantile models to train
     - Evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
@@ -277,6 +342,8 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
+    - **Point strategy comparison**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
+    - **CatBoost multi-quantile**: See [`catboost_multiquantile.py`](/examples/interval/catboost_multiquantile/) for single-model quantile prediction
     - **Calibration plots**: Use [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) from `yohou.plotting`
     - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval metrics
     """)

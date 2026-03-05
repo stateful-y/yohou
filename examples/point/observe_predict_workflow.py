@@ -41,6 +41,10 @@ def _(mo):
     - `rewind(y, X)`: reset state to a specific window without refitting
     - Panel data: selective group observation with `panel_group_names`
 
+    > **Note**: The observe/predict API is **independent of `reduction_strategy`**.
+    > Whether you use `"multi-output"`, `"direct"`, or `"dir-rec"`, the observe,
+    > predict, and rewind methods work identically. Only model training internals change.
+
     ## Prerequisites
 
     Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) and `fit/predict`
@@ -347,6 +351,7 @@ def _(mo):
 
     ## Next Steps
 
+    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output, direct, and dir-rec comparison
     - **Cross-validation**: See `examples/cross_validation.py` for automated rolling-origin evaluation with [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
     - **Scoring**: See `examples/scoring.py` for evaluating forecast quality with point and interval metrics
     - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/) for comprehensive panel workflows

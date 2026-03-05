@@ -12,7 +12,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "CatBoost MultiQuantile",
-    "description": "Predict all quantiles in a single CatBoost model with MultiQuantile loss, avoiding the 2N-model overhead of separate quantile regressors.",
+    "description": "Predict all quantiles in a single CatBoost model with MultiQuantile loss, avoiding the 2N-model overhead of separate quantile regressors. Includes reduction_strategy interaction notes.",
 }
 app = marimo.App(width="medium")
 
@@ -40,6 +40,7 @@ def _(mo):
 
     - Using `CatBoostRegressor` with `MultiQuantile` loss
     - The speed advantage of multi-quantile vs separate quantile models
+    - How `reduction_strategy` interacts with multi-quantile loss
     - Evaluating interval quality with yohou metrics
 
     ## Prerequisites
@@ -109,6 +110,15 @@ def _(mo):
     Because CatBoost's `MultiQuantile` loss produces a 2D output (one
     column per quantile), it cannot be wrapped in `MultiOutputRegressor`
     and requires `forecasting_horizon=1` with recursive prediction.
+
+    > **Note on `reduction_strategy`**: Because the multi-quantile loss
+    > already produces a vector of quantiles as its native output,
+    > it is always fitted with `forecasting_horizon=1` and predicts
+    > recursively. This means `reduction_strategy` does not change the
+    > single-model advantage here - you still get one model for all quantiles.
+    > For per-step specialisation with CatBoost intervals, train separate
+    > `CatBoostRegressor(loss_function='Quantile:alpha=...')` models using
+    > `reduction_strategy="direct"` instead.
     """)
 
 
@@ -264,6 +274,13 @@ def _(mo):
     - The alpha placeholder is overwritten: just specify `coverage_rates`
     - Multi-quantile is faster when many coverage rates are needed
     - Interval quality is comparable to separate quantile models
+    - `reduction_strategy` does not change multi-quantile behaviour (always recursive with H=1)
+
+    ## Next Steps
+
+    - **Standard interval reduction**: See [`interval_reduction.py`](/examples/interval/interval_reduction/) for `reduction_strategy` comparison
+    - **Point CatBoost**: See [`catboost_forecasting.py`](/examples/point/catboost_forecasting/) for point forecasting with CatBoost
+    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
     """)
 
 

@@ -2,8 +2,9 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 import pytest
-from sklearn.base import clone
+from sklearn.base import BaseEstimator, clone
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 
@@ -419,6 +420,237 @@ class TestLinearRegressionAnalytical:
         np.testing.assert_allclose(predicted_value, expected_value, rtol=1e-10, atol=1e-10)
 
 
+class TestDirectLinearRegressionAnalytical:
+    """Analytical tests for direct strategy with LinearRegression."""
+
+    def test_direct_perfect_linear_trend(self):
+        """Direct strategy on perfect linear trend produces exact predictions.
+
+        With y = 2*t + 10 and lag-1 features, each direct model should
+        learn the one-step linear relationship exactly.
+        """
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [2.0 * i + 10.0 for i in range(length)]})
+        y_train = y[:40]
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy="direct",
+        )
+        forecaster.fit(y_train, X=None, forecasting_horizon=3)
+
+        y_pred = forecaster.predict(forecasting_horizon=3)
+
+        # Perfect linear trend: predictions should be exact continuations
+        expected = [2.0 * 40 + 10.0, 2.0 * 41 + 10.0, 2.0 * 42 + 10.0]
+        np.testing.assert_allclose(y_pred["value"].to_numpy(), expected, rtol=1e-5, atol=1e-5)
+
+    def test_direct_ar1_process(self):
+        """Direct strategy on AR(1) recovers exact one-step predictions.
+
+        For horizon=1, direct is equivalent to the standard approach.
+        """
+        phi = 0.8
+        c = 5.0
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        values = [10.0]
+        for _ in range(1, length):
+            values.append(phi * values[-1] + c)
+        y = pl.DataFrame({"time": time, "value": values})
+        y_train = y[:40]
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy="direct",
+        )
+        forecaster.fit(y_train, X=None, forecasting_horizon=1)
+
+        y_pred = forecaster.predict(forecasting_horizon=1)
+        expected_value = phi * y_train["value"][-1] + c
+        np.testing.assert_allclose(y_pred["value"][0], expected_value, rtol=1e-10, atol=1e-10)
+
+    def test_direct_constant_series(self):
+        """Direct strategy on a constant series predicts the constant."""
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [42.0] * length})
+        y_train = y[:40]
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy="direct",
+        )
+        forecaster.fit(y_train, X=None, forecasting_horizon=3)
+
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        np.testing.assert_allclose(y_pred["value"].to_numpy(), [42.0, 42.0, 42.0], rtol=1e-5)
+
+
+class TestDirRecLinearRegressionAnalytical:
+    """Analytical tests for dir-rec strategy with LinearRegression."""
+
+    def test_dir_rec_constant_series(self):
+        """Dir-rec strategy on a constant series predicts the constant."""
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [42.0] * length})
+        y_train = y[:40]
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy="dir-rec",
+        )
+        forecaster.fit(y_train, X=None, forecasting_horizon=3)
+
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        np.testing.assert_allclose(y_pred["value"].to_numpy(), [42.0, 42.0, 42.0], rtol=1e-5)
+
+    def test_dir_rec_ar1_horizon_1(self):
+        """Dir-rec with horizon=1 is identical to direct/multi-output."""
+        phi = 0.8
+        c = 5.0
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        values = [10.0]
+        for _ in range(1, length):
+            values.append(phi * values[-1] + c)
+        y = pl.DataFrame({"time": time, "value": values})
+        y_train = y[:40]
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy="dir-rec",
+        )
+        forecaster.fit(y_train, X=None, forecasting_horizon=1)
+
+        y_pred = forecaster.predict(forecasting_horizon=1)
+        expected_value = phi * y_train["value"][-1] + c
+        np.testing.assert_allclose(y_pred["value"][0], expected_value, rtol=1e-10, atol=1e-10)
+
+    def test_dir_rec_perfect_linear_trend(self):
+        """Dir-rec on perfect linear trend produces near-exact predictions."""
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [2.0 * i + 10.0 for i in range(length)]})
+        y_train = y[:40]
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy="dir-rec",
+        )
+        forecaster.fit(y_train, X=None, forecasting_horizon=3)
+
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        expected = [2.0 * 40 + 10.0, 2.0 * 41 + 10.0, 2.0 * 42 + 10.0]
+        np.testing.assert_allclose(y_pred["value"].to_numpy(), expected, rtol=1e-4, atol=1e-4)
+
+
+class TestDirectHorizonMismatch:
+    """Tests for predicting with a different horizon than fit horizon."""
+
+    @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
+    def test_predict_larger_horizon_than_fit(self, strategy):
+        """When predict horizon > fit horizon, recursive application is used."""
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [float(i) for i in range(length)]})
+        y_train = y[:40]
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy=strategy,
+        )
+        forecaster.fit(y_train, X=None, forecasting_horizon=2)
+
+        # Predict 5 steps even though fit horizon was 2
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        assert y_pred.shape[0] == 5
+        assert "value" in y_pred.columns
+
+    @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
+    def test_predict_smaller_horizon_than_fit(self, strategy):
+        """When predict horizon < fit horizon, only first H' steps used."""
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [float(i) for i in range(length)]})
+        y_train = y[:40]
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy=strategy,
+        )
+        forecaster.fit(y_train, X=None, forecasting_horizon=5)
+
+        y_pred = forecaster.predict(forecasting_horizon=2)
+
+        assert y_pred.shape[0] == 2
+        assert "value" in y_pred.columns
+
+
+class TestParameterValidation:
+    """Tests for invalid parameter handling."""
+
+    def test_invalid_strategy_rejected(self):
+        """Invalid reduction_strategy raises at fit time."""
+        forecaster = PointReductionForecaster()
+        forecaster.set_params(reduction_strategy="foobar")
+
+        length = 30
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [float(i) for i in range(length)]})
+
+        with pytest.raises(ValueError, match="reduction_strategy"):
+            forecaster.fit(y, forecasting_horizon=3)
+
+
 class TestDtypePreservation:
     def test_dtype_preservation_single_column(self):
         """Test that predictions preserve Int32 dtype for single column."""
@@ -530,6 +762,259 @@ class TestDtypePreservation:
         # Verify both integer dtypes are preserved
         assert y_pred.schema["small"] == pl.Int16
         assert y_pred.schema["large"] == pl.Int64
+
+
+class TestDirectStrategy:
+    """Tests for direct reduction strategy on PointReductionForecaster."""
+
+    def test_estimator_is_list(self, reduction_data):
+        """Direct strategy stores a list of H estimators."""
+        y_train, _y_test, X_train, _X_test = reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="direct")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        assert isinstance(forecaster.estimator_, list)
+        assert len(forecaster.estimator_) == 3
+        for est in forecaster.estimator_:
+            assert isinstance(est, BaseEstimator)
+
+    def test_estimators_are_independent_clones(self, reduction_data):
+        """Each direct estimator is a distinct object."""
+        y_train, _y_test, X_train, _X_test = reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="direct")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        for i in range(len(forecaster.estimator_)):
+            for j in range(i + 1, len(forecaster.estimator_)):
+                assert forecaster.estimator_[i] is not forecaster.estimator_[j]
+
+    @pytest.mark.parametrize(
+        "fit_forecasting_horizon, predict_forecasting_horizon",
+        [(1, 5), (3, 5), (3, 2)],
+    )
+    def test_predict_shape(self, reduction_data, fit_forecasting_horizon, predict_forecasting_horizon):
+        """Direct predictions have correct shape."""
+        y_train, _y_test, X_train, X_test = reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="direct")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
+
+        y_pred = forecaster.predict(
+            X=X_test[:predict_forecasting_horizon],
+            forecasting_horizon=predict_forecasting_horizon,
+        )
+
+        assert y_pred.shape[0] == predict_forecasting_horizon
+        assert "a" in y_pred.columns
+        assert "b" in y_pred.columns
+
+    def test_predict_matches_multi_output_on_linear(self):
+        """On perfectly linear data, direct should match multi-output predictions."""
+        length = 50
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [2.0 * i + 10.0 for i in range(length)]})
+        y_train = y[:40]
+
+        forecaster_direct = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy="direct",
+        )
+        forecaster_mo = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy="multi-output",
+        )
+
+        forecaster_direct.fit(y_train, forecasting_horizon=3)
+        forecaster_mo.fit(y_train, forecasting_horizon=3)
+
+        y_pred_direct = forecaster_direct.predict(forecasting_horizon=3)
+        y_pred_mo = forecaster_mo.predict(forecasting_horizon=3)
+
+        np.testing.assert_allclose(
+            y_pred_direct["value"].to_numpy(),
+            y_pred_mo["value"].to_numpy(),
+            rtol=1e-5,
+        )
+
+
+class TestDirectStrategyPanel:
+    """Tests for direct strategy with panel data."""
+
+    def test_predict_panel(self, panel_reduction_data):
+        """Direct strategy works with panel data."""
+        y_train, _y_test, X_train, X_test = panel_reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="direct")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        y_pred = forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+
+        assert y_pred.shape[0] == 3
+        assert "x__a" in y_pred.columns
+        assert "y__b" in y_pred.columns
+
+
+class TestDirRecStrategy:
+    """Tests for dir-rec reduction strategy on PointReductionForecaster."""
+
+    def test_estimator_is_list(self, reduction_data):
+        """Dir-rec strategy stores a list of H estimators."""
+        y_train, _y_test, X_train, _X_test = reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="dir-rec")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        assert isinstance(forecaster.estimator_, list)
+        assert len(forecaster.estimator_) == 3
+
+    def test_progressive_feature_augmentation(self, reduction_data):
+        """Dir-rec models should have progressively more features."""
+        y_train, _y_test, X_train, _X_test = reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="dir-rec")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        n_original = forecaster._dir_rec_n_original_features_
+        # Model 0 (step 1): n_original features
+        # Model 1 (step 2): n_original + n_targets features (augmented with model 0 preds)
+        # Model 2 (step 3): n_original + 2 * n_targets features
+        n_targets = len([c for c in y_train.columns if c != "time"])
+        for step, est in enumerate(forecaster.estimator_):
+            expected_features = n_original + step * n_targets
+            assert est.n_features_in_ == expected_features, (
+                f"Step {step}: expected {expected_features} features, got {est.n_features_in_}"
+            )
+
+    def test_stores_n_original_features(self, reduction_data):
+        """Dir-rec fit stores _dir_rec_n_original_features_ attribute."""
+        y_train, _y_test, X_train, _X_test = reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="dir-rec")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        assert hasattr(forecaster, "_dir_rec_n_original_features_")
+        assert forecaster._dir_rec_n_original_features_ > 0
+
+    @pytest.mark.parametrize(
+        "fit_forecasting_horizon, predict_forecasting_horizon",
+        [(1, 5), (3, 5), (3, 2)],
+    )
+    def test_predict_shape(self, reduction_data, fit_forecasting_horizon, predict_forecasting_horizon):
+        """Dir-rec predictions have correct shape."""
+        y_train, _y_test, X_train, X_test = reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="dir-rec")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
+
+        y_pred = forecaster.predict(
+            X=X_test[:predict_forecasting_horizon],
+            forecasting_horizon=predict_forecasting_horizon,
+        )
+
+        assert y_pred.shape[0] == predict_forecasting_horizon
+        assert "a" in y_pred.columns
+        assert "b" in y_pred.columns
+
+    def test_horizon_1_matches_direct(self, reduction_data):
+        """With horizon=1, dir-rec and direct should produce identical results."""
+        y_train, _y_test, X_train, X_test = reduction_data
+        forecaster_direct = PointReductionForecaster(reduction_strategy="direct")
+        forecaster_dirrec = PointReductionForecaster(reduction_strategy="dir-rec")
+
+        forecaster_direct.fit(y=y_train, X=X_train, forecasting_horizon=1)
+        forecaster_dirrec.fit(y=y_train, X=X_train, forecasting_horizon=1)
+
+        y_pred_direct = forecaster_direct.predict(X=X_test[:1], forecasting_horizon=1)
+        y_pred_dirrec = forecaster_dirrec.predict(X=X_test[:1], forecasting_horizon=1)
+
+        np.testing.assert_allclose(
+            y_pred_direct.select(~cs.by_name("time", "observed_time")).to_numpy(),
+            y_pred_dirrec.select(~cs.by_name("time", "observed_time")).to_numpy(),
+            rtol=1e-10,
+        )
+
+
+class TestDirRecStrategyPanel:
+    """Tests for dir-rec strategy with panel data."""
+
+    def test_predict_panel(self, panel_reduction_data):
+        """Dir-rec strategy works with panel data."""
+        y_train, _y_test, X_train, X_test = panel_reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy="dir-rec")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        y_pred = forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+
+        assert y_pred.shape[0] == 3
+        assert "x__a" in y_pred.columns
+        assert "y__b" in y_pred.columns
+
+
+class TestObservePredictDirectDirRec:
+    """Tests for observe_predict with direct and dir-rec strategies."""
+
+    @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
+    def test_observe_predict(self, reduction_data, strategy):
+        """observe_predict works for direct and dir-rec strategies."""
+        y_train, y_test, X_train, X_test = reduction_data
+        forecaster = PointReductionForecaster(reduction_strategy=strategy)
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        predict_forecasting_horizon = 3
+        last_time = X_test["time"][-1]
+        future_time = pl.datetime_range(
+            start=last_time + timedelta(seconds=1),
+            end=last_time + timedelta(seconds=predict_forecasting_horizon),
+            interval="1s",
+            eager=True,
+        )
+        future_X = pl.DataFrame(
+            {
+                "time": future_time,
+                "c": range(LENGTH, LENGTH + predict_forecasting_horizon),
+                "d": range(LENGTH + 10, LENGTH + 10 + predict_forecasting_horizon),
+                "e": range(LENGTH + 20, LENGTH + 20 + predict_forecasting_horizon),
+            },
+            schema=X_test.schema,
+        )
+        X_test_extended = pl.concat([X_test, future_X])
+
+        y_pred = forecaster.observe_predict(
+            y=y_test,
+            X=X_test_extended,
+            forecasting_horizon=predict_forecasting_horizon,
+            stride=1,
+        )
+
+        y_pred_tail = y_pred.tail(predict_forecasting_horizon)
+        assert y_pred_tail.shape[0] == predict_forecasting_horizon
+        assert "a" in y_pred_tail.columns
+        assert "b" in y_pred_tail.columns
+
+
+class TestDirectDirRecChecks:
+    """Run systematic checks for direct and dir-rec strategies."""
+
+    @pytest.mark.parametrize(
+        "forecaster,expected_failures",
+        [
+            (PointReductionForecaster(reduction_strategy="direct"), []),
+            (PointReductionForecaster(reduction_strategy="dir-rec"), []),
+        ],
+    )
+    def test_checks(self, forecaster, expected_failures, y_X_factory):
+        """Run systematic checks on direct/dir-rec PointReductionForecaster."""
+        y, X = y_X_factory(length=100, seed=42)
+        y_train, y_test = y[:80], y[80:]
+        X_train, X_test = X[:80], X[80:]
+
+        forecaster_fitted = clone(forecaster)
+        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+
+        run_checks(
+            forecaster_fitted,
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            expected_failures=set(expected_failures),
+        )
 
 
 class TestTargetAsFeatureParam:

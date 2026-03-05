@@ -11,7 +11,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Reduction Forecasting",
-    "description": "Compare panel forecasting strategies: global shared model, multivariate wide format, and LocalPanelForecaster with per-group isolation and scoring.",
+    "description": "Compare panel forecasting strategies: global shared model, multivariate wide format, and LocalPanelForecaster with per-group isolation and scoring. Shows that reduction strategies (multi-output, direct, dir-rec) work with all panel strategies.",
 }
 app = marimo.App(width="medium")
 
@@ -45,6 +45,12 @@ def _(mo):
     - [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/): fully independent per-group clones
     - When to use each strategy
     - Groupwise scoring to compare strategies
+
+    > **Note**: `panel_strategy` and `reduction_strategy` are **orthogonal** -
+    > any combination works. For example, `panel_strategy="global"` with
+    > `reduction_strategy="direct"` pools panel groups into one dataset but
+    > trains H independent models. See [`reduction_strategies.py`](/examples/point/reduction_strategies/)
+    > for a deep dive into reduction strategies.
     """)
 
 
@@ -360,6 +366,49 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 5.5 Reduction Strategies on Panel Data
+
+    The `reduction_strategy` parameter works with all panel strategies.
+    Below we compare multi-output (default) vs direct on the global
+    panel strategy. Each strategy trains on the pooled panel data
+    but differs in **how** multi-step targets are handled.
+    """)
+
+
+@app.cell
+def _(
+    LagTransformer,
+    MeanAbsoluteError,
+    PointReductionForecaster,
+    Ridge,
+    horizon,
+    mo,
+    y_test,
+    y_train,
+):
+    _reduction_scores = {}
+    for _strat in ["multi-output", "direct"]:
+        _fc = PointReductionForecaster(
+            estimator=Ridge(alpha=1.0),
+            feature_transformer=LagTransformer(lag=[1, 24]),
+            panel_strategy="global",
+            reduction_strategy=_strat,
+        )
+        _fc.fit(y_train, forecasting_horizon=horizon)
+        _pred = _fc.predict(forecasting_horizon=horizon)
+        _mae = MeanAbsoluteError()
+        _mae.fit(y_train)
+        _reduction_scores[_strat] = _mae.score(y_test.head(len(_pred)), _pred)
+
+    mo.ui.table(
+        [{"reduction_strategy": k, "MAE": f"{v:.2f}"} for k, v in _reduction_scores.items()],
+        label="MAE by reduction_strategy (global panel)",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## When to Use Each Strategy
 
     | Strategy | Parameter | Best For |
@@ -377,6 +426,7 @@ def _(mo):
 
     ## Next Steps
 
+    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec comparison
     - **LocalPanelForecaster deep dive**: See [`examples/compose/local_panel_forecaster.py`](/examples/compose/local_panel_forecaster/)
     - **Per-group specialisation**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/)
     - **Composition patterns**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
