@@ -6,21 +6,20 @@ from typing import Any, Literal
 
 import polars as pl
 import polars.selectors as cs
-from sklearn.base import _fit_context, clone
+from sklearn.base import clone
 from sklearn.utils import Bunch
-from sklearn.utils._param_validation import StrOptions
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
-    _raise_for_params,
     process_routing,
 )
-from sklearn.utils.metaestimators import _BaseComposition, available_if
+from sklearn.utils.metaestimators import available_if
 from sklearn.utils.parallel import Parallel, delayed
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
 from yohou.utils import Tags
+from yohou.utils._compat import StrOptions, _BaseComposition, _fit_context, _raise_for_params
 
 __all__ = ["ColumnForecaster"]
 

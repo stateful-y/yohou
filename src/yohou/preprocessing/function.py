@@ -9,12 +9,11 @@ from typing import Literal
 import numpy as np
 import polars as pl
 import polars.selectors as cs
-from sklearn.base import _fit_context
-from sklearn.utils._param_validation import StrOptions
-from sklearn.utils.validation import _check_feature_names_in, check_is_fitted
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.utils import validate_transformer_data
+from yohou.utils._compat import StrOptions, _check_feature_names_in, _fit_context
 from yohou.utils.tags import Tags
 
 __all__ = ["FunctionTransformer"]

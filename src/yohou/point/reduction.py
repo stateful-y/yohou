@@ -5,11 +5,11 @@ from typing import Literal
 
 import polars as pl
 from pydantic import StrictInt
-from sklearn.base import BaseEstimator, _fit_context
+from sklearn.base import BaseEstimator
 from sklearn.linear_model import LinearRegression
-from sklearn.utils._param_validation import HasMethods, StrOptions
 
 from yohou.base import BaseReductionForecaster, BaseTransformer
+from yohou.utils._compat import HasMethods, StrOptions, _fit_context
 
 from .base import BasePointForecaster
 

@@ -10,8 +10,9 @@ from functools import partial
 
 import numpy as np
 from numpy.testing import assert_array_equal
-from sklearn.utils._metadata_requests import SIMPLE_METHODS
 from sklearn.utils.metadata_routing import MetadataRouter
+
+from yohou.utils._compat import SIMPLE_METHODS
 
 __all__ = [
     "assert_request_equal",

@@ -18,11 +18,10 @@ from sklearn.utils.metadata_routing import (
     MethodMapping,
     process_routing,
 )
-from sklearn.utils.metaestimators import _safe_split
-from sklearn.utils.validation import _check_method_params, _num_samples
 
 from yohou.base import BaseForecaster
 from yohou.metrics.base import BaseIntervalScorer, BasePointScorer, BaseScorer
+from yohou.utils._compat import _check_method_params, _num_samples, _safe_split
 
 
 def _check_scoring(forecastor: BaseForecaster, scoring: object) -> BaseScorer | _MultimetricScorer:

@@ -15,30 +15,17 @@ from numpy.ma import MaskedArray
 from scipy.stats import rankdata
 from sklearn.base import (
     MetaEstimatorMixin,
-    _fit_context,
     clone,
 )
 from sklearn.model_selection import ParameterGrid, ParameterSampler
-from sklearn.model_selection._validation import (
-    _aggregate_score_dicts,
-    _insert_error_scores,
-    _normalize_score_results,
-    _warn_or_raise_about_fit_failures,
-)
-from sklearn.utils import Bunch
-from sklearn.utils._array_api import xpx
-from sklearn.utils._param_validation import HasMethods, Interval, StrOptions
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
-    _raise_for_params,
-    _routing_enabled,
     process_routing,
 )
 from sklearn.utils.metaestimators import available_if
 from sklearn.utils.parallel import Parallel, delayed
 from sklearn.utils.validation import (
-    _check_method_params,
     check_is_fitted,
     indexable,
 )
@@ -46,6 +33,18 @@ from sklearn.utils.validation import (
 from yohou.base import BaseForecaster
 from yohou.metrics.base import BaseScorer
 from yohou.utils import validate_search_data
+from yohou.utils._compat import (
+    HasMethods,
+    Interval,
+    StrOptions,
+    _aggregate_score_dicts,
+    _check_method_params,
+    _fit_context,
+    _insert_error_scores,
+    _normalize_score_results,
+    _raise_for_params,
+    _warn_or_raise_about_fit_failures,
+)
 
 from .split import check_cv
 from .utils import (
@@ -533,17 +532,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         routed_params : Bunch
             Routed parameters for forecaster, scorer, and splitter.
         """
-        if _routing_enabled():
-            routed_params = process_routing(self, "fit", **params)
-        else:
-            # Legacy behavior without metadata routing
-            params = params.copy()
-            routed_params = Bunch(
-                forecaster=Bunch(fit=params),
-                splitter=Bunch(split={}),
-                scorer=Bunch(score={}),
-            )
-
+        routed_params = process_routing(self, "fit", **params)
         return routed_params
 
     @abstractmethod
@@ -683,7 +672,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                     rank_result = np.ones_like(array_means, dtype=np.int32)
                 else:
                     min_array_means = np.nanmin(array_means) - 1
-                    array_means_ranked = xpx.nan_to_num(array_means, fill_value=min_array_means)
+                    array_means_ranked = np.nan_to_num(array_means, nan=min_array_means)
                     rank_result = rankdata(-array_means_ranked, method="min").astype(np.int32)
                 results[f"rank_{key_name}"] = rank_result
 

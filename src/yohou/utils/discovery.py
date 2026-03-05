@@ -7,12 +7,12 @@
 import inspect
 import logging
 import pkgutil
+import warnings
 from importlib import import_module
 from operator import itemgetter
 from pathlib import Path
 
 from sklearn.base import BaseEstimator
-from sklearn.utils._testing import ignore_warnings
 
 __all__ = ["all_displays", "all_estimators", "all_functions"]
 
@@ -76,7 +76,8 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
     root = str(Path(__file__).parent.parent)  # yohou package
     # Ignore deprecation warnings triggered at import time and from walking
     # packages
-    with ignore_warnings(category=FutureWarning):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=FutureWarning)
         for _, module_name, _ in pkgutil.walk_packages(path=[root], prefix="yohou."):
             module_parts = module_name.split(".")
             if any(part in _MODULE_TO_IGNORE for part in module_parts):
@@ -210,7 +211,8 @@ def all_displays() -> list[tuple[str, type]]:
     root = str(Path(__file__).parent.parent)  # yohou package
     # Ignore deprecation warnings triggered at import time and from walking
     # packages
-    with ignore_warnings(category=FutureWarning):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=FutureWarning)
         for _, module_name, _ in pkgutil.walk_packages(path=[root], prefix="yohou."):
             module_parts = module_name.split(".")
             if any(part in _MODULE_TO_IGNORE for part in module_parts):
@@ -262,7 +264,8 @@ def all_functions() -> list[tuple[str, object]]:
     root = str(Path(__file__).parent.parent)  # yohou package
     # Ignore deprecation warnings triggered at import time and from walking
     # packages
-    with ignore_warnings(category=FutureWarning):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=FutureWarning)
         for _, module_name, _ in pkgutil.walk_packages(path=[root], prefix="yohou."):
             module_parts = module_name.split(".")
             if any(part in _MODULE_TO_IGNORE for part in module_parts):

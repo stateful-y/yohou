@@ -5,12 +5,11 @@ from collections.abc import Callable
 
 import numpy as np
 import polars as pl
-from sklearn.base import _fit_context
-from sklearn.utils._param_validation import Interval, StrOptions
-from sklearn.utils.validation import _check_feature_names_in, check_is_fitted
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.utils import Tags, validate_transformer_data
+from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in, _fit_context
 
 __all__ = ["OutlierPercentileHandler", "OutlierThresholdHandler"]
 

@@ -2,7 +2,6 @@
 
 import pytest
 from sklearn.linear_model import LinearRegression
-from sklearn.utils._param_validation import InvalidParameterError
 
 from yohou.compose import ColumnForecaster
 from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
@@ -12,6 +11,7 @@ from yohou.stationarity import LogTransformer, SeasonalDifferencing
 
 # Add parent directory to path for imports
 from yohou.testing import check_coverage_rates_validation, check_forecasting_horizon_validation
+from yohou.utils._compat import InvalidParameterError
 
 
 class TestHorizonValidation:

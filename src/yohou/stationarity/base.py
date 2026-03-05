@@ -10,10 +10,10 @@ import polars as pl
 from pydantic import StrictInt
 from sklearn.base import RegressorMixin, clone
 from sklearn.pipeline import Pipeline
-from sklearn.utils._param_validation import StrOptions
 
 from yohou.base import BaseTransformer
 from yohou.point import BasePointForecaster
+from yohou.utils._compat import StrOptions
 from yohou.utils.tags import Tags
 
 

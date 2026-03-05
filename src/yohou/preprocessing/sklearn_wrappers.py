@@ -21,6 +21,7 @@ from sklearn.preprocessing import StandardScaler as sklearn_StandardScaler
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.preprocessing.sklearn_base import SklearnScaler, SklearnTransformer
+from yohou.utils._compat import _filter_estimator_params
 
 __all__ = [
     "MaxAbsScaler",
@@ -414,7 +415,8 @@ class MaxAbsScaler(SklearnScaler):
     _estimator_default_class = sklearn_MaxAbsScaler
 
     def __init__(self, copy=True, clip=False, **kwargs):
-        super().__init__(copy=copy, clip=clip, **kwargs)
+        params = _filter_estimator_params(sklearn_MaxAbsScaler, {"copy": copy, "clip": clip})
+        super().__init__(**params, **kwargs)
 
     @property
     def scale_(self) -> np.ndarray:
@@ -859,17 +861,20 @@ class SplineTransformer(SklearnTransformer):
         handle_missing="error",
         **kwargs,
     ):
-        super().__init__(
-            n_knots=n_knots,
-            degree=degree,
-            knots=knots,
-            extrapolation=extrapolation,
-            include_bias=include_bias,
-            order=order,
-            sparse_output=sparse_output,
-            handle_missing=handle_missing,
-            **kwargs,
+        params = _filter_estimator_params(
+            sklearn_SplineTransformer,
+            {
+                "n_knots": n_knots,
+                "degree": degree,
+                "knots": knots,
+                "extrapolation": extrapolation,
+                "include_bias": include_bias,
+                "order": order,
+                "sparse_output": sparse_output,
+                "handle_missing": handle_missing,
+            },
         )
+        super().__init__(**params, **kwargs)
 
     @property
     def bsplines_(self) -> list:

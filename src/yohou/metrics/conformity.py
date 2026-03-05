@@ -6,9 +6,9 @@ import numbers
 import polars as pl
 import polars.selectors as cs
 from sklearn.base import check_is_fitted
-from sklearn.utils._param_validation import Interval
 
 from yohou.utils import validate_scorer_data
+from yohou.utils._compat import Interval
 
 from .conformity_base import BaseConformityScorer
 

@@ -6,8 +6,8 @@ from typing import Literal
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
-from sklearn.base import _fit_context
-from sklearn.utils._param_validation import Interval
+
+from yohou.utils._compat import Interval, _fit_context
 
 from ..utils.tags import Tags
 from .base import BasePointForecaster

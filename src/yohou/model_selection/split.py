@@ -8,9 +8,9 @@ from typing import Any
 import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator
-from sklearn.utils._param_validation import Interval
 
 from yohou.utils import Tags, validate_splitter_data
+from yohou.utils._compat import Interval
 
 __all__ = [
     "BaseSplitter",

@@ -6,12 +6,11 @@ from collections.abc import Callable
 import numpy as np
 import polars as pl
 from pydantic import StrictInt
-from sklearn.base import _fit_context
-from sklearn.utils._param_validation import Interval
-from sklearn.utils.validation import _check_feature_names_in, check_is_fitted
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.utils import tabularize, validate_transformer_data
+from yohou.utils._compat import Interval, _check_feature_names_in, _fit_context
 from yohou.utils.tags import Tags
 
 __all__ = [

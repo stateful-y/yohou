@@ -6,14 +6,14 @@ from typing import Literal
 import numpy as np
 import polars as pl
 from pydantic import StrictFloat, StrictInt
-from sklearn.base import _fit_context, clone
+from sklearn.base import clone
 from sklearn.model_selection import train_test_split
-from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.metrics import AbsoluteResidual, BaseConformityScorer, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import Tags, validate_forecaster_data
+from yohou.utils._compat import Interval, _fit_context
 
 from .base import BaseIntervalForecaster, BaseSimilarity
 from .utils import weighted_quantile

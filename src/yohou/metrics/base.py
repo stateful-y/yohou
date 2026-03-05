@@ -8,10 +8,10 @@ from typing import cast
 
 import numpy as np
 import polars as pl
-from sklearn.base import BaseEstimator, _fit_context
-from sklearn.utils._param_validation import StrOptions
+from sklearn.base import BaseEstimator
 
 from yohou.utils import Tags, inspect_panel, validate_callable_signature, validate_scorer_data
+from yohou.utils._compat import StrOptions, _fit_context
 
 __all__ = ["BaseIntervalScorer", "BasePointScorer", "BaseScorer"]
 

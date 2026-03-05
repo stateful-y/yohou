@@ -4,11 +4,12 @@ import numbers
 
 import polars as pl
 from pydantic import StrictInt
-from sklearn.base import RegressorMixin, _fit_context, clone
+from sklearn.base import RegressorMixin, clone
 from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.utils._param_validation import Interval
+
+from yohou.utils._compat import Interval, _fit_context
 
 from .base import _BaseTrendForecaster
 

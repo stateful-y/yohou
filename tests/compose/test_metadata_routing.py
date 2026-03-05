@@ -525,27 +525,27 @@ class TestCompositeMethods:
 
     def test_observe_transform_is_composite(self):
         """observe_transform should be registered as composite method."""
-        from sklearn.utils._metadata_requests import COMPOSITE_METHODS
+        from yohou.utils._compat import COMPOSITE_METHODS
 
         assert "observe_transform" in COMPOSITE_METHODS
         assert COMPOSITE_METHODS["observe_transform"] == ["observe", "transform"]
 
     def test_observe_predict_is_composite(self):
         """observe_predict should be registered as composite method."""
-        from sklearn.utils._metadata_requests import COMPOSITE_METHODS
+        from yohou.utils._compat import COMPOSITE_METHODS
 
         assert "observe_predict" in COMPOSITE_METHODS
         assert COMPOSITE_METHODS["observe_predict"] == ["observe", "predict"]
 
     def test_composite_methods_in_simple_methods(self):
         """Composite methods should be in SIMPLE_METHODS for routing."""
-        from sklearn.utils._metadata_requests import SIMPLE_METHODS
+        from yohou.utils._compat import SIMPLE_METHODS
 
         assert "observe_transform" in SIMPLE_METHODS
         assert "observe_predict" in SIMPLE_METHODS
 
     def test_observe_not_in_simple_methods(self):
         """observe should NOT be in SIMPLE_METHODS (not routed)."""
-        from sklearn.utils._metadata_requests import SIMPLE_METHODS
+        from yohou.utils._compat import SIMPLE_METHODS
 
         assert "observe" not in SIMPLE_METHODS
