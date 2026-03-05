@@ -198,7 +198,7 @@ def test_docstrings(session: nox.Session) -> None:
     )
 
 
-@nox.session(venv_backend="uv")
+@nox.session(python=PYTHON_VERSIONS, venv_backend="uv")
 def test_compat(session: nox.Session) -> None:
     """Run fast tests after pinning one or more dependency versions.
 
