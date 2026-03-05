@@ -51,14 +51,14 @@ jobs:
       - name: Run fast tests (excluding slow/integration tests)
         run: nox -s test_fast --python ${{ matrix.python-version }}
 
-  # Compatibility test against oldest supported scikit-learn
+  # Compatibility test against oldest supported dependency versions
   test-compat:
-    name: Compat tests (sklearn ${{ matrix.sklearn-version }})
+    name: Compat tests (${{ matrix.pins }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        sklearn-version: ["1.6.0"]
+        pins: ["scikit-learn==1.6.0"]
 
     steps:
       - name: Checkout code
@@ -78,8 +78,8 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
-      - name: Run fast tests with sklearn ${{ matrix.sklearn-version }}
-        run: nox -s test_compat --python 3.11 -- ${{ matrix.sklearn-version }}
+      - name: Run fast tests with ${{ matrix.pins }}
+        run: nox -s test_compat --python 3.11 -- ${{ matrix.pins }}
 
   # Full test suite runs on Ubuntu when PR is not draft or on main branch
   test-full:

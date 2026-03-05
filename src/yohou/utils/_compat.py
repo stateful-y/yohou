@@ -91,6 +91,61 @@ def _print_elapsed_time(source, message=None):
         print(_message_with_time(source, message, duration))  # noqa: T201
 
 
+def _filter_estimator_params(estimator_class: type, params: dict) -> dict:
+    """Filter params to only those accepted by the estimator class constructor.
+
+    Parameters added in newer sklearn versions (e.g. ``clip`` for ``MaxAbsScaler``
+    in 1.7, ``handle_missing`` for ``SplineTransformer`` in 1.7) are silently
+    dropped when running against an older sklearn that does not support them.
+
+    Parameters
+    ----------
+    estimator_class : type
+        The sklearn estimator class to check against.
+    params : dict
+        Parameters to filter.
+
+    Returns
+    -------
+    dict
+        Filtered parameters accepted by the class constructor.
+
+    """
+    import inspect
+
+    sig = inspect.signature(estimator_class.__init__)
+    has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+    if has_var_keyword:
+        return params
+    valid = {k for k in sig.parameters if k != "self"}
+    return {k: v for k, v in params.items() if k in valid}
+
+
+def _is_pandas_df(X: object) -> bool:
+    """Return True if *X* is a pandas DataFrame.
+
+    Duck-type check so we never need to import pandas.
+
+    Parameters
+    ----------
+    X : object
+        Object to check.
+
+    Returns
+    -------
+    bool
+        True when *X* looks like a pandas DataFrame.
+
+    """
+    return hasattr(X, "iloc") and hasattr(X, "columns")
+
+
+#: Default value for ``ColumnTransformer.force_int_remainder_cols``.
+#: sklearn <1.8 reads this attribute inside ``_get_remainder_cols``;
+#: sklearn >=1.8 deprecated and then removed it.
+FORCE_INT_REMAINDER_COLS = True
+
+
 __all__ = [
     "COMPOSITE_METHODS",
     "HasMethods",
@@ -121,5 +176,8 @@ __all__ = [
     "_safe_split",
     "_transform_one",
     "_warn_or_raise_about_fit_failures",
+    "_filter_estimator_params",
+    "_is_pandas_df",
+    "FORCE_INT_REMAINDER_COLS",
     "sklearn_ColumnTransformer",
 ]

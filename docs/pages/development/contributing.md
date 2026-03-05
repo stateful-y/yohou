@@ -638,34 +638,6 @@ graph LR
    - Only commits following conventional format are included
    - Breaking changes are highlighted
 
-### scikit-learn Compatibility
-
-Yohou supports scikit-learn **≥1.6.0** (no upper bound). Private scikit-learn
-imports are centralised in `src/yohou/utils/_compat.py` so that version-specific
-shims only need to be maintained in one place.
-
-**Rules for contributors:**
-
-1. **Never import a private (`_`-prefixed) sklearn symbol directly** in source
-   or test files. Import it from `yohou.utils._compat` instead.
-2. When a public alternative exists (e.g. `numpy.nan_to_num` instead of
-   `sklearn.utils._array_api`), prefer the public alternative and remove the
-   shim.
-3. If a shim needs version-dependent logic, use `sklearn.__version__` inside
-   `_compat.py`.
-
-**Running compatibility tests locally:**
-
-```bash
-# Against a specific version
-uvx nox -s test_compat -- 1.6.0
-
-# Or via just
-just test-compat 1.6.0
-```
-
-CI runs `test-compat` against sklearn 1.6.0 on every PR.
-
 ### Version Numbering
 
 This project uses [Semantic Versioning](https://semver.org/):

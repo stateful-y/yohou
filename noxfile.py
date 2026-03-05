@@ -200,14 +200,16 @@ def test_docstrings(session: nox.Session) -> None:
 
 @nox.session(venv_backend="uv")
 def test_compat(session: nox.Session) -> None:
-    """Run fast tests against a specific scikit-learn version.
+    """Run fast tests after pinning one or more dependency versions.
 
     Usage::
 
-        uvx nox -s test_compat -- 1.6.0
+        uvx nox -s test_compat -- scikit-learn==1.6.0
+        uvx nox -s test_compat -- scikit-learn==1.6.0 scipy==1.13.0
 
-    The positional argument is the scikit-learn version to test against.
-    If omitted, runs with the default (latest compatible) version.
+    Each positional argument must be a pip requirement specifier
+    (e.g. ``package==version``).  If none are given the session runs
+    with the default (latest compatible) versions.
     """
     # Install dependencies
     session.run_install(
@@ -219,20 +221,16 @@ def test_compat(session: nox.Session) -> None:
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
 
-    # Downgrade scikit-learn if a version was specified
+    # Downgrade / pin requested packages
     if session.posargs:
-        sklearn_version = session.posargs[0]
         session.run(
             "uv",
             "pip",
             "install",
-            f"scikit-learn=={sklearn_version}",
+            *session.posargs,
             "--python",
             session.virtualenv.location + "/bin/python",
         )
-        extra_posargs = session.posargs[1:]
-    else:
-        extra_posargs = []
 
     # Run fast tests
     session.run(
@@ -244,7 +242,6 @@ def test_compat(session: nox.Session) -> None:
         "-n",
         "auto",
         "-v",
-        *extra_posargs,
     )
 
 
