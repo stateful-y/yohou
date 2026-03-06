@@ -93,7 +93,7 @@ def plot_splits(
     See Also
     --------
     plot_cv_results_scatter : Plot hyperparameter search results.
-    ExpandingWindowSplitter : Expanding window cross-validation.
+    `ExpandingWindowSplitter` : Expanding window cross-validation.
     SlidingWindowSplitter : Sliding window cross-validation.
     """
     # Validate inputs
@@ -287,7 +287,7 @@ def plot_cv_results_scatter(
     See Also
     --------
     plot_splits : Plot cross-validation splits.
-    GridSearchCV : Grid search with cross-validation.
+    `GridSearchCV` : Grid search with cross-validation.
     RandomizedSearchCV : Randomized search with cross-validation.
     """
     # Construct key names

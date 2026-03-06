@@ -79,8 +79,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     See Also
     --------
-    BasePointForecaster : Base class for point forecasters.
-    BaseIntervalForecaster : Base class for interval forecasters.
+    `BasePointForecaster` : Base class for point forecasters.
+    `BaseIntervalForecaster` : Base class for interval forecasters.
     BaseReductionForecaster : Forecasting via sklearn regressors.
 
     """

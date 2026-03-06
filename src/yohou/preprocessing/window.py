@@ -63,8 +63,8 @@ class LagTransformer(BaseTransformer):
 
     See Also
     --------
-    RollingStatisticsTransformer : Compute rolling statistics (mean, std, etc.).
-    SlidingWindowFunctionTransformer : Apply custom functions to sliding windows.
+    `RollingStatisticsTransformer` : Compute rolling statistics (mean, std, etc.).
+    `SlidingWindowFunctionTransformer` : Apply custom functions to sliding windows.
     yohou.utils.tabularization.tabularize : Underlying tabularization function.
 
     Notes
@@ -234,8 +234,8 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
 
     See Also
     --------
-    LagTransformer : Create lagged features.
-    RollingStatisticsTransformer : Pre-built rolling statistics.
+    `LagTransformer` : Create lagged features.
+    `RollingStatisticsTransformer` : Pre-built rolling statistics.
     FunctionTransformer : Apply function element-wise.
 
     """
@@ -434,8 +434,8 @@ class RollingStatisticsTransformer(BaseTransformer):
 
     See Also
     --------
-    SlidingWindowFunctionTransformer : Apply custom function over windows.
-    LagTransformer : Create lagged features.
+    `SlidingWindowFunctionTransformer` : Apply custom function over windows.
+    `LagTransformer` : Create lagged features.
 
     Notes
     -----
@@ -673,8 +673,8 @@ class ExponentialMovingAverage(BaseTransformer):
 
     See Also
     --------
-    RollingStatisticsTransformer : Fixed-window rolling statistics.
-    SlidingWindowFunctionTransformer : Custom window functions.
+    `RollingStatisticsTransformer` : Fixed-window rolling statistics.
+    `SlidingWindowFunctionTransformer` : Custom window functions.
 
     """
 

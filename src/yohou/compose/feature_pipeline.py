@@ -106,7 +106,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
     See Also
     --------
     sklearn.pipeline.FeaturePipeline : Underlying scikit-learn pipeline class.
-    BaseTransformer : Base class for time series transformers.
+    `BaseTransformer` : Base class for time series transformers.
     FeatureUnion : Parallel transformer combination.
     ColumnTransformer : Apply transformers to specific columns.
 

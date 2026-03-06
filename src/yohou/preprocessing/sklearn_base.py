@@ -98,8 +98,8 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
 
     See Also
     --------
-    StandardScaler : Pre-configured wrapper for sklearn's StandardScaler.
-    MinMaxScaler : Pre-configured wrapper for sklearn's MinMaxScaler.
+    `StandardScaler` : Pre-configured wrapper for sklearn's StandardScaler.
+    `MinMaxScaler` : Pre-configured wrapper for sklearn's MinMaxScaler.
     RobustScaler : Pre-configured wrapper for sklearn's RobustScaler.
     MaxAbsScaler : Pre-configured wrapper for sklearn's MaxAbsScaler.
 
@@ -320,8 +320,8 @@ class SklearnScaler(SklearnTransformer):
 
     See Also
     --------
-    StandardScaler : Pre-configured wrapper for sklearn's StandardScaler.
-    MinMaxScaler : Pre-configured wrapper for sklearn's MinMaxScaler.
+    `StandardScaler` : Pre-configured wrapper for sklearn's StandardScaler.
+    `MinMaxScaler` : Pre-configured wrapper for sklearn's MinMaxScaler.
     RobustScaler : Pre-configured wrapper for sklearn's RobustScaler.
     MaxAbsScaler : Pre-configured wrapper for sklearn's MaxAbsScaler.
 

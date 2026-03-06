@@ -169,7 +169,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
     See Also
     --------
     sklearn.compose.ColumnTransformer : Underlying scikit-learn column transformer.
-    FeaturePipeline : Sequential transformation.
+    `FeaturePipeline` : Sequential transformation.
     BaseTransformer : Base transformer interface.
     stationarity.transformers.SeasonalDifferencing : Common column-wise transformer.
 

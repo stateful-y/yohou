@@ -70,8 +70,8 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
 
     See Also
     --------
-    FourierSeasonalityForecaster : Fourier-based seasonality for smooth curves.
-    PolynomialTrendForecaster : Polynomial trend estimation.
+    `FourierSeasonalityForecaster` : Fourier-based seasonality for smooth curves.
+    `PolynomialTrendForecaster` : Polynomial trend estimation.
     DecompositionPipeline : Combines trend + seasonality + residual forecasters.
 
     Notes
@@ -385,8 +385,8 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
 
     See Also
     --------
-    PatternSeasonalityForecaster : Pattern-based seasonality for discrete cycles.
-    PolynomialTrendForecaster : Polynomial trend estimation.
+    `PatternSeasonalityForecaster` : Pattern-based seasonality for discrete cycles.
+    `PolynomialTrendForecaster` : Polynomial trend estimation.
     DecompositionPipeline : Combines trend + seasonality + residual forecasters.
 
     Notes

@@ -147,7 +147,7 @@ class LocalPanelForecaster(BaseForecaster):
 
     See Also
     --------
-    ColumnForecaster : Apply different forecasters to different column subsets.
+    `ColumnForecaster` : Apply different forecasters to different column subsets.
 
     Notes
     -----

@@ -74,7 +74,7 @@ class Downsampler(BaseTransformer):
 
     See Also
     --------
-    Upsampler : Upsample time series to higher frequency.
+    `Upsampler` : Upsample time series to higher frequency.
 
     """
 
@@ -295,7 +295,7 @@ class Upsampler(BaseTransformer):
 
     See Also
     --------
-    Downsampler : Downsample time series to lower frequency.
+    `Downsampler` : Downsample time series to lower frequency.
 
     """
 

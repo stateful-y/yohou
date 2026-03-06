@@ -43,8 +43,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    BasePointScorer : Base class for point-prediction metrics.
-    BaseIntervalScorer : Base class for interval-prediction metrics.
+    `BasePointScorer` : Base class for point-prediction metrics.
+    `BaseIntervalScorer` : Base class for interval-prediction metrics.
     BaseConformityScorer : Base class for conformity scorers.
 
     """

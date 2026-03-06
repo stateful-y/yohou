@@ -72,8 +72,8 @@ class SimpleImputer(SklearnTransformer):
 
     See Also
     --------
-    TransformedSpaceKNNImputer : K-nearest neighbors imputation.
-    SimpleTimeImputer : Time series specific imputation methods.
+    `TransformedSpaceKNNImputer` : K-nearest neighbors imputation.
+    `SimpleTimeImputer` : Time series specific imputation methods.
     sklearn.impute.SimpleImputer : Underlying implementation.
 
     """
@@ -169,8 +169,8 @@ class TransformedSpaceKNNImputer(BaseTransformer):
 
     See Also
     --------
-    LagTransformer : Creates lagged features from time series.
-    SimpleTimeImputer : Interpolation-based imputation.
+    `LagTransformer` : Creates lagged features from time series.
+    `SimpleTimeImputer` : Interpolation-based imputation.
     SimpleImputer : Simple constant-strategy imputation.
 
     """
@@ -378,8 +378,8 @@ class SimpleTimeImputer(BaseTransformer):
 
     See Also
     --------
-    SimpleImputer : Simple constant-strategy imputation.
-    SeasonalImputer : Seasonal decomposition-based imputation.
+    `SimpleImputer` : Simple constant-strategy imputation.
+    `SeasonalImputer` : Seasonal decomposition-based imputation.
 
     """
 
@@ -554,8 +554,8 @@ class SeasonalImputer(BaseTransformer):
 
     See Also
     --------
-    SimpleTimeImputer : Interpolation-based imputation.
-    SimpleImputer : Simple constant-strategy imputation.
+    `SimpleTimeImputer` : Interpolation-based imputation.
+    `SimpleImputer` : Simple constant-strategy imputation.
 
     """
 

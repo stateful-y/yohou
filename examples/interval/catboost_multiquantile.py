@@ -10,10 +10,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "CatBoost MultiQuantile",
-    "description": "Predict all quantiles in a single CatBoost model with MultiQuantile loss, avoiding the 2N-model overhead of separate quantile regressors.",
-}
 app = marimo.App(width="medium")
 
 
@@ -45,8 +41,9 @@ def _(mo):
 
     ## Prerequisites
 
-    Familiarity with [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) (see `interval_reduction.py`).
+    Familiarity with [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/).
     """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -84,6 +81,7 @@ def _(mo):
     We load the Monthly Tourism dataset (series T1) and split it into training
     and test sets for interval forecasting.
     """)
+    return
 
 
 @app.cell
@@ -120,6 +118,7 @@ def _(mo):
     > `CatBoostRegressor(loss_function='Quantile:alpha=...')` models using
     > `reduction_strategy="direct"` instead.
     """)
+    return
 
 
 @app.cell
@@ -169,6 +168,7 @@ def _(mo):
     history and test data. The `coverage_rates` parameter controls which
     interval bands are shown.
     """)
+    return
 
 
 @app.cell
@@ -180,6 +180,7 @@ def _(coverage_rates, plot_forecast, y_pred_mq, y_test, y_train):
         coverage_rates=coverage_rates,
         title="CatBoost MultiQuantile Intervals",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -189,6 +190,7 @@ def _(mo):
 
     The default estimator is `MultiOutputRegressor(QuantileRegressor())`, let's compare it with our `MultiOutputRegressor(CatBoostRegressor())`.
     """)
+    return
 
 
 @app.cell
@@ -238,6 +240,7 @@ def _(mo):
     contain the true value at the target rate?), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) (penalises
     width and miscoverage), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) (average band width).
     """)
+    return
 
 
 @app.cell
@@ -262,6 +265,7 @@ def _(
 
     table = "| Approach | Metric | Score |\n|---|---|---|\n" + "\n".join(rows)
     mo.md(table)
+    return
 
 
 @app.cell(hide_code=True)
@@ -282,6 +286,7 @@ def _(mo):
     - **Point CatBoost**: See [`catboost_forecasting.py`](/examples/point/catboost_forecasting/) for point forecasting with CatBoost
     - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
     """)
+    return
 
 
 if __name__ == "__main__":

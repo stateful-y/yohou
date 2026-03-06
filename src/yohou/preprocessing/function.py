@@ -113,8 +113,8 @@ class FunctionTransformer(BaseTransformer):
 
     See Also
     --------
-    SlidingWindowFunctionTransformer : Apply function over sliding windows.
-    RollingStatisticsTransformer : Compute rolling statistics.
+    `SlidingWindowFunctionTransformer` : Apply function over sliding windows.
+    `RollingStatisticsTransformer` : Compute rolling statistics.
 
     Notes
     -----

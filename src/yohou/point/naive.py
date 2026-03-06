@@ -61,7 +61,7 @@ class SeasonalNaive(BasePointForecaster):
 
     See Also
     --------
-    PointReductionForecaster : ML-based point forecaster.
+    `PointReductionForecaster` : ML-based point forecaster.
 
     """
 
