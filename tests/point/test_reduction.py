@@ -1056,10 +1056,12 @@ class TestNJobsParameter:
         y_train, _y_test, X_train, X_test = reduction_data
 
         forecaster_seq = PointReductionForecaster(
-            reduction_strategy="direct", n_jobs=1,
+            reduction_strategy="direct",
+            n_jobs=1,
         )
         forecaster_par = PointReductionForecaster(
-            reduction_strategy="direct", n_jobs=2,
+            reduction_strategy="direct",
+            n_jobs=2,
         )
 
         forecaster_seq.fit(y=y_train, X=X_train, forecasting_horizon=3)

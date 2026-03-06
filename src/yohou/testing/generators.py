@@ -787,7 +787,7 @@ def _yield_yohou_scorer_checks(
 
     # Parameter validation checks
     scorer_class = type(scorer)
-    validation_test_cases = [
+    validation_test_cases: list[tuple[str, list, str]] = [
         ("panel_group_names", ["nonexistent_group"], "panel_group_names"),
         ("component_names", ["nonexistent_component"], "component_names"),
     ]

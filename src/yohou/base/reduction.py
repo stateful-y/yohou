@@ -721,6 +721,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         )
 
         def _fit_step(step: int) -> BaseEstimator:
+            """Fit a single estimator for horizon step."""
             step_cols = [step + t * forecasting_horizon for t in range(n_targets)]
             y_step = y_tab[:, step_cols]
             if y_step.shape[1] == 1:
@@ -992,6 +993,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         n_targets = len(y_cols)
 
         def _predict_step(est: BaseEstimator, X_tab: np.ndarray) -> np.ndarray:
+            """Predict a single horizon step."""
             pred = est.predict(X_tab)  # type: ignore[attr-defined]
             return np.atleast_1d(pred.ravel())[:n_targets]
 
