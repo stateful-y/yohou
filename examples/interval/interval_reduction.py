@@ -8,11 +8,7 @@
 
 import marimo
 
-__generated_with = "0.19.11"
-__gallery__ = {
-    "title": "Interval Reduction Forecasting",
-    "description": "Build prediction intervals directly via quantile regression with IntervalReductionForecaster, comparing multiple coverage rates and scoring metrics.",
-}
+__generated_with = "0.20.2"
 app = marimo.App(width="medium")
 
 
@@ -43,11 +39,13 @@ def _(mo):
 
     Understanding of [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) and prediction intervals.
     """)
+    return
 
 
 @app.cell(hide_code=True)
 def _():
     import polars as pl
+    from sklearn.linear_model import QuantileRegressor
     from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
@@ -63,7 +61,6 @@ def _():
         LagTransformer,
         MeanIntervalWidth,
         fetch_tourism_monthly,
-        pl,
         plot_forecast,
         plot_model_comparison_bar,
         train_test_split,
@@ -77,6 +74,7 @@ def _(mo):
 
     We load the Monthly Tourism dataset and split it into training and test sets.
     """)
+    return
 
 
 @app.cell
@@ -95,9 +93,12 @@ def _(mo):
     mo.md(r"""
     ## 2. IntervalReductionForecaster Basics
 
-    The default estimator is `MultiOutputRegressor(QuantileRegressor())`.
+    The default estimator is `MultiOutputRegressor(QuantileRegressor())`, a
+    separate linear quantile model for each output step. For each coverage rate,
+    two models are trained: one for the lower quantile and one for the upper quantile.
     `coverage_rates` are specified at **fit time** to train the needed quantile models.
     """)
+    return
 
 
 @app.cell
@@ -135,6 +136,7 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) renders the quantile regression intervals as shaded
     bands. Each `coverage_rates` entry produces a separate band.
     """)
+    return
 
 
 @app.cell
@@ -146,6 +148,7 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
         coverage_rates=coverage_rates,
         title="Quantile Regression Intervals",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -155,6 +158,7 @@ def _(mo):
 
     We assess how well the prediction intervals capture the true values using interval-specific metrics.
     """)
+    return
 
 
 @app.cell
@@ -172,6 +176,7 @@ def _(
         scorer.fit(y_train)
         score = scorer.score(y_test, y_pred_int)
         print(f"{_scorer_cls.__name__}: {score}")
+    return
 
 
 @app.cell(hide_code=True)
@@ -182,6 +187,7 @@ def _(mo):
     You can train and predict with as many coverage rates as needed.
     Each rate adds lower/upper columns to the prediction.
     """)
+    return
 
 
 @app.cell
@@ -219,6 +225,7 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) overlays all four coverage bands, showing how wider
     rates produce broader intervals.
     """)
+    return
 
 
 @app.cell
@@ -230,6 +237,7 @@ def _(many_rates, plot_forecast, y_pred_many, y_test, y_train):
         coverage_rates=many_rates,
         title="Multiple Coverage Rates",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -241,10 +249,18 @@ def _(mo):
     We score [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) once per rate and compare them
     side-by-side with [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/).
     """)
+    return
 
 
 @app.cell
-def _(MeanIntervalWidth, many_rates, plot_model_comparison_bar, y_pred_many, y_test, y_train):
+def _(
+    MeanIntervalWidth,
+    many_rates,
+    plot_model_comparison_bar,
+    y_pred_many,
+    y_test,
+    y_train,
+):
     width_per_rate = {}
     for rate in many_rates:
         _width_scorer = MeanIntervalWidth(coverage_rates=[rate])
@@ -257,6 +273,7 @@ def _(MeanIntervalWidth, many_rates, plot_model_comparison_bar, y_pred_many, y_t
         title="Mean Interval Width by Coverage Rate",
         y_label="Width",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -270,6 +287,7 @@ def _(mo):
     - More coverage rates = more quantile models to train
     - Evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
     """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -277,9 +295,12 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
+    - **Point strategy comparison**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
+    - **CatBoost multi-quantile**: See [`catboost_multiquantile.py`](/examples/interval/catboost_multiquantile/) for single-model quantile prediction
     - **Calibration plots**: Use [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) from `yohou.plotting`
     - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval metrics
     """)
+    return
 
 
 if __name__ == "__main__":

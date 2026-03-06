@@ -73,8 +73,8 @@ class BoxCoxTransformer(BaseTransformer):
 
     See Also
     --------
-    LogTransformer : Logarithmic transformation (Box-Cox with lambda=0).
-    ASinhTransformer : Inverse hyperbolic sine transformation for data with zeros.
+    `LogTransformer` : Logarithmic transformation (Box-Cox with lambda=0).
+    `ASinhTransformer` : Inverse hyperbolic sine transformation for data with zeros.
     sklearn.preprocessing.PowerTransformer : sklearn's power transformations.
 
     """
@@ -270,8 +270,8 @@ class LogTransformer(BoxCoxTransformer):
 
     See Also
     --------
-    BoxCoxTransformer : Generalized power transform (parent class).
-    ASinhTransformer : Variance stabilization for data with negatives.
+    `BoxCoxTransformer` : Generalized power transform (parent class).
+    `ASinhTransformer` : Variance stabilization for data with negatives.
     SeasonalLogDifferencing : Combined log + seasonal differencing.
 
     """
@@ -351,8 +351,8 @@ class SeasonalDifferencing(BaseTransformer):
 
     See Also
     --------
-    SeasonalLogDifferencing : Log transform followed by seasonal differencing.
-    SeasonalReturn : Compute seasonal returns ((x_t - x_{t-s}) / x_{t-s}).
+    `SeasonalLogDifferencing` : Log transform followed by seasonal differencing.
+    `SeasonalReturn` : Compute seasonal returns ((x_t - x_{t-s}) / x_{t-s}).
 
     """
 
@@ -559,8 +559,8 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
 
     See Also
     --------
-    SeasonalDifferencing : Simple seasonal differencing without log transform.
-    LogTransformer : Log transform without differencing.
+    `SeasonalDifferencing` : Simple seasonal differencing without log transform.
+    `LogTransformer` : Log transform without differencing.
     SeasonalReturn : Percentage returns instead of log differences.
 
     """
@@ -743,8 +743,8 @@ class SeasonalReturn(BaseTransformer):
 
     See Also
     --------
-    AbsoluteSeasonalReturn : Absolute difference instead of percentage return.
-    SeasonalDifferencing : Simple differencing without percentage computation.
+    `AbsoluteSeasonalReturn` : Absolute difference instead of percentage return.
+    `SeasonalDifferencing` : Simple differencing without percentage computation.
     SeasonalLogDifferencing : Log-differencing for multiplicative relationships.
 
     """
@@ -969,8 +969,8 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
     See Also
     --------
-    SeasonalReturn : Percentage returns instead of absolute differences.
-    SeasonalDifferencing : Equivalent computation with different API.
+    `SeasonalReturn` : Percentage returns instead of absolute differences.
+    `SeasonalDifferencing` : Equivalent computation with different API.
 
     """
 
@@ -1181,8 +1181,8 @@ class ASinhTransformer(BaseTransformer):
 
     See Also
     --------
-    BoxCoxTransformer : Power transform for variance stabilization.
-    LogTransformer : Simpler variance stabilization for positive data.
+    `BoxCoxTransformer` : Power transform for variance stabilization.
+    `LogTransformer` : Simpler variance stabilization for positive data.
     sklearn.preprocessing.PowerTransformer : sklearn's power transforms.
 
     """

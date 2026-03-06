@@ -136,8 +136,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
 
     See Also
     --------
-    ColumnForecaster : Apply different forecasters to different column subsets.
-    DecompositionPipeline : Sequential decomposition into trend + seasonality + residual.
+    `ColumnForecaster` : Apply different forecasters to different column subsets.
+    `DecompositionPipeline` : Sequential decomposition into trend + seasonality + residual.
 
     """
 

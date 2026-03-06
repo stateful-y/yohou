@@ -1200,7 +1200,7 @@ def _(mo):
     |-------|----------|
     | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
     | Feature engineering | [`point/feature_forecasting.py`](/examples/point/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/) |
-    | Interval forecasting | [`interval/interval_reduction.py`](/examples/interval/interval_reduction/), [`interval/conformal_conformity_scorers.py`](/examples/interval/conformal_conformity_scorers/) |
+    | Interval forecasting | [`interval/interval_reduction.py`](/examples/interval/interval_reduction/), [`metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/) |
     | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/stationarity/decomposition/) |
     | Metrics guide | [`metrics/point_metrics.py`](/examples/metrics/point_metrics/), [`metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) |
     | Splitters & search | [`model_selection/cv_splitters.py`](/examples/model_selection/cv_splitters/), [`model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/) |

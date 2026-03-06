@@ -31,8 +31,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    DistanceSimilarity : Distance-based similarity measure.
-    SplitConformalForecaster : Conformal forecaster that uses similarities.
+    `DistanceSimilarity` : Distance-based similarity measure.
+    `SplitConformalForecaster` : Conformal forecaster that uses similarities.
 
     """
 
@@ -169,8 +169,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    SplitConformalForecaster : Conformal interval forecaster.
-    IntervalReductionForecaster : ML-based interval forecaster.
+    `SplitConformalForecaster` : Conformal interval forecaster.
+    `IntervalReductionForecaster` : ML-based interval forecaster.
     BasePointForecaster : Base class for point forecasters.
 
     """

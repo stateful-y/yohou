@@ -28,7 +28,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     ----------
     estimator : BaseEstimator, default=MultiOutputRegressor(QuantileRegressor())
         Quantile estimator used to fit the tabularized data.
-    reduction_strategy : {"direct", "multi-output"}, default="multi-output"
+    reduction_strategy : {"direct", "dir-rec", "multi-output"}, default="multi-output"
         Strategy for multi-step forecasting.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
@@ -38,6 +38,12 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         Transformer used to transform the feature time series into features.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
+    n_jobs : int or None, default=None
+        Number of jobs to run in parallel for the ``"direct"`` strategy
+        (fitting and predicting H independent models). ``None`` means 1
+        unless in a ``joblib.parallel_backend`` context. ``-1`` means
+        using all processors. Has no effect for ``"multi-output"`` or
+        ``"dir-rec"`` strategies.
 
     Examples
     --------
@@ -73,17 +79,32 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     Notes
     -----
     Reduction strategies:
-    - Direct: Separate model for each horizon step; predicts directly from inputs.
-    - Multi-output: Single model predicts all horizon steps simultaneously.
 
-    All models can be applied recursively for multi-step forecasting by specifying
-    the forecasting horizon during prediction.
+    - **Multi-output**: A single model predicts all H horizon steps
+      simultaneously. Simple and fast, but assumes the same model
+      structure is appropriate for every step.
+    - **Direct**: H independent models, one per horizon step. Each
+      model specialises in its own step, avoiding error accumulation
+      from recursive prediction but ignoring inter-step dependencies.
+    - **Dir-Rec** (direct-recursive hybrid): H models are fitted
+      sequentially. Model h predicts step h using the original features
+      augmented with in-sample predictions from models 1 to h-1. This
+      combines the specialised per-step training of the direct
+      strategy with inter-step information flow.
+
+    For direct and dir-rec strategies, each value in ``estimator_``
+    becomes a ``list[BaseEstimator]`` of length H (one per horizon
+    step) instead of a single estimator.
+
+    All strategies can be applied recursively for multi-step forecasting
+    beyond the fit horizon by specifying a larger forecasting horizon
+    during prediction.
 
     This forecaster uses quantile regression to produce prediction intervals.
-    For each coverage rate α, it predicts:
+    For each coverage rate alpha, it predicts:
 
-    - Lower bound: (1 - α)/2 quantile
-    - Upper bound: (1 + α)/2 quantile
+    - Lower bound: (1 - alpha)/2 quantile
+    - Upper bound: (1 + alpha)/2 quantile
 
     The intervals naturally adapt to heteroscedastic data where uncertainty
     varies over time.
@@ -96,8 +117,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     See Also
     --------
-    SplitConformalForecaster : Conformal prediction intervals
-    PointReductionForecaster : Point forecasts without intervals
+    `SplitConformalForecaster` : Conformal prediction intervals.
+    `PointReductionForecaster` : Point forecasts without intervals.
 
     """
 
@@ -105,15 +126,16 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         **BaseReductionForecaster._parameter_constraints,
         **BaseIntervalForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
-        "reduction_strategy": [StrOptions({"direct", "multi-output"})],
+        "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
     }
 
     def __init__(
         self,
         estimator: BaseEstimator = MultiOutputRegressor(QuantileRegressor()),
-        reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
+        reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         feature_transformer: BaseTransformer | None = None,
+        n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         BaseReductionForecaster.__init__(
@@ -122,6 +144,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
             feature_transformer=feature_transformer,
+            n_jobs=n_jobs,
             panel_strategy=panel_strategy,
         )
 

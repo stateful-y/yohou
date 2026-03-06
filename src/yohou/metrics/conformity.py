@@ -148,8 +148,8 @@ class AbsoluteResidual(Residual):
 
     See Also
     --------
-    Residual : Asymmetric variant using signed residuals.
-    AbsoluteGammaResidual : Scale-dependent symmetric variant.
+    `Residual` : Asymmetric variant using signed residuals.
+    `AbsoluteGammaResidual` : Scale-dependent symmetric variant.
 
     Examples
     --------
@@ -265,8 +265,8 @@ class GammaResidual(BaseConformityScorer):
 
     See Also
     --------
-    AbsoluteGammaResidual : Symmetric variant using absolute relative errors.
-    Residual : Scale-independent signed residual scorer.
+    `AbsoluteGammaResidual` : Symmetric variant using absolute relative errors.
+    `Residual` : Scale-independent signed residual scorer.
 
     Examples
     --------

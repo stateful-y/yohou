@@ -56,8 +56,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     See Also
     --------
-    BaseSimilarity : Similarity weighting for adaptive intervals.
-    Residual : Default conformity scorer.
+    `BaseSimilarity` : Similarity weighting for adaptive intervals.
+    `Residual` : Default conformity scorer.
     IntervalReductionForecaster : Alternative interval forecaster.
 
     """

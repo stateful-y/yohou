@@ -232,6 +232,220 @@ class _MockMultiQuantileRegressor(BaseEstimator, RegressorMixin):
         return preds
 
 
+class TestDirectStrategyInterval:
+    """Tests for direct reduction strategy on IntervalReductionForecaster."""
+
+    @pytest.mark.slow
+    def test_estimator_dict_contains_lists(self, standard_splits):
+        """Direct strategy stores lists (of H estimators) in the estimator_ dict."""
+        y_train, _y_test, X_train, _X_test = standard_splits
+        coverage_rates = [0.5, 0.9]
+        forecaster = IntervalReductionForecaster(reduction_strategy="direct")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
+
+        for key, value in forecaster.estimator_.items():
+            assert isinstance(value, list), f"Expected list for key {key}, got {type(value)}"
+            assert len(value) == 3, f"Expected 3 estimators for key {key}, got {len(value)}"
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "fit_forecasting_horizon, predict_forecasting_horizon",
+        [(1, 3), (3, 5), (3, 2)],
+    )
+    def test_predict_shape_and_bounds(
+        self,
+        fit_forecasting_horizon,
+        predict_forecasting_horizon,
+        standard_splits,
+    ):
+        """Direct interval predictions have correct shape and upper >= lower."""
+        y_train, _y_test, X_train, X_test = standard_splits
+        coverage_rates = [0.5, 0.9]
+        forecaster = IntervalReductionForecaster(reduction_strategy="direct")
+        forecaster.fit(
+            y=y_train,
+            X=X_train,
+            forecasting_horizon=fit_forecasting_horizon,
+            coverage_rates=coverage_rates,
+        )
+
+        y_pred = forecaster.predict_interval(
+            forecasting_horizon=predict_forecasting_horizon,
+            X=X_test,
+            coverage_rates=coverage_rates,
+        )
+
+        assert y_pred.shape[0] == predict_forecasting_horizon
+        y_cols = [c for c in y_train.columns if c != "time"]
+        for col in y_cols:
+            for cr in coverage_rates:
+                assert all(y_pred[f"{col}_upper_{cr}"] + 1e-14 >= y_pred[f"{col}_lower_{cr}"])
+
+    @pytest.mark.slow
+    def test_predict_panel(self, panel_splits):
+        """Direct strategy works with panel interval data."""
+        y_train, _y_test, X_train, X_test = panel_splits
+        coverage_rates = [0.9]
+        forecaster = IntervalReductionForecaster(reduction_strategy="direct")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
+
+        y_pred = forecaster.predict_interval(
+            forecasting_horizon=3,
+            X=X_test,
+            coverage_rates=coverage_rates,
+        )
+
+        assert y_pred.shape[0] == 3
+        for group in ["x", "y"]:
+            for target in ["a", "b"]:
+                for cr in coverage_rates:
+                    assert f"{group}__{target}_lower_{cr}" in y_pred.columns
+                    assert f"{group}__{target}_upper_{cr}" in y_pred.columns
+
+
+class TestDirRecStrategyInterval:
+    """Tests for dir-rec reduction strategy on IntervalReductionForecaster."""
+
+    @pytest.mark.slow
+    def test_estimator_dict_contains_lists(self, standard_splits):
+        """Dir-rec strategy stores lists (of H estimators) in the estimator_ dict."""
+        y_train, _y_test, X_train, _X_test = standard_splits
+        coverage_rates = [0.5]
+        forecaster = IntervalReductionForecaster(reduction_strategy="dir-rec")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
+
+        for key, value in forecaster.estimator_.items():
+            assert isinstance(value, list), f"Expected list for key {key}, got {type(value)}"
+            assert len(value) == 3
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "fit_forecasting_horizon, predict_forecasting_horizon",
+        [(1, 3), (3, 5), (3, 2)],
+    )
+    def test_predict_shape_and_bounds(
+        self,
+        fit_forecasting_horizon,
+        predict_forecasting_horizon,
+        standard_splits,
+    ):
+        """Dir-rec interval predictions have correct shape and upper >= lower."""
+        y_train, _y_test, X_train, X_test = standard_splits
+        coverage_rates = [0.5, 0.9]
+        forecaster = IntervalReductionForecaster(reduction_strategy="dir-rec")
+        forecaster.fit(
+            y=y_train,
+            X=X_train,
+            forecasting_horizon=fit_forecasting_horizon,
+            coverage_rates=coverage_rates,
+        )
+
+        y_pred = forecaster.predict_interval(
+            forecasting_horizon=predict_forecasting_horizon,
+            X=X_test,
+            coverage_rates=coverage_rates,
+        )
+
+        assert y_pred.shape[0] == predict_forecasting_horizon
+        y_cols = [c for c in y_train.columns if c != "time"]
+        for col in y_cols:
+            for cr in coverage_rates:
+                assert all(y_pred[f"{col}_upper_{cr}"] + 1e-14 >= y_pred[f"{col}_lower_{cr}"])
+
+    @pytest.mark.slow
+    def test_predict_panel(self, panel_splits):
+        """Dir-rec strategy works with panel interval data."""
+        y_train, _y_test, X_train, X_test = panel_splits
+        coverage_rates = [0.9]
+        forecaster = IntervalReductionForecaster(reduction_strategy="dir-rec")
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
+
+        y_pred = forecaster.predict_interval(
+            forecasting_horizon=3,
+            X=X_test,
+            coverage_rates=coverage_rates,
+        )
+
+        assert y_pred.shape[0] == 3
+        for group in ["x", "y"]:
+            for target in ["a", "b"]:
+                for cr in coverage_rates:
+                    assert f"{group}__{target}_lower_{cr}" in y_pred.columns
+                    assert f"{group}__{target}_upper_{cr}" in y_pred.columns
+
+
+class TestObservePredictDirectDirRecInterval:
+    """Tests for observe_predict_interval with direct and dir-rec strategies."""
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
+    def test_observe_predict_interval(self, strategy, standard_splits):
+        """observe_predict_interval works for direct and dir-rec."""
+        y_train, y_test, X_train, X_test = standard_splits
+        coverage_rates = [0.5, 0.9]
+        forecaster = IntervalReductionForecaster(reduction_strategy=strategy)
+        forecaster.fit(
+            y=y_train,
+            X=X_train,
+            forecasting_horizon=3,
+            coverage_rates=coverage_rates,
+        )
+
+        y_test_truncated = y_test[:-3]
+        y_pred = forecaster.observe_predict_interval(
+            y=y_test_truncated,
+            X=X_test,
+            forecasting_horizon=3,
+            stride=1,
+            coverage_rates=coverage_rates,
+        )
+
+        y_cols = [c for c in y_train.columns if c != "time"]
+        for col in y_cols:
+            for cr in coverage_rates:
+                assert f"{col}_upper_{cr}" in y_pred.columns
+                assert f"{col}_lower_{cr}" in y_pred.columns
+                assert all(y_pred[f"{col}_upper_{cr}"] + 1e-14 >= y_pred[f"{col}_lower_{cr}"])
+
+
+class _MockMultiQuantileRegressor(BaseEstimator, RegressorMixin):
+    """Lightweight stand-in for CatBoostRegressor with MultiQuantile loss.
+
+    Stores quantiles parsed from ``loss_function`` and returns linear
+    predictions (intercept + slope) per quantile.  This is intentionally
+    simple: it just validates the code path through
+    ``IntervalReductionForecaster``.
+    """
+
+    def __init__(self, loss_function="MultiQuantile:alpha=0.025,0.975"):
+        self.loss_function = loss_function
+
+    def _parse_quantiles(self):
+        prefix = "MultiQuantile:alpha="
+        alpha_str = self.loss_function[len(prefix) :]
+        return [float(q) for q in alpha_str.split(",")]
+
+    def fit(self, X, y, **kwargs):
+        self.quantiles_ = self._parse_quantiles()
+        self.n_quantiles_ = len(self.quantiles_)
+        self.intercept_ = np.zeros(self.n_quantiles_)
+        self.slope_ = np.zeros(self.n_quantiles_)
+        y = np.asarray(y)
+        if y.ndim == 2:
+            y = y[:, 0]
+        for i, q in enumerate(self.quantiles_):
+            self.intercept_[i] = np.quantile(y, q)
+            self.slope_[i] = 0.01 * q
+        return self
+
+    def predict(self, X):
+        n = X.shape[0]
+        preds = np.empty((n, self.n_quantiles_))
+        for i in range(self.n_quantiles_):
+            preds[:, i] = self.intercept_[i] + self.slope_[i] * np.mean(X, axis=1)
+        return preds
+
+
 class TestMultiQuantile:
     """Tests for the multi-quantile (CatBoost-style) fast path."""
 

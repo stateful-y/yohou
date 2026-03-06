@@ -297,7 +297,7 @@ def _(mo):
 
     ## Next Steps
 
-    - **Nixtla + panel data**: See [`examples/model_selection/nixtla_panel.py`](/examples/model_selection/nixtla_panel/)
+    - **Nixtla + panel data**: See [`nixtla_panel.py`](/examples/point/nixtla_panel/)
     - **Optuna search**: See [`examples/model_selection/optuna_search.py`](/examples/model_selection/optuna_search/)
     - **Hyperparameter search**: See [`examples/model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/)
     """)

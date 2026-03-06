@@ -186,8 +186,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
     See Also
     --------
-    ColumnTransformer : Column-wise transformer composition.
-    DecompositionPipeline : Sequential residual-based forecaster composition.
+    `ColumnTransformer` : Column-wise transformer composition.
+    `DecompositionPipeline` : Sequential residual-based forecaster composition.
 
     Notes
     -----

@@ -93,8 +93,8 @@ class EmpiricalCoverage(BaseIntervalScorer):
 
     See Also
     --------
-    MeanIntervalWidth : Evaluates interval sharpness
-    IntervalScore : Combined coverage and sharpness metric
+    `MeanIntervalWidth` : Evaluates interval sharpness
+    `IntervalScore` : Combined coverage and sharpness metric
     CalibrationError : Aggregate miscalibration metric
 
     """
@@ -291,8 +291,8 @@ class MeanIntervalWidth(BaseIntervalScorer):
 
     See Also
     --------
-    EmpiricalCoverage : Evaluates interval calibration
-    IntervalScore : Combined coverage and sharpness metric
+    `EmpiricalCoverage` : Evaluates interval calibration
+    `IntervalScore` : Combined coverage and sharpness metric
 
     """
 
@@ -470,8 +470,8 @@ class IntervalScore(BaseIntervalScorer):
 
     See Also
     --------
-    EmpiricalCoverage : Coverage-only metric
-    MeanIntervalWidth : Width-only metric
+    `EmpiricalCoverage` : Coverage-only metric
+    `MeanIntervalWidth` : Width-only metric
     PinballLoss : Asymmetric quantile-based metric
 
     """
@@ -674,8 +674,8 @@ class PinballLoss(BaseIntervalScorer):
 
     See Also
     --------
-    IntervalScore : Symmetric penalty for coverage violations
-    EmpiricalCoverage : Coverage-only metric
+    `IntervalScore` : Symmetric penalty for coverage violations
+    `EmpiricalCoverage` : Coverage-only metric
 
     """
 
@@ -894,8 +894,8 @@ class CalibrationError(BaseIntervalScorer):
 
     See Also
     --------
-    EmpiricalCoverage : Per-rate coverage metric
-    IntervalScore : Combined coverage and sharpness metric
+    `EmpiricalCoverage` : Per-rate coverage metric
+    `IntervalScore` : Combined coverage and sharpness metric
 
     """
 

@@ -10,10 +10,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "CatBoost MultiQuantile",
-    "description": "Predict all quantiles in a single CatBoost model with MultiQuantile loss, avoiding the 2N-model overhead of separate quantile regressors.",
-}
 app = marimo.App(width="medium")
 
 
@@ -40,12 +36,14 @@ def _(mo):
 
     - Using `CatBoostRegressor` with `MultiQuantile` loss
     - The speed advantage of multi-quantile vs separate quantile models
+    - How `reduction_strategy` interacts with multi-quantile loss
     - Evaluating interval quality with yohou metrics
 
     ## Prerequisites
 
-    Familiarity with [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) (see `interval_reduction.py`).
+    Familiarity with [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/).
     """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -83,6 +81,7 @@ def _(mo):
     We load the Monthly Tourism dataset (series T1) and split it into training
     and test sets for interval forecasting.
     """)
+    return
 
 
 @app.cell
@@ -109,7 +108,17 @@ def _(mo):
     Because CatBoost's `MultiQuantile` loss produces a 2D output (one
     column per quantile), it cannot be wrapped in `MultiOutputRegressor`
     and requires `forecasting_horizon=1` with recursive prediction.
+
+    > **Note on `reduction_strategy`**: Because the multi-quantile loss
+    > already produces a vector of quantiles as its native output,
+    > it is always fitted with `forecasting_horizon=1` and predicts
+    > recursively. This means `reduction_strategy` does not change the
+    > single-model advantage here - you still get one model for all quantiles.
+    > For per-step specialisation with CatBoost intervals, train separate
+    > `CatBoostRegressor(loss_function='Quantile:alpha=...')` models using
+    > `reduction_strategy="direct"` instead.
     """)
+    return
 
 
 @app.cell
@@ -159,6 +168,7 @@ def _(mo):
     history and test data. The `coverage_rates` parameter controls which
     interval bands are shown.
     """)
+    return
 
 
 @app.cell
@@ -170,6 +180,7 @@ def _(coverage_rates, plot_forecast, y_pred_mq, y_test, y_train):
         coverage_rates=coverage_rates,
         title="CatBoost MultiQuantile Intervals",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -179,6 +190,7 @@ def _(mo):
 
     The default estimator is `MultiOutputRegressor(QuantileRegressor())`, let's compare it with our `MultiOutputRegressor(CatBoostRegressor())`.
     """)
+    return
 
 
 @app.cell
@@ -228,6 +240,7 @@ def _(mo):
     contain the true value at the target rate?), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) (penalises
     width and miscoverage), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) (average band width).
     """)
+    return
 
 
 @app.cell
@@ -252,6 +265,7 @@ def _(
 
     table = "| Approach | Metric | Score |\n|---|---|---|\n" + "\n".join(rows)
     mo.md(table)
+    return
 
 
 @app.cell(hide_code=True)
@@ -264,7 +278,15 @@ def _(mo):
     - The alpha placeholder is overwritten: just specify `coverage_rates`
     - Multi-quantile is faster when many coverage rates are needed
     - Interval quality is comparable to separate quantile models
+    - `reduction_strategy` does not change multi-quantile behaviour (always recursive with H=1)
+
+    ## Next Steps
+
+    - **Standard interval reduction**: See [`interval_reduction.py`](/examples/interval/interval_reduction/) for `reduction_strategy` comparison
+    - **Point CatBoost**: See [`catboost_forecasting.py`](/examples/point/catboost_forecasting/) for point forecasting with CatBoost
+    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
     """)
+    return
 
 
 if __name__ == "__main__":

@@ -37,8 +37,8 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    PointReductionForecaster : ML-based point forecaster.
-    SeasonalNaive : Simple seasonal naive forecaster.
+    `PointReductionForecaster` : ML-based point forecaster.
+    `SeasonalNaive` : Simple seasonal naive forecaster.
     BaseIntervalForecaster : Base class for interval forecasters.
 
     """

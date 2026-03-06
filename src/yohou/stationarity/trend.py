@@ -64,8 +64,8 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
 
     See Also
     --------
-    PatternSeasonalityForecaster : Seasonal pattern extraction for periodic components.
-    FourierSeasonalityForecaster : Fourier-based seasonality estimation.
+    `PatternSeasonalityForecaster` : Seasonal pattern extraction for periodic components.
+    `FourierSeasonalityForecaster` : Fourier-based seasonality estimation.
     DecompositionPipeline : Combines trend + seasonality + residual forecasters.
 
     Notes

@@ -96,8 +96,8 @@ class MeanAbsoluteError(BasePointScorer):
 
     See Also
     --------
-    MeanSquaredError : Mean Squared Error, more sensitive to large errors
-    RootMeanSquaredError : Root Mean Squared Error, MeanSquaredError in original units
+    `MeanSquaredError` : Mean Squared Error, more sensitive to large errors
+    `RootMeanSquaredError` : Root Mean Squared Error, MeanSquaredError in original units
     RootMeanSquaredScaledError : Root Mean Squared Scaled Error, scale-independent version
     MAPE : Mean Absolute Percentage Error, scale-independent
 
@@ -290,8 +290,8 @@ class MeanSquaredError(BasePointScorer):
 
     See Also
     --------
-    MeanAbsoluteError : Mean Absolute Error, less sensitive to outliers
-    RootMeanSquaredError : Root Mean Squared Error, MeanSquaredError in original units
+    `MeanAbsoluteError` : Mean Absolute Error, less sensitive to outliers
+    `RootMeanSquaredError` : Root Mean Squared Error, MeanSquaredError in original units
     RootMeanSquaredScaledError : Root Mean Squared Scaled Error, scale-independent version
 
     """
@@ -438,8 +438,8 @@ class RootMeanSquaredError(BasePointScorer):
 
     See Also
     --------
-    MeanAbsoluteError : Mean Absolute Error, less sensitive to outliers
-    MeanSquaredError : Mean Squared Error, RMSE squared
+    `MeanAbsoluteError` : Mean Absolute Error, less sensitive to outliers
+    `MeanSquaredError` : Mean Squared Error, RMSE squared
     RootMeanSquaredScaledError : Root Mean Squared Scaled Error, scale-independent version
 
     """
@@ -614,8 +614,8 @@ class RootMeanSquaredScaledError(BasePointScorer):
 
     See Also
     --------
-    RootMeanSquaredError : Root Mean Squared Error, non-scaled version
-    MeanAbsoluteError : Mean Absolute Error, non-scaled alternative
+    `RootMeanSquaredError` : Root Mean Squared Error, non-scaled version
+    `MeanAbsoluteError` : Mean Absolute Error, non-scaled alternative
     MeanSquaredError : Mean Squared Error, squared version
 
     """
@@ -845,8 +845,8 @@ class MeanAbsolutePercentageError(BasePointScorer):
 
     See Also
     --------
-    SymmetricMeanAbsolutePercentageError : Symmetric version of MAPE
-    MeanAbsoluteError : Absolute error in original units
+    `SymmetricMeanAbsolutePercentageError` : Symmetric version of MAPE
+    `MeanAbsoluteError` : Absolute error in original units
     MeanAbsoluteScaledError : Scaled by naive forecast error
 
     """
@@ -1002,8 +1002,8 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
 
     See Also
     --------
-    MeanAbsolutePercentageError : Asymmetric version of percentage error
-    MeanAbsoluteError : Absolute error in original units
+    `MeanAbsolutePercentageError` : Asymmetric version of percentage error
+    `MeanAbsoluteError` : Absolute error in original units
     MeanAbsoluteScaledError : Scaled by naive forecast error
 
     """
@@ -1175,8 +1175,8 @@ class MeanAbsoluteScaledError(BasePointScorer):
 
     See Also
     --------
-    RootMeanSquaredScaledError : Squared error version of scaled metric
-    MeanAbsoluteError : Non-scaled MAE
+    `RootMeanSquaredScaledError` : Squared error version of scaled metric
+    `MeanAbsoluteError` : Non-scaled MAE
     MeanAbsolutePercentageError : Percentage-based scale-independent metric
 
     """
@@ -1390,8 +1390,8 @@ class MedianAbsoluteError(BasePointScorer):
 
     See Also
     --------
-    MeanAbsoluteError : Mean-based absolute error, more sensitive to outliers
-    MaxError : Maximum absolute error, worst-case measure
+    `MeanAbsoluteError` : Mean-based absolute error, more sensitive to outliers
+    `MaxError` : Maximum absolute error, worst-case measure
 
     """
 

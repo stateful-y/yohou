@@ -9,10 +9,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Reduction Forecasting",
-    "description": "Tabular ML-based forecasting with PointReductionForecaster using lag features, target/feature transformers, and GridSearchCV hyperparameter tuning.",
-}
 app = marimo.App(width="medium")
 
 
@@ -36,13 +32,15 @@ def _(mo):
 
     - How [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) tabularizes time series data using lag features
     - The difference between `target_transformer` (invertible) and `feature_transformer` (features)
-    - Tuning hyperparameters with [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
+    - Controlling feature construction with `target_as_feature`
+    - Tuning hyperparameters **including `reduction_strategy`** with [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
     - Visualizing forecasts and cross-validation results
 
     ## Prerequisites
 
     Basic familiarity with sklearn's fit/predict API and time series concepts (trend, seasonality).
     """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -89,6 +87,7 @@ def _(mo):
     It exhibits strong trend and seasonality, making it ideal for
     demonstrating preprocessing techniques.
     """)
+    return
 
 
 @app.cell
@@ -107,16 +106,19 @@ def _(mo):
     year's monthly values on the same seasonal axis (FPP3 gg_season style) to
     reveal the repeating yearly pattern.
     """)
+    return
 
 
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(y, title="Monthly Tourism")
+    return
 
 
 @app.cell
 def _(plot_seasonality, y):
     plot_seasonality(y, period="month", title="Monthly Seasonality Pattern")
+    return
 
 
 @app.cell(hide_code=True)
@@ -127,6 +129,7 @@ def _(mo):
     For time series, we must preserve temporal order - no shuffling allowed.
     We hold out the last ~20% (29 months) for testing.
     """)
+    return
 
 
 @app.cell
@@ -156,6 +159,7 @@ def _(mo):
 
     We start with a simple Ridge regressor and 12 lag features.
     """)
+    return
 
 
 @app.cell
@@ -198,17 +202,67 @@ def _(MeanAbsoluteError, plot_forecast, y_pred, y_test, y_train):
     score = mae.score(y_test_trimmed, y_pred)
     print(f"MAE: {score:.2f}")
     fig_basic
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Adding Target Transformation
+    ## 4. Feature Construction with `target_as_feature`
+
+    The `target_as_feature` parameter controls what enters the feature matrix:
+
+    - `"transformed"` (default): lag features are built from the **transformed** target
+    - `"raw"`: lag features are built from the **original** target (useful when target_transformer changes the scale)
+    - `None`: target is **excluded** entirely - only exogenous X is used as features (requires X)
+
+    With no `target_transformer`, `"transformed"` and `"raw"` produce identical results.
+    The difference matters when a target_transformer (like log or differencing) changes the scale.
+    """)
+    return
+
+
+@app.cell
+def _(
+    LagTransformer,
+    MeanAbsoluteError,
+    PointReductionForecaster,
+    Ridge,
+    forecasting_horizon,
+    mo,
+    y_test,
+    y_train,
+):
+    taf_scores = {}
+    for _taf in ["transformed", "raw"]:
+        _fc = PointReductionForecaster(
+            estimator=Ridge(alpha=1.0),
+            target_as_feature=_taf,
+            feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        )
+        _fc.fit(y_train, forecasting_horizon=forecasting_horizon)
+        _pred = _fc.predict(forecasting_horizon=len(y_test))
+        _mae = MeanAbsoluteError()
+        _mae.fit(y_train)
+        taf_scores[_taf] = _mae.score(y_test.head(len(_pred)), _pred)
+
+    mo.ui.table(
+        [{"target_as_feature": k, "MAE": f"{v:.2f}"} for k, v in taf_scores.items()],
+        label="MAE by target_as_feature (no target_transformer)",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 5. Adding Target Transformation
 
     The Monthly Tourism data has multiplicative seasonality (variance grows with level).
     A [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) via `target_transformer` stabilizes variance. It is applied to y
     before fitting and automatically inverted after prediction.
     """)
+    return
 
 
 @app.cell
@@ -247,17 +301,23 @@ def _(MeanAbsoluteError, plot_forecast, y_pred_log, y_test, y_train):
     score_log = mae_log.score(y_test_log, y_pred_log)
     print(f"MAE with log transform: {score_log:.2f}")
     fig_log
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 5. Hyperparameter Tuning with GridSearchCV
+    ## 6. Hyperparameter Tuning with GridSearchCV
 
-    We tune Ridge regularization (`estimator__alpha`) and lag count
-    (`feature_transformer__lag`) using [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) with time series
-    cross-validation via [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/).
+    We tune Ridge regularization (`estimator__alpha`), lag count
+    (`feature_transformer__lag`), and **`reduction_strategy`** using
+    [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) with time series cross-validation via
+    [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/).
+
+    Including `reduction_strategy` in the grid lets CV select the best
+    strategy automatically alongside other hyperparameters.
     """)
+    return
 
 
 @app.cell
@@ -284,6 +344,7 @@ def _(
             list(range(1, 7)),
             list(range(1, 13)),
         ],
+        "reduction_strategy": ["multi-output", "direct"],
     }
 
     cv_splitter = ExpandingWindowSplitter(n_splits=2, test_size=24)
@@ -307,6 +368,7 @@ def _(mo):
     [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) shows how the cross-validation score varies
     with the `alpha` hyperparameter. Error bars represent fold-level variation.
     """)
+    return
 
 
 @app.cell
@@ -316,6 +378,7 @@ def _(grid_search, plot_cv_results_scatter):
         param_name="estimator__alpha",
         title="Grid Search Results: Alpha vs CV Score",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -324,6 +387,7 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) shows the best model's predictions against the test data.
     The best hyperparameters were selected automatically by [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/).
     """)
+    return
 
 
 @app.cell
@@ -336,6 +400,7 @@ def _(grid_search, plot_forecast, y_test, y_train):
         y_pred=y_pred_tuned,
         title="Tuned Reduction Forecast (GridSearchCV)",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -347,9 +412,12 @@ def _(mo):
     - [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) wraps any sklearn regressor for forecasting
     - **`target_transformer`**: Invertible transforms on y (e.g., [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) for variance stabilization)
     - **`feature_transformer`**: Feature generation from y (e.g., [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) for lags)
-    - [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) with [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) provides proper time series CV
+    - **`target_as_feature`**: Controls whether lag features come from the transformed target, raw target, or neither
+    - **`reduction_strategy`**: Can be tuned via [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) alongside other hyperparameters
+    - [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) provides proper time series CV
     - Log transforms help with multiplicative seasonality (variance scaling with level)
     """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -357,11 +425,14 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
+    - **Strategy deep-dive**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) to compare multi-output, direct, and dir-rec
+    - **Time weighting**: See [`time_weighted_reduction.py`](/examples/point/time_weighted_reduction/) for sample weight alignment strategies
     - **Naive baselines**: See [`naive_forecasters.py`](/examples/point/naive_forecasters/) to compare with simple benchmarks
     - **Multi-column forecasting**: See [`multi_column_forecasting.py`](/examples/point/multi_column_forecasting/) for multivariate data
     - **Interval prediction**: See [Interval](/examples/#interval-forecasting) examples for uncertainty quantification
     - **Decomposition**: See [Stationarity](/examples/#stationarity) for trend/seasonality extraction before forecasting
     """)
+    return
 
 
 if __name__ == "__main__":

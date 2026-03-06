@@ -41,8 +41,8 @@ class BaseSplitter(BaseEstimator, ABC):
 
     See Also
     --------
-    ExpandingWindowSplitter : Expanding-window cross-validation.
-    SlidingWindowSplitter : Sliding-window cross-validation.
+    `ExpandingWindowSplitter` : Expanding-window cross-validation.
+    `SlidingWindowSplitter` : Sliding-window cross-validation.
 
     """
 
@@ -207,7 +207,7 @@ class ExpandingWindowSplitter(BaseSplitter):
 
     See Also
     --------
-    SlidingWindowSplitter : Fixed-size rolling window splitter
+    `SlidingWindowSplitter` : Fixed-size rolling window splitter
 
     """
 
@@ -438,7 +438,7 @@ class SlidingWindowSplitter(BaseSplitter):
 
     See Also
     --------
-    ExpandingWindowSplitter : Growing training window splitter
+    `ExpandingWindowSplitter` : Growing training window splitter
 
     """
 

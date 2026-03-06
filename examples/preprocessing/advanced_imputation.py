@@ -359,7 +359,7 @@ def _(mo):
     ## Next Steps
 
     - **Data cleaning**: See [`examples/preprocessing/data_cleaning.py`](/examples/preprocessing/data_cleaning/)
-    - **Resampling**: See [`examples/preprocessing/resampling_advanced.py`](/examples/preprocessing/resampling_advanced/)
+    - **Resampling**: See [`resampling.py`](/examples/preprocessing/resampling/)
     - **Sklearn wrappers**: See [`examples/preprocessing/sklearn_wrappers.py`](/examples/preprocessing/sklearn_wrappers/)
     """)
 

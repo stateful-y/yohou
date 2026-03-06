@@ -236,9 +236,9 @@ def apply_default_layout(
     if y_label is not None:
         layout_update["yaxis"]["title"] = y_label  # type: ignore[index]
     if width is not None:
-        layout_update["width"] = width
+        layout_update["width"] = width  # type: ignore[invalid-assignment]
     if height is not None:
-        layout_update["height"] = height
+        layout_update["height"] = height  # type: ignore[invalid-assignment]
 
     fig.update_layout(layout_update)
     return fig
