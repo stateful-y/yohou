@@ -1017,6 +1017,63 @@ class TestDirectDirRecChecks:
         )
 
 
+class TestEmptyTrainingData:
+    """Tests for error handling when training data is too short."""
+
+    def test_fit_raises_on_empty_tabularized_data(self):
+        """Fitting with data too short for the horizon raises ValueError."""
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, 2),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [1.0, 2.0, 3.0]})
+        forecaster = PointReductionForecaster()
+
+        with pytest.raises(ValueError, match="Training dataset is empty"):
+            forecaster.fit(y, forecasting_horizon=10)
+
+
+class TestNJobsParameter:
+    """Tests for n_jobs parallel execution on direct strategy."""
+
+    def test_n_jobs_in_get_params(self):
+        """n_jobs should appear in get_params()."""
+        forecaster = PointReductionForecaster()
+        params = forecaster.get_params()
+        assert "n_jobs" in params
+        assert params["n_jobs"] is None
+
+    def test_n_jobs_set_params(self):
+        """n_jobs should be settable via set_params()."""
+        forecaster = PointReductionForecaster()
+        forecaster.set_params(n_jobs=2)
+        assert forecaster.n_jobs == 2
+
+    def test_n_jobs_direct_matches_sequential(self, reduction_data):
+        """Direct strategy with n_jobs=2 gives same results as n_jobs=1."""
+        y_train, _y_test, X_train, X_test = reduction_data
+
+        forecaster_seq = PointReductionForecaster(
+            reduction_strategy="direct", n_jobs=1,
+        )
+        forecaster_par = PointReductionForecaster(
+            reduction_strategy="direct", n_jobs=2,
+        )
+
+        forecaster_seq.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster_par.fit(y=y_train, X=X_train, forecasting_horizon=3)
+
+        y_seq = forecaster_seq.predict(X=X_test[:3], forecasting_horizon=3)
+        y_par = forecaster_par.predict(X=X_test[:3], forecasting_horizon=3)
+
+        np.testing.assert_allclose(
+            y_seq.select(cs.numeric()).to_numpy(),
+            y_par.select(cs.numeric()).to_numpy(),
+        )
+
+
 class TestTargetAsFeatureParam:
     """Tests for target_as_feature parameter on PointReductionForecaster."""
 

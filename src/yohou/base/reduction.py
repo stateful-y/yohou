@@ -1007,9 +1007,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_pred_dict = {}
         for panel_group_name in panel_group_names:
             X_tab = self._get_predict_features(panel_group_name)
-            rows = Parallel(n_jobs=self.n_jobs)(
-                delayed(_predict_step)(est, X_tab) for est in estimators
-            )
+            rows = Parallel(n_jobs=self.n_jobs)(delayed(_predict_step)(est, X_tab) for est in estimators)
             y_pred_arr = np.vstack(rows)
             y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
             y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
