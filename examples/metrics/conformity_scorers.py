@@ -11,7 +11,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Conformity Scorers",
-    "description": "Compare Residual, AbsoluteResidual, GammaResidual, and AbsoluteGammaResidual conformity scorers for calibrating conformal prediction intervals.",
+    "description": "Compare Residual, AbsoluteResidual, GammaResidual, and AbsoluteGammaResidual conformity scorers with coverage/width analysis and DistanceSimilarity interaction.",
 }
 app = marimo.App(width="medium")
 
@@ -46,6 +46,7 @@ def _(mo):
     - Symmetric vs. asymmetric intervals
     - Adaptive (gamma) vs. fixed-width intervals
     - Comparing interval quality with calibration and width metrics
+    - Using [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/) with different conformity scorers
     - Choosing the right scorer for your data
 
     ## Prerequisites
@@ -56,12 +57,13 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    import polars as pl
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
-    from yohou.interval import SplitConformalForecaster
-    from yohou.metrics import IntervalScore
+    from yohou.interval import DistanceSimilarity, SplitConformalForecaster
+    from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
     from yohou.metrics.conformity import (
         AbsoluteGammaResidual,
         AbsoluteResidual,
@@ -75,14 +77,18 @@ def _():
     return (
         AbsoluteGammaResidual,
         AbsoluteResidual,
+        DistanceSimilarity,
+        EmpiricalCoverage,
         GammaResidual,
         IntervalScore,
         LagTransformer,
+        MeanIntervalWidth,
         PointReductionForecaster,
         Residual,
         Ridge,
         SplitConformalForecaster,
         fetch_tourism_monthly,
+        pl,
         plot_forecast,
         plot_score_time_series,
         plot_time_series,
@@ -360,6 +366,105 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 9. Coverage and Width Comparison
+
+    [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) checks whether intervals contain the
+    true value at the target rate. [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) measures the
+    average band width. Narrower intervals are better, provided coverage
+    is maintained.
+    """)
+
+
+@app.cell
+def _(
+    EmpiricalCoverage,
+    MeanIntervalWidth,
+    mo,
+    pl,
+    y_pred_abs,
+    y_pred_abs_gamma,
+    y_pred_gamma,
+    y_pred_residual,
+    y_test,
+    y_train,
+):
+    _cov = EmpiricalCoverage()
+    _width = MeanIntervalWidth()
+    _cov.fit(y_train)
+    _width.fit(y_train)
+
+    _scorers_map = {
+        "Residual": y_pred_residual,
+        "AbsoluteResidual": y_pred_abs,
+        "GammaResidual": y_pred_gamma,
+        "AbsoluteGammaResidual": y_pred_abs_gamma,
+    }
+
+    _rows = []
+    for _name, _pred in _scorers_map.items():
+        _c = float(_cov.score(y_test, _pred))
+        _w = float(_width.score(y_test, _pred))
+        _rows.append({
+            "Scorer": _name,
+            "Empirical Coverage": round(_c, 3),
+            "Mean Interval Width": round(_w, 1),
+        })
+    mo.ui.table(pl.DataFrame(_rows))
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 10. With DistanceSimilarity
+
+    [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/) reweights calibration residuals based on
+    similarity to the current observation. Combined with different
+    conformity scorers, this produces **adaptive** intervals that are
+    narrower in well-understood regions and wider in unusual ones.
+    """)
+
+
+@app.cell
+def _(
+    AbsoluteResidual,
+    DistanceSimilarity,
+    LagTransformer,
+    PointReductionForecaster,
+    Ridge,
+    SplitConformalForecaster,
+    plot_forecast,
+    y_test,
+    y_train,
+):
+    _base_sim = PointReductionForecaster(
+        estimator=Ridge(alpha=1.0),
+        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+    )
+    fc_sim = SplitConformalForecaster(
+        point_forecaster=_base_sim,
+        calibration_size=24,
+        conformity_scorer=AbsoluteResidual(),
+        similarity=DistanceSimilarity(metric="euclidean"),
+    )
+    _horizon = len(y_test)
+    fc_sim.fit(y_train, forecasting_horizon=_horizon)
+    _y_pred_sim = fc_sim.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
+    _y_point = fc_sim.predict(forecasting_horizon=_horizon)
+    _y_pred_sim = _y_pred_sim.hstack(_y_point.drop("time", "observed_time"))
+    plot_forecast(
+        y_test,
+        _y_pred_sim,
+        y_train=y_train,
+        n_history=36,
+        coverage_rates=[0.9],
+        title="AbsoluteResidual + DistanceSimilarity (Adaptive)",
+    )
+    return (fc_sim,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Key Takeaways
 
     - **Four concrete conformity scorers** control interval shape in [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
@@ -367,13 +472,14 @@ def _(mo):
     - **Asymmetric** scorers (Residual, GammaResidual) allow unequal lower/upper widths
     - **Gamma** variants normalise by the prediction magnitude, producing **adaptive** interval widths
     - The `epsilon` parameter in Gamma scorers prevents division by zero
+    - [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/) adds observation-dependent weighting for locally adaptive intervals
     - Always evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
     - For multiplicative data, Gamma scorers typically produce better-calibrated intervals
 
     ## Next Steps
 
-    - **Distance-based weighting**: See [`examples/interval/distance_similarity.py`](/examples/interval/distance_similarity/) for adaptive conformal intervals using [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/)
-    - **Interval metrics**: See [`examples/metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) for deep-dive into interval evaluation
+    - **Distance similarity**: See [`distance_similarity.py`](/examples/interval/distance_similarity/) for full adaptive conformal intervals deep-dive
+    - **Interval metrics**: See [`interval_metrics.py`](/examples/metrics/interval_metrics/) for deep-dive into interval evaluation
     """)
 
 

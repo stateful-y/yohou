@@ -267,7 +267,7 @@ def _(mo):
 
     ## Next Steps
 
-    - **Nixtla forecasters (univariate)**: See [`examples/model_selection/nixtla_forecasters.py`](/examples/model_selection/nixtla_forecasters/)
+    - **Nixtla forecasters (univariate)**: See [`nixtla_forecasters.py`](/examples/point/nixtla_forecasters/)
     - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/)
     - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
     """)

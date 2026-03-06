@@ -292,7 +292,7 @@ def _(mo):
     ## Next Steps
 
     - **Seasonal diagnostics**: See [`examples/plotting/seasonal.py`](/examples/plotting/seasonal/) for seasonality overlays, ACF/PACF, and frequency-domain analysis
-    - **STL decomposition**: See [`examples/plotting/decomposition.py`](/examples/plotting/decomposition/) for decomposition and calendar heatmaps
+    - **STL decomposition**: See [`seasonal.py`](/examples/plotting/seasonal/) for STL decomposition, seasonality overlays, and ACF/PACF
     - **Exploration**: See [`examples/plotting/exploration.py`](/examples/plotting/exploration/) for rolling statistics and missing data audits
     """)
 

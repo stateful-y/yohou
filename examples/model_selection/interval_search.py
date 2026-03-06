@@ -356,7 +356,7 @@ def _(mo):
 
     - [`multi_metric_search.py`](/examples/model_selection/multi_metric_search/) for more on multi-metric strategies
     - [`optuna_search.py`](/examples/model_selection/optuna_search/) for Optuna-based search
-    - [`conformal_conformity_scorers.py`](/examples/interval/conformal_conformity_scorers/) for conformity scorer details
+    - [`conformity_scorers.py`](/examples/metrics/conformity_scorers/) for conformity scorer details
     """)
 
 

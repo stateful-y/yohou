@@ -453,7 +453,7 @@ def _(mo):
 
     ## Next Steps
 
-    - **Conformity scorers**: See [`examples/interval/conformal_conformity_scorers.py`](/examples/interval/conformal_conformity_scorers/) for comparing Residual, GammaResidual, etc.
+    - **Conformity scorers**: See [`conformity_scorers.py`](/examples/metrics/conformity_scorers/) for comparing Residual, GammaResidual, etc.
     - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/) for prediction intervals on panel data
     - **Interval metrics**: See [`examples/metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) for EmpiricalCoverage, IntervalScore, and more
     """)

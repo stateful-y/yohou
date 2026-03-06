@@ -10,7 +10,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Seasonal Analysis",
-    "description": "Seasonal overlays, subseasonal structure analysis, and ACF/PACF correlation patterns for monthly, quarterly, and long-cycle time series datasets.",
+    "description": "Seasonal overlays, subseasonal structure, ACF/PACF correlation patterns, and STL decomposition for monthly, quarterly, and long-cycle datasets.",
 }
 app = marimo.App(width="medium")
 
@@ -31,6 +31,7 @@ def _():
     )
     from yohou.plotting import (
         plot_autocorrelation,
+        plot_components,
         plot_partial_autocorrelation,
         plot_seasonality,
         plot_subseasonality,
@@ -41,6 +42,7 @@ def _():
         fetch_tourism_monthly,
         fetch_tourism_quarterly,
         plot_autocorrelation,
+        plot_components,
         plot_partial_autocorrelation,
         plot_seasonality,
         plot_subseasonality,
@@ -58,6 +60,7 @@ def _(mo):
     - Inspecting subseasonal structure with [`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)
     - Identifying autocorrelation and partial autocorrelation patterns for AR/MA order selection
     - Applying these diagnostics to monthly, quarterly, and long-cycle datasets
+    - STL decomposition with [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/) and `stl_kwargs` tuning
 
     ## Prerequisites
 
@@ -260,17 +263,91 @@ def _(plot_partial_autocorrelation, tourism_monthly):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 5. STL Decomposition
+
+    [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/) applies STL (Seasonal and Trend decomposition using Loess)
+    and displays selected **components**. By default all five panels are shown:
+    observed, trend, seasonal, residual, and seasonal-adjusted.
+    Pass STL tuning parameters via the `stl_kwargs` dict.
+    """)
+
+
+@app.cell
+def _(plot_components, tourism_monthly):
+    plot_components(
+        tourism_monthly,
+        ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
+        title="STL - All Components (Default)",
+    )
+
+
+@app.cell
+def _(plot_components, tourism_monthly):
+    plot_components(
+        tourism_monthly,
+        ["trend", "seasonal"],
+        title="STL - Trend and Seasonal Only",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 6. STL Parameter Tuning
+
+    Control the decomposition by setting **robust** (outlier resistance),
+    explicit **period**, and **seasonal_window** size via `stl_kwargs`.
+    Comparing robust vs non-robust helps gauge the impact of outliers on
+    the trend estimate.
+    """)
+
+
+@app.cell
+def _(plot_components, tourism_monthly):
+    plot_components(
+        tourism_monthly,
+        ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
+        stl_kwargs={"robust": False},
+        title="STL - Non-Robust Estimation",
+    )
+
+
+@app.cell
+def _(plot_components, tourism_monthly):
+    plot_components(
+        tourism_monthly,
+        ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
+        stl_kwargs={"period": 12, "seasonal_window": 15},
+        title="STL - Explicit Period=12, Seasonal Window=15",
+    )
+
+
+@app.cell
+def _(plot_components, tourism_monthly):
+    plot_components(
+        tourism_monthly,
+        ["residual"],
+        stl_kwargs={"robust": True},
+        title="STL - Residual Only (Robust)",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Key Takeaways
 
     - **Seasonal overlays** ([`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/)) make year-over-year comparisons immediate; `highlight` draws attention to specific cycles
     - **Subseries plots** ([`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)) reveal within-season trends over time; the mean line shows each season's average level
     - **ACF** identifies repeating correlation patterns at seasonal multiples; **PACF** isolates direct lag effects for AR order selection
+    - **STL decomposition** separates trend, seasonal, and residual components; `robust=True` reduces outlier influence
+    - **Seasonal window** tuning controls seasonal component flexibility; larger values produce a more stable pattern
 
     ## Next Steps
 
-    - **STL decomposition**: See [`examples/plotting/decomposition.py`](/examples/plotting/decomposition/) for trend/seasonal/residual decomposition
-    - **Correlation diagnostics**: See [`examples/plotting/correlation.py`](/examples/plotting/correlation/) for scatter matrices and cross-correlation
-    - **Forecast visualization**: See [`examples/plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/) for model comparison
+    - **Correlation diagnostics**: See [`correlation.py`](/examples/plotting/correlation/) for scatter matrices and cross-correlation
+    - **Forecast visualization**: See [`forecasting_visualization.py`](/examples/plotting/forecasting_visualization/) for model comparison
+    - **Exploration**: See [`exploration.py`](/examples/plotting/exploration/) for rolling statistics and missing data audits
     """)
 
 

@@ -322,7 +322,7 @@ def _(mo):
 
     ## Next Steps
 
-    - **Resampling**: See [`examples/preprocessing/resampling_advanced.py`](/examples/preprocessing/resampling_advanced/)
+    - **Resampling**: See [`resampling.py`](/examples/preprocessing/resampling/)
     - **Window transformers**: See [`examples/preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/)
     - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
     """)

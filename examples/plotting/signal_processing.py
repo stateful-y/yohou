@@ -297,10 +297,8 @@ def _(mo):
 
     - **Similarity heatmaps**: See `examples/plotting/similarity_heatmap.py`
       for distance-based interval forecasting weights
-    - **Seasonal diagnostics**: See [`examples/plotting/seasonal.py`](/examples/plotting/seasonal/) for
-      ACF/PACF and seasonality overlays
-    - **Decomposition**: See [`examples/plotting/decomposition.py`](/examples/plotting/decomposition/) for
-      STL decomposition and calendar heatmaps
+    - **Seasonal diagnostics**: See [`seasonal.py`](/examples/plotting/seasonal/) for
+      ACF/PACF, seasonality overlays, and STL decomposition
     """)
 
 
