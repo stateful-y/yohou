@@ -49,6 +49,10 @@ def cast(
     Columns in df but not in schema are left unchanged, allowing
     preservation of extra columns from model predictions.
 
+    See Also
+    --------
+    `get_numeric_columns` : List numeric column names from a DataFrame.
+
     """
     exprs = []
 
@@ -89,6 +93,11 @@ def get_numeric_columns(df: pl.DataFrame, exclude: list[str] | None = None) -> l
 
     >>> get_numeric_columns(df, exclude=["time"])
     ['y']
+
+    See Also
+    --------
+    `cast` : Cast DataFrame columns according to a schema.
+
     """
     exclude = exclude or []
     numeric_types = [

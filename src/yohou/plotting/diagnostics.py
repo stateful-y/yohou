@@ -103,8 +103,8 @@ def plot_autocorrelation(
 
     See Also
     --------
-    plot_partial_autocorrelation : Plot partial autocorrelation function.
-    plot_correlation_heatmap : Plot correlation matrix.
+    `plot_partial_autocorrelation` : Plot partial autocorrelation function.
+    `plot_correlation_heatmap` : Plot correlation matrix.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -467,7 +467,7 @@ def plot_partial_autocorrelation(
 
     See Also
     --------
-    plot_autocorrelation : Plot autocorrelation function.
+    `plot_autocorrelation` : Plot autocorrelation function.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -684,7 +684,7 @@ def plot_correlation_heatmap(
 
     See Also
     --------
-    plot_autocorrelation : Plot autocorrelation function.
+    `plot_autocorrelation` : Plot autocorrelation function.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -922,8 +922,8 @@ def plot_seasonality(
 
     See Also
     --------
-    plot_subseasonality : Plot seasonal subseries.
-    plot_time_series : Plot basic time series.
+    `plot_subseasonality` : Plot seasonal subseries.
+    `plot_time_series` : Plot basic time series.
     """
 
     # Resolve highlight to a set
@@ -1141,8 +1141,8 @@ def plot_subseasonality(
 
     See Also
     --------
-    plot_seasonality : Plot seasonal overlay.
-    plot_time_series : Plot basic time series.
+    `plot_seasonality` : Plot seasonal overlay.
+    `plot_time_series` : Plot basic time series.
     """
     validate_plotting_data(df)
 
@@ -1323,7 +1323,7 @@ def plot_lag_scatter(
 
     See Also
     --------
-    plot_autocorrelation : Plot autocorrelation function.
+    `plot_autocorrelation` : Plot autocorrelation function.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -1723,7 +1723,7 @@ def plot_cross_correlation(
 
     See Also
     --------
-    plot_autocorrelation : Plot autocorrelation function.
+    `plot_autocorrelation` : Plot autocorrelation function.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -1947,8 +1947,8 @@ def plot_scatter_matrix(
 
     See Also
     --------
-    plot_correlation_heatmap : Plot correlation heatmap.
-    plot_lag_scatter : Lag scatter plots.
+    `plot_correlation_heatmap` : Plot correlation heatmap.
+    `plot_lag_scatter` : Lag scatter plots.
     """
     from scipy.stats import gaussian_kde, pearsonr  # noqa: PLC0415
 

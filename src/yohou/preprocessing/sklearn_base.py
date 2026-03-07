@@ -9,6 +9,7 @@ columns.
 import polars as pl
 import polars.selectors as cs
 from sklearn.base import TransformerMixin
+from sklearn.utils._param_validation import HasMethods
 from sklearn.utils.metaestimators import available_if
 from sklearn.utils.validation import check_is_fitted
 from sklearn_wrap.base import BaseClassWrapper, _fit_context
@@ -100,14 +101,18 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
     --------
     `StandardScaler` : Pre-configured wrapper for sklearn's StandardScaler.
     `MinMaxScaler` : Pre-configured wrapper for sklearn's MinMaxScaler.
-    RobustScaler : Pre-configured wrapper for sklearn's RobustScaler.
-    MaxAbsScaler : Pre-configured wrapper for sklearn's MaxAbsScaler.
+    `RobustScaler` : Pre-configured wrapper for sklearn's RobustScaler.
+    `MaxAbsScaler` : Pre-configured wrapper for sklearn's MaxAbsScaler.
 
     """
 
     _estimator_name = "transformer"
     _estimator_base_class = TransformerMixin
     _estimator_default_class: type | None = None
+
+    _parameter_constraints: dict = {
+        "transformer": [HasMethods(["fit", "transform"]), None],
+    }
 
     def __init__(self, transformer=None, **params):
         if transformer is not None:
@@ -322,14 +327,19 @@ class SklearnScaler(SklearnTransformer):
     --------
     `StandardScaler` : Pre-configured wrapper for sklearn's StandardScaler.
     `MinMaxScaler` : Pre-configured wrapper for sklearn's MinMaxScaler.
-    RobustScaler : Pre-configured wrapper for sklearn's RobustScaler.
-    MaxAbsScaler : Pre-configured wrapper for sklearn's MaxAbsScaler.
+    `RobustScaler` : Pre-configured wrapper for sklearn's RobustScaler.
+    `MaxAbsScaler` : Pre-configured wrapper for sklearn's MaxAbsScaler.
 
     """
 
     _estimator_name = "scaler"
     _estimator_base_class = TransformerMixin
     _estimator_default_class: type | None = None
+
+    _parameter_constraints: dict = {
+        **SklearnTransformer._parameter_constraints,
+        "scaler": [HasMethods(["fit", "transform"]), None],
+    }
 
     def __init__(self, scaler=None, **params):
         if scaler is not None:

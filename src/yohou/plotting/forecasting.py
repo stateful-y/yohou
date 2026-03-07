@@ -141,8 +141,8 @@ def plot_forecast(
 
     See Also
     --------
-    plot_residuals : Plot residual diagnostics.
-    plot_model_comparison_bar : Grouped bar chart for scorer comparison.
+    `plot_residuals` : Plot residual diagnostics.
+    `plot_model_comparison_bar` : Grouped bar chart for scorer comparison.
     """
     # Validate inputs
     validate_plotting_data(y_test)
@@ -971,7 +971,7 @@ def plot_time_weight(
 
     See Also
     --------
-    plot_time_series : Plot basic time series.
+    `plot_time_series` : Plot basic time series.
     """
     # Validate inputs
     validate_plotting_data(df)

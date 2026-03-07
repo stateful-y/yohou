@@ -38,7 +38,7 @@ class Residual(BaseConformityScorer):
     --------
     `AbsoluteResidual` : Symmetric variant using absolute residuals.
     `GammaResidual` : Scale-dependent variant using relative errors.
-    `yohou.interval.split_conformal.SplitConformalForecaster` :
+    `SplitConformalForecaster` :
         Conformal prediction forecaster that uses conformity scorers.
 
     Examples

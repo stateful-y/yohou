@@ -111,7 +111,7 @@ def plot_time_series(
 
     See Also
     --------
-    plot_rolling_statistics : Plot rolling window statistics.
+    `plot_rolling_statistics` : Plot rolling window statistics.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -314,7 +314,7 @@ def plot_rolling_statistics(
 
     See Also
     --------
-    plot_time_series : Plot basic time series.
+    `plot_time_series` : Plot basic time series.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -540,7 +540,7 @@ def plot_boxplot(
 
     See Also
     --------
-    plot_time_series : Plot basic time series.
+    `plot_time_series` : Plot basic time series.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -737,7 +737,7 @@ def plot_missing_data(
 
     See Also
     --------
-    plot_time_series : Plot basic time series.
+    `plot_time_series` : Plot basic time series.
     """
     # Validate inputs
     validate_plotting_data(df)

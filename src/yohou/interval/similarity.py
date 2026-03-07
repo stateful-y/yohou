@@ -54,8 +54,8 @@ class DistanceSimilarity(BaseSimilarity):
 
     See Also
     --------
-    yohou.interval.base.BaseSimilarity : Abstract similarity base class.
-    yohou.interval.base.BaseIntervalForecaster :
+    `BaseSimilarity` : Abstract similarity base class.
+    `BaseIntervalForecaster` :
         Interval forecaster that can consume similarity weights.
 
     Examples

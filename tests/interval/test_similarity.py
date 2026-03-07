@@ -31,7 +31,7 @@ def train_data():
 
 
 @pytest.fixture
-def test_data():
+def prediction_data():
     """Create test data for similarity prediction."""
     time_test = pl.datetime_range(
         start=datetime(2021, 12, 16, 0, 0, 8),
@@ -56,37 +56,37 @@ class TestDistanceSimilarityBasic:
         result = sim.fit(y, y_pred)
         assert result is sim
 
-    def test_predict_returns_ndarray(self, train_data, test_data):
+    def test_predict_returns_ndarray(self, train_data, prediction_data):
         """Test that predict returns a numpy array."""
         y, y_pred = train_data
         sim = DistanceSimilarity()
         sim.fit(y, y_pred)
-        weights = sim.predict(test_data)
+        weights = sim.predict(prediction_data)
         assert isinstance(weights, np.ndarray)
 
-    def test_predict_shape(self, train_data, test_data):
+    def test_predict_shape(self, train_data, prediction_data):
         """Test that predict returns correct shape."""
         y, y_pred = train_data
         sim = DistanceSimilarity()
         sim.fit(y, y_pred)
-        weights = sim.predict(test_data)
+        weights = sim.predict(prediction_data)
         # Shape: (n_test_samples, n_train_samples)
         assert weights.shape == (2, 8)
 
-    def test_weights_are_positive(self, train_data, test_data):
+    def test_weights_are_positive(self, train_data, prediction_data):
         """Test that all weights are positive."""
         y, y_pred = train_data
         sim = DistanceSimilarity()
         sim.fit(y, y_pred)
-        weights = sim.predict(test_data)
+        weights = sim.predict(prediction_data)
         assert np.all(weights > 0)
 
-    def test_weights_are_finite(self, train_data, test_data):
+    def test_weights_are_finite(self, train_data, prediction_data):
         """Test that all weights are finite."""
         y, y_pred = train_data
         sim = DistanceSimilarity()
         sim.fit(y, y_pred)
-        weights = sim.predict(test_data)
+        weights = sim.predict(prediction_data)
         assert np.all(np.isfinite(weights))
 
     def test_default_metric(self):
@@ -104,34 +104,34 @@ class TestDistanceSimilarityMetrics:
     """Tests for different distance metrics."""
 
     @pytest.mark.parametrize("metric", ["euclidean", "cityblock", "cosine"])
-    def test_different_metrics(self, train_data, test_data, metric):
+    def test_different_metrics(self, train_data, prediction_data, metric):
         """Test that different metrics produce valid weights."""
         y, y_pred = train_data
         sim = DistanceSimilarity(metric=metric)
         sim.fit(y, y_pred)
-        weights = sim.predict(test_data)
+        weights = sim.predict(prediction_data)
         assert weights.shape == (2, 8)
         assert np.all(np.isfinite(weights))
 
-    def test_custom_metric_params(self, train_data, test_data):
+    def test_custom_metric_params(self, train_data, prediction_data):
         """Test with custom metric parameters."""
         y, y_pred = train_data
         sim = DistanceSimilarity(metric="minkowski", metric_params={"p": 3})
         sim.fit(y, y_pred)
-        weights = sim.predict(test_data)
+        weights = sim.predict(prediction_data)
         assert weights.shape == (2, 8)
 
-    def test_different_metrics_give_different_weights(self, train_data, test_data):
+    def test_different_metrics_give_different_weights(self, train_data, prediction_data):
         """Test that different metrics produce valid but potentially different weights."""
         y, y_pred = train_data
 
         sim_euclidean = DistanceSimilarity(metric="euclidean")
         sim_euclidean.fit(y, y_pred)
-        w_euclidean = sim_euclidean.predict(test_data)
+        w_euclidean = sim_euclidean.predict(prediction_data)
 
         sim_cityblock = DistanceSimilarity(metric="cityblock")
         sim_cityblock.fit(y, y_pred)
-        w_cityblock = sim_cityblock.predict(test_data)
+        w_cityblock = sim_cityblock.predict(prediction_data)
 
         # Both should produce valid weights
         assert np.all(np.isfinite(w_euclidean))
@@ -149,20 +149,20 @@ class TestDistanceSimilarityObserve:
         result = sim.observe(y[:3], y_pred[:3])
         assert result is sim
 
-    def test_observe_extends_observations(self, train_data, test_data):
+    def test_observe_extends_observations(self, train_data, prediction_data):
         """Test that observe adds new observations."""
         y, y_pred = train_data
         sim = DistanceSimilarity()
         sim.fit(y, y_pred)
 
         # Get initial weights
-        weights_before = sim.predict(test_data)
+        weights_before = sim.predict(prediction_data)
 
         # Observe new data
         sim.observe(y[:2], y_pred[:2])
 
         # Weights shape should change (more training points)
-        weights_after = sim.predict(test_data)
+        weights_after = sim.predict(prediction_data)
         assert weights_after.shape[1] == weights_before.shape[1] + 2
 
 
@@ -180,7 +180,7 @@ class TestDistanceSimilarityWithExogenous:
         sim.fit(y, y_pred, X=X)
         assert sim._X_observed.shape[1] > 1  # time + value + feature cols
 
-    def test_predict_with_X(self, train_data, test_data):
+    def test_predict_with_X(self, train_data, prediction_data):
         """Test prediction with exogenous features."""
         y, y_pred = train_data
         X_train = pl.DataFrame({
@@ -191,7 +191,7 @@ class TestDistanceSimilarityWithExogenous:
         })
         sim = DistanceSimilarity()
         sim.fit(y, y_pred, X=X_train)
-        weights = sim.predict(test_data, X=X_test)
+        weights = sim.predict(prediction_data, X=X_test)
         assert weights.shape == (2, 8)
 
 

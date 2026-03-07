@@ -695,9 +695,9 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
 
     See Also
     --------
-    check_inputs : Validates multiple DataFrames have matching intervals
-    check_continuity : Validates temporal continuity between DataFrames
-    add_interval : Add intervals to datetime values
+    `check_inputs` : Validates multiple DataFrames have matching intervals
+    `check_continuity` : Validates temporal continuity between DataFrames
+    `add_interval` : Add intervals to datetime values
 
     """
     if df is None:
@@ -778,8 +778,8 @@ def check_inputs(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
 
     See Also
     --------
-    check_interval_consistency : Validates single DataFrame intervals
-    validate_column_names : Validates column names don't misuse __ separator
+    `check_interval_consistency` : Validates single DataFrame intervals
+    `validate_column_names` : Validates column names don't misuse __ separator
 
     """
     # Validate column names first
@@ -847,9 +847,9 @@ def validate_search_data(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
 
     See Also
     --------
-    validate_forecaster_data : Data validation with forecaster state management
-    check_inputs : Validates consistent time intervals
-    check_time_column : Validates time column properties
+    `validate_forecaster_data` : Data validation with forecaster state management
+    `check_inputs` : Validates consistent time intervals
+    `check_time_column` : Validates time column properties
 
     """
     if y is None:
@@ -911,7 +911,7 @@ def validate_column_names(df: pl.DataFrame) -> None:
 
     See Also
     --------
-    check_inputs : Validates time intervals and calls this function
+    `check_inputs` : Validates time intervals and calls this function
 
     """
 
@@ -1027,8 +1027,8 @@ def check_schema(
 
     See Also
     --------
-    check_inputs : Validates time intervals
-    BaseForecaster.update : Uses this function to validate incoming data
+    `check_inputs` : Validates time intervals
+    `BaseForecaster` : Uses this function to validate incoming data
 
     Notes
     -----
@@ -1174,7 +1174,7 @@ def check_continuity(
 
     See Also
     --------
-    check_interval_consistency : Validates uniform time spacing
+    `check_interval_consistency` : Validates uniform time spacing
 
     """
     # Skip validation if expected_interval is None (e.g., single-step prediction)

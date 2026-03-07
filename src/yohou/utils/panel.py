@@ -65,7 +65,7 @@ def inspect_panel(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]:
 
     See Also
     --------
-    select_panel_columns : Filter DataFrame to panel group columns and global columns
+    `select_panel_columns` : Filter DataFrame to panel group columns and global columns
     """
     # Pattern to match <GROUP>__<SERIES> format
     # Non-greedy prefix allows group names with underscores (e.g., new_south_wales__trips)
@@ -165,8 +165,8 @@ def get_group_df(
 
     See Also
     --------
-    inspect_panel : Inspect DataFrame to identify global and local columns
-    select_panel_columns : Filter DataFrame to panel group columns and global columns
+    `inspect_panel` : Inspect DataFrame to identify global and local columns
+    `select_panel_columns` : Filter DataFrame to panel group columns and global columns
 
     Notes
     -----
@@ -280,7 +280,7 @@ def select_panel_columns(
 
     See Also
     --------
-    inspect_panel : Inspect DataFrame to identify global and local columns
+    `inspect_panel` : Inspect DataFrame to identify global and local columns
     """
     # If no local groups, return DataFrame unchanged (no filtering needed)
     if panel_group_names is None:
@@ -358,8 +358,8 @@ def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.Dat
 
     See Also
     --------
-    inspect_panel : Inspect DataFrame to identify global and local columns
-    get_group_df : Extract a single panel group from a combined DataFrame
+    `inspect_panel` : Inspect DataFrame to identify global and local columns
+    `get_group_df` : Extract a single panel group from a combined DataFrame
 
     Notes
     -----
@@ -432,8 +432,8 @@ def panel_aware_rename(col: str, fn: Callable[[str], str]) -> str:
 
     See Also
     --------
-    panel_aware_prefix : Convenience wrapper for adding a prefix.
-    panel_aware_suffix : Convenience wrapper for adding a suffix.
+    `panel_aware_prefix` : Convenience wrapper for adding a prefix.
+    `panel_aware_suffix` : Convenience wrapper for adding a suffix.
 
     """
     if "__" in col:
@@ -471,7 +471,7 @@ def panel_aware_prefix(col: str, prefix: str) -> str:
 
     See Also
     --------
-    panel_aware_rename : General-purpose panel-aware rename utility.
+    `panel_aware_rename` : General-purpose panel-aware rename utility.
 
     """
     return panel_aware_rename(col, lambda member: f"{prefix}_{member}")
@@ -506,7 +506,7 @@ def panel_aware_suffix(col: str, suffix: str) -> str:
 
     See Also
     --------
-    panel_aware_rename : General-purpose panel-aware rename utility.
+    `panel_aware_rename` : General-purpose panel-aware rename utility.
 
     """
     return panel_aware_rename(col, lambda member: f"{member}_{suffix}")

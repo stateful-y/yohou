@@ -2,6 +2,7 @@
 
 import abc
 import inspect
+import numbers
 from collections.abc import Callable
 from typing import Any, Literal
 from typing import cast as typing_cast
@@ -18,6 +19,7 @@ from sklearn.utils.parallel import Parallel, delayed
 from yohou.base.forecaster import BaseForecaster
 from yohou.base.transformer import BaseTransformer
 from yohou.utils import Tags, cast, tabularize, validate_callable_signature
+from yohou.utils._compat import HasMethods, Interval, StrOptions
 
 __all__ = ["BaseReductionForecaster"]
 
@@ -79,6 +81,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     `PointReductionForecaster` : Point forecaster using reduction.
     `IntervalReductionForecaster` : Interval forecaster using reduction.
     """
+
+    _parameter_constraints: dict = {
+        **BaseForecaster._parameter_constraints,
+        "estimator": [HasMethods(["fit", "predict"])],
+        "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
+        "n_jobs": [Interval(numbers.Integral, -1, None, closed="left"), None],
+    }
 
     def __init__(
         self,

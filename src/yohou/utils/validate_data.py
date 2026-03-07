@@ -93,6 +93,13 @@ def validate_plotting_data(
     ... })
     >>> validate_plotting_data(df_panel, panel_group_names=["sales"], columns="a")
     ['sales__a']
+
+    See Also
+    --------
+    `validate_plotting_params` : Validate common plotting parameters.
+    `get_numeric_columns` : Resolve numeric columns from a DataFrame.
+    `inspect_panel` : Detect panel group structure.
+
     """
     if not isinstance(df, pl.DataFrame):
         msg = f"Expected pl.DataFrame, got {type(df).__name__}"
@@ -177,6 +184,11 @@ def validate_plotting_params(
     >>> from yohou.utils.validate_data import validate_plotting_params
     >>> validate_plotting_params(kind="line", valid_kinds={"line", "bar"})
     >>> validate_plotting_params(facet_n_cols=2, n_bins=10)
+
+    See Also
+    --------
+    `validate_plotting_data` : Validate DataFrame structure for plotting.
+
     """
     if kind is not None and valid_kinds is not None and kind not in valid_kinds:
         msg = f"kind must be one of {sorted(valid_kinds)!r}, got {kind!r}"
@@ -215,6 +227,11 @@ def validate_time_weight(
     ------
     ValueError
         If time_weight validation fails.
+
+    See Also
+    --------
+    `validate_forecaster_data` : Validate forecaster input data.
+    `validate_scorer_data` : Validate scorer input data.
 
     """
     if time_weight is None:
@@ -373,6 +390,11 @@ def validate_scorer_data(
     - Performs basic validation: None checks, time column existence, panel consistency
     - Time alignment preserves common time points only (inner join)
     - Time values are extracted before validation for point/interval scorers
+
+    See Also
+    --------
+    `BaseScorer` : Base class for all scorers.
+    `validate_time_weight` : Validate time weighting parameters.
 
     """
     # Runtime validation: enforce parameter requirements for each context
@@ -556,7 +578,39 @@ def validate_splitter_data(splitter: BaseSplitter, y: None, X: pl.DataFrame | No
 def validate_splitter_data(
     splitter: BaseSplitter, y: pl.DataFrame | None, X: pl.DataFrame | None
 ) -> tuple[pl.DataFrame | None, pl.DataFrame | None]:
-    """Validate data for splitters."""
+    """Validate and prepare input data for time series splitters.
+
+    Checks that ``y`` and ``X`` have valid ``"time"`` columns, consistent
+    panel structure, and matching panel groups.  When ``y`` is provided the
+    time interval is inferred and stored on the splitter as ``interval_``.
+
+    Parameters
+    ----------
+    splitter : BaseSplitter
+        The splitter instance.  ``interval_`` will be set on it when
+        ``y`` is not ``None``.
+    y : pl.DataFrame or None
+        Target time series.  When ``None``, only ``X`` is validated.
+    X : pl.DataFrame or None
+        Exogenous features.  When ``None``, only ``y`` is validated.
+
+    Returns
+    -------
+    tuple of (pl.DataFrame or None, pl.DataFrame or None)
+        Validated ``(y, X)`` pair.
+
+    Raises
+    ------
+    ValueError
+        If time columns are missing, panel groups are inconsistent, or
+        input validation fails.
+
+    See Also
+    --------
+    `BaseSplitter` : Base class for time series CV splitters.
+    `check_inputs` : Low-level input validation helper.
+
+    """
     if y is not None:
         check_time_column(y)
         check_panel_internal_consistency(y, "y")
@@ -636,7 +690,48 @@ def validate_forecaster_data(
     reset: bool = True,
     panel_group_names: list[str] | None = None,
 ) -> tuple[pl.DataFrame | None, pl.DataFrame | None, list[str] | None]:
-    """Validate data for forecasters."""
+    """Validate and prepare input data for forecasters.
+
+    Handles two contexts: **fit** (``reset=True``) where time interval is
+    inferred and stored on the forecaster, and **predict/update**
+    (``reset=False``) where schemas and panel groups are validated
+    against the fitted state.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        The forecaster instance.  ``interval_`` and schema attributes are
+        set during fit context.
+    y : pl.DataFrame or None
+        Target time series with ``"time"`` column.
+    X : pl.DataFrame or None, default=None
+        Exogenous features with ``"time"`` column.
+    reset : bool, default=True
+        If ``True``, validate in fit context (infer interval, set schemas).
+        If ``False``, validate in predict/update context (check schemas).
+    panel_group_names : list of str or None, default=None
+        Panel groups to validate. Normalized against the fitted groups
+        when ``reset=False``.
+
+    Returns
+    -------
+    tuple of (pl.DataFrame or None, pl.DataFrame or None, list of str or None)
+        Validated ``(y, X, panel_group_names)``.  ``panel_group_names`` is
+        ``None`` in fit context.
+
+    Raises
+    ------
+    ValueError
+        If time columns are missing, schema does not match fitted state,
+        or panel groups are inconsistent.
+
+    See Also
+    --------
+    `BaseForecaster` : Base class for all forecasters.
+    `validate_time_weight` : Validate time weighting parameters.
+    `check_inputs` : Low-level input validation helper.
+
+    """
     if reset:
         # Fit context: validate and set interval
         # Type narrowing: check_inputs requires non-None y
@@ -814,6 +909,11 @@ def validate_transformer_data(
     -------
     pl.DataFrame or tuple
         Validated data.
+
+    See Also
+    --------
+    `BaseTransformer` : Base class for all transformers.
+    `check_inputs` : Low-level input validation helper.
 
     """
     if reset:

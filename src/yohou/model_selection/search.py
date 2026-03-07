@@ -1453,9 +1453,9 @@ class GridSearchCV(BaseSearchCV):
     --------
     `RandomizedSearchCV` : Randomized search over parameter distributions.
     `ExpandingWindowSplitter` : Cross-validation with expanding training windows.
-    SlidingWindowSplitter : Cross-validation with sliding fixed-size windows.
-    MeanAbsoluteError : Mean absolute error scorer.
-    RootMeanSquaredError : Root mean squared error scorer.
+    `SlidingWindowSplitter` : Cross-validation with sliding fixed-size windows.
+    `MeanAbsoluteError` : Mean absolute error scorer.
+    `RootMeanSquaredError` : Root mean squared error scorer.
 
     Notes
     -----
@@ -1859,9 +1859,9 @@ class RandomizedSearchCV(BaseSearchCV):
     --------
     `GridSearchCV` : Exhaustive search over specified parameter values.
     `ExpandingWindowSplitter` : Cross-validation with expanding training windows.
-    SlidingWindowSplitter : Cross-validation with sliding fixed-size windows.
-    MeanAbsoluteError : Mean absolute error scorer.
-    RootMeanSquaredError : Root mean squared error scorer.
+    `SlidingWindowSplitter` : Cross-validation with sliding fixed-size windows.
+    `MeanAbsoluteError` : Mean absolute error scorer.
+    `RootMeanSquaredError` : Root mean squared error scorer.
 
     Notes
     -----

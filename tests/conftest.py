@@ -738,11 +738,11 @@ def forecaster_registry():
     from sklearn.linear_model import Ridge
 
     from yohou.interval import SplitConformalForecaster
-    from yohou.point import NaiveForecaster, PointReductionForecaster
+    from yohou.point import PointReductionForecaster, SeasonalNaive
 
     return {
-        "NaiveForecaster": {
-            "forecaster": NaiveForecaster(seasonality=1),
+        "SeasonalNaive": {
+            "forecaster": SeasonalNaive(seasonality=1),
             "expected_failed_checks": [],
         },
         "PointReductionForecaster": {
@@ -751,7 +751,7 @@ def forecaster_registry():
         },
         "SplitConformalForecaster": {
             "forecaster": SplitConformalForecaster(
-                point_forecaster=NaiveForecaster(seasonality=1),
+                point_forecaster=SeasonalNaive(seasonality=1),
                 calibration_size=0.2,
             ),
             "expected_failed_checks": ["check_rewind_propagates_to_transformers"],
