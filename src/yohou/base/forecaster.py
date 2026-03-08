@@ -658,27 +658,33 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 transformer = target_transformers[panel_group_name]
                 assert transformer is not None
 
-                # Extract the group's data
+                # Remove "observed_time" before extracting group data
+                observed_time = y_pred_step.select(cs.by_name("observed_time")).head(1)
+
+                # Extract the group's columns (in transformed space, with prefix)
                 group_cols = [c for c in y_pred_step.columns if c.startswith(f"{panel_group_name}__")]
-                y_pred_step_group = y_pred_step.select(
-                    cs.by_name("observed_time") | cs.by_name("time") | cs.by_name(group_cols)
-                )
+                y_pred_step_group = y_pred_step.select(cs.by_name("time") | cs.by_name(group_cols))
 
-                # Remove "observed_time" before inverse_transform as transformers don't handle it
-                observed_time = y_pred_step_group.select(cs.by_name("observed_time"))
-                y_pred_step_group_no_obs = y_pred_step_group.select(~cs.by_name("observed_time"))
+                # Strip group prefix so transformer sees local column names
+                prefix = f"{panel_group_name}__"
+                rename_strip = {c: c[len(prefix) :] for c in group_cols}
+                y_pred_step_group = y_pred_step_group.rename(rename_strip)
 
-                # Inverse transform
+                # Inverse transform (works with unprefixed/local columns)
                 y_observed_local = y_observed_dict[panel_group_name]
                 y_pred_step_group_inv = transformer.inverse_transform(  # type: ignore[union-attr]
-                    X_t=y_pred_step_group_no_obs,
+                    X_t=y_pred_step_group,
                     X_p=y_observed_local,
                 )
 
                 # Cast to restore original dtypes
-                # For panel data, need to create prefixed schema for casting
-                local_y_schema = {f"{panel_group_name}__{col}": dtype for col, dtype in self.local_y_schema_.items()}
-                y_pred_step_group_inv_cast = cast(y_pred_step_group_inv.select(~cs.by_name("time")), local_y_schema)
+                y_pred_step_group_inv_cast = cast(
+                    y_pred_step_group_inv.select(~cs.by_name("time")), self.local_y_schema_
+                )
+
+                # Rename to add prefix back
+                rename_map = {col: f"{panel_group_name}__{col}" for col in y_pred_step_group_inv_cast.columns}
+                y_pred_step_group_inv_cast = y_pred_step_group_inv_cast.rename(rename_map)
 
                 # Reconstruct with time column
                 y_pred_step_group_inv = pl.concat(

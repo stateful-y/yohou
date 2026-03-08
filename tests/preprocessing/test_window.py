@@ -542,3 +542,96 @@ class TestWindowTransformersIntegration:
             X_rst["value_mean"].to_numpy(),
             rtol=1e-10,
         )
+
+
+class TestExponentialMovingAverage:
+    """Tests for ExponentialMovingAverage transformer."""
+
+    def test_fit_returns_self(self, window_data_factory):
+        """Fit returns the transformer instance."""
+        from yohou.preprocessing.window import ExponentialMovingAverage
+
+        X = window_data_factory(length=20)
+        ema = ExponentialMovingAverage(alpha=0.3)
+        result = ema.fit(X)
+        assert result is ema
+
+    def test_transform_produces_ewma_columns(self, window_data_factory):
+        """Transform output has _ewma suffix on feature columns."""
+        from yohou.preprocessing.window import ExponentialMovingAverage
+
+        X = window_data_factory(length=20)
+        ema = ExponentialMovingAverage(alpha=0.3)
+        ema.fit(X)
+        X_t = ema.transform(X)
+        assert "time" in X_t.columns
+        non_time = [c for c in X_t.columns if c != "time"]
+        assert all(c.endswith("_ewma") for c in non_time)
+
+    def test_transform_preserves_row_count(self, window_data_factory):
+        """Transform output has same number of rows as input."""
+        from yohou.preprocessing.window import ExponentialMovingAverage
+
+        X = window_data_factory(length=30)
+        ema = ExponentialMovingAverage(alpha=0.5)
+        ema.fit(X)
+        X_t = ema.transform(X)
+        assert len(X_t) == len(X)
+
+    def test_get_feature_names_out(self, window_data_factory):
+        """Feature names output have _ewma suffix."""
+        from yohou.preprocessing.window import ExponentialMovingAverage
+
+        X = window_data_factory(length=20)
+        ema = ExponentialMovingAverage(alpha=0.3)
+        ema.fit(X)
+        names = ema.get_feature_names_out()
+        assert all(n.endswith("_ewma") for n in names)
+
+    def test_alpha_affects_smoothing(self, window_data_factory):
+        """Higher alpha gives less smoothing (closer to raw values)."""
+        from yohou.preprocessing.window import ExponentialMovingAverage
+
+        X = window_data_factory(length=30)
+
+        ema_low = ExponentialMovingAverage(alpha=0.1)
+        ema_low.fit(X)
+        X_low = ema_low.transform(X)
+
+        ema_high = ExponentialMovingAverage(alpha=0.9)
+        ema_high.fit(X)
+        X_high = ema_high.transform(X)
+
+        ewma_col_low = [c for c in X_low.columns if c.endswith("_ewma")][0]
+        ewma_col_high = [c for c in X_high.columns if c.endswith("_ewma")][0]
+
+        raw_col = [c for c in X.columns if c != "time"][0]
+        raw_vals = X[raw_col].to_numpy()
+
+        low_vals = X_low[ewma_col_low].to_numpy()
+        high_vals = X_high[ewma_col_high].to_numpy()
+
+        low_diff = np.abs(raw_vals - low_vals).mean()
+        high_diff = np.abs(raw_vals - high_vals).mean()
+        assert low_diff > high_diff
+
+    def test_adjust_parameter(self, window_data_factory):
+        """adjust=False uses recursive EWM instead of bias-corrected."""
+        from yohou.preprocessing.window import ExponentialMovingAverage
+
+        X = window_data_factory(length=20)
+        ema = ExponentialMovingAverage(alpha=0.3, adjust=False)
+        ema.fit(X)
+        X_t = ema.transform(X)
+        assert len(X_t) == len(X)
+
+    def test_multiple_columns(self, time_series_factory):
+        """Transform handles multiple numeric columns."""
+        from yohou.preprocessing.window import ExponentialMovingAverage
+
+        X = time_series_factory(length=20, n_components=3)
+        ema = ExponentialMovingAverage(alpha=0.3)
+        ema.fit(X)
+        X_t = ema.transform(X)
+        ewma_cols = [c for c in X_t.columns if c.endswith("_ewma")]
+        assert len(ewma_cols) == 3

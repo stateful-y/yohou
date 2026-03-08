@@ -116,6 +116,18 @@ class TestSystematicChecks:
                 {"search_type": "grid", "refit": True, "multimetric": False, "interval_scoring": True},
                 ["check_search_observe_delegates", "check_search_rewind_delegates"],
             ),
+            # GridSearchCV with list-of-dicts param_grid (multiple grid search spaces)
+            (
+                GridSearchCV,
+                {
+                    "param_grid": [{"seasonality": [2, 4]}, {"seasonality": [7]}],
+                    "scoring": MeanAbsoluteError(),
+                    "cv": 2,
+                    "refit": True,
+                },
+                {"search_type": "grid", "refit": True, "multimetric": False},
+                [],
+            ),
         ],
     )
     @pytest.mark.slow
@@ -439,6 +451,103 @@ class TestScorerDirectionCorrectness:
         assert search.best_index_ == np.argmax(mean_scores)
 
 
+class TestSearchRefitFalse:
+    """Tests for search CV behavior with refit=False."""
+
+    def test_refit_false_no_best_forecaster(self, y_X_factory):
+        """refit=False means best_forecaster_ is not available."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+            refit=False,
+        )
+        search.fit(y[:80], X=None, forecasting_horizon=3)
+        assert not hasattr(search, "best_forecaster_")
+
+    def test_refit_false_cv_results_available(self, y_X_factory):
+        """refit=False still populates cv_results_."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+            refit=False,
+        )
+        search.fit(y[:80], X=None, forecasting_horizon=3)
+        assert "mean_test_score" in search.cv_results_
+
+    def test_refit_false_predict_raises(self, y_X_factory):
+        """refit=False makes predict() raise AttributeError."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+            refit=False,
+        )
+        search.fit(y[:80], X=None, forecasting_horizon=3)
+        with pytest.raises(AttributeError):
+            search.predict(forecasting_horizon=3)
+
+
+class TestSearchPropertyValidation:
+    """Tests for search CV properties that require fitted state."""
+
+    def test_tags_before_fit(self):
+        """__sklearn_tags__() works before fit (uses base forecaster)."""
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        tags = search.__sklearn_tags__()
+        assert tags.forecaster_tags is not None
+
+    def test_scoring_none_raises(self, y_X_factory):
+        """scoring=None raises ValueError during fit."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring=None,
+            cv=2,
+        )
+        with pytest.raises(ValueError, match="scoring"):
+            search.fit(y[:80], X=None, forecasting_horizon=3)
+
+    def test_callable_refit_selects_index(self, y_X_factory):
+        """Callable refit selects custom best index."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5, 10]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+            refit=lambda results: 0,
+        )
+        search.fit(y[:80], X=None, forecasting_horizon=3)
+        assert search.best_index_ == 0
+
+    def test_invalid_multimetric_refit_raises(self, y_X_factory):
+        """Invalid refit key for multimetric raises ValueError."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring={"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()},
+            cv=2,
+            refit="nonexistent",
+        )
+        with pytest.raises(ValueError, match="refit"):
+            search.fit(y[:80], X=None, forecasting_horizon=3)
+
+
 class TestBestParamsConsistency:
     """Tests for best_params_, best_index_, and best_forecaster_ consistency."""
 
@@ -691,3 +800,187 @@ class TestIncompatibleForecasterScorer:
         )
         search.fit(y_train, X=None, forecasting_horizon=3)
         assert hasattr(search, "best_params_")
+
+
+class TestSearchRefitCallable:
+    """Tests for refit as callable."""
+
+    def test_refit_callable_selects_best(self, y_X_factory):
+        """Callable refit selects the best parameter set."""
+        from yohou.metrics import MeanAbsoluteError
+        from yohou.model_selection import GridSearchCV
+        from yohou.point import SeasonalNaive
+
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 3, 7]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+            refit=lambda cv_results: 0,
+        )
+        search.fit(y[:50], forecasting_horizon=3)
+        assert hasattr(search, "best_forecaster_")
+        y_pred = search.predict()
+        assert len(y_pred) == 3
+
+
+class TestSearchMultiMetricDict:
+    """Tests for multi-metric scoring with dict."""
+
+    def test_multi_metric_scoring_dict(self, y_X_factory):
+        """Dict scoring with multiple metrics stores all results."""
+        from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
+        from yohou.model_selection import GridSearchCV
+        from yohou.point import SeasonalNaive
+
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 3]},
+            scoring={"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()},
+            cv=2,
+            refit="mae",
+        )
+        search.fit(y[:50], forecasting_horizon=3)
+        assert hasattr(search, "cv_results_")
+        assert "mean_test_mae" in search.cv_results_
+        assert "mean_test_rmse" in search.cv_results_
+
+
+class TestSearchDelegatedProperties:
+    """Tests for delegated properties from best_forecaster_."""
+
+    def test_interval_property_delegation(self, y_X_factory):
+        """interval_ property is delegated from best_forecaster_."""
+        from yohou.metrics import MeanAbsoluteError
+        from yohou.model_selection import GridSearchCV
+        from yohou.point import SeasonalNaive
+
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 3]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(y[:50], forecasting_horizon=3)
+        interval = search.interval_
+        assert interval is not None
+
+    def test_n_features_in_property_delegation(self, y_X_factory):
+        """n_features_in_ property is delegated from best_forecaster_."""
+        y, X = y_X_factory(length=60, n_targets=1, n_features=2)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 3]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(y[:50], X[:50], forecasting_horizon=3)
+        assert search.n_features_in_ == search.best_forecaster_.n_features_in_
+
+    def test_feature_names_in_property_delegation(self, y_X_factory):
+        """feature_names_in_ property is delegated from best_forecaster_."""
+        y, X = y_X_factory(length=60, n_targets=1, n_features=2)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 3]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(y[:50], X[:50], forecasting_horizon=3)
+        assert search.feature_names_in_ == search.best_forecaster_.feature_names_in_
+
+
+class TestSearchSelectBestIndex:
+    """Tests for _select_best_index callable error paths."""
+
+    def test_callable_refit_non_integer_raises_type_error(self, y_X_factory):
+        """Callable refit returning non-integer raises TypeError."""
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 3]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+            refit=lambda cv_results: "not_an_int",
+        )
+        with pytest.raises(TypeError, match="best_index_ returned is not an integer"):
+            search.fit(y[:50], forecasting_horizon=3)
+
+    def test_callable_refit_out_of_range_raises_index_error(self, y_X_factory):
+        """Callable refit returning out-of-range index raises IndexError."""
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 3]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+            refit=lambda cv_results: 9999,
+        )
+        with pytest.raises(IndexError, match="best_index_ index out of range"):
+            search.fit(y[:50], forecasting_horizon=3)
+
+
+class TestSearchGetScorersValidation:
+    """Tests for _get_scorers validation branches."""
+
+    def test_scoring_none_raises(self):
+        """Scoring=None raises ValueError."""
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1]},
+            scoring=None,
+            cv=2,
+        )
+        with pytest.raises(ValueError, match="scoring parameter cannot be None"):
+            search._get_scorers()
+
+    def test_scoring_invalid_type_raises(self):
+        """Scoring with invalid type raises ValueError."""
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1]},
+            scoring="not_a_scorer",
+            cv=2,
+        )
+        with pytest.raises(ValueError, match="scoring must be an instance of BaseScorer"):
+            search._get_scorers()
+
+    def test_check_refit_for_multimetric_invalid_refit(self):
+        """Invalid refit value with multimetric scoring raises ValueError."""
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1]},
+            scoring={"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()},
+            cv=2,
+            refit=True,
+        )
+        with pytest.raises(ValueError, match="For multi-metric scoring"):
+            search._check_refit_for_multimetric({"mae": 1.0, "rmse": 2.0})
+
+
+class TestSystematicChecksPanel:
+    """Systematic search CV checks with panel data, covering panel prediction paths."""
+
+    @pytest.mark.slow
+    def test_grid_search_panel_systematic_checks(self, y_X_panel_factory):
+        """Run systematic checks on GridSearchCV fitted on panel data."""
+        y_panel, _ = y_X_panel_factory(n_groups=2, length=80, n_targets=1, n_features=0, seed=42)
+        y_train = y_panel[:60]
+        y_test = y_panel[60:]
+        search_cv = clone(
+            GridSearchCV(
+                forecaster=SeasonalNaive(),
+                param_grid={"seasonality": [1, 5]},
+                scoring=MeanAbsoluteError(),
+                cv=2,
+                refit=True,
+            )
+        )
+        search_cv.fit(y_train, forecasting_horizon=3)
+        run_checks(
+            search_cv,
+            _yield_yohou_search_checks(search_cv, y_train, None, y_test, None),
+        )

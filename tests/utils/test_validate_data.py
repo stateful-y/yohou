@@ -11,6 +11,7 @@ from yohou.metrics import MeanAbsoluteError
 from yohou.model_selection import ExpandingWindowSplitter
 from yohou.point import SeasonalNaive
 from yohou.preprocessing import LagTransformer
+from yohou.utils.validate_data import validate_scorer_data
 
 
 @pytest.fixture
@@ -495,6 +496,21 @@ class TestValidateScorerData:
         score = scorer.score(y_true, y_pred)
         assert isinstance(score, float | int)
 
+    def test_validate_scorer_y_true_none_at_score_time_raises(self):
+        """validate_scorer_data raises ValueError when y_true is None in score mode."""
+        scorer = MeanAbsoluteError()
+        y_pred = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2020, 1, 1),
+                end=datetime(2020, 1, 3),
+                interval="1d",
+                eager=True,
+            ),
+            "val": [1.0, 2.0, 3.0],
+        })
+        with pytest.raises(ValueError, match="cannot be None"):
+            validate_scorer_data(scorer, y_true=None, y_pred=y_pred, reset=False)
+
 
 class TestValidateSplitterData:
     """Tests for validate_splitter_data."""
@@ -775,3 +791,373 @@ class TestValidateTimeWeight:
 
         with pytest.raises(ValueError, match="must have either"):
             validate_time_weight(tw, y_global, panel_group_names=["store_1"])
+
+
+class TestValidateScorerDataInverse:
+    """Tests for validate_scorer_data with inverse=True."""
+
+    def test_inverse_y_pred_none_raises(self):
+        """inverse=True with y_pred=None raises ValueError."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(
+            pl.DataFrame({
+                "time": [datetime(2024, 1, i) for i in range(1, 4)],
+                "value": [1.0, 2.0, 3.0],
+            })
+        )
+
+        with pytest.raises(ValueError):
+            validate_scorer_data(scorer, y_pred=None, inverse=True)
+
+    def test_inverse_scores_none_raises(self):
+        """inverse=True with scores=None raises ValueError."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        scorer.fit(pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]}))
+
+        y_pred = pl.DataFrame({"time": times, "value": [1.1, 2.1, 3.1]})
+        with pytest.raises(ValueError):
+            validate_scorer_data(scorer, y_pred=y_pred, scores=None, inverse=True)
+
+    def test_inverse_valid_data_passes(self):
+        """inverse=True with matching y_pred and scores passes."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        scorer.fit(pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]}))
+
+        y_pred = pl.DataFrame({"time": times, "value": [1.1, 2.1, 3.1]})
+        scores = pl.DataFrame({"time": times, "value": [0.1, 0.1, 0.1]})
+        result = validate_scorer_data(scorer, y_pred=y_pred, scores=scores, inverse=True)
+        assert result is not None
+
+
+class TestValidateTransformerDataInverse:
+    """Tests for validate_transformer_data with inverse=True."""
+
+    def test_inverse_no_X_t_no_X_raises(self):
+        """inverse=True without X_t or X raises ValueError."""
+        from yohou.utils.validate_data import validate_transformer_data
+
+        t = LagTransformer(lag=1)
+        times = [datetime(2024, 1, i) for i in range(1, 11)]
+        X = pl.DataFrame({"time": times, "val": range(10)})
+        t.fit(X)
+
+        with pytest.raises(ValueError):
+            validate_transformer_data(t, X=None, reset=False, inverse=True, X_t=None)
+
+    def test_inverse_X_t_used_as_primary(self):
+        """inverse=True with X_t uses it as the primary data."""
+        from yohou.utils.validate_data import validate_transformer_data
+
+        t = LagTransformer(lag=1)
+        times = [datetime(2024, 1, i) for i in range(1, 11)]
+        X = pl.DataFrame({"time": times, "val": list(range(10))})
+        t.fit(X)
+
+        X_t = pl.DataFrame({
+            "time": times[1:],
+            "val": list(range(1, 10)),
+        })
+        X_p = X.head(1)
+        result = validate_transformer_data(
+            t,
+            X=X_t,
+            reset=False,
+            inverse=True,
+            X_t=X_t,
+            X_p=X_p,
+            observation_horizon=1,
+        )
+        assert result is not None
+
+
+class TestValidateScorerDataEdgeCases:
+    """Edge case tests for validate_scorer_data."""
+
+    def test_y_true_none_raises(self):
+        """y_true=None raises ValueError."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        scorer.fit(pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]}))
+
+        y_pred = pl.DataFrame({"time": times, "value": [1.1, 2.1, 3.1]})
+        with pytest.raises(ValueError):
+            validate_scorer_data(scorer, y_true=None, y_pred=y_pred)
+
+    def test_y_pred_none_raises(self):
+        """y_pred=None raises ValueError."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        y_true = pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]})
+        scorer.fit(y_true)
+
+        with pytest.raises(ValueError):
+            validate_scorer_data(scorer, y_true=y_true, y_pred=None)
+
+
+class TestValidateScorerDataPanelEdgeCases:
+    """Tests for scorer data validation edge cases."""
+
+    def test_panel_group_mismatch_raises(self):
+        """Mismatched panel groups between y_true and y_pred raises ValueError."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        y_true = pl.DataFrame({
+            "time": times,
+            "g1__val": [1.0, 2.0, 3.0],
+            "g2__val": [4.0, 5.0, 6.0],
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "g1__val": [1.1, 2.1, 3.1],
+            "g3__val": [4.1, 5.1, 6.1],
+        })
+        scorer.fit(y_true)
+        with pytest.raises(ValueError):
+            validate_scorer_data(scorer, y_true=y_true, y_pred=y_pred)
+
+    def test_interval_missing_lower_upper_raises(self):
+        """Interval scorer missing lower/upper columns raises ValueError."""
+        from yohou.metrics import EmpiricalCoverage
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({"time": times, "val": [1.0, 2.0, 3.0]})
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "time": times,
+            "val": [1.1, 2.1, 3.1],
+        })
+        scorer = EmpiricalCoverage()
+        scorer.fit(y_true)
+        with pytest.raises(ValueError):
+            validate_scorer_data(scorer, y_true=y_true, y_pred=y_pred)
+
+
+class TestValidateTransformerDataEdgeCases:
+    """Tests for transformer data validation edge cases."""
+
+    def test_fit_with_none_raises(self):
+        """Fitting transformer with X=None raises ValueError."""
+        from yohou.utils.validate_data import validate_transformer_data
+
+        transformer = LagTransformer(lag=[1])
+        with pytest.raises(ValueError):
+            validate_transformer_data(transformer, X=None, reset=True)
+
+    def test_transform_with_none_raises(self):
+        """Transforming with X=None raises ValueError."""
+        from yohou.utils.validate_data import validate_transformer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 11)]
+        X = pl.DataFrame({"time": times, "val": range(10)})
+        transformer = LagTransformer(lag=[1])
+        transformer.fit(X)
+
+        with pytest.raises(ValueError):
+            validate_transformer_data(transformer, X=None, reset=False)
+
+
+class TestValidateTimeWeightEdgeCases:
+    """Tests for validate_time_weight edge cases."""
+
+    def test_invalid_type_raises(self):
+        """Non-callable non-DataFrame time_weight raises ValueError."""
+        from yohou.utils.validate_data import validate_time_weight
+
+        y = pl.DataFrame({
+            "time": [datetime(2024, 1, 1), datetime(2024, 1, 2)],
+            "val": [1.0, 2.0],
+        })
+        with pytest.raises(ValueError, match="must be callable"):
+            validate_time_weight(42, y)
+
+    def test_null_weights_raises(self):
+        """Weight column with null values raises ValueError."""
+        from yohou.utils.validate_data import validate_time_weight
+
+        y = pl.DataFrame({
+            "time": [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 1, 3)],
+            "val": [1.0, 2.0, 3.0],
+        })
+        tw = pl.DataFrame({
+            "time": [datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 1, 3)],
+            "weight": [1.0, None, 1.0],
+        })
+        with pytest.raises(ValueError, match="contains NaN"):
+            validate_time_weight(tw, y)
+
+
+class TestValidateScorerDataResetNone:
+    """Tests for validate_scorer_data reset=True with y_true=None."""
+
+    def test_reset_y_true_none_raises(self):
+        """reset=True with y_true=None raises ValueError about y_train."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        scorer = MeanAbsoluteError()
+        with pytest.raises(ValueError, match="y_train"):
+            validate_scorer_data(scorer, y_true=None, reset=True)
+
+
+class TestValidateScorerDataInverseObservedTime:
+    """Tests for inverse scorer path with observed_time in y_pred."""
+
+    def test_inverse_observed_time_dropped(self):
+        """observed_time column in y_pred is dropped during inverse scoring."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        scorer.fit(pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]}))
+
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "time": times,
+            "value": [1.1, 2.1, 3.1],
+        })
+        scores = pl.DataFrame({"time": times, "value": [0.1, 0.1, 0.1]})
+        result_pred, result_scores, time_vals = validate_scorer_data(
+            scorer,
+            y_pred=y_pred,
+            scores=scores,
+            inverse=True,
+        )
+        assert "observed_time" not in result_pred.columns
+        assert "time" not in result_pred.columns
+        assert len(time_vals) == 3
+
+    def test_inverse_column_mismatch_raises(self):
+        """Mismatched columns between y_pred and scores raises ValueError."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        scorer.fit(pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]}))
+
+        y_pred = pl.DataFrame({"time": times, "value": [1.1, 2.1, 3.1]})
+        scores = pl.DataFrame({"time": times, "other_col": [0.1, 0.1, 0.1]})
+        with pytest.raises(ValueError, match="Column mismatch"):
+            validate_scorer_data(scorer, y_pred=y_pred, scores=scores, inverse=True)
+
+
+class TestValidateScorerDataPointStripExtra:
+    """Tests for point scorer stripping extra interval columns."""
+
+    def test_extra_interval_columns_stripped(self):
+        """Point scorer strips _lower_/_upper_ columns from y_pred."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        y_true = pl.DataFrame({"time": times, "val": [1.0, 2.0, 3.0]})
+        scorer.fit(y_true)
+
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "time": times,
+            "val": [1.1, 2.1, 3.1],
+            "val_lower_0.9": [0.1, 0.1, 0.1],
+            "val_upper_0.9": [2.1, 3.1, 4.1],
+        })
+        _, result_pred, _ = validate_scorer_data(scorer, y_true=y_true, y_pred=y_pred)
+        assert "val_lower_0.9" not in result_pred.columns
+        assert "val_upper_0.9" not in result_pred.columns
+        assert "val" in result_pred.columns
+
+
+class TestValidateSplitterDataBothNonNone:
+    """Tests for validate_splitter_data with both y and X provided."""
+
+    def test_both_y_and_x_validated(self):
+        """Both y and X are validated and panel groups checked."""
+        from yohou.utils.validate_data import validate_splitter_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 11)]
+        y = pl.DataFrame({"time": times, "target": range(10)})
+        X = pl.DataFrame({"time": times, "feature": range(10, 20)})
+        splitter = ExpandingWindowSplitter(n_splits=3, test_size=2)
+        result_y, result_X = validate_splitter_data(splitter, y, X)
+        assert result_y is not None
+        assert result_X is not None
+
+
+class TestValidateTransformerInversePaths:
+    """Tests for inverse transform validation paths."""
+
+    def test_inverse_stateful_no_xp_raises(self):
+        """Stateful inverse transform without X_p raises ValueError."""
+        from yohou.utils.validate_data import validate_transformer_data
+
+        t = LagTransformer(lag=3)
+        times = [datetime(2024, 1, i) for i in range(1, 11)]
+        X = pl.DataFrame({"time": times, "val": list(range(10))})
+        t.fit(X)
+
+        X_t = pl.DataFrame({"time": times[3:], "val": list(range(3, 10))})
+        with pytest.raises(ValueError, match="X_p cannot be None"):
+            validate_transformer_data(
+                t,
+                X=X_t,
+                reset=False,
+                inverse=True,
+                X_t=X_t,
+                X_p=None,
+                stateful=True,
+            )
+
+    def test_inverse_observation_horizon_no_xp_raises(self):
+        """Inverse transform with observation_horizon > 0 and no X_p raises ValueError."""
+        from yohou.utils.validate_data import validate_transformer_data
+
+        t = LagTransformer(lag=3)
+        times = [datetime(2024, 1, i) for i in range(1, 11)]
+        X = pl.DataFrame({"time": times, "val": list(range(10))})
+        t.fit(X)
+
+        X_t = pl.DataFrame({"time": times[3:], "val": list(range(3, 10))})
+        with pytest.raises(ValueError, match="X_p cannot be None"):
+            validate_transformer_data(
+                t,
+                X=X_t,
+                reset=False,
+                inverse=True,
+                X_t=X_t,
+                X_p=None,
+                observation_horizon=3,
+            )
+
+    def test_inverse_with_xp_and_xt_passes(self):
+        """Inverse transform with valid X_t and X_p passes."""
+        from yohou.utils.validate_data import validate_transformer_data
+
+        t = LagTransformer(lag=3)
+        times = [datetime(2024, 1, i) for i in range(1, 21)]
+        X = pl.DataFrame({"time": times, "val": list(range(20))})
+        t.fit(X)
+
+        X_t = pl.DataFrame({"time": times[3:], "val": list(range(3, 20))})
+        X_p = pl.DataFrame({"time": times[:5], "val": list(range(5))})
+        result = validate_transformer_data(
+            t,
+            X=X_t,
+            reset=False,
+            inverse=True,
+            X_t=X_t,
+            X_p=X_p,
+            observation_horizon=3,
+        )
+        assert result is not None

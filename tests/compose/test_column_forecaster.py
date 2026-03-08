@@ -14,7 +14,7 @@ from sklearn.utils.metadata_routing import MetadataRouter
 
 from conftest import run_checks
 from yohou.compose import ColumnForecaster
-from yohou.point import SeasonalNaive
+from yohou.point import PointReductionForecaster, SeasonalNaive
 from yohou.stationarity import PolynomialTrendForecaster
 from yohou.testing import _yield_yohou_forecaster_checks
 
@@ -1133,3 +1133,224 @@ class TestEdgeCases:
         assert len(y_pred) == 5
         for i in range(10):
             assert f"col_{i}" in y_pred.columns
+
+
+class TestColumnForecasterIntervalObservePredict:
+    """Tests for observe_predict_interval and remainder interval prediction."""
+
+    @pytest.fixture
+    def interval_forecaster_and_data(self):
+        """Fitted interval ColumnForecaster and data for observe_predict_interval."""
+        from yohou.interval import SplitConformalForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=99),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "value": [float(i) for i in range(100)],
+            "extra": [float(i * 2) for i in range(100)],
+        })
+
+        forecaster = ColumnForecaster([
+            (
+                "interval_model",
+                SplitConformalForecaster(
+                    point_forecaster=SeasonalNaive(seasonality=1),
+                    calibration_size=20,
+                ),
+                "value",
+            ),
+            (
+                "interval_extra",
+                SplitConformalForecaster(
+                    point_forecaster=SeasonalNaive(seasonality=1),
+                    calibration_size=20,
+                ),
+                "extra",
+            ),
+        ])
+        forecaster.fit(y[:70], forecasting_horizon=5)
+        return forecaster, y
+
+    def test_observe_predict_interval(self, interval_forecaster_and_data):
+        """observe_predict_interval alternates observe and predict."""
+        forecaster, y = interval_forecaster_and_data
+        y_pred = forecaster.observe_predict_interval(
+            y=y[70:80],
+            forecasting_horizon=5,
+            coverage_rates=[0.9],
+        )
+        assert len(y_pred) > 5
+        assert any("lower" in c for c in y_pred.columns)
+        assert any("upper" in c for c in y_pred.columns)
+
+    def test_observe_predict_interval_with_stride(self, interval_forecaster_and_data):
+        """observe_predict_interval respects custom stride."""
+        forecaster, y = interval_forecaster_and_data
+        y_pred = forecaster.observe_predict_interval(
+            y=y[70:80],
+            forecasting_horizon=5,
+            coverage_rates=[0.9],
+            stride=2,
+        )
+        assert len(y_pred) > 5
+
+    def test_remainder_interval_prediction(self):
+        """Remainder forecaster contributes interval predictions."""
+        from yohou.interval import SplitConformalForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=99),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "main_col": [float(i) for i in range(100)],
+            "other_col": [float(i * 3) for i in range(100)],
+        })
+
+        forecaster = ColumnForecaster(
+            [
+                (
+                    "main",
+                    SplitConformalForecaster(
+                        point_forecaster=SeasonalNaive(seasonality=1),
+                        calibration_size=20,
+                    ),
+                    "main_col",
+                ),
+            ],
+            remainder=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(seasonality=1),
+                calibration_size=20,
+            ),
+        )
+        forecaster.fit(y[:70], forecasting_horizon=5)
+        y_pred = forecaster.predict_interval(forecasting_horizon=5, coverage_rates=[0.9])
+
+        assert any("main_col" in c for c in y_pred.columns)
+        assert any("other_col" in c for c in y_pred.columns)
+        assert any("lower" in c for c in y_pred.columns)
+
+
+class TestColumnForecasterTagsBeforeFit:
+    """Tests for __sklearn_tags__() before fit."""
+
+    def test_tags_before_fit_with_remainder_forecaster(self):
+        """Tags before fit includes remainder forecaster when it is a BaseForecaster."""
+        forecaster = ColumnForecaster(
+            [("main", SeasonalNaive(seasonality=1), "a")],
+            remainder=SeasonalNaive(seasonality=1),
+        )
+        tags = forecaster.__sklearn_tags__()
+        assert tags.forecaster_tags is not None
+        assert tags.forecaster_tags.forecaster_type == "point"
+
+    def test_tags_before_fit_without_remainder(self):
+        """Tags before fit without remainder forecaster."""
+        forecaster = ColumnForecaster(
+            [("main", SeasonalNaive(seasonality=1), "a")],
+        )
+        tags = forecaster.__sklearn_tags__()
+        assert tags.forecaster_tags is not None
+        assert tags.forecaster_tags.forecaster_type == "point"
+
+
+class TestColumnForecasterRewindWithRemainder:
+    """Tests for rewind with remainder forecaster."""
+
+    def test_rewind_with_remainder_forecaster(self):
+        """Rewind dispatches to both main and remainder forecasters."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "a": range(50),
+            "b": range(50, 100),
+        })
+        forecaster = ColumnForecaster(
+            [("main", SeasonalNaive(seasonality=1), "a")],
+            remainder=SeasonalNaive(seasonality=1),
+        )
+        forecaster.fit(y[:30], forecasting_horizon=5)
+
+        forecaster.observe(y[30:35])
+        result = forecaster.rewind(y[20:30])
+        assert result is forecaster
+
+        y_pred = forecaster.predict(forecasting_horizon=5)
+        assert "a" in y_pred.columns
+        assert "b" in y_pred.columns
+
+
+class TestColumnForecasterObservePredictWithX:
+    """Tests for observe_predict with exogenous features."""
+
+    def test_observe_predict_with_exogenous(self):
+        """observe_predict passes X_future to individual forecasters."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "a": range(50),
+        })
+        X = pl.DataFrame({
+            "time": time,
+            "feat": list(range(50)),
+        })
+        forecaster = ColumnForecaster(
+            [("main", PointReductionForecaster(), "a")],
+        )
+        forecaster.fit(y[:30], X=X[:30], forecasting_horizon=5)
+
+        time_ext = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=54),
+            interval="1d",
+            eager=True,
+        )
+        X_ext = pl.DataFrame({
+            "time": time_ext,
+            "feat": list(range(55)),
+        })
+        y_pred = forecaster.observe_predict(y[30:35], X=X_ext)
+        assert len(y_pred) > 0
+        assert "a" in y_pred.columns
+
+
+class TestColumnForecasterMixedTags:
+    """Tests for tags with mixed point and interval forecasters."""
+
+    def test_tags_both_when_point_and_interval(self):
+        """Tags report 'both' when mixing point and interval forecasters."""
+        from yohou.interval import SplitConformalForecaster
+
+        forecaster = ColumnForecaster(
+            [
+                ("point_col", SeasonalNaive(seasonality=1), "a"),
+                (
+                    "interval_col",
+                    SplitConformalForecaster(
+                        point_forecaster=SeasonalNaive(),
+                        calibration_size=5,
+                    ),
+                    "b",
+                ),
+            ],
+        )
+        tags = forecaster.__sklearn_tags__()
+        assert tags.forecaster_tags.forecaster_type == "both"

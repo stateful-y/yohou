@@ -182,3 +182,67 @@ class TestDifferentBehavior:
                 any_different = True
                 break
         assert any_different, "Global and multivariate should produce different predictions"
+
+
+class TestPanelInverseTransform:
+    """Tests for _inverse_transform_target with panel data and target_transformer."""
+
+    def test_predict_with_target_transformer_on_panel_data(self, y_X_factory):
+        """Panel prediction with target_transformer exercises panel inverse path."""
+        from yohou.stationarity import LogTransformer
+
+        y, X = y_X_factory(length=80, n_targets=1, n_features=2, panel=True, n_groups=2)
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            target_transformer=LogTransformer(offset=1.0),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+            panel_strategy="global",
+        )
+        forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
+
+        assert isinstance(forecaster.target_transformer_, dict)
+
+        y_pred = forecaster.predict(X[:60], forecasting_horizon=3)
+
+        assert len(y_pred) == 3
+        assert "observed_time" in y_pred.columns
+        target_cols = [c for c in y_pred.columns if c not in {"time", "observed_time"}]
+        assert len(target_cols) == 2
+        assert all("__" in c for c in target_cols)
+
+    def test_observation_horizon_with_panel_dict_transformer(self, y_X_factory):
+        """observation_horizon reads from dict of transformers for panel data."""
+        from yohou.stationarity import SeasonalDifferencing
+
+        y, X = y_X_factory(length=80, n_targets=1, n_features=2, panel=True, n_groups=2)
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            target_transformer=SeasonalDifferencing(seasonality=7),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+            panel_strategy="global",
+        )
+        forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
+
+        assert isinstance(forecaster.target_transformer_, dict)
+        assert forecaster.observation_horizon >= 7
+
+    def test_panel_inverse_transform_preserves_dtype(self, y_X_factory):
+        """Panel inverse transform casts predictions back to original dtypes."""
+        from yohou.stationarity import LogTransformer
+
+        y, X = y_X_factory(length=80, n_targets=1, n_features=2, panel=True, n_groups=2)
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            target_transformer=LogTransformer(offset=1.0),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+            panel_strategy="global",
+        )
+        forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
+        y_pred = forecaster.predict(X[:60], forecasting_horizon=3)
+
+        target_cols = [c for c in y_pred.columns if c not in {"time", "observed_time"}]
+        for col in target_cols:
+            assert y_pred[col].dtype.is_float()

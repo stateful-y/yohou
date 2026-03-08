@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from conftest import SimpleTransformer, StatelessTransformer
 from yohou.compose import ColumnTransformer
+from yohou.preprocessing.window import LagTransformer
 
 
 @pytest.fixture
@@ -230,3 +231,319 @@ class TestColumnTransformerPassthrough:
         ct.fit(time_series_3col)
         result = ct.transform(time_series_3col)
         assert isinstance(result, pl.DataFrame)
+
+
+class TestColumnTransformerObserveRewindTransform:
+    """Tests for ColumnTransformer observe_transform and rewind_transform."""
+
+    def test_observe_transform(self, time_series_3col):
+        """observe_transform produces results with time column."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=0), ["a", "b"]),
+            ],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        result = ct.observe_transform(time_series_3col)
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+
+    def test_rewind_transform(self, time_series_3col):
+        """rewind_transform produces results with time column."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=0), ["a", "b"]),
+            ],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        result = ct.rewind_transform(time_series_3col)
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+
+    def test_getitem_by_name(self, time_series_3col):
+        """Accessing transformer by name via __getitem__."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=0), ["a"]),
+                ("t2", SimpleTransformer(observation_horizon=0), ["b"]),
+            ],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        assert isinstance(ct["t1"], SimpleTransformer)
+        assert isinstance(ct["t2"], SimpleTransformer)
+
+    def test_getitem_by_index(self, time_series_3col):
+        """Accessing transformer by integer index."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=0), ["a"]),
+                ("t2", SimpleTransformer(observation_horizon=0), ["b"]),
+            ],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        assert isinstance(ct[0], SimpleTransformer)
+
+    def test_getitem_by_slice(self, time_series_3col):
+        """Accessing transformers by slice."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=0), ["a"]),
+                ("t2", SimpleTransformer(observation_horizon=0), ["b"]),
+            ],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        sliced = ct[0:2]
+        assert len(sliced.transformers) == 2
+
+    def test_remainder_as_estimator(self, time_series_3col):
+        """Remainder set to an estimator transforms unspecified columns."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=0), ["a"]),
+            ],
+            remainder=SimpleTransformer(observation_horizon=0, add_constant=5.0),
+        )
+        ct.fit(time_series_3col)
+        result = ct.transform(time_series_3col)
+        assert isinstance(result, pl.DataFrame)
+
+    def test_get_metadata_routing(self, time_series_3col):
+        """get_metadata_routing returns a MetadataRouter."""
+        from sklearn.utils.metadata_routing import MetadataRouter
+
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=0), ["a"]),
+            ],
+            remainder="drop",
+        )
+        router = ct.get_metadata_routing()
+        assert isinstance(router, MetadataRouter)
+
+
+class TestColumnTransformerEdgeCases:
+    """Tests for ColumnTransformer edge cases and less-visited branches."""
+
+    def test_getitem_int_on_unfitted(self):
+        """Integer indexing on unfitted CT returns transformer from list."""
+        t1 = StatelessTransformer()
+        ct = ColumnTransformer(
+            transformers=[("t1", t1, ["a"])],
+        )
+        assert ct[0] is t1
+
+    def test_getitem_slice_with_step_raises(self, time_series_3col):
+        """Slicing with a step raises ValueError."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", StatelessTransformer(), ["a"]),
+                ("t2", StatelessTransformer(), ["b"]),
+            ],
+        )
+        with pytest.raises(ValueError, match="step"):
+            ct[::2]
+
+    def test_getitem_int_on_fitted(self, time_series_3col):
+        """Integer indexing on a fitted CT returns fitted transformer."""
+        ct = ColumnTransformer(
+            transformers=[("t1", StatelessTransformer(), ["a"])],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        result = ct[0]
+        assert hasattr(result, "X_schema_")
+
+    def test_getitem_str_on_fitted(self, time_series_3col):
+        """String indexing on a fitted CT returns fitted transformer by name."""
+        ct = ColumnTransformer(
+            transformers=[("t1", StatelessTransformer(), ["a"])],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        result = ct["t1"]
+        assert hasattr(result, "X_schema_")
+
+    def test_getitem_str_not_found_raises(self):
+        """String indexing with unknown name raises KeyError."""
+        ct = ColumnTransformer(
+            transformers=[("t1", StatelessTransformer(), ["a"])],
+        )
+        with pytest.raises(KeyError, match="nonexistent"):
+            ct["nonexistent"]
+
+    def test_fit_transform_drops_remainder(self, time_series_3col):
+        """fit_transform with remainder='drop' excludes unspecified columns."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", StatelessTransformer(), ["a"]),
+            ],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        result = ct.transform(time_series_3col)
+        assert "time" in result.columns
+        non_time = [c for c in result.columns if c != "time"]
+        assert len(non_time) == 1
+        assert "b" not in result.columns
+        assert "c" not in result.columns
+
+    def test_verbose_feature_names_out_false_no_duplicates(self, time_series_3col):
+        """verbose_feature_names_out=False works when no duplicate names."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", StatelessTransformer(), ["a"]),
+                ("t2", StatelessTransformer(), ["b"]),
+            ],
+            remainder="drop",
+            verbose_feature_names_out=False,
+        )
+        result = ct.fit_transform(time_series_3col)
+        assert "a" in result.columns
+        assert "b" in result.columns
+
+    def test_verbose_feature_names_out_false_duplicates_raises(self, time_series_3col):
+        """verbose_feature_names_out=False with duplicate names raises ValueError."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", "passthrough", ["a"]),
+                ("t2", "passthrough", ["a"]),
+            ],
+            remainder="drop",
+            verbose_feature_names_out=False,
+        )
+        with pytest.raises(ValueError, match="Duplicated feature names"):
+            ct.fit_transform(time_series_3col)
+
+    def test_transformers_property(self, time_series_3col):
+        """_transformers property returns fitted transformer list."""
+        ct = ColumnTransformer(
+            transformers=[("t1", StatelessTransformer(), ["a"])],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col)
+        result = ct._transformers
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+
+class TestColumnTransformerCoveragePaths:
+    """Tests targeting uncovered branches in ColumnTransformer."""
+
+    def test_set_params_empty_transformers(self):
+        """set_params on empty transformers list returns self unchanged."""
+        ct = ColumnTransformer(transformers=[], remainder="drop")
+        result = ct.set_params()
+        assert result is ct
+
+    def test_getitem_slice(self):
+        """Slicing without step returns a new ColumnTransformer."""
+        t1 = StatelessTransformer()
+        t2 = StatelessTransformer()
+        ct = ColumnTransformer(
+            transformers=[("t1", t1, ["a"]), ("t2", t2, ["b"])],
+        )
+        sliced = ct[0:1]
+        assert isinstance(sliced, ColumnTransformer)
+        assert len(sliced.transformers) == 1
+
+    def test_validate_transformers_non_base_raises(self):
+        """Non-BaseTransformer estimator in transformers raises TypeError."""
+        from sklearn.preprocessing import StandardScaler
+
+        ct = ColumnTransformer(
+            transformers=[("bad", StandardScaler(), ["a"])],
+        )
+        with pytest.raises(TypeError, match="BaseTransformer"):
+            ct._validate_transformers()
+
+    def test_remainder_passthrough(self, time_series_3col):
+        """remainder='passthrough' includes unspecified columns."""
+        ct = ColumnTransformer(
+            transformers=[("t1", StatelessTransformer(), ["a"])],
+            remainder="passthrough",
+        )
+        result = ct.fit_transform(time_series_3col)
+        non_time = [c for c in result.columns if c != "time"]
+        assert len(non_time) == 3
+
+    def test_fit_transform_all_empty_returns_time_column(self, time_series_3col):
+        """When no transformers are specified, fit_transform returns time-only."""
+        ct = ColumnTransformer(transformers=[], remainder="drop")
+        result = ct.fit_transform(time_series_3col)
+        assert result.columns == ["time"]
+        assert result.shape[0] == time_series_3col.shape[0]
+
+    def test_observe_transform_all_empty_returns_time_column(self, time_series_3col):
+        """When no transformers are specified, observe_transform returns time-only."""
+        ct = ColumnTransformer(transformers=[], remainder="drop")
+        ct.fit(time_series_3col)
+        result = ct.observe_transform(time_series_3col)
+        assert result.columns == ["time"]
+
+    def test_rewind_transform_all_empty_returns_time_column(self, time_series_3col):
+        """When no transformers are specified, rewind_transform returns time-only."""
+        ct = ColumnTransformer(transformers=[], remainder="drop")
+        ct.fit(time_series_3col)
+        result = ct.rewind_transform(time_series_3col)
+        assert result.columns == ["time"]
+
+
+class TestColumnTransformerTagsAggregation:
+    """Tests for __sklearn_tags__ aggregation with various transformer combos."""
+
+    def test_stateful_tag_propagated(self):
+        """Stateful tag is True when any transformer is stateful."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("stateful", LagTransformer(lag=[1]), ["a"]),
+                ("stateless", StatelessTransformer(), ["b"]),
+            ],
+        )
+        tags = ct.__sklearn_tags__()
+        assert tags.transformer_tags.stateful is True
+
+    def test_all_stateless_tag(self):
+        """Stateful tag is False when all transformers are stateless."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("s1", StatelessTransformer(), ["a"]),
+                ("s2", StatelessTransformer(), ["b"]),
+            ],
+        )
+        tags = ct.__sklearn_tags__()
+        assert tags.transformer_tags.stateful is False
+
+    def test_invertible_always_false(self):
+        """ColumnTransformer is never invertible."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("s1", StatelessTransformer(), ["a"]),
+            ],
+        )
+        tags = ct.__sklearn_tags__()
+        assert tags.transformer_tags.invertible is False
+
+    def test_remainder_estimator_included_in_tags(self):
+        """Remainder estimator contributes to tag aggregation."""
+        ct = ColumnTransformer(
+            transformers=[("s1", StatelessTransformer(), ["a"])],
+            remainder=LagTransformer(lag=[1, 2]),
+        )
+        tags = ct.__sklearn_tags__()
+        assert tags.transformer_tags.stateful is True
+
+    def test_min_value_aggregated_from_transformers(self):
+        """min_value is the maximum (most restrictive) across transformers."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("s1", StatelessTransformer(), ["a"]),
+                ("s2", StatelessTransformer(), ["b"]),
+            ],
+        )
+        tags = ct.__sklearn_tags__()
+        assert tags.input_tags.min_value is None or isinstance(tags.input_tags.min_value, int | float)

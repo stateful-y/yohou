@@ -637,3 +637,499 @@ class TestPlotSeasonalityAssertions:
         fig = plot_seasonality(df, columns="y", seasonality="month", width=800, height=500)
         assert fig.layout.width == 800
         assert fig.layout.height == 500
+
+
+class TestPlotSeasonalityHighlight:
+    """Tests for seasonality highlight parameter branches."""
+
+    def test_highlight_int(self):
+        """Passing highlight as a single integer selects one period."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i % 30 for i in range(366)],
+        })
+        fig = plot_seasonality(df, columns="y", seasonality="month", highlight=3)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_highlight_list(self):
+        """Passing highlight as a list selects multiple periods."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i % 30 for i in range(366)],
+        })
+        fig = plot_seasonality(
+            df,
+            columns="y",
+            seasonality="month",
+            highlight=[1, 6],
+            highlight_width=4.0,
+            fade_opacity=0.15,
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestPacfDurbinLevinsonFallback:
+    """Tests for built-in PACF when statsmodels is unavailable."""
+
+    def test_durbin_levinson_direct(self):
+        """Direct call to _compute_pacf_durbin_levinson returns valid PACF."""
+        from yohou.plotting.diagnostics import _compute_pacf_durbin_levinson
+
+        rng = np.random.default_rng(42)
+        values = rng.standard_normal(200)
+        pacf_vals, ci_lo, ci_hi = _compute_pacf_durbin_levinson(values, nlags=10, alpha=None)
+
+        assert len(pacf_vals) == 11
+        assert pacf_vals[0] == pytest.approx(1.0)
+        assert ci_lo is None
+        assert ci_hi is None
+
+    def test_durbin_levinson_with_confidence(self):
+        """Confidence intervals are returned when alpha is given."""
+        from yohou.plotting.diagnostics import _compute_pacf_durbin_levinson
+
+        rng = np.random.default_rng(42)
+        values = rng.standard_normal(200)
+        pacf_vals, ci_lo, ci_hi = _compute_pacf_durbin_levinson(values, nlags=5, alpha=0.05)
+
+        assert len(pacf_vals) == 6
+        assert ci_lo is not None
+        assert ci_hi is not None
+        assert len(ci_lo) == 6
+        assert len(ci_hi) == 6
+        assert all(lo < 0 for lo in ci_lo)
+        assert all(hi > 0 for hi in ci_hi)
+
+    def test_statsmodels_fallback_warning(self, monkeypatch):
+        """When statsmodels is missing and method != 'yw', a warning is raised."""
+        import importlib
+        import warnings
+
+        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+
+        def mock_import(name, *args, **kwargs):
+            if "statsmodels" in name:
+                raise ImportError("mocked")
+            return original_import(name, *args, **kwargs)
+
+        rng = np.random.default_rng(42)
+        values = rng.standard_normal(100)
+
+        monkeypatch.setattr("builtins.__import__", mock_import)
+        try:
+            importlib.invalidate_caches()
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                from yohou.plotting.diagnostics import _compute_pacf
+
+                pacf_vals, _, _ = _compute_pacf(values, nlags=5, method="ols", alpha=0.05)
+                assert len(pacf_vals) == 6
+                assert any("statsmodels is not installed" in str(wi.message) for wi in w)
+        finally:
+            monkeypatch.undo()
+
+
+class TestDiagnosticsPanelAutoDetect:
+    """Tests for panel auto-detection branches in diagnostic plots."""
+
+    @pytest.fixture
+    def panel_df(self):
+        """Create panel DataFrame with two groups."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 30), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "y__a": [100.0 + (i % 30) for i in range(n)],
+            "y__b": [200.0 + (i % 20) for i in range(n)],
+        })
+
+    def test_acf_panel(self, panel_df):
+        """plot_autocorrelation with panel data auto-detects groups."""
+        fig = plot_autocorrelation(panel_df, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_pacf_panel(self, panel_df):
+        """plot_partial_autocorrelation with panel data auto-detects groups."""
+        fig = plot_partial_autocorrelation(panel_df, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_correlation_heatmap_panel(self, panel_df):
+        """plot_correlation_heatmap with panel data auto-detects groups."""
+        fig = plot_correlation_heatmap(panel_df, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_seasonality_panel(self, panel_df):
+        """plot_seasonality with panel data auto-detects groups."""
+        fig = plot_seasonality(panel_df, seasonality="month", panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_lag_scatter_panel(self, panel_df):
+        """plot_lag_scatter with panel data auto-detects groups."""
+        fig = plot_lag_scatter(panel_df, lags=[1, 5], panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestDiagnosticsSeasonalityBranches:
+    """Tests for seasonality frequency branches."""
+
+    def test_week_frequency(self, sample_df):
+        """plot_seasonality with frequency='week' covers week branch."""
+        fig = plot_seasonality(sample_df, columns="y", seasonality="week")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_hour_frequency(self):
+        """plot_seasonality with frequency='hour' covers hour branch."""
+        times = pl.datetime_range(pl.datetime(2020, 1, 1, 0, 0), pl.datetime(2020, 1, 10, 23, 0), "1h", eager=True)
+        df = pl.DataFrame({
+            "time": times,
+            "y": [100.0 + (i % 24) * 3.0 for i in range(len(times))],
+        })
+        fig = plot_seasonality(df, columns="y", seasonality="hour")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestDiagnosticsEdgeCases:
+    """Tests for edge cases in diagnostics functions."""
+
+    def test_cross_correlation_constant_series(self):
+        """Cross-correlation with constant series falls back to 0 coefficient."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "x": [5.0] * len(dates),
+            "y": [100.0 + (i % 15) * 2 for i in range(len(dates))],
+        })
+        fig = plot_cross_correlation(df, columns=["x", "y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_scatter_matrix_constant_column_kde(self):
+        """Scatter matrix with constant column and diagonal='kde' handles LinAlgError."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 28), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y1": [5.0] * len(dates),
+            "y2": [float(i) for i in range(len(dates))],
+        })
+        fig = plot_scatter_matrix(df, diagonal="kde", show_correlation=False)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_cross_correlation_show_markers_false(self, short_df):
+        """Cross-correlation with show_markers=False covers line-mode branch."""
+        fig = plot_cross_correlation(short_df, columns=["x", "y"], show_markers=False)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_subseasonality_hour_labels(self):
+        """Subseasonality with hour seasonality covers label fallback."""
+        times = pl.datetime_range(pl.datetime(2020, 1, 1, 0, 0), pl.datetime(2020, 1, 10, 23, 0), "1h", eager=True)
+        df = pl.DataFrame({
+            "time": times,
+            "y": [100.0 + (i % 24) * 3.0 for i in range(len(times))],
+        })
+        fig = plot_subseasonality(df, columns="y", seasonality="hour")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestDiagnosticsAutoDetectPanel:
+    """Tests for auto-detection of panel data (no explicit panel_group_names)."""
+
+    @pytest.fixture
+    def auto_panel_df(self):
+        """Create panel DataFrame where auto-detect triggers (__ separator)."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 30), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "val__store1": [100.0 + (i % 30) for i in range(n)],
+            "val__store2": [200.0 + (i % 20) for i in range(n)],
+        })
+
+    def test_acf_auto_detect(self, auto_panel_df):
+        """plot_autocorrelation auto-detects panel data without panel_group_names."""
+        fig = plot_autocorrelation(auto_panel_df, max_lags=10)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_pacf_auto_detect(self, auto_panel_df):
+        """plot_partial_autocorrelation auto-detects panel data."""
+        fig = plot_partial_autocorrelation(auto_panel_df, max_lags=10)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_heatmap_auto_detect(self, auto_panel_df):
+        """plot_correlation_heatmap auto-detects panel data."""
+        fig = plot_correlation_heatmap(auto_panel_df)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_seasonality_auto_detect(self, auto_panel_df):
+        """plot_seasonality auto-detects panel data."""
+        fig = plot_seasonality(auto_panel_df, seasonality="month")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_lag_scatter_auto_detect(self, auto_panel_df):
+        """plot_lag_scatter auto-detects panel data."""
+        fig = plot_lag_scatter(auto_panel_df, lags=1)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestDiagnosticsCustomLabels:
+    """Tests for custom x_label and y_label branches in diagnostic plots."""
+
+    @pytest.fixture
+    def simple_df(self):
+        """Create simple time series for label tests."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 30), "1d", eager=True)
+        return pl.DataFrame({
+            "time": dates,
+            "y": [100.0 + (i % 30) for i in range(len(dates))],
+        })
+
+    def test_acf_custom_labels(self, simple_df):
+        """plot_autocorrelation with custom x_label and y_label."""
+        fig = plot_autocorrelation(
+            simple_df,
+            columns="y",
+            max_lags=10,
+            x_label="Custom Lag",
+            y_label="Custom ACF",
+        )
+        assert isinstance(fig, go.Figure)
+        assert fig.layout.xaxis.title.text == "Custom Lag"
+        assert fig.layout.yaxis.title.text == "Custom ACF"
+
+    def test_pacf_custom_labels(self, simple_df):
+        """plot_partial_autocorrelation with custom x_label and y_label."""
+        fig = plot_partial_autocorrelation(
+            simple_df,
+            columns="y",
+            max_lags=10,
+            x_label="Custom Lag",
+            y_label="Custom PACF",
+        )
+        assert isinstance(fig, go.Figure)
+        assert fig.layout.xaxis.title.text == "Custom Lag"
+        assert fig.layout.yaxis.title.text == "Custom PACF"
+
+    def test_seasonality_custom_labels(self, simple_df):
+        """plot_seasonality with custom x_label and y_label."""
+        fig = plot_seasonality(
+            simple_df,
+            columns="y",
+            seasonality="month",
+            x_label="Month Index",
+            y_label="Values",
+        )
+        assert isinstance(fig, go.Figure)
+
+
+class TestLagScatterMultiLagShowDiagonal:
+    """Tests for plot_lag_scatter multi-lag with show_diagonal branch."""
+
+    def test_multi_lag_show_diagonal_true(self):
+        """Multi-lag with show_diagonal=True adds diagonal lines to each subplot."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100.0 + (i % 30) for i in range(len(dates))],
+        })
+        fig = plot_lag_scatter(df, columns="y", lags=[1, 2], show_diagonal=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 4
+
+    def test_multi_lag_with_seasonality_month(self):
+        """Multi-lag + seasonality='month' triggers season-colored multi-lag path."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100.0 + (i % 30) for i in range(len(dates))],
+        })
+        fig = plot_lag_scatter(df, columns="y", lags=[1, 2], seasonality="month")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    def test_single_lag_with_seasonality(self):
+        """Single lag + seasonality='month' triggers the seasonal single-lag path."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100.0 + (i % 30) for i in range(len(dates))],
+        })
+        fig = plot_lag_scatter(df, columns="y", lags=1, seasonality="month")
+        assert isinstance(fig, go.Figure)
+        legend_groups = {t.legendgroup for t in fig.data if t.legendgroup is not None}
+        assert len(legend_groups) >= 4
+
+    def test_single_lag_show_diagonal(self):
+        """Single lag + show_diagonal covers the single-lag diagonal path."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 30), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100.0 + (i % 30) for i in range(len(dates))],
+        })
+        fig = plot_lag_scatter(df, columns="y", lags=1, show_diagonal=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    def test_single_lag_show_regression(self):
+        """Single lag + show_regression covers the regression overlay."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 30), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100.0 + (i % 30) for i in range(len(dates))],
+        })
+        fig = plot_lag_scatter(df, columns="y", lags=1, show_regression=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+
+class TestCorrelationHeatmapPanelShowValues:
+    """Tests for plot_correlation_heatmap panel + show_values=True."""
+
+    def test_panel_show_values(self):
+        """Panel heatmap with show_values=True adds text annotations."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "a__g1": [float(i) for i in range(n)],
+            "b__g1": [float(i * 2) for i in range(n)],
+            "a__g2": [float(i + 10) for i in range(n)],
+            "b__g2": [float(i * 3) for i in range(n)],
+        })
+        fig = plot_correlation_heatmap(df, panel_group_names=["a", "b"], show_values=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestCrossCorrelationShowMarkers:
+    """Tests for plot_cross_correlation show_markers=True branch."""
+
+    def test_show_markers_true(self):
+        """show_markers=True uses lines+markers mode."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "x": [100.0 + (i % 20) for i in range(len(dates))],
+            "y": [150.0 + (i % 15) * 2 for i in range(len(dates))],
+        })
+        fig = plot_cross_correlation(df, columns=["x", "y"], show_markers=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestLagScatterShowDiagonalAndRegression:
+    """Tests for plot_lag_scatter show_diagonal and show_regression branches."""
+
+    @pytest.fixture
+    def lag_scatter_df(self):
+        """DataFrame for lag scatter tests."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 30), "1d", eager=True)
+        return pl.DataFrame({
+            "time": dates,
+            "y": [100.0 + i * 0.5 + (i % 7) * 3.0 for i in range(len(dates))],
+        })
+
+    def test_show_diagonal_single_lag(self, lag_scatter_df):
+        """show_diagonal adds a dashed reference line for single lag."""
+        fig = plot_lag_scatter(lag_scatter_df, columns="y", lag=1, show_diagonal=True)
+        assert isinstance(fig, go.Figure)
+        dash_traces = [t for t in fig.data if hasattr(t, "line") and t.line and t.line.dash == "dash"]
+        assert len(dash_traces) >= 1
+
+    def test_show_regression_single_lag(self, lag_scatter_df):
+        """show_regression adds a regression line for single lag."""
+        fig = plot_lag_scatter(lag_scatter_df, columns="y", lag=1, show_regression=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    def test_show_both_diagonal_and_regression(self, lag_scatter_df):
+        """Both show_diagonal and show_regression produce extra traces."""
+        fig = plot_lag_scatter(
+            lag_scatter_df,
+            columns="y",
+            lag=1,
+            show_diagonal=True,
+            show_regression=True,
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 3
+
+
+class TestPlotACFPanelNoConfidence:
+    """Tests for panel autocorrelation without confidence bands."""
+
+    def test_panel_acf_no_confidence(self):
+        """Panel ACF with show_confidence=False skips CI band rendering."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "sales__store_1": [100.0 + i * 2.0 for i in range(12)],
+            "sales__store_2": [200.0 + i * 3.0 for i in range(12)],
+        })
+        fig = plot_autocorrelation(df, panel_group_names=["sales"], show_confidence=False)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_panel_pacf_no_confidence(self):
+        """Panel PACF with show_confidence=False skips CI band rendering."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "sales__store_1": [100.0 + i * 2.0 for i in range(12)],
+            "sales__store_2": [200.0 + i * 3.0 for i in range(12)],
+        })
+        fig = plot_partial_autocorrelation(df, panel_group_names=["sales"], show_confidence=False)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestScatterMatrixDiagonalModes:
+    """Tests for plot_scatter_matrix diagonal mode branches."""
+
+    @pytest.fixture
+    def scatter_df(self):
+        """Multi-column DataFrame for scatter matrix tests."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "x": [100.0 + i * 0.3 for i in range(n)],
+            "y": [200.0 + (i % 30) * 2.0 for i in range(n)],
+        })
+
+    def test_diagonal_kde(self, scatter_df):
+        """Scatter matrix with diagonal='kde' renders KDE curves."""
+        fig = plot_scatter_matrix(scatter_df, columns=["x", "y"], diagonal="kde")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_diagonal_histogram(self, scatter_df):
+        """Scatter matrix with diagonal='histogram' renders histogram bars."""
+        fig = plot_scatter_matrix(scatter_df, columns=["x", "y"], diagonal="histogram")
+        assert isinstance(fig, go.Figure)
+        histogram_traces = [t for t in fig.data if isinstance(t, go.Histogram)]
+        assert len(histogram_traces) >= 1
+
+    def test_show_correlation(self, scatter_df):
+        """Scatter matrix with show_correlation=True adds Pearson r annotations."""
+        fig = plot_scatter_matrix(scatter_df, columns=["x", "y"], show_correlation=True)
+        assert isinstance(fig, go.Figure)
+        annotations = fig.layout.annotations
+        assert annotations is not None
+        corr_annotations = [a for a in annotations if hasattr(a, "text") and "." in str(a.text)]
+        assert len(corr_annotations) >= 1

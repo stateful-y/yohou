@@ -941,3 +941,97 @@ class TestMedianAbsoluteError:
         # Median should be less affected by outlier than mean
         # Errors: [1, 1, 1, 1, 50], median=1, mean=10.8
         assert score_median < score_mean
+
+
+class TestRMSETimewise:
+    """Tests for RMSE with timewise aggregation and sqrt."""
+
+    def test_rmse_timewise_returns_per_component(self, scorer_data_factory):
+        """RMSE with timewise agg returns per-component DataFrame with sqrt applied."""
+        y, _ = scorer_data_factory(length=20, n_targets=3, n_features=0, seed=42)
+        y_test = y[15:]
+        y_pred = y_test.with_columns([(pl.col(c) + 2.0).alias(c) for c in y_test.columns if c != "time"]).with_columns(
+            observed_time=pl.lit(y["time"][14])
+        )
+
+        rmse = RootMeanSquaredError(aggregation_method=["timewise"])
+        rmse.fit(y[:15])
+        result = rmse.score(y_test, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        assert result.shape == (1, 3)
+        for col in result.columns:
+            assert result[col][0] == pytest.approx(2.0, abs=1e-5)
+
+    def test_rmsse_timewise_returns_per_component(self):
+        """RMSSE with timewise agg returns per-component DataFrame with sqrt applied."""
+        y_train = pl.DataFrame({
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
+            "value": [10.0, 12.0, 11.0, 13.0, 12.0, 14.0, 13.0, 15.0, 14.0, 16.0],
+        })
+        y_test = pl.DataFrame({
+            "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
+            "value": [15.0, 17.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
+            "value": [15.5, 16.5],
+        })
+
+        rmsse = RootMeanSquaredScaledError(seasonality=2, aggregation_method=["timewise"])
+        rmsse.fit(y_train)
+        result = rmsse.score(y_test, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        assert result.shape == (1, 1)
+        assert result.columns[0] == "value"
+        assert result["value"][0] > 0
+
+
+class TestMAETimeWeight:
+    """Tests for MAE score with time_weight parameter."""
+
+    def test_mae_callable_time_weight(self):
+        """MAE with callable time_weight applies weights to per-timestep errors."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
+            "value": [10.0, 20.0, 30.0, 40.0, 50.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
+            "value": [11.0, 21.0, 31.0, 41.0, 51.0],
+        })
+        mae = MeanAbsoluteError()
+        mae.fit(y_true)
+        mae.set_score_request(time_weight=True)
+
+        def constant_weight(y):
+            return pl.Series("weight", [1.0] * len(y))
+
+        score = mae.score(y_true, y_pred, time_weight=constant_weight)
+        assert score == pytest.approx(1.0, abs=1e-5)
+
+    def test_mae_dataframe_time_weight(self):
+        """MAE with DataFrame time_weight joins on time column."""
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(3)]
+        y_true = pl.DataFrame({
+            "time": times,
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "time": times,
+            "value": [12.0, 19.0, 28.0],
+        })
+        weight_df = pl.DataFrame({
+            "time": times,
+            "weight": [1.0, 1.0, 1.0],
+        })
+        mae = MeanAbsoluteError()
+        mae.fit(y_true)
+        mae.set_score_request(time_weight=True)
+        score = mae.score(y_true, y_pred, time_weight=weight_df)
+        assert isinstance(score, float)
+        assert score > 0

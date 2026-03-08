@@ -755,3 +755,109 @@ class TestEquivalence:
         manual_avg = result_componentwise["mae"].mean()
 
         assert abs(result_all - manual_avg) < 1e-10, "Should be mathematically equivalent"
+
+
+class TestIntervalScorerComponentwiseAggregation:
+    """Tests for interval scorer componentwise aggregation paths."""
+
+    @pytest.fixture
+    def interval_panel_data(self):
+        """Interval panel data with 2 groups and 2 rates."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_true = pl.DataFrame({
+            "time": times,
+            "g1__val": [10.0, 20.0, 30.0],
+            "g2__val": [15.0, 25.0, 35.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "time": times,
+            "g1__val_lower_0.9": [8.0, 18.0, 28.0],
+            "g1__val_upper_0.9": [12.0, 22.0, 32.0],
+            "g2__val_lower_0.9": [13.0, 23.0, 33.0],
+            "g2__val_upper_0.9": [17.0, 27.0, 37.0],
+            "g1__val_lower_0.95": [7.0, 17.0, 27.0],
+            "g1__val_upper_0.95": [13.0, 23.0, 33.0],
+            "g2__val_lower_0.95": [12.0, 22.0, 32.0],
+            "g2__val_upper_0.95": [18.0, 28.0, 38.0],
+        })
+        return y_true, y_pred
+
+    def test_componentwise_coveragewise_returns_dataframe(self, interval_panel_data):
+        """Componentwise + coveragewise returns per-timestep DataFrame."""
+        y_true, y_pred = interval_panel_data
+        scorer = EmpiricalCoverage(aggregation_method=["componentwise", "coveragewise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+        assert len(result) == 3
+
+    def test_componentwise_without_coveragewise_returns_dataframe(self, interval_panel_data):
+        """Componentwise without coveragewise returns rate-specific columns."""
+        y_true, y_pred = interval_panel_data
+        scorer = EmpiricalCoverage(aggregation_method=["componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+        assert any("rate_0.9" in c for c in result.columns)
+
+    def test_timewise_coveragewise_returns_dataframe(self, interval_panel_data):
+        """Timewise + coveragewise returns per-component DataFrame."""
+        y_true, y_pred = interval_panel_data
+        scorer = EmpiricalCoverage(aggregation_method=["timewise", "coveragewise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert len(result) == 1
+
+    def test_timewise_without_coveragewise_returns_dataframe(self, interval_panel_data):
+        """Timewise without coveragewise produces per-rate per-component columns."""
+        y_true, y_pred = interval_panel_data
+        scorer = EmpiricalCoverage(aggregation_method=["timewise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert any("rate_0.9" in c for c in result.columns)
+
+    def test_groupwise_coveragewise_returns_dataframe(self, interval_panel_data):
+        """Groupwise + coveragewise returns collapsed per-component DataFrame."""
+        y_true, y_pred = interval_panel_data
+        scorer = EmpiricalCoverage(aggregation_method=["groupwise", "coveragewise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+
+    def test_groupwise_without_coveragewise_returns_dict(self, interval_panel_data):
+        """Groupwise alone without coveragewise returns per-rate DataFrames."""
+        y_true, y_pred = interval_panel_data
+        scorer = EmpiricalCoverage(aggregation_method=["groupwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, dict)
+        assert 0.9 in result
+
+    def test_no_spatial_without_coveragewise_returns_dict(self):
+        """No spatial aggregation + no coveragewise returns score per rate."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+        y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "time": times,
+            "val_lower_0.9": [8.0, 18.0],
+            "val_upper_0.9": [12.0, 22.0],
+        })
+        scorer = EmpiricalCoverage(aggregation_method="coveragewise")
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, float)
+
+    def test_all_timewise_componentwise_groupwise_coveragewise(self, interval_panel_data):
+        """All aggregation returns scalar for interval panel data."""
+        y_true, y_pred = interval_panel_data
+        scorer = EmpiricalCoverage(aggregation_method="all")
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, float)

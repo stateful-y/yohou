@@ -78,6 +78,11 @@ class TestSplitterChecks:
             expected_tags={"splitter_type": "expanding"},
         )
 
+    def test_tags_match_capabilities_without_expected_tags(self, y_data):
+        """check_splitter_tags_match_capabilities with expected_tags=None skips tag validation."""
+        splitter = ExpandingWindowSplitter(n_splits=3, test_size=10)
+        check_splitter_tags_match_capabilities(splitter, y_data, expected_tags=None)
+
     def test_produces_valid_indices(self, splitters, y_data):
         """Test that all splitters produce valid indices."""
         for splitter in splitters:
@@ -130,3 +135,48 @@ class TestSplitterChecks:
             splitter,
             _yield_yohou_splitter_checks(splitter, y_data),
         )
+
+    def test_systematic_sliding_window_checks(self, y_data):
+        """Systematic test using generator for SlidingWindowSplitter."""
+        splitter = SlidingWindowSplitter(n_splits=3, test_size=10)
+
+        run_checks(
+            splitter,
+            _yield_yohou_splitter_checks(splitter, y_data),
+        )
+
+    def test_systematic_expanding_with_gap_checks(self, y_data):
+        """Systematic test using generator for ExpandingWindowSplitter with gap."""
+        splitter = ExpandingWindowSplitter(n_splits=3, test_size=10, gap=5)
+
+        run_checks(
+            splitter,
+            _yield_yohou_splitter_checks(splitter, y_data),
+        )
+
+
+class TestSplitterPanelDataChecks:
+    """Tests for panel data support splitter checks."""
+
+    @pytest.fixture
+    def y_panel(self):
+        """Generate panel time series data."""
+        return pl.DataFrame({
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(100)],
+            "sales__store_1": list(range(100)),
+            "sales__store_2": list(range(100, 200)),
+        })
+
+    def test_panel_support_expanding_window(self, y_panel):
+        """Expanding window splitter handles panel data correctly."""
+        splitter = ExpandingWindowSplitter(n_splits=3, test_size=10)
+        from yohou.testing.splitter import check_splitter_panel_data_support
+
+        check_splitter_panel_data_support(splitter, y_panel)
+
+    def test_panel_support_sliding_window(self, y_panel):
+        """Sliding window splitter handles panel data correctly."""
+        splitter = SlidingWindowSplitter(n_splits=3, test_size=10)
+        from yohou.testing.splitter import check_splitter_panel_data_support
+
+        check_splitter_panel_data_support(splitter, y_panel)

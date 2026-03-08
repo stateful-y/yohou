@@ -484,3 +484,393 @@ class TestPlotForecastPanelMultiModel:
         # Multi-member panel labels include member: "s1 (A)", "s2 (B)", etc.
         assert any("A" in n for n in names)
         assert any("B" in n for n in names)
+
+
+class TestPlotForecastMultiModelIntervals:
+    """Tests for multi-model forecast with interval bands."""
+
+    def test_multi_model_interval_bands(self):
+        """Multi-model overlaid forecasts with prediction intervals."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_test = pl.DataFrame({"time": dates, "y": [191 + i for i in range(30)]})
+        y_pred_a = pl.DataFrame({
+            "time": dates,
+            "y": [190 + i for i in range(30)],
+            "y_lower_0.9": [185 + i for i in range(30)],
+            "y_upper_0.9": [195 + i for i in range(30)],
+        })
+        y_pred_b = pl.DataFrame({
+            "time": dates,
+            "y": [192 + i for i in range(30)],
+            "y_lower_0.9": [187 + i for i in range(30)],
+            "y_upper_0.9": [197 + i for i in range(30)],
+        })
+        fig = plot_forecast(y_test, {"M1": y_pred_a, "M2": y_pred_b}, coverage_rates=[0.9])
+        assert isinstance(fig, go.Figure)
+        names = [t.name for t in fig.data if t.name is not None]
+        assert any("M1" in n for n in names)
+        assert any("M2" in n for n in names)
+        assert any("PI" in n for n in names)
+
+
+class TestPlotForecastPanelSingleMember:
+    """Tests for panel forecast with single member per group."""
+
+    def test_single_member_panel(self):
+        """Single-member panel groups use solid line without dash."""
+        dates_train = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        dates_test = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_train = pl.DataFrame({
+            "time": dates_train,
+            "y__store1": list(range(91)),
+            "z__store1": list(range(91, 182)),
+        })
+        y_test = pl.DataFrame({
+            "time": dates_test,
+            "y__store1": list(range(30)),
+            "z__store1": list(range(30, 60)),
+        })
+        y_pred = pl.DataFrame({
+            "time": dates_test,
+            "y__store1": [x + 1 for x in range(30)],
+            "z__store1": [x + 1 for x in range(30, 60)],
+        })
+        fig = plot_forecast(
+            y_test,
+            y_pred,
+            y_train=y_train,
+            panel_group_names=["y", "z"],
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestPlotForecastPanelTrainAndIntervals:
+    """Tests for panel forecast with train history and intervals."""
+
+    def test_panel_with_train_and_intervals(self):
+        """Panel forecast with y_train and coverage_rates renders bands."""
+        dates_train = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        dates_test = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_train = pl.DataFrame({
+            "time": dates_train,
+            "y__a": [100 + i for i in range(91)],
+            "y__b": [200 + i for i in range(91)],
+        })
+        y_test = pl.DataFrame({
+            "time": dates_test,
+            "y__a": [191 + i for i in range(30)],
+            "y__b": [291 + i for i in range(30)],
+        })
+        y_pred = pl.DataFrame({
+            "time": dates_test,
+            "y__a": [190 + i for i in range(30)],
+            "y__b": [289 + i for i in range(30)],
+            "y__a_lower_0.9": [185 + i for i in range(30)],
+            "y__a_upper_0.9": [195 + i for i in range(30)],
+            "y__b_lower_0.9": [284 + i for i in range(30)],
+            "y__b_upper_0.9": [294 + i for i in range(30)],
+        })
+        fig = plot_forecast(
+            y_test,
+            y_pred,
+            y_train=y_train,
+            coverage_rates=[0.9],
+            panel_group_names=["y"],
+        )
+        assert isinstance(fig, go.Figure)
+        names = [t.name for t in fig.data if t.name is not None]
+        assert any("Train" in n for n in names)
+        assert any("PI" in n for n in names)
+
+
+class TestPlotComponentsSTL:
+    """Tests for plot_components in STL decomposition mode."""
+
+    @pytest.fixture
+    def monthly_series(self):
+        """Create a monthly series with trend and seasonal pattern."""
+        dates = pl.date_range(
+            pl.date(2018, 1, 1),
+            pl.date(2022, 12, 31),
+            "1mo",
+            eager=True,
+        )
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
+        })
+
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("statsmodels"),
+        reason="statsmodels not installed",
+    )
+    def test_stl_trend_seasonal(self, monthly_series):
+        """STL mode with trend and seasonal components works."""
+        fig = plot_components(monthly_series, ["trend", "seasonal"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("statsmodels"),
+        reason="statsmodels not installed",
+    )
+    def test_stl_with_nan_interpolation_warning(self):
+        """STL mode warns when NaN values are interpolated."""
+        dates = pl.date_range(
+            pl.date(2018, 1, 1),
+            pl.date(2022, 12, 31),
+            "1mo",
+            eager=True,
+        )
+        n = len(dates)
+        values = [100 + 10 * (i % 12) + i * 0.5 for i in range(n)]
+        values[5] = None
+        values[10] = None
+        df = pl.DataFrame({"time": dates, "y": values})
+        with pytest.warns(UserWarning, match="Interpolated"):
+            fig = plot_components(df, ["trend", "residual"])
+        assert isinstance(fig, go.Figure)
+
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("statsmodels"),
+        reason="statsmodels not installed",
+    )
+    def test_stl_explicit_period(self):
+        """STL mode with explicit period instead of auto-detect."""
+        dates = pl.date_range(
+            pl.date(2018, 1, 1),
+            pl.date(2022, 12, 31),
+            "1mo",
+            eager=True,
+        )
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
+        })
+        fig = plot_components(df, ["trend", "seasonal"], stl_kwargs={"period": 12})
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("statsmodels"),
+        reason="statsmodels not installed",
+    )
+    def test_stl_with_window_kwargs(self):
+        """STL mode forwards trend/seasonal/low_pass window kwargs."""
+        dates = pl.date_range(
+            pl.date(2018, 1, 1),
+            pl.date(2022, 12, 31),
+            "1mo",
+            eager=True,
+        )
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
+        })
+        fig = plot_components(
+            df,
+            ["trend", "seasonal"],
+            stl_kwargs={"period": 12, "trend_window": 15, "seasonal_window": 7, "low_pass_window": 13},
+        )
+        assert isinstance(fig, go.Figure)
+
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("statsmodels"),
+        reason="statsmodels not installed",
+    )
+    def test_stl_unsupported_interval_error(self):
+        """Auto-period with unsupported interval frequency raises ValueError."""
+        from datetime import datetime
+
+        dates = pl.datetime_range(
+            datetime(2020, 1, 1),
+            datetime(2020, 1, 1, 0, 9),
+            "1m",
+            eager=True,
+        )
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": list(range(n)),
+        })
+        with pytest.raises(ValueError, match="Cannot infer STL period"):
+            plot_components(df, ["trend", "seasonal"])
+
+
+class TestPlotForecastMultiModelTrainHistory:
+    """Tests for multi-model forecast with training history and n_history."""
+
+    def test_multi_model_with_train_and_n_history(self):
+        """Multi-model forecast with y_train and n_history covers tail branch."""
+        y_train = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [100.0 + i for i in range(91)],
+        })
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
+            "y": [191.0 + i for i in range(30)],
+        })
+        y_pred_a = pl.DataFrame({
+            "time": y_test["time"],
+            "y": [190.0 + i * 1.1 for i in range(30)],
+        })
+        y_pred_b = pl.DataFrame({
+            "time": y_test["time"],
+            "y": [192.0 + i * 0.9 for i in range(30)],
+        })
+        fig = plot_forecast(
+            y_test,
+            {"Model A": y_pred_a, "Model B": y_pred_b},
+            y_train=y_train,
+            n_history=30,
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 3
+
+
+class TestPlotForecastPanelErrors:
+    """Tests for panel forecast error paths."""
+
+    def test_panel_nonexistent_group_raises(self):
+        """Panel forecast with nonexistent group name raises ValueError."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates,
+            "sales__store_1": [float(i) for i in range(10)],
+            "sales__store_2": [float(i) + 5 for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "sales__store_1": [float(i) + 1 for i in range(10)],
+            "sales__store_2": [float(i) + 6 for i in range(10)],
+        })
+        with pytest.raises(ValueError, match="No panel columns found for groups"):
+            plot_forecast(y_test, y_pred, panel_group_names=["nonexistent"])
+
+
+class TestPlotTimeWeightPanelErrors:
+    """Tests for time_weight panel error paths."""
+
+    def test_panel_weight_nonexistent_group_raises(self):
+        """Panel weight with nonexistent group name raises ValueError."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "time_weight__store_1": [0.1 * i for i in range(1, 11)],
+            "time_weight__store_2": [0.05 * i for i in range(1, 11)],
+        })
+        with pytest.raises(ValueError, match="No weight columns found for panel groups"):
+            plot_time_weight(df, panel_group_names=["nonexistent"])
+
+    def test_panel_weight_valid_group(self):
+        """Panel weight with valid group name produces a figure."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "time_weight__store_1": [0.1 * i for i in range(1, 11)],
+            "time_weight__store_2": [0.05 * i for i in range(1, 11)],
+        })
+        fig = plot_time_weight(df, panel_group_names=["time_weight"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestPlotComponentsErrors:
+    """Tests for plot_components error paths."""
+
+    def test_empty_components_no_original_raises(self):
+        """Empty components list with show_original=False raises ValueError."""
+        y = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [float(i) for i in range(91)],
+        })
+        with pytest.raises(ValueError, match="components must contain at least one displayable component"):
+            plot_components(y, [], show_original=False)
+
+
+class TestPlotForecastWithIntervals:
+    """Tests for plot_forecast with prediction intervals (coverage_rates truthy branch)."""
+
+    def test_forecast_with_intervals(self):
+        """Forecast with interval columns triggers coverage_rates rendering branch."""
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True),
+            "y": [100.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True),
+            "y": [101.0 + i for i in range(10)],
+            "y_lower_0.9": [98.0 + i for i in range(10)],
+            "y_upper_0.9": [104.0 + i for i in range(10)],
+        })
+        fig = plot_forecast(y_test, y_pred)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+
+class TestPlotForecastShowTransition:
+    """Tests for plot_forecast show_transition=True branch."""
+
+    def test_show_transition_with_train(self):
+        """show_transition=True with y_train prepends last train point to forecast line."""
+        y_train = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [100.0 + i * 0.5 for i in range(91)],
+        })
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True),
+            "y": [146.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True),
+            "y": [145.0 + i for i in range(10)],
+        })
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, show_transition=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 3
+
+
+class TestPlotTimeWeightNonPanel:
+    """Tests for plot_time_weight non-panel single weight column branch."""
+
+    def test_single_weight_column(self):
+        """Non-panel time weight plots single weight column."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "time_weight": [1.0 / (i + 1) for i in range(91)],
+        })
+        fig = plot_time_weight(df)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+    def test_single_weight_with_fill(self):
+        """Non-panel time weight with fill enabled."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
+            "time_weight": [0.9**i for i in range(10)],
+        })
+        fig = plot_time_weight(df, fill=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1
+
+
+class TestPlotComponentsShowOriginal:
+    """Tests for plot_components show_original=True branch."""
+
+    def test_show_original_true(self):
+        """show_original=True adds original series panel to the subplot."""
+        y = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [float(i) + (i % 7) * 3.0 for i in range(91)],
+        })
+        trend = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [float(i) for i in range(91)],
+        })
+        fig = plot_components(y, {"Trend": trend}, show_original=True)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2

@@ -9,13 +9,24 @@ import pytest
 from polars.exceptions import ColumnNotFoundError
 
 from yohou.utils.validation import (
+    _check_day_of_month_consistency,
+    _infer_monthly_freq,
+    _normalize_interval,
+    _timedelta_to_string,
     add_interval,
+    check_continuity,
+    check_exogenous_required,
+    check_forecasting_horizon_positive,
+    check_inputs,
     check_interval_consistency,
     check_panel_group_names,
+    check_panel_group_names_exist,
     check_schema,
     check_scorer_column_selection,
+    check_time_column,
     interval_to_timedelta,
     parse_interval,
+    validate_column_names,
 )
 
 
@@ -1333,3 +1344,506 @@ class TestCheckScorerColumnSelection:
                 coverage_rates=None,
                 interval_pattern=None,
             )
+
+    def test_check_scorer_interval_component_global(self):
+        """Test interval component filtering on global (non-panel) data."""
+        import re
+
+        from yohou.metrics import IntervalScore
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        y_true = pl.DataFrame({"time": times, "a": range(5), "b": range(5, 10)})
+        y_pred = pl.DataFrame({
+            "time": times,
+            "a_lower_0.9": [0.0] * 5,
+            "a_upper_0.9": [10.0] * 5,
+            "a_lower_0.95": [0.0] * 5,
+            "a_upper_0.95": [10.0] * 5,
+            "b_lower_0.9": [0.0] * 5,
+            "b_upper_0.9": [20.0] * 5,
+        })
+
+        scorer = IntervalScore(component_names=["a"], coverage_rates=[0.9])
+        interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
+        y_true_out, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="interval",
+            coverage_rates=[0.9],
+            interval_pattern=interval_pattern,
+        )
+        assert set(y_true_out.columns) == {"time", "a"}
+        assert set(y_pred_out.columns) == {"time", "a_lower_0.9", "a_upper_0.9"}
+
+    def test_check_scorer_interval_no_component_coverage_filter(self):
+        """Test coverage rate filtering without component_names on global data."""
+        import re
+
+        from yohou.metrics import IntervalScore
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        y_true = pl.DataFrame({"time": times, "value": range(5)})
+        y_pred = pl.DataFrame({
+            "time": times,
+            "value_lower_0.9": [0.0] * 5,
+            "value_upper_0.9": [10.0] * 5,
+            "value_lower_0.95": [0.0] * 5,
+            "value_upper_0.95": [10.0] * 5,
+        })
+        scorer = IntervalScore(coverage_rates=[0.95])
+        interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
+        y_true_out, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="interval",
+            coverage_rates=[0.95],
+            interval_pattern=interval_pattern,
+        )
+        assert set(y_pred_out.columns) == {"time", "value_lower_0.95", "value_upper_0.95"}
+
+
+class TestCheckTimeColumnEdgeCases:
+    """Additional edge case tests for check_time_column."""
+
+    def test_null_time_raises(self):
+        """Time column with nulls raises ValueError."""
+        df = pl.DataFrame({"time": [datetime(2020, 1, 1), None, datetime(2020, 1, 3)]})
+        with pytest.raises(ValueError, match="null values"):
+            check_time_column(df)
+
+    def test_unsorted_time_raises(self):
+        """Unsorted time column raises ValueError."""
+        df = pl.DataFrame({"time": [datetime(2020, 1, 3), datetime(2020, 1, 1), datetime(2020, 1, 2)]})
+        with pytest.raises(ValueError, match="sorted"):
+            check_time_column(df)
+
+
+class TestCheckPanelGroupNamesExistEdgeCases:
+    """Additional tests for check_panel_group_names_exist."""
+
+    def test_none_returns_early(self):
+        """Passing None for requested_panel_groups returns without error."""
+        check_panel_group_names_exist(
+            fitted_panel_groups=["a", "b"],
+            requested_panel_groups=None,
+            context="predict",
+        )
+
+    def test_missing_groups_raises(self):
+        """Requesting non-existent groups raises ValueError."""
+        with pytest.raises(ValueError, match="not found in fitted"):
+            check_panel_group_names_exist(
+                fitted_panel_groups=["a", "b"],
+                requested_panel_groups=["c"],
+                context="predict",
+            )
+
+
+class TestCheckIntervalSubDay:
+    """Tests for check_interval_consistency with sub-day data."""
+
+    def test_hourly_data(self):
+        """Hourly data returns correct interval string."""
+        times = pl.datetime_range(datetime(2020, 1, 1, 0, 0), datetime(2020, 1, 1, 23, 0), "1h", eager=True)
+        df = pl.DataFrame({"time": times})
+        result = check_interval_consistency(df)
+        assert "h" in result
+
+    def test_inconsistent_interval_raises(self):
+        """Inconsistent intervals raise ValueError."""
+        df = pl.DataFrame({
+            "time": [
+                datetime(2020, 1, 1),
+                datetime(2020, 1, 2),
+                datetime(2020, 1, 5),
+                datetime(2020, 1, 9),
+                datetime(2020, 1, 20),
+            ]
+        })
+        with pytest.raises(ValueError, match="inconsistent"):
+            check_interval_consistency(df)
+
+
+class TestCheckContinuityBranchCoverage:
+    """Tests for check_continuity branch coverage."""
+
+    def test_none_interval_skips_validation(self):
+        """Passing expected_interval=None skips all checks."""
+        df_p = pl.DataFrame({"time": [datetime(2020, 1, 1)]})
+        df_n = pl.DataFrame({"time": [datetime(2020, 6, 1)]})
+        check_continuity(df_p, df_n, expected_interval=None)
+
+    def test_next_df_interval_mismatch_raises(self):
+        """Next df with different interval from expected raises ValueError."""
+        df_p = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+        })
+        df_n = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 2), datetime(2020, 1, 6), "2d", eager=True),
+        })
+        with pytest.raises(ValueError, match="interval"):
+            check_continuity(df_p, df_n, expected_interval="1d")
+
+
+class TestCheckForecastingHorizonPositive:
+    """Tests for check_forecasting_horizon_positive."""
+
+    def test_none_with_allow_none_false_raises(self):
+        """None horizon with allow_none=False raises ValueError."""
+        with pytest.raises(ValueError, match="cannot be None"):
+            check_forecasting_horizon_positive(None, allow_none=False)
+
+    def test_none_with_allow_none_true_passes(self):
+        """None horizon with allow_none=True returns without error."""
+        check_forecasting_horizon_positive(None, allow_none=True)
+
+    def test_zero_raises(self):
+        """Zero horizon raises ValueError."""
+        with pytest.raises(ValueError, match="must be >= 1"):
+            check_forecasting_horizon_positive(0)
+
+    def test_negative_raises(self):
+        """Negative horizon raises ValueError."""
+        with pytest.raises(ValueError, match="must be >= 1"):
+            check_forecasting_horizon_positive(-5)
+
+    def test_positive_passes(self):
+        """Positive horizon passes without error."""
+        check_forecasting_horizon_positive(10)
+
+
+class TestCheckExogenousRequired:
+    """Tests for check_exogenous_required."""
+
+    def test_none_X_with_positive_horizon_raises(self):
+        """X=None with observation_horizon > 0 raises ValueError."""
+        with pytest.raises(ValueError):
+            check_exogenous_required(None, observation_horizon=5, context="predict")
+
+    def test_none_X_with_zero_horizon_passes(self):
+        """X=None with observation_horizon=0 passes without error."""
+        check_exogenous_required(None, observation_horizon=0, context="predict")
+
+    def test_provided_X_with_positive_horizon_passes(self):
+        """X provided with positive horizon passes without error."""
+        X = pl.DataFrame({"time": [datetime(2020, 1, 1)], "val": [1.0]})
+        check_exogenous_required(X, observation_horizon=5, context="predict")
+
+
+class TestCheckPanelGroupNamesExist:
+    """Tests for check_panel_group_names_exist."""
+
+    def test_missing_group_raises(self):
+        """Requesting a non-existent panel group raises ValueError."""
+        with pytest.raises(ValueError, match="not found"):
+            check_panel_group_names_exist(["g1"], ["g2", "g3"], "predict")
+
+    def test_valid_groups_pass(self):
+        """Requesting existing groups passes without error."""
+        check_panel_group_names_exist(["g1", "g2", "g3"], ["g1", "g2"], "predict")
+
+
+class TestValidateColumnNames:
+    """Tests for validate_column_names."""
+
+    def test_none_df_returns_early(self):
+        """None df returns without error."""
+        validate_column_names(None)
+
+    def test_multiple_separators_raises(self):
+        """Column with multiple __ separators raises ValueError."""
+        df = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "a__b__c": [1.0],
+        })
+        with pytest.raises(ValueError, match="multiple __ separators"):
+            validate_column_names(df)
+
+    def test_leading_separator_raises(self):
+        """Column starting with __ raises ValueError."""
+        df = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "__sales": [1.0],
+        })
+        with pytest.raises(ValueError, match="beginning or end"):
+            validate_column_names(df)
+
+    def test_trailing_separator_raises(self):
+        """Column ending with __ raises ValueError."""
+        df = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "sales__": [1.0],
+        })
+        with pytest.raises(ValueError, match="beginning or end"):
+            validate_column_names(df)
+
+    def test_underscore_adjacent_to_separator_raises(self):
+        """Column with underscore adjacent to __ separator raises ValueError."""
+        df = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "store___sales": [1.0],
+        })
+        with pytest.raises(ValueError, match="underscores adjacent"):
+            validate_column_names(df)
+
+    def test_valid_panel_column_passes(self):
+        """Valid panel column with group__series passes."""
+        df = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "sales__store_1": [1.0],
+        })
+        validate_column_names(df)
+
+    def test_global_column_passes(self):
+        """Global column without __ passes."""
+        df = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "sales": [1.0],
+        })
+        validate_column_names(df)
+
+
+class TestNormalizeInterval:
+    """Tests for _normalize_interval day-to-month conversion."""
+
+    @pytest.mark.parametrize(
+        ("interval", "expected"),
+        [
+            ("30d", "1mo"),
+            ("28d", "1mo"),
+            ("31d", "1mo"),
+            ("60d", "2mo"),
+            ("91d", "3mo"),
+            ("182d", "6mo"),
+            ("365d", "1y"),
+            ("366d", "1y"),
+            ("15d", "15d"),
+            ("1h", "1h"),
+            ("1mo", "1mo"),
+        ],
+    )
+    def test_day_to_month_normalization(self, interval, expected):
+        """Day intervals in month ranges normalize correctly."""
+        assert _normalize_interval(interval) == expected
+
+
+class TestTimedeltaToStringSubsecond:
+    """Tests for _timedelta_to_string with subsecond precision."""
+
+    def test_milliseconds(self):
+        """Millisecond timedelta converts to ms string."""
+        assert _timedelta_to_string(timedelta(milliseconds=5)) == "5ms"
+
+    def test_microseconds(self):
+        """Microsecond timedelta converts to us string."""
+        assert _timedelta_to_string(timedelta(microseconds=500)) == "500us"
+
+    def test_exact_millisecond_boundary(self):
+        """Exactly 1000 microseconds converts to 1ms."""
+        assert _timedelta_to_string(timedelta(microseconds=1000)) == "1ms"
+
+
+class TestInferMonthlyFreqEdgeCases:
+    """Tests for _infer_monthly_freq edge cases."""
+
+    def test_single_element_returns_none(self):
+        """Single-element list returns None."""
+        assert _infer_monthly_freq([datetime(2024, 1, 1)]) is None
+
+    def test_empty_list_returns_none(self):
+        """Empty list returns None."""
+        assert _infer_monthly_freq([]) is None
+
+
+class TestCheckDayOfMonthConsistency:
+    """Tests for _check_day_of_month_consistency."""
+
+    def test_empty_list_returns_false(self):
+        """Empty list returns False."""
+        assert _check_day_of_month_consistency([]) is False
+
+    def test_end_of_month_consistency(self):
+        """End-of-month dates are consistent (Jan 31, Feb 29, Mar 31)."""
+        dates = [datetime(2024, 1, 31), datetime(2024, 2, 29), datetime(2024, 3, 31)]
+        assert _check_day_of_month_consistency(dates) is True
+
+    def test_inconsistent_dates_return_false(self):
+        """Dates with inconsistent day-of-month return False."""
+        dates = [datetime(2024, 1, 15), datetime(2024, 2, 20), datetime(2024, 3, 15)]
+        assert _check_day_of_month_consistency(dates) is False
+
+
+class TestIntervalToTimedeltaMicroseconds:
+    """Tests for interval_to_timedelta with subsecond units."""
+
+    def test_microseconds(self):
+        """Microsecond interval converts to correct timedelta."""
+        result = interval_to_timedelta("100us")
+        assert result == timedelta(microseconds=100)
+
+    def test_milliseconds(self):
+        """Millisecond interval converts to correct timedelta."""
+        result = interval_to_timedelta("50ms")
+        assert result == timedelta(milliseconds=50)
+
+
+class TestCheckContinuity:
+    """Tests for check_continuity gap and overlap detection."""
+
+    def test_fixed_interval_gap_raises(self):
+        """Gap in fixed-interval data raises ValueError."""
+        df_p = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True),
+        })
+        df_n = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 8), datetime(2020, 1, 12), "1d", eager=True),
+        })
+        with pytest.raises(ValueError, match="[Gg]ap"):
+            check_continuity(df_p, df_n, expected_interval="1d")
+
+    def test_fixed_interval_overlap_raises(self):
+        """Overlap in fixed-interval data raises ValueError."""
+        df_p = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True),
+        })
+        df_n = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 4), datetime(2020, 1, 8), "1d", eager=True),
+        })
+        with pytest.raises(ValueError, match="[Oo]verlap"):
+            check_continuity(df_p, df_n, expected_interval="1d")
+
+    def test_continuous_data_passes(self):
+        """Continuous data passes without error."""
+        df_p = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True),
+        })
+        df_n = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 6), datetime(2020, 1, 10), "1d", eager=True),
+        })
+        check_continuity(df_p, df_n, expected_interval="1d")
+
+    def test_monthly_gap_raises(self):
+        """Gap in monthly (variable-length) data raises ValueError."""
+        df_p = pl.DataFrame({
+            "time": [datetime(2024, 1, 1), datetime(2024, 2, 1)],
+        })
+        df_n = pl.DataFrame({
+            "time": [datetime(2024, 5, 1), datetime(2024, 6, 1)],
+        })
+        with pytest.raises(ValueError, match="[Gg]ap"):
+            check_continuity(df_p, df_n, expected_interval="1mo")
+
+    def test_monthly_overlap_raises(self):
+        """Overlap in monthly data raises ValueError."""
+        df_p = pl.DataFrame({
+            "time": [datetime(2024, 1, 1), datetime(2024, 2, 1)],
+        })
+        df_n = pl.DataFrame({
+            "time": [datetime(2024, 2, 1), datetime(2024, 3, 1)],
+        })
+        with pytest.raises(ValueError, match="[Oo]verlap"):
+            check_continuity(df_p, df_n, expected_interval="1mo")
+
+    def test_previous_df_interval_mismatch_raises(self):
+        """Previous df with wrong interval raises ValueError."""
+        df_p = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1h", eager=True),
+        })
+        df_n = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 6), datetime(2020, 1, 10), "1d", eager=True),
+        })
+        with pytest.raises(ValueError, match="interval"):
+            check_continuity(df_p, df_n, expected_interval="1d")
+
+    def test_interval_mismatch_between_frames_raises(self):
+        """DataFrames with different internal intervals raise ValueError."""
+        df_p = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 3), "1h", eager=True),
+        })
+        df_n = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 4), datetime(2020, 1, 6), "1d", eager=True),
+        })
+        with pytest.raises(ValueError, match="[Ii]nterval|mismatch"):
+            check_continuity(df_p, df_n, expected_interval="1h")
+
+
+class TestCheckInputsIntervalMismatch:
+    """Tests for check_inputs with mismatched y/X time intervals."""
+
+    def test_different_intervals_raises(self):
+        """y and X with different time intervals raises ValueError."""
+        y = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 10), "1d", eager=True),
+            "target": range(10),
+        })
+        X = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 1, 0), datetime(2020, 1, 1, 9), "1h", eager=True),
+            "feature": range(10),
+        })
+        with pytest.raises(ValueError, match="[Ii]nterval mismatch"):
+            check_inputs(y, X)
+
+
+class TestAddIntervalAllUnits:
+    """Tests for add_interval with various time units."""
+
+    def test_hours(self):
+        """Adding hours works correctly."""
+        start = datetime(2020, 1, 1, 0, 0)
+        result = add_interval(start, "3h", 1)
+        assert result == datetime(2020, 1, 1, 3, 0)
+
+    def test_minutes(self):
+        """Adding minutes works correctly."""
+        start = datetime(2020, 1, 1, 0, 0)
+        result = add_interval(start, "30m", 1)
+        assert result == datetime(2020, 1, 1, 0, 30)
+
+    def test_seconds(self):
+        """Adding seconds works correctly."""
+        start = datetime(2020, 1, 1, 0, 0)
+        result = add_interval(start, "10s", 1)
+        assert result == datetime(2020, 1, 1, 0, 0, 10)
+
+    def test_weeks(self):
+        """Adding weeks works correctly."""
+        start = datetime(2020, 1, 1)
+        result = add_interval(start, "1w", 2)
+        assert result == datetime(2020, 1, 15)
+
+    def test_quarters(self):
+        """Adding quarters (3 months) works correctly."""
+        start = datetime(2020, 1, 1)
+        result = add_interval(start, "1q", 1)
+        assert result == datetime(2020, 4, 1)
+
+    def test_years(self):
+        """Adding years works correctly."""
+        start = datetime(2020, 1, 1)
+        result = add_interval(start, "1y", 1)
+        assert result == datetime(2021, 1, 1)
+
+    def test_month_day_preservation(self):
+        """Adding months preserves day-of-month when possible."""
+        start = datetime(2020, 1, 15)
+        result = add_interval(start, "1mo", 1)
+        assert result == datetime(2020, 2, 15)
+
+    def test_month_day_clamping(self):
+        """Adding months clamps day to month end when needed."""
+        start = datetime(2020, 1, 31)
+        result = add_interval(start, "1mo", 1)
+        assert result == datetime(2020, 2, 29)
+
+    def test_invalid_unit_raises(self):
+        """Invalid unit raises ValueError."""
+        with pytest.raises(ValueError):
+            add_interval(datetime(2020, 1, 1), "1x", 1)
+
+    def test_days(self):
+        """Adding days works correctly."""
+        start = datetime(2020, 1, 1)
+        result = add_interval(start, "2d", 3)
+        assert result == datetime(2020, 1, 7)

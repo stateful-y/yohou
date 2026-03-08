@@ -4,10 +4,37 @@ import polars as pl
 import pytest
 
 from yohou.plotting._utils import (
+    _group_panel_columns,
     _normalize_y_pred,
+    get_color_sequence,
     resolve_color_palette,
+    resolve_panel_columns,
 )
 from yohou.utils import validate_plotting_data, validate_plotting_params
+
+
+class TestGetColorSequence:
+    """Tests for get_color_sequence utility."""
+
+    def test_no_args_returns_full_palette(self):
+        """Calling with no arguments returns complete default palette."""
+        colors = get_color_sequence()
+        assert isinstance(colors, list)
+        assert len(colors) == 12
+        assert all(isinstance(c, str) for c in colors)
+
+    def test_specific_count(self):
+        """Requesting a specific count returns that many colors."""
+        colors = get_color_sequence(5)
+        assert len(colors) == 5
+
+    def test_exceeding_palette_cycles(self):
+        """Requesting more colors than palette size cycles through."""
+        colors = get_color_sequence(25)
+        assert len(colors) == 25
+        full_palette = get_color_sequence()
+        assert colors[0] == full_palette[0]
+        assert colors[12] == full_palette[0]
 
 
 class TestResolveColorPalette:
@@ -169,3 +196,60 @@ class TestValidatePlottingData:
         df = pl.DataFrame({"time": [1], "y": [10.0]})
         with pytest.raises(ValueError, match="at least 2 rows"):
             validate_plotting_data(df, min_rows=2)
+
+
+class TestResolvePanelColumns:
+    """Tests for resolve_panel_columns utility."""
+
+    @pytest.fixture
+    def panel_df(self):
+        """Panel DataFrame with two groups."""
+        return pl.DataFrame({
+            "time": [1, 2],
+            "sales__a": [10, 20],
+            "sales__b": [30, 40],
+            "traffic__a": [50, 60],
+        })
+
+    def test_string_columns_coerced_to_list(self, panel_df):
+        """String columns parameter converted to list internally."""
+        result = resolve_panel_columns(panel_df, columns="a")
+        assert "sales__a" in result
+        assert "traffic__a" in result
+
+    def test_panel_group_with_member_filter(self, panel_df):
+        """Panel group and member filter together resolve correctly."""
+        result = resolve_panel_columns(panel_df, panel_group_names=["sales"], columns=["b"])
+        assert result == ["sales__b"]
+
+    def test_nonexistent_group_raises(self, panel_df):
+        """Nonexistent panel group name raises ValueError."""
+        with pytest.raises(ValueError, match="No panel columns found for groups"):
+            resolve_panel_columns(panel_df, panel_group_names=["nonexistent"])
+
+    def test_nonexistent_member_raises(self, panel_df):
+        """Nonexistent member with valid group raises ValueError."""
+        with pytest.raises(ValueError, match="No panel columns found for groups"):
+            resolve_panel_columns(panel_df, panel_group_names=["sales"], columns=["z"])
+
+
+class TestGroupPanelColumns:
+    """Tests for _group_panel_columns utility."""
+
+    def test_groups_and_members(self):
+        """Groups panel columns by prefix and extracts member names."""
+        groups, members = _group_panel_columns(["T3__a", "T3__b", "T4__a"])
+        assert groups == {"T3": ["T3__a", "T3__b"], "T4": ["T4__a"]}
+        assert members == ["a", "b"]
+
+    def test_plain_column_fallback(self):
+        """Column without __ uses full name as both key and member."""
+        groups, members = _group_panel_columns(["plain_col"])
+        assert groups == {"plain_col": ["plain_col"]}
+        assert members == ["plain_col"]
+
+    def test_mixed_columns(self):
+        """Mix of panel and plain columns groups correctly."""
+        groups, members = _group_panel_columns(["T__x", "plain"])
+        assert groups == {"T": ["T__x"], "plain": ["plain"]}
+        assert set(members) == {"x", "plain"}

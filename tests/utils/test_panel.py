@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 
-from yohou.utils.panel import dict_to_panel, inspect_panel, select_panel_columns
+from yohou.utils.panel import dict_to_panel, get_group_df, inspect_panel, select_panel_columns
 
 
 class TestInspectPanel:
@@ -563,3 +563,29 @@ class TestDictToPanel:
 
         assert set(result.columns) == {"time", "sales__store_1"}
         assert len(result) == 0
+
+
+class TestGetGroupDf:
+    """Tests for get_group_df function."""
+
+    def test_column_not_found_raises(self):
+        """get_group_df raises ValueError when a schema column is missing from the DataFrame."""
+        df = pl.DataFrame({
+            "time": [1, 2, 3],
+            "sales__store_1": [100, 110, 120],
+        })
+        schema = {"store_1": pl.Int64, "nonexistent": pl.Int64}
+        with pytest.raises(ValueError, match="Column 'nonexistent' not found"):
+            get_group_df(df, "sales", schema)
+
+    def test_only_global_columns_skips_rename(self):
+        """get_group_df with only global columns produces output without renaming."""
+        df = pl.DataFrame({
+            "time": [1, 2, 3],
+            "holiday": [True, False, True],
+        })
+        schema = {"holiday": pl.Boolean}
+        result = get_group_df(df, "sales", schema)
+        assert "holiday" in result.columns
+        assert "time" in result.columns
+        assert result["holiday"].to_list() == [True, False, True]
