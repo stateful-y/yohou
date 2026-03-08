@@ -23,9 +23,6 @@ PYTHON_VERSIONS = [v for v in ALL_VERSIONS if v >= MIN_VERSION and v <= MAX_VERS
 @nox.session(python=PYTHON_VERSIONS[0], venv_backend="uv")
 def test_coverage(session: nox.Session) -> None:
     """Run the tests with pytest and coverage under the default Python version."""
-    session.env["COVERAGE_FILE"] = f".coverage.{session.python}"
-    session.env["COVERAGE_PROCESS_START"] = "pyproject.toml"
-
     # Install dependencies
     session.run_install(
         "uv",
@@ -36,15 +33,10 @@ def test_coverage(session: nox.Session) -> None:
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
 
-    # Clear all .coverage* files
-    session.run("coverage", "erase")
-
-    # Run unit tests under coverage with parallel execution
+    # Run unit tests with pytest-cov for coverage collection.
+    # pytest-cov natively handles xdist workers (-n auto) so we rely on
+    # --cov from addopts rather than wrapping with ``coverage run``.
     session.run(
-        "coverage",
-        "run",
-        "--source=src/yohou",
-        "-m",
         "pytest",
         "tests",
         "-m",
@@ -54,12 +46,6 @@ def test_coverage(session: nox.Session) -> None:
         f"--junitxml=junit.{session.python}.xml",
         *session.posargs,
     )
-
-    # Generate HTML and XML reports
-    session.run("coverage", "html", "--ignore-errors", "-d", session.create_tmp())
-
-    # XML report for CI
-    session.run("coverage", "xml", "-o", f"coverage.{session.python}.xml")
 
 
 @nox.session(python=PYTHON_VERSIONS, venv_backend="uv")

@@ -1,6 +1,11 @@
 import pytest
 
-from yohou.utils.discovery import all_displays, all_estimators, all_functions
+from yohou.utils.discovery import (
+    _is_checked_function,
+    all_displays,
+    all_estimators,
+    all_functions,
+)
 
 
 class TestAllEstimators:
@@ -69,3 +74,127 @@ class TestAllFunctions:
         """Test all_functions returns correct count."""
         functions = all_functions()
         assert len(functions) == 183
+
+
+class TestAllEstimatorsAdvancedFilters:
+    """Tests for type_filter variants that exercise additional branches."""
+
+    def test_conformity_scorer_filter(self):
+        """conformity_scorer filter matches conformity-type scorers."""
+        result = all_estimators(type_filter="conformity_scorer")
+        assert len(result) > 0
+        from yohou.metrics.conformity_base import BaseConformityScorer
+
+        for _, cls in result:
+            assert issubclass(cls, BaseConformityScorer)
+
+    def test_generic_scorer_filter(self):
+        """Generic 'scorer' filter matches all scorer types."""
+        all_scorers = all_estimators(type_filter="scorer")
+        point_scorers = all_estimators(type_filter="point_scorer")
+        interval_scorers = all_estimators(type_filter="interval_scorer")
+        conformity_scorers = all_estimators(type_filter="conformity_scorer")
+        combined = len(point_scorers) + len(interval_scorers) + len(conformity_scorers)
+        assert len(all_scorers) == combined
+
+    def test_generic_forecaster_filter(self):
+        """Generic 'forecaster' filter matches all forecaster types."""
+        all_forecasters = all_estimators(type_filter="forecaster")
+        assert len(all_forecasters) > 0
+        point_forecasters = all_estimators(type_filter="point")
+        interval_forecasters = all_estimators(type_filter="interval")
+        point_names = {name for name, _ in point_forecasters}
+        interval_names = {name for name, _ in interval_forecasters}
+        all_names = {name for name, _ in all_forecasters}
+        assert all_names == point_names | interval_names
+
+    def test_list_filter_with_scorer(self):
+        """List filter with scorer type returns matching estimators."""
+        result = all_estimators(type_filter=["scorer", "splitter"])
+        scorers = all_estimators(type_filter="scorer")
+        splitters = all_estimators(type_filter="splitter")
+        assert len(result) == len(scorers) + len(splitters)
+
+
+class TestIsCheckedFunction:
+    """Tests for _is_checked_function utility."""
+
+    def test_non_function_returns_false(self):
+        """Non-function objects are rejected."""
+        assert _is_checked_function("not_a_function") is False
+        assert _is_checked_function(42) is False
+
+    def test_private_function_returns_false(self):
+        """Private functions starting with _ are rejected."""
+
+        def _private():
+            pass
+
+        _private.__module__ = "yohou.utils.panel"
+        assert _is_checked_function(_private) is False
+
+    def test_non_yohou_module_returns_false(self):
+        """Functions from non-yohou modules are rejected."""
+
+        def my_func():
+            pass
+
+        my_func.__module__ = "sklearn.base"
+        assert _is_checked_function(my_func) is False
+
+    def test_estimator_checks_module_rejected(self):
+        """Functions from estimator_checks modules are rejected."""
+
+        def check_something():
+            pass
+
+        check_something.__module__ = "yohou.testing.estimator_checks"
+        assert _is_checked_function(check_something) is False
+
+    def test_valid_yohou_function_accepted(self):
+        """Public yohou functions pass the check."""
+
+        def my_func():
+            pass
+
+        my_func.__module__ = "yohou.utils.panel"
+        assert _is_checked_function(my_func) is True
+
+
+class TestAllDisplaysContent:
+    """Tests for all_displays content validation."""
+
+    def test_displays_returns_list(self):
+        """all_displays returns a list of tuples."""
+        displays = all_displays()
+        assert isinstance(displays, list)
+        for item in displays:
+            assert isinstance(item, tuple)
+            assert len(item) == 2
+
+
+class TestAllFunctionsContent:
+    """Tests for all_functions content validation."""
+
+    def test_functions_are_callable(self):
+        """All discovered functions are callable."""
+        functions = all_functions()
+        for name, func in functions:
+            assert callable(func), f"{name} is not callable"
+            assert not name.startswith("_"), f"{name} starts with underscore"
+
+
+class TestAllEstimatorsBothForecasterType:
+    """Tests for type_filter capturing forecaster_type 'both'."""
+
+    def test_point_filter_includes_both_type(self):
+        """Point filter includes forecasters with forecaster_type='both'."""
+        point = all_estimators(type_filter="point")
+        point_names = {name for name, _ in point}
+        assert "SplitConformalForecaster" in point_names
+
+    def test_interval_filter_includes_both_type(self):
+        """Interval filter includes forecasters with forecaster_type='both'."""
+        interval = all_estimators(type_filter="interval")
+        interval_names = {name for name, _ in interval}
+        assert "SplitConformalForecaster" in interval_names

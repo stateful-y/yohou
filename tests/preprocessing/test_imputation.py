@@ -4,6 +4,9 @@ Tests SimpleImputer, TransformedSpaceKNNImputer, SimpleTimeImputer,
 and SeasonalImputer basic functionality.
 """
 
+import polars as pl
+import pytest
+
 from conftest import run_checks
 from yohou.preprocessing import (
     LagTransformer,
@@ -251,3 +254,108 @@ class TestTransformedSpaceKNNImputer:
                 X_plain_np[:, i],
                 X_transformed[col].to_numpy(),
             )
+
+
+class TestSimpleImputerStatistics:
+    """Tests for SimpleImputer.statistics_ property."""
+
+    def test_statistics_after_fit(self, time_series_with_nulls_factory):
+        """statistics_ returns underlying imputer statistics."""
+        from yohou.preprocessing.imputation import SimpleImputer
+
+        X = time_series_with_nulls_factory(length=50, n_components=2, null_fraction=0.1, seed=42)
+        imputer = SimpleImputer(strategy="mean")
+        imputer.fit(X)
+
+        stats = imputer.statistics_
+        assert stats is not None
+        assert len(stats) > 0
+
+
+class TestTimeSeriesInterpolatorMethods:
+    """Tests for various interpolation methods in TimeSeriesInterpolator."""
+
+    @pytest.fixture
+    def df_with_nulls(self):
+        """DataFrame with null values for interpolation testing."""
+        from datetime import datetime, timedelta
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=19),
+            interval="1d",
+            eager=True,
+        )
+        values = [
+            1.0,
+            None,
+            3.0,
+            None,
+            5.0,
+            6.0,
+            None,
+            8.0,
+            9.0,
+            None,
+            11.0,
+            12.0,
+            None,
+            14.0,
+            15.0,
+            None,
+            17.0,
+            18.0,
+            19.0,
+            20.0,
+        ]
+        return pl.DataFrame({"time": time, "val": values})
+
+    def test_forward_fill(self, df_with_nulls):
+        """method='forward' fills nulls forward."""
+        from yohou.preprocessing.imputation import SimpleTimeImputer
+
+        imputer = SimpleTimeImputer(method="forward")
+        imputer.fit(df_with_nulls)
+        result = imputer.transform(df_with_nulls)
+        assert result["val"].null_count() == 0
+        assert result["val"][1] == 1.0
+
+    def test_backward_fill(self, df_with_nulls):
+        """method='backward' fills nulls backward."""
+        from yohou.preprocessing.imputation import SimpleTimeImputer
+
+        imputer = SimpleTimeImputer(method="backward")
+        imputer.fit(df_with_nulls)
+        result = imputer.transform(df_with_nulls)
+        assert result["val"].null_count() == 0
+        assert result["val"][1] == 3.0
+
+    def test_nearest_fill(self, df_with_nulls):
+        """method='nearest' fills from both directions."""
+        from yohou.preprocessing.imputation import SimpleTimeImputer
+
+        imputer = SimpleTimeImputer(method="nearest")
+        imputer.fit(df_with_nulls)
+        result = imputer.transform(df_with_nulls)
+        assert result["val"].null_count() == 0
+
+    def test_fill_both(self, df_with_nulls):
+        """method='fill_both' fills forward then backward."""
+        from yohou.preprocessing.imputation import SimpleTimeImputer
+
+        imputer = SimpleTimeImputer(method="fill_both")
+        imputer.fit(df_with_nulls)
+        result = imputer.transform(df_with_nulls)
+        assert result["val"].null_count() == 0
+
+
+class TestSeasonalImputerMedian:
+    """Tests for SeasonalImputer with seasonal_median strategy."""
+
+    def test_seasonal_median(self, time_series_with_nulls_factory):
+        """seasonal_median uses median instead of mean for imputation."""
+        X = time_series_with_nulls_factory(length=70, n_components=1, null_fraction=0.1, seed=42)
+        imputer = SeasonalImputer(period=7, fill_method="seasonal_median")
+        imputer.fit(X)
+        X_imputed = imputer.transform(X)
+        assert X_imputed.null_count().sum_horizontal().item() == 0

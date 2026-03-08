@@ -51,7 +51,7 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
     --------
     `BaseForecaster` : Base class for forecasters.
     `LagTransformer` : Creates lagged features from time series.
-    SeasonalDifferencing : Stateful seasonal differencing transformer.
+    `SeasonalDifferencing` : Stateful seasonal differencing transformer.
 
     """
 

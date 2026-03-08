@@ -374,3 +374,127 @@ class TestFunctionTransformerStatelessness:
 
         # Stateless transformers should have empty _X_observed
         assert len(transformer._X_observed) == 0
+
+
+def _diff_func(X):
+    """Apply first difference, producing 1 leading NaN row."""
+    result = X.select(pl.all().diff())
+    return result
+
+
+def _cumsum_inverse(X_t, X_p):
+    """Reconstruct original from diff by cumulative sum starting from X_p."""
+    result = X_t.clone()
+    for col in X_t.columns:
+        start_val = X_p[col][-1]
+        vals = X_t[col].to_list()
+        cumulative = [start_val + vals[0]]
+        for v in vals[1:]:
+            cumulative.append(cumulative[-1] + v)
+        result = result.with_columns(pl.Series(col, cumulative))
+    return result
+
+
+class TestFunctionTransformerStateful:
+    """Tests for stateful FunctionTransformer with warmup detection."""
+
+    def test_diff_func_detects_warmup(self):
+        """Diff function produces 1 leading NaN, auto-detected as observation_horizon."""
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(func=_diff_func, check_inverse=False)
+        t.fit(X)
+        assert t._observation_horizon == 1
+
+    def test_fit_transform_slices_warmup_rows(self):
+        """fit_transform returns data with warmup rows removed."""
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(func=_diff_func, check_inverse=False)
+        X_t = t.fit_transform(X)
+        assert len(X_t) == 29
+        assert "time" in X_t.columns
+
+    def test_fit_transform_stores_X_observed(self):
+        """fit_transform stores initial rows for inverse transform."""
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(func=_diff_func, check_inverse=False)
+        t.fit_transform(X)
+        assert len(t._X_observed) == 1
+
+    def test_transform_with_X_p(self):
+        """Transform with X_p prepends past observations for warmup."""
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(func=_diff_func, check_inverse=False)
+        t.fit(X)
+
+        X_train = X.head(20)
+        X_test = X.tail(10)
+        X_t = t.transform(X_test, X_p=X_train)
+        assert len(X_t) == 10
+
+    def test_transform_without_X_p_slices_warmup(self):
+        """Transform without X_p drops warmup NaN rows."""
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(func=_diff_func, check_inverse=False)
+        t.fit(X)
+        X_t = t.transform(X)
+        assert len(X_t) == 29
+
+    def test_inverse_transform_uses_stored_X_observed(self):
+        """Stateful inverse_transform uses stored _X_observed as X_p."""
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(
+            func=_diff_func,
+            inverse_func=_cumsum_inverse,
+            check_inverse=False,
+        )
+        X_t = t.fit_transform(X)
+        X_inv = t.inverse_transform(X_t, X_p=t._X_observed)
+        assert len(X_inv) == len(X_t)
+
+    def test_inverse_transform_with_explicit_X_p(self):
+        """Stateful inverse_transform with explicit X_p parameter."""
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(
+            func=_diff_func,
+            inverse_func=_cumsum_inverse,
+            check_inverse=False,
+        )
+        t.fit(X)
+        X_t = t.transform(X)
+        X_p = X.head(1)
+        X_inv = t.inverse_transform(X_t, X_p=X_p)
+        assert len(X_inv) == len(X_t)
+
+
+class TestFunctionTransformerDiscontinuousNaN:
+    """Tests for discontinuous NaN detection in _detect_warmup."""
+
+    def test_discontinuous_nan_raises(self):
+        """Function producing NaN at non-leading positions raises ValueError."""
+
+        def bad_func(X):
+            """Produce NaN at leading and non-contiguous positions."""
+            arr = X.to_numpy().astype(float)
+            arr[0, :] = float("nan")
+            arr[5, :] = float("nan")
+            return pl.DataFrame(arr, schema=X.columns)
+
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(func=bad_func, check_inverse=False)
+        with pytest.raises(ValueError, match="discontinuous"):
+            t.fit(X)
+
+
+class TestFunctionTransformerCheckInverseWarning:
+    """Tests for _check_inverse_transform warning path."""
+
+    def test_non_inverse_funcs_warn(self):
+        """Non-inverse func/inverse_func pair emits UserWarning."""
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(
+            func=lambda X: X * 2,
+            inverse_func=lambda X: X * 3,
+            check_inverse=True,
+        )
+        with pytest.warns(UserWarning, match="not strictly inverse"):
+            t.fit(X)

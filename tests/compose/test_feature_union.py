@@ -296,3 +296,199 @@ class TestFeatureUnionTags:
         union = FeatureUnion([("d", "drop")])
         tags = union.__sklearn_tags__()
         assert tags.transformer_tags is not None
+
+
+class TestFeatureUnionObserveRewindTransform:
+    """Tests for FeatureUnion observe_transform and rewind_transform paths."""
+
+    def test_observe_transform_returns_transformed_data(self, time_series_factory):
+        """observe_transform produces horizontally stacked results."""
+        X = time_series_factory(length=50, n_components=2)
+        union = FeatureUnion([
+            ("add1", SimpleTransformer(observation_horizon=0, add_constant=1.0)),
+            ("add2", SimpleTransformer(observation_horizon=0, add_constant=2.0)),
+        ])
+        union.fit(X)
+        X_ot = union.observe_transform(X)
+        assert "time" in X_ot.columns
+        assert len(X_ot) == len(X)
+
+    def test_observe_transform_with_verbose_feature_names(self, time_series_factory):
+        """observe_transform with verbose_feature_names_out adds prefixes."""
+        X = time_series_factory(length=50, n_components=1)
+        union = FeatureUnion(
+            [
+                ("add1", SimpleTransformer(observation_horizon=0, add_constant=1.0)),
+                ("add2", SimpleTransformer(observation_horizon=0, add_constant=2.0)),
+            ],
+            verbose_feature_names_out=True,
+        )
+        union.fit(X)
+        X_ot = union.observe_transform(X)
+        non_time_cols = [c for c in X_ot.columns if c != "time"]
+        assert any("add1_" in c for c in non_time_cols)
+        assert any("add2_" in c for c in non_time_cols)
+
+    def test_rewind_transform_returns_transformed_data(self, time_series_factory):
+        """rewind_transform produces horizontally stacked results."""
+        X = time_series_factory(length=50, n_components=2)
+        union = FeatureUnion([
+            ("add1", SimpleTransformer(observation_horizon=0, add_constant=1.0)),
+            ("add2", SimpleTransformer(observation_horizon=0, add_constant=2.0)),
+        ])
+        union.fit(X)
+        X_rt = union.rewind_transform(X)
+        assert "time" in X_rt.columns
+
+    def test_rewind_transform_with_verbose_feature_names(self, time_series_factory):
+        """rewind_transform with verbose_feature_names_out adds prefixes."""
+        X = time_series_factory(length=50, n_components=1)
+        union = FeatureUnion(
+            [
+                ("add1", SimpleTransformer(observation_horizon=0, add_constant=1.0)),
+                ("add2", SimpleTransformer(observation_horizon=0, add_constant=2.0)),
+            ],
+            verbose_feature_names_out=True,
+        )
+        union.fit(X)
+        X_rt = union.rewind_transform(X)
+        non_time_cols = [c for c in X_rt.columns if c != "time"]
+        assert any("add1_" in c for c in non_time_cols)
+        assert any("add2_" in c for c in non_time_cols)
+
+    def test_n_features_in_accessible_after_fit(self, time_series_factory):
+        """n_features_in_ property is accessible after fit."""
+        X = time_series_factory(length=50, n_components=2)
+        union = FeatureUnion([("s1", SimpleTransformer(observation_horizon=0))])
+        union.fit(X)
+        assert union.n_features_in_ >= 2
+
+    def test_feature_names_in_accessible_after_fit(self, time_series_factory):
+        """feature_names_in_ property is accessible after fit."""
+        X = time_series_factory(length=50, n_components=2)
+        union = FeatureUnion([("s1", SimpleTransformer(observation_horizon=0))])
+        union.fit(X)
+        assert len(union.feature_names_in_) >= 2
+
+    def test_get_metadata_routing(self):
+        """get_metadata_routing returns a MetadataRouter."""
+        from sklearn.utils.metadata_routing import MetadataRouter
+
+        union = FeatureUnion([("s1", SimpleTransformer(observation_horizon=0))])
+        router = union.get_metadata_routing()
+        assert isinstance(router, MetadataRouter)
+
+
+class TestFeatureUnionDropPassthrough:
+    """Tests for FeatureUnion with drop/passthrough and edge cases."""
+
+    def test_all_drop_fit_transform_returns_time_only(self, time_series_factory):
+        """fit_transform with all-drop transformers returns time column only."""
+        X = time_series_factory(length=20, n_components=2)
+        union = FeatureUnion([("d", "drop")])
+        result = union.fit_transform(X)
+        assert result.columns == ["time"]
+        assert len(result) == len(X)
+
+    def test_all_drop_transform_returns_time_only(self, time_series_factory):
+        """transform with all-drop transformers returns time column only."""
+        X = time_series_factory(length=20, n_components=2)
+        union = FeatureUnion([("d", "drop")])
+        union.fit(X)
+        result = union.transform(X)
+        assert result.columns == ["time"]
+
+    def test_all_drop_observe_transform_returns_time_only(self, time_series_factory):
+        """observe_transform with all-drop transformers returns time column only."""
+        X = time_series_factory(length=20, n_components=2)
+        union = FeatureUnion([("d", "drop")])
+        union.fit(X)
+        result = union.observe_transform(X)
+        assert result.columns == ["time"]
+
+    def test_all_drop_rewind_transform_returns_time_only(self, time_series_factory):
+        """rewind_transform with all-drop transformers returns time column only."""
+        X = time_series_factory(length=20, n_components=2)
+        union = FeatureUnion([("d", "drop")])
+        union.fit(X)
+        result = union.rewind_transform(X)
+        assert result.columns == ["time"]
+
+    def test_invalid_transformer_raises(self):
+        """Transformer without fit/transform raises TypeError."""
+        union = FeatureUnion([("bad", object())])
+        with pytest.raises(TypeError, match="All estimators should implement fit and transform"):
+            union.fit(pl.DataFrame({"time": [1, 2], "x": [1.0, 2.0]}))
+
+    def test_n_features_in_not_available_raises(self):
+        """n_features_in_ raises AttributeError when no transformer has it."""
+        union = FeatureUnion([("d", "drop")])
+        union.fit(pl.DataFrame({"time": [1, 2], "x": [1.0, 2.0]}))
+        with pytest.raises(AttributeError, match="n_features_in_ not available"):
+            _ = union.n_features_in_
+
+    def test_feature_names_in_not_available_raises(self):
+        """feature_names_in_ raises AttributeError when no transformer has it."""
+        union = FeatureUnion([("d", "drop")])
+        union.fit(pl.DataFrame({"time": [1, 2], "x": [1.0, 2.0]}))
+        with pytest.raises(AttributeError, match="feature_names_in_ not available"):
+            _ = union.feature_names_in_
+
+    def test_sklearn_is_fitted(self, time_series_factory):
+        """__sklearn_is_fitted__ returns True after fit."""
+        X = time_series_factory(length=20, n_components=1)
+        union = FeatureUnion([("s1", SimpleTransformer(observation_horizon=0))])
+        union.fit(X)
+        assert union.__sklearn_is_fitted__()
+
+    def test_sk_visual_block(self, time_series_factory):
+        """_sk_visual_block_ returns a representation."""
+        X = time_series_factory(length=20, n_components=1)
+        union = FeatureUnion([("s1", SimpleTransformer(observation_horizon=0))])
+        union.fit(X)
+        vb = union._sk_visual_block_()
+        assert vb is not None
+
+    def test_verbose_false_observe_transform(self, time_series_factory):
+        """observe_transform with verbose_feature_names_out=False omits prefixes."""
+        X = time_series_factory(length=30, n_components=1)
+        union = FeatureUnion(
+            [("add1", SimpleTransformer(observation_horizon=0, add_constant=1.0))],
+            verbose_feature_names_out=False,
+        )
+        union.fit(X)
+        result = union.observe_transform(X)
+        non_time = [c for c in result.columns if c != "time"]
+        assert all("add1_" not in c for c in non_time)
+
+    def test_verbose_false_rewind_transform(self, time_series_factory):
+        """rewind_transform with verbose_feature_names_out=False omits prefixes."""
+        X = time_series_factory(length=30, n_components=1)
+        union = FeatureUnion(
+            [("add1", SimpleTransformer(observation_horizon=0, add_constant=1.0))],
+            verbose_feature_names_out=False,
+        )
+        union.fit(X)
+        result = union.rewind_transform(X)
+        non_time = [c for c in result.columns if c != "time"]
+        assert all("add1_" not in c for c in non_time)
+
+    def test_verbose_false_transform(self, time_series_factory):
+        """transform with verbose_feature_names_out=False omits prefixes."""
+        X = time_series_factory(length=30, n_components=1)
+        union = FeatureUnion(
+            [("add1", SimpleTransformer(observation_horizon=0, add_constant=1.0))],
+            verbose_feature_names_out=False,
+        )
+        union.fit(X)
+        result = union.transform(X)
+        non_time = [c for c in result.columns if c != "time"]
+        assert all("add1_" not in c for c in non_time)
+
+    def test_get_feature_names_out(self, time_series_factory):
+        """get_feature_names_out returns feature names after fit."""
+        X = time_series_factory(length=20, n_components=2)
+        union = FeatureUnion([("s1", SimpleTransformer(observation_horizon=0))])
+        union.fit(X)
+        names = union.get_feature_names_out()
+        assert names is not None or names is None

@@ -65,7 +65,7 @@ class LagTransformer(BaseTransformer):
     --------
     `RollingStatisticsTransformer` : Compute rolling statistics (mean, std, etc.).
     `SlidingWindowFunctionTransformer` : Apply custom functions to sliding windows.
-    yohou.utils.tabularization.tabularize : Underlying tabularization function.
+    `tabularize` : Underlying tabularization function.
 
     Notes
     -----
@@ -236,7 +236,7 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
     --------
     `LagTransformer` : Create lagged features.
     `RollingStatisticsTransformer` : Pre-built rolling statistics.
-    FunctionTransformer : Apply function element-wise.
+    `FunctionTransformer` : Apply function element-wise.
 
     """
 

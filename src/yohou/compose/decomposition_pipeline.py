@@ -545,14 +545,16 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
                     y_observed_local = self._y_observed[panel_group_name]
 
-                    # Extract group data (unprefixed)
-                    y_pred_group = get_group_df(
-                        df=y_pred_no_obs,
-                        group_name=panel_group_name,
-                        schema=self.local_y_schema_,
-                    )
+                    # Extract the group's columns (in transformed space, with prefix)
+                    prefix = f"{panel_group_name}__"
+                    group_cols = [c for c in y_pred_no_obs.columns if c.startswith(prefix)]
+                    y_pred_group = y_pred_no_obs.select(cs.by_name("time") | cs.by_name(group_cols))
 
-                    # Inverse transform (works with unprefixed columns)
+                    # Strip group prefix so transformer sees local column names
+                    rename_strip = {c: c[len(prefix) :] for c in group_cols}
+                    y_pred_group = y_pred_group.rename(rename_strip)
+
+                    # Inverse transform (works with unprefixed/local columns)
                     y_pred_group_inv = transformer.inverse_transform(X_t=y_pred_group, X_p=y_observed_local)
 
                     # Cast to restore original dtypes

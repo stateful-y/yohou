@@ -24,7 +24,7 @@ from yohou.metrics.base import BaseIntervalScorer, BasePointScorer, BaseScorer
 from yohou.utils._compat import _check_method_params, _num_samples, _safe_split
 
 
-def _check_scoring(forecastor: BaseForecaster, scoring: object) -> BaseScorer | _MultimetricScorer:
+def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | _MultimetricScorer:
     """Check the scoring parameter.
 
     In addition, multimetric scoring leverages a caching mechanism to not call the same
@@ -33,8 +33,8 @@ def _check_scoring(forecastor: BaseForecaster, scoring: object) -> BaseScorer | 
 
     Parameters
     ----------
-    forecastor : forecastor instance
-        The forecastor for which the scoring will be applied.
+    forecaster : BaseForecaster
+        The forecaster for which the scoring will be applied.
 
     scoring : list, tuple or dict
         Strategy to evaluate the performance of the cross-validated model on

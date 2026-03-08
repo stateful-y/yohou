@@ -96,7 +96,7 @@ def plot_phase(
 
     See Also
     --------
-    plot_spectrum : Plot power spectral density.
+    `plot_spectrum` : Plot power spectral density.
     """
     use_degrees = angle_unit == "degree"
     validate_plotting_data(df)
@@ -280,7 +280,7 @@ def plot_spectrum(
 
     See Also
     --------
-    plot_phase : Plot phase spectrum.
+    `plot_phase` : Plot phase spectrum.
     """
     # Validate inputs
     validate_plotting_data(df)

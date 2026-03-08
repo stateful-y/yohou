@@ -1106,3 +1106,35 @@ class TestTargetAsFeatureParam:
         forecaster = PointReductionForecaster(target_as_feature=None)
         cloned = clone(forecaster)
         assert cloned.target_as_feature is None
+
+
+class TestPanelTimeWeight:
+    """Tests for time_weight on panel data in reduction forecasters."""
+
+    def test_panel_callable_time_weight(self, y_X_factory):
+        """Callable time_weight is applied per panel group during fit."""
+        y, X = y_X_factory(length=60, n_targets=1, n_features=0, panel=True, n_groups=2)
+
+        def constant_weight(t):
+            return pl.Series("weight", [1.0] * len(t))
+
+        f = PointReductionForecaster()
+        f.set_fit_request(time_weight=True)
+        f.fit(y[:50], forecasting_horizon=3, time_weight=constant_weight)
+        y_pred = f.predict()
+        assert len(y_pred) == 3
+        assert "time" in y_pred.columns
+
+    def test_panel_dataframe_time_weight(self, y_X_factory):
+        """DataFrame time_weight with global weight column works on panel data."""
+        y, X = y_X_factory(length=60, n_targets=1, n_features=0, panel=True, n_groups=2)
+        y_train = y[:50]
+        weight_df = pl.DataFrame({
+            "time": y_train["time"],
+            "weight": [1.0] * len(y_train),
+        })
+        f = PointReductionForecaster()
+        f.set_fit_request(time_weight=True)
+        f.fit(y_train, forecasting_horizon=3, time_weight=weight_df)
+        y_pred = f.predict()
+        assert len(y_pred) == 3

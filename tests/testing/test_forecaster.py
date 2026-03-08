@@ -1,11 +1,19 @@
 """Tests for yohou.testing.forecaster check functions."""
 
+from datetime import datetime, timedelta
+
+import polars as pl
+import pytest
+
+from yohou.compose import ColumnForecaster
+from yohou.interval.split_conformal import SplitConformalForecaster
 from yohou.point.naive import SeasonalNaive
 from yohou.point.reduction import PointReductionForecaster
 from yohou.preprocessing.window import LagTransformer
 from yohou.stationarity.transformers import LogTransformer
 from yohou.testing.forecaster import (
     check_clone_preserves_forecaster_params,
+    check_fit_predict_without_exogenous,
     check_fit_sets_forecaster_attributes,
     check_forecaster_not_fitted_error,
     check_forecaster_tags_accessible_before_fit,
@@ -164,4 +172,120 @@ class TestForecasterCloneAndTagChecks:
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
         # Should not raise
+        check_forecaster_tags_match_capabilities(forecaster)
+
+
+class TestForecasterPanelObserveRewind:
+    """Tests for observe/rewind check functions with panel data."""
+
+    @pytest.fixture(scope="class")
+    def panel_data(self):
+        """Generate panel (y, X) pair with 2 groups."""
+        n = 60
+        times = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": times,
+            "g0__val": [float(i % 7) for i in range(n)],
+            "g1__val": [float(i % 7) + 1 for i in range(n)],
+        })
+        return y
+
+    def test_observe_extends_panel_observations(self, panel_data):
+        """check_observe_extends_observations passes for panel forecaster."""
+        y = panel_data
+        forecaster = SeasonalNaive(seasonality=7)
+        forecaster.fit(y.head(40), forecasting_horizon=3)
+        check_observe_extends_observations(
+            forecaster,
+            y.head(40),
+            y.slice(40, 10),
+            None,
+            None,
+        )
+
+    def test_rewind_replaces_panel_observations(self, panel_data):
+        """check_rewind_replaces_observations passes for panel forecaster."""
+        y = panel_data
+        forecaster = SeasonalNaive(seasonality=7)
+        forecaster.fit(y.head(40), forecasting_horizon=3)
+        check_rewind_replaces_observations(
+            forecaster,
+            y.head(40),
+            y.slice(20, 20),
+            None,
+            None,
+        )
+
+
+class TestForecasterCloneComposition:
+    """Tests for clone check with composition forecasters (list-of-tuples params)."""
+
+    def test_clone_column_forecaster(self):
+        """ColumnForecaster clone preserves 3-tuple params."""
+        forecaster = ColumnForecaster(
+            forecasters=[
+                ("naive_a", SeasonalNaive(seasonality=7), ["val_a"]),
+                ("naive_b", SeasonalNaive(seasonality=14), ["val_b"]),
+            ],
+        )
+        check_clone_preserves_forecaster_params(forecaster)
+
+
+class TestForecasterTagsWithTransformers:
+    """Tests for tag capability checks with transformer-bearing forecasters."""
+
+    def test_tags_match_with_target_transformer(self, y_X_factory):
+        """Tag check passes for forecaster with target_transformer."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
+        forecaster = PointReductionForecaster(
+            target_transformer=LogTransformer(),
+            feature_transformer=LagTransformer(lag=3),
+        )
+        forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
+        check_forecaster_tags_match_capabilities(forecaster)
+
+
+class TestForecasterFitPredictWithoutX:
+    """Tests for check_fit_predict_without_exogenous."""
+
+    def test_ignores_exogenous_forecaster_succeeds(self, y_X_factory):
+        """Forecaster with ignores_exogenous=True succeeds without X."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
+        forecaster = SeasonalNaive(seasonality=7)
+        check_fit_predict_without_exogenous(
+            forecaster,
+            y[:40],
+            ignores_exogenous=True,
+            forecasting_horizon=3,
+        )
+
+    def test_target_as_feature_none_raises(self, y_X_factory):
+        """Forecaster with target_as_feature=None and no X raises ValueError."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
+        forecaster = PointReductionForecaster(target_as_feature=None)
+        check_fit_predict_without_exogenous(
+            forecaster,
+            y[:40],
+            ignores_exogenous=False,
+            target_as_feature=None,
+            forecasting_horizon=3,
+        )
+
+
+class TestForecasterIntervalTags:
+    """Tests for tag checks with interval/both-type forecasters."""
+
+    def test_interval_forecaster_tags(self, y_X_factory):
+        """Tag check passes for interval (both-type) forecaster."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+        )
+        forecaster.fit(y[:150], forecasting_horizon=3)
         check_forecaster_tags_match_capabilities(forecaster)

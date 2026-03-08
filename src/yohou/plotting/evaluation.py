@@ -276,7 +276,7 @@ def plot_residuals(
 
     See Also
     --------
-    plot_forecast : Plot forecasts with historical data.
+    `plot_forecast` : Plot forecasts with historical data.
     """
     validate_plotting_data(y_pred)
     validate_plotting_data(y_truth)
@@ -591,8 +591,8 @@ def plot_calibration(
 
     See Also
     --------
-    plot_forecast : Plot forecast with optional prediction intervals.
-    plot_residuals : Residual diagnostics with panel facets.
+    `plot_forecast` : Plot forecast with optional prediction intervals.
+    `plot_residuals` : Residual diagnostics with panel facets.
     """
     # Styling kwargs
     line_width = kwargs.get("line_width", 2.0)
@@ -1014,8 +1014,8 @@ def plot_score_time_series(
 
     See Also
     --------
-    plot_residuals : Plot residual diagnostics.
-    plot_forecast : Plot forecasts with historical data.
+    `plot_residuals` : Plot residual diagnostics.
+    `plot_forecast` : Plot forecasts with historical data.
 
     Notes
     -----
@@ -1236,8 +1236,8 @@ def plot_model_comparison_bar(
 
     See Also
     --------
-    plot_score_time_series : Per-timestep scorer comparison.
-    plot_cv_results_scatter : Cross-validation result scatter.
+    `plot_score_time_series` : Per-timestep scorer comparison.
+    `plot_cv_results_scatter` : Cross-validation result scatter.
     """
     if not results:
         msg = "results must be a non-empty dict of model → scorer → score"
@@ -1448,8 +1448,8 @@ def plot_score_distribution(
 
     See Also
     --------
-    plot_score_time_series : Score values over time.
-    plot_score_per_horizon : Score by forecast step.
+    `plot_score_time_series` : Score values over time.
+    `plot_score_per_horizon` : Score by forecast step.
     """
     from scipy.stats import gaussian_kde  # noqa: PLC0415
 
@@ -1700,8 +1700,8 @@ def plot_score_per_horizon(
 
     See Also
     --------
-    plot_score_time_series : Score values over time.
-    plot_score_distribution : Score distribution histogram/KDE.
+    `plot_score_time_series` : Score values over time.
+    `plot_score_distribution` : Score distribution histogram/KDE.
     """
     validate_plotting_data(y_truth)
 

@@ -36,6 +36,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
 
     """
 
+    _parameter_constraints: dict = {}
+
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
 
@@ -171,7 +173,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     --------
     `SplitConformalForecaster` : Conformal interval forecaster.
     `IntervalReductionForecaster` : ML-based interval forecaster.
-    BasePointForecaster : Base class for point forecasters.
+    `BasePointForecaster` : Base class for point forecasters.
 
     """
 

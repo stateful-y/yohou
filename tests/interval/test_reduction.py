@@ -7,7 +7,9 @@ import pytest
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.model_selection import train_test_split
 
+from conftest import run_checks
 from yohou.interval import IntervalReductionForecaster
+from yohou.testing import _yield_yohou_forecaster_checks
 
 
 @pytest.fixture(scope="module")
@@ -552,3 +554,22 @@ class TestMultiQuantile:
             for cr in coverage_rates:
                 assert f"{col}_lower_{cr}" in y_pred.columns
                 assert f"{col}_upper_{cr}" in y_pred.columns
+
+
+class TestIntervalReductionWithFeaturesSystematicChecks:
+    """Systematic checks for IntervalReductionForecaster with exogenous features."""
+
+    @pytest.mark.slow
+    def test_interval_reduction_with_features_checks(self, y_X_factory):
+        """Run all standard forecaster checks on IntervalReductionForecaster with X."""
+        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
+        y_train, y_test = y[:80], y[80:]
+        X_train, X_test = X[:80], X[80:]
+
+        forecaster = IntervalReductionForecaster()
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+
+        run_checks(
+            forecaster,
+            _yield_yohou_forecaster_checks(forecaster, y_train, X_train, y_test, X_test),
+        )

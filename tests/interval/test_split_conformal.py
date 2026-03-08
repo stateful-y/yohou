@@ -8,9 +8,11 @@ import pytest
 from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 
+from conftest import run_checks
 from yohou.interval import DistanceSimilarity, SplitConformalForecaster
 from yohou.metrics import AbsoluteResidual, Residual
 from yohou.point import SeasonalNaive
+from yohou.testing import _yield_yohou_forecaster_checks
 
 
 @pytest.fixture
@@ -304,3 +306,30 @@ class TestSplitConformalSimilarity:
         scf.fit(conformal_data, forecasting_horizon=1)
         assert not hasattr(scf, "similarities_")
         assert not hasattr(scf, "weights_")
+
+
+class TestSplitConformalSystematicChecks:
+    """Systematic checks for SplitConformalForecaster using the check generator."""
+
+    @pytest.mark.slow
+    def test_split_conformal_systematic_checks(self, y_X_factory):
+        """Run all standard forecaster checks on SplitConformalForecaster."""
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train, y_test = y[:180], y[180:]
+
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+        )
+        forecaster.fit(y_train, forecasting_horizon=5)
+
+        run_checks(
+            forecaster,
+            _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
+            expected_failures={
+                # predict_interval() output omits 'observed_time' column
+                "check_predict_time_columns",
+                # observation_horizon=0 means rewind does not update observed_time_
+                "check_rewind_replaces_observations",
+            },
+        )

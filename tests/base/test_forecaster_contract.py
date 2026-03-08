@@ -171,3 +171,67 @@ class TestBaseForecasterWithExogenous:
         f.fit(y[:50], X[:50], forecasting_horizon=1)
         result = f.observe(y[50:], X[50:])
         assert result is f
+
+
+class TestBaseForecasterPreFitValidation:
+    """Tests for _validate_pre_fit error paths."""
+
+    def test_feature_transformer_without_X_raises(self, y_X_factory):
+        """Feature transformer with target_as_feature=None and no X raises."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
+        f = PointReductionForecaster(
+            feature_transformer=SimpleTransformer(observation_horizon=0),
+            target_as_feature=None,
+        )
+        with pytest.raises(ValueError, match="feature_transformer requires X"):
+            f.fit(y, forecasting_horizon=1)
+
+    def test_no_X_with_exogenous_forecaster_raises(self, y_X_factory):
+        """Forecaster with ignores_exogenous=False and no X raises."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
+        f = PointReductionForecaster(target_as_feature=None)
+        with pytest.raises(ValueError, match="target_as_feature=None requires X"):
+            f.fit(y, forecasting_horizon=1)
+
+
+class TestBaseForecasterRewindObservationHorizonZero:
+    """Tests for rewind with observation_horizon == 0."""
+
+    def test_rewind_zero_observation_horizon(self, y_X_factory):
+        """Rewind special-cases observation_horizon == 0."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
+        f = PointReductionForecaster()
+        f.fit(y[:40], forecasting_horizon=3)
+        assert f.observation_horizon == 0
+        result = f.rewind(y[:40])
+        assert result is f
+
+    def test_rewind_zero_horizon_predict_matches(self, y_X_factory):
+        """Predictions after rewind with horizon=0 remain consistent."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
+        f = PointReductionForecaster()
+        f.fit(y[:40], forecasting_horizon=3)
+        pred_before = f.predict()
+        f.rewind(y[:40])
+        pred_after = f.predict()
+        assert pred_before.equals(pred_after)
+
+
+class TestBaseForecasterPanelObserve:
+    """Tests for panel observe path."""
+
+    def test_panel_observe(self, y_X_factory):
+        """Observe dispatches to panel observe when fitted on panel data."""
+        y, X = y_X_factory(length=60, n_targets=1, n_features=0, panel=True, n_groups=2)
+        f = PointReductionForecaster()
+        f.fit(y[:50], forecasting_horizon=1)
+        result = f.observe(y[50:])
+        assert result is f
+
+    def test_panel_rewind(self, y_X_factory):
+        """Rewind dispatches to panel rewind when fitted on panel data."""
+        y, X = y_X_factory(length=60, n_targets=1, n_features=0, panel=True, n_groups=2)
+        f = PointReductionForecaster()
+        f.fit(y[:50], forecasting_horizon=1)
+        result = f.rewind(y[:50])
+        assert result is f

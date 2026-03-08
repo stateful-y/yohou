@@ -306,3 +306,99 @@ class TestPlotBoxplotErrorPaths:
         fig = plot_boxplot(sample_df, columns="y", period="1mo", width=800, height=500)
         assert fig.layout.width == 800
         assert fig.layout.height == 500
+
+
+class TestPlotTimeSeriesPanelAutoDetect:
+    """Tests for panel auto-detect in plot_time_series."""
+
+    def test_auto_detect_panel_no_columns(self):
+        """Auto-detect panel mode when columns and panel_group_names are both None."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True),
+            "sales__store_1": [100.0, 110.0, 120.0, 130.0, 140.0, 150.0],
+            "sales__store_2": [200.0, 210.0, 220.0, 230.0, 240.0, 250.0],
+        })
+        fig = plot_time_series(df)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestPlotRollingStatisticsPanelAutoDetect:
+    """Tests for panel auto-detect in plot_rolling_statistics."""
+
+    def test_auto_detect_panel_rolling(self):
+        """Rolling statistics auto-detect panel mode when no columns specified."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "sales__store_1": [100 + i * 2.0 for i in range(12)],
+            "sales__store_2": [200 + i * 3.0 for i in range(12)],
+        })
+        fig = plot_rolling_statistics(df, window_size=3, statistics="mean")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestPlotBoxplotPanelAutoDetect:
+    """Tests for panel auto-detect in plot_boxplot."""
+
+    def test_auto_detect_panel_boxplot(self):
+        """Boxplot auto-detects panel mode when no columns specified."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "sales__store_1": [100 + i * 2.0 for i in range(12)],
+            "sales__store_2": [200 + i * 3.0 for i in range(12)],
+        })
+        fig = plot_boxplot(df, period="1mo")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestPlotMissingDataPanelAutoDetect:
+    """Tests for panel auto-detect in plot_missing_data."""
+
+    def test_auto_detect_panel_missing(self):
+        """Missing data auto-detects panel mode when no columns specified."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True),
+            "sales__store_1": [100.0, None, 120.0, None, 140.0, 150.0],
+            "sales__store_2": [None, 210.0, 220.0, 230.0, None, 250.0],
+        })
+        fig = plot_missing_data(df, kind="bars")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestPlotMissingDataKindBranches:
+    """Tests for missing data kind branches (heatmap with/without aggregation, matrix)."""
+
+    @pytest.fixture
+    def df_nulls(self):
+        """DataFrame with nulls for missing data testing."""
+        return pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [100 + i if i % 5 != 0 else None for i in range(366)],
+            "z": [200 + i if i % 7 != 0 else None for i in range(366)],
+        })
+
+    def test_heatmap_with_time_aggregation(self, df_nulls):
+        """Heatmap kind with time_aggregation uses period groups."""
+        fig = plot_missing_data(df_nulls, kind="heatmap", time_aggregation="1mo")
+        assert isinstance(fig, go.Figure)
+        assert isinstance(fig.data[0], go.Heatmap)
+
+    def test_heatmap_without_time_aggregation(self, df_nulls):
+        """Heatmap kind without time_aggregation uses individual time points."""
+        fig = plot_missing_data(df_nulls, kind="heatmap")
+        assert isinstance(fig, go.Figure)
+        assert isinstance(fig.data[0], go.Heatmap)
+
+    def test_matrix_kind(self, df_nulls):
+        """Matrix kind renders binary heatmap."""
+        fig = plot_missing_data(df_nulls, kind="matrix")
+        assert isinstance(fig, go.Figure)
+        assert isinstance(fig.data[0], go.Heatmap)
+
+    def test_invalid_kind_raises(self, df_nulls):
+        """Invalid kind raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown kind"):
+            plot_missing_data(df_nulls, kind="scatter")

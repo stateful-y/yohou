@@ -308,3 +308,43 @@ class TestFeaturePipelineTags:
         pipe = FeaturePipeline([("p", "passthrough")])
         tags = pipe.__sklearn_tags__()
         assert tags.transformer_tags is not None
+
+    def test_stateful_step_produces_stateful_tag(self):
+        """Pipeline with at least one stateful transformer has stateful=True."""
+        from yohou.preprocessing.window import LagTransformer
+
+        pipe = FeaturePipeline([
+            ("s1", StatelessTransformer()),
+            ("s2", LagTransformer(lag=[1])),
+        ])
+        tags = pipe.__sklearn_tags__()
+        assert tags.transformer_tags.stateful is True
+
+    def test_non_invertible_step_produces_non_invertible_tag(self):
+        """Pipeline with non-invertible step has invertible=False."""
+        pipe = FeaturePipeline([
+            ("s1", StatelessTransformer()),
+        ])
+        tags = pipe.__sklearn_tags__()
+        assert tags.transformer_tags.invertible is False
+
+    def test_invertible_steps_produce_invertible_tag(self):
+        """Pipeline of all invertible steps has invertible=True."""
+        pipe = FeaturePipeline([
+            ("s1", InvertibleTransformer()),
+            ("s2", InvertibleTransformer()),
+        ])
+        tags = pipe.__sklearn_tags__()
+        assert tags.transformer_tags.invertible is True
+
+    def test_min_value_from_first_step(self):
+        """min_value comes from the first transformer in the pipeline."""
+        from yohou.preprocessing.window import LagTransformer
+
+        pipe = FeaturePipeline([
+            ("s1", StatelessTransformer()),
+            ("s2", LagTransformer(lag=[1])),
+        ])
+        tags = pipe.__sklearn_tags__()
+        first_min = StatelessTransformer().__sklearn_tags__().input_tags.min_value
+        assert tags.input_tags.min_value == first_min

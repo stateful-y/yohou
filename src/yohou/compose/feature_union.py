@@ -103,10 +103,10 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
     See Also
     --------
-    sklearn.pipeline.FeatureUnion : Underlying scikit-learn feature union class.
+    `sklearn.pipeline.FeatureUnion` : Underlying scikit-learn feature union class.
     `FeaturePipeline` : Sequential transformer chaining.
-    BaseTransformer : Base class for transformers.
-    preprocessing.window.LagTransformer : Common transformer for lag features.
+    `BaseTransformer` : Base class for transformers.
+    `LagTransformer` : Common transformer for lag features.
 
     Notes
     -----

@@ -75,7 +75,7 @@ class BoxCoxTransformer(BaseTransformer):
     --------
     `LogTransformer` : Logarithmic transformation (Box-Cox with lambda=0).
     `ASinhTransformer` : Inverse hyperbolic sine transformation for data with zeros.
-    sklearn.preprocessing.PowerTransformer : sklearn's power transformations.
+    `sklearn.preprocessing.PowerTransformer` : sklearn's power transformations.
 
     """
 
@@ -272,7 +272,7 @@ class LogTransformer(BoxCoxTransformer):
     --------
     `BoxCoxTransformer` : Generalized power transform (parent class).
     `ASinhTransformer` : Variance stabilization for data with negatives.
-    SeasonalLogDifferencing : Combined log + seasonal differencing.
+    `SeasonalLogDifferencing` : Combined log + seasonal differencing.
 
     """
 
@@ -561,7 +561,7 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
     --------
     `SeasonalDifferencing` : Simple seasonal differencing without log transform.
     `LogTransformer` : Log transform without differencing.
-    SeasonalReturn : Percentage returns instead of log differences.
+    `SeasonalReturn` : Percentage returns instead of log differences.
 
     """
 
@@ -745,7 +745,7 @@ class SeasonalReturn(BaseTransformer):
     --------
     `AbsoluteSeasonalReturn` : Absolute difference instead of percentage return.
     `SeasonalDifferencing` : Simple differencing without percentage computation.
-    SeasonalLogDifferencing : Log-differencing for multiplicative relationships.
+    `SeasonalLogDifferencing` : Log-differencing for multiplicative relationships.
 
     """
 
@@ -1183,7 +1183,7 @@ class ASinhTransformer(BaseTransformer):
     --------
     `BoxCoxTransformer` : Power transform for variance stabilization.
     `LogTransformer` : Simpler variance stabilization for positive data.
-    sklearn.preprocessing.PowerTransformer : sklearn's power transforms.
+    `sklearn.preprocessing.PowerTransformer` : sklearn's power transforms.
 
     """
 

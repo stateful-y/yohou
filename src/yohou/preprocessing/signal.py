@@ -95,7 +95,7 @@ class NumericalFilter(BaseTransformer):
     --------
     `NumericalIntegrator` : Numerical integration.
     `NumericalDifferentiator` : Numerical differentiation.
-    scipy.signal.butter : Butterworth filter design.
+    `scipy.signal.butter` : Butterworth filter design.
 
     """
 
@@ -343,8 +343,8 @@ class NumericalIntegrator(BaseTransformer):
     See Also
     --------
     `NumericalDifferentiator` : Numerical differentiation transformer.
-    scipy.integrate.cumulative_trapezoid : Trapezoidal integration.
-    scipy.integrate.cumulative_simpson : Simpson's rule integration.
+    `scipy.integrate.cumulative_trapezoid` : Trapezoidal integration.
+    `scipy.integrate.cumulative_simpson` : Simpson's rule integration.
 
     """
 
@@ -667,7 +667,7 @@ class NumericalDifferentiator(BaseTransformer):
     See Also
     --------
     `NumericalIntegrator` : Numerical integration transformer.
-    numpy.gradient : NumPy gradient function.
+    `numpy.gradient` : NumPy gradient function.
 
     """
 

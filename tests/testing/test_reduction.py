@@ -68,3 +68,11 @@ class TestReductionChecks:
 
         # Should not raise
         check_reduction_strategy(forecaster)
+
+    def test_check_reduction_strategy_no_attribute(self):
+        """Test check returns early when forecaster lacks reduction_strategy."""
+        from sklearn.linear_model import LinearRegression
+
+        estimator = LinearRegression()
+        # LinearRegression has no reduction_strategy attribute, so check returns early
+        check_reduction_strategy(estimator)
