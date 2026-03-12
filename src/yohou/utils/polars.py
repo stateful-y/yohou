@@ -62,6 +62,10 @@ def cast(
 
         if target_dtype.is_integer():
             exprs.append(pl.col(col).round().cast(target_dtype).alias(col))
+        elif not target_dtype.is_numeric():
+            # Non-numeric types (Categorical, Enum, String, Boolean, etc.)
+            # are cast directly without rounding.
+            exprs.append(pl.col(col).cast(target_dtype).alias(col))
         else:
             exprs.append(pl.col(col).cast(target_dtype).alias(col))
 

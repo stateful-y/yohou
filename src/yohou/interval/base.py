@@ -1,7 +1,6 @@
 """Base classes for interval forecasters and similarity measures."""
 
 import abc
-from copy import deepcopy
 from typing import Any, Literal
 
 import numpy as np
@@ -384,15 +383,12 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(forecasting_horizon, coverage_rates)
 
-        forecaster = deepcopy(self)
-
-        y_columns = list(forecaster.local_y_schema_.keys())
+        y_columns = list(self.local_y_schema_.keys())
         if panel_group_names is not None:
             y_columns = [
-                f"{panel_group}__{col}" for panel_group in panel_group_names for col in forecaster.local_y_schema_
+                f"{panel_group}__{col}" for panel_group in panel_group_names for col in self.local_y_schema_
             ]
 
-            # Filter X
             if X is not None:
                 X = select_panel_columns(
                     X,
@@ -400,67 +396,62 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     include_global=True,
                 )
 
-        y_pred = pl.DataFrame()
-        for step in range(1, forecasting_horizon + 1, self.fit_forecasting_horizon_):
-            y_pred_step, y_pred_step_inv = forecaster._predict(panel_group_names or [], coverage_rates=coverage_rates)
-            y_pred = pl.concat([y_pred, y_pred_step_inv])
+        def step_fn(forecaster, groups):
+            """Produce one interval-prediction block."""
+            y_pred_step, y_pred_step_inv = forecaster._predict(groups, coverage_rates=coverage_rates)
+            return y_pred_step_inv, y_pred_step_inv
 
-            if step + self.fit_forecasting_horizon_ <= forecasting_horizon:
-                time = y_pred_step.select(cs.by_name("time"))
+        def derive_observation_fn(forecaster, y_pred_step_inv, X, step):
+            """Derive observation from interval bounds."""
+            time = y_pred_step_inv.select(cs.by_name("time"))
 
-                # Global data case
-                y_data = {"time": time["time"]}
-                for col in y_columns:
-                    # Find all coverage rates for this column
-                    lower_cols = [c for c in y_pred_step_inv.columns if c.startswith(f"{col}_lower_")]
-                    upper_cols = [c for c in y_pred_step_inv.columns if c.startswith(f"{col}_upper_")]
+            y_data: dict[str, Any] = {"time": time["time"]}
+            for col in y_columns:
+                lower_cols = [c for c in y_pred_step_inv.columns if c.startswith(f"{col}_lower_")]
+                upper_cols = [c for c in y_pred_step_inv.columns if c.startswith(f"{col}_upper_")]
 
-                    all_bound_cols = lower_cols + upper_cols
+                all_bound_cols = lower_cols + upper_cols
 
-                    if strategy == "point" and col in y_pred_step_inv.columns:
-                        y_data[col] = y_pred_step_inv[col]
-                    elif strategy == "median":
-                        # Note: median_horizontal exists in polars but ty's stubs
-                        # don't include it yet. Safe to ignore.
-                        y_data[col] = y_pred_step_inv.select(
-                            pl.median_horizontal(all_bound_cols)  # type: ignore[attr-defined]
-                        ).to_series()
-                    else:
-                        y_data[col] = y_pred_step_inv.select(pl.mean_horizontal(all_bound_cols)).to_series()
-
-                y = pl.DataFrame(y_data)
-
-                # Cast to match expected schema (mean/median returns Float64)
-                # Build prefixed schema for panel data
-                if panel_group_names is not None:
-                    cast_schema = {}
-                    for group_name in panel_group_names:
-                        for col, dtype in forecaster.local_y_schema_.items():
-                            cast_schema[f"{group_name}__{col}"] = dtype
+                if strategy == "point" and col in y_pred_step_inv.columns:
+                    y_data[col] = y_pred_step_inv[col]
+                elif strategy == "median":
+                    y_data[col] = y_pred_step_inv.select(
+                        pl.median_horizontal(all_bound_cols)  # type: ignore[attr-defined]
+                    ).to_series()
                 else:
-                    cast_schema = forecaster.local_y_schema_
+                    y_data[col] = y_pred_step_inv.select(pl.mean_horizontal(all_bound_cols)).to_series()
 
-                y = cast(y.select(~cs.by_name("time")), cast_schema)
-                y = pl.concat([y_data["time"].to_frame(), y], how="horizontal")
+            y = pl.DataFrame(y_data)
 
-                X_slice = None
-                if X is not None:
-                    X_slice = X.join(y.select("time"), on="time", how="semi")
+            if panel_group_names is not None:
+                cast_schema = {}
+                for group_name in panel_group_names:
+                    for col_name, dtype in forecaster.local_y_schema_.items():
+                        cast_schema[f"{group_name}__{col_name}"] = dtype
+            else:
+                cast_schema = forecaster.local_y_schema_
 
-                    if len(X_slice) != len(y):
-                        raise ValueError(
-                            f"Missing X for future steps. Needed {len(y)} rows, but X slice has {len(X_slice)} rows."
-                        )
+            y = cast(y.select(~cs.by_name("time")), cast_schema)
+            y = pl.concat([y_data["time"].to_frame(), y], how="horizontal")
 
-                forecaster.observe(y, X_slice)
+            X_slice = None
+            if X is not None:
+                X_slice = X.join(y.select("time"), on="time", how="semi")
 
-        y_pred = y_pred.with_columns(observed_time=y_pred["observed_time"][0])
+                if len(X_slice) != len(y):
+                    raise ValueError(
+                        f"Missing X for future steps. Needed {len(y)} rows, but X slice has {len(X_slice)} rows."
+                    )
 
-        if forecasting_horizon % self.fit_forecasting_horizon_:
-            end = self.fit_forecasting_horizon_ - forecasting_horizon % self.fit_forecasting_horizon_
-            y_pred = y_pred[:-end]
+            return y, X_slice
 
-        return y_pred
+        return self._recursive_predict(
+            X=X,
+            forecasting_horizon=forecasting_horizon,
+            panel_group_names=panel_group_names,
+            step_fn=step_fn,
+            derive_observation_fn=derive_observation_fn,
+        )
 
     def observe_predict_interval(
         self,
@@ -541,47 +532,17 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if stride is None:
             stride = self.fit_forecasting_horizon_
 
-        # Initial prediction with predict_transformed parameter
-        y_pred_i = self.predict_interval(
+        return self._observe_predict_loop(
+            predict_fn=self.predict_interval,
+            y=y,
             X=X,
+            panel_group_names=panel_group_names,
+            stride=stride,
             forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
-            panel_group_names=panel_group_names,
             strategy=strategy,
             **params,
         )
-
-        y_pred = y_pred_i
-        for i in range(0, len(y), stride):
-            y_slice = y[i : i + stride]
-
-            X_slice = None
-            if X is not None:
-                # Filter X to match y_slice times
-                # Use semi-join to f ilter X rows that have matching times in y_slice
-                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
-
-            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
-
-            X_future = None
-            if X is not None:
-                # Filter X to start after the last observed time
-                # This ensures predict() gets features aligned with the forecast horizon
-                last_time = y_slice["time"][-1]
-                X_future = X.filter(pl.col("time") > last_time)
-
-            y_pred_i = self.predict_interval(
-                X=X_future,
-                forecasting_horizon=forecasting_horizon,
-                coverage_rates=coverage_rates,
-                panel_group_names=panel_group_names,
-                strategy=strategy,
-                **params,
-            )
-
-            y_pred = pl.concat([y_pred, y_pred_i])
-
-        return y_pred
 
     def _predict_one(
         self,

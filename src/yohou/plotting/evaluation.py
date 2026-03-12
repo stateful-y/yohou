@@ -27,6 +27,7 @@ from yohou.utils.panel import inspect_panel
 
 __all__ = [
     "plot_calibration",
+    "plot_class_probabilities",
     "plot_model_comparison_bar",
     "plot_residuals",
     "plot_score_distribution",
@@ -1806,3 +1807,255 @@ def plot_score_per_horizon(
     fig.update_layout(showlegend=show_legend)
 
     return fig
+
+
+def plot_class_probabilities(
+    y_pred: pl.DataFrame,
+    *,
+    y_truth: pl.DataFrame | None = None,
+    target: str | None = None,
+    kind: str = "area",
+    panel_group_names: list[str] | None = None,
+    facet_n_cols: int = 2,
+    color_palette: list[str] | None = None,
+    title: str | None = None,
+    x_label: str | None = None,
+    y_label: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    **kwargs,
+) -> go.Figure:
+    """Plot predicted class probabilities over time.
+
+    Visualizes the output of a class-probability forecaster as a stacked
+    area chart (default) or line chart showing the predicted probability
+    for each class at every time step.
+
+    Parameters
+    ----------
+    y_pred : pl.DataFrame
+        Predicted class probabilities with a ``"time"`` column and one or
+        more ``{target}_proba_{class}`` columns.
+    y_truth : pl.DataFrame or None, default=None
+        Ground truth with a ``"time"`` column and categorical target
+        columns.  When provided, the true class is highlighted with
+        markers on top of the probability chart.
+    target : str or None, default=None
+        Target column name to plot.  Required when multiple targets are
+        present.  If ``None`` and only one target exists, it is used
+        automatically.
+    kind : str, default="area"
+        Chart type: ``"area"`` for stacked area or ``"line"`` for line
+        chart.
+    panel_group_names : list of str or None, default=None
+        Panel group prefixes to plot.  If ``None``, all groups are
+        used.  Ignored for non-panel data.
+    facet_n_cols : int, default=2
+        Number of columns in the faceted subplot grid for panel data.
+    color_palette : list of str or None, default=None
+        Custom color palette.  If ``None``, uses the yohou default.
+    title : str or None, default=None
+        Figure title.  Defaults to ``"Class Probabilities"``.
+    x_label : str or None, default=None
+        X-axis label.  Defaults to ``"Time"``.
+    y_label : str or None, default=None
+        Y-axis label.  Defaults to ``"Probability"``.
+    width : int or None, default=None
+        Figure width in pixels.
+    height : int or None, default=None
+        Figure height in pixels.
+    **kwargs : dict
+        Additional keyword arguments. Accepted keys:
+
+        - ``show_legend`` (bool, default ``True``): Whether to show the
+          legend.
+        - ``line_width`` (float, default ``1.5``): Width of trace lines.
+        - ``band_opacity`` (float, default ``0.6``): Opacity of the
+          stacked area fill (only for ``kind="area"``).
+        - ``marker_size`` (float, default ``10``): Size of truth markers.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+        Interactive probability chart.
+
+    Raises
+    ------
+    TypeError
+        If ``y_pred`` is not a ``pl.DataFrame``.
+    ValueError
+        If no ``_proba_`` columns are found, or ``target`` is ambiguous.
+
+    See Also
+    --------
+    `plot_forecast` : Visualize point or interval forecasts.
+    `plot_score_time_series` : Per-timestep scorer values over time.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.plotting import plot_class_probabilities
+    >>> y_pred = pl.DataFrame({
+    ...     "observed_time": [datetime(2020, 1, 1)] * 3,
+    ...     "time": [datetime(2020, 1, 2), datetime(2020, 1, 3), datetime(2020, 1, 4)],
+    ...     "weather_proba_sunny": [0.7, 0.5, 0.3],
+    ...     "weather_proba_rainy": [0.2, 0.3, 0.5],
+    ...     "weather_proba_cloudy": [0.1, 0.2, 0.2],
+    ... })
+    >>> fig = plot_class_probabilities(y_pred)
+    >>> isinstance(fig, go.Figure)
+    True
+
+    """
+    validate_plotting_data(y_pred, min_rows=1)
+    validate_plotting_params(kind=kind, valid_kinds={"area", "line"})
+    if y_truth is not None:
+        validate_plotting_data(y_truth, min_rows=1)
+
+    show_legend = kwargs.get("show_legend", True)
+    line_width = kwargs.get("line_width", 1.5)
+    band_opacity = kwargs.get("band_opacity", 0.6)
+    marker_size = kwargs.get("marker_size", 10)
+
+    proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+    if not proba_cols:
+        msg = "No probability columns found in y_pred. Expected columns matching the pattern '{target}_proba_{class}'."
+        raise ValueError(msg)
+
+    targets = _discover_proba_targets(proba_cols)
+
+    if target is None:
+        if len(targets) > 1:
+            msg = f"Multiple targets found: {sorted(targets)}. Please specify the 'target' parameter."
+            raise ValueError(msg)
+        target = next(iter(targets))
+
+    if target not in targets:
+        msg = f"Target '{target}' not found. Available targets: {sorted(targets)}"
+        raise ValueError(msg)
+
+    target_proba_cols = targets[target]
+    class_labels = [c.split("_proba_", 1)[1] for c in target_proba_cols]
+    colors = resolve_color_palette(color_palette, n=len(class_labels))
+    time_col = y_pred["time"]
+
+    fig = go.Figure()
+
+    if kind == "area":
+        for i, (col, label) in enumerate(zip(target_proba_cols, class_labels, strict=True)):
+            fig.add_trace(
+                go.Scatter(
+                    x=time_col,
+                    y=y_pred[col],
+                    name=label,
+                    mode="lines",
+                    line={"width": line_width, "color": colors[i]},
+                    stackgroup="proba",
+                    fillcolor=_hex_to_rgba(colors[i], band_opacity),
+                    hovertemplate=(f"<b>{label}</b><br>Time: %{{x}}<br>Probability: %{{y:.3f}}<br><extra></extra>"),
+                )
+            )
+    else:
+        for i, (col, label) in enumerate(zip(target_proba_cols, class_labels, strict=True)):
+            fig.add_trace(
+                go.Scatter(
+                    x=time_col,
+                    y=y_pred[col],
+                    name=label,
+                    mode="lines",
+                    line={"width": line_width, "color": colors[i]},
+                    hovertemplate=(f"<b>{label}</b><br>Time: %{{x}}<br>Probability: %{{y:.3f}}<br><extra></extra>"),
+                )
+            )
+
+    if y_truth is not None and target in y_truth.columns:
+        common_times = set(y_truth["time"].to_list()) & set(time_col.to_list())
+        if common_times:
+            truth_filtered = y_truth.filter(pl.col("time").is_in(list(common_times))).sort("time")
+            pred_filtered = y_pred.filter(pl.col("time").is_in(list(common_times))).sort("time")
+
+            label_to_idx = {label: i for i, label in enumerate(class_labels)}
+            marker_y = []
+            m_colors = []
+            for row_idx in range(len(truth_filtered)):
+                true_label = str(truth_filtered[target][row_idx])
+                if true_label in label_to_idx:
+                    col_name = target_proba_cols[label_to_idx[true_label]]
+                    marker_y.append(float(pred_filtered[col_name][row_idx]))
+                    m_colors.append(colors[label_to_idx[true_label]])
+                else:
+                    marker_y.append(0.0)
+                    m_colors.append(colors[0])
+
+            fig.add_trace(
+                go.Scatter(
+                    x=truth_filtered["time"],
+                    y=marker_y,
+                    name="True class",
+                    mode="markers",
+                    marker={
+                        "size": marker_size,
+                        "color": m_colors,
+                        "symbol": "diamond",
+                    },
+                    hovertemplate=("<b>True: %{text}</b><br>Time: %{x}<br>P(true): %{y:.3f}<br><extra></extra>"),
+                    text=truth_filtered[target].cast(pl.String).to_list(),
+                )
+            )
+
+    fig = apply_default_layout(
+        fig,
+        title=title or "Class Probabilities",
+        x_label=x_label or "Time",
+        y_label=y_label or "Probability",
+        width=width,
+        height=height,
+    )
+    fig.update_layout(showlegend=show_legend)
+
+    return fig
+
+
+def _discover_proba_targets(
+    proba_cols: list[str],
+) -> dict[str, list[str]]:
+    """Group probability columns by target name.
+
+    Parameters
+    ----------
+    proba_cols : list of str
+        Column names containing ``_proba_``.
+
+    Returns
+    -------
+    dict
+        Mapping from target name to list of probability column names.
+
+    """
+    targets: dict[str, list[str]] = {}
+    for col in proba_cols:
+        target_name = col.split("_proba_", 1)[0]
+        targets.setdefault(target_name, []).append(col)
+    return targets
+
+
+def _hex_to_rgba(hex_color: str, opacity: float) -> str:
+    """Convert hex color to rgba string with given opacity.
+
+    Parameters
+    ----------
+    hex_color : str
+        Hex color string (e.g., ``"#1f77b4"``).
+    opacity : float
+        Opacity value between 0 and 1.
+
+    Returns
+    -------
+    str
+        RGBA color string (e.g., ``"rgba(31, 119, 180, 0.6)"``).
+
+    """
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {opacity})"

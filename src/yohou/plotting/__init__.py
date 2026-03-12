@@ -13,6 +13,7 @@ from yohou.plotting.diagnostics import (
 )
 from yohou.plotting.evaluation import (
     plot_calibration,
+    plot_class_probabilities,
     plot_model_comparison_bar,
     plot_residuals,
     plot_score_distribution,
@@ -38,6 +39,7 @@ __all__ = [
     "plot_autocorrelation",
     "plot_boxplot",
     "plot_calibration",
+    "plot_class_probabilities",
     "plot_correlation_heatmap",
     "plot_cross_correlation",
     "plot_cv_results_scatter",

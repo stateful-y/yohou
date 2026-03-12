@@ -96,7 +96,7 @@ def check_scorer_column_selection(
     y_pred : pl.DataFrame
         Predicted values DataFrame.
     pred_type : str
-        Prediction type ('point', 'interval', 'conformity').
+        Prediction type ('point', 'interval', 'conformity', 'class_proba').
     coverage_rates : list[float], optional
         Coverage rates for interval forecasts.
     interval_pattern : re.Pattern, optional
@@ -210,6 +210,15 @@ def check_scorer_column_selection(
 
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(y_pred_selected_cols)
+            elif pred_type == "class_proba":
+                # Class proba: y_pred has {target}_proba_{class} columns
+                y_pred_selected_cols = ["time"] if "time" in y_pred.columns else []
+                for col in selected_cols:
+                    if col == "time":
+                        continue
+                    y_pred_selected_cols.extend(c for c in y_pred.columns if c.startswith(f"{col}_proba_"))
+                y_true = y_true.select(selected_cols)
+                y_pred = y_pred.select(y_pred_selected_cols)
             else:
                 # Point forecast: columns should match directly
                 y_pred_cols = set(y_pred.columns)
@@ -256,6 +265,14 @@ def check_scorer_column_selection(
                         matches = rate_filtered
 
                     y_pred_selected_cols.extend(matches)
+                y_true = y_true.select(selected_cols)
+                y_pred = y_pred.select(y_pred_selected_cols)
+            elif pred_type == "class_proba":
+                y_pred_selected_cols = ["time"] if "time" in y_pred.columns else []
+                for col in selected_cols:
+                    if col == "time":
+                        continue
+                    y_pred_selected_cols.extend(c for c in y_pred.columns if c.startswith(f"{col}_proba_"))
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(y_pred_selected_cols)
             else:

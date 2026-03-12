@@ -52,7 +52,7 @@ from .utils import (
     _collect_coverage_rates,
     _fit_and_score,
     _MultimetricScorer,
-    _needs_interval_predictions,
+    _resolve_response_method,
     _validate_forecaster_scorer_compatibility,
 )
 
@@ -119,7 +119,7 @@ def _search_forecaster_has(attr):
             return False
 
         # Check forecaster_type tags for prediction type checks
-        if attr in {"point", "interval"}:
+        if attr in {"point", "interval", "class_proba"}:
             tags = self.best_forecaster_.__sklearn_tags__()
             forecaster_type = getattr(tags.forecaster_tags, "forecaster_type", None)
             if forecaster_type == "both":
@@ -790,9 +790,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         # Validate forecaster/scorer type compatibility (step 1)
         _validate_forecaster_scorer_compatibility(self.forecaster, scorers)
 
-        # Determine interval scoring context
-        needs_interval = _needs_interval_predictions(scorers)
-        collected_coverage_rates = _collect_coverage_rates(scorers) if needs_interval else None
+        # Determine prediction context from scorer response methods
+        response_method = _resolve_response_method(scorers)
+        collected_coverage_rates = _collect_coverage_rates(scorers) if response_method == "predict_interval" else None
 
         y, X = indexable(y, X)
         params = _check_method_params(y, params=params)
@@ -810,9 +810,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         fit_and_score_kwargs = {
             "scorer": scorers,
             "fit_params": routed_params.forecaster.fit,
-            "predict_func_params": (
-                routed_params.forecaster.predict_interval if needs_interval else routed_params.forecaster.predict
-            ),
+            "predict_func_params": getattr(routed_params.forecaster, response_method, {}),
             "score_params": routed_params.scorer.score,
             "return_train_score": self.return_train_score,
             "return_n_test_samples": True,
@@ -1169,6 +1167,84 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         check_is_fitted(self)
         _raise_for_params(params, self, "observe_predict_interval")
         return self.best_forecaster_.observe_predict_interval(y, X, coverage_rates, panel_group_names, **params)
+
+    @available_if(_search_forecaster_has("class_proba"))
+    def predict_class_proba(
+        self,
+        forecasting_horizon: int | None = None,
+        X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Generate class-probability forecasts using the best forecaster.
+
+        Parameters
+        ----------
+        forecasting_horizon : int or None, default=None
+            Number of time steps to forecast into the future.  If ``None``,
+            uses the horizon specified at fit time.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
+        panel_group_names : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Class-probability predictions with ``"observed_time"``,
+            ``"time"``, and probability columns for each target.
+
+        """
+        check_is_fitted(self)
+        _raise_for_params(params, self, "predict_class_proba")
+        return self.best_forecaster_.predict_class_proba(
+            forecasting_horizon=forecasting_horizon,
+            X=X,
+            panel_group_names=panel_group_names,
+            **params,
+        )
+
+    @available_if(_search_forecaster_has("observe_predict_class_proba"))
+    def observe_predict_class_proba(
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Observe new data and generate class-probability forecasts.
+
+        Equivalent to calling ``observe(y, X)`` then
+        ``predict_class_proba(X)``.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series with a ``"time"`` column (datetime) and one
+            or more categorical value columns.
+        X : pl.DataFrame or None, default=None
+            Exogenous features with a ``"time"`` column matching ``y``.
+            If ``None``, no exogenous features are used.
+        panel_group_names : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Class-probability predictions with ``"observed_time"``,
+            ``"time"``, and probability columns for each target.
+
+        """
+        check_is_fitted(self)
+        _raise_for_params(params, self, "observe_predict_class_proba")
+        return self.best_forecaster_.observe_predict_class_proba(y, X, panel_group_names, **params)
 
 
 class GridSearchCV(BaseSearchCV):

@@ -549,7 +549,7 @@ def check_prediction_types_property(forecaster) -> None:
     tags = forecaster.__sklearn_tags__()
     forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    valid_types = {"point", "interval", "both", None}
+    valid_types = {"point", "interval", "both", "class_proba", None}
     assert forecaster_type in valid_types, f"forecaster_type tag should be one of {valid_types}, got {forecaster_type}"
 
 

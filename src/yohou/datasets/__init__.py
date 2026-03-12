@@ -12,6 +12,7 @@ from yohou.datasets._fetchers import (
     fetch_tourism_quarterly,
     get_data_home,
 )
+from yohou.datasets._generators import make_weather_classification
 
 __all__ = [
     "clear_data_home",
@@ -24,4 +25,5 @@ __all__ = [
     "fetch_tourism_monthly",
     "fetch_tourism_quarterly",
     "get_data_home",
+    "make_weather_classification",
 ]

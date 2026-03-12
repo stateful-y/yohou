@@ -43,6 +43,8 @@ except (ImportError, AttributeError):
 # - observe_predict: Composite method for forecasters (observe + predict)
 # - predict_interval: Interval forecasting method
 # - observe_predict_interval: Composite method for interval forecasting (observe + predict_interval)
+# - predict_class_proba: Class-probability forecasting method
+# - observe_predict_class_proba: Composite method for class-probability forecasting (observe + predict_class_proba)
 # Note: 'observe' itself is NOT routed - it's a memory management operation
 
 for method in [
@@ -51,6 +53,8 @@ for method in [
     "observe_predict",
     "predict_interval",
     "observe_predict_interval",
+    "predict_class_proba",
+    "observe_predict_class_proba",
 ]:
     if method not in SIMPLE_METHODS:
         SIMPLE_METHODS.append(method)
@@ -62,9 +66,11 @@ COMPOSITE_METHODS["observe_transform"] = ["observe", "transform"]
 COMPOSITE_METHODS["rewind_transform"] = ["rewind", "transform"]
 COMPOSITE_METHODS["observe_predict"] = ["observe", "predict"]
 COMPOSITE_METHODS["observe_predict_interval"] = ["observe", "predict_interval"]
+COMPOSITE_METHODS["observe_predict_class_proba"] = ["observe", "predict_class_proba"]
 
 from yohou import (  # noqa: E402
     base,
+    class_proba,
     compose,
     datasets,
     interval,
@@ -81,6 +87,7 @@ from yohou import (  # noqa: E402
 __all__ = [
     "__version__",
     "base",
+    "class_proba",
     "compose",
     "datasets",
     "interval",

@@ -686,6 +686,103 @@ class ForecastedFeatureForecaster(BaseForecaster):
             **params,
         )
 
+    @available_if(_target_forecaster_has("predict_class_proba"))
+    def predict_class_proba(
+        self,
+        forecasting_horizon: StrictInt | None = None,
+        X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Generate class-probability forecasts.
+
+        Only available if target_forecaster supports class-probability predictions.
+        Feature forecaster always produces point predictions for X.
+
+        Parameters
+        ----------
+        forecasting_horizon : int, optional
+            Number of steps ahead to forecast. If None, uses value from fit().
+        X : pl.DataFrame, optional
+            Known-ahead exogenous features that don't need forecasting.
+            Must have "time" column matching the forecast period.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data prediction.
+        **params : dict
+            Metadata routing parameters.
+
+        Returns
+        -------
+        pl.DataFrame
+            Class-probability predictions with "observed_time", "time", and
+            probability columns.
+
+        """
+        check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
+
+        if forecasting_horizon is None:
+            forecasting_horizon = self.fit_forecasting_horizon_
+
+        _raise_for_params(params, self, "predict_class_proba")
+        routed_params = process_routing(self, "predict_class_proba", **params)
+
+        X_pred = self.feature_forecaster_.predict(
+            forecasting_horizon=forecasting_horizon,
+            panel_group_names=panel_group_names,
+            **routed_params.feature_forecaster.predict,
+        )
+
+        X_for_target = X_pred.drop(["observed_time"], strict=False)
+
+        if X is not None:
+            known_ahead_cols = [c for c in X.columns if c != "time" and c not in X_for_target.columns]
+            if known_ahead_cols:
+                X_for_target = X_for_target.join(
+                    X.select(["time", *known_ahead_cols]),
+                    on="time",
+                    how="left",
+                )
+
+        return self.target_forecaster_.predict_class_proba(
+            forecasting_horizon=forecasting_horizon,
+            X=X_for_target,
+            panel_group_names=panel_group_names,
+            **routed_params.target_forecaster.predict_class_proba,
+        )
+
+    @available_if(_target_forecaster_has("predict_class_proba"))
+    def observe_predict_class_proba(
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Observe new data and generate class-probability forecasts.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations with "time" column.
+        X : pl.DataFrame, optional
+            New exogenous feature observations with "time" column.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data.
+        **params : dict
+            Metadata routing parameters.
+
+        Returns
+        -------
+        pl.DataFrame
+            Class-probability predictions.
+
+        """
+        self.observe(y=y, X=X, panel_group_names=panel_group_names)
+        return self.predict_class_proba(
+            panel_group_names=panel_group_names,
+            **params,
+        )
+
     def get_metadata_routing(self):
         """Get metadata routing for both forecasters.
 
@@ -703,8 +800,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
             .add(caller="fit", callee="fit")
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict_interval")
+            .add(caller="predict_class_proba", callee="predict_class_proba")
             .add(caller="observe_predict", callee="observe_predict")
-            .add(caller="observe_predict_interval", callee="observe_predict_interval"),
+            .add(caller="observe_predict_interval", callee="observe_predict_interval")
+            .add(caller="observe_predict_class_proba", callee="observe_predict_class_proba"),
         )
 
         router.add(
@@ -713,8 +812,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
             .add(caller="fit", callee="fit")
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict")
+            .add(caller="predict_class_proba", callee="predict")
             .add(caller="observe_predict", callee="observe_predict")
-            .add(caller="observe_predict_interval", callee="observe_predict"),
+            .add(caller="observe_predict_interval", callee="observe_predict")
+            .add(caller="observe_predict_class_proba", callee="observe_predict"),
         )
 
         return router
