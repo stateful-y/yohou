@@ -170,10 +170,11 @@ def check_class_proba_prediction_types(forecaster) -> None:
 
 
 def check_class_proba_classes_attribute(forecaster) -> None:
-    """Check classes_ attribute is populated correctly after fit.
+    """Check classes_ and n_classes_ attributes are populated correctly after fit.
 
     Validates that ``classes_`` is a dict mapping target column names to
-    sorted lists of class labels, and that ``label_to_code_`` maps each
+    sorted lists of class labels, that ``n_classes_`` maps each target
+    to an integer class count, and that ``label_to_code_`` maps each
     label to a numeric code.
 
     Parameters
@@ -184,7 +185,7 @@ def check_class_proba_classes_attribute(forecaster) -> None:
     Raises
     ------
     AssertionError
-        If classes_ or label_to_code_ are invalid.
+        If classes_, n_classes_, or label_to_code_ are invalid.
 
     """
     assert hasattr(forecaster, "classes_"), "Fitted forecaster must have classes_ attribute"
@@ -195,6 +196,14 @@ def check_class_proba_classes_attribute(forecaster) -> None:
         assert isinstance(labels, list), f"classes_[{target_col!r}] should be list, got {type(labels)}"
         assert len(labels) >= 2, f"classes_[{target_col!r}] should have at least 2 classes, got {len(labels)}"
         assert labels == sorted(labels), f"classes_[{target_col!r}] should be sorted, got {labels}"
+
+    assert hasattr(forecaster, "n_classes_"), "Fitted forecaster must have n_classes_ attribute"
+    assert isinstance(forecaster.n_classes_, dict), f"n_classes_ should be dict, got {type(forecaster.n_classes_)}"
+    for target_col, n in forecaster.n_classes_.items():
+        assert target_col in forecaster.classes_, f"n_classes_ key {target_col!r} not in classes_"
+        assert n == len(forecaster.classes_[target_col]), (
+            f"n_classes_[{target_col!r}]={n} doesn't match len(classes_[{target_col!r}])={len(forecaster.classes_[target_col])}"
+        )
 
     assert hasattr(forecaster, "label_to_code_"), "Fitted forecaster must have label_to_code_ attribute"
     assert isinstance(forecaster.label_to_code_, dict), (

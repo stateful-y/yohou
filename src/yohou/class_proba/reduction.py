@@ -53,6 +53,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     classes_ : dict[str, list[str]]
         Mapping from target column name to its class labels, discovered at
         fit time from the unique values in each target column.
+    n_classes_ : dict[str, int]
+        Mapping from target column name to the number of classes.
     label_to_code_ : dict[str, dict[str, int]]
         Mapping from target column name to a dict mapping class labels to
         integer codes.
@@ -177,12 +179,14 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         # Discover classes from y before _pre_fit (which may transform y)
         self.classes_: dict[str, list[str]] = {}
+        self.n_classes_: dict[str, int] = {}
         self.label_to_code_: dict[str, dict[str, int]] = {}
         for col in y.columns:
             if col == "time":
                 continue
             unique_vals = sorted(y[col].drop_nulls().unique().cast(pl.String).to_list())
             self.classes_[col] = unique_vals
+            self.n_classes_[col] = len(unique_vals)
             self.label_to_code_[col] = {label: i for i, label in enumerate(unique_vals)}
 
         # Encode target columns to integer codes for tabularization

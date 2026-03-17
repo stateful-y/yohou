@@ -46,6 +46,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     """
 
     classes_: dict[str, list[str]]
+    n_classes_: dict[str, int]
     label_to_code_: dict[str, dict[str, float]]
 
     def __sklearn_tags__(self) -> Tags:

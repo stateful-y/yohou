@@ -728,7 +728,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict_interval")
             .add(caller="observe_predict", callee="observe_predict")
-            .add(caller="observe_predict_interval", callee="observe_predict_interval"),
+            .add(caller="observe_predict_interval", callee="observe_predict_interval")
+            .add(caller="predict_class_proba", callee="predict_class_proba")
+            .add(caller="observe_predict_class_proba", callee="observe_predict_class_proba"),
         )
 
         # Add scorer routing
