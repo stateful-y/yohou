@@ -1519,6 +1519,7 @@ def plot_lag_scatter(
                         mode="markers",
                         marker={"size": _ms, "color": colors[li % len(colors)], "opacity": _ma},
                         name=f"lag={lag}",
+                        legendgroup=f"lag={lag}",
                         showlegend=(row == 1 and col == 1),
                     ),
                     row=row,
@@ -1643,6 +1644,7 @@ def plot_lag_scatter(
                                 "opacity": marker_opacity,
                             },
                             name=col,
+                            legendgroup=col,
                             showlegend=is_first_cell,
                             hovertemplate=(
                                 f"<b>{col}</b><br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"
@@ -2067,6 +2069,7 @@ def _render_scatter_block(  # noqa: PLR0913
     marker_opacity: float,
     corr_font_size: int,
     show_legend: bool,
+    total_cols: int,
     gaussian_kde,  # noqa: ANN001
     pearsonr,  # noqa: ANN001
 ) -> None:
@@ -2167,7 +2170,6 @@ def _render_scatter_block(  # noqa: PLR0913
                 if len(sub) > 2:
                     r_val, _ = pearsonr(sub[col_x].to_numpy(), sub[col_y].to_numpy())
                     font_sz = max(10, int(corr_font_size * abs(r_val)))
-                    total_cols = fig._get_subplot_rows_and_cols()[1][-1]  # noqa: SLF001
                     axis_idx = (row - 1) * total_cols + col
                     x_key = f"xaxis{axis_idx}" if axis_idx > 1 else "xaxis"
                     y_key = f"yaxis{axis_idx}" if axis_idx > 1 else "yaxis"
@@ -2264,6 +2266,7 @@ def _scatter_matrix_facet(  # noqa: PLR0913
             marker_opacity=marker_opacity,
             corr_font_size=corr_font_size,
             show_legend=True,
+            total_cols=m,
             gaussian_kde=gaussian_kde,
             pearsonr=pearsonr,
         )
@@ -2378,6 +2381,7 @@ def _scatter_matrix_grid(  # noqa: PLR0913
             marker_opacity=marker_opacity,
             corr_font_size=corr_font_size,
             show_legend=is_first_group,
+            total_cols=total_cols,
             gaussian_kde=gaussian_kde,
             pearsonr=pearsonr,
         )
