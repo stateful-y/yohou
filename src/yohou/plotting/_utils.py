@@ -1,21 +1,283 @@
 """Internal utilities for yohou plotting: colors, validation, and layout."""
 
+from __future__ import annotations
+
 import copy
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
+from typing import Literal
 
 import plotly.graph_objects as go
 import polars as pl
 from plotly.subplots import make_subplots
+from plotly_resampler import FigureResampler, FigureWidgetResampler
+from plotly_resampler.aggregation.aggregation_interface import AbstractAggregator
+from plotly_resampler.aggregation.gap_handler_interface import AbstractGapHandler
+from plotly_resampler.aggregation.gap_handlers import NoGapHandler
+from plotly_resampler.figure_resampler.figure_resampler_interface import (
+    AbstractFigureAggregator,
+)
 
 from yohou.utils import inspect_panel
 
 __all__ = [
     "DEFAULT_LAYOUT",
     "apply_default_layout",
+    "config_context",
+    "get_config",
     "palette_yohou",
     "panel_facet_figure",
     "resolve_color_palette",
+    "set_config",
 ]
+
+
+_global_config: dict = {
+    "resampler": False,
+    "resampler_n_shown_samples": None,
+    "resampler_downsampler": None,
+    "resampler_gap_handler": None,
+    "resampler_trace_prefix_suffix": None,
+    "resampler_show_mean_aggregation_size": None,
+}
+
+
+def set_config(
+    *,
+    resampler: bool | Literal["widget"] | None = None,
+    resampler_n_shown_samples: int | None = None,
+    resampler_downsampler: AbstractAggregator | None = None,
+    resampler_gap_handler: AbstractGapHandler | None = None,
+    resampler_trace_prefix_suffix: tuple[str, str] | None = None,
+    resampler_show_mean_aggregation_size: bool | None = None,
+) -> None:
+    """Set global plotting configuration.
+
+    Parameters
+    ----------
+    resampler : bool | Literal["widget"] | None, default=None
+        Controls plotly-resampler usage for time-axis plots.
+
+        - ``False`` — plain ``go.Figure`` (default).
+        - ``True`` — ``FigureResampler`` (Dash-based callback server).
+        - ``"widget"`` — ``FigureWidgetResampler`` (notebook-native widget).
+        - ``None`` — leave current value unchanged.
+    resampler_n_shown_samples : int | None, default=None
+        Default number of samples shown per trace when resampling is active.
+        ``None`` leaves current value unchanged (library default: 1000).
+    resampler_downsampler : AbstractAggregator | None, default=None
+        Default downsampling algorithm (e.g. ``MinMaxLTTB()``, ``LTTB()``).
+        ``None`` leaves current value unchanged (library default: ``MinMaxLTTB()``).
+    resampler_gap_handler : AbstractGapHandler | None, default=None
+        Default gap detection strategy (e.g. ``MedDiffGapHandler()``, ``NoGapHandler()``).
+        ``None`` leaves current value unchanged (library default: ``MedDiffGapHandler()``).
+    resampler_trace_prefix_suffix : tuple[str, str] | None, default=None
+        Prefix and suffix added to legend names of resampled traces.
+        ``None`` leaves current value unchanged (library default: ``('[R] ', '')``).
+    resampler_show_mean_aggregation_size : bool | None, default=None
+        Whether to show the mean aggregation bin size as a legend suffix.
+        ``None`` leaves current value unchanged (library default: ``True``).
+
+    Examples
+    --------
+    >>> from yohou.plotting import set_config, get_config
+    >>> set_config(resampler="widget")
+    >>> get_config()["resampler"]
+    'widget'
+    """
+    if resampler is not None:
+        _global_config["resampler"] = resampler
+    if resampler_n_shown_samples is not None:
+        _global_config["resampler_n_shown_samples"] = resampler_n_shown_samples
+    if resampler_downsampler is not None:
+        _global_config["resampler_downsampler"] = resampler_downsampler
+    if resampler_gap_handler is not None:
+        _global_config["resampler_gap_handler"] = resampler_gap_handler
+    if resampler_trace_prefix_suffix is not None:
+        _global_config["resampler_trace_prefix_suffix"] = resampler_trace_prefix_suffix
+    if resampler_show_mean_aggregation_size is not None:
+        _global_config["resampler_show_mean_aggregation_size"] = resampler_show_mean_aggregation_size
+
+
+def get_config() -> dict:
+    """Return a copy of the current global plotting configuration.
+
+    Returns
+    -------
+    dict
+        Dictionary with current configuration values.
+
+    Examples
+    --------
+    >>> from yohou.plotting import get_config
+    >>> get_config()
+    {'resampler': False}
+    """
+    return _global_config.copy()
+
+
+@contextmanager
+def config_context(
+    *,
+    resampler: bool | Literal["widget"] | None = None,
+    resampler_n_shown_samples: int | None = None,
+    resampler_downsampler: AbstractAggregator | None = None,
+    resampler_gap_handler: AbstractGapHandler | None = None,
+    resampler_trace_prefix_suffix: tuple[str, str] | None = None,
+    resampler_show_mean_aggregation_size: bool | None = None,
+) -> Generator[None, None, None]:
+    """Context manager to temporarily override plotting configuration.
+
+    Parameters
+    ----------
+    resampler : bool | Literal["widget"] | None, default=None
+        Temporary resampler mode.  ``None`` leaves the current value
+        unchanged.
+    resampler_n_shown_samples : int | None, default=None
+        Temporary number of shown samples.  ``None`` leaves unchanged.
+    resampler_downsampler : AbstractAggregator | None, default=None
+        Temporary downsampling algorithm.  ``None`` leaves unchanged.
+    resampler_gap_handler : AbstractGapHandler | None, default=None
+        Temporary gap handler.  ``None`` leaves unchanged.
+    resampler_trace_prefix_suffix : tuple[str, str] | None, default=None
+        Temporary legend prefix/suffix.  ``None`` leaves unchanged.
+    resampler_show_mean_aggregation_size : bool | None, default=None
+        Temporary aggregation size display.  ``None`` leaves unchanged.
+
+    Examples
+    --------
+    >>> from yohou.plotting import config_context, get_config, set_config
+    >>> set_config(resampler=False)
+    >>> with config_context(resampler="widget"):
+    ...     assert get_config()["resampler"] == "widget"
+    >>> assert get_config()["resampler"] is False
+    """
+    old = _global_config.copy()
+    try:
+        set_config(
+            resampler=resampler,
+            resampler_n_shown_samples=resampler_n_shown_samples,
+            resampler_downsampler=resampler_downsampler,
+            resampler_gap_handler=resampler_gap_handler,
+            resampler_trace_prefix_suffix=resampler_trace_prefix_suffix,
+            resampler_show_mean_aggregation_size=resampler_show_mean_aggregation_size,
+        )
+        yield
+    finally:
+        _global_config.clear()
+        _global_config.update(old)
+
+
+def _get_resampler_mode(
+    resampler: bool | Literal["widget"] | None,
+) -> bool | Literal["widget"]:
+    """Resolve the effective resampler mode.
+
+    If *resampler* is ``None``, read from the global config; otherwise
+    use the explicit value.
+    """
+    if resampler is None:
+        return _global_config["resampler"]
+    return resampler
+
+
+def _build_resampler_kwargs() -> dict:
+    """Build kwargs dict for FigureResampler/FigureWidgetResampler from config.
+
+    Only includes keys that are explicitly set (not None), so the library
+    uses its own defaults for anything left unset.
+    """
+    _config_to_kwarg = {
+        "resampler_n_shown_samples": "default_n_shown_samples",
+        "resampler_downsampler": "default_downsampler",
+        "resampler_gap_handler": "default_gap_handler",
+        "resampler_trace_prefix_suffix": "resampled_trace_prefix_suffix",
+        "resampler_show_mean_aggregation_size": "show_mean_aggregation_size",
+    }
+    return {
+        kwarg: _global_config[key]
+        for key, kwarg in _config_to_kwarg.items()
+        if _global_config[key] is not None
+    }
+
+
+def _create_figure(
+    resampler: bool | Literal["widget"] | None = None,
+    **kwargs,
+) -> go.Figure:
+    """Create a Plotly figure, optionally wrapped with plotly-resampler.
+
+    Parameters
+    ----------
+    resampler : bool | Literal["widget"] | None, default=None
+        Resampler mode.  ``None`` reads from :func:`get_config`.
+    **kwargs
+        Forwarded to ``go.Figure()``.
+
+    Returns
+    -------
+    go.Figure
+        A plain figure, ``FigureResampler``, or ``FigureWidgetResampler``.
+    """
+    mode = _get_resampler_mode(resampler)
+    if mode == "widget":
+        return FigureWidgetResampler(
+            go.Figure(**kwargs),
+            **_build_resampler_kwargs(),
+        )
+    if mode:
+        return FigureResampler(
+            go.Figure(**kwargs),
+            **_build_resampler_kwargs(),
+        )
+    return go.Figure(**kwargs)
+
+
+def _create_subplots(
+    resampler: bool | Literal["widget"] | None = None,
+    **subplots_kwargs,
+) -> go.Figure:
+    """Create subplots, optionally wrapped with plotly-resampler.
+
+    Parameters
+    ----------
+    resampler : bool | Literal["widget"] | None, default=None
+        Resampler mode.  ``None`` reads from :func:`get_config`.
+    **subplots_kwargs
+        Forwarded to ``plotly.subplots.make_subplots()``.
+
+    Returns
+    -------
+    go.Figure
+        A plain figure, ``FigureResampler``, or ``FigureWidgetResampler``.
+    """
+    fig = make_subplots(**subplots_kwargs)
+    mode = _get_resampler_mode(resampler)
+    if mode == "widget":
+        return FigureWidgetResampler(
+            fig,
+            **_build_resampler_kwargs(),
+        )
+    if mode:
+        return FigureResampler(
+            fig,
+            **_build_resampler_kwargs(),
+        )
+    return fig
+
+
+def _fill_trace_kwargs(fig: go.Figure) -> dict:
+    """Return extra ``add_trace`` kwargs for filled traces.
+
+    When *fig* is a plotly-resampler figure, filled traces
+    (``fill='tonexty'``, etc.) must use ``NoGapHandler`` to avoid
+    visual artifacts from gap interleaving.
+
+    Returns an empty dict for plain figures.
+    """
+    if isinstance(fig, AbstractFigureAggregator):
+        return {"gap_handler": NoGapHandler()}
+    return {}
 
 
 def palette_yohou() -> dict[str, str]:
@@ -384,6 +646,7 @@ def panel_facet_figure(
     height: int | None = None,
     row_height: int = 300,
     shared_xaxes: bool = True,
+    resampler: bool | Literal["widget"] | None = None,
 ) -> go.Figure:
     """Create a faceted subplot figure for panel data.
 
@@ -457,7 +720,8 @@ def panel_facet_figure(
     n_cols_grid = min(n_groups, facet_n_cols)
     n_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
 
-    fig = make_subplots(
+    fig = _create_subplots(
+        resampler,
         rows=n_rows,
         cols=n_cols_grid,
         subplot_titles=list(groups.keys()),

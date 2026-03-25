@@ -6,7 +6,10 @@ from plotly import graph_objects as go
 
 from yohou.plotting import (
     plot_boxplot,
+    plot_distribution,
     plot_missing_data,
+    plot_outliers,
+    plot_resampling_comparison,
     plot_rolling_statistics,
     plot_time_series,
 )
@@ -402,3 +405,253 @@ class TestPlotMissingDataKindBranches:
         """Invalid kind raises ValueError."""
         with pytest.raises(ValueError, match="Unknown kind"):
             plot_missing_data(df_nulls, kind="scatter")
+
+
+# ── plot_distribution ─────────────────────────────────────────────────
+
+
+class TestPlotDistribution:
+    """Tests for plot_distribution function."""
+
+    def test_single_column(self, sample_df):
+        """Test histogram + KDE for a single column."""
+        fig = plot_distribution(sample_df, columns="y")
+        assert isinstance(fig, go.Figure)
+        # 1 histogram + 1 KDE
+        assert len(fig.data) == 2
+
+    def test_no_kde(self, sample_df):
+        """Test histogram only (no KDE)."""
+        fig = plot_distribution(sample_df, columns="y", show_kde=False)
+        assert len(fig.data) == 1
+
+    def test_multiple_columns(self, sample_df):
+        """Test distribution for multiple columns."""
+        fig = plot_distribution(sample_df, columns=["y", "y2"])
+        # 2 histograms + 2 KDEs
+        assert len(fig.data) == 4
+
+    def test_custom_bins(self, sample_df):
+        """Test with custom number of bins."""
+        fig = plot_distribution(sample_df, columns="y", n_bins=10)
+        assert isinstance(fig, go.Figure)
+
+    def test_all_columns_default(self, sample_df):
+        """Test that all numeric columns are used when columns is None."""
+        fig = plot_distribution(sample_df)
+        # y and y2 → 2 histograms + 2 KDEs
+        assert len(fig.data) == 4
+
+    def test_custom_title(self, sample_df):
+        """Test that title is applied."""
+        fig = plot_distribution(sample_df, columns="y", title="My Distribution")
+        assert fig.layout.title.text == "My Distribution"
+
+    def test_custom_dimensions(self, sample_df):
+        """Test custom width and height."""
+        fig = plot_distribution(sample_df, columns="y", width=800, height=500)
+        assert fig.layout.width == 800
+        assert fig.layout.height == 500
+
+    def test_panel(self):
+        """Test panel faceting for distribution."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "y__a": [100, 120, 115, 130, 140, 135, 150, 160, 155, 170, 180, 175],
+            "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
+        })
+        fig = plot_distribution(df, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_auto_detect_panel(self):
+        """Distribution auto-detects panel mode."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True),
+            "sales__a": [100.0, 110.0, 120.0, 130.0, 140.0, 150.0],
+            "sales__b": [200.0, 210.0, 220.0, 230.0, 240.0, 250.0],
+        })
+        fig = plot_distribution(df)
+        assert isinstance(fig, go.Figure)
+
+    def test_returns_figure(self, sample_df):
+        """Always returns go.Figure."""
+        fig = plot_distribution(sample_df, columns="y")
+        assert isinstance(fig, go.Figure)
+
+    def test_not_a_dataframe(self):
+        """Non-DataFrame raises TypeError."""
+        with pytest.raises(TypeError, match="DataFrame"):
+            plot_distribution("not a dataframe")
+
+
+# ── plot_outliers ─────────────────────────────────────────────────────
+
+
+class TestPlotOutlierDetection:
+    """Tests for plot_outliers function."""
+
+    def test_zscore(self, sample_df):
+        """Test z-score method."""
+        fig = plot_outliers(sample_df, columns="y", method="zscore", threshold=1.0)
+        assert isinstance(fig, go.Figure)
+        # At least the line trace
+        assert len(fig.data) >= 1
+
+    def test_iqr(self, sample_df):
+        """Test IQR method."""
+        fig = plot_outliers(sample_df, columns="y", method="iqr", threshold=1.5)
+        assert isinstance(fig, go.Figure)
+
+    def test_percentile(self, sample_df):
+        """Test percentile method."""
+        fig = plot_outliers(sample_df, columns="y", method="percentile", threshold=10.0)
+        assert isinstance(fig, go.Figure)
+
+    def test_multiple_columns(self, sample_df):
+        """Test outlier detection on multiple columns."""
+        fig = plot_outliers(sample_df, columns=["y", "y2"], method="zscore")
+        # At least 2 line traces
+        assert len(fig.data) >= 2
+
+    def test_no_outliers_constant_series(self):
+        """Constant series produces no outlier markers."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
+            "y": [100.0] * 10,
+        })
+        fig = plot_outliers(df, columns="y")
+        assert isinstance(fig, go.Figure)
+        # Only the line trace + possibly bounds, no outlier markers
+        scatter_markers = [t for t in fig.data if t.mode == "markers"]
+        assert len(scatter_markers) == 0
+
+    def test_with_nulls(self, df_with_nulls):
+        """Null values don't cause errors."""
+        fig = plot_outliers(df_with_nulls, columns="y", method="zscore")
+        assert isinstance(fig, go.Figure)
+
+    def test_panel(self):
+        """Test panel faceting for outlier detection."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "y__a": [100, 120, 115, 130, 140, 135, 150, 160, 155, 170, 180, 175],
+            "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
+        })
+        fig = plot_outliers(df, method="zscore", panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_custom_styling(self, sample_df):
+        """Test custom outlier styling via kwargs."""
+        fig = plot_outliers(
+            sample_df,
+            columns="y",
+            method="zscore",
+            outlier_color="#FF0000",
+            outlier_size=12.0,
+            show_bounds=False,
+        )
+        assert isinstance(fig, go.Figure)
+
+    def test_invalid_method(self, sample_df):
+        """Invalid method raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown method"):
+            plot_outliers(sample_df, columns="y", method="invalid")
+
+    def test_auto_detect_panel(self):
+        """Outlier detection auto-detects panel mode."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True),
+            "sales__a": [100.0, 110.0, 120.0, 130.0, 140.0, 150.0],
+            "sales__b": [200.0, 210.0, 220.0, 230.0, 240.0, 250.0],
+        })
+        fig = plot_outliers(df)
+        assert isinstance(fig, go.Figure)
+
+
+# ── plot_resampling_comparison ────────────────────────────────────────
+
+
+class TestPlotResamplingComparison:
+    """Tests for plot_resampling_comparison function."""
+
+    @pytest.fixture
+    def hourly_and_daily(self):
+        """Create matching hourly and daily DataFrames."""
+        hourly = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 31, 23), "1h", eager=True,
+            ),
+            "temp": [20.0 + i % 24 for i in range(31 * 24)],
+        })
+        daily = hourly.group_by_dynamic("time", every="1d").agg(pl.col("temp").mean())
+        return hourly, daily
+
+    def test_basic(self, hourly_and_daily):
+        """Test basic overlay of two resolutions."""
+        hourly, daily = hourly_and_daily
+        fig = plot_resampling_comparison(hourly, daily, columns="temp")
+        # 1 original + 1 resampled
+        assert len(fig.data) == 2
+        assert isinstance(fig, go.Figure)
+
+    def test_multiple_columns(self):
+        """Test with multiple columns."""
+        hourly = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 7, 23), "1h", eager=True,
+            ),
+            "temp": [20.0 + i % 24 for i in range(7 * 24)],
+            "wind": [5.0 + i % 12 for i in range(7 * 24)],
+        })
+        daily = hourly.group_by_dynamic("time", every="1d").agg(
+            pl.col("temp").mean(), pl.col("wind").mean()
+        )
+        fig = plot_resampling_comparison(hourly, daily, columns=["temp", "wind"])
+        # 2 originals + 2 resampled
+        assert len(fig.data) == 4
+
+    def test_custom_labels(self, hourly_and_daily):
+        """Test custom legend labels."""
+        hourly, daily = hourly_and_daily
+        fig = plot_resampling_comparison(
+            hourly, daily, columns="temp",
+            original_label="Hourly", resampled_label="Daily Avg",
+        )
+        assert "Hourly" in fig.data[0].name
+        assert "Daily Avg" in fig.data[1].name
+
+    def test_column_not_in_original(self):
+        """Column in resampled but not in original raises ValueError."""
+        original = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 2), "1h", eager=True,
+            ),
+            "y": list(range(25)),
+        })
+        resampled = pl.DataFrame({
+            "time": [pl.datetime(2020, 1, 1)],
+            "z": [12.0],
+        })
+        with pytest.raises(ValueError, match="not found"):
+            plot_resampling_comparison(original, resampled, columns="z")
+
+    def test_returns_figure(self, hourly_and_daily):
+        """Always returns go.Figure."""
+        hourly, daily = hourly_and_daily
+        fig = plot_resampling_comparison(hourly, daily, columns="temp")
+        assert isinstance(fig, go.Figure)
+
+    def test_custom_title(self, hourly_and_daily):
+        """Custom title is applied."""
+        hourly, daily = hourly_and_daily
+        fig = plot_resampling_comparison(hourly, daily, columns="temp", title="Resample Test")
+        assert fig.layout.title.text == "Resample Test"
+
+    def test_custom_dimensions(self, hourly_and_daily):
+        """Custom dimensions are respected."""
+        hourly, daily = hourly_and_daily
+        fig = plot_resampling_comparison(hourly, daily, columns="temp", width=900, height=400)
+        assert fig.layout.width == 900
+        assert fig.layout.height == 400

@@ -414,6 +414,28 @@ class TestPanelSubseasonality:
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
+    def test_mean_line_color_matches_series(self):
+        """Mean line color matches its series color, not a single hardcoded color."""
+        dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y__a": [100 + i % 30 for i in range(n)],
+            "y__b": [200 + i % 20 for i in range(n)],
+        })
+        fig = plot_subseasonality(df, seasonality="quarter", show_mean=True)
+        series_colors = []
+        mean_colors = []
+        for trace in fig.data:
+            if trace.mode == "lines+markers":
+                series_colors.append(trace.line.color)
+            elif trace.mode == "lines" and trace.line.dash == "dash":
+                mean_colors.append(trace.line.color)
+        # There must be at least 2 distinct series (y__a, y__b)
+        assert len(set(series_colors)) >= 2
+        # Mean colors should not all be the same (they match their series)
+        assert len(set(mean_colors)) >= 2
+
 
 class TestPanelPhase:
     """Panel tests for plot_phase."""

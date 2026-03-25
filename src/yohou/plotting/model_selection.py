@@ -1,10 +1,12 @@
 """Cross-validation and hyperparameter search visualization functions."""
 
+from typing import Literal
+
 import polars as pl
 from plotly import graph_objects as go
 
 from yohou.model_selection import BaseSplitter
-from yohou.plotting._utils import apply_default_layout, resolve_color_palette
+from yohou.plotting._utils import _create_figure, apply_default_layout, resolve_color_palette
 from yohou.utils import validate_plotting_data
 
 __all__ = ["plot_cv_results_scatter", "plot_splits"]
@@ -23,6 +25,7 @@ def plot_splits(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
     """
@@ -117,7 +120,7 @@ def plot_splits(
     n_splits = len(splits)
 
     # Create figure
-    fig = go.Figure()
+    fig = _create_figure(resampler)
 
     # Get time column
     times = y["time"]

@@ -1,18 +1,22 @@
 """Forecast visualization functions."""
 
 import re
+from typing import Literal
 
 import numpy as np
 import plotly.graph_objects as go
 import polars as pl
-from plotly.subplots import make_subplots
 
 from yohou.plotting._utils import (
+    _create_figure,
+    _create_subplots,
+    _fill_trace_kwargs,
     _group_panel_columns,
     _member_name,
     apply_default_layout,
     palette_yohou,
     resolve_color_palette,
+    resolve_panel_columns,
 )
 from yohou.utils import inspect_panel, validate_plotting_data
 
@@ -43,6 +47,7 @@ def plot_forecast(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
     """Plot forecasts with historical data and optional prediction intervals.
@@ -186,6 +191,7 @@ def plot_forecast(
             line_width=line_width,
             band_opacity=band_opacity,
             show_transition=show_transition,
+            resampler=resampler,
         )
 
     # Multi-model dict: delegate to dedicated helper
@@ -205,6 +211,7 @@ def plot_forecast(
             line_width=line_width,
             band_opacity=band_opacity,
             show_transition=show_transition,
+            resampler=resampler,
         )
 
     # Non-panel, single-model case
@@ -219,7 +226,7 @@ def plot_forecast(
     _model_pal = eff_palette[3:] or eff_palette
     col_colors = resolve_color_palette(_model_pal, len(plot_columns)) if multi_col else []
 
-    fig = go.Figure()
+    fig = _create_figure(resampler)
 
     for col_idx, col in enumerate(plot_columns):
         # Colour & legend setup: per-column colours for multi-column plots
@@ -295,7 +302,8 @@ def plot_forecast(
                             legendgroup=fc_group,
                             legendrank=11 + sort_idx,
                             hoverinfo="skip",
-                        )
+                        ),
+                        **_fill_trace_kwargs(fig),
                     )
 
         # Actual test data (prepend last train point to close the gap)
@@ -373,6 +381,7 @@ def _plot_forecast_multi_model(
     line_width: float,
     band_opacity: float,
     show_transition: bool,
+    resampler: bool | Literal["widget"] | None = None,
 ) -> go.Figure:
     """Plot multiple model forecasts overlaid on the same axes.
 
@@ -426,7 +435,7 @@ def _plot_forecast_multi_model(
     model_names = list(y_preds.keys())
     colors = resolve_color_palette(_model_pal, len(model_names))
 
-    fig = go.Figure()
+    fig = _create_figure(resampler)
     multi_col = len(plot_columns) > 1
     _col_colors = resolve_color_palette(_actual_pal, len(plot_columns)) if multi_col else []
 
@@ -487,7 +496,8 @@ def _plot_forecast_multi_model(
                             legendgroup=model_name,
                             legendrank=10 + model_idx * 100 + sort_idx + 1,
                             hoverinfo="skip",
-                        )
+                        ),
+                        **_fill_trace_kwargs(fig),
                     )
 
         # Actual data
@@ -585,6 +595,7 @@ def _plot_forecast_panel(
     line_width: float,
     band_opacity: float,
     show_transition: bool,
+    resampler: bool | Literal["widget"] | None = None,
 ) -> go.Figure:
     """Plot forecast with panel data as faceted subplots.
 
@@ -681,7 +692,8 @@ def _plot_forecast_panel(
     n_rows = (n_groups + facet_n_cols - 1) // facet_n_cols
     n_cols_grid = min(n_groups, facet_n_cols)
 
-    fig = make_subplots(
+    fig = _create_subplots(
+        resampler,
         rows=n_rows,
         cols=n_cols_grid,
         subplot_titles=list(groups.keys()),
@@ -788,6 +800,7 @@ def _plot_forecast_panel(
                             ),
                             row=row,
                             col=col_grid,
+                            **_fill_trace_kwargs(fig),
                         )
 
             # Actual
@@ -891,6 +904,7 @@ def plot_time_weight(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
     """
@@ -1017,7 +1031,8 @@ def plot_time_weight(
         # Create subplots (one per group)
         n_rows = (n_groups + facet_n_cols - 1) // facet_n_cols
         n_cols_grid = min(n_groups, facet_n_cols)
-        fig = make_subplots(
+        fig = _create_subplots(
+            resampler,
             rows=n_rows,
             cols=n_cols_grid,
             subplot_titles=list(weight_panel_cols.keys()),
@@ -1057,6 +1072,7 @@ def plot_time_weight(
                     ),
                     row=row,
                     col=col_idx,
+                    **((_fill_trace_kwargs(fig)) if fill else {}),
                 )
 
         # Update layout
@@ -1090,7 +1106,7 @@ def plot_time_weight(
     rgba_fill = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {fill_opacity})"
 
     # Create figure
-    fig = go.Figure()
+    fig = _create_figure(resampler)
 
     fig.add_trace(
         go.Scatter(
@@ -1102,7 +1118,8 @@ def plot_time_weight(
             fillcolor=rgba_fill if fill else None,
             name="Time Weight",
             hovertemplate="Time: %{x}<br>Weight: %{y:.3f}<extra></extra>",
-        )
+        ),
+        **((_fill_trace_kwargs(fig)) if fill else {}),
     )
 
     # Set default labels
@@ -1131,6 +1148,135 @@ _INTERVAL_TO_STL_PERIOD: dict[str, int] = {
     "3mo": 4,
     "6mo": 2,
 }
+
+_INTERVAL_TO_MSTL_PERIODS: dict[str, list[int]] = {
+    "1h": [24, 24 * 365],
+    "1d": [7, 365],
+    "7d": [4, 52],
+    "1mo": [12],
+}
+
+_INTERVAL_HOURS: dict[str, float] = {
+    "1min": 1 / 60,
+    "5min": 5 / 60,
+    "10min": 10 / 60,
+    "15min": 0.25,
+    "30min": 0.5,
+    "1h": 1,
+    "2h": 2,
+    "3h": 3,
+    "4h": 4,
+    "6h": 6,
+    "12h": 12,
+    "1d": 24,
+    "7d": 168,
+    "1mo": 730.5,
+    "2mo": 1461,
+    "3mo": 2191.5,
+    "6mo": 4383,
+}
+
+
+def _period_to_label(period: int, interval: str | None) -> str:
+    """Derive a human-readable seasonality label from period and sampling interval.
+
+    Computes ``period * interval_hours`` to get the cycle length in hours,
+    then bins into a descriptive label ("daily", "weekly", …).
+
+    Parameters
+    ----------
+    period : int
+        Number of observations per seasonal cycle.
+    interval : str | None
+        Sampling interval string (e.g. ``"1h"``, ``"15min"``, ``"1d"``).
+        If ``None`` or unrecognised, the raw *period* is returned as a string.
+
+    Returns
+    -------
+    str
+        Human-readable label such as ``"daily"``, ``"weekly"``, ``"annual"``,
+        or a fallback like ``"6h"`` / ``"24"``.
+
+    """
+    if interval is None:
+        return str(period)
+    h = _INTERVAL_HOURS.get(interval)
+    if h is None:
+        return str(period)
+    days = period * h / 24
+    if days < 0.5:
+        hours = period * h
+        return f"{hours:g}h"
+    if days < 1.5:
+        return "daily"
+    if days < 10:
+        return "weekly"
+    if days < 45:
+        return "monthly"
+    if days < 120:
+        return "quarterly"
+    if days < 250:
+        return "semi-annual"
+    return "annual"
+
+
+def _format_component_label(name: str) -> str:
+    """Format a decomposition component name for subplot display.
+
+    Parameters
+    ----------
+    name : str
+        Internal component key, e.g. ``"trend"``, ``"seasonal_daily"``,
+        ``"seasonal_adjusted"``.
+
+    Returns
+    -------
+    str
+        Title-cased display label.  ``"seasonal_<suffix>"`` becomes
+        ``"Seasonal (<suffix>)"``, except ``"seasonal_adjusted"`` which
+        becomes ``"Seasonal Adjusted"``.
+
+    """
+    if name == "seasonal_adjusted":
+        return "Seasonal Adjusted"
+    m = re.match(r"^seasonal_(.+)$", name)
+    if m:
+        return f"Seasonal ({m.group(1)})"
+    return name.replace("_", " ").title()
+
+
+def _clean_series(series: pl.Series) -> np.ndarray:
+    """Interpolate NaNs in *series* and return a clean float numpy array.
+
+    Uses linear interpolation followed by forward-fill and backward-fill
+    to eliminate all missing values.  Emits a ``UserWarning`` if any
+    values were interpolated.
+
+    Parameters
+    ----------
+    series : pl.Series
+        Numeric series, possibly containing ``None`` / ``NaN`` values.
+
+    Returns
+    -------
+    np.ndarray
+        1-D float64 array with no missing values.
+
+    """
+    import warnings  # noqa: PLC0415
+
+    values = series.to_list()
+    clean = pl.Series(values).interpolate().forward_fill().backward_fill()
+    n_interpolated = sum(v is None or (isinstance(v, float) and np.isnan(v)) for v in values) - sum(
+        v is None or (isinstance(v, float) and np.isnan(v)) for v in clean.to_list()
+    )
+    if n_interpolated > 0:
+        warnings.warn(
+            f"Interpolated {n_interpolated} NaN value(s) before decomposition.",
+            UserWarning,
+            stacklevel=4,
+        )
+    return clean.to_numpy().astype(float)
 
 
 def _compute_stl(
@@ -1166,8 +1312,6 @@ def _compute_stl(
         ``seasonal_adjusted``.
 
     """
-    import warnings  # noqa: PLC0415
-
     try:
         from statsmodels.tsa.seasonal import STL  # noqa: PLC0415
     except ImportError:
@@ -1178,19 +1322,7 @@ def _compute_stl(
         )
         raise ImportError(msg) from None
 
-    values = series.to_list()
-    clean = pl.Series(values).interpolate().forward_fill().backward_fill()
-    n_interpolated = sum(v is None or (isinstance(v, float) and np.isnan(v)) for v in values) - sum(
-        v is None or (isinstance(v, float) and np.isnan(v)) for v in clean.to_list()
-    )
-    if n_interpolated > 0:
-        warnings.warn(
-            f"Interpolated {n_interpolated} NaN value(s) before STL decomposition.",
-            UserWarning,
-            stacklevel=3,
-        )
-
-    clean_np = clean.to_numpy().astype(float)
+    clean_np = _clean_series(series)
 
     stl_kwargs: dict = {"period": period, "robust": robust}
     if trend_window is not None:
@@ -1211,11 +1343,79 @@ def _compute_stl(
     }
 
 
+def _compute_mstl(
+    series: pl.Series,
+    *,
+    periods: list[int],
+    robust: bool = True,
+) -> dict[str, list[float]]:
+    """Run MSTL (multi-seasonal) decomposition on a single numeric series.
+
+    Parameters
+    ----------
+    series : pl.Series
+        Numeric values (NaN-interpolated before decomposition).
+    periods : list[int]
+        Seasonal periods in observations (e.g. ``[24, 8760]`` for hourly
+        data with daily and annual cycles).
+    robust : bool
+        Whether to use robust fitting (down-weights outliers).
+
+    Returns
+    -------
+    dict[str, list[float]]
+        Keys: ``observed``, ``trend``, ``seasonal_<period>`` for each
+        period, ``residual``.
+
+    """
+    try:
+        from statsmodels.tsa.seasonal import MSTL  # noqa: PLC0415
+    except ImportError:
+        msg = (
+            "statsmodels>=0.14 is required for MSTL decomposition. "
+            "Install it with:  pip install yohou[plotting]  "
+            "or  pip install 'statsmodels>=0.14'"
+        )
+        raise ImportError(msg) from None
+
+    clean_np = _clean_series(series)
+    sorted_periods = sorted(periods)
+
+    result = MSTL(clean_np, periods=sorted_periods, stl_kwargs={"robust": robust}).fit()
+
+    out: dict[str, list[float]] = {
+        "observed": clean_np.tolist(),
+        "trend": result.trend.tolist(),
+        "residual": result.resid.tolist(),
+    }
+    seasonal = result.seasonal
+    if seasonal.ndim == 1:
+        seasonal = seasonal.reshape(-1, 1)
+    n_seasonal = seasonal.shape[1]
+    if n_seasonal < len(sorted_periods):
+        dropped = sorted_periods[n_seasonal:]
+        msg = (
+            f"MSTL returned {n_seasonal} seasonal component(s) but "
+            f"{len(sorted_periods)} period(s) were requested. "
+            f"Period(s) {dropped} were dropped by statsmodels — the "
+            f"series is too short for these periods (need at least "
+            f"2× the period length). Either remove the large period(s) "
+            f"or use a longer time series."
+        )
+        raise ValueError(msg)
+    for i, p in enumerate(sorted_periods):
+        out[f"seasonal_{p}"] = seasonal[:, i].tolist()
+
+    return out
+
+
 def plot_components(
     y: pl.DataFrame,
     components: dict[str, pl.DataFrame] | list[str] | tuple[str, ...],
     *,
     columns: str | list[str] | None = None,
+    panel_group_names: list[str] | None = None,
+    facet_n_cols: int = 2,
     show_original: bool = True,
     stl_kwargs: dict | None = None,
     color_palette: list[str] | None = None,
@@ -1224,6 +1424,7 @@ def plot_components(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
     """Plot time series decomposition as vertically stacked subplots.
@@ -1259,6 +1460,12 @@ def plot_components(
     columns : str | list[str] | None, default=None
         Value columns to plot. If None, all numeric non-time columns of *y*
         are used.
+    panel_group_names : list[str] | None, default=None
+        Panel group prefixes to include.  When panel data is detected
+        and this is ``None``, all groups are plotted.  Creates one
+        facet column per group.
+    facet_n_cols : int, default=2
+        Number of columns in the facet grid for panel data.
     show_original : bool, default=True
         Include the original series as the first subplot.  In STL mode this
         is automatically set to ``True`` when ``"observed"`` appears in
@@ -1357,10 +1564,13 @@ def plot_components(
 
         # Validate component names early
         valid_stl = {"trend", "seasonal", "residual", "seasonal_adjusted"}
-        unknown = set(components_list) - valid_stl
+        unknown = {
+            c for c in components_list
+            if c not in valid_stl and not re.match(r"^seasonal_\w+$", c)
+        }
         if unknown:
             all_valid = sorted(valid_stl | {"observed"})
-            msg = f"Unknown components: {unknown}. Valid: {all_valid}"
+            msg = f"Unknown components: {unknown}. Valid: {all_valid} (also seasonal_<period>)"
             raise ValueError(msg)
 
         if not components_list and not show_original:
@@ -1369,8 +1579,9 @@ def plot_components(
 
         value_cols = validate_plotting_data(y, columns=columns, exclude=["time"])
 
+        _is_mstl = isinstance((stl_kwargs or {}).get("periods"), (list, str))
         components = _stl_to_component_dict(y, components_list, value_cols, stl_kwargs)
-        title = title or "STL Decomposition"
+        title = title or ("MSTL Decomposition" if _is_mstl else "STL Decomposition")
 
         # Fall through to the shared dict plotting below
 
@@ -1389,14 +1600,43 @@ def plot_components(
 
     value_cols = validate_plotting_data(y, columns=columns)
 
+    # -- Detect panel data ---------------------------------------------------
+    _, panel_groups = inspect_panel(y)
+    is_panel = bool(panel_groups)
+
+    # Auto-enter panel mode when panel columns are detected
+    if is_panel and panel_group_names is None and columns is None:
+        panel_group_names = []
+
+    if is_panel and panel_group_names is not None:
+        return _plot_components_panel(
+            y=y,
+            components=components,
+            value_cols=value_cols,
+            stl_mode=stl_mode,
+            show_original=show_original,
+            panel_group_names=panel_group_names,
+            facet_n_cols=facet_n_cols,
+            color_palette=color_palette,
+            title=title,
+            x_label=x_label,
+            y_label=y_label,
+            width=width,
+            height=height,
+            line_width=line_width,
+            line_dash=line_dash,
+            resampler=resampler,
+        )
+
     # -- Build subplot structure (shared by both modes) ----------------------
     panel_names: list[str] = []
     if show_original:
         panel_names.append("Original")
-    panel_names.extend(name.replace("_", " ").title() if stl_mode else name for name in components)
+    panel_names.extend(_format_component_label(name) if stl_mode else name for name in components)
 
     n_rows = len(panel_names)
-    fig = make_subplots(
+    fig = _create_subplots(
+        resampler,
         rows=n_rows,
         cols=1,
         shared_xaxes=True,
@@ -1448,7 +1688,7 @@ def plot_components(
             # Use the original value_cols name for legend when available,
             # otherwise use the component column name.
             legend_col = value_cols[i] if i < len(value_cols) else col
-            display_name = comp_name.replace("_", " ").title() if stl_mode else legend_col
+            display_name = _format_component_label(comp_name) if stl_mode else legend_col
             fig.add_trace(
                 go.Scatter(
                     x=comp_df["time"],
@@ -1487,24 +1727,167 @@ def plot_components(
     return fig
 
 
+def _plot_components_panel(
+    y: pl.DataFrame,
+    components: dict[str, pl.DataFrame],
+    value_cols: list[str],
+    stl_mode: bool,
+    show_original: bool,
+    panel_group_names: list[str],
+    facet_n_cols: int,
+    color_palette: list[str] | None,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+    line_width: float,
+    line_dash: str,
+    resampler: bool | Literal["widget"] | None,
+) -> go.Figure:
+    """Render ``plot_components`` for panel data.
+
+    Creates a grid with **rows = component types** and
+    **columns = panel groups** so each group gets its own facet column
+    while the component stacking is preserved.
+    """
+    panel_cols = resolve_panel_columns(y, panel_group_names or None, None)
+    groups, all_members = _group_panel_columns(panel_cols)
+
+    # Only keep groups whose columns are in value_cols
+    groups = {
+        g: [c for c in cols if c in value_cols]
+        for g, cols in groups.items()
+    }
+    groups = {g: cols for g, cols in groups.items() if cols}
+
+    n_groups = len(groups)
+    n_cols_grid = min(n_groups, facet_n_cols)
+
+    # Component row labels
+    comp_labels: list[str] = []
+    if show_original:
+        comp_labels.append("Original")
+    comp_labels.extend(
+        _format_component_label(name) if stl_mode else name
+        for name in components
+    )
+    n_comp_rows = len(comp_labels)
+
+    # Total grid: component rows × group columns
+    n_group_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
+    n_total_rows = n_comp_rows * n_group_rows
+
+    # Build subplot titles: for each component row, repeat group names
+    subplot_titles: list[str] = []
+    group_names = list(groups.keys())
+    for comp_label in comp_labels:
+        for g_row in range(n_group_rows):
+            for g_col in range(n_cols_grid):
+                g_idx = g_row * n_cols_grid + g_col
+                if g_idx < n_groups:
+                    subplot_titles.append(f"{comp_label} — {group_names[g_idx]}")
+                else:
+                    subplot_titles.append("")
+
+    fig = _create_subplots(
+        resampler,
+        rows=n_total_rows,
+        cols=n_cols_grid,
+        subplot_titles=subplot_titles,
+        shared_xaxes=True,
+        vertical_spacing=max(0.02, 0.3 / n_total_rows),
+        horizontal_spacing=0.08,
+    )
+
+    colors = resolve_color_palette(color_palette, len(all_members))
+    seen_legend: set[str] = set()
+
+    def _add_traces(
+        data_df: pl.DataFrame,
+        comp_row: int,
+    ) -> None:
+        """Add traces for one component across all groups."""
+        for g_idx, (_, g_cols) in enumerate(groups.items()):
+            row = comp_row * n_group_rows + g_idx // n_cols_grid + 1
+            col_idx = g_idx % n_cols_grid + 1
+            for col in g_cols:
+                if col not in data_df.columns:
+                    continue
+                member = _member_name(col)
+                member_idx = all_members.index(member)
+                first_seen = member not in seen_legend
+                seen_legend.add(member)
+                fig.add_trace(
+                    go.Scatter(
+                        x=data_df["time"],
+                        y=data_df[col],
+                        mode="lines",
+                        line={
+                            "color": colors[member_idx % len(colors)],
+                            "width": line_width,
+                            "dash": line_dash,
+                        },
+                        name=member,
+                        legendgroup=member,
+                        showlegend=first_seen,
+                    ),
+                    row=row,
+                    col=col_idx,
+                )
+
+    comp_row_offset = 0
+
+    # Original series
+    if show_original:
+        _add_traces(y, comp_row=0)
+        comp_row_offset = 1
+
+    # Component panels
+    for comp_idx, (_, comp_df) in enumerate(components.items()):
+        _add_traces(comp_df, comp_row=comp_idx + comp_row_offset)
+
+    title_default = title or "Time Series Decomposition"
+    default_height = max(250 * n_total_rows, 400)
+
+    fig = apply_default_layout(
+        fig,
+        title=title_default,
+        x_label=None,
+        y_label=y_label,
+        width=width,
+        height=height or default_height,
+    )
+
+    # Show x-axis label on bottom subplots only
+    x_label_text = x_label if x_label is not None else "Time"
+    for c in range(1, n_cols_grid + 1):
+        ax_num = (n_total_rows - 1) * n_cols_grid + c
+        ax_key = f"xaxis{ax_num}" if ax_num > 1 else "xaxis"
+        fig.layout[ax_key].title = {"text": x_label_text}
+
+    return fig
+
+
 def _stl_to_component_dict(
     y: pl.DataFrame,
     components: list[str],
     columns: list[str],
     stl_kwargs: dict | None,
 ) -> dict[str, pl.DataFrame]:
-    """Compute STL decomposition and return as component DataFrames.
+    """Compute STL or MSTL decomposition and return as component DataFrames.
 
     Parameters
     ----------
     y : pl.DataFrame
         Input DataFrame with ``"time"`` column and numeric columns.
     components : list[str]
-        STL component names to compute (e.g. ``"trend"``, ``"seasonal"``).
+        Component names to compute (e.g. ``"trend"``, ``"seasonal"``).
     columns : list[str]
         Numeric column names from *y* to decompose.
     stl_kwargs : dict | None
-        Extra keyword arguments forwarded to `_compute_stl`.
+        Keyword arguments. Use ``periods`` (list) for MSTL,
+        ``period`` (int) for single-season STL.
 
     Returns
     -------
@@ -1514,6 +1897,15 @@ def _stl_to_component_dict(
 
     """
     stl_opts = stl_kwargs or {}
+
+    # --- MSTL routing: ``periods`` key means multi-seasonal ----------------
+    periods = stl_opts.get("periods")
+    if periods is not None:
+        return _mstl_to_component_dict(
+            y, components, columns, periods, stl_opts.get("robust", True),
+        )
+
+    # --- Single-season STL -------------------------------------------------
     period = stl_opts.get("period", "auto")
     trend_window = stl_opts.get("trend_window")
     seasonal_window = stl_opts.get("seasonal_window")
@@ -1552,5 +1944,93 @@ def _stl_to_component_dict(
             result_data[comp][col_name] = stl_result[comp]
 
     # Build a DataFrame per component
+    time_col = y["time"]
+    return {comp: pl.DataFrame({"time": time_col, **col_values}) for comp, col_values in result_data.items()}
+
+
+def _mstl_to_component_dict(
+    y: pl.DataFrame,
+    components: list[str],
+    columns: list[str],
+    periods: list[int] | str,
+    robust: bool,
+) -> dict[str, pl.DataFrame]:
+    """Compute MSTL decomposition and return as component DataFrames.
+
+    Resolves periods (auto-detect or explicit), runs ``_compute_mstl``
+    per column, then remaps the numeric ``seasonal_<N>`` keys to
+    human-readable labels (e.g. ``seasonal_daily``) via
+    ``_period_to_label``.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        Input DataFrame with ``"time"`` column and numeric columns.
+    components : list[str]
+        Requested component names (e.g. ``"trend"``, ``"seasonal"``).
+        ``"seasonal"`` is expanded into one key per period.
+    columns : list[str]
+        Numeric column names from *y* to decompose.
+    periods : list[int] | str
+        Seasonal periods, or ``"auto"`` to infer from the sampling
+        interval via ``_INTERVAL_TO_MSTL_PERIODS``.
+    robust : bool
+        Whether to use robust fitting (down-weights outliers).
+
+    Returns
+    -------
+    dict[str, pl.DataFrame]
+        Mapping from component name (with human-readable seasonal
+        labels) to a DataFrame with ``"time"`` plus one column per
+        decomposed series.
+
+    """
+    from yohou.utils.validation import check_interval_consistency  # noqa: PLC0415
+
+    if isinstance(periods, str) and periods == "auto":
+        interval = check_interval_consistency(y)
+        resolved = _INTERVAL_TO_MSTL_PERIODS.get(interval)
+        if resolved is None:
+            msg = (
+                f"Cannot infer MSTL periods for interval '{interval}'. "
+                f"Supported intervals: {sorted(_INTERVAL_TO_MSTL_PERIODS)}. "
+                f"Pass an explicit list via stl_kwargs={{'periods': [...]}}."
+            )
+            raise ValueError(msg)
+        sorted_periods = sorted(resolved)
+    else:
+        sorted_periods = sorted(periods)
+
+    # Infer interval for human-readable labels
+    try:
+        interval = check_interval_consistency(y)
+    except Exception:  # noqa: BLE001
+        interval = None
+
+    # Map numeric seasonal keys → human-readable seasonal keys
+    numeric_to_human: dict[str, str] = {}
+    for p in sorted_periods:
+        label = _period_to_label(p, interval)
+        numeric_to_human[f"seasonal_{p}"] = f"seasonal_{label}"
+
+    numeric_seasonal_keys = [f"seasonal_{p}" for p in sorted_periods]
+
+    # Expand "seasonal" into per-period keys (numeric, for _compute_mstl indexing)
+    expanded_numeric: list[str] = []
+    for comp in components:
+        if comp == "seasonal":
+            expanded_numeric.extend(numeric_seasonal_keys)
+        else:
+            expanded_numeric.append(comp)
+
+    # Build output with human-readable keys
+    human_keys = [numeric_to_human.get(k, k) for k in expanded_numeric]
+    result_data: dict[str, dict[str, list[float]]] = {hk: {} for hk in human_keys}
+
+    for col_name in columns:
+        mstl_result = _compute_mstl(y[col_name], periods=sorted_periods, robust=robust)
+        for nk, hk in zip(expanded_numeric, human_keys):
+            result_data[hk][col_name] = mstl_result[nk]
+
     time_col = y["time"]
     return {comp: pl.DataFrame({"time": time_col, **col_values}) for comp, col_values in result_data.items()}

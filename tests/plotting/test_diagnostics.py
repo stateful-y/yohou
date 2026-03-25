@@ -12,6 +12,7 @@ from yohou.plotting import (
     plot_lag_scatter,
     plot_partial_autocorrelation,
     plot_scatter_matrix,
+    plot_seasonal_heatmap,
     plot_seasonality,
     plot_subseasonality,
 )
@@ -221,9 +222,9 @@ class TestPlotLagScatter:
 
     def test_single_lag(self, short_df):
         """Test lag scatter with single lag."""
-        fig = plot_lag_scatter(short_df, columns="y", lags=1)
+        fig = plot_lag_scatter(short_df, columns="y", lags=[1])
         assert len(fig.data) > 0
-        assert isinstance(fig.data[0], go.Scatter)
+        assert isinstance(fig.data[0], go.Scattergl)
 
     def test_multiple_lags(self, short_df):
         """Test lag scatter with multiple lags."""
@@ -232,12 +233,12 @@ class TestPlotLagScatter:
 
     def test_with_diagonal(self, short_df):
         """Test lag scatter with diagonal line."""
-        fig = plot_lag_scatter(short_df, columns="y", lags=1, show_diagonal=True)
+        fig = plot_lag_scatter(short_df, columns="y", lags=[1], show_diagonal=True)
         assert len(fig.data) > 0
 
     def test_with_regression(self, short_df):
         """Test lag scatter with regression line."""
-        fig = plot_lag_scatter(short_df, columns="y", lags=1, show_regression=True)
+        fig = plot_lag_scatter(short_df, columns="y", lags=[1], show_regression=True)
         assert len(fig.data) > 0
 
     def test_custom_styling(self, short_df):
@@ -245,7 +246,7 @@ class TestPlotLagScatter:
         fig = plot_lag_scatter(
             short_df,
             columns="y",
-            lags=1,
+            lags=[1],
             marker_size=6.0,
             marker_opacity=0.8,
         )
@@ -258,7 +259,7 @@ class TestPlotLagScatter:
             "y__a": short_df["y"],
             "y__b": short_df["x"],
         })
-        fig = plot_lag_scatter(df, lags=1, panel_group_names=["y"])
+        fig = plot_lag_scatter(df, lags=[1], panel_group_names=["y"])
         assert len(fig.data) > 0
 
     def test_multi_lag_grid(self, sample_df):
@@ -275,14 +276,14 @@ class TestPlotLagScatter:
 
     def test_season_coloring_month(self, sample_df):
         """Test seasonality='month' produces season-colored traces."""
-        fig = plot_lag_scatter(sample_df, columns="y", lags=1, seasonality="month")
+        fig = plot_lag_scatter(sample_df, columns="y", lags=[1], seasonality="month")
         legend_groups = {t.legendgroup for t in fig.data if t.legendgroup is not None}
         # Should have one legendgroup per month present in the data
         assert len(legend_groups) >= 4
 
     def test_season_coloring_quarter(self, sample_df):
         """Test seasonality='quarter' produces 4 season traces."""
-        fig = plot_lag_scatter(sample_df, columns="y", lags=1, seasonality="quarter")
+        fig = plot_lag_scatter(sample_df, columns="y", lags=[1], seasonality="quarter")
         legend_groups = {t.legendgroup for t in fig.data if t.legendgroup is not None}
         assert len(legend_groups) <= 4
 
@@ -296,18 +297,18 @@ class TestPlotLagScatter:
     def test_seasonality_invalid(self, sample_df):
         """Test that invalid seasonality raises ValueError."""
         with pytest.raises(ValueError, match="Unknown frequency"):
-            plot_lag_scatter(sample_df, columns="y", lags=1, seasonality="invalid")
+            plot_lag_scatter(sample_df, columns="y", lags=[1], seasonality="invalid")
 
     def test_backward_compat_single(self, short_df):
         """Test that single lag without frequency matches old behaviour."""
-        fig = plot_lag_scatter(short_df, columns="y", lags=1)
+        fig = plot_lag_scatter(short_df, columns="y", lags=[1])
         # No legendgroup set (uniform coloring)
         groups = {t.legendgroup for t in fig.data if t.legendgroup is not None}
         assert len(groups) == 0
 
     def test_custom_axis_labels(self, short_df):
         """Test custom x_label and y_label."""
-        fig = plot_lag_scatter(short_df, columns="y", lags=1, x_label="Lagged", y_label="Current")
+        fig = plot_lag_scatter(short_df, columns="y", lags=[1], x_label="Lagged", y_label="Current")
         assert fig.layout.xaxis.title.text == "Lagged"
         assert fig.layout.yaxis.title.text == "Current"
 
@@ -882,7 +883,7 @@ class TestDiagnosticsAutoDetectPanel:
 
     def test_lag_scatter_auto_detect(self, auto_panel_df):
         """plot_lag_scatter auto-detects panel data."""
-        fig = plot_lag_scatter(auto_panel_df, lags=1)
+        fig = plot_lag_scatter(auto_panel_df, lags=[1])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
@@ -969,7 +970,7 @@ class TestLagScatterMultiLagShowDiagonal:
             "time": dates,
             "y": [100.0 + (i % 30) for i in range(len(dates))],
         })
-        fig = plot_lag_scatter(df, columns="y", lags=1, seasonality="month")
+        fig = plot_lag_scatter(df, columns="y", lags=[1], seasonality="month")
         assert isinstance(fig, go.Figure)
         legend_groups = {t.legendgroup for t in fig.data if t.legendgroup is not None}
         assert len(legend_groups) >= 4
@@ -981,7 +982,7 @@ class TestLagScatterMultiLagShowDiagonal:
             "time": dates,
             "y": [100.0 + (i % 30) for i in range(len(dates))],
         })
-        fig = plot_lag_scatter(df, columns="y", lags=1, show_diagonal=True)
+        fig = plot_lag_scatter(df, columns="y", lags=[1], show_diagonal=True)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 2
 
@@ -992,7 +993,7 @@ class TestLagScatterMultiLagShowDiagonal:
             "time": dates,
             "y": [100.0 + (i % 30) for i in range(len(dates))],
         })
-        fig = plot_lag_scatter(df, columns="y", lags=1, show_regression=True)
+        fig = plot_lag_scatter(df, columns="y", lags=[1], show_regression=True)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 2
 
@@ -1046,14 +1047,14 @@ class TestLagScatterShowDiagonalAndRegression:
 
     def test_show_diagonal_single_lag(self, lag_scatter_df):
         """show_diagonal adds a dashed reference line for single lag."""
-        fig = plot_lag_scatter(lag_scatter_df, columns="y", lag=1, show_diagonal=True)
+        fig = plot_lag_scatter(lag_scatter_df, columns="y", lags=[1], show_diagonal=True)
         assert isinstance(fig, go.Figure)
         dash_traces = [t for t in fig.data if hasattr(t, "line") and t.line and t.line.dash == "dash"]
         assert len(dash_traces) >= 1
 
     def test_show_regression_single_lag(self, lag_scatter_df):
         """show_regression adds a regression line for single lag."""
-        fig = plot_lag_scatter(lag_scatter_df, columns="y", lag=1, show_regression=True)
+        fig = plot_lag_scatter(lag_scatter_df, columns="y", lags=[1], show_regression=True)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 2
 
@@ -1062,7 +1063,7 @@ class TestLagScatterShowDiagonalAndRegression:
         fig = plot_lag_scatter(
             lag_scatter_df,
             columns="y",
-            lag=1,
+            lags=[1],
             show_diagonal=True,
             show_regression=True,
         )
@@ -1133,3 +1134,173 @@ class TestScatterMatrixDiagonalModes:
         assert annotations is not None
         corr_annotations = [a for a in annotations if hasattr(a, "text") and "." in str(a.text)]
         assert len(corr_annotations) >= 1
+
+
+# ── plot_seasonal_heatmap ─────────────────────────────────────────────
+
+
+class TestPlotSeasonalHeatmap:
+    """Tests for plot_seasonal_heatmap function."""
+
+    @pytest.fixture
+    def hourly_df(self):
+        """2 years of hourly data with seasonal-like pattern."""
+        import math
+
+        times = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2021, 12, 31, 23), "1h", eager=True,
+        )
+        n = len(times)
+        return pl.DataFrame({
+            "time": times,
+            "temp": [
+                20 + 10 * math.sin(i * 2 * math.pi / 24)
+                + 5 * math.sin(i * 2 * math.pi / 8760)
+                for i in range(n)
+            ],
+        })
+
+    def test_hour_by_month(self, hourly_df):
+        """Basic hour × month heatmap."""
+        fig = plot_seasonal_heatmap(hourly_df, "temp", x_period="hour", y_period="month")
+        assert isinstance(fig, go.Figure)
+        assert isinstance(fig.data[0], go.Heatmap)
+
+    def test_day_of_week_by_hour(self, hourly_df):
+        """Day-of-week × hour heatmap."""
+        fig = plot_seasonal_heatmap(hourly_df, "temp", x_period="hour", y_period="day_of_week")
+        assert isinstance(fig, go.Figure)
+
+    def test_month_by_year(self, hourly_df):
+        """Month × year heatmap."""
+        fig = plot_seasonal_heatmap(hourly_df, "temp", x_period="month", y_period="year")
+        assert isinstance(fig, go.Figure)
+
+    def test_aggregation_methods(self, hourly_df):
+        """All aggregation methods produce valid figures."""
+        for agg in ["mean", "median", "sum", "count", "std", "min", "max"]:
+            fig = plot_seasonal_heatmap(hourly_df, "temp", agg=agg)
+            assert len(fig.data) > 0
+
+    def test_custom_colorscale(self, hourly_df):
+        """Custom colorscale is accepted."""
+        fig = plot_seasonal_heatmap(hourly_df, "temp", colorscale="RdBu_r")
+        assert isinstance(fig, go.Figure)
+
+    def test_no_values(self, hourly_df):
+        """show_values=False suppresses annotations."""
+        fig = plot_seasonal_heatmap(hourly_df, "temp", show_values=False)
+        assert isinstance(fig, go.Figure)
+
+    def test_reverse_y(self, hourly_df):
+        """reverse_y=True flips y-axis."""
+        fig = plot_seasonal_heatmap(hourly_df, "temp", reverse_y=True)
+        assert isinstance(fig, go.Figure)
+
+    def test_invalid_period(self, hourly_df):
+        """Invalid period raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown period"):
+            plot_seasonal_heatmap(hourly_df, "temp", x_period="invalid")
+
+    def test_invalid_agg(self, hourly_df):
+        """Invalid agg raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown agg"):
+            plot_seasonal_heatmap(hourly_df, "temp", agg="invalid")
+
+    def test_columns_not_found(self, hourly_df):
+        """Non-existent column raises ValueError."""
+        with pytest.raises(ValueError, match="not found"):
+            plot_seasonal_heatmap(hourly_df, "nonexistent")
+
+    def test_custom_title(self, hourly_df):
+        """Custom title is applied."""
+        fig = plot_seasonal_heatmap(hourly_df, "temp", title="Heatmap Test")
+        assert fig.layout.title.text == "Heatmap Test"
+
+    def test_custom_dimensions(self, hourly_df):
+        """Custom dimensions are respected."""
+        fig = plot_seasonal_heatmap(hourly_df, "temp", width=800, height=500)
+        assert fig.layout.width == 800
+        assert fig.layout.height == 500
+
+    def test_panel_explicit(self):
+        """Panel faceting with explicit panel_group_names."""
+        times = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 3, 31, 23), "1h", eager=True,
+        )
+        n = len(times)
+        df = pl.DataFrame({
+            "time": times,
+            "weather__temp": [20.0 + i % 24 for i in range(n)],
+            "weather__wind": [5.0 + i % 12 for i in range(n)],
+        })
+        fig = plot_seasonal_heatmap(df, "temp", panel_group_names=["weather"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_auto_column_single(self, hourly_df):
+        """Auto-detect single numeric column when columns=None."""
+        fig = plot_seasonal_heatmap(hourly_df)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) == 1
+        assert isinstance(fig.data[0], go.Heatmap)
+
+    def test_auto_column_multi(self):
+        """Multiple numeric columns produce subplot grid."""
+        times = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 6, 30, 23), "1h", eager=True,
+        )
+        n = len(times)
+        df = pl.DataFrame({
+            "time": times,
+            "temp": [20.0 + i % 24 for i in range(n)],
+            "wind": [5.0 + i % 12 for i in range(n)],
+        })
+        fig = plot_seasonal_heatmap(df)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) == 2
+
+    def test_columns_list(self):
+        """Explicit list of columns produces subplot grid."""
+        times = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 6, 30, 23), "1h", eager=True,
+        )
+        n = len(times)
+        df = pl.DataFrame({
+            "time": times,
+            "temp": [20.0 + i % 24 for i in range(n)],
+            "wind": [5.0 + i % 12 for i in range(n)],
+            "humidity": [60.0 + i % 10 for i in range(n)],
+        })
+        fig = plot_seasonal_heatmap(df, columns=["temp", "wind"])
+        assert len(fig.data) == 2
+
+    def test_panel_auto_detect(self):
+        """Panel data auto-detected when columns=None and no panel_group_names."""
+        times = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 3, 31, 23), "1h", eager=True,
+        )
+        n = len(times)
+        df = pl.DataFrame({
+            "time": times,
+            "loc_A__temp": [20.0 + i % 24 for i in range(n)],
+            "loc_B__temp": [18.0 + i % 24 for i in range(n)],
+        })
+        fig = plot_seasonal_heatmap(df)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    def test_panel_auto_detect_with_columns(self):
+        """Panel auto-detect with columns filtering to specific member."""
+        times = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 3, 31, 23), "1h", eager=True,
+        )
+        n = len(times)
+        df = pl.DataFrame({
+            "time": times,
+            "weather__temp": [20.0 + i % 24 for i in range(n)],
+            "weather__wind": [5.0 + i % 12 for i in range(n)],
+        })
+        fig = plot_seasonal_heatmap(df, columns="temp")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 1

@@ -14,6 +14,8 @@ from scipy import stats
 from yohou.metrics import BaseIntervalScorer
 from yohou.metrics.base import BaseScorer
 from yohou.plotting._utils import (
+    _create_figure,
+    _create_subplots,
     _group_panel_columns,
     _member_name,
     _normalize_y_pred,
@@ -207,6 +209,7 @@ def plot_residuals(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
     """Plot diagnostic plots for model residuals.
@@ -377,6 +380,7 @@ def plot_residuals(
             y_label=y_label or "Residuals",
             width=width,
             height=height,
+            resampler=resampler,
         )
 
     # Non-panel multi-column facets
@@ -384,7 +388,8 @@ def plot_residuals(
     n_rows = (len(target_cols) + n_cols_grid - 1) // n_cols_grid
     colors = resolve_color_palette(color_palette, len(target_cols))
 
-    fig = make_subplots(
+    fig = _create_subplots(
+        resampler,
         rows=n_rows,
         cols=n_cols_grid,
         subplot_titles=target_cols,
@@ -759,6 +764,7 @@ def _plot_score_time_series_panel(
     width: int | None,
     height: int | None,
     time_weight: Callable | pl.DataFrame | None = None,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
     """Render faceted per-group score time series.
@@ -820,7 +826,8 @@ def _plot_score_time_series_panel(
     n_cols_grid = min(n_groups, facet_n_cols)
     n_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
 
-    fig = make_subplots(
+    fig = _create_subplots(
+        resampler,
         rows=n_rows,
         cols=n_cols_grid,
         subplot_titles=list(groups),
@@ -913,6 +920,7 @@ def plot_score_time_series(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
     """Plot scorer values over time for one or more forecasts.
@@ -1079,11 +1087,12 @@ def plot_score_time_series(
             width=width,
             height=height,
             time_weight=time_weight,
+            resampler=resampler,
             **kwargs,
         )
 
     # Create figure
-    fig = go.Figure()
+    fig = _create_figure(resampler)
 
     # Compute and plot scores for each model
     score_kwargs: dict = {}

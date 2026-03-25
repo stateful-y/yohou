@@ -276,6 +276,54 @@ class TestPlotComponentsPanel:
         assert fig.layout.width == 900
         assert fig.layout.height == 500
 
+    def test_panel_faceted_layout(self):
+        """Panel data creates a grid: rows=components, cols=groups."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        n = len(dates)
+        y = pl.DataFrame({
+            "time": dates,
+            "y__a": list(range(n)),
+            "y__b": [i * 2 for i in range(n)],
+        })
+        components = {
+            "trend": pl.DataFrame({
+                "time": dates,
+                "y__a": [i * 0.5 for i in range(n)],
+                "y__b": [i * 1.0 for i in range(n)],
+            }),
+            "residual": pl.DataFrame({
+                "time": dates,
+                "y__a": [i * 0.1 for i in range(n)],
+                "y__b": [i * 0.2 for i in range(n)],
+            }),
+        }
+        fig = plot_components(y, components)
+        assert isinstance(fig, go.Figure)
+        # 2 groups × 3 rows (original + trend + residual) = should have
+        # at least 2 traces per row-group cell = 6 traces minimum
+        assert len(fig.data) >= 6
+
+    def test_panel_group_filter(self):
+        """panel_group_names filters to specific groups."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        n = len(dates)
+        y = pl.DataFrame({
+            "time": dates,
+            "g1__a": list(range(n)),
+            "g2__a": [i * 2 for i in range(n)],
+        })
+        components = {
+            "trend": pl.DataFrame({
+                "time": dates,
+                "g1__a": [i * 0.5 for i in range(n)],
+                "g2__a": [i * 1.0 for i in range(n)],
+            }),
+        }
+        fig = plot_components(y, components, panel_group_names=["g1"])
+        assert isinstance(fig, go.Figure)
+        # Only g1 group → 1 trace for original + 1 for trend
+        assert len(fig.data) == 2
+
 
 _has_statsmodels = importlib.util.find_spec("statsmodels") is not None
 
@@ -366,6 +414,261 @@ class TestPlotComponentsStl:
         """Test that tuple components trigger STL mode."""
         fig = plot_components(monthly_df, ("trend", "seasonal"), columns="y", show_original=False)
         assert len(fig.data) == 2
+
+
+@pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
+class TestPlotComponentsMstl:
+    """Tests for plot_components MSTL mode (multi-seasonal decomposition)."""
+
+    @pytest.fixture
+    def hourly_df(self):
+        """Create hourly data with daily + weekly seasonality for MSTL."""
+        rng = np.random.default_rng(42)
+        n = 24 * 7 * 12  # ~12 weeks of hourly data
+        return pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2022, 1, 1), pl.datetime(2022, 1, 1) + pl.duration(hours=n - 1),
+                "1h", eager=True,
+            ),
+            "y": [
+                50
+                + 10 * np.sin(2 * np.pi * i / 24)        # daily
+                + 5 * np.sin(2 * np.pi * i / (24 * 7))   # weekly
+                + 0.01 * i                                # trend
+                + rng.standard_normal()
+                for i in range(n)
+            ],
+        })
+
+    def test_basic_mstl(self, hourly_df):
+        """Test basic MSTL decomposition with two periods."""
+        fig = plot_components(
+            hourly_df,
+            ["observed", "trend", "seasonal", "residual"],
+            columns="y",
+            stl_kwargs={"periods": [24, 24 * 7]},
+        )
+        # observed + trend + seasonal_24 + seasonal_168 + residual = 5 traces
+        assert len(fig.data) == 5
+
+    def test_explicit_periods(self, hourly_df):
+        """Test MSTL with explicitly listed periods."""
+        fig = plot_components(
+            hourly_df,
+            ["trend", "seasonal"],
+            columns="y",
+            show_original=False,
+            stl_kwargs={"periods": [24, 24 * 7]},
+        )
+        # trend + seasonal_24 + seasonal_168 = 3 traces
+        assert len(fig.data) == 3
+
+    def test_mstl_component_names(self, hourly_df):
+        """Test that MSTL produces expected seasonal trace names."""
+        fig = plot_components(
+            hourly_df,
+            ["trend", "seasonal", "residual"],
+            columns="y",
+            show_original=False,
+            stl_kwargs={"periods": [24, 24 * 7]},
+        )
+        names = [t.name for t in fig.data]
+        assert "Trend" in names
+        assert "Seasonal (daily)" in names
+        assert "Seasonal (weekly)" in names
+        assert "Residual" in names
+
+    def test_mstl_default_title(self, hourly_df):
+        """Test MSTL mode sets MSTL-specific default title."""
+        fig = plot_components(
+            hourly_df,
+            ["trend"],
+            columns="y",
+            stl_kwargs={"periods": [24, 24 * 7]},
+        )
+        assert fig.layout.title.text == "MSTL Decomposition"
+
+    def test_mstl_custom_title(self, hourly_df):
+        """Test MSTL mode respects custom title."""
+        fig = plot_components(
+            hourly_df,
+            ["trend"],
+            columns="y",
+            title="Custom MSTL",
+            stl_kwargs={"periods": [24, 24 * 7]},
+        )
+        assert fig.layout.title.text == "Custom MSTL"
+
+    def test_mstl_subplot_labels(self, hourly_df):
+        """Test that MSTL subplot labels use human-readable period names."""
+        fig = plot_components(
+            hourly_df,
+            ["trend", "seasonal", "residual"],
+            columns="y",
+            show_original=False,
+            stl_kwargs={"periods": [24, 24 * 7]},
+        )
+        yaxis_titles = []
+        for i in range(4):  # trend + seasonal_24 + seasonal_168 + residual
+            key = f"yaxis{i + 1}" if i > 0 else "yaxis"
+            yaxis_titles.append(fig.layout[key].title.text)
+
+        assert "Trend" in yaxis_titles
+        assert "Seasonal (daily)" in yaxis_titles
+        assert "Seasonal (weekly)" in yaxis_titles
+        assert "Residual" in yaxis_titles
+
+    def test_mstl_robust_false(self, hourly_df):
+        """Test passing robust=False to MSTL."""
+        fig = plot_components(
+            hourly_df,
+            ["trend", "seasonal"],
+            columns="y",
+            show_original=False,
+            stl_kwargs={"periods": [24, 24 * 7], "robust": False},
+        )
+        assert len(fig.data) == 3
+
+    def test_mstl_single_period_list(self, hourly_df):
+        """Test MSTL with a single-element periods list."""
+        fig = plot_components(
+            hourly_df,
+            ["trend", "seasonal", "residual"],
+            columns="y",
+            show_original=False,
+            stl_kwargs={"periods": [24]},
+        )
+        # trend + seasonal_24 + residual = 3 traces
+        assert len(fig.data) == 3
+
+
+class TestComputeMstl:
+    """Unit tests for the _compute_mstl helper."""
+
+    @pytest.fixture
+    def series(self):
+        rng = np.random.default_rng(42)
+        n = 24 * 7 * 8  # 8 weeks hourly
+        return pl.Series([
+            50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal()
+            for i in range(n)
+        ])
+
+    def test_return_keys(self, series):
+        from yohou.plotting.forecasting import _compute_mstl
+        result = _compute_mstl(series, periods=[24, 24 * 7])
+        assert "observed" in result
+        assert "trend" in result
+        assert "residual" in result
+        assert "seasonal_24" in result
+        assert "seasonal_168" in result
+
+    def test_components_sum_to_observed(self, series):
+        from yohou.plotting.forecasting import _compute_mstl
+        result = _compute_mstl(series, periods=[24, 24 * 7])
+        observed = np.array(result["observed"])
+        reconstructed = (
+            np.array(result["trend"])
+            + np.array(result["seasonal_24"])
+            + np.array(result["seasonal_168"])
+            + np.array(result["residual"])
+        )
+        np.testing.assert_allclose(observed, reconstructed, atol=1e-8)
+
+    def test_single_period(self, series):
+        from yohou.plotting.forecasting import _compute_mstl
+        result = _compute_mstl(series, periods=[24])
+        assert "seasonal_24" in result
+        assert len(result) == 4  # observed, trend, seasonal_24, residual
+
+    def test_fewer_seasonal_columns_than_periods(self, series):
+        """MSTL raises when a period is too large for the series length.
+
+        When statsmodels drops a period (series too short), _compute_mstl
+        should raise ValueError rather than silently returning zeros.
+        """
+        from yohou.plotting.forecasting import _compute_mstl
+
+        # series is ~8 weeks hourly (1344 rows).  8760 needs ~1 year.
+        with pytest.raises(ValueError, match="too short"):
+            _compute_mstl(series, periods=[24, 168, 8760])
+
+
+class TestFormatComponentLabel:
+    """Unit tests for _format_component_label."""
+
+    def test_trend(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("trend") == "Trend"
+
+    def test_residual(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("residual") == "Residual"
+
+    def test_seasonal_adjusted(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("seasonal_adjusted") == "Seasonal Adjusted"
+
+    def test_seasonal_daily(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("seasonal_daily") == "Seasonal (daily)"
+
+    def test_seasonal_weekly(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("seasonal_weekly") == "Seasonal (weekly)"
+
+    def test_seasonal_annual(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("seasonal_annual") == "Seasonal (annual)"
+
+    def test_seasonal_numeric_fallback(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("seasonal_99") == "Seasonal (99)"
+
+
+class TestPeriodToLabel:
+    """Unit tests for _period_to_label."""
+
+    def test_hourly_daily(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(24, "1h") == "daily"
+
+    def test_hourly_weekly(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(168, "1h") == "weekly"
+
+    def test_hourly_annual(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(24 * 365, "1h") == "annual"
+
+    def test_daily_weekly(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(7, "1d") == "weekly"
+
+    def test_daily_annual(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(365, "1d") == "annual"
+
+    def test_15min_daily(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(96, "15min") == "daily"
+
+    def test_15min_weekly(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(96 * 7, "15min") == "weekly"
+
+    def test_monthly_annual(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(12, "1mo") == "annual"
+
+    def test_unknown_interval_returns_period(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(24, None) == "24"
+
+    def test_sub_daily(self):
+        from yohou.plotting.forecasting import _period_to_label
+        # 6 observations at 1h = 6 hours < 0.5 day
+        assert _period_to_label(6, "1h") == "6h"
 
 
 class TestPlotForecastMultiModel:

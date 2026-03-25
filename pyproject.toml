@@ -26,6 +26,8 @@ dependencies = [
     "scipy>=1.13",
     "polars>=0.20",
     "plotly>=5.19",
+    "plotly-resampler>=0.11",
+    "anywidget>=0.9.21",
     "pydantic>=2.6",
     "pyarrow>=14.0.0",
 ]

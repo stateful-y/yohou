@@ -1,6 +1,14 @@
 """Time series plotting module for yohou."""
 
-from yohou.plotting._utils import palette_yohou
+from plotly_resampler.aggregation.aggregators import (
+    LTTB,
+    EveryNthPoint,
+    MinMaxAggregator,
+    MinMaxLTTB,
+)
+from plotly_resampler.aggregation.gap_handlers import MedDiffGapHandler, NoGapHandler
+
+from yohou.plotting._utils import config_context, get_config, palette_yohou, set_config
 from yohou.plotting.diagnostics import (
     plot_autocorrelation,
     plot_correlation_heatmap,
@@ -8,6 +16,7 @@ from yohou.plotting.diagnostics import (
     plot_lag_scatter,
     plot_partial_autocorrelation,
     plot_scatter_matrix,
+    plot_seasonal_heatmap,
     plot_seasonality,
     plot_subseasonality,
 )
@@ -21,7 +30,10 @@ from yohou.plotting.evaluation import (
 )
 from yohou.plotting.exploration import (
     plot_boxplot,
+    plot_distribution,
     plot_missing_data,
+    plot_outliers,
+    plot_resampling_comparison,
     plot_rolling_statistics,
     plot_time_series,
 )
@@ -34,6 +46,14 @@ from yohou.plotting.model_selection import plot_cv_results_scatter, plot_splits
 from yohou.plotting.signal import plot_phase, plot_spectrum
 
 __all__ = [
+    "EveryNthPoint",
+    "LTTB",
+    "MedDiffGapHandler",
+    "MinMaxAggregator",
+    "MinMaxLTTB",
+    "NoGapHandler",
+    "config_context",
+    "get_config",
     "palette_yohou",
     "plot_autocorrelation",
     "plot_boxplot",
@@ -42,22 +62,27 @@ __all__ = [
     "plot_cross_correlation",
     "plot_cv_results_scatter",
     "plot_components",
+    "plot_distribution",
     "plot_forecast",
     "plot_lag_scatter",
     "plot_missing_data",
     "plot_model_comparison_bar",
+    "plot_outliers",
     "plot_partial_autocorrelation",
     "plot_phase",
+    "plot_resampling_comparison",
     "plot_residuals",
     "plot_rolling_statistics",
     "plot_scatter_matrix",
     "plot_score_distribution",
     "plot_score_per_horizon",
     "plot_score_time_series",
+    "plot_seasonal_heatmap",
     "plot_seasonality",
     "plot_spectrum",
     "plot_splits",
     "plot_subseasonality",
     "plot_time_series",
     "plot_time_weight",
+    "set_config",
 ]
