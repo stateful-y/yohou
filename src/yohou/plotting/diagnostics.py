@@ -10,12 +10,23 @@ from plotly.subplots import make_subplots
 from scipy.stats import norm
 
 from yohou.plotting._utils import (
+    LegendTracker,
+    PanelColorManager,
+    _add_confidence_bands,
+    _auto_detect_panel,
+    _create_figure,
+    _create_subplots,
+    _make_hovertemplate,
+    _member_name,
+    _subplot_spacing,
     apply_default_layout,
+    grouped_legend_kwargs,
+    linked_legendgroup_kwargs,
     panel_facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
 )
-from yohou.utils import validate_plotting_data
+from yohou.utils import validate_plotting_data, validate_plotting_params
 from yohou.utils.panel import inspect_panel
 
 __all__ = [
@@ -40,6 +51,8 @@ def plot_autocorrelation(
     show_confidence: bool = True,
     panel_group_names: list[str] | None = None,
     facet_n_cols: int = 2,
+    color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
@@ -68,6 +81,10 @@ def plot_autocorrelation(
         Panel group prefixes to plot.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
+    color_palette : list[str] | None, default=None
+        Custom color palette (one color per column).
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -80,7 +97,7 @@ def plot_autocorrelation(
         Plot height in pixels.
     **kwargs : dict
         Additional styling parameters:
-        - bar_color : str, default="#2563EB"
+        - bar_color : str, default="#2563EB" (ignored when color_palette is set)
 
     Returns
     -------
@@ -109,26 +126,29 @@ def plot_autocorrelation(
     `plot_correlation_heatmap` : Plot correlation matrix.
     """
     # Validate inputs
-    validate_plotting_data(df)
+    validate_plotting_data(df, min_rows=2)
+    validate_plotting_params(width=width, height=height)
 
-    # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if _auto_detect_panel(df) and panel_group_names is None and columns is None:
         panel_group_names = []
 
     if panel_group_names is not None:
+        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        _color_mgr = PanelColorManager(color_palette)
+        _acf_legend = LegendTracker()
 
         def _render_acf(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
+            display_name: str,
             panel_idx: int,  # noqa: ARG001
             row: int,
             col: int,
         ) -> None:
             """Render autocorrelation bar chart with confidence bands for a single column."""
             base = [c for c in sub_df.columns if c != "time"][0]
-            _bc = kwargs.get("bar_color", "#2563EB")
+            member = _member_name(base)
+            _bc = _color_mgr.get_color(member)
             series = sub_df[base].drop_nulls()
             n_s = len(series)
             _ml = max_lags if max_lags is not None else min(n_s // 2, 40)
@@ -144,45 +164,51 @@ def plot_autocorrelation(
                     den = ((series - mean_v) ** 2).sum()
                     acf_vals.append(num / den if den != 0 else 0)
             fig.add_trace(
-                go.Bar(x=list(range(_ml + 1)), y=acf_vals, marker={"color": _bc}, showlegend=False),
+                go.Bar(
+                    x=list(range(_ml + 1)),
+                    y=acf_vals,
+                    marker={"color": _bc},
+                    legendgroup=display_name,
+                    showlegend=_acf_legend.should_show(display_name),
+                    name=display_name,
+                    hovertemplate=_make_hovertemplate(display_name, "Lag", "ACF", decimals=3),
+                ),
                 row=row,
                 col=col,
             )
             if show_confidence:
                 ci = norm.ppf(1 - (1 - confidence_level) / 2) / math.sqrt(n_s)
-                for val in (ci, -ci):
-                    fig.add_trace(
-                        go.Scatter(
-                            x=list(range(_ml + 1)),
-                            y=[val] * (_ml + 1),
-                            mode="lines",
-                            line={"dash": "dash", "color": "#DC2626", "width": 1},
-                            showlegend=False,
-                            hoverinfo="skip",
-                        ),
-                        row=row,
-                        col=col,
-                    )
+                _add_confidence_bands(
+                    fig, list(range(_ml + 1)), [ci] * (_ml + 1), [-ci] * (_ml + 1), row=row, col=col
+                )
 
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df,
             _render_acf,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
-            title=title or "Autocorrelation",
+            title=title or "Autocorrelation (ACF)",
             x_label=x_label or "Lag",
             y_label=y_label or "ACF",
             width=width,
             height=height,
             shared_xaxes=False,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
 
-    # Get kwargs
-    bar_color = kwargs.get("bar_color", "#2563EB")
+    # Get bar colors - distinct per column (palette or auto)
+    if color_palette is not None:
+        bar_colors = resolve_color_palette(color_palette, len(plot_columns))
+    elif len(plot_columns) > 1:
+        bar_colors = resolve_color_palette(None, len(plot_columns))
+    else:
+        _bc = kwargs.get("bar_color", "#2563EB")
+        bar_colors = [_bc]
 
     # Determine max_lags
     n = len(df)
@@ -193,7 +219,7 @@ def plot_autocorrelation(
     fig = go.Figure()
 
     # Compute ACF for each column
-    for col in plot_columns:
+    for col_idx, col in enumerate(plot_columns):
         series = df[col].drop_nulls()
         n_series = len(series)
 
@@ -219,34 +245,16 @@ def plot_autocorrelation(
                 x=list(range(max_lags + 1)),
                 y=acf_values,
                 name=col,
-                marker={"color": bar_color},
-                hovertemplate=f"<b>{col}</b><br>Lag: %{{x}}<br>ACF: %{{y:.3f}}<extra></extra>",
+                marker={"color": bar_colors[col_idx % len(bar_colors)]},
+                hovertemplate=_make_hovertemplate(col, "Lag", "ACF", decimals=3),
             )
         )
 
         # Add confidence bands
         if show_confidence:
             ci = norm.ppf(1 - (1 - confidence_level) / 2) / math.sqrt(n_series)
-
-            fig.add_trace(
-                go.Scatter(
-                    x=list(range(max_lags + 1)),
-                    y=[ci] * (max_lags + 1),
-                    mode="lines",
-                    line={"dash": "dash", "color": "#DC2626", "width": 1},
-                    showlegend=False,
-                    hoverinfo="skip",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=list(range(max_lags + 1)),
-                    y=[-ci] * (max_lags + 1),
-                    mode="lines",
-                    line={"dash": "dash", "color": "#DC2626", "width": 1},
-                    showlegend=False,
-                    hoverinfo="skip",
-                )
+            _add_confidence_bands(
+                fig, list(range(max_lags + 1)), [ci] * (max_lags + 1), [-ci] * (max_lags + 1)
             )
 
     # Set default labels
@@ -258,12 +266,13 @@ def plot_autocorrelation(
     # Apply default layout
     fig = apply_default_layout(
         fig,
-        title=title,
+        title=title or "Autocorrelation (ACF)",
         x_label=x_label,
         y_label=y_label,
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -394,6 +403,8 @@ def plot_partial_autocorrelation(
     show_confidence: bool = True,
     panel_group_names: list[str] | None = None,
     facet_n_cols: int = 2,
+    color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
@@ -432,6 +443,10 @@ def plot_partial_autocorrelation(
         Panel group prefixes to plot.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
+    color_palette : list[str] | None, default=None
+        Custom color palette (one color per column).
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -444,7 +459,7 @@ def plot_partial_autocorrelation(
         Plot height in pixels.
     **kwargs : dict
         Additional styling parameters:
-        - bar_color : str, default="#059669"
+        - bar_color : str, default="#059669" (ignored when color_palette is set)
 
     Returns
     -------
@@ -472,26 +487,29 @@ def plot_partial_autocorrelation(
     `plot_autocorrelation` : Plot autocorrelation function.
     """
     # Validate inputs
-    validate_plotting_data(df)
+    validate_plotting_data(df, min_rows=2)
+    validate_plotting_params(width=width, height=height)
 
-    # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if _auto_detect_panel(df) and panel_group_names is None and columns is None:
         panel_group_names = []
 
     if panel_group_names is not None:
+        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        _pacf_color_mgr = PanelColorManager(color_palette)
+        _pacf_legend = LegendTracker()
 
         def _render_pacf(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
+            display_name: str,
             panel_idx: int,  # noqa: ARG001
             row: int,
             col: int,
         ) -> None:
             """Render PACF bar chart with confidence bands for a single panel."""
             base = [c for c in sub_df.columns if c != "time"][0]
-            _bc = kwargs.get("bar_color", "#059669")
+            member = _member_name(base)
+            _bc = _pacf_color_mgr.get_color(member)
             series = sub_df[base].drop_nulls()
             n_s = len(series)
             _ml = max_lags if max_lags is not None else min(n_s // 2, 40)
@@ -505,44 +523,48 @@ def plot_partial_autocorrelation(
             )
 
             fig.add_trace(
-                go.Bar(x=list(range(_ml + 1)), y=pacf_vals, marker={"color": _bc}, showlegend=False),
+                go.Bar(
+                    x=list(range(_ml + 1)),
+                    y=pacf_vals,
+                    marker={"color": _bc},
+                    legendgroup=display_name,
+                    showlegend=_pacf_legend.should_show(display_name),
+                    name=display_name,
+                    hovertemplate=_make_hovertemplate(display_name, "Lag", "PACF", decimals=3),
+                ),
                 row=row,
                 col=col,
             )
             if show_confidence and ci_lo is not None and ci_hi is not None:
-                for vals in (ci_hi, ci_lo):
-                    fig.add_trace(
-                        go.Scatter(
-                            x=list(range(_ml + 1)),
-                            y=vals,
-                            mode="lines",
-                            line={"dash": "dash", "color": "#DC2626", "width": 1},
-                            showlegend=False,
-                            hoverinfo="skip",
-                        ),
-                        row=row,
-                        col=col,
-                    )
+                _add_confidence_bands(fig, list(range(_ml + 1)), ci_hi, ci_lo, row=row, col=col)
 
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df,
             _render_pacf,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
-            title=title or "Partial Autocorrelation",
+            title=title or "Partial Autocorrelation (PACF)",
             x_label=x_label or "Lag",
             y_label=y_label or "PACF",
             width=width,
             height=height,
             shared_xaxes=False,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
 
-    # Get kwargs
-    bar_color = kwargs.get("bar_color", "#059669")
+    # Get bar colors - distinct per column (palette or auto)
+    if color_palette is not None:
+        bar_colors = resolve_color_palette(color_palette, len(plot_columns))
+    elif len(plot_columns) > 1:
+        bar_colors = resolve_color_palette(None, len(plot_columns))
+    else:
+        _bc = kwargs.get("bar_color", "#059669")
+        bar_colors = [_bc]
 
     # Determine max_lags
     n = len(df)
@@ -554,7 +576,7 @@ def plot_partial_autocorrelation(
     # Create figure
     fig = go.Figure()
 
-    for col_name in plot_columns:
+    for col_idx, col_name in enumerate(plot_columns):
         series = df[col_name].drop_nulls()
         values = series.to_numpy()
 
@@ -571,33 +593,14 @@ def plot_partial_autocorrelation(
                 x=list(range(max_lags + 1)),
                 y=pacf_values,
                 name=col_name,
-                marker={"color": bar_color},
-                hovertemplate=f"<b>{col_name}</b><br>Lag: %{{x}}<br>PACF: %{{y:.3f}}<extra></extra>",
+                marker={"color": bar_colors[col_idx % len(bar_colors)]},
+                hovertemplate=_make_hovertemplate(col_name, "Lag", "PACF", decimals=3),
             )
         )
 
         # Add confidence bands
         if show_confidence and ci_lo is not None and ci_hi is not None:
-            fig.add_trace(
-                go.Scatter(
-                    x=list(range(max_lags + 1)),
-                    y=ci_hi,
-                    mode="lines",
-                    line={"dash": "dash", "color": "#DC2626", "width": 1},
-                    showlegend=False,
-                    hoverinfo="skip",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=list(range(max_lags + 1)),
-                    y=ci_lo,
-                    mode="lines",
-                    line={"dash": "dash", "color": "#DC2626", "width": 1},
-                    showlegend=False,
-                    hoverinfo="skip",
-                )
-            )
+            _add_confidence_bands(fig, list(range(max_lags + 1)), ci_hi, ci_lo)
 
     # Set default labels
     if x_label is None:
@@ -608,12 +611,13 @@ def plot_partial_autocorrelation(
     # Apply default layout
     fig = apply_default_layout(
         fig,
-        title=title,
+        title=title or "Partial Autocorrelation (PACF)",
         x_label=x_label,
         y_label=y_label,
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -625,6 +629,7 @@ def plot_correlation_heatmap(
     panel_group_names: list[str] | None = None,
     panel_layout: Literal["grid", "facet"] = "grid",
     facet_n_cols: int = 3,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
@@ -697,6 +702,7 @@ def plot_correlation_heatmap(
     """
     # Validate inputs
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
     _, panel_groups = inspect_panel(df)
@@ -748,12 +754,13 @@ def plot_correlation_heatmap(
                 )
                 gfig = apply_default_layout(
                     gfig,
-                    title=f"{title or 'Correlation Heatmap'} — {gname}",
+                    title=title or "Correlation Heatmap",
                     x_label=x_label,
                     y_label=y_label,
                     width=width,
                     height=height,
                 )
+                gfig.update_layout(showlegend=show_legend)
                 figures[gname] = gfig
             return figures
 
@@ -768,7 +775,7 @@ def plot_correlation_heatmap(
             rows=grid_rows,
             cols=grid_cols,
             subplot_titles=group_names,
-            horizontal_spacing=max(0.05, 0.3 / grid_cols),
+            horizontal_spacing=_subplot_spacing(grid_cols),
         )
 
         for gi, gname in enumerate(group_names):
@@ -804,6 +811,7 @@ def plot_correlation_heatmap(
             width=width or max(400 * grid_cols, 600),
             height=height or max(400 * grid_rows, 400),
         )
+        fig.update_layout(showlegend=show_legend)
         return fig
 
     # Resolve columns
@@ -840,12 +848,13 @@ def plot_correlation_heatmap(
     # Apply default layout
     fig = apply_default_layout(
         fig,
-        title=title,
+        title=title or "Correlation Heatmap",
         x_label=x_label,
         y_label=y_label,
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -904,6 +913,9 @@ def plot_seasonality(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    connect_gaps: bool = False,
+    show_legend: bool = True,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
     """Plot seasonal overlay.
@@ -939,11 +951,20 @@ def plot_seasonality(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
+    connect_gaps : bool, default=False
+        If True, connect lines across missing data gaps.
+    show_legend : bool, default=True
+        Whether to display the legend.
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets.  ``True`` returns a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
+        ``None`` reads from :func:`get_config`.
     **kwargs : dict
         Additional styling parameters:
         - line_width : float, default=1.5
         - highlight_width : float, default=3.0
         - fade_opacity : float, default=0.25
+        - opacity_power : float, default=2.0
 
     Returns
     -------
@@ -983,21 +1004,26 @@ def plot_seasonality(
     line_width = kwargs.get("line_width", 1.5)
     highlight_width = kwargs.get("highlight_width", 3.0)
     fade_opacity = kwargs.get("fade_opacity", 0.25)
+    opacity_power = kwargs.get("opacity_power", 2.0)
+    _oldest_alpha = 0.1
+    _newest_alpha = 0.9
 
     # ── Validate ─────────────────────────────────────────────────────────
-    validate_plotting_data(df)
+    validate_plotting_data(df, min_rows=2)
+    validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
     if panel_group_names is not None:
+        _color_mgr = PanelColorManager(color_palette)
+        _legend_tracker = LegendTracker(show_legend=show_legend)
 
         def _render_season(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
+            display_name: str,
             panel_idx: int,  # noqa: ARG001
             row: int,
             col: int,
@@ -1006,8 +1032,29 @@ def plot_seasonality(
             base = [c for c in sub_df.columns if c != "time"][0]
             dfs = _add_season_and_cycle(sub_df, seasonality)
             cycles = sorted(dfs["cycle"].unique().to_list())
-            _colors = resolve_color_palette(color_palette, len(cycles))
+            member_color = _color_mgr.get_color(display_name)
             slabels = _SEASON_LABELS_MAP.get(seasonality)
+            n_cycles = len(cycles)
+
+            # Collect per-season values for aggregated mean
+            season_vals: dict[int | str, list[float]] = {}
+
+            is_legend_member = _legend_tracker.should_show(display_name)
+            r, g, b = int(member_color[1:3], 16), int(member_color[3:5], 16), int(member_color[5:7], 16)
+
+            # Invisible trace for an opaque legend swatch
+            if is_legend_member:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[None], y=[None], mode="lines",
+                        line={"color": member_color, "width": line_width},
+                        name=display_name,
+                        legendgroup=display_name,
+                        showlegend=True,
+                    ),
+                    row=row, col=col,
+                )
+
             for ci, cyc in enumerate(cycles):
                 cyc_df = dfs.filter(pl.col("cycle") == cyc).sort("season")
                 x_vals = (
@@ -1015,49 +1062,107 @@ def plot_seasonality(
                     if slabels and all(s <= len(slabels) for s in cyc_df["season"].to_list())
                     else cyc_df["season"].to_list()
                 )
+                y_vals = cyc_df[base].to_list()
+
+                # Accumulate for mean
+                for x, y in zip(x_vals, y_vals, strict=True):
+                    season_vals.setdefault(x, []).append(y)
+
                 is_hl = bool(highlight_set) and cyc in highlight_set
                 lw = highlight_width if is_hl else line_width
-                opacity = 1.0 if (not highlight_set or is_hl) else fade_opacity
+                # Time-ordered opacity via RGBA so legend swatch stays opaque
+                if is_hl:
+                    alpha = 1.0
+                elif highlight_set:
+                    alpha = fade_opacity
+                else:
+                    t = ci / max(n_cycles - 1, 1)
+                    alpha = _oldest_alpha + (_newest_alpha - _oldest_alpha) * t ** (1.0 / opacity_power)
+
+                line_rgba = f"rgba({r},{g},{b},{alpha:.2f})"
+
                 fig.add_trace(
                     go.Scatter(
                         x=x_vals,
-                        y=cyc_df[base].to_list(),
+                        y=y_vals,
                         mode="lines",
-                        line={"color": _colors[ci % len(_colors)], "width": lw},
-                        opacity=opacity,
-                        name=str(cyc),
-                        legendgroup=str(cyc),
+                        line={"color": line_rgba, "width": lw},
+                        connectgaps=connect_gaps,
+                        hovertemplate=f"<b>{display_name} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
+                        name=display_name,
+                        legendgroup=display_name,
                         showlegend=False,
-                        hovertemplate=f"<b>{base} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
                     ),
                     row=row,
                     col=col,
                 )
 
-        return panel_facet_figure(
+            # Add aggregated mean line (bold, on top)
+            if season_vals:
+                mean_x = list(season_vals.keys())
+                mean_y = [float(np.mean(v)) for v in season_vals.values()]
+                fig.add_trace(
+                    go.Scatter(
+                        x=mean_x,
+                        y=mean_y,
+                        mode="lines",
+                        line={"color": member_color, "width": 3},
+                        connectgaps=connect_gaps,
+                        hovertemplate=f"<b>{display_name} Mean</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
+                        name=display_name,
+                        legendgroup=display_name,
+                        showlegend=False,
+                    ),
+                    row=row,
+                    col=col,
+                )
+
+        fig = panel_facet_figure(
             df,
             _render_season,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
-            title=title or f"Seasonal Plot - {seasonality}",
+            title=title or "Seasonal Pattern",
             x_label=x_label or seasonality.capitalize(),
             y_label=y_label,
             width=width,
             height=height,
             shared_xaxes=False,
+            resampler=resampler,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     season_labels = _SEASON_LABELS_MAP.get(seasonality)
 
     df_aug = _add_season_and_cycle(df, seasonality)
     cycles = sorted(df_aug["cycle"].unique().to_list())
-    colors = resolve_color_palette(color_palette, len(cycles))
+    colors = resolve_color_palette(color_palette, len(plot_columns))
+    _np_legend_tracker = LegendTracker(show_legend=show_legend)
 
-    fig = go.Figure()
+    fig = _create_figure(resampler)
+    multi_col = len(plot_columns) > 1
+    n_cycles = len(cycles)
 
-    for col_name in plot_columns:
+    for col_idx, col_name in enumerate(plot_columns):
+        col_color = colors[col_idx % len(colors)]
+        show_for_col = _np_legend_tracker.should_show(col_name)
+        r, g, b = int(col_color[1:3], 16), int(col_color[3:5], 16), int(col_color[5:7], 16)
+
+        # Invisible trace for an opaque legend swatch
+        if show_for_col:
+            fig.add_trace(
+                go.Scatter(
+                    x=[None], y=[None], mode="lines",
+                    line={"color": col_color, "width": line_width},
+                    name=col_name,
+                    legendgroup=col_name,
+                    showlegend=True,
+                )
+            )
+
         for ci, cyc in enumerate(cycles):
             cyc_df = df_aug.filter(pl.col("cycle") == cyc).sort("season")
             x_vals = (
@@ -1067,18 +1172,27 @@ def plot_seasonality(
             )
             is_hl = bool(highlight_set) and cyc in highlight_set
             lw = highlight_width if is_hl else line_width
-            opacity = 1.0 if (not highlight_set or is_hl) else fade_opacity
+            # Time-ordered opacity via RGBA so legend swatch stays opaque
+            if is_hl:
+                alpha = 1.0
+            elif highlight_set:
+                alpha = fade_opacity
+            else:
+                t = ci / max(n_cycles - 1, 1)
+                alpha = _oldest_alpha + (_newest_alpha - _oldest_alpha) * t ** (1.0 / opacity_power)
+
+            line_rgba = f"rgba({r},{g},{b},{alpha:.2f})"
 
             fig.add_trace(
                 go.Scatter(
                     x=x_vals,
                     y=cyc_df[col_name].to_list(),
                     mode="lines",
-                    line={"color": colors[ci % len(colors)], "width": lw},
-                    opacity=opacity,
-                    name=str(cyc),
-                    legendgroup=str(cyc),
-                    showlegend=(col_name == plot_columns[0]),
+                    line={"color": line_rgba, "width": lw},
+                    name=col_name,
+                    legendgroup=col_name,
+                    showlegend=False,
+                    connectgaps=connect_gaps,
                     hovertemplate=f"<b>{col_name} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
                 )
             )
@@ -1099,12 +1213,13 @@ def plot_seasonality(
 
     fig = apply_default_layout(
         fig,
-        title=title,
+        title=title or "Seasonal Pattern",
         x_label=x_label,
         y_label=y_label,
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -1116,6 +1231,7 @@ def plot_subseasonality(
     seasonality: str = "month",
     show_mean: bool = True,
     panel_group_names: list[str] | None = None,
+    panel_layout: Literal["grid", "facet"] = "grid",
     facet_n_cols: int = 4,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -1123,8 +1239,11 @@ def plot_subseasonality(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    connect_gaps: bool = False,
+    show_legend: bool = True,
+    resampler: bool | Literal["widget"] | None = None,
     **kwargs,
-) -> go.Figure:
+) -> go.Figure | dict[str, go.Figure]:
     """Plot seasonal subseries.
 
     Creates one mini subplot per season (e.g. 12 for months, 4 for quarters).
@@ -1145,6 +1264,10 @@ def plot_subseasonality(
         Show a horizontal mean line within each season subplot.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    panel_layout : Literal["grid", "facet"], default="grid"
+        Layout mode for panel data. ``"grid"`` renders all groups in one
+        figure with overlaid traces. ``"facet"`` returns a
+        ``dict[str, go.Figure]`` with one figure per panel group.
     facet_n_cols : int, default=4
         Number of columns in the subplot grid.
     color_palette : list[str] | None, default=None
@@ -1159,17 +1282,27 @@ def plot_subseasonality(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
+    connect_gaps : bool, default=False
+        If True, connect lines across missing data gaps.
+    show_legend : bool, default=True
+        Whether to display the legend.
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets.  ``True`` returns a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
+        ``None`` reads from :func:`get_config`.
     **kwargs : dict
         Additional styling parameters:
         - line_width : float, default=1.5
         - marker_size : float, default=4
         - mean_width : float, default=2.0
         - mean_dash : str, default="dash"
+        - vertical_spacing : float | None, default=None
 
     Returns
     -------
-    go.Figure
-        Plotly figure object.
+    go.Figure | dict[str, go.Figure]
+        Plotly figure object, or a dict keyed by panel group name when
+        ``panel_layout="facet"``.
 
     Examples
     --------
@@ -1192,11 +1325,10 @@ def plot_subseasonality(
     `plot_seasonality` : Plot seasonal overlay.
     `plot_time_series` : Plot basic time series.
     """
-    validate_plotting_data(df)
+    validate_plotting_data(df, min_rows=2)
+    validate_plotting_params(width=width, height=height)
 
-    # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if _auto_detect_panel(df) and panel_group_names is None and columns is None:
         panel_group_names = []
 
     if panel_group_names is not None:
@@ -1218,18 +1350,109 @@ def plot_subseasonality(
         else:
             subplot_titles.append(str(s))
 
-    fig = make_subplots(
-        rows=nrow,
-        cols=facet_n_cols,
-        subplot_titles=subplot_titles,
-        shared_yaxes=True,
-    )
-
-    colors = resolve_color_palette(color_palette, len(plot_columns))
     line_width = kwargs.get("line_width", 1.5)
     marker_size = kwargs.get("marker_size", 4)
     mean_width = kwargs.get("mean_width", 2.0)
     mean_dash = kwargs.get("mean_dash", "dash")
+
+    # ── Facet path: one figure per panel group ───────────────────────────
+    if panel_group_names is not None and panel_layout == "facet":
+        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
+
+        groups, _all_members = _group_panel_columns(plot_columns)
+        figures: dict[str, go.Figure] = {}
+
+        for gname, group_cols in groups.items():
+            color_mgr = PanelColorManager(color_palette)
+            legend_tracker = LegendTracker(show_legend=show_legend)
+
+            gfig = _create_subplots(
+                resampler,
+                rows=nrow,
+                cols=facet_n_cols,
+                subplot_titles=subplot_titles,
+                shared_yaxes=True,
+                vertical_spacing=kwargs.get("vertical_spacing", max(0.04, 0.3 / nrow)),
+            )
+
+            for si, season_val in enumerate(seasons):
+                r = si // facet_n_cols + 1
+                c_pos = si % facet_n_cols + 1
+                season_df = df_aug.filter(pl.col("season") == season_val)
+
+                for col_name in group_cols:
+                    display_name = _member_name(col_name)
+                    col_color = color_mgr.get_color(display_name)
+
+                    agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
+                    cycles = agg_df["cycle"].to_list()
+                    values = agg_df[col_name].to_list()
+                    if not cycles:
+                        continue
+
+                    gfig.add_trace(
+                        go.Scatter(
+                            x=cycles,
+                            y=values,
+                            mode="lines+markers",
+                            line={"color": col_color, "width": line_width},
+                            marker={"size": marker_size},
+                            connectgaps=connect_gaps,
+                            hovertemplate=_make_hovertemplate(display_name, "Cycle", "Value"),
+                            name=display_name,
+                            legendgroup=display_name,
+                            showlegend=legend_tracker.should_show(display_name),
+                        ),
+                        row=r,
+                        col=c_pos,
+                    )
+
+                    if show_mean:
+                        mean_val = agg_df[col_name].mean()
+                        if mean_val is not None and len(cycles) >= 2:
+                            gfig.add_trace(
+                                go.Scatter(
+                                    x=[cycles[0], cycles[-1]],
+                                    y=[mean_val, mean_val],
+                                    mode="lines",
+                                    line={"color": col_color, "width": mean_width, "dash": mean_dash},
+                                    name=f"Mean ({display_name})",
+                                    legendgroup=display_name,
+                                    showlegend=False,
+                                    hovertemplate=f"Mean: {mean_val:.2f}<extra></extra>",
+                                ),
+                                row=r,
+                                col=c_pos,
+                            )
+
+            gfig = apply_default_layout(
+                gfig,
+                title=title or "Seasonal Subseries",
+                x_label=x_label,
+                y_label=y_label,
+                width=width,
+                height=height if height is not None else max(450, nrow * 280),
+            )
+            gfig.update_layout(showlegend=show_legend)
+            figures[gname] = gfig
+
+        return figures
+
+    # ── Grid path: all groups in one figure ──────────────────────────────
+
+    fig = _create_subplots(
+        resampler,
+        rows=nrow,
+        cols=facet_n_cols,
+        subplot_titles=subplot_titles,
+        shared_yaxes=True,
+        vertical_spacing=kwargs.get("vertical_spacing", max(0.04, 0.3 / nrow)),
+    )
+
+    colors = resolve_color_palette(color_palette, len(plot_columns))
+    _color_mgr = PanelColorManager(color_palette) if panel_group_names is not None else None
+    _legend_tracker = LegendTracker(show_legend=show_legend)
+    _seen_groups: set[str] = set()
 
     for si, season_val in enumerate(seasons):
         r = si // facet_n_cols + 1
@@ -1238,12 +1461,33 @@ def plot_subseasonality(
         season_df = df_aug.filter(pl.col("season") == season_val)
 
         for ci, col_name in enumerate(plot_columns):
-            col_color = colors[ci % len(colors)]
+            display_name = _member_name(col_name) if _color_mgr is not None else col_name
+            col_color = _color_mgr.get_color(display_name) if _color_mgr is not None else colors[ci % len(colors)]
+            group_name = col_name.partition("__")[0] if _color_mgr is not None else col_name
 
             # Aggregate by cycle (mean) when multiple observations exist
             agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
             cycles = agg_df["cycle"].to_list()
             values = agg_df[col_name].to_list()
+
+            if not cycles:
+                continue
+
+            if _color_mgr is not None:
+                is_first = group_name not in _seen_groups
+                _seen_groups.add(group_name)
+                legend_kw = grouped_legend_kwargs(
+                    group_name,
+                    display_name,
+                    _legend_tracker,
+                    is_first_in_group=is_first,
+                )
+            else:
+                legend_kw = {
+                    "name": display_name,
+                    "legendgroup": display_name,
+                    "showlegend": _legend_tracker.should_show(display_name),
+                }
 
             fig.add_trace(
                 go.Scatter(
@@ -1252,10 +1496,9 @@ def plot_subseasonality(
                     mode="lines+markers",
                     line={"color": col_color, "width": line_width},
                     marker={"size": marker_size},
-                    name=col_name,
-                    legendgroup=col_name,
-                    showlegend=(si == 0),
-                    hovertemplate=(f"<b>{col_name}</b><br>Cycle: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>"),
+                    connectgaps=connect_gaps,
+                    hovertemplate=_make_hovertemplate(display_name, "Cycle", "Value"),
+                    **legend_kw,
                 ),
                 row=r,
                 col=c,
@@ -1274,8 +1517,8 @@ def plot_subseasonality(
                                 "width": mean_width,
                                 "dash": mean_dash,
                             },
-                            name=f"Mean ({col_name})",
-                            legendgroup=col_name,
+                            name=f"Mean ({display_name})",
+                            legendgroup=group_name if _color_mgr is not None else display_name,
                             showlegend=False,
                             hovertemplate=f"Mean: {mean_val:.2f}<extra></extra>",
                         ),
@@ -1285,12 +1528,13 @@ def plot_subseasonality(
 
     fig = apply_default_layout(
         fig,
-        title=title or f"Seasonal Subseries - {seasonality}",
+        title=title or "Seasonal Subseries",
         x_label=x_label,
         y_label=y_label,
         width=width,
         height=height if height is not None else max(450, nrow * 280),
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -1299,7 +1543,7 @@ def plot_lag_scatter(
     df: pl.DataFrame,
     *,
     columns: str | list[str] | None = None,
-    lags: list[int] | None = None,
+    lags: int | list[int] | None = None,
     seasonality: str | None = None,
     show_diagonal: bool = True,
     show_regression: bool = False,
@@ -1307,6 +1551,7 @@ def plot_lag_scatter(
     panel_layout: Literal["grid", "facet"] = "grid",
     facet_n_cols: int = 3,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
@@ -1363,6 +1608,7 @@ def plot_lag_scatter(
         Additional styling parameters:
         - marker_size : float, default=4.0
         - marker_opacity : float, default=0.6
+        - vertical_spacing : float | None, default=None
 
     Returns
     -------
@@ -1391,6 +1637,10 @@ def plot_lag_scatter(
     """
     # Validate inputs
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
+
+    if isinstance(lags, int):
+        lags = list(range(1, lags + 1))
 
     # Auto-detect panel data
     _, _panel_groups = inspect_panel(df)
@@ -1429,6 +1679,9 @@ def plot_lag_scatter(
             marker_size = kwargs.get("marker_size", 4.0)
             marker_opacity = kwargs.get("marker_opacity", 0.6)
 
+            color_mgr = PanelColorManager(color_palette)
+            legend_tracker = LegendTracker()
+
             row_titles = [f"lag {k}" for k in _lag_list]
             col_titles = [f"{gn}: {bn}" for _, bn, gn in all_members]
 
@@ -1446,21 +1699,28 @@ def plot_lag_scatter(
                 for mi, (full_col, base_name, _gn) in enumerate(all_members):
                     r = li + 1
                     c = mi + 1
+                    member_color = color_mgr.get_color(base_name)
                     series = df.select(["time", full_col]).rename({full_col: base_name})
                     dl = series.with_columns(pl.col(base_name).shift(lag).alias("lagged")).drop_nulls()
 
+                    legend_kw = grouped_legend_kwargs(
+                        base_name,
+                        f"lag {lag}",
+                        legend_tracker,
+                        is_first_in_group=li == 0,
+                    )
                     fig.add_trace(
                         go.Scattergl(
                             x=dl["lagged"],
                             y=dl[base_name],
                             mode="markers",
-                            marker={"size": marker_size, "opacity": marker_opacity},
-                            showlegend=False,
+                            marker={"size": marker_size, "color": member_color, "opacity": marker_opacity},
                             hovertemplate=(
                                 f"<b>{base_name}</b><br>"
                                 f"y(t-{lag}): %{{x:.2f}}<br>"
                                 f"y(t): %{{y:.2f}}<extra></extra>"
                             ),
+                            **legend_kw,
                         ),
                         row=r,
                         col=c,
@@ -1492,66 +1752,78 @@ def plot_lag_scatter(
                 width=width or max(600, n_members * cell_w + 120),
                 height=height or max(400, n_lags * cell_h + 120),
             )
+            fig.update_layout(showlegend=show_legend)
             return fig
 
-        # ── Facet mode: one figure per member via panel_facet_figure ─────
+        # ── Facet mode: one figure per group ────────────────────────────
+        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
-        def _render_lag(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
-            """Render lag scatter plots for each requested lag of a single column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
-            _ms = kwargs.get("marker_size", 4.0)
-            _ma = kwargs.get("marker_opacity", 0.6)
-            _sd = show_diagonal
-            colors = resolve_color_palette(color_palette, len(_lag_list))
+        _panel_cols = resolve_panel_columns(df, panel_group_names or None, columns)
+        _facet_groups, _facet_members = _group_panel_columns(_panel_cols)
+        _ms = kwargs.get("marker_size", 4.0)
+        _ma = kwargs.get("marker_opacity", 0.6)
+
+        figures: dict[str, go.Figure] = {}
+        for gname, gcols in _facet_groups.items():
+            n_lags_f = len(_lag_list)
+            ncols_f = min(n_lags_f, facet_n_cols)
+            nrows_f = math.ceil(n_lags_f / ncols_f)
+            color_mgr_f = PanelColorManager(color_palette)
+            legend_tracker_f = LegendTracker(show_legend=show_legend)
+
+            gfig = make_subplots(
+                rows=nrows_f,
+                cols=ncols_f,
+                subplot_titles=[f"lag {k}" for k in _lag_list],
+                vertical_spacing=max(0.03, 0.25 / max(nrows_f, 1)),
+                horizontal_spacing=max(0.03, 0.25 / max(ncols_f, 1)),
+            )
+
             for li, lag in enumerate(_lag_list):
-                dl = sub_df.with_columns(pl.col(base).shift(lag).alias("lagged")).drop_nulls()
-                fig.add_trace(
-                    go.Scattergl(
-                        x=dl[base],
-                        y=dl["lagged"],
-                        mode="markers",
-                        marker={"size": _ms, "color": colors[li % len(colors)], "opacity": _ma},
-                        name=f"lag={lag}",
-                        legendgroup=f"lag={lag}",
-                        showlegend=(row == 1 and col == 1),
-                    ),
-                    row=row,
-                    col=col,
-                )
-            if _sd and len(sub_df) > 0:
-                vmin = sub_df[base].min()
-                vmax = sub_df[base].max()
-                fig.add_trace(
-                    go.Scatter(
-                        x=[vmin, vmax],
-                        y=[vmin, vmax],
-                        mode="lines",
-                        line={"dash": "dash", "color": "#94a3b8", "width": 1},
-                        showlegend=False,
-                    ),
-                    row=row,
-                    col=col,
-                )
+                r = li // ncols_f + 1
+                c = li % ncols_f + 1
+                for member_col in gcols:
+                    mname = _member_name(member_col)
+                    mcolor = color_mgr_f.get_color(mname)
+                    dl = df.select("time", member_col).with_columns(
+                        pl.col(member_col).shift(lag).alias("lagged")
+                    ).drop_nulls()
+                    gfig.add_trace(
+                        go.Scattergl(
+                            x=dl["lagged"],
+                            y=dl[member_col],
+                            mode="markers",
+                            marker={"size": _ms, "color": mcolor, "opacity": _ma},
+                            name=mname,
+                            legendgroup=mname,
+                            showlegend=legend_tracker_f.should_show(mname),
+                        ),
+                        row=r,
+                        col=c,
+                    )
+                    if show_diagonal and len(dl) > 0:
+                        vmin = min(float(dl[member_col].min()), float(dl["lagged"].min()))  # type: ignore[arg-type]
+                        vmax = max(float(dl[member_col].max()), float(dl["lagged"].max()))  # type: ignore[arg-type]
+                        gfig.add_trace(
+                            go.Scatter(
+                                x=[vmin, vmax], y=[vmin, vmax],
+                                mode="lines",
+                                line={"dash": "dash", "color": "#94a3b8", "width": 1},
+                                showlegend=False, hoverinfo="skip",
+                            ),
+                            row=r, col=c,
+                        )
 
-        return panel_facet_figure(
-            df,
-            _render_lag,
-            panel_group_names=panel_group_names,
-            columns=columns,
-            facet_n_cols=facet_n_cols,
-            title=title or "Lag Scatter",
-            width=width,
-            height=height,
-            shared_xaxes=False,
-            resampler=False,
-        )
+            gfig = apply_default_layout(
+                gfig,
+                title=title or "Lag Scatter",
+                width=width,
+                height=height,
+            )
+            gfig.update_layout(showlegend=show_legend)
+            figures[gname] = gfig
+
+        return figures  # type: ignore[return-value]
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -1590,7 +1862,7 @@ def plot_lag_scatter(
             cols=ncols,
             subplot_titles=subtitles,
             horizontal_spacing=0.08,
-            vertical_spacing=0.12,
+            vertical_spacing=kwargs.get("vertical_spacing", max(0.04, 0.3 / nrows)),
         )
 
         for lag_idx, lag in enumerate(lag_list):
@@ -1619,6 +1891,7 @@ def plot_lag_scatter(
                                 },
                                 name=slabel,
                                 legendgroup=slabel,
+                                legendgrouptitle={"text": seasonality.title()} if is_first_cell and si == 0 else None,
                                 showlegend=is_first_cell,
                                 hovertemplate=(
                                     f"<b>{col}</b> ({slabel})<br>"
@@ -1685,6 +1958,7 @@ def plot_lag_scatter(
             width=width or default_width,
             height=height or default_height,
         )
+        fig.update_layout(showlegend=show_legend)
 
         return fig
 
@@ -1714,6 +1988,7 @@ def plot_lag_scatter(
                         },
                         name=slabel,
                         legendgroup=slabel,
+                        legendgrouptitle={"text": seasonality.title()} if si == 0 else None,
                         showlegend=True,
                         hovertemplate=(
                             f"<b>{col}</b> ({slabel})<br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"
@@ -1813,38 +2088,92 @@ def plot_lag_scatter(
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
+
+
+def _compute_ccf(x: np.ndarray, y: np.ndarray, max_lags: int) -> list[float]:
+    """Compute cross-correlation between *x* and *y* for lags in ``[-max_lags, max_lags]``."""
+    n = len(x)
+    x_mean, y_mean = x.mean(), y.mean()
+    x_std, y_std = x.std(), y.std()
+    lag_values = range(-max_lags, max_lags + 1)
+    ccf: list[float] = []
+    for lag in lag_values:
+        if lag < 0:
+            xa, ya = x[: n + lag], y[-lag:]
+        elif lag > 0:
+            xa, ya = x[lag:], y[: n - lag]
+        else:
+            xa, ya = x, y
+        if len(xa) > 0 and x_std != 0 and y_std != 0:
+            ccf.append(float(((xa - x_mean) * (ya - y_mean)).mean() / (x_std * y_std)))
+        else:
+            ccf.append(0.0)
+    return ccf
+
+
+def _upper_triangle_pairs(names: list[str]) -> list[tuple[str, str]]:
+    """Return unique upper-triangle pairs from *names*."""
+    return [(names[i], names[j]) for i in range(len(names)) for j in range(i + 1, len(names))]
 
 
 def plot_cross_correlation(
     df: pl.DataFrame,
     *,
-    columns: list[str],
+    columns: list[str] | None = None,
     max_lags: int = 40,
     confidence_level: float = 0.95,
+    panel_group_names: list[str] | None = None,
+    panel_layout: Literal["grid", "facet"] = "facet",
+    facet_n_cols: int = 2,
+    color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
     **kwargs,
-) -> go.Figure:
-    """Plot cross-correlation function (CCF) between two time series.
+) -> go.Figure | dict[str, go.Figure]:
+    """Plot cross-correlation function (CCF) between time series pairs.
 
-    Computes and visualizes the cross-correlation between two series at various lags,
-    useful for identifying lead-lag relationships and temporal dependencies.
+    Computes and visualizes the cross-correlation between pairs of series at
+    various lags, useful for identifying lead-lag relationships and temporal
+    dependencies.
+
+    When ``columns`` is ``None`` (or has more than 2 entries), all unique
+    upper-triangle pairs are computed and arranged in a subplot grid.  When
+    exactly two columns are given, a single CCF plot is produced (matching
+    legacy behaviour).
 
     Parameters
     ----------
     df : pl.DataFrame
         Input DataFrame with 'time' column and numeric columns.
-    columns : list[str]
-        Exactly two column names: ``[predictor, response]``.
+    columns : list[str] | None, default=None
+        Column names to cross-correlate.  When ``None``, all numeric
+        columns are used and every unique upper-triangle pair is plotted.
+        When exactly two columns are given, a single CCF plot is produced.
     max_lags : int, default=40
         Number of lags to compute (both positive and negative).
     confidence_level : float, default=0.95
         Confidence level for confidence bands (e.g. ``0.95`` for 95%).
+    panel_group_names : list[str] | None, default=None
+        Panel group prefixes.  When set (or auto-detected), CCF is
+        computed between members within each group using an
+        upper-triangle matrix layout.
+    panel_layout : ``"grid"`` or ``"facet"``, default=``"facet"``
+        Layout for panel data.  ``"facet"`` renders a single figure with
+        one subplot per panel group.  ``"grid"`` renders a compact grid of
+        member-pair CCF plots.  Ignored for non-panel data.
+    facet_n_cols : int, default=2
+        Number of columns in the subplot grid.
+    color_palette : list[str] | None, default=None
+        Custom color palette for pair traces.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -1859,7 +2188,6 @@ def plot_cross_correlation(
         Additional styling parameters:
         - show_markers : bool, default=True
         - marker_size : float, default=6.0
-        - marker_color : str, default="#2563EB"
         - line_color : str, default="#94a3b8"
 
     Returns
@@ -1890,139 +2218,259 @@ def plot_cross_correlation(
     """
     # Validate inputs
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
 
-    if len(columns) != 2:  # noqa: PLR2004
-        msg = f"columns must contain exactly 2 column names, got {len(columns)}"
-        raise ValueError(msg)
+    _lag_vals = list(range(-max_lags, max_lags + 1))
 
-    x_column, y_column = columns
+    def _add_ccf_bar(
+        fig: go.Figure,
+        lag_vals: list[int],
+        ccf: list[float],
+        pair_color: str,
+        pair_label: str,
+        show_in_legend: bool,
+        *,
+        row: int | None = None,
+        col: int | None = None,
+    ) -> None:
+        """Add a single ACF-style bar trace."""
+        trace_kwargs: dict = {}
+        if row is not None and col is not None:
+            trace_kwargs["row"] = row
+            trace_kwargs["col"] = col
+        fig.add_trace(
+            go.Bar(
+                x=lag_vals,
+                y=ccf,
+                marker={"color": pair_color},
+                name=pair_label,
+                showlegend=show_in_legend,
+                legendgroup=pair_label,
+                hovertemplate=_make_hovertemplate(pair_label, "Lag", "CCF", decimals=3),
+            ),
+            **trace_kwargs,
+        )
 
-    if x_column not in df.columns:
-        msg = f"Column '{x_column}' not found in DataFrame"
-        raise ValueError(msg)
-    if y_column not in df.columns:
-        msg = f"Column '{y_column}' not found in DataFrame"
-        raise ValueError(msg)
+    def _add_ccf_bands(
+        fig: go.Figure,
+        n_pts: int,
+        *,
+        row: int | None = None,
+        col: int | None = None,
+    ) -> None:
+        """Add confidence bands and zero line."""
+        hline_kw: dict = {}
+        if row is not None and col is not None:
+            hline_kw["row"] = row
+            hline_kw["col"] = col
+        if confidence_level > 0:
+            cb = norm.ppf(1 - (1 - confidence_level) / 2) / math.sqrt(n_pts)
+            fig.add_hline(y=cb, line={"dash": "dash", "color": "#DC2626", "width": 1}, **hline_kw)
+            fig.add_hline(y=-cb, line={"dash": "dash", "color": "#DC2626", "width": 1}, **hline_kw)
+        fig.add_hline(y=0, line={"color": "#64748B", "width": 1}, **hline_kw)
 
-    # Get kwargs
-    show_markers = kwargs.get("show_markers", True)
-    marker_size = kwargs.get("marker_size", 6.0)
-    marker_color = kwargs.get("marker_color", "#2563EB")
-    line_color = kwargs.get("line_color", "#94a3b8")
+    # Auto-detect panel data
+    if panel_group_names is None and _auto_detect_panel(df) and columns is None:
+        panel_group_names = []
 
-    # Get series - drop rows where either column is null so NaN does not
-    # poison the mean / std / correlation calculations.
-    clean = df.select(x_column, y_column).drop_nulls()
-    x = clean[x_column].to_numpy()
-    y = clean[y_column].to_numpy()
-    n = len(x)
+    if panel_group_names is not None:
+        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
-    # Compute cross-correlation for each lag
-    lag_values = list(range(-max_lags, max_lags + 1))
-    ccf_values = []
+        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        groups, _all_members = _group_panel_columns(_panel_cols)
+        color_mgr = PanelColorManager(color_palette)
 
-    # Normalize series
-    x_mean = x.mean()
-    y_mean = y.mean()
-    x_std = x.std()
-    y_std = y.std()
+        # Build per-group pair lists
+        group_pairs: list[tuple[str, list[tuple[str, str]]]] = []
+        for gname, gcols in groups.items():
+            member_names = [_member_name(c) for c in gcols]
+            pairs = _upper_triangle_pairs(member_names)
+            if pairs:
+                group_pairs.append((gname, pairs))
 
-    for lag in lag_values:
-        if lag < 0:
-            # Negative lag: x leads y
-            x_shifted = x[: n + lag]
-            y_shifted = y[-lag:]
-        elif lag > 0:
-            # Positive lag: y leads x
-            x_shifted = x[lag:]
-            y_shifted = y[: n - lag]
-        else:
-            # Zero lag
-            x_shifted = x
-            y_shifted = y
+        if not group_pairs:
+            msg = f"Need at least 2 members per group for cross-correlation. Groups: {list(groups.keys())}"
+            raise ValueError(msg)
 
-        # Compute correlation
-        if len(x_shifted) > 0 and x_std != 0 and y_std != 0:
-            correlation = ((x_shifted - x_mean) * (y_shifted - y_mean)).mean() / (x_std * y_std)
-            ccf_values.append(correlation)
-        else:
-            ccf_values.append(0.0)
+        if panel_layout == "facet":
+            # One figure per group
+            figures: dict[str, go.Figure] = {}
+            for gname, pairs in group_pairs:
+                n = len(pairs)
+                n_cols_grid = min(n, facet_n_cols)
+                n_rows_grid = math.ceil(n / n_cols_grid)
+                legend_tracker = LegendTracker(show_legend=show_legend)
 
-    # Create figure
-    fig = go.Figure()
-
-    # Add stem plot
-    if show_markers:
-        # Add vertical lines
-        for lag, ccf in zip(lag_values, ccf_values, strict=True):
-            fig.add_trace(
-                go.Scatter(
-                    x=[lag, lag],
-                    y=[0, ccf],
-                    mode="lines",
-                    line={"color": line_color, "width": 2},
-                    showlegend=False,
-                    hoverinfo="skip",
+                gfig = make_subplots(
+                    rows=n_rows_grid,
+                    cols=n_cols_grid,
+                    subplot_titles=[f"{a} vs {b}" for a, b in pairs],
+                    vertical_spacing=_subplot_spacing(n_rows_grid),
+                    horizontal_spacing=_subplot_spacing(n_cols_grid) if n_cols_grid > 1 else 0.08,
                 )
-            )
 
-        # Add markers
-        fig.add_trace(
-            go.Scatter(
-                x=lag_values,
-                y=ccf_values,
-                mode="markers",
-                marker={"size": marker_size, "color": marker_color},
-                name="CCF",
-                hovertemplate="<b>Lag %{x}</b><br>CCF: %{y:.3f}<extra></extra>",
-            )
+                for idx, (a_name, b_name) in enumerate(pairs):
+                    r = idx // n_cols_grid + 1
+                    c = idx % n_cols_grid + 1
+                    col_a = f"{gname}__{a_name}"
+                    col_b = f"{gname}__{b_name}"
+                    clean = df.select(col_a, col_b).drop_nulls()
+                    x_arr = clean[col_a].to_numpy()
+                    y_arr = clean[col_b].to_numpy()
+                    ccf = _compute_ccf(x_arr, y_arr, max_lags)
+                    pair_label = f"{a_name} vs {b_name}"
+                    pair_color = color_mgr.get_color(pair_label)
+                    _add_ccf_bar(
+                        gfig, _lag_vals, ccf, pair_color, pair_label,
+                        legend_tracker.should_show(pair_label),
+                        row=r, col=c,
+                    )
+                    _add_ccf_bands(gfig, len(x_arr), row=r, col=c)
+
+                gfig = apply_default_layout(
+                    gfig,
+                    title=title or "Cross-Correlation",
+                    x_label=x_label or "Lag",
+                    y_label=y_label or "Cross-Correlation",
+                    width=width,
+                    height=height,
+                )
+                gfig.update_layout(showlegend=show_legend)
+                figures[gname] = gfig
+            return figures  # type: ignore[return-value]
+
+        # Grid mode: all groups + pairs in one figure
+        all_cells: list[tuple[str, str, str]] = []
+        for gname, pairs in group_pairs:
+            for a, b in pairs:
+                all_cells.append((gname, a, b))
+
+        n = len(all_cells)
+        n_cols_grid = min(n, facet_n_cols)
+        n_rows_grid = math.ceil(n / n_cols_grid)
+        legend_tracker = LegendTracker(show_legend=show_legend)
+
+        fig = make_subplots(
+            rows=n_rows_grid,
+            cols=n_cols_grid,
+            subplot_titles=[f"{gn}: {a} vs {b}" for gn, a, b in all_cells],
+            vertical_spacing=_subplot_spacing(n_rows_grid),
+            horizontal_spacing=_subplot_spacing(n_cols_grid) if n_cols_grid > 1 else 0.08,
         )
-    else:
-        fig.add_trace(
-            go.Scatter(
-                x=lag_values,
-                y=ccf_values,
-                mode="lines+markers",
-                line={"color": marker_color, "width": 2},
-                marker={"size": marker_size, "color": marker_color},
-                name="CCF",
-                hovertemplate="<b>Lag %{x}</b><br>CCF: %{y:.3f}<extra></extra>",
+
+        for idx, (gname, a_name, b_name) in enumerate(all_cells):
+            r = idx // n_cols_grid + 1
+            c = idx % n_cols_grid + 1
+            col_a = f"{gname}__{a_name}"
+            col_b = f"{gname}__{b_name}"
+            clean = df.select(col_a, col_b).drop_nulls()
+            x_arr = clean[col_a].to_numpy()
+            y_arr = clean[col_b].to_numpy()
+            ccf = _compute_ccf(x_arr, y_arr, max_lags)
+            pair_label = f"{a_name} vs {b_name}"
+            pair_color = color_mgr.get_color(pair_label)
+            _add_ccf_bar(
+                fig, _lag_vals, ccf, pair_color, pair_label,
+                legend_tracker.should_show(pair_label),
+                row=r, col=c,
             )
+            _add_ccf_bands(fig, len(x_arr), row=r, col=c)
+
+        fig = apply_default_layout(
+            fig,
+            title=title or "Cross-Correlation",
+            x_label=x_label or "Lag",
+            y_label=y_label or "Cross-Correlation",
+            width=width,
+            height=height,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
-    # Add confidence bands
-    alpha = 1 - confidence_level
-    z_value = norm.ppf(1 - alpha / 2)
+    # ── Non-panel mode ───────────────────────────────────────────────────
+    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
 
-    confidence_band = z_value / math.sqrt(n)
+    if len(plot_columns) < 2:  # noqa: PLR2004
+        msg = f"Cross-correlation requires at least 2 columns, got {len(plot_columns)}: {plot_columns}"
+        raise ValueError(msg)
 
-    ci_pct = (
-        f"{confidence_level:.0%}" if confidence_level == int(confidence_level * 100) / 100 else f"{confidence_level:%}"
+    pairs = _upper_triangle_pairs(plot_columns)
+    color_mgr = PanelColorManager(color_palette)
+    legend_tracker = LegendTracker()
+
+    if len(pairs) == 1:
+        # Single pair - flat figure
+        x_column, y_column = pairs[0]
+        clean = df.select(x_column, y_column).drop_nulls()
+        x_arr = clean[x_column].to_numpy()
+        y_arr = clean[y_column].to_numpy()
+        n_pts = len(x_arr)
+        ccf = _compute_ccf(x_arr, y_arr, max_lags)
+        pair_label = f"{x_column} vs {y_column}"
+        pair_color = color_mgr.get_color(pair_label)
+
+        fig = go.Figure()
+        _add_ccf_bar(fig, _lag_vals, ccf, pair_color, pair_label, True)
+
+        if confidence_level > 0:
+            cb = norm.ppf(1 - (1 - confidence_level) / 2) / math.sqrt(n_pts)
+            ci_pct = f"{confidence_level:.0%}"
+            fig.add_hline(
+                y=cb, line={"dash": "dash", "color": "#DC2626", "width": 1},
+                annotation_text=f"{ci_pct} CI", annotation_position="right",
+            )
+            fig.add_hline(y=-cb, line={"dash": "dash", "color": "#DC2626", "width": 1})
+        fig.add_hline(y=0, line={"color": "#64748B", "width": 1})
+
+        fig = apply_default_layout(
+            fig,
+            title=title or "Cross-Correlation",
+            x_label=x_label or "Lag",
+            y_label=y_label or "Cross-Correlation",
+            width=width,
+            height=height,
+        )
+        fig.update_layout(showlegend=show_legend)
+        return fig
+
+    # Multiple pairs - upper-triangle subplot grid
+    n = len(pairs)
+    n_cols_grid = min(n, facet_n_cols)
+    n_rows_grid = math.ceil(n / n_cols_grid)
+
+    fig = make_subplots(
+        rows=n_rows_grid,
+        cols=n_cols_grid,
+        subplot_titles=[f"{a} vs {b}" for a, b in pairs],
+        vertical_spacing=_subplot_spacing(n_rows_grid),
+        horizontal_spacing=_subplot_spacing(n_cols_grid) if n_cols_grid > 1 else 0.08,
     )
-    fig.add_hline(
-        y=confidence_band,
-        line={"dash": "dash", "color": "#DC2626", "width": 1},
-        annotation_text=f"{ci_pct} CI",
-        annotation_position="right",
-    )
-    fig.add_hline(
-        y=-confidence_band,
-        line={"dash": "dash", "color": "#DC2626", "width": 1},
-    )
-    fig.add_hline(y=0, line={"color": "#64748B", "width": 1})
 
-    # Set default labels
-    title_default = f"Cross-Correlation: {x_column} vs {y_column}" if title is None else title
+    for idx, (col_a, col_b) in enumerate(pairs):
+        r = idx // n_cols_grid + 1
+        c = idx % n_cols_grid + 1
+        clean = df.select(col_a, col_b).drop_nulls()
+        x_arr = clean[col_a].to_numpy()
+        y_arr = clean[col_b].to_numpy()
+        ccf = _compute_ccf(x_arr, y_arr, max_lags)
+        pair_label = f"{col_a} vs {col_b}"
+        pair_color = color_mgr.get_color(pair_label)
+        _add_ccf_bar(
+            fig, _lag_vals, ccf, pair_color, pair_label,
+            legend_tracker.should_show(pair_label),
+            row=r, col=c,
+        )
+        _add_ccf_bands(fig, len(x_arr), row=r, col=c)
 
     fig = apply_default_layout(
         fig,
-        title=title_default,
+        title=title or "Cross-Correlation",
         x_label=x_label or "Lag",
         y_label=y_label or "Cross-Correlation",
         width=width,
         height=height,
     )
-
+    fig.update_layout(showlegend=show_legend)
     return fig
 
 
@@ -2244,8 +2692,8 @@ def _scatter_matrix_facet(  # noqa: PLR0913
         fig = make_subplots(
             rows=m,
             cols=m,
-            horizontal_spacing=0.03,
-            vertical_spacing=0.03,
+            horizontal_spacing=_subplot_spacing(m),
+            vertical_spacing=_subplot_spacing(m),
         )
 
         _render_scatter_block(
@@ -2290,7 +2738,7 @@ def _scatter_matrix_facet(  # noqa: PLR0913
         default_size = max(600, m * cell_size + 100)
         fig = apply_default_layout(
             fig,
-            title=f"{title or 'Scatter Matrix'} — {gname}",
+            title=title or "Scatter Matrix",
             x_label=None,
             y_label=None,
             width=width or default_size,
@@ -2450,6 +2898,7 @@ def plot_scatter_matrix(
     panel_layout: Literal["grid", "facet"] = "grid",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     width: int | None = None,
     height: int | None = None,
@@ -2549,6 +2998,7 @@ def plot_scatter_matrix(
     from scipy.stats import gaussian_kde, pearsonr  # noqa: PLC0415
 
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
 
     # ── Panel auto-detection ─────────────────────────────────────────────
     _, _panel_groups = inspect_panel(df)
@@ -2804,6 +3254,7 @@ def plot_scatter_matrix(
         width=width or default_size,
         height=height or default_size,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -2889,6 +3340,7 @@ def plot_seasonal_heatmap(
     agg: str = "mean",
     panel_group_names: list[str] | None = None,
     facet_n_cols: int = 2,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
@@ -2975,8 +3427,7 @@ def plot_seasonal_heatmap(
     """
     # Validate
     validate_plotting_data(df)
-
-    # Styling knobs
+    validate_plotting_params(width=width, height=height)
     colorscale = kwargs.get("colorscale", "Viridis")
     show_values = kwargs.get("show_values", True)
     value_format = kwargs.get("value_format", ".1f")
@@ -3050,44 +3501,55 @@ def plot_seasonal_heatmap(
         )
 
     # Auto-detect panel data
-    _, panel_groups = inspect_panel(df)
-
-    if panel_group_names is None and panel_groups:
+    if panel_group_names is None and _auto_detect_panel(df):
         panel_group_names = []
 
-    if panel_group_names is not None and panel_groups:
+    if panel_group_names is not None:
+        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
-        def _render_heatmap(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col_idx: int,
-        ) -> None:
-            """Render seasonal heatmap for a single panel column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
-            trace = _build_heatmap(sub_df, base, display_name)
-            # Only show colorbar on the last subplot
-            trace.showscale = False
-            fig.add_trace(trace, row=row, col=col_idx)
+        panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        groups, _all_members = _group_panel_columns(panel_cols)
+
+        # Build flat list of (group_name, member_col, display_name) tuples
+        all_cells: list[tuple[str, str, str]] = []
+        for gname, gcols in groups.items():
+            for col in gcols:
+                mname = _member_name(col)
+                all_cells.append((gname, col, f"{gname}: {mname}"))
+
+        n = len(all_cells)
+        n_cols_grid = min(n, facet_n_cols)
+        n_rows_grid = math.ceil(n / n_cols_grid)
+
+        fig = make_subplots(
+            rows=n_rows_grid,
+            cols=n_cols_grid,
+            subplot_titles=[cell[2] for cell in all_cells],
+            vertical_spacing=_subplot_spacing(n_rows_grid),
+            horizontal_spacing=_subplot_spacing(n_cols_grid) if n_cols_grid > 1 else 0.08,
+        )
+
+        for idx, (_gname, member_col, display_label) in enumerate(all_cells):
+            r = idx // n_cols_grid + 1
+            c = idx % n_cols_grid + 1
+            mname = _member_name(member_col)
+            sub_df = df.select("time", pl.col(member_col).alias(mname))
+            trace = _build_heatmap(sub_df, mname, display_label)
+            trace.showscale = idx == n - 1
+            fig.add_trace(trace, row=r, col=c)
 
         _col_label = ", ".join(columns) if isinstance(columns, list) else (columns or "all")
-        fig = panel_facet_figure(
-            df,
-            _render_heatmap,
-            panel_group_names=panel_group_names,
-            columns=columns,
-            facet_n_cols=facet_n_cols,
-            title=title or f"{_col_label} - {agg} by {y_period} × {x_period}",
+        fig = apply_default_layout(
+            fig,
+            title=title or "Seasonal Heatmap",
             x_label=x_label or x_period.replace("_", " ").title(),
             y_label=y_label or y_period.replace("_", " ").title(),
             width=width,
             height=height,
-            shared_xaxes=False,
         )
         if reverse_y:
             fig.update_yaxes(autorange="reversed")
+        fig.update_layout(showlegend=show_legend)
         return fig
 
     # Non-panel case — resolve columns
@@ -3103,12 +3565,13 @@ def plot_seasonal_heatmap(
 
         fig = apply_default_layout(
             fig,
-            title=title or f"{col} - {agg} by {y_period} × {x_period}",
+            title=title or "Seasonal Heatmap",
             x_label=x_label or x_period.replace("_", " ").title(),
             y_label=y_label or y_period.replace("_", " ").title(),
             width=width,
             height=height,
         )
+        fig.update_layout(showlegend=show_legend)
         return fig
 
     # Multi-column non-panel: one heatmap per column in a subplot grid
@@ -3132,10 +3595,11 @@ def plot_seasonal_heatmap(
 
     fig = apply_default_layout(
         fig,
-        title=title or f"{agg} by {y_period} × {x_period}",
+        title=title or "Seasonal Heatmap",
         x_label=x_label or x_period.replace("_", " ").title(),
         y_label=y_label or y_period.replace("_", " ").title(),
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
     return fig

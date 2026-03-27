@@ -7,7 +7,7 @@ from plotly import graph_objects as go
 
 from yohou.model_selection import BaseSplitter
 from yohou.plotting._utils import _create_figure, apply_default_layout, resolve_color_palette
-from yohou.utils import validate_plotting_data
+from yohou.utils import validate_plotting_data, validate_plotting_params
 
 __all__ = ["plot_cv_results_scatter", "plot_splits"]
 
@@ -25,6 +25,7 @@ def plot_splits(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
     resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
@@ -101,6 +102,7 @@ def plot_splits(
     """
     # Validate inputs
     validate_plotting_data(y)
+    validate_plotting_params(width=width, height=height)
 
     if not isinstance(splitter, BaseSplitter):
         msg = f"Expected BaseSplitter, got {type(splitter).__name__}"
@@ -200,6 +202,7 @@ def plot_splits(
         width=width,
         height=height_default,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -217,6 +220,7 @@ def plot_cv_results_scatter(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
     **kwargs,
 ) -> go.Figure:
     """
@@ -295,6 +299,7 @@ def plot_cv_results_scatter(
     """
     # Construct key names
     param_key = f"param_{param_name}"
+    validate_plotting_params(width=width, height=height)
 
     # Auto-detect scorer name if not provided
     if scorer_name is None:
@@ -402,5 +407,6 @@ def plot_cv_results_scatter(
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig

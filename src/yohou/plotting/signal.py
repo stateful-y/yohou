@@ -8,12 +8,14 @@ import polars as pl
 from scipy.signal import periodogram as scipy_periodogram
 
 from yohou.plotting._utils import (
+    LegendTracker,
+    _auto_detect_panel,
     apply_default_layout,
     panel_facet_figure,
     resolve_color_palette,
+    resolve_panel_columns,
 )
-from yohou.utils import validate_plotting_data
-from yohou.utils.panel import inspect_panel
+from yohou.utils import validate_plotting_data, validate_plotting_params
 
 __all__ = [
     "plot_phase",
@@ -35,6 +37,8 @@ def plot_phase(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
+    connect_gaps: bool = False,
     **kwargs,
 ) -> go.Figure:
     """Plot the phase of a time series.
@@ -99,20 +103,24 @@ def plot_phase(
     `plot_spectrum` : Plot power spectral density.
     """
     use_degrees = angle_unit == "degree"
+    unit = "degrees" if use_degrees else "radians"
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
     if panel_group_names is not None:
+        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
+        _legend_tracker = LegendTracker()
 
         def _render_phase(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
-            panel_idx: int,  # noqa: ARG001
+            display_name: str,
+            panel_idx: int,
             row: int,
             col: int,
         ) -> None:
@@ -132,15 +140,17 @@ def plot_phase(
                     x=freqs[1:].tolist(),
                     y=phase[1:].tolist(),
                     mode="lines",
-                    line={"width": _lw},
-                    showlegend=False,
+                    line={"width": _lw, "color": _panel_colors[panel_idx]},
+                    name=display_name,
+                    legendgroup=display_name,
+                    showlegend=_legend_tracker.should_show(display_name),
+                    connectgaps=connect_gaps,
                 ),
                 row=row,
                 col=col,
             )
 
-        unit = "degrees" if use_degrees else "radians"
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df,
             _render_phase,
             panel_group_names=panel_group_names,
@@ -153,6 +163,8 @@ def plot_phase(
             height=height,
             shared_xaxes=False,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     colors = resolve_color_palette(color_palette, len(plot_columns))
@@ -183,13 +195,13 @@ def plot_phase(
                 mode="lines",
                 line={"width": line_width, "color": colors[col_idx]},
                 name=col_name,
+                connectgaps=connect_gaps,
                 hovertemplate=(
                     f"<b>{col_name}</b><br>Frequency: %{{x:.4f}}<br>Phase: %{{y:.2f}} {unit_label}<extra></extra>"
                 ),
             )
         )
 
-    unit = "degrees" if use_degrees else "radians"
     fig = apply_default_layout(
         fig,
         title=title or "Phase Spectrum",
@@ -198,6 +210,7 @@ def plot_phase(
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -215,6 +228,8 @@ def plot_spectrum(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
+    connect_gaps: bool = False,
     **kwargs,
 ) -> go.Figure:
     """Plot periodogram (power spectral density) for frequency domain analysis.
@@ -284,19 +299,22 @@ def plot_spectrum(
     """
     # Validate inputs
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
     if panel_group_names is not None:
+        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
+        _legend_tracker = LegendTracker()
 
         def _render_periodogram(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
-            panel_idx: int,  # noqa: ARG001
+            display_name: str,
+            panel_idx: int,
             row: int,
             col: int,
         ) -> None:
@@ -310,8 +328,11 @@ def plot_spectrum(
                     x=freqs[1:].tolist(),
                     y=psd[1:].tolist(),
                     mode="lines",
-                    line={"width": _lw},
-                    showlegend=False,
+                    line={"width": _lw, "color": _panel_colors[panel_idx]},
+                    name=display_name,
+                    legendgroup=display_name,
+                    showlegend=_legend_tracker.should_show(display_name),
+                    connectgaps=connect_gaps,
                 ),
                 row=row,
                 col=col,
@@ -319,7 +340,7 @@ def plot_spectrum(
             if log_scale:
                 fig.update_yaxes(type="log", row=row, col=col)
 
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df,
             _render_periodogram,
             panel_group_names=panel_group_names,
@@ -332,6 +353,8 @@ def plot_spectrum(
             height=height,
             shared_xaxes=False,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -374,6 +397,7 @@ def plot_spectrum(
                 line={"width": line_width, "color": colors[col_idx]},
                 name=col,
                 customdata=periods,
+                connectgaps=connect_gaps,
                 hovertemplate=hover,
             )
         )
@@ -407,16 +431,11 @@ def plot_spectrum(
                 )
             )
 
-    title_default = "Periodogram" if title is None else title
-    x_label_default = "Frequency (cycles/sample)" if x_label is None else x_label
-    y_label_default = "Power Spectral Density" if y_label is None else y_label
-
-    # Apply default layout
     fig = apply_default_layout(
         fig,
-        title=title_default,
-        x_label=x_label_default,
-        y_label=y_label_default,
+        title=title or "Periodogram",
+        x_label=x_label or "Frequency (cycles/sample)",
+        y_label=y_label or "Power Spectral Density",
         width=width,
         height=height,
     )
@@ -424,5 +443,6 @@ def plot_spectrum(
     # Apply log scale if requested
     if log_scale:
         fig.update_yaxes(type="log")
+    fig.update_layout(showlegend=show_legend)
 
     return fig

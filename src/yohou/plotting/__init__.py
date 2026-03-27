@@ -8,7 +8,18 @@ from plotly_resampler.aggregation.aggregators import (
 )
 from plotly_resampler.aggregation.gap_handlers import MedDiffGapHandler, NoGapHandler
 
-from yohou.plotting._utils import config_context, get_config, palette_yohou, set_config
+from yohou.plotting._utils import (
+    LINE_DASH_SEQUENCE,
+    PanelColorManager,
+    config_context,
+    get_color_sequence,
+    get_config,
+    linked_legendgroup_kwargs,
+    palette_yohou,
+    resolve_color_palette,
+    resolve_panel_columns,
+    set_config,
+)
 from yohou.plotting.diagnostics import (
     plot_autocorrelation,
     plot_correlation_heatmap,
@@ -48,13 +59,19 @@ from yohou.plotting.signal import plot_phase, plot_spectrum
 __all__ = [
     "EveryNthPoint",
     "LTTB",
+    "LINE_DASH_SEQUENCE",
     "MedDiffGapHandler",
     "MinMaxAggregator",
     "MinMaxLTTB",
     "NoGapHandler",
+    "PanelColorManager",
     "config_context",
+    "get_color_sequence",
     "get_config",
+    "linked_legendgroup_kwargs",
     "palette_yohou",
+    "resolve_color_palette",
+    "resolve_panel_columns",
     "plot_autocorrelation",
     "plot_boxplot",
     "plot_calibration",

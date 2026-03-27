@@ -14,9 +14,11 @@ from yohou.plotting import (
     plot_time_series,
 )
 
+from .conftest import assert_figure_valid, assert_layout, visible_legend_names
+
 
 @pytest.fixture
-def sample_df():
+def monthly_2col_df():
     """Create sample DataFrame for testing."""
     return pl.DataFrame({
         "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
@@ -25,72 +27,61 @@ def sample_df():
     })
 
 
-@pytest.fixture
-def df_with_nulls():
-    """Create a sample dataframe with missing values."""
-    return pl.DataFrame({
-        "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
-        "y": [100 + i if i % 5 != 0 else None for i in range(366)],
-        "z": [200 + i if i % 7 != 0 else None for i in range(366)],
-    })
-
-
 class TestPlotTimeSeries:
     """Tests for plot_time_series function."""
 
-    def test_single_column(self, sample_df):
+    def test_single_column(self, monthly_2col_df):
         """Test plotting a single column."""
-        fig = plot_time_series(sample_df, columns="y")
+        fig = plot_time_series(monthly_2col_df, columns="y")
         assert len(fig.data) == 1
         assert fig.data[0].type == "scatter"
         assert fig.data[0].mode == "lines"
         assert fig.data[0].name == "y"
 
-    def test_multiple_columns(self, sample_df):
+    def test_multiple_columns(self, monthly_2col_df):
         """Test plotting multiple columns."""
-        fig = plot_time_series(sample_df, columns=["y", "y2"])
+        fig = plot_time_series(monthly_2col_df, columns=["y", "y2"])
         assert len(fig.data) == 2
         assert fig.data[0].name == "y"
         assert fig.data[1].name == "y2"
 
-    def test_all_columns(self, sample_df):
+    def test_all_columns(self, monthly_2col_df):
         """Test plotting all numeric columns (default)."""
-        fig = plot_time_series(sample_df, columns=None)
+        fig = plot_time_series(monthly_2col_df, columns=None)
         # Should plot y and y2 (not time)
         assert len(fig.data) == 2
 
-    def test_with_title(self, sample_df):
+    def test_with_title(self, monthly_2col_df):
         """Test plot with custom title."""
-        fig = plot_time_series(sample_df, columns="y", title="Test Plot")
-        assert fig.layout.title.text == "Test Plot"
+        fig = plot_time_series(monthly_2col_df, columns="y", title="Test Plot")
+        assert_layout(fig, title="Test Plot")
 
-    def test_custom_labels(self, sample_df):
+    def test_custom_labels(self, monthly_2col_df):
         """Test plot with custom axis labels."""
-        fig = plot_time_series(sample_df, columns="y", x_label="Date", y_label="Value")
+        fig = plot_time_series(monthly_2col_df, columns="y", x_label="Date", y_label="Value")
         assert fig.layout.xaxis.title.text == "Date"
         assert fig.layout.yaxis.title.text == "Value"
 
-    def test_custom_size(self, sample_df):
+    def test_custom_size(self, monthly_2col_df):
         """Test plot with custom dimensions."""
-        fig = plot_time_series(sample_df, columns="y", width=800, height=600)
-        assert fig.layout.width == 800
-        assert fig.layout.height == 600
+        fig = plot_time_series(monthly_2col_df, columns="y", width=800, height=600)
+        assert_layout(fig, width=800, height=600)
 
-    def test_custom_styling(self, sample_df):
+    def test_custom_styling(self, monthly_2col_df):
         """Test plot with custom styling via kwargs."""
-        fig = plot_time_series(sample_df, columns="y", line_width=3.0, line_color="#DC2626", line_dash="dash")
+        fig = plot_time_series(monthly_2col_df, columns="y", line_width=3.0, line_color="#DC2626", line_dash="dash")
         assert fig.data[0].line.width == 3.0
         assert fig.data[0].line.color == "#DC2626"
         assert fig.data[0].line.dash == "dash"
 
-    def test_no_legend(self, sample_df):
+    def test_no_legend(self, monthly_2col_df):
         """Test plot without legend."""
-        fig = plot_time_series(sample_df, columns=["y", "y2"], show_legend=False)
+        fig = plot_time_series(monthly_2col_df, columns=["y", "y2"], show_legend=False)
         assert fig.layout.showlegend is False
 
-    def test_panel_support(self, sample_df):
+    def test_panel_support(self, monthly_2col_df):
         """Test that panel grouping is handled by plot_time_series."""
-        df = sample_df.with_columns(pl.lit("A").alias("group"))
+        df = monthly_2col_df.with_columns(pl.lit("A").alias("group"))
         fig = plot_time_series(df, columns="y", panel_group_names=["group"])
         assert len(fig.data) >= 0
 
@@ -98,51 +89,51 @@ class TestPlotTimeSeries:
 class TestPlotRollingStatistics:
     """Tests for plot_rolling_statistics function."""
 
-    def test_basic(self, sample_df):
+    def test_basic(self, monthly_2col_df):
         """Test basic rolling mean."""
-        fig = plot_rolling_statistics(sample_df, columns="y", window_size=3, statistics="mean")
+        fig = plot_rolling_statistics(monthly_2col_df, columns="y", window_size=3, statistics="mean")
         # Should have original + rolling mean
         assert len(fig.data) == 2
 
-    def test_no_original(self, sample_df):
+    def test_no_original(self, monthly_2col_df):
         """Test rolling mean without original series."""
-        fig = plot_rolling_statistics(sample_df, columns="y", window_size=3, statistics="mean", show_original=False)
+        fig = plot_rolling_statistics(monthly_2col_df, columns="y", window_size=3, statistics="mean", show_original=False)
         assert len(fig.data) == 1
 
-    def test_multiple_stats(self, sample_df):
+    def test_multiple_stats(self, monthly_2col_df):
         """Test multiple statistics."""
-        fig = plot_rolling_statistics(sample_df, columns="y", window_size=3, statistics=["mean", "std"])
+        fig = plot_rolling_statistics(monthly_2col_df, columns="y", window_size=3, statistics=["mean", "std"])
         # Original + 2 statistics
         assert len(fig.data) == 3
 
-    def test_all_stat_types(self, sample_df):
+    def test_all_stat_types(self, monthly_2col_df):
         """Test all available statistics."""
         stats = ["mean", "std", "min", "max", "median", "q25", "q75", "sum"]
         for stat in stats:
-            fig = plot_rolling_statistics(sample_df, columns="y", window_size=3, statistics=stat, show_original=False)
+            fig = plot_rolling_statistics(monthly_2col_df, columns="y", window_size=3, statistics=stat, show_original=False)
             assert len(fig.data) == 1
 
-    def test_invalid_stat(self, sample_df):
+    def test_invalid_stat(self, monthly_2col_df):
         """Test that invalid statistic raises error."""
         with pytest.raises(ValueError, match="Invalid statistics"):
-            plot_rolling_statistics(sample_df, columns="y", window_size=3, statistics="invalid")
+            plot_rolling_statistics(monthly_2col_df, columns="y", window_size=3, statistics="invalid")
 
-    def test_panel(self, sample_df):
+    def test_panel(self, monthly_2col_df):
         """Test panel faceting for rolling statistics."""
         df = pl.DataFrame({
-            "time": sample_df["time"],
-            "y__a": sample_df["y"],
-            "y__b": sample_df["y"] * 2,
+            "time": monthly_2col_df["time"],
+            "y__a": monthly_2col_df["y"],
+            "y__b": monthly_2col_df["y"] * 2,
         })
         fig = plot_rolling_statistics(df, window_size=3, statistics="mean", panel_group_names=["y"])
         assert len(fig.data) > 0
 
-    def test_multi_column(self, sample_df):
+    def test_multi_column(self, monthly_2col_df):
         """Test rolling statistics with multiple columns uses distinct colors."""
         df = pl.DataFrame({
-            "time": sample_df["time"],
-            "y": sample_df["y"],
-            "z": sample_df["y"] * 2,
+            "time": monthly_2col_df["time"],
+            "y": monthly_2col_df["y"],
+            "z": monthly_2col_df["y"] * 2,
         })
         fig = plot_rolling_statistics(df, columns=["y", "z"], window_size=3, statistics="mean")
         # 2 original + 2 rolling mean = 4 traces
@@ -151,12 +142,12 @@ class TestPlotRollingStatistics:
         colors = {trace.line.color for trace in fig.data if trace.line.color is not None}
         assert len(colors) >= 2
 
-    def test_dict_window_size(self, sample_df):
+    def test_dict_window_size(self, monthly_2col_df):
         """Test per-column window sizes via dict."""
         df = pl.DataFrame({
-            "time": sample_df["time"],
-            "y": sample_df["y"],
-            "z": sample_df["y"] * 2,
+            "time": monthly_2col_df["time"],
+            "y": monthly_2col_df["y"],
+            "z": monthly_2col_df["y"] * 2,
         })
         fig = plot_rolling_statistics(df, columns=["y", "z"], window_size={"y": 3, "z": 5}, statistics="mean")
         # 2 original + 2 rolling mean = 4 traces
@@ -166,9 +157,9 @@ class TestPlotRollingStatistics:
 class TestPlotBoxplot:
     """Tests for plot_boxplot function."""
 
-    def test_basic(self, sample_df):
+    def test_basic(self, monthly_2col_df):
         """Test basic boxplot."""
-        fig = plot_boxplot(sample_df, columns="y", period="1mo")
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo")
         assert len(fig.data) > 0
 
     def test_different_periods(self):
@@ -182,32 +173,32 @@ class TestPlotBoxplot:
             fig = plot_boxplot(df, columns="y", period=period)
             assert len(fig.data) > 0
 
-    def test_show_points(self, sample_df):
+    def test_show_points(self, monthly_2col_df):
         """Test boxplot with point display options."""
-        fig = plot_boxplot(sample_df, columns="y", period="1mo", show_points="all")
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo", show_points="all")
         assert len(fig.data) > 0
 
-        fig = plot_boxplot(sample_df, columns="y", period="1mo", show_points=False)
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo", show_points=False)
         assert len(fig.data) > 0
 
-    def test_styling(self, sample_df):
+    def test_styling(self, monthly_2col_df):
         """Test boxplot with custom styling."""
-        fig = plot_boxplot(sample_df, columns="y", period="1mo", box_color="#DC2626", box_opacity=0.9)
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo", box_color="#DC2626", box_opacity=0.9)
         assert len(fig.data) > 0
 
-    def test_panel(self, sample_df):
+    def test_panel(self, monthly_2col_df):
         """Test panel faceting for boxplots."""
         df = pl.DataFrame({
-            "time": sample_df["time"],
-            "y__a": sample_df["y"],
-            "y__b": sample_df["y"] * 2,
+            "time": monthly_2col_df["time"],
+            "y__a": monthly_2col_df["y"],
+            "y__b": monthly_2col_df["y"] * 2,
         })
         fig = plot_boxplot(df, period="1mo", panel_group_names=["y"])
         assert len(fig.data) > 0
 
-    def test_multi_column(self, sample_df):
+    def test_multi_column(self, monthly_2col_df):
         """Test boxplot with multiple columns (grouped bar-like)."""
-        fig = plot_boxplot(sample_df, columns=["y", "y2"], period="1mo")
+        fig = plot_boxplot(monthly_2col_df, columns=["y", "y2"], period="1mo")
         assert len(fig.data) > 0
         # Each column should produce traces with different colors
         colors = {t.marker.color for t in fig.data if t.marker and t.marker.color}
@@ -269,10 +260,10 @@ class TestPlotMissingData:
 class TestPlotTimeSeriesErrorPaths:
     """Error path tests for plot_time_series."""
 
-    def test_invalid_column_name(self, sample_df):
+    def test_invalid_column_name(self, monthly_2col_df):
         """Non-existent column raises ValueError."""
         with pytest.raises(ValueError, match="not found|not in"):
-            plot_time_series(sample_df, columns="nonexistent")
+            plot_time_series(monthly_2col_df, columns="nonexistent")
 
     def test_not_a_dataframe(self):
         """Passing a non-DataFrame raises TypeError."""
@@ -289,26 +280,25 @@ class TestPlotTimeSeriesErrorPaths:
 class TestPlotBoxplotErrorPaths:
     """Error path and stronger assertion tests for plot_boxplot."""
 
-    def test_returns_go_figure(self, sample_df):
+    def test_returns_go_figure(self, monthly_2col_df):
         """Boxplot always returns a go.Figure instance."""
-        fig = plot_boxplot(sample_df, columns="y", period="1mo")
-        assert isinstance(fig, go.Figure)
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo")
+        assert_figure_valid(fig)
 
-    def test_trace_type_is_box(self, sample_df):
+    def test_trace_type_is_box(self, monthly_2col_df):
         """Boxplot traces should be Box type."""
-        fig = plot_boxplot(sample_df, columns="y", period="1mo")
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo")
         assert any(isinstance(t, go.Box) for t in fig.data)
 
-    def test_custom_title(self, sample_df):
+    def test_custom_title(self, monthly_2col_df):
         """Custom title is applied to boxplot figure."""
-        fig = plot_boxplot(sample_df, columns="y", period="1mo", title="Box Title")
-        assert fig.layout.title.text == "Box Title"
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo", title="Box Title")
+        assert_layout(fig, title="Box Title")
 
-    def test_custom_dimensions(self, sample_df):
+    def test_custom_dimensions(self, monthly_2col_df):
         """Custom dimensions are respected."""
-        fig = plot_boxplot(sample_df, columns="y", period="1mo", width=800, height=500)
-        assert fig.layout.width == 800
-        assert fig.layout.height == 500
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo", width=800, height=500)
+        assert_layout(fig, width=800, height=500)
 
 
 class TestPlotTimeSeriesPanelAutoDetect:
@@ -322,8 +312,7 @@ class TestPlotTimeSeriesPanelAutoDetect:
             "sales__store_2": [200.0, 210.0, 220.0, 230.0, 240.0, 250.0],
         })
         fig = plot_time_series(df)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotRollingStatisticsPanelAutoDetect:
@@ -337,8 +326,7 @@ class TestPlotRollingStatisticsPanelAutoDetect:
             "sales__store_2": [200 + i * 3.0 for i in range(12)],
         })
         fig = plot_rolling_statistics(df, window_size=3, statistics="mean")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotBoxplotPanelAutoDetect:
@@ -352,8 +340,7 @@ class TestPlotBoxplotPanelAutoDetect:
             "sales__store_2": [200 + i * 3.0 for i in range(12)],
         })
         fig = plot_boxplot(df, period="1mo")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotMissingDataPanelAutoDetect:
@@ -367,8 +354,7 @@ class TestPlotMissingDataPanelAutoDetect:
             "sales__store_2": [None, 210.0, 220.0, 230.0, None, 250.0],
         })
         fig = plot_missing_data(df, kind="bars")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotMissingDataKindBranches:
@@ -386,19 +372,19 @@ class TestPlotMissingDataKindBranches:
     def test_heatmap_with_time_aggregation(self, df_nulls):
         """Heatmap kind with time_aggregation uses period groups."""
         fig = plot_missing_data(df_nulls, kind="heatmap", time_aggregation="1mo")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert isinstance(fig.data[0], go.Heatmap)
 
     def test_heatmap_without_time_aggregation(self, df_nulls):
         """Heatmap kind without time_aggregation uses individual time points."""
         fig = plot_missing_data(df_nulls, kind="heatmap")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert isinstance(fig.data[0], go.Heatmap)
 
     def test_matrix_kind(self, df_nulls):
         """Matrix kind renders binary heatmap."""
         fig = plot_missing_data(df_nulls, kind="matrix")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert isinstance(fig.data[0], go.Heatmap)
 
     def test_invalid_kind_raises(self, df_nulls):
@@ -413,45 +399,44 @@ class TestPlotMissingDataKindBranches:
 class TestPlotDistribution:
     """Tests for plot_distribution function."""
 
-    def test_single_column(self, sample_df):
+    def test_single_column(self, monthly_2col_df):
         """Test histogram + KDE for a single column."""
-        fig = plot_distribution(sample_df, columns="y")
-        assert isinstance(fig, go.Figure)
+        fig = plot_distribution(monthly_2col_df, columns="y")
+        assert_figure_valid(fig)
         # 1 histogram + 1 KDE
         assert len(fig.data) == 2
 
-    def test_no_kde(self, sample_df):
+    def test_no_kde(self, monthly_2col_df):
         """Test histogram only (no KDE)."""
-        fig = plot_distribution(sample_df, columns="y", show_kde=False)
+        fig = plot_distribution(monthly_2col_df, columns="y", show_kde=False)
         assert len(fig.data) == 1
 
-    def test_multiple_columns(self, sample_df):
+    def test_multiple_columns(self, monthly_2col_df):
         """Test distribution for multiple columns."""
-        fig = plot_distribution(sample_df, columns=["y", "y2"])
+        fig = plot_distribution(monthly_2col_df, columns=["y", "y2"])
         # 2 histograms + 2 KDEs
         assert len(fig.data) == 4
 
-    def test_custom_bins(self, sample_df):
+    def test_custom_bins(self, monthly_2col_df):
         """Test with custom number of bins."""
-        fig = plot_distribution(sample_df, columns="y", n_bins=10)
-        assert isinstance(fig, go.Figure)
+        fig = plot_distribution(monthly_2col_df, columns="y", n_bins=10)
+        assert_figure_valid(fig)
 
-    def test_all_columns_default(self, sample_df):
+    def test_all_columns_default(self, monthly_2col_df):
         """Test that all numeric columns are used when columns is None."""
-        fig = plot_distribution(sample_df)
+        fig = plot_distribution(monthly_2col_df)
         # y and y2 → 2 histograms + 2 KDEs
         assert len(fig.data) == 4
 
-    def test_custom_title(self, sample_df):
+    def test_custom_title(self, monthly_2col_df):
         """Test that title is applied."""
-        fig = plot_distribution(sample_df, columns="y", title="My Distribution")
-        assert fig.layout.title.text == "My Distribution"
+        fig = plot_distribution(monthly_2col_df, columns="y", title="My Distribution")
+        assert_layout(fig, title="My Distribution")
 
-    def test_custom_dimensions(self, sample_df):
+    def test_custom_dimensions(self, monthly_2col_df):
         """Test custom width and height."""
-        fig = plot_distribution(sample_df, columns="y", width=800, height=500)
-        assert fig.layout.width == 800
-        assert fig.layout.height == 500
+        fig = plot_distribution(monthly_2col_df, columns="y", width=800, height=500)
+        assert_layout(fig, width=800, height=500)
 
     def test_panel(self):
         """Test panel faceting for distribution."""
@@ -461,8 +446,7 @@ class TestPlotDistribution:
             "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
         })
         fig = plot_distribution(df, panel_group_names=["y"])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
     def test_auto_detect_panel(self):
         """Distribution auto-detects panel mode."""
@@ -472,12 +456,12 @@ class TestPlotDistribution:
             "sales__b": [200.0, 210.0, 220.0, 230.0, 240.0, 250.0],
         })
         fig = plot_distribution(df)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
-    def test_returns_figure(self, sample_df):
+    def test_returns_figure(self, monthly_2col_df):
         """Always returns go.Figure."""
-        fig = plot_distribution(sample_df, columns="y")
-        assert isinstance(fig, go.Figure)
+        fig = plot_distribution(monthly_2col_df, columns="y")
+        assert_figure_valid(fig)
 
     def test_not_a_dataframe(self):
         """Non-DataFrame raises TypeError."""
@@ -491,26 +475,26 @@ class TestPlotDistribution:
 class TestPlotOutlierDetection:
     """Tests for plot_outliers function."""
 
-    def test_zscore(self, sample_df):
+    def test_zscore(self, monthly_2col_df):
         """Test z-score method."""
-        fig = plot_outliers(sample_df, columns="y", method="zscore", threshold=1.0)
-        assert isinstance(fig, go.Figure)
+        fig = plot_outliers(monthly_2col_df, columns="y", method="zscore", threshold=1.0)
+        assert_figure_valid(fig)
         # At least the line trace
         assert len(fig.data) >= 1
 
-    def test_iqr(self, sample_df):
+    def test_iqr(self, monthly_2col_df):
         """Test IQR method."""
-        fig = plot_outliers(sample_df, columns="y", method="iqr", threshold=1.5)
-        assert isinstance(fig, go.Figure)
+        fig = plot_outliers(monthly_2col_df, columns="y", method="iqr", threshold=1.5)
+        assert_figure_valid(fig)
 
-    def test_percentile(self, sample_df):
+    def test_percentile(self, monthly_2col_df):
         """Test percentile method."""
-        fig = plot_outliers(sample_df, columns="y", method="percentile", threshold=10.0)
-        assert isinstance(fig, go.Figure)
+        fig = plot_outliers(monthly_2col_df, columns="y", method="percentile", threshold=10.0)
+        assert_figure_valid(fig)
 
-    def test_multiple_columns(self, sample_df):
+    def test_multiple_columns(self, monthly_2col_df):
         """Test outlier detection on multiple columns."""
-        fig = plot_outliers(sample_df, columns=["y", "y2"], method="zscore")
+        fig = plot_outliers(monthly_2col_df, columns=["y", "y2"], method="zscore")
         # At least 2 line traces
         assert len(fig.data) >= 2
 
@@ -521,7 +505,7 @@ class TestPlotOutlierDetection:
             "y": [100.0] * 10,
         })
         fig = plot_outliers(df, columns="y")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         # Only the line trace + possibly bounds, no outlier markers
         scatter_markers = [t for t in fig.data if t.mode == "markers"]
         assert len(scatter_markers) == 0
@@ -529,7 +513,7 @@ class TestPlotOutlierDetection:
     def test_with_nulls(self, df_with_nulls):
         """Null values don't cause errors."""
         fig = plot_outliers(df_with_nulls, columns="y", method="zscore")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     def test_panel(self):
         """Test panel faceting for outlier detection."""
@@ -539,25 +523,24 @@ class TestPlotOutlierDetection:
             "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
         })
         fig = plot_outliers(df, method="zscore", panel_group_names=["y"])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
-    def test_custom_styling(self, sample_df):
+    def test_custom_styling(self, monthly_2col_df):
         """Test custom outlier styling via kwargs."""
         fig = plot_outliers(
-            sample_df,
+            monthly_2col_df,
             columns="y",
             method="zscore",
             outlier_color="#FF0000",
             outlier_size=12.0,
             show_bounds=False,
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
-    def test_invalid_method(self, sample_df):
+    def test_invalid_method(self, monthly_2col_df):
         """Invalid method raises ValueError."""
         with pytest.raises(ValueError, match="Unknown method"):
-            plot_outliers(sample_df, columns="y", method="invalid")
+            plot_outliers(monthly_2col_df, columns="y", method="invalid")
 
     def test_auto_detect_panel(self):
         """Outlier detection auto-detects panel mode."""
@@ -567,7 +550,7 @@ class TestPlotOutlierDetection:
             "sales__b": [200.0, 210.0, 220.0, 230.0, 240.0, 250.0],
         })
         fig = plot_outliers(df)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
 
 # ── plot_resampling_comparison ────────────────────────────────────────
@@ -594,7 +577,7 @@ class TestPlotResamplingComparison:
         fig = plot_resampling_comparison(hourly, daily, columns="temp")
         # 1 original + 1 resampled
         assert len(fig.data) == 2
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     def test_multiple_columns(self):
         """Test with multiple columns."""
@@ -641,17 +624,75 @@ class TestPlotResamplingComparison:
         """Always returns go.Figure."""
         hourly, daily = hourly_and_daily
         fig = plot_resampling_comparison(hourly, daily, columns="temp")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     def test_custom_title(self, hourly_and_daily):
         """Custom title is applied."""
         hourly, daily = hourly_and_daily
         fig = plot_resampling_comparison(hourly, daily, columns="temp", title="Resample Test")
-        assert fig.layout.title.text == "Resample Test"
+        assert_layout(fig, title="Resample Test")
 
     def test_custom_dimensions(self, hourly_and_daily):
         """Custom dimensions are respected."""
         hourly, daily = hourly_and_daily
         fig = plot_resampling_comparison(hourly, daily, columns="temp", width=900, height=400)
-        assert fig.layout.width == 900
-        assert fig.layout.height == 400
+        assert_layout(fig, width=900, height=400)
+
+
+# ---------------------------------------------------------------------------
+# Panel legend deduplication integration tests
+# ---------------------------------------------------------------------------
+
+def _make_three_group_panel() -> pl.DataFrame:
+    """Create a 3-group, 2-member panel DataFrame for testing."""
+    return pl.DataFrame({
+        "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+        "g1__a": [100 + i * 2.0 for i in range(12)],
+        "g1__b": [200 + i * 3.0 for i in range(12)],
+        "g2__a": [150 + i * 1.5 for i in range(12)],
+        "g2__b": [250 + i * 2.5 for i in range(12)],
+        "g3__a": [120 + i * 1.8 for i in range(12)],
+        "g3__b": [220 + i * 2.2 for i in range(12)],
+    })
+
+
+class TestPanelLegendDedup:
+    """Verify that panel plots produce no duplicate legend entries."""
+
+    def test_time_series_no_duplicate_legend(self):
+        """plot_time_series: each member name appears at most once in legend."""
+        df = _make_three_group_panel()
+        fig = plot_time_series(df)
+        names = visible_legend_names(fig)
+        assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
+        assert set(names) == {"a", "b"}
+
+    def test_time_series_legendgroup_set(self):
+        """plot_time_series: all traces carry legendgroup matching their name."""
+        df = _make_three_group_panel()
+        fig = plot_time_series(df)
+        for trace in fig.data:
+            assert trace.legendgroup == trace.name
+
+    def test_time_series_consistent_colors_across_groups(self):
+        """plot_time_series: same member has same color in every subplot."""
+        df = _make_three_group_panel()
+        fig = plot_time_series(df)
+        color_by_name: dict[str, str] = {}
+        for trace in fig.data:
+            name = trace.name
+            color = trace.line.color
+            if name in color_by_name:
+                assert color == color_by_name[name], f"Color mismatch for {name}"
+            else:
+                color_by_name[name] = color
+
+    def test_rolling_statistics_no_duplicate_legend(self):
+        """plot_rolling_statistics: legend entries appear at most once per group."""
+        df = _make_three_group_panel()
+        fig = plot_rolling_statistics(df, window_size=3, statistics=["mean", "std"])
+        names = visible_legend_names(fig)
+        # With grouped_legend_kwargs, entry names ("mean", "std") repeat across
+        # members but each (member, stat) pair appears only once.
+        # The legendgrouptitle differentiates them visually.
+        assert len(names) >= 4  # 2 stats × 2 members = 4 visible entries minimum

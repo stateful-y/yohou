@@ -19,7 +19,6 @@ from yohou.plotting._utils import (
     set_config,
 )
 
-
 _DEFAULT_CONFIG = {
     "resampler": False,
     "resampler_n_shown_samples": None,
@@ -46,7 +45,7 @@ def _reset_config():
 
 
 @pytest.fixture
-def sample_df():
+def monthly_1col_df():
     return pl.DataFrame({
         "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
         "y": [100, 120, 115, 130, 140, 135, 150, 160, 155, 170, 180, 175],
@@ -195,59 +194,59 @@ class TestCreateSubplots:
 class TestExplorationResampler:
     """Test that exploration functions accept and honour the resampler param."""
 
-    def test_plot_time_series_resampler(self, sample_df):
+    def test_plot_time_series_resampler(self, monthly_1col_df):
         from yohou.plotting import plot_time_series
-        fig = plot_time_series(sample_df, columns="y", resampler=True)
+        fig = plot_time_series(monthly_1col_df, columns="y", resampler=True)
         assert isinstance(fig, FigureResampler)
 
-    def test_plot_time_series_widget(self, sample_df):
+    def test_plot_time_series_widget(self, monthly_1col_df):
         pytest.importorskip("anywidget")
         from yohou.plotting import plot_time_series
-        fig = plot_time_series(sample_df, columns="y", resampler="widget")
+        fig = plot_time_series(monthly_1col_df, columns="y", resampler="widget")
         assert isinstance(fig, FigureWidgetResampler)
 
-    def test_plot_time_series_default(self, sample_df):
+    def test_plot_time_series_default(self, monthly_1col_df):
         from yohou.plotting import plot_time_series
-        fig = plot_time_series(sample_df, columns="y")
+        fig = plot_time_series(monthly_1col_df, columns="y")
         assert type(fig) is go.Figure
 
-    def test_plot_rolling_statistics_resampler(self, sample_df):
+    def test_plot_rolling_statistics_resampler(self, monthly_1col_df):
         from yohou.plotting import plot_rolling_statistics
-        fig = plot_rolling_statistics(sample_df, columns="y", window_size=3, resampler=True)
+        fig = plot_rolling_statistics(monthly_1col_df, columns="y", window_size=3, resampler=True)
         assert isinstance(fig, FigureResampler)
 
-    def test_plot_outliers_resampler(self, sample_df):
+    def test_plot_outliers_resampler(self, monthly_1col_df):
         from yohou.plotting import plot_outliers
-        fig = plot_outliers(sample_df, columns="y", resampler=True)
+        fig = plot_outliers(monthly_1col_df, columns="y", resampler=True)
         assert isinstance(fig, FigureResampler)
 
 
 class TestForecastingResampler:
     """Test that forecasting functions accept and honour the resampler param."""
 
-    def test_plot_forecast_resampler(self, sample_df):
+    def test_plot_forecast_resampler(self, monthly_1col_df):
         from yohou.plotting import plot_forecast
-        y_pred = sample_df.rename({"y": "y_pred"}).with_columns(
+        y_pred = monthly_1col_df.rename({"y": "y_pred"}).with_columns(
             pl.col("y_pred").alias("y_pred"),
         ).select("time", pl.col("y_pred").alias("y"))
-        fig = plot_forecast(sample_df, y_pred, resampler=True)
+        fig = plot_forecast(monthly_1col_df, y_pred, resampler=True)
         assert isinstance(fig, FigureResampler)
 
 
 class TestConfigContextIntegration:
     """Test that config_context affects figure creation in plot functions."""
 
-    def test_config_context_enables_resampler(self, sample_df):
+    def test_config_context_enables_resampler(self, monthly_1col_df):
         from yohou.plotting import config_context, plot_time_series
         with config_context(resampler=True):
-            fig = plot_time_series(sample_df, columns="y")
+            fig = plot_time_series(monthly_1col_df, columns="y")
         assert isinstance(fig, FigureResampler)
 
-    def test_config_context_widget(self, sample_df):
+    def test_config_context_widget(self, monthly_1col_df):
         pytest.importorskip("anywidget")
         from yohou.plotting import config_context, plot_time_series
         with config_context(resampler="widget"):
-            fig = plot_time_series(sample_df, columns="y")
+            fig = plot_time_series(monthly_1col_df, columns="y")
         assert isinstance(fig, FigureWidgetResampler)
 
 
@@ -390,7 +389,7 @@ class TestFillTraceKwargs:
 
 class TestReExports:
     def test_aggregators_importable(self):
-        from yohou.plotting import EveryNthPoint, LTTB, MinMaxAggregator, MinMaxLTTB
+        from yohou.plotting import LTTB, EveryNthPoint, MinMaxAggregator, MinMaxLTTB
         assert MinMaxLTTB is not None
         assert LTTB is not None
         assert MinMaxAggregator is not None

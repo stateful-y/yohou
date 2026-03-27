@@ -8,17 +8,21 @@ import plotly.graph_objects as go
 import polars as pl
 
 from yohou.plotting._utils import (
+    LegendTracker,
+    PanelColorManager,
     _create_figure,
     _create_subplots,
     _fill_trace_kwargs,
     _group_panel_columns,
+    _make_hovertemplate,
     _member_name,
+    _subplot_spacing,
     apply_default_layout,
     palette_yohou,
     resolve_color_palette,
     resolve_panel_columns,
 )
-from yohou.utils import inspect_panel, validate_plotting_data
+from yohou.utils import inspect_panel, validate_plotting_data, validate_plotting_params
 
 # The full palette list is used as the default effective palette in every
 # plot_forecast code path. Slots 0/1/2 are reserved for the three semantic
@@ -47,7 +51,9 @@ def plot_forecast(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
+    show_legend: bool = True,
     **kwargs,
 ) -> go.Figure:
     """Plot forecasts with historical data and optional prediction intervals.
@@ -158,6 +164,7 @@ def plot_forecast(
         validate_plotting_data(y_pred)
     if y_train is not None:
         validate_plotting_data(y_train)
+    validate_plotting_params(width=width, height=height)
 
     # Semantic colors always come from the effective palette: slot 0 = history,
     # slot 1 = single-model forecast, slot 2 = actual, slot 3+ = model comparison.
@@ -191,7 +198,9 @@ def plot_forecast(
             line_width=line_width,
             band_opacity=band_opacity,
             show_transition=show_transition,
+            connect_gaps=connect_gaps,
             resampler=resampler,
+            show_legend=show_legend,
         )
 
     # Multi-model dict: delegate to dedicated helper
@@ -211,7 +220,9 @@ def plot_forecast(
             line_width=line_width,
             band_opacity=band_opacity,
             show_transition=show_transition,
+            connect_gaps=connect_gaps,
             resampler=resampler,
+            show_legend=show_legend,
         )
 
     # Non-panel, single-model case
@@ -259,10 +270,11 @@ def plot_forecast(
                     y=train_df[col],
                     mode="lines",
                     line={"color": _train_color, "width": line_width},
+                    connectgaps=connect_gaps,
                     name=_train_name,
                     legendgroup=fc_group,
                     legendrank=0,
-                    hovertemplate=f"<b>{col} Train</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
+                    hovertemplate=_make_hovertemplate(f"{col} Train", "Time", "Value"),
                 )
             )
 
@@ -318,10 +330,11 @@ def plot_forecast(
                 y=_y_actual,
                 mode="lines",
                 line={"color": actual_c, "width": line_width},
+                connectgaps=connect_gaps,
                 name=actual_name,
                 legendgroup=fc_group,
                 legendrank=1,
-                hovertemplate=f"<b>{col} Actual</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
+                hovertemplate=_make_hovertemplate(f"{col} Actual", "Time", "Value"),
             )
         )
 
@@ -346,10 +359,11 @@ def plot_forecast(
                     y=forecast_y,
                     mode="lines",
                     line=line_spec,
+                    connectgaps=connect_gaps,
                     name=forecast_name,
                     legendgroup=fc_group,
                     legendrank=10,
-                    hovertemplate=f"<b>{col} Forecast</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
+                    hovertemplate=_make_hovertemplate(f"{col} Forecast", "Time", "Value"),
                 )
             )
 
@@ -361,6 +375,7 @@ def plot_forecast(
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -381,7 +396,9 @@ def _plot_forecast_multi_model(
     line_width: float,
     band_opacity: float,
     show_transition: bool,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
+    show_legend: bool = True,
 ) -> go.Figure:
     """Plot multiple model forecasts overlaid on the same axes.
 
@@ -456,10 +473,11 @@ def _plot_forecast_multi_model(
                     y=train_df[col],
                     mode="lines",
                     line={"color": _train_color, "width": line_width},
+                    connectgaps=connect_gaps,
                     name=_train_name,
                     legendgroup=f"col_{col}" if multi_col else "actual",
                     legendrank=0,
-                    hovertemplate="<b>Train</b><br>Time: %{x}<br>Value: %{y:.2f}<extra></extra>",
+                    hovertemplate=_make_hovertemplate("Train", "Time", "Value"),
                 )
             )
 
@@ -515,10 +533,11 @@ def _plot_forecast_multi_model(
                 y=_y_actual,
                 mode="lines",
                 line={"color": _ac, "width": line_width},
+                connectgaps=connect_gaps,
                 name=f"{col} (Actual)",
                 legendgroup=_actual_group,
                 legendrank=1,
-                hovertemplate="<b>Actual</b><br>Time: %{x}<br>Value: %{y:.2f}<extra></extra>",
+                hovertemplate=_make_hovertemplate("Actual", "Time", "Value"),
             )
         )
 
@@ -554,10 +573,11 @@ def _plot_forecast_multi_model(
                         y=y_fc,
                         mode="lines",
                         line={"color": model_color, "width": line_width},
+                        connectgaps=connect_gaps,
                         name=_fc_name,
                         legendgroup=model_name,
                         legendrank=10 + model_idx * 100,
-                        hovertemplate=(f"<b>{_fc_name}</b><br>Time: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>"),
+                        hovertemplate=_make_hovertemplate(_fc_name, "Time", "Value"),
                     )
                 )
 
@@ -573,6 +593,7 @@ def _plot_forecast_multi_model(
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -595,7 +616,9 @@ def _plot_forecast_panel(
     line_width: float,
     band_opacity: float,
     show_transition: bool,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
+    show_legend: bool = True,
 ) -> go.Figure:
     """Plot forecast with panel data as faceted subplots.
 
@@ -706,7 +729,7 @@ def _plot_forecast_panel(
 
     # Track which legend entries we have already shown globally
     # to avoid duplicates when multiple groups share the same labels.
-    seen_legend: set[str] = set()
+    legend_tracker = LegendTracker()
 
     for group_idx, (_, group_cols) in enumerate(groups.items()):
         row = group_idx // facet_n_cols + 1
@@ -736,14 +759,14 @@ def _plot_forecast_panel(
             # Train
             if y_train is not None and col in y_train.columns:
                 train_df = y_train.tail(n_history) if n_history is not None else y_train
-                _show = train_label not in seen_legend
-                seen_legend.add(train_label)
+                _show = legend_tracker.should_show(train_label)
                 fig.add_trace(
                     go.Scatter(
                         x=train_df["time"],
                         y=train_df[col],
                         mode="lines",
                         line={"color": train_c, "width": line_width},
+                        connectgaps=connect_gaps,
                         name=train_label,
                         showlegend=_show,
                         legendgroup=lg_key or "train",
@@ -782,8 +805,7 @@ def _plot_forecast_panel(
                             )
                         else:
                             pi_label = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
-                        _show_pi = pi_label not in seen_legend
-                        seen_legend.add(pi_label)
+                        _show_pi = legend_tracker.should_show(pi_label)
                         fig.add_trace(
                             go.Scatter(
                                 x=x_band,
@@ -805,14 +827,14 @@ def _plot_forecast_panel(
 
             # Actual
             if col in y_test.columns:
-                _show_actual = actual_label not in seen_legend
-                seen_legend.add(actual_label)
+                _show_actual = legend_tracker.should_show(actual_label)
                 fig.add_trace(
                     go.Scatter(
                         x=y_test["time"],
                         y=y_test[col],
                         mode="lines",
                         line={"color": actual_c, "width": line_width},
+                        connectgaps=connect_gaps,
                         name=actual_label,
                         showlegend=_show_actual,
                         legendgroup=lg_key or "actual",
@@ -860,14 +882,14 @@ def _plot_forecast_panel(
                     if fc_dash:
                         line_spec["dash"] = fc_dash
 
-                    _show_fc = fc_label not in seen_legend
-                    seen_legend.add(fc_label)
+                    _show_fc = legend_tracker.should_show(fc_label)
                     fig.add_trace(
                         go.Scatter(
                             x=x_fc,
                             y=y_fc,
                             mode="lines",
                             line=line_spec,
+                            connectgaps=connect_gaps,
                             name=fc_label,
                             showlegend=_show_fc,
                             legendgroup=lg_key or m_name,
@@ -888,6 +910,7 @@ def _plot_forecast_panel(
     for c in range(1, n_cols_grid + 1):
         fig.update_xaxes(title_text=x_label or "Time", row=n_rows, col=c)
     fig.update_yaxes(title_text=y_label or "Value")
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -904,7 +927,9 @@ def plot_time_weight(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
+    show_legend: bool = True,
     **kwargs,
 ) -> go.Figure:
     """
@@ -989,8 +1014,7 @@ def plot_time_weight(
     """
     # Validate inputs
     validate_plotting_data(df)
-
-    # Get styling params
+    validate_plotting_params(width=width, height=height)
     line_width = kwargs.get("line_width", 2.0)
     fill = kwargs.get("fill", True)
     fill_opacity = kwargs.get("fill_opacity", 0.3)
@@ -1063,6 +1087,7 @@ def plot_time_weight(
                         y=df[col],
                         mode="lines",
                         line={"color": color, "width": line_width},
+                        connectgaps=connect_gaps,
                         fill="tozeroy" if fill else None,
                         fillcolor=rgba_fill if fill else None,
                         name=member_name,
@@ -1081,6 +1106,7 @@ def plot_time_weight(
             title=title_default,
             height=height or (300 * n_rows),
             width=width,
+            showlegend=show_legend,
         )
 
         # Update axes labels
@@ -1114,6 +1140,7 @@ def plot_time_weight(
             y=df[weight_column],
             mode="lines",
             line={"color": color, "width": line_width},
+            connectgaps=connect_gaps,
             fill="tozeroy" if fill else None,
             fillcolor=rgba_fill if fill else None,
             name="Time Weight",
@@ -1135,6 +1162,7 @@ def plot_time_weight(
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -1424,9 +1452,11 @@ def plot_components(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
+    show_legend: bool = True,
     **kwargs,
-) -> go.Figure:
+) -> go.Figure | dict[str, go.Figure]:
     """Plot time series decomposition as vertically stacked subplots.
 
     Displays the original series and its decomposed components (e.g. trend,
@@ -1548,6 +1578,7 @@ def plot_components(
     `plot_seasonality` : Seasonal pattern analysis.
     """
     validate_plotting_data(y)
+    validate_plotting_params(width=width, height=height)
     line_width = kwargs.get("line_width", 2.0)
     line_dash = kwargs.get("line_dash", "solid")
 
@@ -1623,9 +1654,11 @@ def plot_components(
             y_label=y_label,
             width=width,
             height=height,
+            connect_gaps=connect_gaps,
             line_width=line_width,
             line_dash=line_dash,
             resampler=resampler,
+            show_legend=show_legend,
         )
 
     # -- Build subplot structure (shared by both modes) ----------------------
@@ -1669,6 +1702,7 @@ def plot_components(
                         name=col,
                         legendgroup=col,
                         showlegend=True,
+                        connectgaps=connect_gaps,
                     ),
                     row=1,
                     col=1,
@@ -1702,6 +1736,7 @@ def plot_components(
                     name=display_name,
                     legendgroup=display_name if stl_mode else legend_col,
                     showlegend=(comp_idx == 0 and not show_original),
+                    connectgaps=connect_gaps,
                 ),
                 row=row,
                 col=1,
@@ -1741,28 +1776,19 @@ def _plot_components_panel(
     y_label: str | None,
     width: int | None,
     height: int | None,
+    connect_gaps: bool,
     line_width: float,
     line_dash: str,
     resampler: bool | Literal["widget"] | None,
-) -> go.Figure:
+    show_legend: bool = True,
+) -> dict[str, go.Figure]:
     """Render ``plot_components`` for panel data.
 
-    Creates a grid with **rows = component types** and
-    **columns = panel groups** so each group gets its own facet column
-    while the component stacking is preserved.
+    Returns one figure per panel group, each with components stacked
+    vertically.  Members within a group are distinguished by colour.
     """
     panel_cols = resolve_panel_columns(y, panel_group_names or None, None)
     groups, all_members = _group_panel_columns(panel_cols)
-
-    # Only keep groups whose columns are in value_cols
-    groups = {
-        g: [c for c in cols if c in value_cols]
-        for g, cols in groups.items()
-    }
-    groups = {g: cols for g, cols in groups.items() if cols}
-
-    n_groups = len(groups)
-    n_cols_grid = min(n_groups, facet_n_cols)
 
     # Component row labels
     comp_labels: list[str] = []
@@ -1772,101 +1798,77 @@ def _plot_components_panel(
         _format_component_label(name) if stl_mode else name
         for name in components
     )
-    n_comp_rows = len(comp_labels)
+    n_rows = len(comp_labels)
 
-    # Total grid: component rows × group columns
-    n_group_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
-    n_total_rows = n_comp_rows * n_group_rows
+    figures: dict[str, go.Figure] = {}
 
-    # Build subplot titles: for each component row, repeat group names
-    subplot_titles: list[str] = []
-    group_names = list(groups.keys())
-    for comp_label in comp_labels:
-        for g_row in range(n_group_rows):
-            for g_col in range(n_cols_grid):
-                g_idx = g_row * n_cols_grid + g_col
-                if g_idx < n_groups:
-                    subplot_titles.append(f"{comp_label} — {group_names[g_idx]}")
-                else:
-                    subplot_titles.append("")
+    for gname, group_cols in groups.items():
+        color_mgr = PanelColorManager(color_palette)
+        legend_tracker = LegendTracker(show_legend=show_legend)
 
-    fig = _create_subplots(
-        resampler,
-        rows=n_total_rows,
-        cols=n_cols_grid,
-        subplot_titles=subplot_titles,
-        shared_xaxes=True,
-        vertical_spacing=max(0.02, 0.3 / n_total_rows),
-        horizontal_spacing=0.08,
-    )
+        fig = _create_subplots(
+            resampler,
+            rows=n_rows,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=_subplot_spacing(n_rows),
+            row_titles=comp_labels if n_rows > 1 else None,
+        )
 
-    colors = resolve_color_palette(color_palette, len(all_members))
-    seen_legend: set[str] = set()
-
-    def _add_traces(
-        data_df: pl.DataFrame,
-        comp_row: int,
-    ) -> None:
-        """Add traces for one component across all groups."""
-        for g_idx, (_, g_cols) in enumerate(groups.items()):
-            row = comp_row * n_group_rows + g_idx // n_cols_grid + 1
-            col_idx = g_idx % n_cols_grid + 1
-            for col in g_cols:
-                if col not in data_df.columns:
+        def _add_traces(data_df: pl.DataFrame, comp_row: int) -> None:
+            for member_col in group_cols:
+                if member_col not in data_df.columns:
                     continue
-                member = _member_name(col)
-                member_idx = all_members.index(member)
-                first_seen = member not in seen_legend
-                seen_legend.add(member)
+                mname = _member_name(member_col)
                 fig.add_trace(
                     go.Scatter(
                         x=data_df["time"],
-                        y=data_df[col],
+                        y=data_df[member_col],
                         mode="lines",
                         line={
-                            "color": colors[member_idx % len(colors)],
+                            "color": color_mgr.get_color(mname),
                             "width": line_width,
                             "dash": line_dash,
                         },
-                        name=member,
-                        legendgroup=member,
-                        showlegend=first_seen,
+                        name=mname,
+                        legendgroup=mname,
+                        showlegend=legend_tracker.should_show(mname),
+                        connectgaps=connect_gaps,
                     ),
-                    row=row,
-                    col=col_idx,
+                    row=comp_row,
+                    col=1,
                 )
 
-    comp_row_offset = 0
+        row_offset = 0
+        if show_original:
+            row_offset = 1
+            _add_traces(y, comp_row=1)
 
-    # Original series
-    if show_original:
-        _add_traces(y, comp_row=0)
-        comp_row_offset = 1
+        for comp_idx, (_, comp_df) in enumerate(components.items()):
+            _add_traces(comp_df, comp_row=comp_idx + 1 + row_offset)
 
-    # Component panels
-    for comp_idx, (_, comp_df) in enumerate(components.items()):
-        _add_traces(comp_df, comp_row=comp_idx + comp_row_offset)
+        title_default = title or "Time Series Decomposition"
+        default_height = max(300 * n_rows, 400)
 
-    title_default = title or "Time Series Decomposition"
-    default_height = max(250 * n_total_rows, 400)
+        fig = apply_default_layout(
+            fig,
+            title=title_default,
+            x_label=None,
+            y_label=y_label,
+            width=width,
+            height=height or default_height,
+        )
 
-    fig = apply_default_layout(
-        fig,
-        title=title_default,
-        x_label=None,
-        y_label=y_label,
-        width=width,
-        height=height or default_height,
-    )
+        # Show x-axis label on bottom subplot only
+        x_label_text = x_label if x_label is not None else "Time"
+        xaxis_key = f"xaxis{n_rows}" if n_rows > 1 else "xaxis"
+        if xaxis_key in fig.layout:
+            fig.layout[xaxis_key].title = {"text": x_label_text}
 
-    # Show x-axis label on bottom subplots only
-    x_label_text = x_label if x_label is not None else "Time"
-    for c in range(1, n_cols_grid + 1):
-        ax_num = (n_total_rows - 1) * n_cols_grid + c
-        ax_key = f"xaxis{ax_num}" if ax_num > 1 else "xaxis"
-        fig.layout[ax_key].title = {"text": x_label_text}
+        fig.update_layout(showlegend=show_legend)
+        figures[gname] = fig
 
-    return fig
+    return figures
 
 
 def _stl_to_component_dict(
@@ -2001,10 +2003,10 @@ def _mstl_to_component_dict(
     else:
         sorted_periods = sorted(periods)
 
-    # Infer interval for human-readable labels
+    # Infer interval for human-readable labels (fall back to numeric if unknown)
     try:
         interval = check_interval_consistency(y)
-    except Exception:  # noqa: BLE001
+    except (ValueError, TypeError):
         interval = None
 
     # Map numeric seasonal keys → human-readable seasonal keys

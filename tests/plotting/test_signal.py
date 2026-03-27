@@ -6,9 +6,11 @@ from plotly import graph_objects as go
 
 from yohou.plotting import plot_phase, plot_spectrum
 
+from .conftest import assert_figure_valid, assert_layout
+
 
 @pytest.fixture
-def sample_df():
+def sine_wave_df():
     """Create sample DataFrame for testing."""
     import numpy as np
 
@@ -20,51 +22,41 @@ def sample_df():
     })
 
 
-@pytest.fixture
-def short_df():
-    """Create short sample DataFrame for spectrum tests."""
-    return pl.DataFrame({
-        "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
-        "x": [100 + i % 20 for i in range(91)],
-        "y": [150 + (i % 15) * 2 for i in range(91)],
-    })
-
 
 class TestPlotPhase:
     """Tests for plot_phase function."""
 
-    def test_basic(self, sample_df):
+    def test_basic(self, sine_wave_df):
         """Test basic phase spectrum plot."""
-        fig = plot_phase(sample_df, columns="y")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        fig = plot_phase(sine_wave_df, columns="y")
+        assert_figure_valid(fig)
 
-    def test_unwrap(self, sample_df):
+    def test_unwrap(self, sine_wave_df):
         """Test with phase unwrapping enabled."""
-        fig = plot_phase(sample_df, columns="y", unwrap=True)
-        assert isinstance(fig, go.Figure)
+        fig = plot_phase(sine_wave_df, columns="y", unwrap=True)
+        assert_figure_valid(fig)
 
-    def test_degrees(self, sample_df):
+    def test_degrees(self, sine_wave_df):
         """Test degrees mode."""
-        fig = plot_phase(sample_df, columns="y", angle_unit="degree")
-        assert isinstance(fig, go.Figure)
+        fig = plot_phase(sine_wave_df, columns="y", angle_unit="degree")
+        assert_figure_valid(fig)
         # Y-axis label should mention degrees
         y_text = fig.layout.yaxis.title.text
         assert "deg" in y_text.lower() or "°" in y_text
 
-    def test_radians(self, sample_df):
+    def test_radians(self, sine_wave_df):
         """Test radians mode (default)."""
-        fig = plot_phase(sample_df, columns="y", angle_unit="radian")
-        assert isinstance(fig, go.Figure)
+        fig = plot_phase(sine_wave_df, columns="y", angle_unit="radian")
+        assert_figure_valid(fig)
         y_text = fig.layout.yaxis.title.text
         assert "radian" in y_text.lower()
 
-    def test_multiple_columns(self, sample_df):
+    def test_multiple_columns(self, sine_wave_df):
         """Test with multiple columns."""
         import numpy as np
 
-        n = len(sample_df)
-        df = sample_df.with_columns(pl.Series("y2", (np.cos(np.linspace(0, 4 * np.pi, n))).tolist()))
+        n = len(sine_wave_df)
+        df = sine_wave_df.with_columns(pl.Series("y2", (np.cos(np.linspace(0, 4 * np.pi, n))).tolist()))
         fig = plot_phase(df, columns=["y", "y2"])
         assert len(fig.data) >= 2
 
@@ -79,7 +71,7 @@ class TestPlotPhase:
             "y__b": np.cos(np.linspace(0, 4 * np.pi, n)).tolist(),
         })
         fig = plot_phase(df, panel_group_names=["y"])
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
 
@@ -168,7 +160,7 @@ class TestPlotPhaseAssertions:
             "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
         })
         fig = plot_phase(df, columns="y")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     def test_trace_type_is_scatter(self):
         """Phase plot traces are Scatter type."""
@@ -192,7 +184,7 @@ class TestPlotPhaseAssertions:
             "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
         })
         fig = plot_phase(df, columns="y", title="Phase Title")
-        assert fig.layout.title.text == "Phase Title"
+        assert_layout(fig, title="Phase Title")
 
     def test_custom_dimensions(self):
         """Custom dimensions are respected."""
@@ -204,8 +196,7 @@ class TestPlotPhaseAssertions:
             "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
         })
         fig = plot_phase(df, columns="y", width=900, height=600)
-        assert fig.layout.width == 900
-        assert fig.layout.height == 600
+        assert_layout(fig, width=900, height=600)
 
 
 class TestPlotSpectrumAssertions:
@@ -221,7 +212,7 @@ class TestPlotSpectrumAssertions:
             "y": np.sin(2 * np.pi * 0.1 * t),
         })
         fig = plot_spectrum(df, columns="y")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     def test_custom_title(self):
         """Custom title is applied to spectrum figure."""
@@ -233,7 +224,7 @@ class TestPlotSpectrumAssertions:
             "y": np.sin(2 * np.pi * 0.1 * t),
         })
         fig = plot_spectrum(df, columns="y", title="Spectrum Title")
-        assert fig.layout.title.text == "Spectrum Title"
+        assert_layout(fig, title="Spectrum Title")
 
     def test_custom_dimensions(self):
         """Custom dimensions are respected."""
@@ -245,5 +236,58 @@ class TestPlotSpectrumAssertions:
             "y": np.sin(2 * np.pi * 0.1 * t),
         })
         fig = plot_spectrum(df, columns="y", width=1000, height=500)
-        assert fig.layout.width == 1000
-        assert fig.layout.height == 500
+        assert_layout(fig, width=1000, height=500)
+
+    def test_invalid_dimensions_raise(self):
+        """Invalid width/height raise ValueError."""
+        import numpy as np
+
+        t = np.arange(100)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y": np.sin(2 * np.pi * 0.1 * t),
+        })
+        with pytest.raises(ValueError, match="width"):
+            plot_spectrum(df, columns="y", width=0)
+
+
+class TestConnectGaps:
+    """Tests for connect_gaps parameter across signal functions."""
+
+    def test_plot_phase_connect_gaps_false(self):
+        """connect_gaps=False (default) leaves Scatter traces without connectgaps."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, columns="y", connect_gaps=False)
+        assert_figure_valid(fig)
+        assert not any(t.connectgaps for t in fig.data if hasattr(t, "connectgaps"))
+
+    def test_plot_phase_connect_gaps_true(self):
+        """connect_gaps=True sets connectgaps on all Scatter traces."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, columns="y", connect_gaps=True)
+        assert_figure_valid(fig)
+        assert all(t.connectgaps for t in fig.data if hasattr(t, "connectgaps"))
+
+    def test_plot_spectrum_connect_gaps_true(self):
+        """connect_gaps=True does not raise for plot_spectrum."""
+        import numpy as np
+
+        t = np.arange(100)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+            "y": np.sin(2 * np.pi * 0.1 * t),
+        })
+        fig = plot_spectrum(df, columns="y", connect_gaps=True)
+        assert_figure_valid(fig)

@@ -7,15 +7,22 @@ import plotly.graph_objects as go
 import polars as pl
 
 from yohou.plotting._utils import (
+    LINE_DASH_SEQUENCE,
+    LegendTracker,
+    PanelColorManager,
+    _auto_detect_panel,
     _create_figure,
     _group_panel_columns,
+    _make_hovertemplate,
     apply_default_layout,
+    grouped_legend_kwargs,
+    linked_legendgroup_kwargs,
     panel_facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
 )
 from yohou.preprocessing import RollingStatisticsTransformer
-from yohou.utils import inspect_panel, validate_plotting_data
+from yohou.utils import validate_plotting_data, validate_plotting_params
 
 __all__ = [
     "plot_boxplot",
@@ -41,6 +48,7 @@ def plot_time_series(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
@@ -121,6 +129,7 @@ def plot_time_series(
     """
     # Validate inputs
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
 
     # Get styling parameters from kwargs
     line_width = kwargs.get("line_width", 2.0)
@@ -129,46 +138,41 @@ def plot_time_series(
     line_opacity = kwargs.get("line_opacity", 1.0)
     hovermode = kwargs.get("hovermode", "closest")
 
-    # Detect panel data
-    _, panel_groups = inspect_panel(df)
-
-    # Auto-detect panel mode when data contains panel groups
-    if panel_group_names is None and columns is None and panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
-    if panel_group_names is not None and panel_groups:
+    if panel_group_names is not None and _auto_detect_panel(df, panel_group_names):
         # Pre-compute palette for consistent member colouring
         pn_cols = resolve_panel_columns(df, panel_group_names, columns if panel_group_names is not None else None)
         _, all_members = _group_panel_columns(pn_cols)
         color_palette = resolve_color_palette(color_palette, len(all_members))
-        seen: set[str] = set()
+        legend_tracker = LegendTracker(show_legend=show_legend)
 
         def _render_ts(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            member_name: str,
-            member_idx: int,
+            display_name: str,
+            panel_idx: int,
             row: int,
-            col_idx: int,
+            col: int,
         ) -> None:
             """Render one member trace into the faceted figure."""
-            color = line_color if line_color is not None else color_palette[member_idx]
-            first_seen = member_name not in seen
-            seen.add(member_name)
+            color = line_color if line_color is not None else color_palette[panel_idx]
             fig.add_trace(
                 go.Scatter(
                     x=sub_df["time"],
-                    y=sub_df[member_name],
+                    y=sub_df[display_name],
                     mode="lines",
-                    name=member_name,
+                    name=display_name,
                     line={"color": color, "width": line_width, "dash": line_dash},
                     opacity=line_opacity,
-                    showlegend=first_seen and show_legend,
-                    legendgroup=member_name,
-                    hovertemplate=f"<b>{member_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+                    connectgaps=connect_gaps,
+                    showlegend=legend_tracker.should_show(display_name),
+                    legendgroup=display_name,
+                    hovertemplate=f"<b>{display_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
                 ),
                 row=row,
-                col=col_idx,
+                col=col,
             )
 
         fig = panel_facet_figure(
@@ -178,7 +182,7 @@ def plot_time_series(
             columns=columns if panel_group_names is not None else None,
             facet_n_cols=facet_n_cols,
             title=title,
-            x_label=x_label or "time",
+            x_label=x_label or "Time",
             y_label=y_label,
             width=width,
             height=height,
@@ -212,13 +216,14 @@ def plot_time_series(
                     "dash": line_dash,
                 },
                 opacity=line_opacity,
+                connectgaps=connect_gaps,
                 hovertemplate=f"<b>{col}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
             )
         )
 
     # Apply layout
     if x_label is None:
-        x_label = "time"
+        x_label = "Time"
 
     fig = apply_default_layout(
         fig,
@@ -227,10 +232,11 @@ def plot_time_series(
         y_label=y_label,
         width=width,
         height=height,
+        hovermode=hovermode,
     )
 
-    # Update hovermode and legend
-    fig.update_layout(hovermode=hovermode, showlegend=show_legend)
+    # Update legend
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -250,6 +256,8 @@ def plot_rolling_statistics(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
@@ -325,14 +333,15 @@ def plot_rolling_statistics(
     `plot_time_series` : Plot basic time series.
     """
     # Validate inputs
-    validate_plotting_data(df)
+    validate_plotting_data(df, min_rows=2)
+    validate_plotting_params(width=width, height=height)
 
-    # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
     if panel_group_names is not None:
+        _color_mgr = PanelColorManager(color_palette)
+        legend_tracker = LegendTracker(show_legend=show_legend)
 
         def _render_rolling(
             fig: go.Figure,
@@ -346,6 +355,7 @@ def plot_rolling_statistics(
             base = [c for c in sub_df.columns if c != "time"][0]
             _stats = [statistics] if isinstance(statistics, str) else list(statistics)
             ws = window_size.get(base, 7) if isinstance(window_size, dict) else window_size
+            member_color = _color_mgr.get_color(display_name)
             if show_original:
                 fig.add_trace(
                     go.Scatter(
@@ -353,9 +363,11 @@ def plot_rolling_statistics(
                         y=sub_df[base],
                         mode="lines",
                         name=display_name,
-                        line={"color": "#94a3b8", "width": kwargs.get("line_width", 1.5)},
-                        opacity=kwargs.get("line_opacity", 0.5),
+                        legendgroup=display_name,
+                        line={"color": member_color, "width": kwargs.get("line_width", 1.5)},
+                        opacity=kwargs.get("line_opacity", 0.3),
                         showlegend=False,
+                        connectgaps=connect_gaps,
                     ),
                     row=row,
                     col=col,
@@ -363,36 +375,47 @@ def plot_rolling_statistics(
             t = RollingStatisticsTransformer(window_size=ws, statistics=_stats)
             t.fit(sub_df)
             df_s = t.transform(sub_df)
-            colors = resolve_color_palette(None, len(_stats))
             for si, stat in enumerate(_stats):
                 scol = f"{base}_{stat}"
+                legend_kw = grouped_legend_kwargs(
+                    display_name,
+                    stat,
+                    legend_tracker,
+                    is_first_in_group=si == 0,
+                )
                 fig.add_trace(
                     go.Scatter(
                         x=df_s["time"],
                         y=df_s[scol],
                         mode="lines",
-                        name=stat,
-                        line={"color": colors[si % len(colors)], "width": kwargs.get("smooth_width", 2.5)},
+                        line={
+                            "color": member_color,
+                            "width": kwargs.get("smooth_width", 2.5),
+                            "dash": LINE_DASH_SEQUENCE[si % len(LINE_DASH_SEQUENCE)],
+                        },
                         opacity=kwargs.get("smooth_opacity", 0.8),
-                        showlegend=(row == 1 and col == 1),
+                        connectgaps=connect_gaps,
+                        **legend_kw,
                     ),
                     row=row,
                     col=col,
                 )
 
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df,
             _render_rolling,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
             title=title or "Rolling Statistics",
-            x_label=x_label,
+            x_label=x_label or "Time",
             y_label=y_label,
             width=width,
             height=height,
             resampler=resampler,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -413,7 +436,7 @@ def plot_rolling_statistics(
     fig = _create_figure(resampler)
 
     for col_idx, col in enumerate(plot_columns):
-        col_color = colors[col_idx % len(colors)] if multi_col else "#94a3b8"
+        col_color = colors[col_idx % len(colors)]
 
         # Show original series if requested
         if show_original:
@@ -423,10 +446,11 @@ def plot_rolling_statistics(
                     y=df[col],
                     mode="lines",
                     name=f"{col} (Original)" if multi_col else col,
-                    line={"color": col_color if multi_col else "#94a3b8", "width": line_width},
-                    opacity=line_opacity,
+                    line={"color": col_color, "width": line_width},
+                    opacity=0.3,
                     legendgroup=col if multi_col else None,
                     hovertemplate=f"<b>{col}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+                    connectgaps=connect_gaps,
                 )
             )
 
@@ -443,35 +467,38 @@ def plot_rolling_statistics(
             stat_col = f"{col}_{stat}"
             stat_data[stat] = df_stats.select(["time", stat_col])
 
-        stat_colors = colors if not multi_col else [col_color] * len(statistics)
+        stat_colors = [col_color] * len(statistics)
         for s_idx, (stat, data) in enumerate(stat_data.items()):
             col_name = [c for c in data.columns if c != "time"][0]
             s_color = stat_colors[s_idx % len(stat_colors)]
+            s_dash = LINE_DASH_SEQUENCE[s_idx % len(LINE_DASH_SEQUENCE)] if multi_col else "solid"
             fig.add_trace(
                 go.Scatter(
                     x=data["time"],
                     y=data[col_name],
                     mode="lines",
                     name=f"{col} ({stat})" if multi_col else stat,
-                    line={"color": s_color, "width": smooth_width},
+                    line={"color": s_color, "width": smooth_width, "dash": s_dash},
                     opacity=smooth_opacity,
                     legendgroup=col if multi_col else None,
                     hovertemplate=f"<b>{stat}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+                    connectgaps=connect_gaps,
                 )
             )
 
     # Apply layout
     if x_label is None:
-        x_label = "time"
+        x_label = "Time"
 
     fig = apply_default_layout(
         fig,
-        title=title,
+        title=title or "Rolling Statistics",
         x_label=x_label,
         y_label=y_label,
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -489,6 +516,7 @@ def plot_boxplot(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
     **kwargs,
 ) -> go.Figure:
     """
@@ -553,48 +581,52 @@ def plot_boxplot(
     """
     # Validate inputs
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
 
-    # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
     if panel_group_names is not None:
+        _color_mgr = PanelColorManager(color_palette)
+        _legend_tracker = LegendTracker(show_legend=show_legend)
 
         def _render_boxplot(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
+            display_name: str,
             panel_idx: int,  # noqa: ARG001
             row: int,
             col: int,
         ) -> None:
             """Render period-grouped box plots for a single column."""
             base = [c for c in sub_df.columns if c != "time"][0]
-            _bc = kwargs.get("box_color", "#2563EB")
+            _c = _color_mgr.get_color(display_name)
             _ba = kwargs.get("box_opacity", 0.7)
             _sp = kwargs.get("show_points", "outliers")
             _ps = kwargs.get("point_size", 4.0)
             df_g = sub_df.with_columns(pl.col("time").dt.truncate(period).alias("period"))
             periods_list = df_g.select("period").unique().sort("period")["period"].to_list()
-            for pv in periods_list:
+            _show = _legend_tracker.should_show(display_name)
+            for p_idx, pv in enumerate(periods_list):
                 pd_data = df_g.filter(pl.col("period") == pv)[base]
                 bp = "all" if _sp == "all" else ("outliers" if _sp == "outliers" else False)
                 fig.add_trace(
                     go.Box(
                         y=pd_data,
-                        name=str(pv),
-                        marker={"color": _bc},
+                        x=[str(pv)] * len(pd_data),
+                        name=display_name,
+                        marker={"color": _c},
                         opacity=_ba,
                         boxpoints=bp,
                         marker_size=_ps if bp else None,
-                        showlegend=False,
+                        legendgroup=display_name,
+                        showlegend=_show and p_idx == 0,
                     ),
                     row=row,
                     col=col,
                 )
 
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df,
             _render_boxplot,
             panel_group_names=panel_group_names,
@@ -607,6 +639,8 @@ def plot_boxplot(
             height=height,
             shared_xaxes=False,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -651,7 +685,7 @@ def plot_boxplot(
                     legendgroup=col if multi_col else None,
                     showlegend=multi_col and p_idx == 0,
                     offsetgroup=col if multi_col else None,
-                    hovertemplate=f"<b>{col}</b><br>Period: %{{x}}<br>Value: %{{y:.2f}}<extra></extra>",
+                    hovertemplate=_make_hovertemplate(col, "Period", "Value"),
                 )
             )
 
@@ -666,6 +700,7 @@ def plot_boxplot(
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -684,6 +719,7 @@ def plot_missing_data(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
     **kwargs,
 ) -> go.Figure:
     """
@@ -750,10 +786,9 @@ def plot_missing_data(
     """
     # Validate inputs
     validate_plotting_data(df)
+    validate_plotting_params(width=width, height=height)
 
-    # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
     if panel_group_names is not None:
@@ -908,12 +943,13 @@ def plot_missing_data(
     # Apply layout
     fig = apply_default_layout(
         fig,
-        title=title or "Missing Data Visualization",
+        title=title or "Missing Data",
         x_label=x_label,
         y_label=y_label,
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -932,6 +968,7 @@ def plot_distribution(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
     **kwargs,
 ) -> go.Figure:
     """
@@ -1001,7 +1038,8 @@ def plot_distribution(
     `plot_time_series` : Plot basic time series.
     """
     # Validate inputs
-    validate_plotting_data(df)
+    validate_plotting_data(df, min_rows=2)
+    validate_plotting_params(width=width, height=height)
 
     # Get styling parameters from kwargs
     bar_opacity = kwargs.get("bar_opacity", 0.6)
@@ -1009,19 +1047,19 @@ def plot_distribution(
     kde_points = kwargs.get("kde_points", 200)
     histnorm = kwargs.get("histnorm", "probability density")
 
-    # Detect panel data
-    _, _panel_groups = inspect_panel(df)
-
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
-    if panel_group_names is not None and _panel_groups:
+    if panel_group_names is not None:
+        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
+        _legend_tracker = LegendTracker(show_legend=show_legend)
 
         def _render_distribution(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
-            panel_idx: int,  # noqa: ARG001
+            display_name: str,
+            panel_idx: int,
             row: int,
             col: int,
         ) -> None:
@@ -1029,17 +1067,19 @@ def plot_distribution(
             base = [c for c in sub_df.columns if c != "time"][0]
             series = sub_df[base].drop_nulls()
             values = series.to_numpy()
-            _colors = resolve_color_palette(color_palette, 1)
+            _c = _panel_colors[panel_idx]
             fig.add_trace(
                 go.Histogram(
                     x=values,
                     nbinsx=n_bins,
-                    marker={"color": _colors[0]},
+                    marker={"color": _c},
                     opacity=bar_opacity,
                     histnorm=histnorm,
-                    showlegend=False,
+                    name=display_name,
+                    legendgroup=display_name,
+                    showlegend=_legend_tracker.should_show(display_name),
                     hovertemplate=(
-                        f"<b>{base}</b><br>"
+                        f"<b>{display_name}</b><br>"
                         "Value: %{x:.2f}<br>"
                         "Density: %{y:.4f}<extra></extra>"
                     ),
@@ -1057,10 +1097,12 @@ def plot_distribution(
                         x=x_range,
                         y=kde(x_range),
                         mode="lines",
-                        line={"color": _colors[0], "width": kde_width},
+                        line={"color": _c, "width": kde_width},
+                        name=f"{display_name} KDE",
+                        legendgroup=display_name,
                         showlegend=False,
                         hovertemplate=(
-                            f"<b>{base} KDE</b><br>"
+                            f"<b>{display_name} KDE</b><br>"
                             "Value: %{x:.2f}<br>"
                             "Density: %{y:.4f}<extra></extra>"
                         ),
@@ -1069,7 +1111,7 @@ def plot_distribution(
                     col=col,
                 )
 
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df,
             _render_distribution,
             panel_group_names=panel_group_names,
@@ -1082,6 +1124,8 @@ def plot_distribution(
             height=height,
             shared_xaxes=False,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Non-panel case
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -1133,12 +1177,13 @@ def plot_distribution(
 
     fig = apply_default_layout(
         fig,
-        title=title,
+        title=title or "Distribution",
         x_label=x_label or "Value",
         y_label=y_label or "Density",
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -1157,6 +1202,8 @@ def plot_outliers(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
@@ -1174,7 +1221,7 @@ def plot_outliers(
         Column(s) to analyze. If None, uses all numeric columns except 'time'.
     method : {"zscore", "iqr", "percentile"}, default="zscore"
         Outlier detection method:
-        - "zscore": points with \|z-score\| > threshold (default 3.0)
+        - "zscore": points with |z-score| > threshold (default 3.0)
         - "iqr": points outside [Q1 - threshold*IQR, Q3 + threshold*IQR] (default 1.5)
         - "percentile": points below threshold-th or above (100-threshold)-th
           percentile (default 5.0)
@@ -1196,6 +1243,14 @@ def plot_outliers(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
+    show_legend : bool, default=True
+        Whether to display the legend.
+    connect_gaps : bool, default=False
+        If True, connect lines across missing data gaps.
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets.  ``True`` returns a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
+        ``None`` reads from :func:`get_config`.
     **kwargs : dict
         Additional styling parameters:
         - line_width : float, default=1.5
@@ -1241,13 +1296,14 @@ def plot_outliers(
     if method not in ("zscore", "iqr", "percentile"):
         msg = f"Unknown method: {method}. Valid options: zscore, iqr, percentile"
         raise ValueError(msg)
+    validate_plotting_params(width=width, height=height)
 
     # Get styling parameters
     line_width = kwargs.get("line_width", 1.5)
     line_opacity = kwargs.get("line_opacity", 0.7)
     outlier_color = kwargs.get("outlier_color", "#DC2626")
     outlier_size = kwargs.get("outlier_size", 8.0)
-    outlier_symbol = kwargs.get("outlier_symbol", "circle")
+    outlier_symbol = kwargs.get("outlier_symbol", "x")
     show_bounds = kwargs.get("show_bounds", True)
 
     def _compute_outlier_mask(series: pl.Series) -> tuple[pl.Series, float | None, float | None]:
@@ -1277,38 +1333,39 @@ def plot_outliers(
             mask = (series < lower) | (series > upper)
         return mask.fill_null(False), lower, upper
 
-    # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df)
-
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
-    if panel_group_names is not None and _panel_groups:
+    if panel_group_names is not None:
+        _color_mgr = PanelColorManager(color_palette)
+        _legend_tracker = LegendTracker(show_legend=show_legend)
 
         def _render_outlier(
             fig: go.Figure,
             sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
+            display_name: str,
             panel_idx: int,  # noqa: ARG001
             row: int,
             col: int,
         ) -> None:
             """Render time series with outlier highlights for a single panel."""
             base = [c for c in sub_df.columns if c != "time"][0]
-            _colors = resolve_color_palette(color_palette, 1)
+            _c = _color_mgr.get_color(display_name)
+            _lg = linked_legendgroup_kwargs(display_name, _legend_tracker, is_primary=True)
             # Line trace
             fig.add_trace(
                 go.Scatter(
                     x=sub_df["time"],
                     y=sub_df[base],
                     mode="lines",
-                    line={"color": _colors[0], "width": line_width},
+                    line={"color": _c, "width": line_width},
                     opacity=line_opacity,
-                    showlegend=False,
+                    connectgaps=connect_gaps,
                     hovertemplate=(
-                        f"<b>{base}</b><br>"
+                        f"<b>{display_name}</b><br>"
                         "%{x}<br>%{y:.2f}<extra></extra>"
                     ),
+                    **_lg,
                 ),
                 row=row,
                 col=col,
@@ -1316,18 +1373,19 @@ def plot_outliers(
             # Outlier markers
             mask, lower, upper = _compute_outlier_mask(sub_df[base])
             df_out = sub_df.filter(mask)
+            _lg_sec = linked_legendgroup_kwargs(display_name, _legend_tracker, is_primary=False)
             if len(df_out) > 0:
                 fig.add_trace(
                     go.Scatter(
                         x=df_out["time"],
                         y=df_out[base],
                         mode="markers",
-                        marker={"color": outlier_color, "size": outlier_size, "symbol": outlier_symbol},
-                        showlegend=False,
+                        marker={"color": _c, "size": outlier_size, "symbol": outlier_symbol},
                         hovertemplate=(
                             f"<b>{base} OUTLIER</b><br>"
                             "%{x}<br>%{y:.2f}<extra></extra>"
                         ),
+                        **_lg_sec,
                     ),
                     row=row,
                     col=col,
@@ -1340,27 +1398,29 @@ def plot_outliers(
                             x=[sub_df["time"].min(), sub_df["time"].max()],
                             y=[val, val],
                             mode="lines",
-                            line={"dash": "dash", "color": outlier_color, "width": 1},
-                            showlegend=False,
+                            line={"dash": "dash", "color": _c, "width": 1},
                             hoverinfo="skip",
+                            **_lg_sec,
                         ),
                         row=row,
                         col=col,
                     )
 
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df,
             _render_outlier,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
-            title=title or f"Outlier Detection - {method}",
-            x_label=x_label or "time",
+            title=title or "Outlier Detection",
+            x_label=x_label or "Time",
             y_label=y_label,
             width=width,
             height=height,
             resampler=resampler,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Non-panel case
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -1371,6 +1431,7 @@ def plot_outliers(
     for idx, col in enumerate(plot_columns):
         series = df[col]
         mask, lower, upper = _compute_outlier_mask(series)
+        col_color = colors[idx]
 
         # Series line
         fig.add_trace(
@@ -1379,8 +1440,10 @@ def plot_outliers(
                 y=series,
                 mode="lines",
                 name=col,
-                line={"color": colors[idx], "width": line_width},
+                legendgroup=col,
+                line={"color": col_color, "width": line_width},
                 opacity=line_opacity,
+                connectgaps=connect_gaps,
                 hovertemplate=(
                     f"<b>{col}</b><br>"
                     "%{x}<br>%{y:.2f}<extra></extra>"
@@ -1397,9 +1460,10 @@ def plot_outliers(
                     x=df_outliers["time"],
                     y=df_outliers[col],
                     mode="markers",
-                    name=f"{col} outliers ({n_outliers})",
+                    legendgroup=col,
+                    showlegend=False,
                     marker={
-                        "color": outlier_color,
+                        "color": col_color,
                         "size": outlier_size,
                         "symbol": outlier_symbol,
                     },
@@ -1414,27 +1478,28 @@ def plot_outliers(
         if show_bounds and lower is not None and upper is not None:
             time_min = df["time"].min()
             time_max = df["time"].max()
-            for bound_val, bound_label in [(lower, "Lower"), (upper, "Upper")]:
+            for bound_val in (lower, upper):
                 fig.add_trace(
                     go.Scatter(
                         x=[time_min, time_max],
                         y=[bound_val, bound_val],
                         mode="lines",
-                        name=f"{col} {bound_label} ({bound_val:.2f})",
-                        line={"dash": "dash", "color": outlier_color, "width": 1},
-                        showlegend=len(plot_columns) == 1,
+                        legendgroup=col,
+                        showlegend=False,
+                        line={"dash": "dash", "color": col_color, "width": 1},
                         hoverinfo="skip",
                     )
                 )
 
     fig = apply_default_layout(
         fig,
-        title=title or f"Outlier Detection ({method})",
-        x_label=x_label or "time",
+        title=title or "Outlier Detection",
+        x_label=x_label or "Time",
         y_label=y_label,
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -1454,6 +1519,8 @@ def plot_resampling_comparison(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    show_legend: bool = True,
+    connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
     **kwargs,
 ) -> go.Figure:
@@ -1537,6 +1604,7 @@ def plot_resampling_comparison(
     # Validate both DataFrames
     validate_plotting_data(df_original)
     validate_plotting_data(df_resampled)
+    validate_plotting_params(width=width, height=height)
 
     # Get styling parameters
     original_width = kwargs.get("original_width", 1.0)
@@ -1546,13 +1614,10 @@ def plot_resampling_comparison(
     resampled_opacity = kwargs.get("resampled_opacity", 1.0)
     resampled_dash = kwargs.get("resampled_dash", "solid")
 
-    # Auto-detect panel data
-    _, _panel_groups = inspect_panel(df_resampled)
-
-    if panel_group_names is None and columns is None and _panel_groups:
+    if panel_group_names is None and columns is None and _auto_detect_panel(df_resampled):
         panel_group_names = []
 
-    if panel_group_names is not None and _panel_groups:
+    if panel_group_names is not None:
 
         def _render_resampling(
             fig: go.Figure,
@@ -1597,19 +1662,21 @@ def plot_resampling_comparison(
                 col=col,
             )
 
-        return panel_facet_figure(
+        fig = panel_facet_figure(
             df_resampled,
             _render_resampling,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
             title=title or f"{original_label} vs {resampled_label}",
-            x_label=x_label or "time",
+            x_label=x_label or "Time",
             y_label=y_label,
             width=width,
             height=height,
             resampler=resampler,
         )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Non-panel case: resolve columns from resampled
     plot_columns = validate_plotting_data(df_resampled, columns=columns, exclude=["time"])
@@ -1635,6 +1702,7 @@ def plot_resampling_comparison(
                 name=f"{col} ({original_label})",
                 line={"color": color, "width": original_width, "dash": original_dash},
                 opacity=original_opacity,
+                connectgaps=connect_gaps,
                 legendgroup=col,
                 hovertemplate=(
                     f"<b>{col} ({original_label})</b><br>"
@@ -1652,6 +1720,7 @@ def plot_resampling_comparison(
                 name=f"{col} ({resampled_label})",
                 line={"color": color, "width": resampled_width, "dash": resampled_dash},
                 opacity=resampled_opacity,
+                connectgaps=connect_gaps,
                 legendgroup=col,
                 hovertemplate=(
                     f"<b>{col} ({resampled_label})</b><br>"
@@ -1663,10 +1732,11 @@ def plot_resampling_comparison(
     fig = apply_default_layout(
         fig,
         title=title or f"{original_label} vs {resampled_label}",
-        x_label=x_label or "time",
+        x_label=x_label or "Time",
         y_label=y_label,
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig

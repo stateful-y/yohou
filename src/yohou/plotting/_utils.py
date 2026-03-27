@@ -22,12 +22,19 @@ from yohou.utils import inspect_panel
 
 __all__ = [
     "DEFAULT_LAYOUT",
+    "LINE_DASH_SEQUENCE",
+    "LegendTracker",
+    "PanelColorManager",
     "apply_default_layout",
     "config_context",
+    "get_color_sequence",
     "get_config",
+    "grouped_legend_kwargs",
+    "linked_legendgroup_kwargs",
     "palette_yohou",
     "panel_facet_figure",
     "resolve_color_palette",
+    "resolve_panel_columns",
     "set_config",
 ]
 
@@ -40,6 +47,36 @@ _global_config: dict = {
     "resampler_trace_prefix_suffix": None,
     "resampler_show_mean_aggregation_size": None,
 }
+
+LINE_DASH_SEQUENCE: list[str] = [
+    "solid",
+    "dash",
+    "dot",
+    "dashdot",
+    "longdash",
+    "longdashdot",
+]
+
+
+def _subplot_spacing(n: int, base: float = 0.3, floor: float = 0.04) -> float:
+    """Compute adaptive subplot spacing that decreases with row/column count.
+
+    Parameters
+    ----------
+    n : int
+        Number of rows or columns.
+    base : float, default=0.3
+        Numerator of the spacing formula.
+    floor : float, default=0.04
+        Minimum spacing value.
+
+    Returns
+    -------
+    float
+        ``max(floor, base / n)``
+    """
+    return max(floor, base / max(n, 1))
+"""Ordered Plotly dash styles for distinguishing multiple line series."""
 
 
 def set_config(
@@ -383,7 +420,176 @@ def resolve_color_palette(color_palette: list[str] | None, n: int) -> list[str]:
     """
     if color_palette is None:
         return get_color_sequence(n)
+    if not color_palette:
+        msg = "color_palette must not be empty"
+        raise ValueError(msg)
     return [color_palette[i % len(color_palette)] for i in range(n)]
+
+
+class LegendTracker:
+    """Track which legend entries have been shown to avoid duplicates.
+
+    In panel / faceted figures the same logical trace (e.g. a member
+    named ``"sales"``) appears in multiple subplots.  Only the first
+    occurrence should carry ``showlegend=True``; subsequent ones must
+    set ``showlegend=False`` while sharing the same ``legendgroup``.
+
+    Parameters
+    ----------
+    show_legend : bool, default=True
+        Global override.  When ``False``, :meth:`should_show` always
+        returns ``False`` regardless of whether the name has been seen.
+
+    Examples
+    --------
+    >>> tracker = LegendTracker()
+    >>> tracker.should_show("sales")
+    True
+    >>> tracker.should_show("sales")
+    False
+    >>> tracker.should_show("demand")
+    True
+
+    >>> tracker_off = LegendTracker(show_legend=False)
+    >>> tracker_off.should_show("sales")
+    False
+    """
+
+    def __init__(self, show_legend: bool = True) -> None:
+        self._seen: set[str] = set()
+        self._show_legend = show_legend
+
+    def should_show(self, name: str) -> bool:
+        """Return ``True`` the first time *name* is passed (and legend is on)."""
+        if not self._show_legend:
+            return False
+        first_seen = name not in self._seen
+        self._seen.add(name)
+        return first_seen
+
+
+class PanelColorManager:
+    """Assign consistent colours to panel members by name.
+
+    Unlike positional indexing (where the first column always gets
+    colour 0), this class maps *member names* to colours.  The same
+    name always receives the same colour within a manager instance,
+    regardless of the order it appears in different panel groups.
+
+    Parameters
+    ----------
+    color_palette : list[str] | None, default=None
+        Custom colour hex codes.  When ``None`` the default
+        :func:`palette_yohou` palette is used.
+
+    Examples
+    --------
+    >>> mgr = PanelColorManager()
+    >>> mgr.get_color("a")
+    '#2563EB'
+    >>> mgr.get_color("b")
+    '#DC2626'
+    >>> mgr.get_color("a")  # same name -> same colour
+    '#2563EB'
+    """
+
+    def __init__(self, color_palette: list[str] | None = None) -> None:
+        self._palette = color_palette or list(palette_yohou().values())
+        self._name_to_color: dict[str, str] = {}
+        self._counter = 0
+
+    def get_color(self, member_name: str) -> str:
+        """Return the colour assigned to *member_name*."""
+        if member_name not in self._name_to_color:
+            self._name_to_color[member_name] = self._palette[self._counter % len(self._palette)]
+            self._counter += 1
+        return self._name_to_color[member_name]
+
+    def get_colors(self, names: list[str]) -> list[str]:
+        """Return colours for a list of member names."""
+        return [self.get_color(n) for n in names]
+
+
+def linked_legendgroup_kwargs(
+    member_name: str,
+    legend_tracker: LegendTracker,
+    *,
+    is_primary: bool,
+) -> dict:
+    """Build ``legendgroup`` / ``showlegend`` kwargs for linked traces.
+
+    All traces that share the same *member_name* ``legendgroup`` are
+    toggled together when the user clicks the legend entry.  Only the
+    *primary* trace (typically the line) should carry
+    ``showlegend=True`` (once); secondary traces (outlier markers,
+    threshold lines, confidence bands, ...) set ``showlegend=False``
+    while still belonging to the same group.
+
+    Parameters
+    ----------
+    member_name : str
+        Legend group identifier (e.g. panel member display name).
+    legend_tracker : LegendTracker
+        Tracker used to de-duplicate legend entries across subplots.
+    is_primary : bool
+        ``True`` for the main trace that should appear in the legend;
+        ``False`` for auxiliary traces (markers, bands, ...).
+
+    Returns
+    -------
+    dict
+        Ready-to-unpack kwargs for ``fig.add_trace(go.Scatter(..., **kw))``.
+    """
+    if is_primary:
+        return {
+            "legendgroup": member_name,
+            "showlegend": legend_tracker.should_show(member_name),
+            "name": member_name,
+        }
+    return {
+        "legendgroup": member_name,
+        "showlegend": False,
+    }
+
+
+def grouped_legend_kwargs(
+    group_title: str,
+    entry_name: str,
+    legend_tracker: LegendTracker,
+    *,
+    is_first_in_group: bool,
+) -> dict:
+    """Build kwargs for a trace that belongs to a titled legend group.
+
+    Plotly's ``legendgrouptitle`` displays a header above a group of
+    legend entries.  All traces sharing the same ``legendgroup`` toggle
+    together; each trace gets its own visible ``name`` in the legend.
+
+    Parameters
+    ----------
+    group_title : str
+        Title shown above the legend group (e.g. member name ``"a"``).
+    entry_name : str
+        Individual trace label (e.g. ``"mean"``, ``"std"``).
+    legend_tracker : LegendTracker
+        De-duplicates entries across subplots.
+    is_first_in_group : bool
+        When ``True``, attaches the ``legendgrouptitle`` dict.
+
+    Returns
+    -------
+    dict
+        Ready-to-unpack kwargs for ``fig.add_trace(go.Scatter(..., **kw))``.
+    """
+    key = f"{group_title}::{entry_name}"
+    kw: dict = {
+        "legendgroup": group_title,
+        "showlegend": legend_tracker.should_show(key),
+        "name": entry_name,
+    }
+    if is_first_in_group:
+        kw["legendgrouptitle"] = {"text": group_title}
+    return kw
 
 
 def _normalize_y_pred(
@@ -456,6 +662,7 @@ def apply_default_layout(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
+    hovermode: str | None = None,
 ) -> go.Figure:
     """
     Apply default layout configuration to a figure.
@@ -474,6 +681,9 @@ def apply_default_layout(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
+    hovermode : str | None, default=None
+        Plotly hovermode (e.g. ``"x unified"``).  ``None`` keeps the
+        default (``"closest"`` from :data:`DEFAULT_LAYOUT`).
 
     Returns
     -------
@@ -501,6 +711,8 @@ def apply_default_layout(
         layout_update["width"] = width  # type: ignore[invalid-assignment]
     if height is not None:
         layout_update["height"] = height  # type: ignore[invalid-assignment]
+    if hovermode is not None:
+        layout_update["hovermode"] = hovermode  # type: ignore[invalid-assignment]
 
     fig.update_layout(layout_update)
     return fig
@@ -575,6 +787,118 @@ def resolve_panel_columns(
     return cols
 
 
+def _auto_detect_panel(
+    df: pl.DataFrame,
+    panel_group_names: list[str] | None = None,
+) -> bool:
+    """Return ``True`` if *df* contains panel columns for the given groups.
+
+    Panel data always results in a faceted layout - callers should not
+    apply a non-panel fallback when this returns ``True``.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        DataFrame to inspect.
+    panel_group_names : list[str] | None, default=None
+        Group prefixes to check.  ``None`` checks for any panel columns.
+
+    Returns
+    -------
+    bool
+        ``True`` when at least one matching panel column is found.
+    """
+    try:
+        return len(resolve_panel_columns(df, panel_group_names)) > 0
+    except ValueError:
+        return False
+
+
+def _add_confidence_bands(
+    fig: go.Figure,
+    x_values: list,
+    ci_upper: list[float],
+    ci_lower: list[float],
+    *,
+    row: int | None = None,
+    col: int | None = None,
+    color: str = "#DC2626",
+) -> None:
+    """Add symmetric or asymmetric dashed confidence band traces.
+
+    Parameters
+    ----------
+    fig : go.Figure
+        Target figure.
+    x_values : list
+        X-axis values shared by both bands.
+    ci_upper : list[float]
+        Upper confidence boundary values.
+    ci_lower : list[float]
+        Lower confidence boundary values.
+    row : int | None, default=None
+        Subplot row (1-indexed). Pass together with *col* for subplots.
+    col : int | None, default=None
+        Subplot column (1-indexed).
+    color : str, default="#DC2626"
+        Dashed line color.
+
+    """
+    for y_vals in (ci_upper, ci_lower):
+        trace = go.Scatter(
+            x=x_values,
+            y=y_vals,
+            mode="lines",
+            line={"dash": "dash", "color": color, "width": 1},
+            showlegend=False,
+            hoverinfo="skip",
+        )
+        if row is not None and col is not None:
+            fig.add_trace(trace, row=row, col=col)
+        else:
+            fig.add_trace(trace)
+
+
+def _make_hovertemplate(
+    name: str,
+    x_label: str,
+    y_label: str,
+    *,
+    decimals: int = 2,
+    extra: str = "",
+) -> str:
+    """Return a standard Plotly hovertemplate string.
+
+    Parameters
+    ----------
+    name : str
+        Bold trace name shown at the top.
+    x_label : str
+        Label for the x value.
+    y_label : str
+        Label for the y value.
+    decimals : int, default=2
+        Decimal places for the y value.
+    extra : str, default=""
+        Content for the ``<extra>`` tag (shown on the right side of the
+        hover box).  Empty string hides the extra section.
+
+    Returns
+    -------
+    str
+        Plotly hovertemplate string.
+
+    Examples
+    --------
+    >>> _make_hovertemplate("sensor_a", "Time", "Value")
+    '<b>sensor_a</b><br>Time: %{x}<br>Value: %{y:.2f}<extra></extra>'
+    >>> _make_hovertemplate("MAE", "Lag", "ACF", decimals=3)
+    '<b>MAE</b><br>Lag: %{x}<br>ACF: %{y:.3f}<extra></extra>'
+
+    """
+    return f"<b>{name}</b><br>{x_label}: %{{x}}<br>{y_label}: %{{y:.{decimals}f}}<extra>{extra}</extra>"
+
+
 def _group_panel_columns(
     panel_cols: list[str],
 ) -> tuple[dict[str, list[str]], list[str]]:
@@ -646,6 +970,8 @@ def panel_facet_figure(
     height: int | None = None,
     row_height: int = 300,
     shared_xaxes: bool = True,
+    subplot_v_spacing: float | None = None,
+    subplot_h_spacing: float | None = None,
     resampler: bool | Literal["widget"] | None = None,
 ) -> go.Figure:
     """Create a faceted subplot figure for panel data.
@@ -661,9 +987,9 @@ def panel_facet_figure(
     df : pl.DataFrame
         Input DataFrame with panel columns.
     render_fn : Callable
-        ``(fig, sub_df, member_name, member_idx, row, col) -> None``.
-        *member_name* is the member postfix (e.g. ``"a"`` for
-        column ``"y__a"``).  *member_idx* is the index of that
+        ``(fig, sub_df, display_name, panel_idx, row, col) -> None``.
+        *display_name* is the member postfix (e.g. ``"a"`` for
+        column ``"y__a"``).  *panel_idx* is the index of that
         member among all unique members, guaranteeing consistent
         colouring across groups.
     panel_group_names : list[str] | None, default=None
@@ -687,6 +1013,12 @@ def panel_facet_figure(
         Height per facet row when *height* is ``None``.
     shared_xaxes : bool, default=True
         Share x-axes across all subplots.
+    subplot_v_spacing : float | None, default=None
+        Vertical spacing between subplots.  When ``None``, uses an
+        adaptive formula based on the number of rows.
+    subplot_h_spacing : float | None, default=None
+        Horizontal spacing between subplots.  When ``None``, defaults
+        to ``0.08``.
 
     Returns
     -------
@@ -726,8 +1058,8 @@ def panel_facet_figure(
         cols=n_cols_grid,
         subplot_titles=list(groups.keys()),
         shared_xaxes=shared_xaxes,
-        vertical_spacing=max(0.04, 0.3 / n_rows),
-        horizontal_spacing=0.08,
+        vertical_spacing=subplot_v_spacing if subplot_v_spacing is not None else _subplot_spacing(n_rows),
+        horizontal_spacing=subplot_h_spacing if subplot_h_spacing is not None else 0.08,
     )
 
     for group_idx, (_, group_cols) in enumerate(groups.items()):

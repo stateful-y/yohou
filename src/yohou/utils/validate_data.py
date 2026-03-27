@@ -160,6 +160,8 @@ def validate_plotting_params(
     valid_kinds: set[str] | None = None,
     facet_n_cols: int | None = None,
     n_bins: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> None:
     """Validate common plotting function parameters.
 
@@ -173,6 +175,10 @@ def validate_plotting_params(
         Number of facet columns (must be >= 1).
     n_bins : int or None
         Number of histogram bins (must be >= 1).
+    width : int or None
+        Figure width in pixels (must be >= 1).
+    height : int or None
+        Figure height in pixels (must be >= 1).
 
     Raises
     ------
@@ -198,6 +204,12 @@ def validate_plotting_params(
         raise ValueError(msg)
     if n_bins is not None and n_bins < 1:
         msg = f"n_bins must be >= 1, got {n_bins}"
+        raise ValueError(msg)
+    if width is not None and width < 1:
+        msg = f"width must be >= 1, got {width}"
+        raise ValueError(msg)
+    if height is not None and height < 1:
+        msg = f"height must be >= 1, got {height}"
         raise ValueError(msg)
 
 

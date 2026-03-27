@@ -13,6 +13,8 @@ from yohou.plotting import (
     plot_time_weight,
 )
 
+from .conftest import assert_figure_valid, assert_layout
+
 
 class TestPlotForecast:
     """Tests for plot_forecast function."""
@@ -106,7 +108,7 @@ class TestPlotTimeWeight:
             "weight": [0.1 * i for i in range(1, 11)],
         })
         fig = plot_time_weight(time_weight, weight_column="weight", title="Custom Weights")
-        assert fig.layout.title.text == "Custom Weights"
+        assert_layout(fig, title="Custom Weights")
 
     def test_custom_dimensions(self):
         """Test time weight plotting with custom dimensions."""
@@ -115,8 +117,7 @@ class TestPlotTimeWeight:
             "weight": [0.1 * i for i in range(1, 11)],
         })
         fig = plot_time_weight(time_weight, weight_column="weight", width=800, height=400)
-        assert fig.layout.width == 800
-        assert fig.layout.height == 400
+        assert_layout(fig, width=800, height=400)
 
     def test_missing_column(self):
         """Test error when weight column is missing."""
@@ -184,13 +185,13 @@ class TestPlotComponents:
         """Test custom title."""
         y, components = decomposition_data
         fig = plot_components(y, components, title="My Decomposition")
-        assert fig.layout.title.text == "My Decomposition"
+        assert_layout(fig, title="My Decomposition")
 
     def test_default_title(self, decomposition_data):
         """Test default title."""
         y, components = decomposition_data
         fig = plot_components(y, components)
-        assert fig.layout.title.text == "Time Series Decomposition"
+        assert_layout(fig, title="Time Series Decomposition")
 
     def test_specific_columns(self):
         """Test with specific column selection."""
@@ -246,7 +247,7 @@ class TestPlotComponentsPanel:
     """Panel data tests for plot_components."""
 
     def test_panel_dict_components(self):
-        """Panel data with dict components produces a valid figure."""
+        """Panel data with dict components produces a dict of figures."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         n = len(dates)
         y = pl.DataFrame({
@@ -261,9 +262,11 @@ class TestPlotComponentsPanel:
                 "y__b": [i * 1.0 for i in range(n)],
             }),
         }
-        fig = plot_components(y, components)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 2
+        result = plot_components(y, components)
+        assert isinstance(result, dict)
+        assert "y" in result
+        assert_figure_valid(result["y"])
+        assert len(result["y"].data) >= 2
 
     def test_custom_dimensions(self):
         """Custom dimensions are passed through."""
@@ -273,11 +276,10 @@ class TestPlotComponentsPanel:
             "trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(10)]}),
         }
         fig = plot_components(y, components, width=900, height=500)
-        assert fig.layout.width == 900
-        assert fig.layout.height == 500
+        assert_layout(fig, width=900, height=500)
 
     def test_panel_faceted_layout(self):
-        """Panel data creates a grid: rows=components, cols=groups."""
+        """Panel data returns dict[str, go.Figure] keyed by group."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         n = len(dates)
         y = pl.DataFrame({
@@ -297,10 +299,12 @@ class TestPlotComponentsPanel:
                 "y__b": [i * 0.2 for i in range(n)],
             }),
         }
-        fig = plot_components(y, components)
-        assert isinstance(fig, go.Figure)
-        # 2 groups × 3 rows (original + trend + residual) = should have
-        # at least 2 traces per row-group cell = 6 traces minimum
+        result = plot_components(y, components)
+        assert isinstance(result, dict)
+        assert "y" in result
+        fig = result["y"]
+        assert_figure_valid(fig)
+        # 3 rows (original + trend + residual) × 2 members = 6 traces
         assert len(fig.data) >= 6
 
     def test_panel_group_filter(self):
@@ -319,9 +323,13 @@ class TestPlotComponentsPanel:
                 "g2__a": [i * 1.0 for i in range(n)],
             }),
         }
-        fig = plot_components(y, components, panel_group_names=["g1"])
-        assert isinstance(fig, go.Figure)
-        # Only g1 group → 1 trace for original + 1 for trend
+        result = plot_components(y, components, panel_group_names=["g1"])
+        assert isinstance(result, dict)
+        assert "g1" in result
+        assert "g2" not in result
+        fig = result["g1"]
+        assert_figure_valid(fig)
+        # Only g1 group -> 1 trace for original + 1 for trend
         assert len(fig.data) == 2
 
 
@@ -398,12 +406,12 @@ class TestPlotComponentsStl:
     def test_stl_default_title(self, monthly_df):
         """Test STL mode default title."""
         fig = plot_components(monthly_df, ["trend"], columns="y")
-        assert fig.layout.title.text == "STL Decomposition"
+        assert_layout(fig, title="STL Decomposition")
 
     def test_stl_custom_title(self, monthly_df):
         """Test STL mode custom title."""
         fig = plot_components(monthly_df, ["trend"], columns="y", title="My STL")
-        assert fig.layout.title.text == "My STL"
+        assert_layout(fig, title="My STL")
 
     def test_unknown_component(self, monthly_df):
         """Test unknown STL component raises ValueError."""
@@ -486,7 +494,7 @@ class TestPlotComponentsMstl:
             columns="y",
             stl_kwargs={"periods": [24, 24 * 7]},
         )
-        assert fig.layout.title.text == "MSTL Decomposition"
+        assert_layout(fig, title="MSTL Decomposition")
 
     def test_mstl_custom_title(self, hourly_df):
         """Test MSTL mode respects custom title."""
@@ -497,7 +505,7 @@ class TestPlotComponentsMstl:
             title="Custom MSTL",
             stl_kwargs={"periods": [24, 24 * 7]},
         )
-        assert fig.layout.title.text == "Custom MSTL"
+        assert_layout(fig, title="Custom MSTL")
 
     def test_mstl_subplot_labels(self, hourly_df):
         """Test that MSTL subplot labels use human-readable period names."""
@@ -696,13 +704,13 @@ class TestPlotForecastMultiModel:
         """Test multi-model default title."""
         y_test, y_preds = multi_model_data
         fig = plot_forecast(y_test, y_preds)
-        assert fig.layout.title.text == "Forecast Comparison"
+        assert_layout(fig, title="Forecast Comparison")
 
     def test_custom_title(self, multi_model_data):
         """Test multi-model custom title."""
         y_test, y_preds = multi_model_data
         fig = plot_forecast(y_test, y_preds, title="My Comparison")
-        assert fig.layout.title.text == "My Comparison"
+        assert_layout(fig, title="My Comparison")
 
     def test_model_names(self, multi_model_data):
         """Test model names appear in traces."""
@@ -809,7 +817,7 @@ class TestPlotForecastMultiModelIntervals:
             "y_upper_0.9": [197 + i for i in range(30)],
         })
         fig = plot_forecast(y_test, {"M1": y_pred_a, "M2": y_pred_b}, coverage_rates=[0.9])
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         names = [t.name for t in fig.data if t.name is not None]
         assert any("M1" in n for n in names)
         assert any("M2" in n for n in names)
@@ -844,8 +852,7 @@ class TestPlotForecastPanelSingleMember:
             y_train=y_train,
             panel_group_names=["y", "z"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotForecastPanelTrainAndIntervals:
@@ -881,7 +888,7 @@ class TestPlotForecastPanelTrainAndIntervals:
             coverage_rates=[0.9],
             panel_group_names=["y"],
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         names = [t.name for t in fig.data if t.name is not None]
         assert any("Train" in n for n in names)
         assert any("PI" in n for n in names)
@@ -912,7 +919,7 @@ class TestPlotComponentsSTL:
     def test_stl_trend_seasonal(self, monthly_series):
         """STL mode with trend and seasonal components works."""
         fig = plot_components(monthly_series, ["trend", "seasonal"])
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
     @pytest.mark.skipif(
@@ -934,7 +941,7 @@ class TestPlotComponentsSTL:
         df = pl.DataFrame({"time": dates, "y": values})
         with pytest.warns(UserWarning, match="Interpolated"):
             fig = plot_components(df, ["trend", "residual"])
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     @pytest.mark.skipif(
         not importlib.util.find_spec("statsmodels"),
@@ -954,7 +961,7 @@ class TestPlotComponentsSTL:
             "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
         })
         fig = plot_components(df, ["trend", "seasonal"], stl_kwargs={"period": 12})
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
     @pytest.mark.skipif(
@@ -979,7 +986,7 @@ class TestPlotComponentsSTL:
             ["trend", "seasonal"],
             stl_kwargs={"period": 12, "trend_window": 15, "seasonal_window": 7, "low_pass_window": 13},
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     @pytest.mark.skipif(
         not importlib.util.find_spec("statsmodels"),
@@ -1031,7 +1038,7 @@ class TestPlotForecastMultiModelTrainHistory:
             y_train=y_train,
             n_history=30,
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 3
 
 
@@ -1078,8 +1085,7 @@ class TestPlotTimeWeightPanelErrors:
             "time_weight__store_2": [0.05 * i for i in range(1, 11)],
         })
         fig = plot_time_weight(df, panel_group_names=["time_weight"])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotComponentsErrors:
@@ -1111,7 +1117,7 @@ class TestPlotForecastWithIntervals:
             "y_upper_0.9": [104.0 + i for i in range(10)],
         })
         fig = plot_forecast(y_test, y_pred)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
 
@@ -1133,7 +1139,7 @@ class TestPlotForecastShowTransition:
             "y": [145.0 + i for i in range(10)],
         })
         fig = plot_forecast(y_test, y_pred, y_train=y_train, show_transition=True)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 3
 
 
@@ -1147,8 +1153,7 @@ class TestPlotTimeWeightNonPanel:
             "time_weight": [1.0 / (i + 1) for i in range(91)],
         })
         fig = plot_time_weight(df)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
     def test_single_weight_with_fill(self):
         """Non-panel time weight with fill enabled."""
@@ -1157,8 +1162,7 @@ class TestPlotTimeWeightNonPanel:
             "time_weight": [0.9**i for i in range(10)],
         })
         fig = plot_time_weight(df, fill=True)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotComponentsShowOriginal:
@@ -1175,5 +1179,88 @@ class TestPlotComponentsShowOriginal:
             "y": [float(i) for i in range(91)],
         })
         fig = plot_components(y, {"Trend": trend}, show_original=True)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
+
+
+class TestConnectGaps:
+    """Tests for connect_gaps parameter in forecasting functions."""
+
+    @pytest.fixture
+    def simple_forecast_data(self):
+        """Minimal non-panel forecast DataFrames."""
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
+            "y": [191 + i for i in range(30)],
+        })
+        y_pred = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
+            "y": [190 + i for i in range(30)],
+        })
+        return y_test, y_pred
+
+    def test_plot_forecast_connect_gaps_false(self, simple_forecast_data):
+        """connect_gaps=False (default) does not raise and returns a figure."""
+        y_test, y_pred = simple_forecast_data
+        fig = plot_forecast(y_test, y_pred, connect_gaps=False)
+        assert_figure_valid(fig)
+
+    def test_plot_forecast_connect_gaps_true(self, simple_forecast_data):
+        """connect_gaps=True sets connectgaps on line Scatter traces."""
+        y_test, y_pred = simple_forecast_data
+        fig = plot_forecast(y_test, y_pred, connect_gaps=True)
+        assert_figure_valid(fig)
+        scatter_line_traces = [t for t in fig.data if isinstance(t, go.Scatter) and t.mode == "lines"]
+        assert all(t.connectgaps for t in scatter_line_traces)
+
+    def test_plot_time_weight_connect_gaps_true(self):
+        """connect_gaps=True is accepted by plot_time_weight."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
+            "time_weight": [0.1 * i for i in range(1, 11)],
+        })
+        fig = plot_time_weight(df, connect_gaps=True)
+        assert_figure_valid(fig)
+        scatter_traces = [t for t in fig.data if isinstance(t, go.Scatter)]
+        assert all(t.connectgaps for t in scatter_traces)
+
+
+class TestInvalidDimensions:
+    """Tests for width/height validation in forecasting functions."""
+
+    @pytest.fixture
+    def minimal_forecast_data(self):
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 5), "1d", eager=True),
+            "y": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+        y_pred = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 5), "1d", eager=True),
+            "y": [1.1, 2.1, 3.1, 4.1, 5.1],
+        })
+        return y_test, y_pred
+
+    def test_plot_forecast_invalid_width(self, minimal_forecast_data):
+        y_test, y_pred = minimal_forecast_data
+        with pytest.raises(ValueError, match="width"):
+            plot_forecast(y_test, y_pred, width=0)
+
+    def test_plot_forecast_invalid_height(self, minimal_forecast_data):
+        y_test, y_pred = minimal_forecast_data
+        with pytest.raises(ValueError, match="height"):
+            plot_forecast(y_test, y_pred, height=-1)
+
+    def test_plot_time_weight_invalid_width(self):
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True),
+            "time_weight": [0.2 * i for i in range(1, 6)],
+        })
+        with pytest.raises(ValueError, match="width"):
+            plot_time_weight(df, width=0)
+
+    def test_plot_components_invalid_height(self):
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        y = pl.DataFrame({"time": dates, "y": list(range(10))})
+        components = {"trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(10)]})}
+        with pytest.raises(ValueError, match="height"):
+            plot_components(y, components, height=-5)

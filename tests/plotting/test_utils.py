@@ -4,6 +4,7 @@ import polars as pl
 import pytest
 
 from yohou.plotting._utils import (
+    LegendTracker,
     _group_panel_columns,
     _normalize_y_pred,
     get_color_sequence,
@@ -253,3 +254,38 @@ class TestGroupPanelColumns:
         groups, members = _group_panel_columns(["T__x", "plain"])
         assert groups == {"T": ["T__x"], "plain": ["plain"]}
         assert set(members) == {"x", "plain"}
+
+
+class TestLegendTracker:
+    """Tests for LegendTracker utility."""
+
+    def test_first_call_returns_true(self):
+        """First call for a name returns True."""
+        tracker = LegendTracker()
+        assert tracker.should_show("sales") is True
+
+    def test_second_call_returns_false(self):
+        """Second call for the same name returns False."""
+        tracker = LegendTracker()
+        tracker.should_show("sales")
+        assert tracker.should_show("sales") is False
+
+    def test_independent_names(self):
+        """Different names are tracked independently."""
+        tracker = LegendTracker()
+        assert tracker.should_show("sales") is True
+        assert tracker.should_show("demand") is True
+        assert tracker.should_show("sales") is False
+        assert tracker.should_show("demand") is False
+
+    def test_show_legend_false_always_returns_false(self):
+        """When show_legend=False, should_show always returns False."""
+        tracker = LegendTracker(show_legend=False)
+        assert tracker.should_show("sales") is False
+        assert tracker.should_show("demand") is False
+
+    def test_show_legend_true_default(self):
+        """Default show_legend=True allows first-seen tracking."""
+        tracker = LegendTracker(show_legend=True)
+        assert tracker.should_show("a") is True
+        assert tracker.should_show("a") is False

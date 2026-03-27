@@ -15,6 +15,8 @@ from yohou.plotting import (
     plot_score_time_series,
 )
 
+from .conftest import assert_figure_valid, assert_layout, visible_legend_names
+
 
 @pytest.fixture
 def sample_residuals_data():
@@ -154,15 +156,13 @@ class TestPlotResiduals:
     def test_basic(self, sample_residuals_data):
         """Test basic residual diagnostics plot."""
         fig = plot_residuals(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
-        assert fig.layout.title.text == "Residual Diagnostics"
+        assert_figure_valid(fig)
+        assert_layout(fig, title="Residual Diagnostics")
 
     def test_explicit_column(self, sample_residuals_data):
         """Test with explicit columns parameter."""
         fig = plot_residuals(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], columns="y")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
     def test_missing_column(self, sample_residuals_data):
         """Test error when column is missing from y_pred."""
@@ -183,21 +183,19 @@ class TestPlotResiduals:
             "y__b": [200 + i - (i % 2) for i in range(10)],
         })
         fig = plot_residuals(y_pred, y_truth, panel_group_names=["y"])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1  # At least one trace for panel facets
+        assert_figure_valid(fig)  # At least one trace for panel facets
 
     def test_custom_title(self, sample_residuals_data):
         """Test custom title."""
         fig = plot_residuals(
             sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], title="Custom Residuals"
         )
-        assert fig.layout.title.text == "Custom Residuals"
+        assert_layout(fig, title="Custom Residuals")
 
     def test_custom_dimensions(self, sample_residuals_data):
         """Test custom width and height."""
         fig = plot_residuals(sample_residuals_data["y_pred"], sample_residuals_data["y_truth"], width=1200, height=800)
-        assert fig.layout.width == 1200
-        assert fig.layout.height == 800
+        assert_layout(fig, width=1200, height=800)
 
     def test_multi_column_produces_facets(self):
         """Test that multiple common columns produce a faceted figure."""
@@ -213,10 +211,10 @@ class TestPlotResiduals:
             "b": [i + 20 - 1 for i in range(20)],
         })
         fig = plot_residuals(y_pred, y_truth, columns=["a", "b"])
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         # 2 scatter traces + 2 hline shapes (one per column facet)
         assert len(fig.data) == 2
-        assert fig.layout.title.text == "Residual Diagnostics"
+        assert_layout(fig, title="Residual Diagnostics")
 
     def test_multi_column_default_auto_detects(self):
         """Test that columns=None with multiple common cols produces facets."""
@@ -269,7 +267,7 @@ class TestPlotResiduals:
         })
         # Filter to member "a" only
         fig = plot_residuals(y_pred, y_truth, panel_group_names=["y"], columns=["a"])
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         # Single panel column → 4-panel diagnostics (5 traces: scatter, scatter, hist, scatter, line)
         assert len(fig.data) >= 4
 
@@ -290,7 +288,7 @@ class TestPlotCalibration:
             sample_interval_data["y_truth"],
             coverage_rates=[0.9, 0.95],
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) == 2  # empirical + reference line
 
     def test_single_coverage(self, sample_interval_data):
@@ -337,7 +335,7 @@ class TestPlotCalibration:
             coverage_rates=[0.9],
             title="Custom Cal",
         )
-        assert fig.layout.title.text == "Custom Cal"
+        assert_layout(fig, title="Custom Cal")
 
     def test_custom_labels(self, sample_interval_data):
         """Test custom axis labels."""
@@ -358,7 +356,7 @@ class TestPlotCalibration:
             sample_interval_data["y_truth"],
             coverage_rates=[0.9],
         )
-        assert fig.layout.title.text == "Calibration plot"
+        assert_layout(fig, title="Calibration plot")
 
     def test_custom_styling(self, sample_interval_data):
         """Test custom styling kwargs."""
@@ -410,8 +408,7 @@ class TestPlotCalibration:
             width=800,
             height=600,
         )
-        assert fig.layout.width == 800
-        assert fig.layout.height == 600
+        assert_layout(fig, width=800, height=600)
 
     def test_hover_template(self, sample_interval_data):
         """Test that hover templates are set."""
@@ -479,7 +476,7 @@ class TestPlotScoreTimeSeries:
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) == 1
 
     def test_multi_model(self, multi_model_forecast_data):
@@ -511,7 +508,7 @@ class TestPlotScoreTimeSeries:
             sample_forecast_data["y_pred"],
             title="Custom Title",
         )
-        assert fig.layout.title.text == "Custom Title"
+        assert_layout(fig, title="Custom Title")
 
     def test_default_title(self, sample_forecast_data):
         """Test default title from scorer name."""
@@ -546,8 +543,7 @@ class TestPlotScoreTimeSeries:
             width=900,
             height=500,
         )
-        assert fig.layout.width == 900
-        assert fig.layout.height == 500
+        assert_layout(fig, width=900, height=500)
 
     def test_styling_kwargs(self, sample_forecast_data):
         """Test styling kwargs."""
@@ -603,7 +599,7 @@ class TestPlotModelComparisonBar:
     def test_basic(self, sample_comparison_results):
         """Test basic model comparison bar chart."""
         fig = plot_model_comparison_bar(sample_comparison_results)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) == 3  # 3 models
 
     def test_group_by_scorer(self, sample_comparison_results):
@@ -640,12 +636,12 @@ class TestPlotModelComparisonBar:
     def test_custom_title(self, sample_comparison_results):
         """Test custom title."""
         fig = plot_model_comparison_bar(sample_comparison_results, title="My Comparison")
-        assert fig.layout.title.text == "My Comparison"
+        assert_layout(fig, title="My Comparison")
 
     def test_default_title(self, sample_comparison_results):
         """Test default title."""
         fig = plot_model_comparison_bar(sample_comparison_results)
-        assert fig.layout.title.text == "Model Comparison"
+        assert_layout(fig, title="Model Comparison")
 
     def test_sort_by(self, sample_comparison_results):
         """Test sorting by a model."""
@@ -679,8 +675,7 @@ class TestPlotModelComparisonBar:
             width=1000,
             height=700,
         )
-        assert fig.layout.width == 1000
-        assert fig.layout.height == 700
+        assert_layout(fig, width=1000, height=700)
 
 
 class TestPlotScoreDistribution:
@@ -694,8 +689,7 @@ class TestPlotScoreDistribution:
             sample_forecast_data["y_pred"],
             kind="histogram",
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
         assert any(isinstance(t, go.Histogram) for t in fig.data)
 
     def test_kde(self, sample_forecast_data):
@@ -706,7 +700,7 @@ class TestPlotScoreDistribution:
             sample_forecast_data["y_pred"],
             kind="kde",
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert any(isinstance(t, go.Scatter) for t in fig.data)
 
     def test_both(self, sample_forecast_data):
@@ -717,7 +711,7 @@ class TestPlotScoreDistribution:
             sample_forecast_data["y_pred"],
             kind="both",
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert any(isinstance(t, go.Histogram) for t in fig.data)
         assert any(isinstance(t, go.Scatter) for t in fig.data)
 
@@ -728,7 +722,7 @@ class TestPlotScoreDistribution:
             multi_model_forecast_data["y_truth"],
             multi_model_forecast_data["y_preds"],
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         # At least one trace per model
         assert len(fig.data) >= 2
 
@@ -741,7 +735,7 @@ class TestPlotScoreDistribution:
             show_mean=False,
             show_zero=False,
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         # No vlines should be added (no shapes)
         shapes = fig.layout.shapes or ()
         assert len(shapes) == 0
@@ -754,7 +748,7 @@ class TestPlotScoreDistribution:
             sample_forecast_data["y_pred"],
             n_bins=10,
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     def test_invalid_kind(self, sample_forecast_data):
         """Test that invalid kind raises ValueError."""
@@ -787,8 +781,7 @@ class TestPlotScorePerHorizon:
             sample_forecast_data["y_pred"],
             kind="line",
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
         assert isinstance(fig.data[0], go.Scatter)
 
     def test_bar(self, sample_forecast_data):
@@ -799,7 +792,7 @@ class TestPlotScorePerHorizon:
             sample_forecast_data["y_pred"],
             kind="bar",
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert any(isinstance(t, go.Bar) for t in fig.data)
 
     def test_multi_model(self, multi_model_forecast_data):
@@ -809,7 +802,7 @@ class TestPlotScorePerHorizon:
             multi_model_forecast_data["y_truth"],
             multi_model_forecast_data["y_preds"],
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
     def test_show_trend(self, sample_forecast_data):
@@ -820,7 +813,7 @@ class TestPlotScorePerHorizon:
             sample_forecast_data["y_pred"],
             show_trend=True,
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         # Should have 2 traces: score + trend
         assert len(fig.data) == 2
 
@@ -838,8 +831,7 @@ class TestPlotScorePerHorizon:
             "value": [12.0],
         })
         fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
     def test_invalid_kind(self, sample_forecast_data):
         """Test that invalid kind raises ValueError."""
@@ -868,7 +860,7 @@ class TestPlotScorePerHorizon:
             sample_forecast_data["y_pred"],
             color_palette=["#FF0000"],
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
 
 class TestPlotScoreTimeSeriesPanel:
@@ -902,8 +894,7 @@ class TestPlotScoreTimeSeriesPanel:
             panel_forecast["y_pred"],
             panel_group_names=["value"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
     def test_panel_has_traces(self, panel_forecast):
         """Panel score time series has at least one trace."""
@@ -948,8 +939,7 @@ class TestPlotScoreDistributionPanel:
             panel_forecast["y_pred"],
             panel_group_names=["value"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotScorePerHorizonPanel:
@@ -983,8 +973,7 @@ class TestPlotScorePerHorizonPanel:
             panel_forecast["y_pred"],
             panel_group_names=["value"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotResidualsColumnResolution:
@@ -1002,8 +991,7 @@ class TestPlotResidualsColumnResolution:
         """Passing columns explicitly resolves target columns."""
         y_truth, y_pred = standard_data
         fig = plot_residuals(y_pred, y_truth, columns="y")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
     def test_no_common_columns_error(self):
         """Mismatched DataFrames with no common columns raise ValueError."""
@@ -1043,8 +1031,7 @@ class TestPlotResidualsColumnResolution:
             "y__b": [198 + i for i in range(91)],
         })
         fig = plot_residuals(y_pred, y_truth, panel_group_names=["y"])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotCalibrationNonPanel:
@@ -1061,7 +1048,7 @@ class TestPlotCalibrationNonPanel:
             "y_lower_0.9": y_vals - 1.65,
         })
         fig = plot_calibration(y_pred_int, y_truth, coverage_rates=[0.9])
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
     def test_no_target_columns_error(self):
@@ -1092,8 +1079,7 @@ class TestPlotScoreTimeSeriesNonPanel:
         y_truth, y_pred = simple_data
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(scorer, y_truth, y_pred)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
     def test_multi_model_dict(self, simple_data):
         """Multi-model dict produces traces for each model."""
@@ -1101,7 +1087,7 @@ class TestPlotScoreTimeSeriesNonPanel:
         y_pred2 = y_pred.with_columns((pl.col("y") + 1).alias("y"))
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(scorer, y_truth, {"M1": y_pred, "M2": y_pred2})
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         names = [t.name for t in fig.data if t.name is not None]
         assert "M1" in names
         assert "M2" in names
@@ -1130,8 +1116,7 @@ class TestPlotScoreTimeSeriesPanelFacet:
             y_pred,
             panel_group_names=["value"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotScoreTimeSeriesMultiComponent:
@@ -1161,8 +1146,7 @@ class TestPlotScoreTimeSeriesMultiComponent:
         y_truth, y_pred = multi_col_data
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(scorer, y_truth, y_pred)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
     def test_multi_component_multi_model(self, multi_col_data):
         """Multi-column data with multiple models."""
@@ -1173,7 +1157,7 @@ class TestPlotScoreTimeSeriesMultiComponent:
         )
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(scorer, y_truth, {"M1": y_pred, "M2": y_pred2})
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
     def test_show_markers(self, multi_col_data):
@@ -1181,7 +1165,7 @@ class TestPlotScoreTimeSeriesMultiComponent:
         y_truth, y_pred = multi_col_data
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(scorer, y_truth, y_pred, show_markers=True)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert fig.data[0].mode == "lines+markers"
 
 
@@ -1203,8 +1187,7 @@ class TestPlotScoreTimeSeriesAutoPanel:
         })
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(scorer, y_truth, y_pred)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotResidualsAutoPanel:
@@ -1240,8 +1223,7 @@ class TestPlotResidualsAutoPanel:
             "y__b": [198.0 + i for i in range(20)],
         })
         fig = plot_residuals(y_pred, y_truth, columns=["y__a", "y__b"])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
 
 class TestPlotScorePerHorizonBarMultiModel:
@@ -1273,7 +1255,7 @@ class TestPlotScorePerHorizonBarMultiModel:
             {"A": y_pred_a, "B": y_pred_b},
             kind="bar",
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
         assert fig.layout.barmode == "group"
 
@@ -1295,7 +1277,7 @@ class TestPlotScorePerHorizonBarMultiModel:
         })
         scorer = MeanAbsoluteError()
         fig = plot_score_per_horizon(scorer, y_truth, y_pred, kind="bar")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert any(isinstance(t, go.Bar) for t in fig.data)
 
 
@@ -1320,7 +1302,7 @@ class TestPlotScoreDistributionEdgeCases:
         })
         scorer = MeanAbsoluteError()
         fig = plot_score_distribution(scorer, y_truth, y_pred, kind="both")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert any(isinstance(t, go.Histogram) for t in fig.data)
         assert any(isinstance(t, go.Scatter) for t in fig.data)
 
@@ -1340,7 +1322,7 @@ class TestPlotScoreDistributionEdgeCases:
         })
         scorer = MeanAbsoluteError()
         fig = plot_score_distribution(scorer, y_truth, y_pred, show_mean=True, kind="both")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         shapes = fig.layout.shapes or ()
         assert len(shapes) >= 1
 
@@ -1362,8 +1344,7 @@ class TestPlotResidualsExplicitColumns:
             "b": [198.0 + i for i in range(20)],
         })
         fig = plot_residuals(y_pred, y_truth, columns=["a"])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
     def test_auto_detect_panel_residuals(self):
         """Panel data without explicit panel_group_names auto-detects and raises."""
@@ -1405,8 +1386,7 @@ class TestPlotCalibrationAutoPanel:
             "val__g2_lower_0.9": ya - 5,
         })
         fig = plot_calibration(y_pred_int, y_truth, coverage_rates=[0.9])
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotScoreTimeSeriesTimeWeight:
@@ -1424,8 +1404,7 @@ class TestPlotScoreTimeSeriesTimeWeight:
             return pl.Series("weight", [float(i + 1) / n for i in range(n)])
 
         fig = plot_score_time_series(scorer, y_truth, y_pred, time_weight=linear_weight)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
     def test_dataframe_time_weight(self):
         """Passing time_weight as a DataFrame forwards it to scorer."""
@@ -1435,8 +1414,7 @@ class TestPlotScoreTimeSeriesTimeWeight:
         scorer = MeanAbsoluteError()
         tw = pl.DataFrame({"time": dates, "weight": [1.0] * 91})
         fig = plot_score_time_series(scorer, y_truth, y_pred, time_weight=tw)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotScoreTimeSeriesIntervalScorer:
@@ -1456,8 +1434,7 @@ class TestPlotScoreTimeSeriesIntervalScorer:
         })
         scorer = IntervalScore(coverage_rates=[0.9])
         fig = plot_score_time_series(scorer, y_truth, y_pred)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotScoreDistributionIntervalScorer:
@@ -1477,8 +1454,7 @@ class TestPlotScoreDistributionIntervalScorer:
         })
         scorer = IntervalScore(coverage_rates=[0.9])
         fig = plot_score_distribution(scorer, y_truth, y_pred)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotScorePerHorizonIntervalScorer:
@@ -1500,8 +1476,7 @@ class TestPlotScorePerHorizonIntervalScorer:
         })
         scorer = IntervalScore(coverage_rates=[0.9])
         fig = plot_score_per_horizon(scorer, y_truth, y_pred)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotScorePerHorizonShowTrend:
@@ -1523,7 +1498,7 @@ class TestPlotScorePerHorizonShowTrend:
         })
         scorer = MeanAbsoluteError()
         fig = plot_score_per_horizon(scorer, y_truth, y_pred, show_trend=True)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         trace_names = [t.name for t in fig.data if t.name is not None]
         assert any("trend" in name.lower() for name in trace_names)
 
@@ -1539,7 +1514,7 @@ class TestPlotModelComparisonBarSortBy:
             "ModelC": {"MAE": 3.0, "RMSE": 2.0},
         }
         fig = plot_model_comparison_bar(results, sort_by="ModelA", ascending=True)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) == 3
 
     def test_sort_by_descending(self):
@@ -1549,7 +1524,7 @@ class TestPlotModelComparisonBarSortBy:
             "ModelB": {"MAE": 1.0, "RMSE": 4.0},
         }
         fig = plot_model_comparison_bar(results, sort_by="ModelA", ascending=False)
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
 
     def test_group_by_model_horizontal(self):
         """group_by='model' + orientation='horizontal' covers both branches."""
@@ -1562,7 +1537,7 @@ class TestPlotModelComparisonBarSortBy:
             group_by="model",
             orientation="horizontal",
         )
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
 
@@ -1582,8 +1557,7 @@ class TestPlotScoreDistributionKDEOnly:
         })
         scorer = MeanAbsoluteError()
         fig = plot_score_distribution(scorer, y_truth, y_pred, kind="kde")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
     def test_show_mean_false(self):
         """show_mean=False omits the mean vertical line but keeps zero line."""
@@ -1668,8 +1642,7 @@ class TestPlotResidualsColumnsParam:
             "b": [19.0 + i for i in range(10)],
         })
         fig = plot_residuals(y_truth, y_pred, columns="a")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotModelComparisonBarSortByMatchingSeries:
@@ -1685,7 +1658,7 @@ class TestPlotModelComparisonBarSortByMatchingSeries:
             "ModelC": {"mae": 7.0, "rmse": 6.0},
         }
         fig = plot_model_comparison_bar(results, group_by="scorer", sort_by="mae")
-        assert isinstance(fig, go.Figure)
+        assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
     def test_sort_by_ascending(self):
@@ -1697,8 +1670,7 @@ class TestPlotModelComparisonBarSortByMatchingSeries:
             "ModelB": {"mae": 3.0, "rmse": 10.0},
         }
         fig = plot_model_comparison_bar(results, group_by="scorer", sort_by="mae", ascending=True)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
 
 class TestPlotScoreTimeSeriesPanelGroupScoreCols:
@@ -1725,8 +1697,7 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
             {"model": y_pred},
             panel_group_names=["sales"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
 
     def test_panel_multi_group_score_cols(self):
         """Panel score time series with multiple score columns per group averages them."""
@@ -1751,5 +1722,34 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
             {"model": y_pred},
             panel_group_names=["sales"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) >= 1
+        assert_figure_valid(fig)
+
+
+# ---------------------------------------------------------------------------
+# Panel legend deduplication integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestPanelLegendDedupResiduals:
+    """Verify panel residuals produce no duplicate legend entries."""
+
+    def test_panel_residuals_legend_dedup(self):
+        """Each member appears at most once in legend for panel residuals."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        y_truth = pl.DataFrame({
+            "time": dates,
+            "g1__a": [100.0 + i for i in range(10)],
+            "g1__b": [200.0 + i for i in range(10)],
+            "g2__a": [150.0 + i for i in range(10)],
+            "g2__b": [250.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "g1__a": [101.0 + i for i in range(10)],
+            "g1__b": [199.0 + i for i in range(10)],
+            "g2__a": [151.0 + i for i in range(10)],
+            "g2__b": [249.0 + i for i in range(10)],
+        })
+        fig = plot_residuals(y_pred, y_truth, panel_group_names=["g1", "g2"])
+        names = visible_legend_names(fig)
+        assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
