@@ -8,7 +8,6 @@ from plotly import graph_objects as go
 from yohou.metrics import IntervalScore, MeanAbsoluteError
 from yohou.plotting import (
     plot_calibration,
-    plot_class_probabilities,
     plot_model_comparison_bar,
     plot_residuals,
     plot_score_distribution,
@@ -1756,109 +1755,85 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
         assert len(fig.data) >= 1
 
 
-class TestPlotClassProbabilities:
-    """Tests for plot_class_probabilities."""
+class TestPlotReliabilityDiagram:
+    """Tests for plot_calibration with class-probability data."""
 
     @pytest.fixture
-    def proba_data(self):
-        """Sample class probability prediction data."""
-        from datetime import datetime
-
-        times = [datetime(2020, 1, i) for i in range(1, 6)]
+    def reliability_data(self):
+        """Create sample data for reliability diagram tests."""
+        n = 50
+        rng = np.random.default_rng(42)
+        times = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True)
+        labels = rng.choice(["sunny", "rainy", "cloudy"], size=n)
+        probs_sunny = rng.uniform(0, 1, n)
+        probs_rainy = rng.uniform(0, 1, n)
+        probs_cloudy = rng.uniform(0, 1, n)
+        total = probs_sunny + probs_rainy + probs_cloudy
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
-            "weather_proba_sunny": [0.7, 0.5, 0.3, 0.6, 0.4],
-            "weather_proba_rainy": [0.2, 0.3, 0.5, 0.2, 0.4],
-            "weather_proba_cloudy": [0.1, 0.2, 0.2, 0.2, 0.2],
+            "w_proba_sunny": probs_sunny / total,
+            "w_proba_rainy": probs_rainy / total,
+            "w_proba_cloudy": probs_cloudy / total,
         })
         y_truth = pl.DataFrame({
             "time": times,
-            "weather": ["sunny", "rainy", "rainy", "sunny", "cloudy"],
+            "w": labels.tolist(),
         })
         return y_pred, y_truth
 
-    def test_basic_area(self, proba_data):
-        """Default stacked area chart has traces for each class."""
-        y_pred, _ = proba_data
-        fig = plot_class_probabilities(y_pred)
+    def test_basic(self, reliability_data):
+        """Basic reliability diagram returns Figure."""
+        y_pred, y_truth = reliability_data
+        fig = plot_calibration(y_pred, y_truth)
         assert isinstance(fig, go.Figure)
-        assert len(fig.data) == 3
-
-    def test_basic_line(self, proba_data):
-        """Line chart has traces for each class."""
-        y_pred, _ = proba_data
-        fig = plot_class_probabilities(y_pred, kind="line")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) == 3
-
-    def test_with_truth_markers(self, proba_data):
-        """Truth overlay adds a marker trace."""
-        y_pred, y_truth = proba_data
-        fig = plot_class_probabilities(y_pred, y_truth=y_truth)
+        # 3 class traces + 1 reference diagonal
         assert len(fig.data) == 4
 
-    def test_title_propagated(self, proba_data):
+    def test_custom_bins(self, reliability_data):
+        """Custom bin count works."""
+        y_pred, y_truth = reliability_data
+        fig = plot_calibration(y_pred, y_truth, n_bins=5)
+        assert isinstance(fig, go.Figure)
+
+    def test_title_propagated(self, reliability_data):
         """Custom title is applied."""
-        y_pred, _ = proba_data
-        fig = plot_class_probabilities(y_pred, title="Custom Title")
-        assert fig.layout.title.text == "Custom Title"
-
-    def test_custom_dimensions(self, proba_data):
-        """Width and height parameters are applied."""
-        y_pred, _ = proba_data
-        fig = plot_class_probabilities(y_pred, width=1200, height=800)
-        assert fig.layout.width == 1200
-        assert fig.layout.height == 800
-
-    def test_invalid_kind_raises(self, proba_data):
-        """Invalid kind raises ValueError."""
-        y_pred, _ = proba_data
-        with pytest.raises(ValueError, match="kind"):
-            plot_class_probabilities(y_pred, kind="scatter")
+        y_pred, y_truth = reliability_data
+        fig = plot_calibration(y_pred, y_truth, title="My Reliability")
+        assert fig.layout.title.text == "My Reliability"
 
     def test_no_proba_columns_raises(self):
-        """Missing probability columns raises ValueError."""
+        """DataFrame without proba columns and no coverage_rates raises ValueError."""
         from datetime import datetime
 
-        df = pl.DataFrame({
-            "time": [datetime(2020, 1, 1)],
-            "value": [1.0],
-        })
-        with pytest.raises(ValueError, match="No probability columns"):
-            plot_class_probabilities(df)
+        df = pl.DataFrame({"time": [datetime(2020, 1, 1)], "a": [1.0]})
+        y_truth = pl.DataFrame({"time": [datetime(2020, 1, 1)], "a": ["x"]})
+        with pytest.raises(ValueError, match="coverage_rates is required"):
+            plot_calibration(df, y_truth)
 
     def test_multi_target_without_target_raises(self):
-        """Multiple targets without specifying target raises ValueError."""
+        """Ambiguous multi-target raises ValueError."""
         from datetime import datetime
 
         df = pl.DataFrame({
             "time": [datetime(2020, 1, 1)],
-            "weather_proba_sunny": [0.5],
-            "weather_proba_rainy": [0.5],
-            "temp_proba_hot": [0.6],
-            "temp_proba_cold": [0.4],
+            "a_proba_x": [0.5], "a_proba_y": [0.5],
+            "b_proba_x": [0.5], "b_proba_y": [0.5],
+        })
+        y_truth = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)], "a": ["x"], "b": ["x"],
         })
         with pytest.raises(ValueError, match="Multiple targets"):
-            plot_class_probabilities(df)
+            plot_calibration(df, y_truth)
 
-    def test_multi_target_with_target(self):
-        """Specifying target resolves multi-target ambiguity."""
-        from datetime import datetime
-
-        df = pl.DataFrame({
-            "time": [datetime(2020, 1, 1)],
-            "weather_proba_sunny": [0.5],
-            "weather_proba_rainy": [0.5],
-            "temp_proba_hot": [0.6],
-            "temp_proba_cold": [0.4],
-        })
-        fig = plot_class_probabilities(df, target="weather")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) == 2
-
-    def test_invalid_target_raises(self, proba_data):
+    def test_invalid_target_raises(self, reliability_data):
         """Non-existent target raises ValueError."""
-        y_pred, _ = proba_data
+        y_pred, y_truth = reliability_data
         with pytest.raises(ValueError, match="Target 'invalid'"):
-            plot_class_probabilities(y_pred, target="invalid")
+            plot_calibration(y_pred, y_truth, target="invalid")
+
+    def test_target_not_in_truth_raises(self, reliability_data):
+        """Target in pred but not in truth raises ValueError."""
+        y_pred, y_truth = reliability_data
+        y_truth_bad = y_truth.rename({"w": "other"})
+        with pytest.raises(ValueError, match="not found in y_truth"):
+            plot_calibration(y_pred, y_truth_bad)

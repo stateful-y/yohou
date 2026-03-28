@@ -874,3 +874,235 @@ class TestPlotComponentsShowOriginal:
         fig = plot_components(y, {"Trend": trend}, show_original=True)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 2
+
+
+class TestPlotForecastClassProba:
+    """Tests for plot_forecast with class-probability predictions."""
+
+    @pytest.fixture()
+    def _class_proba_data(self):
+        """Create class-probability test data."""
+        times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": times,
+            "weather": ["sunny", "sunny", "rainy", "cloudy", "sunny",
+                        "rainy", "cloudy", "sunny", "sunny", "rainy"],
+        })
+        y_proba = pl.DataFrame({
+            "time": times,
+            "weather_proba_cloudy": [0.1, 0.1, 0.2, 0.6, 0.1, 0.2, 0.7, 0.1, 0.05, 0.3],
+            "weather_proba_rainy": [0.2, 0.1, 0.6, 0.2, 0.1, 0.7, 0.2, 0.1, 0.05, 0.6],
+            "weather_proba_sunny": [0.7, 0.8, 0.2, 0.2, 0.8, 0.1, 0.1, 0.8, 0.9, 0.1],
+        })
+        return y_test, y_proba
+
+    def test_single_model(self, _class_proba_data):
+        """Stacked area chart is produced for single-model proba predictions."""
+        y_test, y_proba = _class_proba_data
+        fig = plot_forecast(y_test, y_proba)
+        assert isinstance(fig, go.Figure)
+        # 3 class traces + 1 truth marker trace
+        assert len(fig.data) >= 3
+
+    def test_multi_model(self, _class_proba_data):
+        """Subplots are created for multi-model proba predictions."""
+        y_test, y_proba = _class_proba_data
+        y_proba_b = y_proba.with_columns(
+            pl.col("weather_proba_sunny") * 0.5,
+            pl.col("weather_proba_rainy") * 1.5,
+        )
+        fig = plot_forecast(
+            y_test,
+            {"Model A": y_proba, "Model B": y_proba_b},
+        )
+        assert isinstance(fig, go.Figure)
+        # Should have traces from both models
+        assert len(fig.data) >= 6
+
+    def test_custom_title_and_palette(self, _class_proba_data):
+        """Custom title and palette are applied."""
+        y_test, y_proba = _class_proba_data
+        fig = plot_forecast(
+            y_test, y_proba,
+            title="Custom Title",
+            color_palette=["#ff0000", "#00ff00", "#0000ff"],
+        )
+        assert fig.layout.title.text == "Custom Title"
+
+    def test_truth_markers_present(self, _class_proba_data):
+        """Truth markers are shown when y_test has matching target column."""
+        y_test, y_proba = _class_proba_data
+        fig = plot_forecast(y_test, y_proba)
+        trace_names = [t.name for t in fig.data]
+        assert "True class" in trace_names
+
+
+class TestPlotForecastCategorical:
+    """Tests for plot_forecast with categorical string predictions."""
+
+    @pytest.fixture()
+    def _categorical_data(self):
+        """Create categorical test data."""
+        times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": times,
+            "weather": ["sunny", "sunny", "rainy", "cloudy", "sunny",
+                        "rainy", "cloudy", "sunny", "sunny", "rainy"],
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "weather": ["sunny", "rainy", "rainy", "cloudy", "sunny",
+                        "sunny", "cloudy", "sunny", "rainy", "rainy"],
+        })
+        return y_test, y_pred
+
+    def test_single_model(self, _categorical_data):
+        """Step chart is produced for single-model categorical predictions."""
+        y_test, y_pred = _categorical_data
+        fig = plot_forecast(y_test, y_pred)
+        assert isinstance(fig, go.Figure)
+        # Actual + Forecast traces
+        assert len(fig.data) >= 2
+
+    def test_multi_model(self, _categorical_data):
+        """Multiple model categorical predictions are overlaid."""
+        y_test, y_pred = _categorical_data
+        y_pred_b = y_pred.with_columns(
+            pl.Series("weather", ["cloudy", "sunny", "sunny", "rainy", "rainy",
+                                   "cloudy", "sunny", "rainy", "cloudy", "sunny"]),
+        )
+        fig = plot_forecast(
+            y_test,
+            {"Model A": y_pred, "Model B": y_pred_b},
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 3
+
+    def test_with_training_data(self, _categorical_data):
+        """Training data is shown when provided."""
+        y_test, y_pred = _categorical_data
+        y_train = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 3, 22), pl.date(2020, 3, 31), "1d", eager=True),
+            "weather": ["sunny", "sunny", "cloudy", "rainy", "sunny",
+                        "rainy", "cloudy", "sunny", "rainy", "sunny"],
+        })
+        fig = plot_forecast(y_test, y_pred, y_train=y_train)
+        assert isinstance(fig, go.Figure)
+        # Train + Actual + Forecast
+        assert len(fig.data) >= 3
+
+    def test_y_axis_has_category_labels(self, _categorical_data):
+        """Y-axis tick labels are category names, not integers."""
+        y_test, y_pred = _categorical_data
+        fig = plot_forecast(y_test, y_pred)
+        yaxis = fig.layout.yaxis
+        assert set(yaxis.ticktext) == {"cloudy", "rainy", "sunny"}
+
+    def test_custom_title(self, _categorical_data):
+        """Custom title is applied to categorical forecast."""
+        y_test, y_pred = _categorical_data
+        fig = plot_forecast(y_test, y_pred, title="My Categorical Plot")
+        assert fig.layout.title.text == "My Categorical Plot"
+
+
+class TestPlotForecastPanelClassProba:
+    """Tests for plot_forecast with panel class-probability data."""
+
+    @pytest.fixture
+    def _panel_proba_data(self):
+        """Panel class-probability data with two members."""
+        times = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": times,
+            "weather__east": ["sunny", "rainy", "rainy", "sunny", "cloudy"],
+            "weather__west": ["cloudy", "sunny", "sunny", "rainy", "sunny"],
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "weather_proba_sunny__east": [0.7, 0.2, 0.1, 0.6, 0.1],
+            "weather_proba_rainy__east": [0.2, 0.6, 0.7, 0.2, 0.2],
+            "weather_proba_cloudy__east": [0.1, 0.2, 0.2, 0.2, 0.7],
+            "weather_proba_sunny__west": [0.1, 0.7, 0.6, 0.2, 0.8],
+            "weather_proba_rainy__west": [0.2, 0.1, 0.2, 0.6, 0.1],
+            "weather_proba_cloudy__west": [0.7, 0.2, 0.2, 0.2, 0.1],
+        })
+        return y_test, y_pred
+
+    def test_basic_panel(self, _panel_proba_data):
+        """Panel class-proba data produces a faceted figure."""
+        y_test, y_pred = _panel_proba_data
+        fig = plot_forecast(y_test, y_pred)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    def test_subplot_titles_are_members(self, _panel_proba_data):
+        """Subplot titles correspond to panel members."""
+        y_test, y_pred = _panel_proba_data
+        fig = plot_forecast(y_test, y_pred)
+        annotations = [a.text for a in fig.layout.annotations]
+        assert "east" in annotations
+        assert "west" in annotations
+
+    def test_multi_model_panel(self, _panel_proba_data):
+        """Multi-model panel class-proba produces subplots."""
+        y_test, y_pred = _panel_proba_data
+        y_pred_b = y_pred.with_columns(
+            pl.col("weather_proba_sunny__east").alias("weather_proba_sunny__east") * 0.9,
+        )
+        fig = plot_forecast(y_test, {"Model A": y_pred, "Model B": y_pred_b})
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 4
+
+
+class TestPlotForecastPanelCategorical:
+    """Tests for plot_forecast with panel categorical data."""
+
+    @pytest.fixture
+    def _panel_cat_data(self):
+        """Panel categorical data with two members."""
+        times = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": times,
+            "weather__east": ["sunny", "rainy", "rainy", "sunny", "cloudy"],
+            "weather__west": ["cloudy", "sunny", "sunny", "rainy", "sunny"],
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "weather__east": ["sunny", "sunny", "rainy", "sunny", "rainy"],
+            "weather__west": ["cloudy", "rainy", "sunny", "rainy", "sunny"],
+        })
+        return y_test, y_pred
+
+    def test_basic_panel(self, _panel_cat_data):
+        """Panel categorical data produces a faceted figure."""
+        y_test, y_pred = _panel_cat_data
+        fig = plot_forecast(y_test, y_pred)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
+    def test_subplot_titles_are_members(self, _panel_cat_data):
+        """Subplot titles correspond to panel members."""
+        y_test, y_pred = _panel_cat_data
+        fig = plot_forecast(y_test, y_pred)
+        annotations = [a.text for a in fig.layout.annotations]
+        assert "east" in annotations
+        assert "west" in annotations
+
+    def test_with_training_data(self, _panel_cat_data):
+        """Training data is shown in panel mode."""
+        y_test, y_pred = _panel_cat_data
+        y_train = pl.DataFrame({
+            "time": pl.date_range(pl.date(2019, 12, 27), pl.date(2019, 12, 31), "1d", eager=True),
+            "weather__east": ["sunny", "sunny", "cloudy", "rainy", "sunny"],
+            "weather__west": ["rainy", "cloudy", "sunny", "sunny", "rainy"],
+        })
+        fig = plot_forecast(y_test, y_pred, y_train=y_train)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 4
+
+    def test_y_axis_category_labels(self, _panel_cat_data):
+        """Y-axis tick labels are category names in panel mode."""
+        y_test, y_pred = _panel_cat_data
+        fig = plot_forecast(y_test, y_pred)
+        yaxis = fig.layout.yaxis
+        assert set(yaxis.ticktext) == {"cloudy", "rainy", "sunny"}

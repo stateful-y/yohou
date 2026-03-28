@@ -2,6 +2,8 @@
 
 from yohou.datasets._fetchers import (
     clear_data_home,
+    fetch_air_quality_classification,
+    fetch_demand_classification,
     fetch_dominick,
     fetch_electricity_demand,
     fetch_hospital,
@@ -12,10 +14,11 @@ from yohou.datasets._fetchers import (
     fetch_tourism_quarterly,
     get_data_home,
 )
-from yohou.datasets._generators import make_weather_classification
 
 __all__ = [
     "clear_data_home",
+    "fetch_air_quality_classification",
+    "fetch_demand_classification",
     "fetch_dominick",
     "fetch_electricity_demand",
     "fetch_hospital",
@@ -25,5 +28,4 @@ __all__ = [
     "fetch_tourism_monthly",
     "fetch_tourism_quarterly",
     "get_data_home",
-    "make_weather_classification",
 ]
