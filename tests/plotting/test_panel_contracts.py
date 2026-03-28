@@ -116,16 +116,17 @@ class TestLinkedLegendgroupKwargs:
 # ── plot_boxplot ─────────────────────────────────────────────────────────
 
 class TestBoxplotPanelLegend:
-    def test_panel_legend_shows_members(self, panel_df):
+    def test_panel_legend_shows_groups(self, panel_df):
+        """With facet_by='member' (default), groups appear in legend."""
         fig = plot_boxplot(panel_df, period="1mo")
         names = visible_legend_names(fig)
-        assert "a" in names or any("a" in n for n in names)
-        assert "b" in names or any("b" in n for n in names)
+        assert "y" in names or any("y" in n for n in names)
 
     def test_panel_legendgroup_per_member(self, panel_df):
         fig = plot_boxplot(panel_df, period="1mo")
         groups = legend_groups(fig)
-        assert len(groups) >= 2
+        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
+        assert len(groups) >= 1
 
 
 # ── plot_outliers ────────────────────────────────────────────────────────
@@ -134,7 +135,8 @@ class TestOutliersPanelLegend:
     def test_outlier_markers_share_legendgroup_with_line(self, panel_df):
         fig = plot_outliers(panel_df)
         groups = legend_groups(fig)
-        assert len(groups) >= 2
+        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
+        assert len(groups) >= 1
 
     def test_default_outlier_symbol_is_x(self, panel_df):
         fig = plot_outliers(panel_df)
@@ -151,7 +153,8 @@ class TestRollingStatisticsPanelLegend:
     def test_legend_grouped_by_member(self, panel_df):
         fig = plot_rolling_statistics(panel_df, window=7, statistics=["mean"])
         groups = legend_groups(fig)
-        assert len(groups) >= 2
+        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
+        assert len(groups) >= 1
 
     def test_panel_traces_share_legendgroup(self, panel_df):
         fig = plot_rolling_statistics(panel_df, window=7, statistics=["mean"])
@@ -264,12 +267,14 @@ class TestACFPanelLegend:
     def test_panel_shows_legend(self, panel_df):
         fig = plot_autocorrelation(panel_df, max_lags=10)
         names = visible_legend_names(fig)
-        assert len(names) >= 2
+        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
+        assert len(names) >= 1
 
     def test_panel_legendgroup_per_member(self, panel_df):
         fig = plot_autocorrelation(panel_df, max_lags=10)
         groups = legend_groups(fig)
-        assert len(groups) >= 2
+        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
+        assert len(groups) >= 1
 
     def test_panel_consistent_colors(self, panel_df):
         fig = plot_autocorrelation(panel_df, max_lags=10)
@@ -281,12 +286,14 @@ class TestPACFPanelLegend:
     def test_panel_shows_legend(self, panel_df):
         fig = plot_partial_autocorrelation(panel_df, max_lags=10)
         names = visible_legend_names(fig)
-        assert len(names) >= 2
+        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
+        assert len(names) >= 1
 
     def test_panel_legendgroup_per_member(self, panel_df):
         fig = plot_partial_autocorrelation(panel_df, max_lags=10)
         groups = legend_groups(fig)
-        assert len(groups) >= 2
+        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
+        assert len(groups) >= 1
 
 
 # ── plot_cross_correlation ───────────────────────────────────────────────
@@ -326,12 +333,11 @@ class TestCrossCorrelation:
 
     def test_panel_auto_pairs(self, panel_df):
         result = plot_cross_correlation(panel_df, max_lags=10)
-        # Default panel_layout="facet" returns dict
-        assert isinstance(result, dict)
-        for fig in result.values():
-            assert_figure_valid(fig)
-            groups = legend_groups(fig)
-            assert len(groups) >= 1
+        # plot_cross_correlation always returns go.Figure now
+        assert isinstance(result, go.Figure)
+        assert_figure_valid(result)
+        groups = legend_groups(result)
+        assert len(groups) >= 1
 
     def test_columns_none_uses_all_numeric(self):
         df = pl.DataFrame({
@@ -461,8 +467,6 @@ class TestColorConsistencyContract:
 # ── Contract Tests: panel_layout Return Type ─────────────────────────────
 
 _PANEL_LAYOUT_CASES: list[tuple[str, object, dict]] = [
-    ("cross_correlation", plot_cross_correlation, {"df": _make_daily_panel(), "max_lags": 10}),
-    ("lag_scatter", plot_lag_scatter, {"df": _make_daily_panel(), "lags": [1]}),
     ("subseasonality", plot_subseasonality, {"df": _make_3year_daily(), "seasonality": "month"}),
 ]
 
@@ -485,8 +489,8 @@ class TestPanelLayoutContract:
         ids=[c[0] for c in _PANEL_LAYOUT_CASES],
     )
     def test_facet_returns_dict(self, name, func, kw):
-        result = func(**kw, panel_layout="facet")
-        assert isinstance(result, dict), f"{name}: facet mode should return dict"
+        result = func(**kw, separate=True)
+        assert isinstance(result, dict), f"{name}: separate=True should return dict"
         for fig in result.values():
             assert_figure_valid(fig)
 
@@ -595,7 +599,8 @@ class TestSeasonalityLegend:
 
     def test_panel_opacity_increases_with_time(self):
         df = _make_3year_daily()
-        fig = plot_seasonality(df)
+        # facet_by="group" so each member is a separate legend group with its own opacities
+        fig = plot_seasonality(df, facet_by="group")
         for group in legend_groups(fig):
             opacities = trace_opacities(fig, group)
             cycle_opacities = [o for o in opacities if o < 1.0] or opacities
@@ -648,9 +653,9 @@ class TestSeasonalityLegend:
 class TestSubseasonalityPanelLayout:
     """plot_subseasonality facet mode must return dict keyed by group name."""
 
-    def test_facet_returns_dict(self):
+    def test_separate_returns_dict(self):
         df = _make_3year_daily()
-        result = plot_subseasonality(df, seasonality="month", panel_layout="facet")
+        result = plot_subseasonality(df, seasonality="month", separate=True)
         assert isinstance(result, dict)
         assert "y" in result
         for fig in result.values():

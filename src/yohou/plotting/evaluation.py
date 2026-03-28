@@ -15,6 +15,7 @@ from yohou.metrics import BaseIntervalScorer
 from yohou.metrics.base import BaseScorer
 from yohou.plotting._utils import (
     LegendTracker,
+    RenderContext,
     _create_figure,
     _create_subplots,
     _group_panel_columns,
@@ -205,6 +206,7 @@ def plot_residuals(
     *,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -346,47 +348,42 @@ def plot_residuals(
         member_palette = resolve_color_palette(color_palette, len(all_members))
         legend_tracker = LegendTracker()
 
-        def _render_residual_scatter(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_residual_scatter(ctx: RenderContext) -> None:
             """Render residuals over time for a single panel column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
-            color = member_palette[panel_idx % len(member_palette)]
-            fig.add_trace(
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
+            color = member_palette[ctx.entity_idx % len(member_palette)]
+            ctx.fig.add_trace(
                 go.Scatter(
-                    x=sub_df["time"],
-                    y=sub_df[base],
+                    x=ctx.sub_df["time"],
+                    y=ctx.sub_df[base],
                     mode="markers",
-                    name=display_name,
-                    legendgroup=display_name,
+                    name=ctx.display_name,
+                    legendgroup=ctx.display_name,
                     marker={
                         "size": marker_size,
                         "color": color,
                         "opacity": marker_opacity,
                     },
-                    showlegend=legend_tracker.should_show(display_name),
-                    hovertemplate=_make_hovertemplate(display_name, "Time", "Residual", decimals=3),
+                    showlegend=legend_tracker.should_show(ctx.display_name),
+                    hovertemplate=_make_hovertemplate(ctx.display_name, "Time", "Residual", decimals=3),
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
-            fig.add_hline(
+            ctx.fig.add_hline(
                 y=0,
                 line={"dash": "dash", "color": "#DC2626", "width": 1},
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             residuals_df,
             _render_residual_scatter,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Residual Diagnostics",
             x_label=x_label or "Time",
@@ -509,6 +506,7 @@ def plot_calibration(
     *,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -942,6 +940,7 @@ def plot_score_time_series(
     time_weight: Callable | pl.DataFrame | None = None,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -1411,6 +1410,7 @@ def plot_score_distribution(
     show_zero: bool = True,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -1729,6 +1729,7 @@ def plot_score_per_horizon(
     show_trend: bool = False,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,

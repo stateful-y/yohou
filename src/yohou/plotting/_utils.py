@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import copy
+import warnings
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Literal
 
 import plotly.graph_objects as go
@@ -25,6 +27,7 @@ __all__ = [
     "LINE_DASH_SEQUENCE",
     "LegendTracker",
     "PanelColorManager",
+    "RenderContext",
     "apply_default_layout",
     "config_context",
     "get_color_sequence",
@@ -56,6 +59,51 @@ LINE_DASH_SEQUENCE: list[str] = [
     "longdash",
     "longdashdot",
 ]
+
+
+@dataclass(frozen=True)
+class RenderContext:
+    """Typed context passed to panel facet render callbacks.
+
+    Replaces the previous 6-positional-arg callback signature with
+    named, self-documenting fields.
+
+    Parameters
+    ----------
+    fig : go.Figure
+        The subplots figure to add traces to.
+    sub_df : pl.DataFrame
+        Subset DataFrame with ``"time"`` plus one value column.
+    display_name : str
+        The name of the overlaid entity (member name when
+        ``facet_by="group"``, group name when ``facet_by="member"``).
+    entity_idx : int
+        Index of the overlaid entity in the color palette.
+    row : int
+        Subplot row (1-indexed).
+    col : int
+        Subplot column (1-indexed).
+    facet_by : str
+        ``"group"`` or ``"member"`` - indicates the faceting axis.
+    facet_name : str
+        The facet axis value (group name when ``facet_by="group"``,
+        member name when ``facet_by="member"``).
+    group_name : str
+        Panel group name, always available for context.
+    member_name : str
+        Panel member name, always available for context.
+    """
+
+    fig: go.Figure
+    sub_df: pl.DataFrame
+    display_name: str
+    entity_idx: int
+    row: int
+    col: int
+    facet_by: str
+    facet_name: str
+    group_name: str
+    member_name: str
 
 
 def _subplot_spacing(n: int, base: float = 0.3, floor: float = 0.04) -> float:
@@ -958,10 +1006,11 @@ def _member_name(col: str) -> str:
 
 def panel_facet_figure(
     df: pl.DataFrame,
-    render_fn: Callable[[go.Figure, pl.DataFrame, str, int, int, int], None],
+    render_fn: Callable[[RenderContext], None],
     *,
     panel_group_names: list[str] | None = None,
     columns: str | list[str] | None = None,
+    facet_by: Literal["group", "member"] = "member",
     facet_n_cols: int = 2,
     title: str | None = None,
     x_label: str | None = None,
@@ -976,27 +1025,23 @@ def panel_facet_figure(
 ) -> go.Figure:
     """Create a faceted subplot figure for panel data.
 
-    Panel columns are grouped by their group prefix (the part before
-    ``__``).  Each group gets one subplot titled with the group name.
-    Within each group, the *render_fn* callback is invoked once per
-    member column with a sub-DataFrame containing ``"time"`` and the
-    member column renamed to its member name (part after ``__``).
-
     Parameters
     ----------
     df : pl.DataFrame
-        Input DataFrame with panel columns.
-    render_fn : Callable
-        ``(fig, sub_df, display_name, panel_idx, row, col) -> None``.
-        *display_name* is the member postfix (e.g. ``"a"`` for
-        column ``"y__a"``).  *panel_idx* is the index of that
-        member among all unique members, guaranteeing consistent
-        colouring across groups.
+        Input DataFrame with panel columns (``group__member`` pattern).
+    render_fn : Callable[[RenderContext], None]
+        Callback receiving a :class:`RenderContext` for each trace.
     panel_group_names : list[str] | None, default=None
         Group prefixes to include (``None`` means all).
     columns : str | list[str] | None, default=None
-        Member names (postfixes after ``__``) to include within the
-        selected groups.  If ``None``, all members are plotted.
+        Member names to include within selected groups.
+    facet_by : Literal["group", "member"], default="member"
+        Faceting axis.
+
+        - ``"member"`` - one subplot per unique member; groups are
+          overlaid within each subplot (cross-entity comparison).
+        - ``"group"`` - one subplot per group; members are overlaid
+          within each subplot (within-entity analysis).
     facet_n_cols : int, default=2
         Number of columns in the facet grid.
     title : str | None, default=None
@@ -1014,66 +1059,109 @@ def panel_facet_figure(
     shared_xaxes : bool, default=True
         Share x-axes across all subplots.
     subplot_v_spacing : float | None, default=None
-        Vertical spacing between subplots.  When ``None``, uses an
-        adaptive formula based on the number of rows.
+        Vertical spacing between subplots.
     subplot_h_spacing : float | None, default=None
-        Horizontal spacing between subplots.  When ``None``, defaults
-        to ``0.08``.
+        Horizontal spacing between subplots.
+    resampler : bool | Literal["widget"] | None, default=None
+        Resampler mode.
 
     Returns
     -------
     go.Figure
         Plotly figure with faceted panel subplots.
-
-    Examples
-    --------
-    >>> import polars as pl, plotly.graph_objects as go
-    >>> from yohou.plotting._utils import panel_facet_figure
-    >>> df = pl.DataFrame({
-    ...     "time": [1, 2, 3],
-    ...     "y__a": [10, 20, 30],
-    ...     "y__b": [40, 50, 60],
-    ... })
-    >>> def render(fig, sub_df, name, idx, row, col):
-    ...     base = [c for c in sub_df.columns if c != "time"][0]
-    ...     fig.add_trace(
-    ...         go.Scatter(x=sub_df["time"], y=sub_df[base], name=name),
-    ...         row=row,
-    ...         col=col,
-    ...     )
-    >>> fig = panel_facet_figure(df, render, title="Panel Demo")
-    >>> len(fig.data)
-    2
     """
     panel_cols = resolve_panel_columns(df, panel_group_names, columns)
     groups, all_members = _group_panel_columns(panel_cols)
+    all_group_names = list(groups.keys())
 
-    n_groups = len(groups)
-    n_cols_grid = min(n_groups, facet_n_cols)
-    n_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
+    if facet_by == "member":
+        facet_keys = all_members
+        overlay_keys_per_facet = {
+            m: [g for g, cols in groups.items() if any(_member_name(c) == m for c in cols)]
+            for m in all_members
+        }
+        # Warn about asymmetric groups
+        full_group_set = set(all_group_names)
+        missing = {
+            m: full_group_set - set(overlay_keys_per_facet[m])
+            for m in all_members
+            if set(overlay_keys_per_facet[m]) != full_group_set
+        }
+        if missing:
+            pairs = ", ".join(f"({g}, {m})" for m, gs in missing.items() for g in sorted(gs))
+            warnings.warn(
+                f"Asymmetric panel: missing (group, member) pairs skipped: {pairs}",
+                stacklevel=2,
+            )
+    else:
+        facet_keys = all_group_names
+        overlay_keys_per_facet = {
+            g: [_member_name(c) for c in cols]
+            for g, cols in groups.items()
+        }
+
+    n_facets = len(facet_keys)
+    n_cols_grid = min(n_facets, facet_n_cols)
+    n_rows = (n_facets + n_cols_grid - 1) // n_cols_grid
 
     fig = _create_subplots(
         resampler,
         rows=n_rows,
         cols=n_cols_grid,
-        subplot_titles=list(groups.keys()),
+        subplot_titles=facet_keys,
         shared_xaxes=shared_xaxes,
         vertical_spacing=subplot_v_spacing if subplot_v_spacing is not None else _subplot_spacing(n_rows),
         horizontal_spacing=subplot_h_spacing if subplot_h_spacing is not None else 0.08,
     )
 
-    for group_idx, (_, group_cols) in enumerate(groups.items()):
-        row = group_idx // n_cols_grid + 1
-        col_idx = group_idx % n_cols_grid + 1
+    for facet_idx, facet_key in enumerate(facet_keys):
+        row = facet_idx // n_cols_grid + 1
+        col_idx = facet_idx % n_cols_grid + 1
 
-        for col in group_cols:
-            member = _member_name(col)
-            member_idx = all_members.index(member)
+        overlay_keys = overlay_keys_per_facet[facet_key]
+        for entity_idx, overlay_key in enumerate(overlay_keys):
+            if facet_by == "member":
+                group_name = overlay_key
+                member_name = facet_key
+                col_name = next(
+                    (c for c in groups[group_name] if _member_name(c) == member_name),
+                    None,
+                )
+                if col_name is None:
+                    continue
+                display_name = group_name
+            else:
+                group_name = facet_key
+                member_name = overlay_key
+                col_name = next(
+                    (c for c in groups[group_name] if _member_name(c) == member_name),
+                    None,
+                )
+                if col_name is None:
+                    continue
+                display_name = member_name
 
-            sub_df = df.select("time", pl.col(col).alias(member))
-            render_fn(fig, sub_df, member, member_idx, row, col_idx)
+            sub_df = df.select("time", pl.col(col_name).alias(display_name))
+            ctx = RenderContext(
+                fig=fig,
+                sub_df=sub_df,
+                display_name=display_name,
+                entity_idx=entity_idx,
+                row=row,
+                col=col_idx,
+                facet_by=facet_by,
+                facet_name=facet_key,
+                group_name=group_name,
+                member_name=member_name,
+            )
+            render_fn(ctx)
 
     default_height = max(row_height * n_rows, 400)
+
+    # Auto-switch hovermode for member faceting with overlaid groups
+    hovermode = None
+    if facet_by == "member" and len(all_group_names) > 1:
+        hovermode = "x unified"
 
     fig = apply_default_layout(
         fig,
@@ -1082,6 +1170,7 @@ def panel_facet_figure(
         y_label=y_label,
         width=width,
         height=height or default_height,
+        hovermode=hovermode,
     )
 
     return fig

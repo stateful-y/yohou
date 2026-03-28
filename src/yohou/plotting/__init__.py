@@ -11,6 +11,7 @@ from plotly_resampler.aggregation.gap_handlers import MedDiffGapHandler, NoGapHa
 from yohou.plotting._utils import (
     LINE_DASH_SEQUENCE,
     PanelColorManager,
+    RenderContext,
     config_context,
     get_color_sequence,
     get_config,
@@ -65,6 +66,7 @@ __all__ = [
     "MinMaxLTTB",
     "NoGapHandler",
     "PanelColorManager",
+    "RenderContext",
     "config_context",
     "get_color_sequence",
     "get_config",

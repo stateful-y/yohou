@@ -9,6 +9,7 @@ from scipy.signal import periodogram as scipy_periodogram
 
 from yohou.plotting._utils import (
     LegendTracker,
+    RenderContext,
     _auto_detect_panel,
     apply_default_layout,
     panel_facet_figure,
@@ -30,6 +31,7 @@ def plot_phase(
     unwrap: bool = True,
     angle_unit: Literal["degree", "radian"] = "radian",
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -116,18 +118,11 @@ def plot_phase(
         _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
         _legend_tracker = LegendTracker()
 
-        def _render_phase(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_phase(ctx: RenderContext) -> None:
             """Render phase spectrum for a single panel group."""
-            base = [c for c in sub_df.columns if c != "time"][0]
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
             _lw = kwargs.get("line_width", 1.5)
-            y_arr = sub_df[base].to_numpy().astype(float)
+            y_arr = ctx.sub_df[base].to_numpy().astype(float)
             spectrum = np.fft.rfft(y_arr)
             freqs = np.fft.rfftfreq(len(y_arr))
             phase = np.angle(spectrum)
@@ -135,27 +130,29 @@ def plot_phase(
                 phase = np.unwrap(phase)
             if use_degrees:
                 phase = np.degrees(phase)
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
                     x=freqs[1:].tolist(),
                     y=phase[1:].tolist(),
                     mode="lines",
-                    line={"width": _lw, "color": _panel_colors[panel_idx]},
-                    name=display_name,
-                    legendgroup=display_name,
-                    showlegend=_legend_tracker.should_show(display_name),
+                    line={"width": _lw, "color": _panel_colors[ctx.entity_idx]},
+                    name=ctx.display_name,
+                    legendgroup=ctx.display_name,
+                    showlegend=_legend_tracker.should_show(ctx.display_name),
                     connectgaps=connect_gaps,
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_phase,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
+            facet_by=effective_facet_by,
             title=title or "Phase Spectrum",
             x_label=x_label or "Frequency (cycles/sample)",
             y_label=y_label or f"Phase ({unit})",
@@ -221,6 +218,7 @@ def plot_spectrum(
     columns: str | list[str] | None = None,
     log_scale: bool = False,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -310,42 +308,37 @@ def plot_spectrum(
         _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
         _legend_tracker = LegendTracker()
 
-        def _render_periodogram(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_periodogram(ctx: RenderContext) -> None:
             """Render spectral periodogram with optional log scaling for a single column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
             _lw = kwargs.get("line_width", 1.5)
-            y_arr = sub_df[base].to_numpy()
+            y_arr = ctx.sub_df[base].to_numpy()
             freqs, psd = scipy_periodogram(y_arr)
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
                     x=freqs[1:].tolist(),
                     y=psd[1:].tolist(),
                     mode="lines",
-                    line={"width": _lw, "color": _panel_colors[panel_idx]},
-                    name=display_name,
-                    legendgroup=display_name,
-                    showlegend=_legend_tracker.should_show(display_name),
+                    line={"width": _lw, "color": _panel_colors[ctx.entity_idx]},
+                    name=ctx.display_name,
+                    legendgroup=ctx.display_name,
+                    showlegend=_legend_tracker.should_show(ctx.display_name),
                     connectgaps=connect_gaps,
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
             if log_scale:
-                fig.update_yaxes(type="log", row=row, col=col)
+                ctx.fig.update_yaxes(type="log", row=ctx.row, col=ctx.col)
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_periodogram,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_n_cols=facet_n_cols,
+            facet_by=effective_facet_by,
             title=title or "Periodogram",
             x_label=x_label or "Frequency (cycles/sample)",
             y_label=y_label or "Power Spectral Density",

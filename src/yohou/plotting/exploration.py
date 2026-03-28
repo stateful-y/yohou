@@ -10,6 +10,7 @@ from yohou.plotting._utils import (
     LINE_DASH_SEQUENCE,
     LegendTracker,
     PanelColorManager,
+    RenderContext,
     _auto_detect_panel,
     _create_figure,
     _group_panel_columns,
@@ -40,6 +41,7 @@ def plot_time_series(
     *,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -142,37 +144,32 @@ def plot_time_series(
         panel_group_names = []
 
     if panel_group_names is not None and _auto_detect_panel(df, panel_group_names):
-        # Pre-compute palette for consistent member colouring
+        # Pre-compute palette for consistent colouring across the overlaid dimension
         pn_cols = resolve_panel_columns(df, panel_group_names, columns if panel_group_names is not None else None)
-        _, all_members = _group_panel_columns(pn_cols)
-        color_palette = resolve_color_palette(color_palette, len(all_members))
+        groups, all_members = _group_panel_columns(pn_cols)
+        effective_facet_by = facet_by or "member"
+        n_overlay = len(list(groups.keys())) if effective_facet_by == "member" else len(all_members)
+        color_palette = resolve_color_palette(color_palette, n_overlay)
         legend_tracker = LegendTracker(show_legend=show_legend)
 
-        def _render_ts(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,
-            row: int,
-            col: int,
-        ) -> None:
-            """Render one member trace into the faceted figure."""
-            color = line_color if line_color is not None else color_palette[panel_idx]
-            fig.add_trace(
+        def _render_ts(ctx: RenderContext) -> None:
+            """Render one trace into the faceted figure."""
+            color = line_color if line_color is not None else color_palette[ctx.entity_idx]
+            ctx.fig.add_trace(
                 go.Scatter(
-                    x=sub_df["time"],
-                    y=sub_df[display_name],
+                    x=ctx.sub_df["time"],
+                    y=ctx.sub_df[ctx.display_name],
                     mode="lines",
-                    name=display_name,
+                    name=ctx.display_name,
                     line={"color": color, "width": line_width, "dash": line_dash},
                     opacity=line_opacity,
                     connectgaps=connect_gaps,
-                    showlegend=legend_tracker.should_show(display_name),
-                    legendgroup=display_name,
-                    hovertemplate=f"<b>{display_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+                    showlegend=legend_tracker.should_show(ctx.display_name),
+                    legendgroup=ctx.display_name,
+                    hovertemplate=f"<b>{ctx.display_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
 
         fig = panel_facet_figure(
@@ -180,6 +177,7 @@ def plot_time_series(
             _render_ts,
             panel_group_names=panel_group_names,
             columns=columns if panel_group_names is not None else None,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title,
             x_label=x_label or "Time",
@@ -188,7 +186,7 @@ def plot_time_series(
             height=height,
             resampler=resampler,
         )
-        fig.update_layout(hovermode=hovermode, showlegend=show_legend)
+        fig.update_layout(showlegend=show_legend)
 
         return fig
 
@@ -249,6 +247,7 @@ def plot_rolling_statistics(
     statistics: str | list[str] = "mean",
     show_original: bool = True,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -343,47 +342,40 @@ def plot_rolling_statistics(
         _color_mgr = PanelColorManager(color_palette)
         legend_tracker = LegendTracker(show_legend=show_legend)
 
-        def _render_rolling(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_rolling(ctx: RenderContext) -> None:
             """Render rolling window statistics traces for a single column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
             _stats = [statistics] if isinstance(statistics, str) else list(statistics)
             ws = window_size.get(base, 7) if isinstance(window_size, dict) else window_size
-            member_color = _color_mgr.get_color(display_name)
+            member_color = _color_mgr.get_color(ctx.display_name)
             if show_original:
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
-                        x=sub_df["time"],
-                        y=sub_df[base],
+                        x=ctx.sub_df["time"],
+                        y=ctx.sub_df[base],
                         mode="lines",
-                        name=display_name,
-                        legendgroup=display_name,
+                        name=ctx.display_name,
+                        legendgroup=ctx.display_name,
                         line={"color": member_color, "width": kwargs.get("line_width", 1.5)},
                         opacity=kwargs.get("line_opacity", 0.3),
                         showlegend=False,
                         connectgaps=connect_gaps,
                     ),
-                    row=row,
-                    col=col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
             t = RollingStatisticsTransformer(window_size=ws, statistics=_stats)
-            t.fit(sub_df)
-            df_s = t.transform(sub_df)
+            t.fit(ctx.sub_df)
+            df_s = t.transform(ctx.sub_df)
             for si, stat in enumerate(_stats):
                 scol = f"{base}_{stat}"
                 legend_kw = grouped_legend_kwargs(
-                    display_name,
+                    ctx.display_name,
                     stat,
                     legend_tracker,
                     is_first_in_group=si == 0,
                 )
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
                         x=df_s["time"],
                         y=df_s[scol],
@@ -397,15 +389,17 @@ def plot_rolling_statistics(
                         connectgaps=connect_gaps,
                         **legend_kw,
                     ),
-                    row=row,
-                    col=col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_rolling,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Rolling Statistics",
             x_label=x_label or "Time",
@@ -509,6 +503,7 @@ def plot_boxplot(
     columns: str | list[str] | None = None,
     period: str = "1mo",
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     color_palette: list[str] | None = None,
     facet_n_cols: int = 2,
     title: str | None = None,
@@ -590,47 +585,42 @@ def plot_boxplot(
         _color_mgr = PanelColorManager(color_palette)
         _legend_tracker = LegendTracker(show_legend=show_legend)
 
-        def _render_boxplot(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_boxplot(ctx: RenderContext) -> None:
             """Render period-grouped box plots for a single column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
-            _c = _color_mgr.get_color(display_name)
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
+            _c = _color_mgr.get_color(ctx.display_name)
             _ba = kwargs.get("box_opacity", 0.7)
             _sp = kwargs.get("show_points", "outliers")
             _ps = kwargs.get("point_size", 4.0)
-            df_g = sub_df.with_columns(pl.col("time").dt.truncate(period).alias("period"))
+            df_g = ctx.sub_df.with_columns(pl.col("time").dt.truncate(period).alias("period"))
             periods_list = df_g.select("period").unique().sort("period")["period"].to_list()
-            _show = _legend_tracker.should_show(display_name)
+            _show = _legend_tracker.should_show(ctx.display_name)
             for p_idx, pv in enumerate(periods_list):
                 pd_data = df_g.filter(pl.col("period") == pv)[base]
                 bp = "all" if _sp == "all" else ("outliers" if _sp == "outliers" else False)
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Box(
                         y=pd_data,
                         x=[str(pv)] * len(pd_data),
-                        name=display_name,
+                        name=ctx.display_name,
                         marker={"color": _c},
                         opacity=_ba,
                         boxpoints=bp,
                         marker_size=_ps if bp else None,
-                        legendgroup=display_name,
+                        legendgroup=ctx.display_name,
                         showlegend=_show and p_idx == 0,
                     ),
-                    row=row,
-                    col=col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_boxplot,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Boxplots",
             x_label=x_label or "Period",
@@ -711,6 +701,7 @@ def plot_missing_data(
     columns: str | list[str] | None = None,
     kind: Literal["heatmap", "bars", "matrix"] = "heatmap",
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_missing: str = "#DC2626",
     color_present: str = "#059669",
@@ -793,22 +784,15 @@ def plot_missing_data(
 
     if panel_group_names is not None:
 
-        def _render_missing(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_missing(ctx: RenderContext) -> None:
             """Render missing data count bar chart for a single column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
             _sp = kwargs.get("show_percentages", True)
-            total = len(sub_df)
-            mc = sub_df[base].null_count()
+            total = len(ctx.sub_df)
+            mc = ctx.sub_df[base].null_count()
             pct = (mc / total) * 100 if total > 0 else 0
             text = f"{pct:.1f}%" if _sp else None
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Bar(
                     x=[base],
                     y=[pct],
@@ -817,15 +801,17 @@ def plot_missing_data(
                     textposition="auto" if text else None,
                     showlegend=False,
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
 
+        effective_facet_by = facet_by or "member"
         return panel_facet_figure(
             df,
             _render_missing,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Missing Data",
             x_label=x_label or "Column",
@@ -961,6 +947,7 @@ def plot_distribution(
     n_bins: int = 50,
     show_kde: bool = True,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -1055,67 +1042,62 @@ def plot_distribution(
         _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
         _legend_tracker = LegendTracker(show_legend=show_legend)
 
-        def _render_distribution(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_distribution(ctx: RenderContext) -> None:
             """Render histogram + KDE for a single panel column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
-            series = sub_df[base].drop_nulls()
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
+            series = ctx.sub_df[base].drop_nulls()
             values = series.to_numpy()
-            _c = _panel_colors[panel_idx]
-            fig.add_trace(
+            _c = _panel_colors[ctx.entity_idx]
+            ctx.fig.add_trace(
                 go.Histogram(
                     x=values,
                     nbinsx=n_bins,
                     marker={"color": _c},
                     opacity=bar_opacity,
                     histnorm=histnorm,
-                    name=display_name,
-                    legendgroup=display_name,
-                    showlegend=_legend_tracker.should_show(display_name),
+                    name=ctx.display_name,
+                    legendgroup=ctx.display_name,
+                    showlegend=_legend_tracker.should_show(ctx.display_name),
                     hovertemplate=(
-                        f"<b>{display_name}</b><br>"
+                        f"<b>{ctx.display_name}</b><br>"
                         "Value: %{x:.2f}<br>"
                         "Density: %{y:.4f}<extra></extra>"
                     ),
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
             if show_kde and len(values) > 1:
                 from scipy.stats import gaussian_kde  # noqa: PLC0415
 
                 kde = gaussian_kde(values)
                 x_range = np.linspace(float(values.min()), float(values.max()), kde_points)
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
                         x=x_range,
                         y=kde(x_range),
                         mode="lines",
                         line={"color": _c, "width": kde_width},
-                        name=f"{display_name} KDE",
-                        legendgroup=display_name,
+                        name=f"{ctx.display_name} KDE",
+                        legendgroup=ctx.display_name,
                         showlegend=False,
                         hovertemplate=(
-                            f"<b>{display_name} KDE</b><br>"
+                            f"<b>{ctx.display_name} KDE</b><br>"
                             "Value: %{x:.2f}<br>"
                             "Density: %{y:.4f}<extra></extra>"
                         ),
                     ),
-                    row=row,
-                    col=col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_distribution,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Distribution",
             x_label=x_label or "Value",
@@ -1195,6 +1177,7 @@ def plot_outliers(
     method: Literal["zscore", "iqr", "percentile"] = "zscore",
     threshold: float = 3.0,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -1340,42 +1323,35 @@ def plot_outliers(
         _color_mgr = PanelColorManager(color_palette)
         _legend_tracker = LegendTracker(show_legend=show_legend)
 
-        def _render_outlier(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_outlier(ctx: RenderContext) -> None:
             """Render time series with outlier highlights for a single panel."""
-            base = [c for c in sub_df.columns if c != "time"][0]
-            _c = _color_mgr.get_color(display_name)
-            _lg = linked_legendgroup_kwargs(display_name, _legend_tracker, is_primary=True)
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
+            _c = _color_mgr.get_color(ctx.display_name)
+            _lg = linked_legendgroup_kwargs(ctx.display_name, _legend_tracker, is_primary=True)
             # Line trace
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
-                    x=sub_df["time"],
-                    y=sub_df[base],
+                    x=ctx.sub_df["time"],
+                    y=ctx.sub_df[base],
                     mode="lines",
                     line={"color": _c, "width": line_width},
                     opacity=line_opacity,
                     connectgaps=connect_gaps,
                     hovertemplate=(
-                        f"<b>{display_name}</b><br>"
+                        f"<b>{ctx.display_name}</b><br>"
                         "%{x}<br>%{y:.2f}<extra></extra>"
                     ),
                     **_lg,
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
             # Outlier markers
-            mask, lower, upper = _compute_outlier_mask(sub_df[base])
-            df_out = sub_df.filter(mask)
-            _lg_sec = linked_legendgroup_kwargs(display_name, _legend_tracker, is_primary=False)
+            mask, lower, upper = _compute_outlier_mask(ctx.sub_df[base])
+            df_out = ctx.sub_df.filter(mask)
+            _lg_sec = linked_legendgroup_kwargs(ctx.display_name, _legend_tracker, is_primary=False)
             if len(df_out) > 0:
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
                         x=df_out["time"],
                         y=df_out[base],
@@ -1387,30 +1363,32 @@ def plot_outliers(
                         ),
                         **_lg_sec,
                     ),
-                    row=row,
-                    col=col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
             # Threshold bounds
             if show_bounds and lower is not None and upper is not None:
                 for val in (lower, upper):
-                    fig.add_trace(
+                    ctx.fig.add_trace(
                         go.Scatter(
-                            x=[sub_df["time"].min(), sub_df["time"].max()],
+                            x=[ctx.sub_df["time"].min(), ctx.sub_df["time"].max()],
                             y=[val, val],
                             mode="lines",
                             line={"dash": "dash", "color": _c, "width": 1},
                             hoverinfo="skip",
                             **_lg_sec,
                         ),
-                        row=row,
-                        col=col,
+                        row=ctx.row,
+                        col=ctx.col,
                     )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_outlier,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Outlier Detection",
             x_label=x_label or "Time",
@@ -1512,6 +1490,7 @@ def plot_resampling_comparison(
     original_label: str = "Original",
     resampled_label: str = "Resampled",
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -1619,22 +1598,15 @@ def plot_resampling_comparison(
 
     if panel_group_names is not None:
 
-        def _render_resampling(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,  # noqa: ARG001
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_resampling(ctx: RenderContext) -> None:
             """Render original and resampled traces for a single panel."""
-            base = [c for c in sub_df.columns if c != "time"][0]
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
             _colors = resolve_color_palette(color_palette, 1)
             # Original (from df_original, matching the same full column name)
             full_col = [c for c in df_original.columns if c.endswith(f"__{base}") or c == base]
             if full_col:
                 orig_col = full_col[0]
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
                         x=df_original["time"],
                         y=df_original[orig_col],
@@ -1644,29 +1616,31 @@ def plot_resampling_comparison(
                         name=original_label,
                         showlegend=False,
                     ),
-                    row=row,
-                    col=col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
             # Resampled
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
-                    x=sub_df["time"],
-                    y=sub_df[base],
+                    x=ctx.sub_df["time"],
+                    y=ctx.sub_df[base],
                     mode="lines+markers",
                     line={"color": _colors[0], "width": resampled_width, "dash": resampled_dash},
                     opacity=resampled_opacity,
                     name=resampled_label,
                     showlegend=False,
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df_resampled,
             _render_resampling,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or f"{original_label} vs {resampled_label}",
             x_label=x_label or "Time",

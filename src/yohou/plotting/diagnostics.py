@@ -12,6 +12,7 @@ from scipy.stats import norm
 from yohou.plotting._utils import (
     LegendTracker,
     PanelColorManager,
+    RenderContext,
     _add_confidence_bands,
     _auto_detect_panel,
     _create_figure,
@@ -50,6 +51,7 @@ def plot_autocorrelation(
     confidence_level: float = 0.95,
     show_confidence: bool = True,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -137,19 +139,12 @@ def plot_autocorrelation(
         _color_mgr = PanelColorManager(color_palette)
         _acf_legend = LegendTracker()
 
-        def _render_acf(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_acf(ctx: RenderContext) -> None:
             """Render autocorrelation bar chart with confidence bands for a single column."""
-            base = [c for c in sub_df.columns if c != "time"][0]
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
             member = _member_name(base)
             _bc = _color_mgr.get_color(member)
-            series = sub_df[base].drop_nulls()
+            series = ctx.sub_df[base].drop_nulls()
             n_s = len(series)
             _ml = max_lags if max_lags is not None else min(n_s // 2, 40)
             mean_v = series.mean()
@@ -163,30 +158,32 @@ def plot_autocorrelation(
                     num = (s1 * s2).sum()
                     den = ((series - mean_v) ** 2).sum()
                     acf_vals.append(num / den if den != 0 else 0)
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Bar(
                     x=list(range(_ml + 1)),
                     y=acf_vals,
                     marker={"color": _bc},
-                    legendgroup=display_name,
-                    showlegend=_acf_legend.should_show(display_name),
-                    name=display_name,
-                    hovertemplate=_make_hovertemplate(display_name, "Lag", "ACF", decimals=3),
+                    legendgroup=ctx.display_name,
+                    showlegend=_acf_legend.should_show(ctx.display_name),
+                    name=ctx.display_name,
+                    hovertemplate=_make_hovertemplate(ctx.display_name, "Lag", "ACF", decimals=3),
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
             if show_confidence:
                 ci = norm.ppf(1 - (1 - confidence_level) / 2) / math.sqrt(n_s)
                 _add_confidence_bands(
-                    fig, list(range(_ml + 1)), [ci] * (_ml + 1), [-ci] * (_ml + 1), row=row, col=col
+                    ctx.fig, list(range(_ml + 1)), [ci] * (_ml + 1), [-ci] * (_ml + 1), row=ctx.row, col=ctx.col
                 )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_acf,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Autocorrelation (ACF)",
             x_label=x_label or "Lag",
@@ -402,6 +399,7 @@ def plot_partial_autocorrelation(
     confidence_level: float = 0.95,
     show_confidence: bool = True,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -498,19 +496,12 @@ def plot_partial_autocorrelation(
         _pacf_color_mgr = PanelColorManager(color_palette)
         _pacf_legend = LegendTracker()
 
-        def _render_pacf(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_pacf(ctx: RenderContext) -> None:
             """Render PACF bar chart with confidence bands for a single panel."""
-            base = [c for c in sub_df.columns if c != "time"][0]
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
             member = _member_name(base)
             _bc = _pacf_color_mgr.get_color(member)
-            series = sub_df[base].drop_nulls()
+            series = ctx.sub_df[base].drop_nulls()
             n_s = len(series)
             _ml = max_lags if max_lags is not None else min(n_s // 2, 40)
 
@@ -522,27 +513,29 @@ def plot_partial_autocorrelation(
                 alpha=alpha_val,
             )
 
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Bar(
                     x=list(range(_ml + 1)),
                     y=pacf_vals,
                     marker={"color": _bc},
-                    legendgroup=display_name,
-                    showlegend=_pacf_legend.should_show(display_name),
-                    name=display_name,
-                    hovertemplate=_make_hovertemplate(display_name, "Lag", "PACF", decimals=3),
+                    legendgroup=ctx.display_name,
+                    showlegend=_pacf_legend.should_show(ctx.display_name),
+                    name=ctx.display_name,
+                    hovertemplate=_make_hovertemplate(ctx.display_name, "Lag", "PACF", decimals=3),
                 ),
-                row=row,
-                col=col,
+                row=ctx.row,
+                col=ctx.col,
             )
             if show_confidence and ci_lo is not None and ci_hi is not None:
-                _add_confidence_bands(fig, list(range(_ml + 1)), ci_hi, ci_lo, row=row, col=col)
+                _add_confidence_bands(ctx.fig, list(range(_ml + 1)), ci_hi, ci_lo, row=ctx.row, col=ctx.col)
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_pacf,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Partial Autocorrelation (PACF)",
             x_label=x_label or "Lag",
@@ -627,7 +620,8 @@ def plot_correlation_heatmap(
     *,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
-    panel_layout: Literal["grid", "facet"] = "grid",
+    facet_by: Literal["group", "member"] | None = "group",
+    separate: bool = False,
     facet_n_cols: int = 3,
     show_legend: bool = True,
     title: str | None = None,
@@ -650,11 +644,13 @@ def plot_correlation_heatmap(
         Column(s) to include. If None, uses all numeric columns except 'time'.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
-    panel_layout : ``"grid"`` or ``"facet"``, default=``"grid"``
-        Layout for panel data.  ``"grid"`` renders all groups in a
-        single figure (current behaviour).  ``"facet"`` returns a
-        ``dict[str, go.Figure]`` with one figure per panel group.
-        Ignored for non-panel data.
+    facet_by : Literal["group", "member"] | None, default="group"
+        Faceting axis for panel data.  ``"group"`` creates one subplot
+        per panel group, ``"member"`` one per member.  ``None`` disables
+        faceting.  Ignored for non-panel data.
+    separate : bool, default=False
+        When ``True``, return a ``dict[str, go.Figure]`` with one
+        figure per facet level instead of a single combined figure.
     facet_n_cols : int, default=3
         Number of columns in the faceted grid when multiple panel groups
         are present.
@@ -677,7 +673,7 @@ def plot_correlation_heatmap(
     -------
     go.Figure | dict[str, go.Figure]
         Plotly figure object, or a dict of figures when
-        ``panel_layout="facet"`` with panel data.
+        ``separate=True`` with panel data.
 
     Examples
     --------
@@ -727,8 +723,8 @@ def plot_correlation_heatmap(
         colorscale = kwargs.get("colorscale", "RdBu_r")
         show_values = kwargs.get("show_values", True)
 
-        if panel_layout == "facet":
-            # ── Facet mode: one figure per group ─────────────────────
+        if separate:
+            # ── Separate mode: one figure per group ──────────────────
             figures: dict[str, go.Figure] = {}
             for gname, gcols in groups.items():
                 base_names = [c.split("__", 1)[1] if "__" in c else c for c in gcols]
@@ -906,6 +902,7 @@ def plot_seasonality(
     seasonality: str = "month",
     highlight: int | list[int] | None = None,
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -1020,39 +1017,32 @@ def plot_seasonality(
         _color_mgr = PanelColorManager(color_palette)
         _legend_tracker = LegendTracker(show_legend=show_legend)
 
-        def _render_season(
-            fig: go.Figure,
-            sub_df: pl.DataFrame,
-            display_name: str,
-            panel_idx: int,  # noqa: ARG001
-            row: int,
-            col: int,
-        ) -> None:
+        def _render_season(ctx: RenderContext) -> None:
             """Render seasonal overlay for a single panel group."""
-            base = [c for c in sub_df.columns if c != "time"][0]
-            dfs = _add_season_and_cycle(sub_df, seasonality)
+            base = [c for c in ctx.sub_df.columns if c != "time"][0]
+            dfs = _add_season_and_cycle(ctx.sub_df, seasonality)
             cycles = sorted(dfs["cycle"].unique().to_list())
-            member_color = _color_mgr.get_color(display_name)
+            member_color = _color_mgr.get_color(ctx.display_name)
             slabels = _SEASON_LABELS_MAP.get(seasonality)
             n_cycles = len(cycles)
 
             # Collect per-season values for aggregated mean
             season_vals: dict[int | str, list[float]] = {}
 
-            is_legend_member = _legend_tracker.should_show(display_name)
+            is_legend_member = _legend_tracker.should_show(ctx.display_name)
             r, g, b = int(member_color[1:3], 16), int(member_color[3:5], 16), int(member_color[5:7], 16)
 
             # Invisible trace for an opaque legend swatch
             if is_legend_member:
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
                         x=[None], y=[None], mode="lines",
                         line={"color": member_color, "width": line_width},
-                        name=display_name,
-                        legendgroup=display_name,
+                        name=ctx.display_name,
+                        legendgroup=ctx.display_name,
                         showlegend=True,
                     ),
-                    row=row, col=col,
+                    row=ctx.row, col=ctx.col,
                 )
 
             for ci, cyc in enumerate(cycles):
@@ -1081,47 +1071,49 @@ def plot_seasonality(
 
                 line_rgba = f"rgba({r},{g},{b},{alpha:.2f})"
 
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
                         x=x_vals,
                         y=y_vals,
                         mode="lines",
                         line={"color": line_rgba, "width": lw},
                         connectgaps=connect_gaps,
-                        hovertemplate=f"<b>{display_name} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
-                        name=display_name,
-                        legendgroup=display_name,
+                        hovertemplate=f"<b>{ctx.display_name} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
+                        name=ctx.display_name,
+                        legendgroup=ctx.display_name,
                         showlegend=False,
                     ),
-                    row=row,
-                    col=col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
 
             # Add aggregated mean line (bold, on top)
             if season_vals:
                 mean_x = list(season_vals.keys())
                 mean_y = [float(np.mean(v)) for v in season_vals.values()]
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
                         x=mean_x,
                         y=mean_y,
                         mode="lines",
                         line={"color": member_color, "width": 3},
                         connectgaps=connect_gaps,
-                        hovertemplate=f"<b>{display_name} Mean</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
-                        name=display_name,
-                        legendgroup=display_name,
+                        hovertemplate=f"<b>{ctx.display_name} Mean</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
+                        name=ctx.display_name,
+                        legendgroup=ctx.display_name,
                         showlegend=False,
                     ),
-                    row=row,
-                    col=col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
 
+        effective_facet_by = facet_by or "member"
         fig = panel_facet_figure(
             df,
             _render_season,
             panel_group_names=panel_group_names,
             columns=columns,
+            facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title or "Seasonal Pattern",
             x_label=x_label or seasonality.capitalize(),
@@ -1231,7 +1223,8 @@ def plot_subseasonality(
     seasonality: str = "month",
     show_mean: bool = True,
     panel_group_names: list[str] | None = None,
-    panel_layout: Literal["grid", "facet"] = "grid",
+    facet_by: Literal["group", "member"] | None = "member",
+    separate: bool = False,
     facet_n_cols: int = 4,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -1264,10 +1257,13 @@ def plot_subseasonality(
         Show a horizontal mean line within each season subplot.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
-    panel_layout : Literal["grid", "facet"], default="grid"
-        Layout mode for panel data. ``"grid"`` renders all groups in one
-        figure with overlaid traces. ``"facet"`` returns a
-        ``dict[str, go.Figure]`` with one figure per panel group.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"member"`` creates one subplot
+        per member, ``"group"`` one per panel group.  ``None`` disables
+        faceting.  Ignored for non-panel data.
+    separate : bool, default=False
+        When ``True``, return a ``dict[str, go.Figure]`` with one
+        figure per facet level instead of a single combined figure.
     facet_n_cols : int, default=4
         Number of columns in the subplot grid.
     color_palette : list[str] | None, default=None
@@ -1302,7 +1298,7 @@ def plot_subseasonality(
     -------
     go.Figure | dict[str, go.Figure]
         Plotly figure object, or a dict keyed by panel group name when
-        ``panel_layout="facet"``.
+        ``separate=True``.
 
     Examples
     --------
@@ -1355,8 +1351,8 @@ def plot_subseasonality(
     mean_width = kwargs.get("mean_width", 2.0)
     mean_dash = kwargs.get("mean_dash", "dash")
 
-    # ── Facet path: one figure per panel group ───────────────────────────
-    if panel_group_names is not None and panel_layout == "facet":
+    # ── Separate path: one figure per panel group ──────────────────────────
+    if panel_group_names is not None and separate:
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
         groups, _all_members = _group_panel_columns(plot_columns)
@@ -1548,7 +1544,7 @@ def plot_lag_scatter(
     show_diagonal: bool = True,
     show_regression: bool = False,
     panel_group_names: list[str] | None = None,
-    panel_layout: Literal["grid", "facet"] = "grid",
+    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 3,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -1558,7 +1554,7 @@ def plot_lag_scatter(
     width: int | None = None,
     height: int | None = None,
     **kwargs,
-) -> go.Figure | dict[str, go.Figure]:
+) -> go.Figure:
     """Plot scatter plots of y(t) vs y(t-lag) for analysing temporal dependencies.
 
     Creates scatter plots showing the relationship between current values and
@@ -1585,11 +1581,10 @@ def plot_lag_scatter(
         Show a linear regression line fitted to the data.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
-    panel_layout : ``"grid"`` or ``"facet"``, default=``"grid"``
-        Layout for panel data.  ``"grid"`` renders a single figure with
-        an ``n_lags × n_members`` subplot grid.  ``"facet"`` returns one
-        figure per panel member, each containing ``n_lags`` subplots.
-        Ignored for non-panel data.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"member"`` creates one subplot
+        per member, ``"group"`` one per panel group.  ``None`` disables
+        faceting.  Ignored for non-panel data.
     facet_n_cols : int, default=3
         Number of columns in facet / subplot grid.
     color_palette : list[str] | None, default=None
@@ -1650,180 +1645,109 @@ def plot_lag_scatter(
     if panel_group_names is not None:
         _lag_list = lags
 
-        if panel_layout == "grid":
-            # ── Grid mode: single figure with n_lags × n_members subplots ──
-            col_filter = [columns] if isinstance(columns, str) else columns
-            groups: dict[str, list[str]] = {}
-            for g, gcols in _panel_groups.items():
-                if not panel_group_names or g in panel_group_names:
-                    filtered = (
-                        [c for c in gcols if c.split("__", 1)[1] in col_filter]
-                        if col_filter is not None
-                        else gcols
-                    )
-                    if filtered:
-                        groups[g] = filtered
-            if not groups:
-                msg = f"No panel groups found for {panel_group_names}. Available: {list(_panel_groups.keys())}"
-                raise ValueError(msg)
+        # ── Single figure with n_lags x n_members subplots ──
+        col_filter = [columns] if isinstance(columns, str) else columns
+        groups: dict[str, list[str]] = {}
+        for g, gcols in _panel_groups.items():
+            if not panel_group_names or g in panel_group_names:
+                filtered = (
+                    [c for c in gcols if c.split("__", 1)[1] in col_filter]
+                    if col_filter is not None
+                    else gcols
+                )
+                if filtered:
+                    groups[g] = filtered
+        if not groups:
+            msg = f"No panel groups found for {panel_group_names}. Available: {list(_panel_groups.keys())}"
+            raise ValueError(msg)
 
-            # Flatten all member columns across groups
-            all_members: list[tuple[str, str, str]] = []  # (full_col, base_name, group_name)
-            for gname, gcols in groups.items():
-                for c in gcols:
-                    base = c.split("__", 1)[1] if "__" in c else c
-                    all_members.append((c, base, gname))
+        # Flatten all member columns across groups
+        all_members: list[tuple[str, str, str]] = []  # (full_col, base_name, group_name)
+        for gname, gcols in groups.items():
+            for c in gcols:
+                base = c.split("__", 1)[1] if "__" in c else c
+                all_members.append((c, base, gname))
 
-            n_lags = len(_lag_list)
-            n_members = len(all_members)
-            marker_size = kwargs.get("marker_size", 4.0)
-            marker_opacity = kwargs.get("marker_opacity", 0.6)
+        n_lags = len(_lag_list)
+        n_members = len(all_members)
+        marker_size = kwargs.get("marker_size", 4.0)
+        marker_opacity = kwargs.get("marker_opacity", 0.6)
 
-            color_mgr = PanelColorManager(color_palette)
-            legend_tracker = LegendTracker()
+        color_mgr = PanelColorManager(color_palette)
+        legend_tracker = LegendTracker()
 
-            row_titles = [f"lag {k}" for k in _lag_list]
-            col_titles = [f"{gn}: {bn}" for _, bn, gn in all_members]
+        row_titles = [f"lag {k}" for k in _lag_list]
+        col_titles = [f"{gn}: {bn}" for _, bn, gn in all_members]
 
-            fig = make_subplots(
-                rows=n_lags,
-                cols=n_members,
-                subplot_titles=None,
-                row_titles=row_titles,
-                column_titles=col_titles,
-                horizontal_spacing=max(0.03, 0.25 / max(n_members, 1)),
-                vertical_spacing=max(0.03, 0.25 / max(n_lags, 1)),
-            )
+        fig = make_subplots(
+            rows=n_lags,
+            cols=n_members,
+            subplot_titles=None,
+            row_titles=row_titles,
+            column_titles=col_titles,
+            horizontal_spacing=max(0.03, 0.25 / max(n_members, 1)),
+            vertical_spacing=max(0.03, 0.25 / max(n_lags, 1)),
+        )
 
-            for li, lag in enumerate(_lag_list):
-                for mi, (full_col, base_name, _gn) in enumerate(all_members):
-                    r = li + 1
-                    c = mi + 1
-                    member_color = color_mgr.get_color(base_name)
-                    series = df.select(["time", full_col]).rename({full_col: base_name})
-                    dl = series.with_columns(pl.col(base_name).shift(lag).alias("lagged")).drop_nulls()
+        for li, lag in enumerate(_lag_list):
+            for mi, (full_col, base_name, _gn) in enumerate(all_members):
+                r = li + 1
+                c = mi + 1
+                member_color = color_mgr.get_color(base_name)
+                series = df.select(["time", full_col]).rename({full_col: base_name})
+                dl = series.with_columns(pl.col(base_name).shift(lag).alias("lagged")).drop_nulls()
 
-                    legend_kw = grouped_legend_kwargs(
-                        base_name,
-                        f"lag {lag}",
-                        legend_tracker,
-                        is_first_in_group=li == 0,
-                    )
+                legend_kw = grouped_legend_kwargs(
+                    base_name,
+                    f"lag {lag}",
+                    legend_tracker,
+                    is_first_in_group=li == 0,
+                )
+                fig.add_trace(
+                    go.Scattergl(
+                        x=dl["lagged"],
+                        y=dl[base_name],
+                        mode="markers",
+                        marker={"size": marker_size, "color": member_color, "opacity": marker_opacity},
+                        hovertemplate=(
+                            f"<b>{base_name}</b><br>"
+                            f"y(t-{lag}): %{{x:.2f}}<br>"
+                            f"y(t): %{{y:.2f}}<extra></extra>"
+                        ),
+                        **legend_kw,
+                    ),
+                    row=r,
+                    col=c,
+                )
+
+                if show_diagonal and len(dl) > 0:
+                    vmin = min(float(dl[base_name].min()), float(dl["lagged"].min()))  # type: ignore[arg-type]
+                    vmax = max(float(dl[base_name].max()), float(dl["lagged"].max()))  # type: ignore[arg-type]
                     fig.add_trace(
-                        go.Scattergl(
-                            x=dl["lagged"],
-                            y=dl[base_name],
-                            mode="markers",
-                            marker={"size": marker_size, "color": member_color, "opacity": marker_opacity},
-                            hovertemplate=(
-                                f"<b>{base_name}</b><br>"
-                                f"y(t-{lag}): %{{x:.2f}}<br>"
-                                f"y(t): %{{y:.2f}}<extra></extra>"
-                            ),
-                            **legend_kw,
+                        go.Scatter(
+                            x=[vmin, vmax],
+                            y=[vmin, vmax],
+                            mode="lines",
+                            line={"dash": "dash", "color": "#94a3b8", "width": 1},
+                            showlegend=False,
+                            hoverinfo="skip",
                         ),
                         row=r,
                         col=c,
                     )
 
-                    if show_diagonal and len(dl) > 0:
-                        vmin = min(float(dl[base_name].min()), float(dl["lagged"].min()))  # type: ignore[arg-type]
-                        vmax = max(float(dl[base_name].max()), float(dl["lagged"].max()))  # type: ignore[arg-type]
-                        fig.add_trace(
-                            go.Scatter(
-                                x=[vmin, vmax],
-                                y=[vmin, vmax],
-                                mode="lines",
-                                line={"dash": "dash", "color": "#94a3b8", "width": 1},
-                                showlegend=False,
-                                hoverinfo="skip",
-                            ),
-                            row=r,
-                            col=c,
-                        )
-
-            cell_w = 240
-            cell_h = 240
-            fig = apply_default_layout(
-                fig,
-                title=title or "Lag Scatter",
-                x_label=None,
-                y_label=None,
-                width=width or max(600, n_members * cell_w + 120),
-                height=height or max(400, n_lags * cell_h + 120),
-            )
-            fig.update_layout(showlegend=show_legend)
-            return fig
-
-        # ── Facet mode: one figure per group ────────────────────────────
-        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
-
-        _panel_cols = resolve_panel_columns(df, panel_group_names or None, columns)
-        _facet_groups, _facet_members = _group_panel_columns(_panel_cols)
-        _ms = kwargs.get("marker_size", 4.0)
-        _ma = kwargs.get("marker_opacity", 0.6)
-
-        figures: dict[str, go.Figure] = {}
-        for gname, gcols in _facet_groups.items():
-            n_lags_f = len(_lag_list)
-            ncols_f = min(n_lags_f, facet_n_cols)
-            nrows_f = math.ceil(n_lags_f / ncols_f)
-            color_mgr_f = PanelColorManager(color_palette)
-            legend_tracker_f = LegendTracker(show_legend=show_legend)
-
-            gfig = make_subplots(
-                rows=nrows_f,
-                cols=ncols_f,
-                subplot_titles=[f"lag {k}" for k in _lag_list],
-                vertical_spacing=max(0.03, 0.25 / max(nrows_f, 1)),
-                horizontal_spacing=max(0.03, 0.25 / max(ncols_f, 1)),
-            )
-
-            for li, lag in enumerate(_lag_list):
-                r = li // ncols_f + 1
-                c = li % ncols_f + 1
-                for member_col in gcols:
-                    mname = _member_name(member_col)
-                    mcolor = color_mgr_f.get_color(mname)
-                    dl = df.select("time", member_col).with_columns(
-                        pl.col(member_col).shift(lag).alias("lagged")
-                    ).drop_nulls()
-                    gfig.add_trace(
-                        go.Scattergl(
-                            x=dl["lagged"],
-                            y=dl[member_col],
-                            mode="markers",
-                            marker={"size": _ms, "color": mcolor, "opacity": _ma},
-                            name=mname,
-                            legendgroup=mname,
-                            showlegend=legend_tracker_f.should_show(mname),
-                        ),
-                        row=r,
-                        col=c,
-                    )
-                    if show_diagonal and len(dl) > 0:
-                        vmin = min(float(dl[member_col].min()), float(dl["lagged"].min()))  # type: ignore[arg-type]
-                        vmax = max(float(dl[member_col].max()), float(dl["lagged"].max()))  # type: ignore[arg-type]
-                        gfig.add_trace(
-                            go.Scatter(
-                                x=[vmin, vmax], y=[vmin, vmax],
-                                mode="lines",
-                                line={"dash": "dash", "color": "#94a3b8", "width": 1},
-                                showlegend=False, hoverinfo="skip",
-                            ),
-                            row=r, col=c,
-                        )
-
-            gfig = apply_default_layout(
-                gfig,
-                title=title or "Lag Scatter",
-                width=width,
-                height=height,
-            )
-            gfig.update_layout(showlegend=show_legend)
-            figures[gname] = gfig
-
-        return figures  # type: ignore[return-value]
+        cell_w = 240
+        cell_h = 240
+        fig = apply_default_layout(
+            fig,
+            title=title or "Lag Scatter",
+            x_label=None,
+            y_label=None,
+            width=width or max(600, n_members * cell_w + 120),
+            height=height or max(400, n_lags * cell_h + 120),
+        )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -2126,7 +2050,7 @@ def plot_cross_correlation(
     max_lags: int = 40,
     confidence_level: float = 0.95,
     panel_group_names: list[str] | None = None,
-    panel_layout: Literal["grid", "facet"] = "facet",
+    facet_by: Literal["group", "member"] | None = "group",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -2136,7 +2060,7 @@ def plot_cross_correlation(
     width: int | None = None,
     height: int | None = None,
     **kwargs,
-) -> go.Figure | dict[str, go.Figure]:
+) -> go.Figure:
     """Plot cross-correlation function (CCF) between time series pairs.
 
     Computes and visualizes the cross-correlation between pairs of series at
@@ -2164,10 +2088,10 @@ def plot_cross_correlation(
         Panel group prefixes.  When set (or auto-detected), CCF is
         computed between members within each group using an
         upper-triangle matrix layout.
-    panel_layout : ``"grid"`` or ``"facet"``, default=``"facet"``
-        Layout for panel data.  ``"facet"`` renders a single figure with
-        one subplot per panel group.  ``"grid"`` renders a compact grid of
-        member-pair CCF plots.  Ignored for non-panel data.
+    facet_by : Literal["group", "member"] | None, default="group"
+        Faceting axis for panel data.  ``"group"`` creates one subplot
+        per panel group, ``"member"`` one per member.  ``None`` disables
+        faceting.  Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in the subplot grid.
     color_palette : list[str] | None, default=None
@@ -2292,54 +2216,7 @@ def plot_cross_correlation(
             msg = f"Need at least 2 members per group for cross-correlation. Groups: {list(groups.keys())}"
             raise ValueError(msg)
 
-        if panel_layout == "facet":
-            # One figure per group
-            figures: dict[str, go.Figure] = {}
-            for gname, pairs in group_pairs:
-                n = len(pairs)
-                n_cols_grid = min(n, facet_n_cols)
-                n_rows_grid = math.ceil(n / n_cols_grid)
-                legend_tracker = LegendTracker(show_legend=show_legend)
-
-                gfig = make_subplots(
-                    rows=n_rows_grid,
-                    cols=n_cols_grid,
-                    subplot_titles=[f"{a} vs {b}" for a, b in pairs],
-                    vertical_spacing=_subplot_spacing(n_rows_grid),
-                    horizontal_spacing=_subplot_spacing(n_cols_grid) if n_cols_grid > 1 else 0.08,
-                )
-
-                for idx, (a_name, b_name) in enumerate(pairs):
-                    r = idx // n_cols_grid + 1
-                    c = idx % n_cols_grid + 1
-                    col_a = f"{gname}__{a_name}"
-                    col_b = f"{gname}__{b_name}"
-                    clean = df.select(col_a, col_b).drop_nulls()
-                    x_arr = clean[col_a].to_numpy()
-                    y_arr = clean[col_b].to_numpy()
-                    ccf = _compute_ccf(x_arr, y_arr, max_lags)
-                    pair_label = f"{a_name} vs {b_name}"
-                    pair_color = color_mgr.get_color(pair_label)
-                    _add_ccf_bar(
-                        gfig, _lag_vals, ccf, pair_color, pair_label,
-                        legend_tracker.should_show(pair_label),
-                        row=r, col=c,
-                    )
-                    _add_ccf_bands(gfig, len(x_arr), row=r, col=c)
-
-                gfig = apply_default_layout(
-                    gfig,
-                    title=title or "Cross-Correlation",
-                    x_label=x_label or "Lag",
-                    y_label=y_label or "Cross-Correlation",
-                    width=width,
-                    height=height,
-                )
-                gfig.update_layout(showlegend=show_legend)
-                figures[gname] = gfig
-            return figures  # type: ignore[return-value]
-
-        # Grid mode: all groups + pairs in one figure
+        # All groups + pairs in one figure
         all_cells: list[tuple[str, str, str]] = []
         for gname, pairs in group_pairs:
             for a, b in pairs:
@@ -2895,7 +2772,8 @@ def plot_scatter_matrix(
     show_correlation: bool = True,
     max_points: int | None = 10_000,
     panel_group_names: list[str] | None = None,
-    panel_layout: Literal["grid", "facet"] = "grid",
+    facet_by: Literal["group", "member"] | None = "group",
+    separate: bool = False,
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -2939,13 +2817,15 @@ def plot_scatter_matrix(
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.  When ``None`` and the DataFrame
         contains panel data, all groups are plotted automatically.
-    panel_layout : ``"grid"`` or ``"facet"``, default=``"grid"``
-        Layout for panel data.  ``"grid"`` renders all groups in a
-        single figure with each group's scatter matrix as a contiguous
-        block.  ``"facet"`` returns a ``dict[str, go.Figure]`` with one
-        figure per panel group.  Ignored for non-panel data.
+    facet_by : Literal["group", "member"] | None, default="group"
+        Faceting axis for panel data.  ``"group"`` creates one subplot
+        per panel group, ``"member"`` one per member.  ``None`` disables
+        faceting.  Ignored for non-panel data.
+    separate : bool, default=False
+        When ``True``, return a ``dict[str, go.Figure]`` with one
+        figure per facet level instead of a single combined figure.
     facet_n_cols : int, default=2
-        Number of group columns when ``panel_layout="grid"``.
+        Number of group columns in the subplot grid.
     color_palette : list[str] | None, default=None
         Custom colour palette.  If ``None``, uses yohou palette.
     title : str | None, default=None
@@ -2965,7 +2845,7 @@ def plot_scatter_matrix(
     -------
     go.Figure | dict[str, go.Figure]
         Plotly figure object, or a dict of figures when
-        ``panel_layout="facet"`` with panel data.
+        ``separate=True`` with panel data.
 
     Raises
     ------
@@ -3024,7 +2904,7 @@ def plot_scatter_matrix(
             msg = f"No panel groups found for {panel_group_names}. Available groups: {list(_panel_groups.keys())}"
             raise ValueError(msg)
 
-        if panel_layout == "facet":
+        if separate:
             return _scatter_matrix_facet(
                 df=df,
                 groups=groups,
@@ -3339,6 +3219,7 @@ def plot_seasonal_heatmap(
     y_period: str = "month",
     agg: str = "mean",
     panel_group_names: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = "group",
     facet_n_cols: int = 2,
     show_legend: bool = True,
     title: str | None = None,

@@ -660,12 +660,12 @@ class TestPanelLegendDedup:
     """Verify that panel plots produce no duplicate legend entries."""
 
     def test_time_series_no_duplicate_legend(self):
-        """plot_time_series: each member name appears at most once in legend."""
+        """plot_time_series: each group name appears at most once in legend."""
         df = _make_three_group_panel()
         fig = plot_time_series(df)
         names = visible_legend_names(fig)
         assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
-        assert set(names) == {"a", "b"}
+        assert set(names) == {"g1", "g2", "g3"}
 
     def test_time_series_legendgroup_set(self):
         """plot_time_series: all traces carry legendgroup matching their name."""
