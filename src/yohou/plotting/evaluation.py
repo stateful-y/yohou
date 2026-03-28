@@ -50,7 +50,9 @@ def _render_residual_diagnostics(
     title: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    marker_size: float = 4,
+    marker_opacity: float = 0.6,
+    n_bins: int = 30,
 ) -> go.Figure:
     """Create 4-panel residual diagnostics for a single column.
 
@@ -70,8 +72,12 @@ def _render_residual_diagnostics(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        ``marker_size``, ``marker_opacity``, ``n_bins``.
+    marker_size : float, default=4
+        Marker size for scatter plots.
+    marker_opacity : float, default=0.6
+        Marker opacity.
+    n_bins : int, default=30
+        Number of bins for the histogram.
 
     Returns
     -------
@@ -80,10 +86,6 @@ def _render_residual_diagnostics(
     """
     residuals = residuals_df[col_name].to_numpy()
     fitted = y_pred[col_name].to_numpy()
-
-    marker_size = kwargs.get("marker_size", 4)
-    marker_opacity = kwargs.get("marker_opacity", 0.6)
-    n_bins = kwargs.get("n_bins", 30)
 
     colors = resolve_color_palette(color_palette, 4)
 
@@ -209,14 +211,16 @@ def plot_residuals(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
     resampler: bool | Literal["widget"] | None = None,
-    show_legend: bool = True,
-    **kwargs,
+    marker_size: float = 4,
+    marker_opacity: float = 0.6,
+    n_bins: int = 30,
 ) -> go.Figure:
     """Plot diagnostic plots for model residuals.
 
@@ -243,11 +247,17 @@ def plot_residuals(
         single match triggers 4-panel diagnostics, multiple produce facets.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to facet by.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data. ``"group"`` creates one subplot per
+        group, ``"member"`` one per member. ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in the faceted grid when multiple target columns
         are resolved.
     color_palette : list[str] | None, default=None
         Custom color palette. If None, uses yohou palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -258,12 +268,15 @@ def plot_residuals(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional keyword arguments forwarded to subplot rendering:
-
-        - ``marker_size`` : float, default=4. Marker size for scatter plots.
-        - ``marker_opacity`` : float, default=0.6. Marker opacity.
-        - ``n_bins`` : int, default=30. Number of bins for histogram.
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets. ``"figure"`` creates a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``.
+    marker_size : float, default=4
+        Marker size for scatter plots.
+    marker_opacity : float, default=0.6
+        Marker opacity.
+    n_bins : int, default=30
+        Number of bins for histogram (single-column diagnostics).
 
     Returns
     -------
@@ -285,7 +298,7 @@ def plot_residuals(
 
     See Also
     --------
-    `plot_forecast` : Plot forecasts with historical data.
+    [`plot_forecast`][yohou.plotting.plot_forecast] : Plot forecasts with historical data.
     """
     validate_plotting_data(y_pred)
     validate_plotting_data(y_truth)
@@ -335,12 +348,12 @@ def plot_residuals(
             title=title,
             width=width,
             height=height,
-            **kwargs,
+            marker_size=marker_size,
+            marker_opacity=marker_opacity,
+            n_bins=n_bins,
         )
 
     # Multiple columns: faceted residuals over time
-    marker_size = kwargs.get("marker_size", 4)
-    marker_opacity = kwargs.get("marker_opacity", 0.6)
 
     if panel_group_names is not None:
         pn_cols = resolve_panel_columns(residuals_df, panel_group_names, columns)
@@ -509,13 +522,17 @@ def plot_calibration(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
-    **kwargs,
+    line_width: float = 2.0,
+    line_opacity: float = 1.0,
+    reference_color: str = "#1e293b",
+    reference_width: float = 3.0,
+    reference_dash: str = "dash",
 ) -> go.Figure:
     """Plot prediction interval calibration.
 
@@ -540,11 +557,17 @@ def plot_calibration(
     panel_group_names : list[str] | None, default=None
         Panel group prefixes for faceted subplots.  When provided, each
         resolved panel column gets its own subplot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data. ``"group"`` creates one subplot per
+        group, ``"member"`` one per member. ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in the facet grid when *panel_group_names* is
         used.
     color_palette : list[str] | None, default=None
         Custom color palette as hex codes. If None, uses yohou palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title. Defaults to ``"Calibration plot"``.
     x_label : str | None, default=None
@@ -555,14 +578,16 @@ def plot_calibration(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-
-        - ``line_width`` : float, default=2.0
-        - ``line_opacity`` : float, default=1.0
-        - ``reference_color`` : str, default="#1e293b"
-        - ``reference_width`` : float, default=3.0
-        - ``reference_dash`` : str, default="dash"
+    line_width : float, default=2.0
+        Width of the calibration line.
+    line_opacity : float, default=1.0
+        Opacity of the calibration line.
+    reference_color : str, default="#1e293b"
+        Colour of the perfect-calibration reference line.
+    reference_width : float, default=3.0
+        Width of the reference line.
+    reference_dash : str, default="dash"
+        Dash style of the reference line.
 
     Returns
     -------
@@ -610,8 +635,8 @@ def plot_calibration(
 
     See Also
     --------
-    `plot_forecast` : Plot forecast with optional prediction intervals.
-    `plot_residuals` : Residual diagnostics with panel facets.
+    [`plot_forecast`][yohou.plotting.plot_forecast] : Plot forecast with optional prediction intervals.
+    [`plot_residuals`][yohou.plotting.plot_residuals] : Residual diagnostics with panel facets.
     """
     # Validate inputs
     if not isinstance(y_truth, pl.DataFrame):
@@ -621,13 +646,6 @@ def plot_calibration(
         msg = f"Expected pl.DataFrame for y_pred_int, got {type(y_pred_int).__name__}"
         raise TypeError(msg)
     validate_plotting_params(width=width, height=height)
-
-    # Styling kwargs
-    line_width = kwargs.get("line_width", 2.0)
-    line_opacity = kwargs.get("line_opacity", 1.0)
-    reference_color = kwargs.get("reference_color", "#1e293b")
-    reference_width = kwargs.get("reference_width", 3.0)
-    reference_dash = kwargs.get("reference_dash", "dash")
 
     # Auto-detect panel data
     _, _panel_groups = inspect_panel(y_truth)
@@ -787,7 +805,10 @@ def _plot_score_time_series_panel(
     time_weight: Callable | pl.DataFrame | None = None,
     resampler: bool | Literal["widget"] | None = None,
     columns: str | list[str] | None = None,
-    **kwargs,
+    line_width: float = 2.0,
+    line_dash: str = "solid",
+    line_opacity: float = 1.0,
+    show_markers: bool = False,
 ) -> go.Figure:
     """Render faceted per-group score time series.
 
@@ -822,8 +843,14 @@ def _plot_score_time_series_panel(
     time_weight : callable or pl.DataFrame or None, default=None
         Time weighting function or DataFrame forwarded to
         ``scorer.score()``.
-    **kwargs : dict
-        Styling overrides forwarded from the public API.
+    line_width : float, default=2.0
+        Width of score lines.
+    line_dash : str, default="solid"
+        Dash style of score lines.
+    line_opacity : float, default=1.0
+        Opacity of score lines.
+    show_markers : bool, default=False
+        Whether to show markers on the lines.
 
     Returns
     -------
@@ -831,11 +858,6 @@ def _plot_score_time_series_panel(
         Faceted figure with one subplot per panel group.
 
     """
-    line_width = kwargs.get("line_width", 2.0)
-    line_dash = kwargs.get("line_dash", "solid")
-    line_opacity = kwargs.get("line_opacity", 1.0)
-    hovermode = kwargs.get("hovermode", "x unified")
-    show_markers = kwargs.get("show_markers", False)
     mode = "lines+markers" if show_markers else "lines"
 
     _, all_groups = inspect_panel(y_truth)
@@ -925,7 +947,6 @@ def _plot_score_time_series_panel(
         y_label=y_label or scorer_name,
         width=width,
         height=height or default_height,
-        hovermode=hovermode,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -951,7 +972,10 @@ def plot_score_time_series(
     height: int | None = None,
     connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
-    **kwargs,
+    line_width: float = 2.0,
+    line_dash: str = "solid",
+    line_opacity: float = 1.0,
+    show_markers: bool = False,
 ) -> go.Figure:
     """Plot scorer values over time for one or more forecasts.
 
@@ -984,6 +1008,10 @@ def plot_score_time_series(
         group gets its own subplot showing the score time series for that
         group.  Groups are resolved via ``inspect_panel`` against
         *y_truth*.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data. ``"group"`` creates one subplot per
+        group, ``"member"`` one per member. ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in the facet grid when *panel_group_names* is
         used.
@@ -1001,13 +1029,20 @@ def plot_score_time_series(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=2.0
-        - line_dash : str, default="solid"
-        - line_opacity : float, default=1.0
-        - hovermode : str, default="x unified"
-        - show_markers : bool, default=False
+    connect_gaps : bool, default=False
+        Whether to connect gaps in the data with lines.
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets.  ``True`` or
+        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
+        ``None`` uses a plain ``go.Figure``.
+    line_width : float, default=2.0
+        Width of score lines.
+    line_dash : str, default="solid"
+        Dash style of score lines.
+    line_opacity : float, default=1.0
+        Opacity of score lines.
+    show_markers : bool, default=False
+        Whether to show markers on the lines.
 
     Returns
     -------
@@ -1057,8 +1092,8 @@ def plot_score_time_series(
 
     See Also
     --------
-    `plot_residuals` : Plot residual diagnostics.
-    `plot_forecast` : Plot forecasts with historical data.
+    [`plot_residuals`][yohou.plotting.plot_residuals] : Plot residual diagnostics.
+    [`plot_forecast`][yohou.plotting.plot_forecast] : Plot forecasts with historical data.
 
     Notes
     -----
@@ -1088,13 +1123,6 @@ def plot_score_time_series(
 
     # Fit the cloned scorer (required for validation)
     scorer_componentwise.fit(y_truth)
-
-    # Get styling parameters from kwargs
-    line_width = kwargs.get("line_width", 2.0)
-    line_dash = kwargs.get("line_dash", "solid")
-    line_opacity = kwargs.get("line_opacity", 1.0)
-    hovermode = kwargs.get("hovermode", "x unified")
-    show_markers = kwargs.get("show_markers", False)
 
     # Get color palette
     if color_palette is None:
@@ -1126,7 +1154,10 @@ def plot_score_time_series(
             time_weight=time_weight,
             resampler=resampler,
             columns=columns,
-            **kwargs,
+            line_width=line_width,
+            line_dash=line_dash,
+            line_opacity=line_opacity,
+            show_markers=show_markers,
         )
 
     # Create figure
@@ -1208,7 +1239,6 @@ def plot_score_time_series(
         y_label=y_label,
         width=width,
         height=height,
-        hovermode=hovermode,
     )
 
     # Update legend
@@ -1225,12 +1255,12 @@ def plot_model_comparison_bar(
     sort_by: str | None = None,
     ascending: bool = True,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
     bar_width: float = 0.8,
     text_auto: bool = True,
 ) -> go.Figure:
@@ -1256,6 +1286,8 @@ def plot_model_comparison_bar(
         Sort direction when ``sort_by`` is set.
     color_palette : list[str] | None, default=None
         Custom color palette. Falls back to ``resolve_color_palette``.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title. Defaults to ``"Model Comparison"``.
     x_label : str | None, default=None
@@ -1266,8 +1298,6 @@ def plot_model_comparison_bar(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    show_legend : bool, default=True
-        Whether to show the legend.
     bar_width : float, default=0.8
         Width of each bar as a fraction of the group width.
     text_auto : bool, default=True
@@ -1297,8 +1327,8 @@ def plot_model_comparison_bar(
 
     See Also
     --------
-    `plot_score_time_series` : Per-timestep scorer comparison.
-    `plot_cv_results_scatter` : Cross-validation result scatter.
+    [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Per-timestep scorer comparison.
+    [`plot_cv_results_scatter`][yohou.plotting.plot_cv_results_scatter] : Cross-validation result scatter.
     """
     if not results:
         msg = "results must be a non-empty dict of model → scorer → score"
@@ -1419,7 +1449,9 @@ def plot_score_distribution(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    bar_opacity: float = 0.6,
+    line_width: float = 2.0,
+    kde_points: int = 200,
 ) -> go.Figure:
     """Plot the distribution of per-timestep scorer values.
 
@@ -1455,6 +1487,10 @@ def plot_score_distribution(
         this acts as a member postfix filter.  ``None`` uses all columns.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot (faceted layout).
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data. ``"group"`` creates one subplot per
+        group, ``"member"`` one per member. ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in the faceted grid.
     color_palette : list[str] | None, default=None
@@ -1472,13 +1508,12 @@ def plot_score_distribution(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-
-        - bar_opacity : float, default=0.6
-        - line_width : float, default=2.0
-        - kde_points : int, default=200
-        - vertical_spacing : float | None, default=None
+    bar_opacity : float, default=0.6
+        Opacity of histogram bars.
+    line_width : float, default=2.0
+        Width of KDE lines.
+    kde_points : int, default=200
+        Number of points for KDE evaluation.
 
     Returns
     -------
@@ -1515,20 +1550,17 @@ def plot_score_distribution(
 
     See Also
     --------
-    `plot_score_time_series` : Score values over time.
-    `plot_score_per_horizon` : Score by forecast step.
+    [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score values over time.
+    [`plot_score_per_horizon`][yohou.plotting.plot_score_per_horizon] : Score by forecast step.
     """
     from scipy.stats import gaussian_kde  # noqa: PLC0415
 
     validate_plotting_data(y_truth)
 
-    # ── Validate kind ────────────────────────────────────────────────
     validate_plotting_params(kind=kind, valid_kinds={"histogram", "kde", "both"}, width=width, height=height)
 
-    # ── Normalise y_pred to dict ─────────────────────────────────────
     y_pred_dict: dict[str, pl.DataFrame] = _normalize_y_pred(y_pred)
 
-    # ── Clone scorer for componentwise aggregation ───────────────────
     scorer_cw = copy.deepcopy(scorer)
     if isinstance(scorer_cw, BaseIntervalScorer):
         scorer_cw.set_params(aggregation_method=["componentwise", "coveragewise"])
@@ -1536,16 +1568,9 @@ def plot_score_distribution(
         scorer_cw.set_params(aggregation_method="componentwise")
     scorer_cw.fit(y_truth)
 
-    # ── Styling kwargs ───────────────────────────────────────────────
-    bar_opacity = kwargs.get("bar_opacity", 0.6)
-    line_width = kwargs.get("line_width", 2.0)
-    kde_points = kwargs.get("kde_points", 200)
-
-    # ── Colours ──────────────────────────────────────────────────────
     n_models = len(y_pred_dict)
     colors = resolve_color_palette(color_palette, n_models)
 
-    # ── Render callback (re-used for panel facets) ───────────────────
     def _render(
         fig: go.Figure,
         y_truth_sub: pl.DataFrame,
@@ -1645,7 +1670,7 @@ def plot_score_distribution(
                 line_color="grey",
             )
 
-    # ── Panel dispatch ───────────────────────────────────────────────
+    # Panel dispatch
     _col_filter: set[str] | None = None
     if columns is not None:
         _col_filter = set([columns] if isinstance(columns, str) else columns)
@@ -1663,7 +1688,7 @@ def plot_score_distribution(
             rows=n_rows_grid,
             cols=n_cols_grid,
             subplot_titles=_effective_groups,
-            vertical_spacing=kwargs.get("vertical_spacing", max(0.04, 0.3 / n_rows_grid)),
+            vertical_spacing=max(0.04, 0.3 / n_rows_grid),
         )
         for g_idx, gname in enumerate(_effective_groups):
             r = g_idx // n_cols_grid + 1
@@ -1687,7 +1712,6 @@ def plot_score_distribution(
         pfig.update_layout(barmode="overlay" if n_models > 1 else "relative", showlegend=show_legend)
         return pfig
 
-    # ── Build figure ─────────────────────────────────────────────────
     fig = go.Figure()
     if _col_filter is not None:
         _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
@@ -1697,7 +1721,6 @@ def plot_score_distribution(
     else:
         _render(fig, y_truth, y_pred_dict, colors, _show_legend=show_legend)
 
-    # ── Layout ───────────────────────────────────────────────────────
     scorer_name = scorer.__class__.__name__
     default_title = title or f"{scorer_name} Distribution"
     default_x = x_label or scorer_name
@@ -1738,7 +1761,10 @@ def plot_score_per_horizon(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    line_width: float = 2.0,
+    marker_size: float = 8.0,
+    marker_opacity: float = 0.8,
+    bar_opacity: float = 0.85,
 ) -> go.Figure:
     """Plot scorer value by forecast horizon step.
 
@@ -1767,6 +1793,10 @@ def plot_score_per_horizon(
         this acts as a member postfix filter.  ``None`` uses all columns.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot (faceted layout).
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data. ``"group"`` creates one subplot per
+        group, ``"member"`` one per member. ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Columns in the faceted grid.
     color_palette : list[str] | None, default=None
@@ -1783,13 +1813,14 @@ def plot_score_per_horizon(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-
-        - line_width : float, default=2.0
-        - marker_size : float, default=8.0
-        - bar_opacity : float, default=0.85
-        - vertical_spacing : float | None, default=None
+    line_width : float, default=2.0
+        Width of score lines.
+    marker_size : float, default=8.0
+        Marker size for line+marker traces.
+    marker_opacity : float, default=0.8
+        Opacity of scatter markers.
+    bar_opacity : float, default=0.85
+        Opacity of bars when ``kind="bar"``.
 
     Returns
     -------
@@ -1826,18 +1857,15 @@ def plot_score_per_horizon(
 
     See Also
     --------
-    `plot_score_time_series` : Score values over time.
-    `plot_score_distribution` : Score distribution histogram/KDE.
+    [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score values over time.
+    [`plot_score_distribution`][yohou.plotting.plot_score_distribution] : Score distribution histogram/KDE.
     """
     validate_plotting_data(y_truth)
 
-    # ── Validate kind ────────────────────────────────────────────────
     validate_plotting_params(kind=kind, valid_kinds={"line", "bar"}, width=width, height=height)
 
-    # ── Normalise y_pred ─────────────────────────────────────────────
     y_pred_dict: dict[str, pl.DataFrame] = _normalize_y_pred(y_pred)
 
-    # ── Clone scorer for componentwise aggregation ───────────────────
     scorer_cw = copy.deepcopy(scorer)
     if isinstance(scorer_cw, BaseIntervalScorer):
         scorer_cw.set_params(aggregation_method=["componentwise", "coveragewise"])
@@ -1845,16 +1873,9 @@ def plot_score_per_horizon(
         scorer_cw.set_params(aggregation_method="componentwise")
     scorer_cw.fit(y_truth)
 
-    # ── Styling kwargs ───────────────────────────────────────────────
-    line_width = kwargs.get("line_width", 2.0)
-    marker_size = kwargs.get("marker_size", 8.0)
-    bar_opacity = kwargs.get("bar_opacity", 0.85)
-
-    # ── Colours ──────────────────────────────────────────────────────
     n_models = len(y_pred_dict)
     colors = resolve_color_palette(color_palette, n_models)
 
-    # ── Render callback (re-used for panel facets) ───────────────────
     def _render_horizon(
         fig: go.Figure,
         y_truth_sub: pl.DataFrame,
@@ -1893,7 +1914,7 @@ def plot_score_per_horizon(
                         mode="lines+markers",
                         name=mname,
                         line={"color": c, "width": line_width},
-                        marker={"size": marker_size, "color": c},
+                        marker={"size": marker_size, "color": c, "opacity": marker_opacity},
                     ),
                     row=row,
                     col=col,
@@ -1927,7 +1948,6 @@ def plot_score_per_horizon(
                     col=col,
                 )
 
-    # ── Panel dispatch ───────────────────────────────────────────────
     _col_filter: set[str] | None = None
     if columns is not None:
         _col_filter = set([columns] if isinstance(columns, str) else columns)
@@ -1945,7 +1965,7 @@ def plot_score_per_horizon(
             rows=n_rows_grid,
             cols=n_cols_grid,
             subplot_titles=_effective_groups,
-            vertical_spacing=kwargs.get("vertical_spacing", max(0.04, 0.3 / n_rows_grid)),
+            vertical_spacing=max(0.04, 0.3 / n_rows_grid),
         )
         for g_idx, gname in enumerate(_effective_groups):
             r = g_idx // n_cols_grid + 1
@@ -1971,7 +1991,6 @@ def plot_score_per_horizon(
         pfig.update_layout(showlegend=show_legend)
         return pfig
 
-    # ── Build figure ─────────────────────────────────────────────────
     fig = go.Figure()
     if _col_filter is not None:
         _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
@@ -1981,7 +2000,6 @@ def plot_score_per_horizon(
     else:
         _render_horizon(fig, y_truth, y_pred_dict, colors, show_legend)
 
-    # ── Layout ───────────────────────────────────────────────────────
     scorer_name = scorer.__class__.__name__
     default_title = title or f"{scorer_name} by Horizon Step"
     default_x = x_label or "Horizon Step"

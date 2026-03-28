@@ -53,7 +53,7 @@ class TestPlotAutocorrelation:
 
     def test_custom_styling(self, yearly_2col_df):
         """Test autocorrelation with custom styling."""
-        fig = plot_autocorrelation(yearly_2col_df, columns="y", max_lags=10, bar_color="#FF0000")
+        fig = plot_autocorrelation(yearly_2col_df, columns="y", max_lags=10, color="#FF0000")
         assert len(fig.data) > 0
 
     def test_panel(self, yearly_2col_df):
@@ -88,7 +88,7 @@ class TestPlotPartialAutocorrelation:
 
     def test_custom_styling(self, yearly_2col_df):
         """Test PACF with custom styling."""
-        fig = plot_partial_autocorrelation(yearly_2col_df, columns="y", max_lags=10, bar_color="#00FF00")
+        fig = plot_partial_autocorrelation(yearly_2col_df, columns="y", max_lags=10, color="#00FF00")
         assert len(fig.data) > 0
 
     def test_panel(self, yearly_2col_df):
@@ -168,8 +168,8 @@ class TestPlotSeasonality:
         assert len(fig.data) > 0
 
     def test_no_mean(self, yearly_2col_df):
-        """Test seasonality plot without mean line."""
-        fig = plot_seasonality(yearly_2col_df, columns="y", seasonality="month", show_mean=False)
+        """Test seasonality plot with custom line width."""
+        fig = plot_seasonality(yearly_2col_df, columns="y", seasonality="month", line_width=3.0)
         assert len(fig.data) > 0
 
     def test_custom_styling(self, yearly_2col_df):
@@ -179,7 +179,7 @@ class TestPlotSeasonality:
             columns="y",
             seasonality="month",
             line_width=2.5,
-            mean_color="#FF00FF",
+            highlight_width=4.0,
         )
         assert len(fig.data) > 0
 
@@ -316,13 +316,11 @@ class TestPlotCrossCorrelation:
         assert len(fig.data) > 0
 
     def test_styling(self, short_df):
-        """Test custom styling."""
+        """Test custom styling (cross-correlation has no extra style params)."""
         fig = plot_cross_correlation(
             short_df,
             columns=["x", "y"],
-            marker_size=8.0,
-            marker_color="#DC2626",
-            line_color="#059669",
+            max_lags=10,
         )
         assert len(fig.data) > 0
 
@@ -462,13 +460,12 @@ class TestPlotScatterMatrix:
         assert_layout(fig, width=800, height=700)
 
     def test_custom_styling_kwargs(self, three_col_df):
-        """Test marker_size, marker_opacity, and corr_font_size kwargs."""
+        """Test marker_size and marker_opacity params."""
         fig = plot_scatter_matrix(
             three_col_df,
             columns=["a", "b"],
             marker_size=5.0,
             marker_opacity=0.8,
-            corr_font_size=40,
         )
         assert_figure_valid(fig)
 
@@ -788,9 +785,9 @@ class TestDiagnosticsEdgeCases:
         fig = plot_scatter_matrix(df, diagonal="kde", show_correlation=False)
         assert_figure_valid(fig)
 
-    def test_cross_correlation_show_markers_false(self, short_df):
-        """Cross-correlation with show_markers=False covers line-mode branch."""
-        fig = plot_cross_correlation(short_df, columns=["x", "y"], show_markers=False)
+    def test_cross_correlation_basic_params(self, short_df):
+        """Cross-correlation with custom confidence level."""
+        fig = plot_cross_correlation(short_df, columns=["x", "y"], confidence_level=0.99)
         assert_figure_valid(fig)
 
     def test_subseasonality_hour_labels(self):
@@ -972,18 +969,18 @@ class TestCorrelationHeatmapPanelShowValues:
         assert_figure_valid(fig)
 
 
-class TestCrossCorrelationShowMarkers:
-    """Tests for plot_cross_correlation show_markers=True branch."""
+class TestCrossCorrelationBasic:
+    """Tests for plot_cross_correlation basic functionality."""
 
-    def test_show_markers_true(self):
-        """show_markers=True uses lines+markers mode."""
+    def test_basic_params(self):
+        """Basic cross-correlation with custom max_lags."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         df = pl.DataFrame({
             "time": dates,
             "x": [100.0 + (i % 20) for i in range(len(dates))],
             "y": [150.0 + (i % 15) * 2 for i in range(len(dates))],
         })
-        fig = plot_cross_correlation(df, columns=["x", "y"], show_markers=True)
+        fig = plot_cross_correlation(df, columns=["x", "y"], max_lags=15)
         assert_figure_valid(fig)
 
 
@@ -1087,7 +1084,6 @@ class TestScatterMatrixDiagonalModes:
         assert len(corr_annotations) >= 1
 
 
-# ── plot_seasonal_heatmap ─────────────────────────────────────────────
 
 
 class TestPlotSeasonalHeatmap:
@@ -1251,4 +1247,436 @@ class TestPlotSeasonalHeatmap:
             "weather__wind": [5.0 + i % 12 for i in range(n)],
         })
         fig = plot_seasonal_heatmap(df, columns="temp")
+        assert_figure_valid(fig)
+
+
+# Priority 1 - Scatter Matrix Panel Paths
+
+
+class TestPlotScatterMatrixPanelPaths:
+    """Cover scatter matrix panel branches: grid, facet, season, diagonal."""
+
+    @pytest.fixture
+    def panel_scatter_df(self):
+        """Panel DataFrame with 2 numeric columns per group."""
+        rng = np.random.default_rng(42)
+        n = 366
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        return pl.DataFrame({
+            "time": dates,
+            "x__store_a": (100 + np.arange(n) % 20 + rng.standard_normal(n)).tolist(),
+            "y__store_a": (200 + np.arange(n) % 15 + rng.standard_normal(n)).tolist(),
+            "x__store_b": (150 + np.arange(n) % 25 + rng.standard_normal(n)).tolist(),
+            "y__store_b": (250 + np.arange(n) % 10 + rng.standard_normal(n)).tolist(),
+        })
+
+    def test_panel_grid_mode(self, panel_scatter_df):
+        """Panel data with separate=False produces a single combined figure."""
+        fig = plot_scatter_matrix(panel_scatter_df)
+        assert_figure_valid(fig)
+
+    def test_panel_separate_mode(self, panel_scatter_df):
+        """Panel data with separate=True returns dict of figures."""
+        result = plot_scatter_matrix(panel_scatter_df, separate=True)
+        assert isinstance(result, dict)
+        assert len(result) > 0
+        for fig in result.values():
+            assert isinstance(fig, go.Figure)
+            assert len(fig.data) > 0
+
+    def test_panel_with_seasonality(self, panel_scatter_df):
+        """Season colouring works with panel scatter matrix."""
+        fig = plot_scatter_matrix(panel_scatter_df, seasonality="month")
+        assert_figure_valid(fig)
+
+    def test_panel_with_seasonality_separate(self, panel_scatter_df):
+        """Season colouring + separate mode."""
+        result = plot_scatter_matrix(panel_scatter_df, seasonality="quarter", separate=True)
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
+
+    def test_panel_diagonal_histogram(self, panel_scatter_df):
+        """Panel grid with histogram diagonal."""
+        fig = plot_scatter_matrix(panel_scatter_df, diagonal="histogram")
+        assert_figure_valid(fig)
+
+    def test_panel_diagonal_none(self, panel_scatter_df):
+        """Panel grid with no diagonal."""
+        fig = plot_scatter_matrix(panel_scatter_df, diagonal=None)
+        assert_figure_valid(fig)
+
+    def test_panel_show_correlation(self, panel_scatter_df):
+        """Panel grid with correlation annotations."""
+        fig = plot_scatter_matrix(panel_scatter_df, show_correlation=True)
+        assert_figure_valid(fig)
+
+    def test_nonpanel_seasonality_small_max_points(self):
+        """Non-panel scatter matrix with seasonality and small max_points."""
+        rng = np.random.default_rng(42)
+        n = 200
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 7, 18), "1d", eager=True),
+            "x": rng.standard_normal(n).tolist(),
+            "y": rng.standard_normal(n).tolist(),
+        })
+        fig = plot_scatter_matrix(df, columns=["x", "y"], seasonality="month", max_points=50)
+        assert_figure_valid(fig)
+
+    def test_panel_group_names_filter(self, panel_scatter_df):
+        """Passing explicit panel_group_names filters to those groups."""
+        fig = plot_scatter_matrix(panel_scatter_df, panel_group_names=["x"])
+        assert_figure_valid(fig)
+
+
+# Priority 2 - Correlation Heatmap Panel Paths
+
+
+class TestPlotCorrelationHeatmapPanelPaths:
+    """Cover correlation heatmap panel separate and grid branches."""
+
+    @pytest.fixture
+    def panel_heatmap_df(self):
+        """Panel DataFrame for correlation heatmap testing."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "x__a": [100 + i % 20 for i in range(n)],
+            "y__a": [150 + (i % 15) * 2 for i in range(n)],
+            "x__b": [200 + i % 25 for i in range(n)],
+            "y__b": [250 + (i % 10) * 3 for i in range(n)],
+        })
+
+    def test_panel_separate(self, panel_heatmap_df):
+        """separate=True returns a dict of figures."""
+        result = plot_correlation_heatmap(panel_heatmap_df, separate=True)
+        assert isinstance(result, dict)
+        assert len(result) > 0
+        for fig in result.values():
+            assert isinstance(fig, go.Figure)
+            assert len(fig.data) > 0
+
+    def test_panel_grid(self, panel_heatmap_df):
+        """separate=False (default) with panel data returns a single figure."""
+        fig = plot_correlation_heatmap(panel_heatmap_df)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+# Priority 3 - Other Panel Paths
+
+
+class TestPlotCrossCorrelationPanel:
+    """Cross-correlation panel data path."""
+
+    def test_panel_data(self):
+        """Panel data auto-detect produces a valid cross-correlation figure."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y__a": [100 + i % 20 for i in range(n)],
+            "y__b": [150 + (i % 15) * 2 for i in range(n)],
+        })
+        fig = plot_cross_correlation(df, max_lags=10)
+        assert_figure_valid(fig)
+
+
+class TestPlotLagScatterPanelAndExtras:
+    """Lag scatter panel mode plus seasonality and regression extras."""
+
+    @pytest.fixture
+    def panel_lag_df(self):
+        """Panel DataFrame for lag scatter testing."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "y__a": [100 + i % 30 for i in range(n)],
+            "y__b": [200 + (i % 20) * 2 for i in range(n)],
+        })
+
+    def test_panel_data(self, panel_lag_df):
+        """Panel data auto-detect produces a valid lag scatter figure."""
+        fig = plot_lag_scatter(panel_lag_df, lags=[1])
+        assert_figure_valid(fig)
+
+    def test_seasonality_single_lag(self, yearly_2col_df):
+        """Seasonality colouring with a single lag."""
+        fig = plot_lag_scatter(yearly_2col_df, columns="y", lags=[1], seasonality="month")
+        assert_figure_valid(fig)
+
+    def test_seasonality_multi_lag(self, yearly_2col_df):
+        """Seasonality colouring with multiple lags and subplot grid."""
+        fig = plot_lag_scatter(yearly_2col_df, columns="y", lags=[1, 7], seasonality="quarter")
+        assert_figure_valid(fig)
+
+    def test_show_regression(self, yearly_2col_df):
+        """Regression line overlaid on lag scatter."""
+        fig = plot_lag_scatter(yearly_2col_df, columns="y", lags=[1], show_regression=True)
+        assert_figure_valid(fig)
+        # Regression adds at least one extra trace (Scattergl line)
+        assert len(fig.data) >= 2
+
+
+class TestPlotSeasonalityPanelAndHighlight:
+    """Seasonality panel and highlight branches."""
+
+    def test_highlight_with_panel(self):
+        """Panel data with highlight parameter."""
+        dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y__a": [100 + i % 30 for i in range(n)],
+            "y__b": [200 + (i % 20) * 2 for i in range(n)],
+        })
+        fig = plot_seasonality(df, seasonality="month", highlight=2020)
+        assert_figure_valid(fig)
+
+
+class TestPlotSubseasonalityPanelModes:
+    """Subseasonality panel separate and combined modes."""
+
+    @pytest.fixture
+    def panel_subseas_df(self):
+        """Panel DataFrame for subseasonality testing."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "y__a": [100 + i % 30 for i in range(n)],
+            "y__b": [200 + (i % 20) * 2 for i in range(n)],
+        })
+
+    def test_panel_separate(self, panel_subseas_df):
+        """separate=True returns a dict of figures."""
+        result = plot_subseasonality(panel_subseas_df, seasonality="month", separate=True)
+        assert isinstance(result, dict)
+        assert len(result) > 0
+        for fig in result.values():
+            assert isinstance(fig, go.Figure)
+
+    def test_panel_combined(self, panel_subseas_df):
+        """Default combined mode with panel data returns a single figure."""
+        fig = plot_subseasonality(panel_subseas_df, seasonality="month")
+        assert_figure_valid(fig)
+
+
+class TestPlotSeasonalHeatmapPanel:
+    """Seasonal heatmap with panel data."""
+
+    def test_panel_data(self):
+        """Panel DataFrame auto-detect for seasonal heatmap."""
+        times = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 3, 31, 23), "1h", eager=True,
+        )
+        n = len(times)
+        df = pl.DataFrame({
+            "time": times,
+            "temp__city_a": [20.0 + i % 24 for i in range(n)],
+            "temp__city_b": [18.0 + i % 24 for i in range(n)],
+        })
+        fig = plot_seasonal_heatmap(df)
+        assert_figure_valid(fig)
+
+    def test_multi_column_nonpanel(self):
+        """Multiple non-panel columns produce subplot grid."""
+        times = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 6, 30, 23), "1h", eager=True,
+        )
+        n = len(times)
+        df = pl.DataFrame({
+            "time": times,
+            "temp": [20.0 + i % 24 for i in range(n)],
+            "wind": [5.0 + i % 12 for i in range(n)],
+        })
+        fig = plot_seasonal_heatmap(df)
+        assert_figure_valid(fig)
+        assert len(fig.data) == 2
+
+
+class TestPlotAutocorrelationMultiColumn:
+    """Autocorrelation with multiple columns (no custom palette)."""
+
+    def test_multi_column(self, yearly_2col_df):
+        """Multiple columns without custom palette."""
+        fig = plot_autocorrelation(yearly_2col_df, columns=["y", "y2"], max_lags=10)
+        assert_figure_valid(fig)
+        assert len(fig.data) > 1
+
+
+class TestPlotPartialAutocorrelationMultiColumn:
+    """Partial autocorrelation with multiple columns."""
+
+    def test_multi_column(self, yearly_2col_df):
+        """Multiple columns without custom palette."""
+        fig = plot_partial_autocorrelation(yearly_2col_df, columns=["y", "y2"], max_lags=10)
+        assert_figure_valid(fig)
+        assert len(fig.data) > 1
+
+
+# Priority 4 - Edge Cases
+
+
+class TestPacfEdgeCases:
+    """PACF edge cases: statsmodels fallback and zero-variance input."""
+
+    def test_durbin_levinson_zero_variance(self):
+        """Zero-variance input returns PACF of zeros after lag 0."""
+        from yohou.plotting.diagnostics import _compute_pacf_durbin_levinson
+
+        values = np.full(100, 42.0)
+        pacf_vals, ci_lo, ci_hi = _compute_pacf_durbin_levinson(values, nlags=5, alpha=None)
+        assert pacf_vals[0] == pytest.approx(1.0)
+        # All autocorrelations are 0 for constant series
+        for v in pacf_vals[1:]:
+            assert v == pytest.approx(0.0, abs=1e-10)
+
+
+class TestSeasonalityHighlightCycleMatch:
+    """Highlight parameter with multi-year data covering matched/unmatched cycles."""
+
+    @pytest.fixture
+    def multi_year_df(self):
+        """3-year daily DataFrame for seasonality tests."""
+        dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "y": [100 + i % 30 for i in range(n)],
+        })
+
+    def test_highlight_matching_year(self, multi_year_df):
+        """Highlighting a year that exists as a cycle covers the is_hl=True branch."""
+        fig = plot_seasonality(
+            multi_year_df, columns="y", seasonality="month", highlight=2020,
+        )
+        assert_figure_valid(fig)
+
+    def test_highlight_with_fade(self, multi_year_df):
+        """Non-highlighted cycles hit the fade_opacity branch."""
+        fig = plot_seasonality(
+            multi_year_df,
+            columns="y",
+            seasonality="month",
+            highlight=[2020],
+            fade_opacity=0.15,
+        )
+        assert_figure_valid(fig)
+        # There should be traces for all 3 cycles (2018, 2019, 2020)
+        assert len(fig.data) > 3
+
+
+class TestLagScatterSeasonality:
+    """Season-colored branches in plot_lag_scatter (lines 1871, 1967)."""
+
+    def test_single_lag_with_seasonality(self):
+        """Single lag with month seasonality hits the non-panel season path."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100 + i % 30 for i in range(len(dates))],
+        })
+        fig = plot_lag_scatter(df, columns="y", lags=[1], seasonality="month")
+        assert_figure_valid(fig)
+        # Season-colored traces produce at least 12 season groups
+        assert len(fig.data) >= 12
+
+    def test_multi_lag_with_seasonality(self):
+        """Multi-lag grid with seasonality covers the panel path season branch."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100 + i % 30 for i in range(len(dates))],
+        })
+        fig = plot_lag_scatter(df, columns="y", lags=[1, 7], seasonality="quarter")
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 4  # At least 4 quarters x 2 lags in the grid
+
+
+class TestScatterMatrixSeasonality:
+    """Season-colored branches in plot_scatter_matrix (lines 2513, 2619, 2735)."""
+
+    @pytest.fixture
+    def seasonal_df(self):
+        """Daily DataFrame spanning a full year for season coloring."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        return pl.DataFrame({
+            "time": dates,
+            "a": [100.0 + i % 30 for i in range(n)],
+            "b": [200.0 + (i % 20) * 2 for i in range(n)],
+        })
+
+    def test_grid_mode_with_seasonality(self, seasonal_df):
+        """Grid mode with month seasonality hits season-colored scatter path."""
+        fig = plot_scatter_matrix(
+            seasonal_df, columns=["a", "b"], seasonality="month", separate=False,
+        )
+        assert_figure_valid(fig)
+
+    def test_separate_mode_with_seasonality(self):
+        """Panel data with separate=True and seasonality hits _scatter_matrix_facet."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "grp__x": [100.0 + i % 30 for i in range(n)],
+            "grp__y": [200.0 + (i % 20) * 2 for i in range(n)],
+        })
+        result = plot_scatter_matrix(
+            df, seasonality="quarter", separate=True, panel_group_names=["grp"],
+        )
+        # separate=True with panel data returns a dict of figures
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert isinstance(fig, go.Figure)
+            assert len(fig.data) > 0
+
+    def test_with_max_points_and_seasonality(self, seasonal_df):
+        """Stratified subsampling when max_points < len(df) with seasonality."""
+        fig = plot_scatter_matrix(
+            seasonal_df,
+            columns=["a", "b"],
+            seasonality="quarter",
+            max_points=50,
+            separate=False,
+        )
+        assert_figure_valid(fig)
+
+
+class TestSeasonalHeatmapReverseY:
+    """reverse_y parameter branches (lines 3489, 3532)."""
+
+    def test_reverse_y_single_column(self):
+        """Single column with reverse_y=True."""
+        dates = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True,
+        )
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [10.0 + i % 24 for i in range(len(dates))],
+        })
+        fig = plot_seasonal_heatmap(df, columns="y", reverse_y=True)
+        assert_figure_valid(fig)
+
+    def test_reverse_y_multi_column(self):
+        """Multiple columns with reverse_y=True."""
+        dates = pl.datetime_range(
+            pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True,
+        )
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "a": [10.0 + i % 24 for i in range(n)],
+            "b": [20.0 + i % 12 for i in range(n)],
+        })
+        fig = plot_seasonal_heatmap(df, columns=["a", "b"], reverse_y=True)
+        assert_figure_valid(fig)
+
+    def test_reverse_y_panel(self, panel_hourly_df):
+        """Panel data with reverse_y=True."""
+        fig = plot_seasonal_heatmap(panel_hourly_df, reverse_y=True)
         assert_figure_valid(fig)

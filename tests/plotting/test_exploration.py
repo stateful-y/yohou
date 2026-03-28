@@ -68,10 +68,9 @@ class TestPlotTimeSeries:
         assert_layout(fig, width=800, height=600)
 
     def test_custom_styling(self, monthly_2col_df):
-        """Test plot with custom styling via kwargs."""
-        fig = plot_time_series(monthly_2col_df, columns="y", line_width=3.0, line_color="#DC2626", line_dash="dash")
+        """Test plot with custom styling."""
+        fig = plot_time_series(monthly_2col_df, columns="y", line_width=3.0, line_dash="dash")
         assert fig.data[0].line.width == 3.0
-        assert fig.data[0].line.color == "#DC2626"
         assert fig.data[0].line.dash == "dash"
 
     def test_no_legend(self, monthly_2col_df):
@@ -183,7 +182,7 @@ class TestPlotBoxplot:
 
     def test_styling(self, monthly_2col_df):
         """Test boxplot with custom styling."""
-        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo", box_color="#DC2626", box_opacity=0.9)
+        fig = plot_boxplot(monthly_2col_df, columns="y", period="1mo", bar_opacity=0.9)
         assert len(fig.data) > 0
 
     def test_panel(self, monthly_2col_df):
@@ -393,9 +392,6 @@ class TestPlotMissingDataKindBranches:
             plot_missing_data(df_nulls, kind="scatter")
 
 
-# ── plot_distribution ─────────────────────────────────────────────────
-
-
 class TestPlotDistribution:
     """Tests for plot_distribution function."""
 
@@ -467,9 +463,6 @@ class TestPlotDistribution:
         """Non-DataFrame raises TypeError."""
         with pytest.raises(TypeError, match="DataFrame"):
             plot_distribution("not a dataframe")
-
-
-# ── plot_outliers ─────────────────────────────────────────────────────
 
 
 class TestPlotOutlierDetection:
@@ -551,9 +544,6 @@ class TestPlotOutlierDetection:
         })
         fig = plot_outliers(df)
         assert_figure_valid(fig)
-
-
-# ── plot_resampling_comparison ────────────────────────────────────────
 
 
 class TestPlotResamplingComparison:
@@ -639,10 +629,6 @@ class TestPlotResamplingComparison:
         assert_layout(fig, width=900, height=400)
 
 
-# ---------------------------------------------------------------------------
-# Panel legend deduplication integration tests
-# ---------------------------------------------------------------------------
-
 def _make_three_group_panel() -> pl.DataFrame:
     """Create a 3-group, 2-member panel DataFrame for testing."""
     return pl.DataFrame({
@@ -696,3 +682,187 @@ class TestPanelLegendDedup:
         # members but each (member, stat) pair appears only once.
         # The legendgrouptitle differentiates them visually.
         assert len(names) >= 4  # 2 stats × 2 members = 4 visible entries minimum
+
+
+
+
+class TestPanelRollingShowOriginalFalse:
+    """Cover panel rolling stats with show_original=False."""
+
+    def test_panel_rolling_no_original(self):
+        """Panel rolling stats with show_original=False skips raw traces."""
+        df = _make_three_group_panel()
+        fig = plot_rolling_statistics(
+            df, window_size=3, statistics="mean", show_original=False,
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+
+
+class TestRollingStatsDefaultXLabel:
+    """Cover x_label=None default branch for non-panel rolling stats."""
+
+    def test_default_x_label(self):
+        """Non-panel rolling stats uses 'Time' as default x-axis label."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "y": [100 + i * 2.0 for i in range(12)],
+        })
+        fig = plot_rolling_statistics(df, columns="y", window_size=3, statistics="mean")
+        assert isinstance(fig, go.Figure)
+
+
+
+
+class TestPlotMissingDataHeatmapAggregation:
+    """Cover heatmap kind with time_aggregation parameter."""
+
+    def test_heatmap_with_time_aggregation(self):
+        """Heatmap with time_aggregation groups data by period."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "y": [None if i % 30 == 0 else float(i) for i in range(366)],
+            "z": [None if i % 50 == 0 else float(i) * 2 for i in range(366)],
+        })
+        fig = plot_missing_data(df, kind="heatmap", time_aggregation="1mo")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_heatmap_without_aggregation(self):
+        """Heatmap without time_aggregation uses individual time points."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 31), "1d", eager=True),
+            "y": [None if i % 5 == 0 else float(i) for i in range(31)],
+        })
+        fig = plot_missing_data(df, kind="heatmap")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+
+
+class TestPlotMissingDataMatrix:
+    """Cover matrix kind branch in plot_missing_data."""
+
+    def test_matrix_kind(self):
+        """Matrix kind renders binary heatmap of missing values."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 31), "1d", eager=True),
+            "y": [None if i % 7 == 0 else float(i) for i in range(31)],
+            "z": [None if i % 10 == 0 else float(i) * 2 for i in range(31)],
+        })
+        fig = plot_missing_data(df, kind="matrix")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+
+
+class TestDistributionPanelKde:
+    """Cover show_kde in panel distribution mode."""
+
+    def test_panel_distribution_with_kde(self):
+        """Panel distribution with show_kde=True renders KDE curves."""
+        import numpy as np
+
+        rng = np.random.default_rng(42)
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "y__a": rng.normal(100, 10, 12).tolist(),
+            "y__b": rng.normal(200, 15, 12).tolist(),
+        })
+        fig = plot_distribution(df, panel_group_names=["y"], show_kde=True)
+        assert isinstance(fig, go.Figure)
+        # Each member: 1 histogram + 1 KDE = 2 traces × 2 members = 4
+        assert len(fig.data) >= 4
+
+
+
+
+class TestOutlierMethodBranches:
+    """Cover IQR and percentile branches in _compute_outlier_mask."""
+
+    def test_iqr_method_with_panel(self):
+        """Panel outlier detection with IQR method."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "y__a": [100, 120, 115, 130, 140, 135, 150, 500, 155, 170, 180, 175],
+            "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
+        })
+        fig = plot_outliers(df, method="iqr", panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_percentile_method_with_panel(self):
+        """Panel outlier detection with percentile method."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "y__a": [100, 120, 115, 130, 140, 135, 150, 500, 155, 170, 180, 175],
+            "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
+        })
+        fig = plot_outliers(df, method="percentile", threshold=10.0, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+
+
+class TestResamplingComparisonPanel:
+    """Cover panel path for plot_resampling_comparison."""
+
+    def test_panel_resampling(self):
+        """Panel resampling comparison routes through panel_facet_figure."""
+        hourly = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 7, 23), "1h", eager=True,
+            ),
+            "temp__a": [20.0 + i % 24 for i in range(7 * 24)],
+            "temp__b": [15.0 + i % 24 for i in range(7 * 24)],
+        })
+        daily = hourly.group_by_dynamic("time", every="1d").agg(
+            pl.col("temp__a").mean(), pl.col("temp__b").mean(),
+        )
+        fig = plot_resampling_comparison(
+            hourly, daily, panel_group_names=["temp"],
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+class TestOutlierShowBoundsPanel:
+    """Cover show_bounds panel path (exploration.py L1409)."""
+
+    def test_iqr_show_bounds_panel(self):
+        """Panel outlier detection with IQR + show_bounds draws threshold lines."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
+            "y__a": [100, 120, 115, 130, 140, 135, 150, 500, 155, 170, 180, 175],
+            "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
+        })
+        fig = plot_outliers(df, method="iqr", show_bounds=True, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+        # Bounds add horizontal line traces (dashed or solid)
+        assert len(fig.data) >= 4  # series lines + bound lines
+
+
+class TestResamplingComparisonAutoDetect:
+    """Cover auto-detect panel path for resampling comparison (exploration.py L1657)."""
+
+    def test_auto_detect_panel(self):
+        """Panel data without explicit panel_group_names triggers auto-detect."""
+        hourly = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 7, 23), "1h", eager=True,
+            ),
+            "temp__a": [20.0 + i % 24 for i in range(7 * 24)],
+            "temp__b": [15.0 + i % 24 for i in range(7 * 24)],
+        })
+        daily = hourly.group_by_dynamic("time", every="1d").agg(
+            pl.col("temp__a").mean(), pl.col("temp__b").mean(),
+        )
+        # No columns= and no panel_group_names= → auto-detect
+        fig = plot_resampling_comparison(hourly, daily)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0

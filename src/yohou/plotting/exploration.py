@@ -52,7 +52,9 @@ def plot_time_series(
     height: int | None = None,
     connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
-    **kwargs,
+    line_width: float = 2.0,
+    line_dash: str = "solid",
+    line_opacity: float = 1.0,
 ) -> go.Figure:
     """
     Plot basic line plots for one or more time series.
@@ -67,6 +69,10 @@ def plot_time_series(
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot. Creates separate subplots per group.
         If None and panel data is detected, plots all groups.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid when using panel groups.
     color_palette : list[str] | None, default=None
@@ -83,13 +89,19 @@ def plot_time_series(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=2.0
-        - line_color : str | None, default=None (uses palette if None)
-        - line_dash : str, default="solid" ("solid", "dash", "dot", "dashdot")
-        - line_opacity : float, default=1.0
-        - hovermode : str, default="closest"
+    connect_gaps : bool, default=False
+        Whether to connect gaps in the data with lines.
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets.  ``True`` or
+        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
+        ``None`` uses a plain ``go.Figure``.
+    line_width : float, default=2.0
+        Width of the line traces in pixels.
+    line_dash : str, default="solid"
+        Dash style for lines. One of ``"solid"``, ``"dash"``, ``"dot"``,
+        ``"dashdot"``.
+    line_opacity : float, default=1.0
+        Opacity of the line traces (0.0 to 1.0).
 
     Returns
     -------
@@ -127,18 +139,13 @@ def plot_time_series(
 
     See Also
     --------
-    `plot_rolling_statistics` : Plot rolling window statistics.
+    [`plot_rolling_statistics`][yohou.plotting.plot_rolling_statistics] : Plot rolling window statistics.
     """
     # Validate inputs
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
-    # Get styling parameters from kwargs
-    line_width = kwargs.get("line_width", 2.0)
-    line_color = kwargs.get("line_color")
-    line_dash = kwargs.get("line_dash", "solid")
-    line_opacity = kwargs.get("line_opacity", 1.0)
-    hovermode = kwargs.get("hovermode", "closest")
+
 
     if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
@@ -154,7 +161,7 @@ def plot_time_series(
 
         def _render_ts(ctx: RenderContext) -> None:
             """Render one trace into the faceted figure."""
-            color = line_color if line_color is not None else color_palette[ctx.entity_idx]
+            color = color_palette[ctx.entity_idx]
             ctx.fig.add_trace(
                 go.Scatter(
                     x=ctx.sub_df["time"],
@@ -200,7 +207,7 @@ def plot_time_series(
 
     # Plot each column
     for idx, col in enumerate(plot_columns):
-        color = line_color if line_color is not None else color_palette[idx]
+        color = color_palette[idx]
 
         fig.add_trace(
             go.Scatter(
@@ -230,7 +237,6 @@ def plot_time_series(
         y_label=y_label,
         width=width,
         height=height,
-        hovermode=hovermode,
     )
 
     # Update legend
@@ -250,15 +256,18 @@ def plot_rolling_statistics(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
     connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
-    **kwargs,
+    line_width: float = 2.0,
+    line_opacity: float = 0.3,
+    smooth_width: float = 2.5,
+    smooth_opacity: float = 0.8,
 ) -> go.Figure:
     """
     Plot rolling window statistics (mean, std, min, max, median, quantiles).
@@ -279,10 +288,16 @@ def plot_rolling_statistics(
         Whether to show the original series alongside the statistics.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
         Custom color palette. If None, uses yohou palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -293,13 +308,20 @@ def plot_rolling_statistics(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - smooth_color : str, default="#3366FF"
-        - smooth_width : float, default=2.5
-        - smooth_opacity : float, default=0.8
-        - line_width : float, default=1.5
-        - line_opacity : float, default=0.5
+    connect_gaps : bool, default=False
+        Whether to connect gaps in the data with lines.
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets.  ``True`` or
+        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
+        ``None`` uses a plain ``go.Figure``.
+    line_width : float, default=2.0
+        Width of the original series line in pixels.
+    line_opacity : float, default=0.3
+        Opacity of the original series line.
+    smooth_width : float, default=2.5
+        Width of the rolling statistic lines in pixels.
+    smooth_opacity : float, default=0.8
+        Opacity of the rolling statistic lines.
 
     Returns
     -------
@@ -329,7 +351,7 @@ def plot_rolling_statistics(
 
     See Also
     --------
-    `plot_time_series` : Plot basic time series.
+    [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
     """
     # Validate inputs
     validate_plotting_data(df, min_rows=2)
@@ -356,8 +378,8 @@ def plot_rolling_statistics(
                         mode="lines",
                         name=ctx.display_name,
                         legendgroup=ctx.display_name,
-                        line={"color": member_color, "width": kwargs.get("line_width", 1.5)},
-                        opacity=kwargs.get("line_opacity", 0.3),
+                        line={"color": member_color, "width": line_width},
+                        opacity=line_opacity,
                         showlegend=False,
                         connectgaps=connect_gaps,
                     ),
@@ -382,10 +404,10 @@ def plot_rolling_statistics(
                         mode="lines",
                         line={
                             "color": member_color,
-                            "width": kwargs.get("smooth_width", 2.5),
+                            "width": smooth_width,
                             "dash": LINE_DASH_SEQUENCE[si % len(LINE_DASH_SEQUENCE)],
                         },
-                        opacity=kwargs.get("smooth_opacity", 0.8),
+                        opacity=smooth_opacity,
                         connectgaps=connect_gaps,
                         **legend_kw,
                     ),
@@ -413,12 +435,6 @@ def plot_rolling_statistics(
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-
-    # Get styling parameters
-    smooth_width = kwargs.get("smooth_width", 2.5)
-    smooth_opacity = kwargs.get("smooth_opacity", 0.8)
-    line_width = kwargs.get("line_width", 1.5)
-    line_opacity = kwargs.get("line_opacity", 0.5)
 
     # Convert statistics to list
     if isinstance(statistics, str):
@@ -504,15 +520,17 @@ def plot_boxplot(
     period: str = "1mo",
     panel_group_names: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
-    color_palette: list[str] | None = None,
     facet_n_cols: int = 2,
+    color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
-    **kwargs,
+    bar_opacity: float = 0.7,
+    show_points: bool | str = "outliers",
+    marker_size: float = 4.0,
 ) -> go.Figure:
     """
     Plot boxplots grouped by time periods.
@@ -528,10 +546,16 @@ def plot_boxplot(
         Options: "1d" (daily), "1w" (weekly), "1mo" (monthly), "1q" (quarterly), "1y" (yearly).
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
-    color_palette : list[str] | None, default=None
-        Custom color palette for multi-column plots.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
+    color_palette : list[str] | None, default=None
+        Custom color palette for multi-column plots.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -542,12 +566,13 @@ def plot_boxplot(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - box_color : str, default="#2563EB"
-        - box_opacity : float, default=0.7
-        - show_points : bool | str, default="outliers" ("outliers", "all", False)
-        - point_size : float, default=4.0
+    bar_opacity : float, default=0.7
+        Opacity of the box shapes (0.0 to 1.0).
+    show_points : bool | str, default="outliers"
+        Which data points to show. One of ``"outliers"``, ``"all"``, or
+        ``False`` to hide all points.
+    marker_size : float, default=4.0
+        Size of the point markers in pixels.
 
     Returns
     -------
@@ -572,7 +597,7 @@ def plot_boxplot(
 
     See Also
     --------
-    `plot_time_series` : Plot basic time series.
+    [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -589,9 +614,9 @@ def plot_boxplot(
             """Render period-grouped box plots for a single column."""
             base = [c for c in ctx.sub_df.columns if c != "time"][0]
             _c = _color_mgr.get_color(ctx.display_name)
-            _ba = kwargs.get("box_opacity", 0.7)
-            _sp = kwargs.get("show_points", "outliers")
-            _ps = kwargs.get("point_size", 4.0)
+            _ba = bar_opacity
+            _sp = show_points
+            _ps = marker_size
             df_g = ctx.sub_df.with_columns(pl.col("time").dt.truncate(period).alias("period"))
             periods_list = df_g.select("period").unique().sort("period")["period"].to_list()
             _show = _legend_tracker.should_show(ctx.display_name)
@@ -635,14 +660,8 @@ def plot_boxplot(
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
 
-    # Get styling parameters
-    box_color = kwargs.get("box_color", "#2563EB")
-    box_opacity = kwargs.get("box_opacity", 0.7)
-    show_points = kwargs.get("show_points", "outliers")
-    point_size = kwargs.get("point_size", 4.0)
-
     multi_col = len(plot_columns) > 1
-    col_colors = resolve_color_palette(color_palette, len(plot_columns)) if multi_col else [box_color]
+    col_colors = resolve_color_palette(color_palette, len(plot_columns))
 
     # Determine point display
     if show_points == "all":
@@ -669,9 +688,9 @@ def plot_boxplot(
                     x=[period_labels[p_idx]] * len(period_data),
                     name=col if multi_col else period_labels[p_idx],
                     marker={"color": c_color},
-                    opacity=box_opacity,
+                    opacity=bar_opacity,
                     boxpoints=boxpoints,
-                    marker_size=point_size if boxpoints else None,
+                    marker_size=marker_size if boxpoints else None,
                     legendgroup=col if multi_col else None,
                     showlegend=multi_col and p_idx == 0,
                     offsetgroup=col if multi_col else None,
@@ -705,13 +724,14 @@ def plot_missing_data(
     facet_n_cols: int = 2,
     color_missing: str = "#DC2626",
     color_present: str = "#059669",
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
-    **kwargs,
+    show_percentages: bool = True,
+    time_aggregation: str | None = None,
 ) -> go.Figure:
     """
     Visualize missing data patterns over time.
@@ -729,12 +749,18 @@ def plot_missing_data(
         - "matrix": binary matrix (missingno-style, time on x-axis)
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_missing : str, default="#DC2626"
         Color for missing values (red).
     color_present : str, default="#059669"
         Color for present values (green).
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -745,10 +771,11 @@ def plot_missing_data(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - show_percentages : bool, default=True
-        - time_aggregation : str | None, default=None ("1d", "1w", "1mo")
+    show_percentages : bool, default=True
+        Whether to display percentage labels on bars.
+    time_aggregation : str | None, default=None
+        Aggregate to time periods before checking. Polars duration string
+        (e.g. ``"1d"``, ``"1w"``, ``"1mo"``).
 
     Returns
     -------
@@ -773,7 +800,7 @@ def plot_missing_data(
 
     See Also
     --------
-    `plot_time_series` : Plot basic time series.
+    [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -787,7 +814,7 @@ def plot_missing_data(
         def _render_missing(ctx: RenderContext) -> None:
             """Render missing data count bar chart for a single column."""
             base = [c for c in ctx.sub_df.columns if c != "time"][0]
-            _sp = kwargs.get("show_percentages", True)
+            _sp = show_percentages
             total = len(ctx.sub_df)
             mc = ctx.sub_df[base].null_count()
             pct = (mc / total) * 100 if total > 0 else 0
@@ -823,8 +850,6 @@ def plot_missing_data(
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-    show_percentages = kwargs.get("show_percentages", True)
-    time_aggregation = kwargs.get("time_aggregation")
 
     if kind == "bars":
         # Bar chart showing percentage missing per column
@@ -950,13 +975,16 @@ def plot_distribution(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
-    **kwargs,
+    bar_opacity: float = 0.6,
+    kde_width: float = 2.5,
+    kde_points: int = 200,
+    histnorm: str = "probability density",
 ) -> go.Figure:
     """
     Plot histogram with optional KDE overlay for one or more columns.
@@ -973,10 +1001,16 @@ def plot_distribution(
         Whether to overlay a kernel density estimate curve.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot. Creates separate subplots per group.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
         Custom color palette as hex codes.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -987,12 +1021,14 @@ def plot_distribution(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - bar_opacity : float, default=0.6
-        - kde_width : float, default=2.5
-        - kde_points : int, default=200
-        - histnorm : str, default="probability density"
+    bar_opacity : float, default=0.6
+        Opacity of the histogram bars (0.0 to 1.0).
+    kde_width : float, default=2.5
+        Width of the KDE line in pixels.
+    kde_points : int, default=200
+        Number of points used to evaluate the KDE curve.
+    histnorm : str, default="probability density"
+        Histogram normalization mode (passed to Plotly).
 
     Returns
     -------
@@ -1021,18 +1057,13 @@ def plot_distribution(
 
     See Also
     --------
-    `plot_boxplot` : Plot boxplots grouped by time periods.
-    `plot_time_series` : Plot basic time series.
+    [`plot_boxplot`][yohou.plotting.plot_boxplot] : Plot boxplots grouped by time periods.
+    [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
     """
     # Validate inputs
     validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
-    # Get styling parameters from kwargs
-    bar_opacity = kwargs.get("bar_opacity", 0.6)
-    kde_width = kwargs.get("kde_width", 2.5)
-    kde_points = kwargs.get("kde_points", 200)
-    histnorm = kwargs.get("histnorm", "probability density")
 
     if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
@@ -1180,15 +1211,20 @@ def plot_outliers(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
     connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
-    **kwargs,
+    line_width: float = 2.0,
+    line_opacity: float = 0.7,
+    outlier_color: str = "#DC2626",
+    outlier_size: float = 8.0,
+    outlier_symbol: str = "x",
+    show_bounds: bool = True,
 ) -> go.Figure:
     """
     Plot time series with outlier points highlighted.
@@ -1212,10 +1248,16 @@ def plot_outliers(
         Detection threshold. Interpretation depends on *method*.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
         Custom color palette for the series lines.
+    show_legend : bool, default=True
+        Whether to display the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -1233,15 +1275,19 @@ def plot_outliers(
     resampler : bool | Literal["widget"] | None, default=None
         Enable plotly-resampler for large datasets.  ``True`` returns a
         ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
-        ``None`` reads from :func:`get_config`.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=1.5
-        - line_opacity : float, default=0.7
-        - outlier_color : str, default="#DC2626"
-        - outlier_size : float, default=8.0
-        - outlier_symbol : str, default="circle"
-        - show_bounds : bool, default=True
+        ``None`` reads from `get_config`.
+    line_width : float, default=2.0
+        Width of the series line in pixels.
+    line_opacity : float, default=0.7
+        Opacity of the series line.
+    outlier_color : str, default="#DC2626"
+        Color for outlier markers.
+    outlier_size : float, default=8.0
+        Size of outlier markers in pixels.
+    outlier_symbol : str, default="x"
+        Marker symbol for outlier points.
+    show_bounds : bool, default=True
+        Whether to show threshold boundary lines.
 
     Returns
     -------
@@ -1270,8 +1316,8 @@ def plot_outliers(
 
     See Also
     --------
-    `plot_time_series` : Plot basic time series.
-    `plot_boxplot` : Plot boxplots grouped by time periods.
+    [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
+    [`plot_boxplot`][yohou.plotting.plot_boxplot] : Plot boxplots grouped by time periods.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -1281,13 +1327,6 @@ def plot_outliers(
         raise ValueError(msg)
     validate_plotting_params(width=width, height=height)
 
-    # Get styling parameters
-    line_width = kwargs.get("line_width", 1.5)
-    line_opacity = kwargs.get("line_opacity", 0.7)
-    outlier_color = kwargs.get("outlier_color", "#DC2626")
-    outlier_size = kwargs.get("outlier_size", 8.0)
-    outlier_symbol = kwargs.get("outlier_symbol", "x")
-    show_bounds = kwargs.get("show_bounds", True)
 
     def _compute_outlier_mask(series: pl.Series) -> tuple[pl.Series, float | None, float | None]:
         """Return (is_outlier_bool_series, lower_bound, upper_bound)."""
@@ -1493,15 +1532,20 @@ def plot_resampling_comparison(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
     connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
-    **kwargs,
+    original_line_width: float = 1.0,
+    original_line_opacity: float = 0.4,
+    original_line_dash: str = "solid",
+    resampled_line_width: float = 2.5,
+    resampled_line_opacity: float = 1.0,
+    resampled_line_dash: str = "solid",
 ) -> go.Figure:
     """
     Plot original vs resampled time series for comparison.
@@ -1524,10 +1568,16 @@ def plot_resampling_comparison(
         Legend label for the resampled series.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
         Custom color palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -1538,14 +1588,24 @@ def plot_resampling_comparison(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - original_width : float, default=1.0
-        - original_opacity : float, default=0.4
-        - original_dash : str, default="solid"
-        - resampled_width : float, default=2.5
-        - resampled_opacity : float, default=1.0
-        - resampled_dash : str, default="solid"
+    connect_gaps : bool, default=False
+        Whether to connect gaps in the data with lines.
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets.  ``True`` or
+        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
+        ``None`` uses a plain ``go.Figure``.
+    original_line_width : float, default=1.0
+        Width of the original series line in pixels.
+    original_line_opacity : float, default=0.4
+        Opacity of the original series line.
+    original_line_dash : str, default="solid"
+        Dash style for the original series line.
+    resampled_line_width : float, default=2.5
+        Width of the resampled series line in pixels.
+    resampled_line_opacity : float, default=1.0
+        Opacity of the resampled series line.
+    resampled_line_dash : str, default="solid"
+        Dash style for the resampled series line.
 
     Returns
     -------
@@ -1577,8 +1637,8 @@ def plot_resampling_comparison(
 
     See Also
     --------
-    `plot_time_series` : Plot basic time series.
-    `plot_rolling_statistics` : Plot rolling window statistics.
+    [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
+    [`plot_rolling_statistics`][yohou.plotting.plot_rolling_statistics] : Plot rolling window statistics.
     """
     # Validate both DataFrames
     validate_plotting_data(df_original)
@@ -1586,12 +1646,12 @@ def plot_resampling_comparison(
     validate_plotting_params(width=width, height=height)
 
     # Get styling parameters
-    original_width = kwargs.get("original_width", 1.0)
-    original_opacity = kwargs.get("original_opacity", 0.4)
-    original_dash = kwargs.get("original_dash", "solid")
-    resampled_width = kwargs.get("resampled_width", 2.5)
-    resampled_opacity = kwargs.get("resampled_opacity", 1.0)
-    resampled_dash = kwargs.get("resampled_dash", "solid")
+    original_width = original_line_width
+    original_opacity = original_line_opacity
+    original_dash = original_line_dash
+    resampled_width = resampled_line_width
+    resampled_opacity = resampled_line_opacity
+    resampled_dash = resampled_line_dash
 
     if panel_group_names is None and columns is None and _auto_detect_panel(df_resampled):
         panel_group_names = []

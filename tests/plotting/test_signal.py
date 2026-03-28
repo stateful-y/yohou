@@ -291,3 +291,77 @@ class TestConnectGaps:
         })
         fig = plot_spectrum(df, columns="y", connect_gaps=True)
         assert_figure_valid(fig)
+
+
+
+
+class TestPlotPhaseAutoDetectPanel:
+    """Test auto-detect panel path in plot_phase (line 113)."""
+
+    def test_auto_detect_panel(self):
+        """Phase auto-detects panel data when no columns/panel_group_names given."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y__a": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+            "y__b": np.cos(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df)
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 2
+
+
+class TestPlotPhaseUnwrapDegreePanel:
+    """Test panel phase with unwrap=True and angle_unit='degree' (lines 127-130)."""
+
+    def test_panel_unwrap_and_degree(self):
+        """Panel phase with both unwrap and degree covers lines 127-130."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y__a": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+            "y__b": np.cos(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, panel_group_names=["y"], unwrap=True, angle_unit="degree")
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 2
+
+
+class TestPlotPhaseUnwrapDegreeNonPanel:
+    """Test non-panel phase with unwrap=True and degree (lines 175-177)."""
+
+    def test_non_panel_unwrap_and_degree(self):
+        """Non-panel phase with unwrap=True and degree covers lines 175-177."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_phase(df, columns="y", unwrap=True, angle_unit="degree")
+        assert_figure_valid(fig)
+        y_text = fig.layout.yaxis.title.text
+        assert "deg" in y_text.lower() or "°" in y_text
+
+
+class TestPlotSpectrumAutoDetectPanel:
+    """Test auto-detect panel path in plot_spectrum (line 304)."""
+
+    def test_auto_detect_panel(self):
+        """Spectrum auto-detects panel data when no columns/panel_group_names given."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y__a": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+            "y__b": np.cos(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        fig = plot_spectrum(df)
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 2

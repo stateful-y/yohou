@@ -22,7 +22,6 @@ from yohou.plotting._utils import (
     _subplot_spacing,
     apply_default_layout,
     grouped_legend_kwargs,
-    linked_legendgroup_kwargs,
     panel_facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
@@ -60,7 +59,7 @@ def plot_autocorrelation(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    color: str = "#2563EB",
 ) -> go.Figure:
     """Plot autocorrelation function (ACF) for time series.
 
@@ -81,6 +80,10 @@ def plot_autocorrelation(
         Whether to show confidence bands.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
@@ -97,9 +100,8 @@ def plot_autocorrelation(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - bar_color : str, default="#2563EB" (ignored when color_palette is set)
+    color : str, default="#2563EB"
+        Bar color for single-column plots (ignored when color_palette is set).
 
     Returns
     -------
@@ -124,8 +126,8 @@ def plot_autocorrelation(
 
     See Also
     --------
-    `plot_partial_autocorrelation` : Plot partial autocorrelation function.
-    `plot_correlation_heatmap` : Plot correlation matrix.
+    [`plot_partial_autocorrelation`][yohou.plotting.plot_partial_autocorrelation] : Plot partial autocorrelation function.
+    [`plot_correlation_heatmap`][yohou.plotting.plot_correlation_heatmap] : Plot correlation matrix.
     """
     # Validate inputs
     validate_plotting_data(df, min_rows=2)
@@ -147,17 +149,7 @@ def plot_autocorrelation(
             series = ctx.sub_df[base].drop_nulls()
             n_s = len(series)
             _ml = max_lags if max_lags is not None else min(n_s // 2, 40)
-            mean_v = series.mean()
-            acf_vals = []
-            for lag in range(_ml + 1):
-                if lag == 0:
-                    acf_vals.append(1.0)
-                else:
-                    s1 = series[:-lag] - mean_v
-                    s2 = series[lag:] - mean_v
-                    num = (s1 * s2).sum()
-                    den = ((series - mean_v) ** 2).sum()
-                    acf_vals.append(num / den if den != 0 else 0)
+            acf_vals = _compute_acf_values(series, _ml)
             ctx.fig.add_trace(
                 go.Bar(
                     x=list(range(_ml + 1)),
@@ -204,7 +196,7 @@ def plot_autocorrelation(
     elif len(plot_columns) > 1:
         bar_colors = resolve_color_palette(None, len(plot_columns))
     else:
-        _bc = kwargs.get("bar_color", "#2563EB")
+        _bc = color
         bar_colors = [_bc]
 
     # Determine max_lags
@@ -220,21 +212,7 @@ def plot_autocorrelation(
         series = df[col].drop_nulls()
         n_series = len(series)
 
-        # Compute autocorrelation
-        acf_values = []
-        mean_val = series.mean()
-
-        for lag in range(max_lags + 1):
-            if lag == 0:
-                acf_values.append(1.0)
-            else:
-                # Compute correlation at lag
-                series1 = series[:-lag] - mean_val
-                series2 = series[lag:] - mean_val
-                numerator = (series1 * series2).sum()
-                denominator = ((series - mean_val) ** 2).sum()
-                acf = numerator / denominator if denominator != 0 else 0
-                acf_values.append(acf)
+        acf_values = _compute_acf_values(series, max_lags)
 
         # Add bar trace
         fig.add_trace(
@@ -272,6 +250,36 @@ def plot_autocorrelation(
     fig.update_layout(showlegend=show_legend)
 
     return fig
+
+
+def _compute_acf_values(series: pl.Series, max_lags: int) -> list[float]:
+    """Compute autocorrelation values for a single series.
+
+    Parameters
+    ----------
+    series : pl.Series
+        Numeric series (NaN-free) to compute ACF for.
+    max_lags : int
+        Maximum number of lags to compute.
+
+    Returns
+    -------
+    list[float]
+        ACF values from lag 0 to *max_lags* inclusive.
+
+    """
+    mean_val = series.mean()
+    acf_values: list[float] = []
+    for lag in range(max_lags + 1):
+        if lag == 0:
+            acf_values.append(1.0)
+        else:
+            s1 = series[:-lag] - mean_val
+            s2 = series[lag:] - mean_val
+            numerator = (s1 * s2).sum()
+            denominator = ((series - mean_val) ** 2).sum()
+            acf_values.append(numerator / denominator if denominator != 0 else 0)
+    return acf_values
 
 
 def _compute_pacf_durbin_levinson(
@@ -408,7 +416,7 @@ def plot_partial_autocorrelation(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    color: str = "#059669",
 ) -> go.Figure:
     """Plot partial autocorrelation function (PACF) for time series.
 
@@ -439,6 +447,10 @@ def plot_partial_autocorrelation(
         Whether to show confidence bands.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
@@ -455,9 +467,8 @@ def plot_partial_autocorrelation(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - bar_color : str, default="#059669" (ignored when color_palette is set)
+    color : str, default="#059669"
+        Bar color for single-column plots (ignored when color_palette is set).
 
     Returns
     -------
@@ -482,7 +493,7 @@ def plot_partial_autocorrelation(
 
     See Also
     --------
-    `plot_autocorrelation` : Plot autocorrelation function.
+    [`plot_autocorrelation`][yohou.plotting.plot_autocorrelation] : Plot autocorrelation function.
     """
     # Validate inputs
     validate_plotting_data(df, min_rows=2)
@@ -556,7 +567,7 @@ def plot_partial_autocorrelation(
     elif len(plot_columns) > 1:
         bar_colors = resolve_color_palette(None, len(plot_columns))
     else:
-        _bc = kwargs.get("bar_color", "#059669")
+        _bc = color
         bar_colors = [_bc]
 
     # Determine max_lags
@@ -615,6 +626,167 @@ def plot_partial_autocorrelation(
     return fig
 
 
+def _correlation_heatmap_separate(
+    df: pl.DataFrame,
+    groups: dict[str, list[str]],
+    *,
+    colorscale: str,
+    show_values: bool,
+    show_legend: bool,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+) -> dict[str, go.Figure]:
+    """Build one standalone heatmap figure per panel group."""
+    figures: dict[str, go.Figure] = {}
+    for gname, gcols in groups.items():
+        base_names = [c.split("__", 1)[1] if "__" in c else c for c in gcols]
+        sub = df.select(gcols).rename(dict(zip(gcols, base_names, strict=False)))
+        corr = sub.drop_nulls().corr()
+        text_ann = None
+        if show_values:
+            text_ann = [[f"{v:.2f}" if v is not None else "" for v in row] for row in corr.rows()]
+        gfig = go.Figure()
+        gfig.add_trace(
+            go.Heatmap(
+                z=corr.to_numpy(),
+                x=base_names,
+                y=base_names,
+                colorscale=colorscale,
+                zmid=0,
+                text=text_ann,
+                texttemplate="%{text}" if show_values else None,
+                hovertemplate=(
+                    f"<b>{gname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"
+                ),
+            )
+        )
+        gfig = apply_default_layout(
+            gfig,
+            title=title or "Correlation Heatmap",
+            x_label=x_label,
+            y_label=y_label,
+            width=width,
+            height=height,
+        )
+        gfig.update_layout(showlegend=show_legend)
+        figures[gname] = gfig
+    return figures
+
+
+def _correlation_heatmap_grid(
+    df: pl.DataFrame,
+    groups: dict[str, list[str]],
+    *,
+    facet_n_cols: int,
+    colorscale: str,
+    show_values: bool,
+    show_legend: bool,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+) -> go.Figure:
+    """Build a faceted subplot grid with one heatmap per panel group."""
+    group_names = list(groups.keys())
+    n_groups = len(group_names)
+
+    grid_cols = min(n_groups, facet_n_cols)
+    grid_rows = math.ceil(n_groups / grid_cols)
+
+    fig = make_subplots(
+        rows=grid_rows,
+        cols=grid_cols,
+        subplot_titles=group_names,
+        horizontal_spacing=_subplot_spacing(grid_cols),
+    )
+
+    for gi, gname in enumerate(group_names):
+        gcols = groups[gname]
+        base_names = [c.split("__", 1)[1] if "__" in c else c for c in gcols]
+        sub = df.select(gcols).rename(dict(zip(gcols, base_names, strict=False)))
+        corr = sub.drop_nulls().corr()
+        text_ann = None
+        if show_values:
+            text_ann = [[f"{v:.2f}" if v is not None else "" for v in row] for row in corr.rows()]
+        fig.add_trace(
+            go.Heatmap(
+                z=corr.to_numpy(),
+                x=base_names,
+                y=base_names,
+                colorscale=colorscale,
+                zmid=0,
+                text=text_ann,
+                texttemplate="%{text}" if show_values else None,
+                hovertemplate=(f"<b>{gname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"),
+                showscale=(gi == n_groups - 1),
+            ),
+            row=gi // grid_cols + 1,
+            col=gi % grid_cols + 1,
+        )
+
+    fig = apply_default_layout(
+        fig,
+        title=title or "Correlation Heatmap",
+        x_label=x_label,
+        y_label=y_label,
+        width=width or max(400 * grid_cols, 600),
+        height=height or max(400 * grid_rows, 400),
+    )
+    fig.update_layout(showlegend=show_legend)
+    return fig
+
+
+def _correlation_heatmap_single(
+    df: pl.DataFrame,
+    plot_columns: list[str],
+    *,
+    colorscale: str,
+    show_values: bool,
+    show_legend: bool,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+) -> go.Figure:
+    """Build a single correlation heatmap for non-panel data."""
+    corr_matrix = df.select(plot_columns).drop_nulls().corr()
+
+    fig = go.Figure()
+
+    text_annotations = None
+    if show_values:
+        text_annotations = [[f"{val:.2f}" if val is not None else "" for val in row] for row in corr_matrix.rows()]
+
+    fig.add_trace(
+        go.Heatmap(
+            z=corr_matrix.to_numpy(),
+            x=plot_columns,
+            y=plot_columns,
+            colorscale=colorscale,
+            zmid=0,
+            text=text_annotations,
+            texttemplate="%{text}" if show_values else None,
+            hovertemplate="<b>%{x} vs %{y}</b><br>Correlation: %{z:.3f}<extra></extra>",
+        )
+    )
+
+    fig = apply_default_layout(
+        fig,
+        title=title or "Correlation Heatmap",
+        x_label=x_label,
+        y_label=y_label,
+        width=width,
+        height=height,
+    )
+    fig.update_layout(showlegend=show_legend)
+    return fig
+
+
 def plot_correlation_heatmap(
     df: pl.DataFrame,
     *,
@@ -629,7 +801,8 @@ def plot_correlation_heatmap(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    colorscale: str = "RdBu_r",
+    show_values: bool = True,
 ) -> go.Figure | dict[str, go.Figure]:
     """Plot correlation matrix heatmap for multiple time series.
 
@@ -654,6 +827,8 @@ def plot_correlation_heatmap(
     facet_n_cols : int, default=3
         Number of columns in the faceted grid when multiple panel groups
         are present.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -664,10 +839,10 @@ def plot_correlation_heatmap(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - colorscale : str, default="RdBu_r"
-        - show_values : bool, default=True
+    colorscale : str, default="RdBu_r"
+        Plotly colorscale for the heatmap.
+    show_values : bool, default=True
+        Whether to display correlation values on the heatmap cells.
 
     Returns
     -------
@@ -694,7 +869,7 @@ def plot_correlation_heatmap(
 
     See Also
     --------
-    `plot_autocorrelation` : Plot autocorrelation function.
+    [`plot_autocorrelation`][yohou.plotting.plot_autocorrelation] : Plot autocorrelation function.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -720,142 +895,37 @@ def plot_correlation_heatmap(
             msg = f"No panel groups found for {panel_group_names}. Available groups: {list(panel_groups.keys())}"
             raise ValueError(msg)
 
-        colorscale = kwargs.get("colorscale", "RdBu_r")
-        show_values = kwargs.get("show_values", True)
+        _layout_kwargs = {
+            "colorscale": colorscale,
+            "show_values": show_values,
+            "show_legend": show_legend,
+            "title": title,
+            "x_label": x_label,
+            "y_label": y_label,
+            "width": width,
+            "height": height,
+        }
 
         if separate:
-            # ── Separate mode: one figure per group ──────────────────
-            figures: dict[str, go.Figure] = {}
-            for gname, gcols in groups.items():
-                base_names = [c.split("__", 1)[1] if "__" in c else c for c in gcols]
-                sub = df.select(gcols).rename(dict(zip(gcols, base_names, strict=False)))
-                corr = sub.drop_nulls().corr()
-                text_ann = None
-                if show_values:
-                    text_ann = [[f"{v:.2f}" if v is not None else "" for v in row] for row in corr.rows()]
-                gfig = go.Figure()
-                gfig.add_trace(
-                    go.Heatmap(
-                        z=corr.to_numpy(),
-                        x=base_names,
-                        y=base_names,
-                        colorscale=colorscale,
-                        zmid=0,
-                        text=text_ann,
-                        texttemplate="%{text}" if show_values else None,
-                        hovertemplate=(
-                            f"<b>{gname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"
-                        ),
-                    )
-                )
-                gfig = apply_default_layout(
-                    gfig,
-                    title=title or "Correlation Heatmap",
-                    x_label=x_label,
-                    y_label=y_label,
-                    width=width,
-                    height=height,
-                )
-                gfig.update_layout(showlegend=show_legend)
-                figures[gname] = gfig
-            return figures
+            return _correlation_heatmap_separate(df, groups, **_layout_kwargs)
 
-        # ── Grid mode (default): all groups in a single figure ───────
-        group_names = list(groups.keys())
-        n_groups = len(group_names)
+        return _correlation_heatmap_grid(df, groups, facet_n_cols=facet_n_cols, **_layout_kwargs)
 
-        grid_cols = min(n_groups, facet_n_cols)
-        grid_rows = math.ceil(n_groups / grid_cols)
-
-        fig = make_subplots(
-            rows=grid_rows,
-            cols=grid_cols,
-            subplot_titles=group_names,
-            horizontal_spacing=_subplot_spacing(grid_cols),
-        )
-
-        for gi, gname in enumerate(group_names):
-            gcols = groups[gname]
-            # Strip prefix for display
-            base_names = [c.split("__", 1)[1] if "__" in c else c for c in gcols]
-            sub = df.select(gcols).rename(dict(zip(gcols, base_names, strict=False)))
-            corr = sub.drop_nulls().corr()
-            text_ann = None
-            if show_values:
-                text_ann = [[f"{v:.2f}" if v is not None else "" for v in row] for row in corr.rows()]
-            fig.add_trace(
-                go.Heatmap(
-                    z=corr.to_numpy(),
-                    x=base_names,
-                    y=base_names,
-                    colorscale=colorscale,
-                    zmid=0,
-                    text=text_ann,
-                    texttemplate="%{text}" if show_values else None,
-                    hovertemplate=(f"<b>{gname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"),
-                    showscale=(gi == n_groups - 1),
-                ),
-                row=gi // grid_cols + 1,
-                col=gi % grid_cols + 1,
-            )
-
-        fig = apply_default_layout(
-            fig,
-            title=title or "Correlation Heatmap",
-            x_label=x_label,
-            y_label=y_label,
-            width=width or max(400 * grid_cols, 600),
-            height=height or max(400 * grid_rows, 400),
-        )
-        fig.update_layout(showlegend=show_legend)
-        return fig
-
-    # Resolve columns
+    # Non-panel path
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-
-    # Get kwargs
-    colorscale = kwargs.get("colorscale", "RdBu_r")
-    show_values = kwargs.get("show_values", True)
-
-    # Compute correlation matrix
-    corr_matrix = df.select(plot_columns).drop_nulls().corr()
-
-    # Create heatmap
-    fig = go.Figure()
-
-    # Prepare text annotations
-    text_annotations = None
-    if show_values:
-        text_annotations = [[f"{val:.2f}" if val is not None else "" for val in row] for row in corr_matrix.rows()]
-
-    fig.add_trace(
-        go.Heatmap(
-            z=corr_matrix.to_numpy(),
-            x=plot_columns,
-            y=plot_columns,
-            colorscale=colorscale,
-            zmid=0,
-            text=text_annotations,
-            texttemplate="%{text}" if show_values else None,
-            hovertemplate="<b>%{x} vs %{y}</b><br>Correlation: %{z:.3f}<extra></extra>",
-        )
-    )
-
-    # Apply default layout
-    fig = apply_default_layout(
-        fig,
-        title=title or "Correlation Heatmap",
+    return _correlation_heatmap_single(
+        df,
+        plot_columns,
+        colorscale=colorscale,
+        show_values=show_values,
+        show_legend=show_legend,
+        title=title,
         x_label=x_label,
         y_label=y_label,
         width=width,
         height=height,
     )
-    fig.update_layout(showlegend=show_legend)
 
-    return fig
-
-
-# ── Seasonal helpers (shared by plot_seasonality / plot_subseasonality) ──
 
 _SEASON_LABELS_MAP: dict[str, list[str]] = {
     "month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
@@ -905,15 +975,18 @@ def plot_seasonality(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
     connect_gaps: bool = False,
-    show_legend: bool = True,
     resampler: bool | Literal["widget"] | None = None,
-    **kwargs,
+    line_width: float = 2.0,
+    highlight_width: float = 3.0,
+    fade_opacity: float = 0.25,
+    opacity_power: float = 2.0,
 ) -> go.Figure:
     """Plot seasonal overlay.
 
@@ -934,10 +1007,16 @@ def plot_seasonality(
         thicker line; others are faded. If None, all cycles are equally visible.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
         Custom color palette (one color per cycle).
+    show_legend : bool, default=True
+        Whether to display the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -955,13 +1034,15 @@ def plot_seasonality(
     resampler : bool | Literal["widget"] | None, default=None
         Enable plotly-resampler for large datasets.  ``True`` returns a
         ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
-        ``None`` reads from :func:`get_config`.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=1.5
-        - highlight_width : float, default=3.0
-        - fade_opacity : float, default=0.25
-        - opacity_power : float, default=2.0
+        ``None`` reads from `get_config`.
+    line_width : float, default=2.0
+        Line width for cycle traces.
+    highlight_width : float, default=3.0
+        Line width for highlighted cycle traces.
+    fade_opacity : float, default=0.25
+        Opacity for non-highlighted cycles when ``highlight`` is set.
+    opacity_power : float, default=2.0
+        Power curve exponent for time-ordered opacity fade.
 
     Returns
     -------
@@ -986,10 +1067,9 @@ def plot_seasonality(
 
     See Also
     --------
-    `plot_subseasonality` : Plot seasonal subseries.
-    `plot_time_series` : Plot basic time series.
+    [`plot_subseasonality`][yohou.plotting.plot_subseasonality] : Plot seasonal subseries.
+    [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
     """
-
     # Resolve highlight to a set
     if highlight is None:
         highlight_set: set[int] = set()
@@ -998,14 +1078,9 @@ def plot_seasonality(
     else:
         highlight_set = set(highlight)
 
-    line_width = kwargs.get("line_width", 1.5)
-    highlight_width = kwargs.get("highlight_width", 3.0)
-    fade_opacity = kwargs.get("fade_opacity", 0.25)
-    opacity_power = kwargs.get("opacity_power", 2.0)
     _oldest_alpha = 0.1
     _newest_alpha = 0.9
 
-    # ── Validate ─────────────────────────────────────────────────────────
     validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
@@ -1135,7 +1210,6 @@ def plot_seasonality(
     _np_legend_tracker = LegendTracker(show_legend=show_legend)
 
     fig = _create_figure(resampler)
-    multi_col = len(plot_columns) > 1
     n_cycles = len(cycles)
 
     for col_idx, col_name in enumerate(plot_columns):
@@ -1235,7 +1309,11 @@ def plot_subseasonality(
     connect_gaps: bool = False,
     show_legend: bool = True,
     resampler: bool | Literal["widget"] | None = None,
-    **kwargs,
+    line_width: float = 2.0,
+    marker_size: float = 4,
+    marker_opacity: float = 0.8,
+    mean_width: float = 2.0,
+    mean_dash: str = "dash",
 ) -> go.Figure | dict[str, go.Figure]:
     """Plot seasonal subseries.
 
@@ -1285,14 +1363,17 @@ def plot_subseasonality(
     resampler : bool | Literal["widget"] | None, default=None
         Enable plotly-resampler for large datasets.  ``True`` returns a
         ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
-        ``None`` reads from :func:`get_config`.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=1.5
-        - marker_size : float, default=4
-        - mean_width : float, default=2.0
-        - mean_dash : str, default="dash"
-        - vertical_spacing : float | None, default=None
+        ``None`` reads from `get_config`.
+    line_width : float, default=2.0
+        Line width for cycle traces.
+    marker_size : float, default=4
+        Marker size for data points.
+    marker_opacity : float, default=0.8
+        Opacity of scatter markers.
+    mean_width : float, default=2.0
+        Line width for the horizontal mean line.
+    mean_dash : str, default="dash"
+        Dash style for the mean line.
 
     Returns
     -------
@@ -1318,8 +1399,8 @@ def plot_subseasonality(
 
     See Also
     --------
-    `plot_seasonality` : Plot seasonal overlay.
-    `plot_time_series` : Plot basic time series.
+    [`plot_seasonality`][yohou.plotting.plot_seasonality] : Plot seasonal overlay.
+    [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
     """
     validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
@@ -1346,12 +1427,6 @@ def plot_subseasonality(
         else:
             subplot_titles.append(str(s))
 
-    line_width = kwargs.get("line_width", 1.5)
-    marker_size = kwargs.get("marker_size", 4)
-    mean_width = kwargs.get("mean_width", 2.0)
-    mean_dash = kwargs.get("mean_dash", "dash")
-
-    # ── Separate path: one figure per panel group ──────────────────────────
     if panel_group_names is not None and separate:
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
@@ -1368,7 +1443,7 @@ def plot_subseasonality(
                 cols=facet_n_cols,
                 subplot_titles=subplot_titles,
                 shared_yaxes=True,
-                vertical_spacing=kwargs.get("vertical_spacing", max(0.04, 0.3 / nrow)),
+                vertical_spacing=max(0.04, 0.3 / nrow),
             )
 
             for si, season_val in enumerate(seasons):
@@ -1392,7 +1467,7 @@ def plot_subseasonality(
                             y=values,
                             mode="lines+markers",
                             line={"color": col_color, "width": line_width},
-                            marker={"size": marker_size},
+                            marker={"size": marker_size, "opacity": marker_opacity},
                             connectgaps=connect_gaps,
                             hovertemplate=_make_hovertemplate(display_name, "Cycle", "Value"),
                             name=display_name,
@@ -1434,15 +1509,13 @@ def plot_subseasonality(
 
         return figures
 
-    # ── Grid path: all groups in one figure ──────────────────────────────
-
     fig = _create_subplots(
         resampler,
         rows=nrow,
         cols=facet_n_cols,
         subplot_titles=subplot_titles,
         shared_yaxes=True,
-        vertical_spacing=kwargs.get("vertical_spacing", max(0.04, 0.3 / nrow)),
+        vertical_spacing=max(0.04, 0.3 / nrow),
     )
 
     colors = resolve_color_palette(color_palette, len(plot_columns))
@@ -1491,7 +1564,7 @@ def plot_subseasonality(
                     y=values,
                     mode="lines+markers",
                     line={"color": col_color, "width": line_width},
-                    marker={"size": marker_size},
+                    marker={"size": marker_size, "opacity": marker_opacity},
                     connectgaps=connect_gaps,
                     hovertemplate=_make_hovertemplate(display_name, "Cycle", "Value"),
                     **legend_kw,
@@ -1553,7 +1626,8 @@ def plot_lag_scatter(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    marker_size: float = 4.0,
+    marker_opacity: float = 0.6,
 ) -> go.Figure:
     """Plot scatter plots of y(t) vs y(t-lag) for analysing temporal dependencies.
 
@@ -1589,6 +1663,8 @@ def plot_lag_scatter(
         Number of columns in facet / subplot grid.
     color_palette : list[str] | None, default=None
         Custom color palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -1599,11 +1675,10 @@ def plot_lag_scatter(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - marker_size : float, default=4.0
-        - marker_opacity : float, default=0.6
-        - vertical_spacing : float | None, default=None
+    marker_size : float, default=4.0
+        Size of scatter markers.
+    marker_opacity : float, default=0.6
+        Opacity of scatter markers.
 
     Returns
     -------
@@ -1628,7 +1703,7 @@ def plot_lag_scatter(
 
     See Also
     --------
-    `plot_autocorrelation` : Plot autocorrelation function.
+    [`plot_autocorrelation`][yohou.plotting.plot_autocorrelation] : Plot autocorrelation function.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -1645,7 +1720,6 @@ def plot_lag_scatter(
     if panel_group_names is not None:
         _lag_list = lags
 
-        # ── Single figure with n_lags x n_members subplots ──
         col_filter = [columns] if isinstance(columns, str) else columns
         groups: dict[str, list[str]] = {}
         for g, gcols in _panel_groups.items():
@@ -1670,8 +1744,6 @@ def plot_lag_scatter(
 
         n_lags = len(_lag_list)
         n_members = len(all_members)
-        marker_size = kwargs.get("marker_size", 4.0)
-        marker_opacity = kwargs.get("marker_opacity", 0.6)
 
         color_mgr = PanelColorManager(color_palette)
         legend_tracker = LegendTracker()
@@ -1753,11 +1825,6 @@ def plot_lag_scatter(
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     lag_list = lags
 
-    # Get kwargs
-    marker_size = kwargs.get("marker_size", 4.0)
-    marker_opacity = kwargs.get("marker_opacity", 0.6)
-
-    # ── Season coloring setup ────────────────────────────────────────────
     season_labels: list[str] | None = None
     season_colors: list[str] | None = None
     df_aug: pl.DataFrame | None = None
@@ -1772,7 +1839,6 @@ def plot_lag_scatter(
         )
         season_colors = resolve_color_palette(color_palette, n_seasons)
 
-    # ── Multi-lag subplot grid vs single-lag flat figure ─────────────────
     use_subplots = len(lag_list) > 1
 
     if use_subplots:
@@ -1786,7 +1852,7 @@ def plot_lag_scatter(
             cols=ncols,
             subplot_titles=subtitles,
             horizontal_spacing=0.08,
-            vertical_spacing=kwargs.get("vertical_spacing", max(0.04, 0.3 / nrows)),
+            vertical_spacing=max(0.04, 0.3 / nrows),
         )
 
         for lag_idx, lag in enumerate(lag_list):
@@ -1886,7 +1952,6 @@ def plot_lag_scatter(
 
         return fig
 
-    # ── Single-lag flat figure ───────────────────────────────────────────
     fig = go.Figure()
 
     lag = lag_list[0]
@@ -2047,7 +2112,7 @@ def plot_cross_correlation(
     df: pl.DataFrame,
     *,
     columns: list[str] | None = None,
-    max_lags: int = 40,
+    max_lags: int | None = None,
     confidence_level: float = 0.95,
     panel_group_names: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "group",
@@ -2059,7 +2124,6 @@ def plot_cross_correlation(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
 ) -> go.Figure:
     """Plot cross-correlation function (CCF) between time series pairs.
 
@@ -2080,8 +2144,9 @@ def plot_cross_correlation(
         Column names to cross-correlate.  When ``None``, all numeric
         columns are used and every unique upper-triangle pair is plotted.
         When exactly two columns are given, a single CCF plot is produced.
-    max_lags : int, default=40
+    max_lags : int | None, default=None
         Number of lags to compute (both positive and negative).
+        If None, uses ``min(len(df) // 2, 40)``.
     confidence_level : float, default=0.95
         Confidence level for confidence bands (e.g. ``0.95`` for 95%).
     panel_group_names : list[str] | None, default=None
@@ -2108,11 +2173,6 @@ def plot_cross_correlation(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - show_markers : bool, default=True
-        - marker_size : float, default=6.0
-        - line_color : str, default="#94a3b8"
 
     Returns
     -------
@@ -2138,11 +2198,14 @@ def plot_cross_correlation(
 
     See Also
     --------
-    `plot_autocorrelation` : Plot autocorrelation function.
+    [`plot_autocorrelation`][yohou.plotting.plot_autocorrelation] : Plot autocorrelation function.
     """
     # Validate inputs
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
+
+    if max_lags is None:
+        max_lags = min(len(df) // 2, 40)
 
     _lag_vals = list(range(-max_lags, max_lags + 1))
 
@@ -2264,7 +2327,6 @@ def plot_cross_correlation(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # ── Non-panel mode ───────────────────────────────────────────────────
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
 
     if len(plot_columns) < 2:  # noqa: PLR2004
@@ -2349,9 +2411,6 @@ def plot_cross_correlation(
     )
     fig.update_layout(showlegend=show_legend)
     return fig
-
-
-# ── Scatter matrix helpers (panel support) ───────────────────────────────
 
 
 def _subsample_df(
@@ -2544,12 +2603,11 @@ def _scatter_matrix_facet(  # noqa: PLR0913
     height: int | None,
     gaussian_kde,  # noqa: ANN001
     pearsonr,  # noqa: ANN001
-    **kwargs,
+    marker_size: float = 3.0,
+    marker_opacity: float = 0.5,
 ) -> dict[str, go.Figure]:
     """One figure per panel group, each containing its own M×M scatter matrix."""
-    marker_size = kwargs.get("marker_size", 3.0)
-    marker_opacity = kwargs.get("marker_opacity", 0.5)
-    corr_font_size = kwargs.get("corr_font_size", 28)
+    corr_font_size = 28
 
     figures: dict[str, go.Figure] = {}
 
@@ -2641,19 +2699,18 @@ def _scatter_matrix_grid(  # noqa: PLR0913
     height: int | None,
     gaussian_kde,  # noqa: ANN001
     pearsonr,  # noqa: ANN001
-    **kwargs,
+    marker_size: float = 3.0,
+    marker_opacity: float = 0.5,
 ) -> go.Figure:
     """Single figure with all groups' scatter matrices tiled in a grid."""
-    marker_size = kwargs.get("marker_size", 3.0)
-    marker_opacity = kwargs.get("marker_opacity", 0.5)
-    corr_font_size = kwargs.get("corr_font_size", 28)
+    corr_font_size = 28
 
     group_names = list(groups.keys())
     n_groups = len(group_names)
     grid_cols = min(n_groups, facet_n_cols)
     grid_rows = math.ceil(n_groups / grid_cols)
 
-    # Determine M (members per group) — use max across groups
+    # Determine M (members per group) - use max across groups
     ms = {g: len(cols) for g, cols in groups.items()}
     m_max = max(ms.values())
 
@@ -2780,7 +2837,8 @@ def plot_scatter_matrix(
     title: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    marker_size: float = 3.0,
+    marker_opacity: float = 0.5,
 ) -> go.Figure | dict[str, go.Figure]:
     """Plot an N×N scatter-plot matrix.
 
@@ -2828,18 +2886,18 @@ def plot_scatter_matrix(
         Number of group columns in the subplot grid.
     color_palette : list[str] | None, default=None
         Custom colour palette.  If ``None``, uses yohou palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     width : int | None, default=None
         Plot width in pixels.  Defaults to ``max(600, n*180+100)``.
     height : int | None, default=None
         Plot height in pixels.  Defaults to same as *width*.
-    **kwargs : dict
-        Additional styling parameters:
-
-        - marker_size : float, default=3.0
-        - marker_opacity : float, default=0.5
-        - corr_font_size : int, default=28
+    marker_size : float, default=3.0
+        Size of scatter markers.
+    marker_opacity : float, default=0.5
+        Opacity of scatter markers.
 
     Returns
     -------
@@ -2872,15 +2930,14 @@ def plot_scatter_matrix(
 
     See Also
     --------
-    `plot_correlation_heatmap` : Plot correlation heatmap.
-    `plot_lag_scatter` : Lag scatter plots.
+    [`plot_correlation_heatmap`][yohou.plotting.plot_correlation_heatmap] : Plot correlation heatmap.
+    [`plot_lag_scatter`][yohou.plotting.plot_lag_scatter] : Lag scatter plots.
     """
     from scipy.stats import gaussian_kde, pearsonr  # noqa: PLC0415
 
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
-    # ── Panel auto-detection ─────────────────────────────────────────────
     _, _panel_groups = inspect_panel(df)
     if panel_group_names is None and columns is None and _panel_groups:
         panel_group_names = []
@@ -2918,7 +2975,8 @@ def plot_scatter_matrix(
                 height=height,
                 gaussian_kde=gaussian_kde,
                 pearsonr=pearsonr,
-                **kwargs,
+                marker_size=marker_size,
+                marker_opacity=marker_opacity,
             )
 
         return _scatter_matrix_grid(
@@ -2935,7 +2993,8 @@ def plot_scatter_matrix(
             height=height,
             gaussian_kde=gaussian_kde,
             pearsonr=pearsonr,
-            **kwargs,
+            marker_size=marker_size,
+            marker_opacity=marker_opacity,
         )
 
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -2944,10 +3003,7 @@ def plot_scatter_matrix(
         msg = f"plot_scatter_matrix requires at least 2 numeric columns, got {n}: {plot_columns}"
         raise ValueError(msg)
 
-    # Styling kwargs
-    marker_size = kwargs.get("marker_size", 3.0)
-    marker_opacity = kwargs.get("marker_opacity", 0.5)
-    corr_font_size = kwargs.get("corr_font_size", 28)
+    corr_font_size = 28
 
     # Season setup
     season_labels: list[str] | None = None
@@ -2965,7 +3021,6 @@ def plot_scatter_matrix(
         )
         season_colors = resolve_color_palette(color_palette, n_seasons)
 
-    # ── Subsampling ──────────────────────────────────────────────────────
     if max_points is not None and len(df_work) > max_points:
         if seasons_raw is not None:
             # Stratified sampling: preserve season proportions
@@ -2998,7 +3053,6 @@ def plot_scatter_matrix(
             col_x = plot_columns[ci]
 
             if ri == ci:
-                # ── Diagonal: KDE / histogram / nothing ──────────────
                 if diagonal is None:
                     pass  # leave blank
                 elif diagonal == "kde":
@@ -3039,7 +3093,6 @@ def plot_scatter_matrix(
                     )
 
             elif ri > ci:
-                # ── Lower triangle: scatter ──────────────────────────
                 if season_labels is not None and season_colors is not None and seasons_raw is not None:
                     for si, (sval, slabel) in enumerate(zip(seasons_raw, season_labels, strict=False)):
                         sub = df_work.filter(pl.col("season") == sval).drop_nulls(subset=[col_x, col_y])
@@ -3083,7 +3136,6 @@ def plot_scatter_matrix(
                         col=col,
                     )
 
-            # ── Upper triangle: Pearson r annotation ─────────────
             elif show_correlation:
                 sub = df_work.drop_nulls(subset=[col_x, col_y])
                 if len(sub) > 2:
@@ -3138,8 +3190,6 @@ def plot_scatter_matrix(
 
     return fig
 
-
-# ── Period extraction helpers (shared by plot_seasonal_heatmap) ──────────
 
 _PERIOD_EXTRACTORS: dict[str, str] = {
     "hour": "hour",
@@ -3227,12 +3277,15 @@ def plot_seasonal_heatmap(
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    colorscale: str = "Viridis",
+    show_values: bool = True,
+    value_format: str = ".1f",
+    reverse_y: bool = False,
 ) -> go.Figure:
     """Plot a 2-D heatmap of aggregated values across two time dimensions.
 
     Reveals seasonal patterns by showing aggregated values in a grid
-    of two temporal periods (e.g. hour-of-day × month-of-year).
+    of two temporal periods (e.g. hour-of-day x month-of-year).
 
     Parameters
     ----------
@@ -3254,8 +3307,14 @@ def plot_seasonal_heatmap(
         Panel group prefixes.  When panel data is detected the *columns*
         are resolved as member postfixes within each group.  When
         ``None`` and panel columns are present, auto-detects all groups.
+    facet_by : Literal["group", "member"] | None, default="group"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Columns in the facet grid.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -3266,12 +3325,14 @@ def plot_seasonal_heatmap(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - colorscale : str, default="Viridis"
-        - show_values : bool, default=True
-        - value_format : str, default=".1f"
-        - reverse_y : bool, default=False
+    colorscale : str, default="Viridis"
+        Plotly colorscale for the heatmap.
+    show_values : bool, default=True
+        Whether to display values on the heatmap cells.
+    value_format : str, default=".1f"
+        Format string for heatmap cell values.
+    reverse_y : bool, default=False
+        Whether to reverse the y-axis.
 
     Returns
     -------
@@ -3303,16 +3364,12 @@ def plot_seasonal_heatmap(
 
     See Also
     --------
-    `plot_seasonality` : Plot seasonal overlay.
-    `plot_subseasonality` : Plot seasonal subseries.
+    [`plot_seasonality`][yohou.plotting.plot_seasonality] : Plot seasonal overlay.
+    [`plot_subseasonality`][yohou.plotting.plot_subseasonality] : Plot seasonal subseries.
     """
     # Validate
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
-    colorscale = kwargs.get("colorscale", "Viridis")
-    show_values = kwargs.get("show_values", True)
-    value_format = kwargs.get("value_format", ".1f")
-    reverse_y = kwargs.get("reverse_y", False)
 
     # Map aggregation name to a Polars expression builder
     _AGG_MAP = {
@@ -3351,7 +3408,7 @@ def plot_seasonal_heatmap(
 
         # Pivot to matrix
         pivot = df_agg.pivot(on="_x", index="_y", values="_val").sort("_y")
-        x_cols = sorted([c for c in pivot.columns if c != "_y"], key=lambda c: int(c))
+        x_cols = sorted([c for c in pivot.columns if c != "_y"], key=int)
         y_vals = pivot["_y"].to_list()
         z = pivot.select(x_cols).to_numpy()
 
@@ -3433,7 +3490,7 @@ def plot_seasonal_heatmap(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Non-panel case — resolve columns
+    # Non-panel case - resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
 
     if len(plot_columns) == 1:

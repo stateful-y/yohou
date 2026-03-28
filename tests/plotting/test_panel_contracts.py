@@ -11,16 +11,23 @@ from yohou.plotting import (
     plot_autocorrelation,
     plot_boxplot,
     plot_components,
+    plot_correlation_heatmap,
     plot_cross_correlation,
     plot_distribution,
     plot_lag_scatter,
     plot_missing_data,
+    plot_model_comparison_bar,
     plot_outliers,
     plot_partial_autocorrelation,
+    plot_phase,
+    plot_resampling_comparison,
     plot_rolling_statistics,
+    plot_scatter_matrix,
     plot_seasonality,
     plot_seasonal_heatmap,
+    plot_spectrum,
     plot_subseasonality,
+    plot_time_weight,
 )
 from yohou.plotting._utils import PanelColorManager, LegendTracker, linked_legendgroup_kwargs
 
@@ -36,7 +43,6 @@ from .conftest import (
 )
 
 
-# ── Fixtures local to this module ────────────────────────────────────────
 
 @pytest.fixture
 def panel_df():
@@ -89,7 +95,6 @@ def panel_3year_df():
     })
 
 
-# ── linked_legendgroup_kwargs helper ─────────────────────────────────────
 
 class TestLinkedLegendgroupKwargs:
     def test_primary_trace(self):
@@ -113,7 +118,6 @@ class TestLinkedLegendgroupKwargs:
         assert kw2["showlegend"] is False
 
 
-# ── plot_boxplot ─────────────────────────────────────────────────────────
 
 class TestBoxplotPanelLegend:
     def test_panel_legend_shows_groups(self, panel_df):
@@ -129,7 +133,6 @@ class TestBoxplotPanelLegend:
         assert len(groups) >= 1
 
 
-# ── plot_outliers ────────────────────────────────────────────────────────
 
 class TestOutliersPanelLegend:
     def test_outlier_markers_share_legendgroup_with_line(self, panel_df):
@@ -147,17 +150,16 @@ class TestOutliersPanelLegend:
                     assert t.marker.symbol == "x"
 
 
-# ── plot_rolling_statistics ──────────────────────────────────────────────
 
 class TestRollingStatisticsPanelLegend:
     def test_legend_grouped_by_member(self, panel_df):
-        fig = plot_rolling_statistics(panel_df, window=7, statistics=["mean"])
+        fig = plot_rolling_statistics(panel_df, window_size=7, statistics=["mean"])
         groups = legend_groups(fig)
         # facet_by="member" (default): 1 group ("y") overlaid across member subplots
         assert len(groups) >= 1
 
     def test_panel_traces_share_legendgroup(self, panel_df):
-        fig = plot_rolling_statistics(panel_df, window=7, statistics=["mean"])
+        fig = plot_rolling_statistics(panel_df, window_size=7, statistics=["mean"])
         groups = legend_groups(fig)
         # Original + stat traces should share the same legendgroup per member
         for g in groups:
@@ -165,7 +167,6 @@ class TestRollingStatisticsPanelLegend:
             assert count >= 1
 
 
-# ── plot_components (panel) ──────────────────────────────────────────────
 
 class TestComponentsPanelLayout:
     @pytest.fixture
@@ -198,7 +199,6 @@ class TestComponentsPanelLayout:
             assert len(groups) >= 2
 
 
-# ── plot_subseasonality ──────────────────────────────────────────────────
 
 class TestSubseasonalityPanelLegend:
     def test_legendgroup_per_panel_member(self, panel_3year_df):
@@ -220,7 +220,6 @@ class TestSubseasonalityPanelLegend:
         assert_figure_valid(fig)
 
 
-# ── plot_seasonal_heatmap ────────────────────────────────────────────────
 
 class TestSeasonalHeatmapPanel:
     def test_all_panel_members_get_subplot(self, panel_hourly_df):
@@ -235,16 +234,15 @@ class TestSeasonalHeatmapPanel:
         assert any("b" in a for a in annotations)
 
 
-# ── plot_lag_scatter ─────────────────────────────────────────────────────
 
 class TestLagScatterPanelColors:
     def test_panel_grid_shows_member_legend(self, panel_df):
-        fig = plot_lag_scatter(panel_df, lags=[1], panel_layout="grid")
+        fig = plot_lag_scatter(panel_df, lags=[1])
         names = visible_legend_names(fig)
         assert len(names) >= 2
 
     def test_panel_members_have_legendgroup(self, panel_df):
-        fig = plot_lag_scatter(panel_df, lags=[1], panel_layout="grid")
+        fig = plot_lag_scatter(panel_df, lags=[1])
         groups = legend_groups(fig)
         assert len(groups) >= 2
 
@@ -261,7 +259,6 @@ class TestLagScatterPanelColors:
         assert len(traces_with_title) >= 1
 
 
-# ── plot_autocorrelation / plot_partial_autocorrelation ──────────────────
 
 class TestACFPanelLegend:
     def test_panel_shows_legend(self, panel_df):
@@ -296,7 +293,6 @@ class TestPACFPanelLegend:
         assert len(groups) >= 1
 
 
-# ── plot_cross_correlation ───────────────────────────────────────────────
 
 class TestCrossCorrelation:
     def test_columns_optional_auto_pairs(self):
@@ -352,7 +348,6 @@ class TestCrossCorrelation:
         assert len(groups) == 3
 
 
-# ── Contract Tests: Default Titles ───────────────────────────────────────
 
 def _make_daily_panel():
     """Small daily panel DataFrame for parametrized tests."""
@@ -407,6 +402,15 @@ def _make_short_2col():
     })
 
 
+def _make_weight_df():
+    """Single-column time_weight DataFrame."""
+    n = 100
+    return pl.DataFrame({
+        "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
+        "time_weight": [(i + 1) / n for i in range(n)],
+    })
+
+
 # Functions that return go.Figure with a simple call + expected title
 _TITLE_CASES: list[tuple[str, object, dict, str]] = [
     ("rolling_statistics", plot_rolling_statistics, {"df": _make_simple(), "window_size": 3}, "Rolling Statistics"),
@@ -420,6 +424,13 @@ _TITLE_CASES: list[tuple[str, object, dict, str]] = [
     ("seasonal_heatmap", plot_seasonal_heatmap, {"df": _make_hourly_panel()}, "Seasonal Heatmap"),
     ("lag_scatter", plot_lag_scatter, {"df": _make_simple(), "lags": [1]}, "Lag 1 Scatter Plot"),
     ("cross_correlation", plot_cross_correlation, {"df": _make_short_2col(), "columns": ["x", "y"], "max_lags": 10}, "Cross-Correlation"),
+    ("resampling_comparison", plot_resampling_comparison, {"df_original": _make_simple(), "df_resampled": _make_simple()}, "Original vs Resampled"),
+    ("correlation_heatmap", plot_correlation_heatmap, {"df": _make_short_2col()}, "Correlation Heatmap"),
+    ("scatter_matrix", plot_scatter_matrix, {"df": _make_short_2col()}, "Scatter Matrix"),
+    ("model_comparison_bar", plot_model_comparison_bar, {"results": {"A": {"MAE": 0.5}, "B": {"MAE": 0.3}}}, "Model Comparison"),
+    ("time_weight", plot_time_weight, {"df": _make_weight_df()}, "Time Weights"),
+    ("phase", plot_phase, {"df": _make_simple()}, "Phase Spectrum"),
+    ("spectrum", plot_spectrum, {"df": _make_simple()}, "Periodogram"),
 ]
 
 
@@ -439,7 +450,6 @@ class TestDefaultTitleContract:
         )
 
 
-# ── Contract Tests: Color Consistency ────────────────────────────────────
 
 _PANEL_COLOR_CASES: list[tuple[str, object, dict]] = [
     ("rolling_statistics", plot_rolling_statistics, {"df": _make_daily_panel(), "window_size": 3}),
@@ -447,6 +457,8 @@ _PANEL_COLOR_CASES: list[tuple[str, object, dict]] = [
     ("outliers", plot_outliers, {"df": _make_daily_panel()}),
     ("acf", plot_autocorrelation, {"df": _make_daily_panel(), "max_lags": 10}),
     ("pacf", plot_partial_autocorrelation, {"df": _make_daily_panel(), "max_lags": 10}),
+    ("lag_scatter", plot_lag_scatter, {"df": _make_daily_panel(), "lags": [1]}),
+    ("cross_correlation", plot_cross_correlation, {"df": _make_daily_panel(), "max_lags": 10}),
 ]
 
 
@@ -464,15 +476,16 @@ class TestColorConsistencyContract:
             assert_consistent_colors(fig, g)
 
 
-# ── Contract Tests: panel_layout Return Type ─────────────────────────────
 
 _PANEL_LAYOUT_CASES: list[tuple[str, object, dict]] = [
     ("subseasonality", plot_subseasonality, {"df": _make_3year_daily(), "seasonality": "month"}),
+    ("correlation_heatmap", plot_correlation_heatmap, {"df": _make_daily_panel()}),
+    ("scatter_matrix", plot_scatter_matrix, {"df": _make_daily_panel()}),
 ]
 
 
 class TestPanelLayoutContract:
-    """Functions with panel_layout param must return correct types per mode."""
+    """Functions with facet_by param must return correct types per mode."""
 
     @pytest.mark.parametrize(
         "name,func,kw",
@@ -480,8 +493,8 @@ class TestPanelLayoutContract:
         ids=[c[0] for c in _PANEL_LAYOUT_CASES],
     )
     def test_grid_returns_figure(self, name, func, kw):
-        result = func(**kw, panel_layout="grid")
-        assert isinstance(result, go.Figure), f"{name}: grid mode should return go.Figure"
+        result = func(**kw)
+        assert isinstance(result, go.Figure), f"{name}: should return go.Figure"
 
     @pytest.mark.parametrize(
         "name,func,kw",
@@ -495,7 +508,6 @@ class TestPanelLayoutContract:
             assert_figure_valid(fig)
 
 
-# ── Issue-Specific Regression Tests ──────────────────────────────────────
 
 class TestRollingStatsRawColor:
     """Raw trace color must match the rolling statistics traces of the same member."""
@@ -663,7 +675,7 @@ class TestSubseasonalityPanelLayout:
 
     def test_grid_returns_figure(self):
         df = _make_3year_daily()
-        result = plot_subseasonality(df, seasonality="month", panel_layout="grid")
+        result = plot_subseasonality(df, seasonality="month")
         assert isinstance(result, go.Figure)
         assert_figure_valid(result)
 
@@ -673,6 +685,6 @@ class TestSubseasonalityPanelLayout:
             "time": dates,
             "y": [100 + i % 30 for i in range(len(dates))],
         })
-        result = plot_subseasonality(df, columns="y", seasonality="month", panel_layout="facet")
-        # Non-panel data should return go.Figure regardless of panel_layout
+        result = plot_subseasonality(df, columns="y", seasonality="month")
+        # Non-panel data should return go.Figure
         assert isinstance(result, go.Figure)

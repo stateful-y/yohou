@@ -11,7 +11,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Exploratory Visualization",
-    "description": "Exploratory time series visualisation with raw series plots, rolling statistics overlays, distribution boxplots, and missing data pattern auditing.",
+    "description": "Exploratory time series visualisation with raw series plots, rolling statistics overlays, distribution boxplots, missing data pattern auditing, outlier detection, and resampling comparison.",
 }
 app = marimo.App(width="medium")
 
@@ -35,7 +35,10 @@ def _():
     )
     from yohou.plotting import (
         plot_boxplot,
+        plot_distribution,
         plot_missing_data,
+        plot_outliers,
+        plot_resampling_comparison,
         plot_rolling_statistics,
         plot_time_series,
     )
@@ -47,7 +50,10 @@ def _():
         fetch_tourism_quarterly,
         pl,
         plot_boxplot,
+        plot_distribution,
         plot_missing_data,
+        plot_outliers,
+        plot_resampling_comparison,
         plot_rolling_statistics,
         plot_time_series,
     )
@@ -64,6 +70,9 @@ def _(mo):
     - Using rolling statistics with different window sizes, statistics, and envelope bands
     - Generating boxplot distributions grouped by different periods
     - Auditing missing data with heatmap, bar, and matrix visualizations
+    - Plotting value distributions with histograms and KDE overlays
+    - Detecting and highlighting outliers across detection methods
+    - Comparing original vs resampled time series
 
     ## Prerequisites
 
@@ -107,7 +116,7 @@ def _(mo):
     ## 1. Raw Time Series
 
     [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders one or more numeric columns against the `"time"` axis.
-    Varying **columns**, **panel_group_names**, and styling kwargs shows how the same
+    Varying **columns**, **panel_group_names**, and styling parameters shows how the same
     function adapts to different data shapes.
     """)
 
@@ -245,7 +254,7 @@ def _(mo):
     ## 4. Missing Data Audit
 
     [`plot_missing_data`](/pages/api/generated/yohou.plotting.exploration.plot_missing_data/) visualises null patterns using three **kind** options:
-    `"heatmap"`, `"bars"`, and `"matrix"`. Additional kwargs like
+    `"heatmap"`, `"bars"`, and `"matrix"`. Additional parameters like
     **time_aggregation** and custom colors provide further control.
     """)
 
@@ -291,12 +300,136 @@ def _(plot_missing_data, store_nan):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 5. Value Distribution
+
+    [`plot_distribution`](/pages/api/generated/yohou.plotting.exploration.plot_distribution/) renders histograms with an optional KDE overlay.
+    Toggle **show_kde**, control **n_bins**, and adjust **bar_opacity** for fine-grained styling.
+    """)
+
+
+@app.cell
+def _(plot_distribution, tourism_monthly):
+    plot_distribution(
+        tourism_monthly,
+        n_bins=30,
+        title="Tourism Distribution - Histogram with KDE",
+    )
+
+
+@app.cell
+def _(plot_distribution, tourism_monthly):
+    plot_distribution(
+        tourism_monthly,
+        show_kde=False,
+        n_bins=20,
+        title="Tourism Distribution - Histogram Only",
+    )
+
+
+@app.cell
+def _(plot_distribution, vic):
+    plot_distribution(
+        vic,
+        columns=["vic__demand", "nsw__demand"],
+        n_bins=40,
+        bar_opacity=0.4,
+        title="Demand Distribution - Multi-Column Overlay",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 6. Outlier Detection
+
+    [`plot_outliers`](/pages/api/generated/yohou.plotting.exploration.plot_outliers/) overlays outlier markers on the time series line.
+    Choose between `"zscore"`, `"iqr"`, and `"percentile"` detection methods
+    and customize the threshold, marker color, and size.
+    """)
+
+
+@app.cell
+def _(plot_outliers, tourism_monthly):
+    plot_outliers(
+        tourism_monthly,
+        method="zscore",
+        threshold=2.0,
+        title="Outlier Detection - Z-Score (threshold=2)",
+    )
+
+
+@app.cell
+def _(plot_outliers, tourism_monthly):
+    plot_outliers(
+        tourism_monthly,
+        method="iqr",
+        title="Outlier Detection - IQR Method",
+    )
+
+
+@app.cell
+def _(plot_outliers, tourism_monthly):
+    plot_outliers(
+        tourism_monthly,
+        method="zscore",
+        show_bounds=False,
+        outlier_color="#059669",
+        outlier_size=10.0,
+        title="Outlier Detection - Custom Markers, No Bounds",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Resampling Comparison
+
+    [`plot_resampling_comparison`](/pages/api/generated/yohou.plotting.exploration.plot_resampling_comparison/) overlays an original and resampled series
+    to assess information loss from temporal aggregation.
+    """)
+
+
+@app.cell(hide_code=True)
+def _(pl, tourism_monthly):
+    tourism_resampled = tourism_monthly.group_by_dynamic("time", every="1q").agg(
+        pl.col("tourists").mean(),
+    )
+    return (tourism_resampled,)
+
+
+@app.cell
+def _(plot_resampling_comparison, tourism_monthly, tourism_resampled):
+    plot_resampling_comparison(
+        tourism_monthly,
+        tourism_resampled,
+        title="Monthly vs Quarterly Mean",
+    )
+
+
+@app.cell
+def _(plot_resampling_comparison, tourism_monthly, tourism_resampled):
+    plot_resampling_comparison(
+        tourism_monthly,
+        tourism_resampled,
+        original_label="Monthly",
+        resampled_label="Quarterly Avg",
+        resampled_line_dash="dash",
+        title="Resampling Comparison - Custom Labels and Dash",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Key Takeaways
 
     - **plot_time_series** adapts to single-column, multi-column, and panel data via `columns` and `panel_group_names`
     - **Rolling statistics** reveal trends (`"mean"`), variability (`"std"`), and range (`"min"/"max"`)
     - **Boxplots** aggregate at different time granularities (`period`); `show_points="all"` shows every observation
     - **Missing data** visualizations come in three forms: `"heatmap"` for patterns over time, `"bars"` for column-level counts, `"matrix"` for a compact binary view
+    - **Distributions** show value spread with histograms and KDE; multi-column overlays compare variables
+    - **Outlier detection** supports z-score, IQR, and percentile methods with customisable markers
+    - **Resampling comparison** overlays original and aggregated series to assess temporal smoothing
 
     ## Next Steps
 

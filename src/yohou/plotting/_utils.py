@@ -92,6 +92,11 @@ class RenderContext:
         Panel group name, always available for context.
     member_name : str
         Panel member name, always available for context.
+
+    See Also
+    --------
+    [`panel_facet_figure`][yohou.plotting._utils.panel_facet_figure] : Factory that creates faceted figures and passes ``RenderContext`` to callbacks.
+    [`LegendTracker`][yohou.plotting._utils.LegendTracker] : De-duplicates legend entries across subplots.
     """
 
     fig: go.Figure
@@ -143,10 +148,10 @@ def set_config(
     resampler : bool | Literal["widget"] | None, default=None
         Controls plotly-resampler usage for time-axis plots.
 
-        - ``False`` — plain ``go.Figure`` (default).
-        - ``True`` — ``FigureResampler`` (Dash-based callback server).
-        - ``"widget"`` — ``FigureWidgetResampler`` (notebook-native widget).
-        - ``None`` — leave current value unchanged.
+        - ``False`` - plain ``go.Figure`` (default).
+        - ``True`` - ``FigureResampler`` (Dash-based callback server).
+        - ``"widget"`` - ``FigureWidgetResampler`` (notebook-native widget).
+        - ``None`` - leave current value unchanged.
     resampler_n_shown_samples : int | None, default=None
         Default number of samples shown per trace when resampling is active.
         ``None`` leaves current value unchanged (library default: 1000).
@@ -169,6 +174,12 @@ def set_config(
     >>> set_config(resampler="widget")
     >>> get_config()["resampler"]
     'widget'
+    >>> set_config(resampler=False)
+
+    See Also
+    --------
+    [`get_config`][yohou.plotting.get_config] : Read the current configuration.
+    [`config_context`][yohou.plotting.config_context] : Temporarily override configuration.
     """
     if resampler is not None:
         _global_config["resampler"] = resampler
@@ -195,8 +206,13 @@ def get_config() -> dict:
     Examples
     --------
     >>> from yohou.plotting import get_config
-    >>> get_config()
-    {'resampler': False}
+    >>> get_config()['resampler']
+    False
+
+    See Also
+    --------
+    [`set_config`][yohou.plotting.set_config] : Set global configuration values.
+    [`config_context`][yohou.plotting.config_context] : Temporarily override configuration.
     """
     return _global_config.copy()
 
@@ -236,6 +252,11 @@ def config_context(
     >>> with config_context(resampler="widget"):
     ...     assert get_config()["resampler"] == "widget"
     >>> assert get_config()["resampler"] is False
+
+    See Also
+    --------
+    [`set_config`][yohou.plotting.set_config] : Set global configuration values.
+    [`get_config`][yohou.plotting.get_config] : Read the current configuration.
     """
     old = _global_config.copy()
     try:
@@ -295,7 +316,7 @@ def _create_figure(
     Parameters
     ----------
     resampler : bool | Literal["widget"] | None, default=None
-        Resampler mode.  ``None`` reads from :func:`get_config`.
+        Resampler mode.  ``None`` reads from `get_config`.
     **kwargs
         Forwarded to ``go.Figure()``.
 
@@ -327,7 +348,7 @@ def _create_subplots(
     Parameters
     ----------
     resampler : bool | Literal["widget"] | None, default=None
-        Resampler mode.  ``None`` reads from :func:`get_config`.
+        Resampler mode.  ``None`` reads from `get_config`.
     **subplots_kwargs
         Forwarded to ``plotly.subplots.make_subplots()``.
 
@@ -485,7 +506,7 @@ class LegendTracker:
     Parameters
     ----------
     show_legend : bool, default=True
-        Global override.  When ``False``, :meth:`should_show` always
+        Global override.  When ``False``, `should_show` always
         returns ``False`` regardless of whether the name has been seen.
 
     Examples
@@ -528,7 +549,7 @@ class PanelColorManager:
     ----------
     color_palette : list[str] | None, default=None
         Custom colour hex codes.  When ``None`` the default
-        :func:`palette_yohou` palette is used.
+        `palette_yohou` palette is used.
 
     Examples
     --------
@@ -587,6 +608,20 @@ def linked_legendgroup_kwargs(
     -------
     dict
         Ready-to-unpack kwargs for ``fig.add_trace(go.Scatter(..., **kw))``.
+
+    Examples
+    --------
+    >>> from yohou.plotting import linked_legendgroup_kwargs
+    >>> tracker = LegendTracker()
+    >>> linked_legendgroup_kwargs("sales", tracker, is_primary=True)
+    {'legendgroup': 'sales', 'showlegend': True, 'name': 'sales'}
+    >>> linked_legendgroup_kwargs("sales", tracker, is_primary=False)
+    {'legendgroup': 'sales', 'showlegend': False}
+
+    See Also
+    --------
+    [`grouped_legend_kwargs`][yohou.plotting._utils.grouped_legend_kwargs] : Build kwargs for titled legend groups.
+    [`LegendTracker`][yohou.plotting._utils.LegendTracker] : Track which legend entries have been shown.
     """
     if is_primary:
         return {
@@ -628,6 +663,19 @@ def grouped_legend_kwargs(
     -------
     dict
         Ready-to-unpack kwargs for ``fig.add_trace(go.Scatter(..., **kw))``.
+
+    Examples
+    --------
+    >>> tracker = LegendTracker()
+    >>> grouped_legend_kwargs("sensor_a", "mean", tracker, is_first_in_group=True)
+    {'legendgroup': 'sensor_a', 'showlegend': True, 'name': 'mean', 'legendgrouptitle': {'text': 'sensor_a'}}
+    >>> grouped_legend_kwargs("sensor_a", "std", tracker, is_first_in_group=False)
+    {'legendgroup': 'sensor_a', 'showlegend': True, 'name': 'std'}
+
+    See Also
+    --------
+    [`linked_legendgroup_kwargs`][yohou.plotting.linked_legendgroup_kwargs] : Build kwargs for linked (ungrouped) legend entries.
+    [`LegendTracker`][yohou.plotting._utils.LegendTracker] : Track which legend entries have been shown.
     """
     key = f"{group_title}::{entry_name}"
     kw: dict = {
@@ -1030,7 +1078,7 @@ def panel_facet_figure(
     df : pl.DataFrame
         Input DataFrame with panel columns (``group__member`` pattern).
     render_fn : Callable[[RenderContext], None]
-        Callback receiving a :class:`RenderContext` for each trace.
+        Callback receiving a `RenderContext` for each trace.
     panel_group_names : list[str] | None, default=None
         Group prefixes to include (``None`` means all).
     columns : str | list[str] | None, default=None
@@ -1069,6 +1117,30 @@ def panel_facet_figure(
     -------
     go.Figure
         Plotly figure with faceted panel subplots.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from yohou.plotting._utils import panel_facet_figure, RenderContext, LegendTracker
+    >>> df = pl.DataFrame({
+    ...     "time": [1, 2, 3],
+    ...     "sales__a": [10, 20, 30],
+    ...     "sales__b": [15, 25, 35],
+    ... })
+    >>> tracker = LegendTracker()
+    >>> def render(ctx: RenderContext) -> None:
+    ...     ctx.fig.add_scatter(
+    ...         x=ctx.sub_df["time"], y=ctx.sub_df[ctx.display_name],
+    ...         name=ctx.display_name, row=ctx.row, col=ctx.col,
+    ...     )
+    >>> fig = panel_facet_figure(df, render)
+    >>> len(fig.data) > 0
+    True
+
+    See Also
+    --------
+    [`RenderContext`][yohou.plotting.RenderContext] : Typed context passed to the render callback.
+    [`resolve_panel_columns`][yohou.plotting.resolve_panel_columns] : Resolve which panel columns to plot.
     """
     panel_cols = resolve_panel_columns(df, panel_group_names, columns)
     groups, all_members = _group_panel_columns(panel_cols)

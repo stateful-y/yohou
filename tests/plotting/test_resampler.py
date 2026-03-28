@@ -29,9 +29,7 @@ _DEFAULT_CONFIG = {
 }
 
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
 def _reset_config():
@@ -52,9 +50,7 @@ def monthly_1col_df():
     })
 
 
-# ---------------------------------------------------------------------------
 # Config system
-# ---------------------------------------------------------------------------
 
 class TestGetConfig:
     def test_default(self):
@@ -117,9 +113,7 @@ class TestConfigContext:
         assert get_config()["resampler"] is False
 
 
-# ---------------------------------------------------------------------------
 # _get_resampler_mode
-# ---------------------------------------------------------------------------
 
 class TestGetResamplerMode:
     def test_explicit_true(self):
@@ -137,9 +131,7 @@ class TestGetResamplerMode:
         assert _get_resampler_mode(None) is True
 
 
-# ---------------------------------------------------------------------------
 # _create_figure
-# ---------------------------------------------------------------------------
 
 class TestCreateFigure:
     def test_default_returns_plain(self):
@@ -168,9 +160,7 @@ class TestCreateFigure:
         assert isinstance(fig, FigureResampler)
 
 
-# ---------------------------------------------------------------------------
 # _create_subplots
-# ---------------------------------------------------------------------------
 
 class TestCreateSubplots:
     def test_default_returns_plain(self):
@@ -187,9 +177,7 @@ class TestCreateSubplots:
         assert isinstance(fig, FigureWidgetResampler)
 
 
-# ---------------------------------------------------------------------------
 # Resampler parameter pass-through in public functions
-# ---------------------------------------------------------------------------
 
 class TestExplorationResampler:
     """Test that exploration functions accept and honour the resampler param."""
@@ -250,9 +238,7 @@ class TestConfigContextIntegration:
         assert isinstance(fig, FigureWidgetResampler)
 
 
-# ---------------------------------------------------------------------------
 # Extended config keys
-# ---------------------------------------------------------------------------
 
 class TestSetConfigExtended:
     def test_n_shown_samples(self):
@@ -280,7 +266,7 @@ class TestSetConfigExtended:
     def test_none_leaves_extended_unchanged(self):
         set_config(resampler_n_shown_samples=500)
         set_config(resampler_n_shown_samples=None)
-        # None does NOT reset — it leaves the current value
+        # None does NOT reset - it leaves the current value
         assert get_config()["resampler_n_shown_samples"] == 500
 
 
@@ -303,9 +289,7 @@ class TestConfigContextExtended:
         assert get_config()["resampler_n_shown_samples"] is None
 
 
-# ---------------------------------------------------------------------------
 # _build_resampler_kwargs
-# ---------------------------------------------------------------------------
 
 class TestBuildResamplerKwargs:
     def test_empty_when_all_none(self):
@@ -367,9 +351,7 @@ class TestCreateFigureForwardsConfig:
         assert isinstance(fig._global_gap_handler, NoGapHandler)
 
 
-# ---------------------------------------------------------------------------
 # _fill_trace_kwargs
-# ---------------------------------------------------------------------------
 
 class TestFillTraceKwargs:
     def test_plain_figure_returns_empty(self):
@@ -383,9 +365,7 @@ class TestFillTraceKwargs:
         assert isinstance(result["gap_handler"], NoGapHandler)
 
 
-# ---------------------------------------------------------------------------
 # Re-exports
-# ---------------------------------------------------------------------------
 
 class TestReExports:
     def test_aggregators_importable(self):

@@ -137,6 +137,9 @@ ignore = [
 "tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415"]  # Allow assert statements, prints, magic values, and imports not at the top
 "docs/**/*" = ["T201", "ARG001", "PLW0603", "SIM105", "SIM108"]  # Allow prints, unused args, globals, and simplifiable patterns in documentation hooks
 
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
 [tool.ruff.lint.isort]
 known-first-party = ["yohou"]
 

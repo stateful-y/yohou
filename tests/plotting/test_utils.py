@@ -289,3 +289,12 @@ class TestLegendTracker:
         tracker = LegendTracker(show_legend=True)
         assert tracker.should_show("a") is True
         assert tracker.should_show("a") is False
+
+
+class TestResolveColorPaletteEdgeCases:
+    """Edge cases for resolve_color_palette (lines 493-494)."""
+
+    def test_empty_list_raises(self):
+        """Passing an empty list raises ValueError."""
+        with pytest.raises(ValueError, match="must not be empty"):
+            resolve_color_palette([], 3)

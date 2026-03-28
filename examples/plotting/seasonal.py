@@ -25,6 +25,7 @@ def _():
 @app.cell(hide_code=True)
 def _():
     from yohou.datasets import (
+        fetch_electricity_demand,
         fetch_sunspot,
         fetch_tourism_monthly,
         fetch_tourism_quarterly,
@@ -33,17 +34,20 @@ def _():
         plot_autocorrelation,
         plot_components,
         plot_partial_autocorrelation,
+        plot_seasonal_heatmap,
         plot_seasonality,
         plot_subseasonality,
     )
 
     return (
+        fetch_electricity_demand,
         fetch_sunspot,
         fetch_tourism_monthly,
         fetch_tourism_quarterly,
         plot_autocorrelation,
         plot_components,
         plot_partial_autocorrelation,
+        plot_seasonal_heatmap,
         plot_seasonality,
         plot_subseasonality,
     )
@@ -60,6 +64,7 @@ def _(mo):
     - Inspecting subseasonal structure with [`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)
     - Identifying autocorrelation and partial autocorrelation patterns for AR/MA order selection
     - Applying these diagnostics to monthly, quarterly, and long-cycle datasets
+    - Visualising seasonal patterns with 2-D heatmaps via [`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/)
     - STL decomposition with [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/) and `stl_kwargs` tuning
 
     ## Prerequisites
@@ -335,11 +340,63 @@ def _(plot_components, tourism_monthly):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 7. Seasonal Heatmap
+
+    [`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/) aggregates values onto a 2-D grid
+    of two temporal periods. Vary **x_period**, **y_period**, and **agg** to
+    reveal different seasonal structures.
+    """)
+
+
+@app.cell
+def _(fetch_electricity_demand):
+    _elec = fetch_electricity_demand().frame.head(8760)
+    elec_heatmap = _elec.select("time", _elec.columns[1])
+    return (elec_heatmap,)
+
+
+@app.cell
+def _(elec_heatmap, plot_seasonal_heatmap):
+    plot_seasonal_heatmap(
+        elec_heatmap,
+        x_period="hour",
+        y_period="month",
+        title="Seasonal Heatmap - Hour x Month (Mean)",
+    )
+
+
+@app.cell
+def _(elec_heatmap, plot_seasonal_heatmap):
+    plot_seasonal_heatmap(
+        elec_heatmap,
+        x_period="hour",
+        y_period="day_of_week",
+        title="Seasonal Heatmap - Hour x Day of Week",
+    )
+
+
+@app.cell
+def _(elec_heatmap, plot_seasonal_heatmap):
+    plot_seasonal_heatmap(
+        elec_heatmap,
+        x_period="hour",
+        y_period="month",
+        agg="max",
+        colorscale="Hot",
+        reverse_y=True,
+        title="Seasonal Heatmap - Max, Hot Colorscale, Reversed Y",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Key Takeaways
 
     - **Seasonal overlays** ([`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/)) make year-over-year comparisons immediate; `highlight` draws attention to specific cycles
     - **Subseries plots** ([`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)) reveal within-season trends over time; the mean line shows each season's average level
     - **ACF** identifies repeating correlation patterns at seasonal multiples; **PACF** isolates direct lag effects for AR order selection
+    - **Seasonal heatmaps** ([`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/)) aggregate values across two time dimensions; the `x_period`/`y_period` pair reveals different seasonal structures
     - **STL decomposition** separates trend, seasonal, and residual components; `robust=True` reduces outlier influence
     - **Seasonal window** tuning controls seasonal component flexibility; larger values produce a more stable pattern
 

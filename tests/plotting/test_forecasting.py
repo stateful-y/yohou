@@ -1264,3 +1264,323 @@ class TestInvalidDimensions:
         components = {"trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(10)]})}
         with pytest.raises(ValueError, match="height"):
             plot_components(y, components, height=-5)
+
+
+
+
+class TestPeriodToLabelExtraBranches:
+    """Cover the quarterly and semi-annual branches."""
+
+    def test_daily_monthly(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(30, "1d") == "monthly"
+
+    def test_daily_quarterly(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(90, "1d") == "quarterly"
+
+    def test_daily_semi_annual(self):
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(180, "1d") == "semi-annual"
+
+    def test_unknown_interval_string(self):
+        """Unrecognized interval returns period as string."""
+        from yohou.plotting.forecasting import _period_to_label
+        assert _period_to_label(42, "7s") == "42"
+
+
+class TestFormatComponentLabelExtra:
+    """Cover generic (non-seasonal, non-special) component names."""
+
+    def test_multi_word_name(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("low_pass") == "Low Pass"
+
+    def test_single_word(self):
+        from yohou.plotting.forecasting import _format_component_label
+        assert _format_component_label("observed") == "Observed"
+
+
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("statsmodels"),
+    reason="statsmodels not installed",
+)
+class TestSTLEvenWindows:
+    """Cover even window arguments being bumped to odd."""
+
+    def test_even_trend_window(self):
+        """Even trend_window is internally adjusted to odd."""
+        dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2022, 12, 31), "1mo", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
+        })
+        fig = plot_components(
+            df, ["trend", "seasonal"], columns="y", show_original=False,
+            stl_kwargs={"period": 12, "trend_window": 14},
+        )
+        assert_figure_valid(fig)
+
+    def test_even_seasonal_window(self):
+        """Even seasonal_window is internally adjusted to odd."""
+        dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2022, 12, 31), "1mo", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
+        })
+        fig = plot_components(
+            df, ["trend", "seasonal"], columns="y", show_original=False,
+            stl_kwargs={"period": 12, "seasonal_window": 8},
+        )
+        assert_figure_valid(fig)
+
+    def test_even_low_pass_window(self):
+        """Even low_pass_window is internally adjusted to odd."""
+        dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2022, 12, 31), "1mo", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
+        })
+        fig = plot_components(
+            df, ["trend", "seasonal"], columns="y", show_original=False,
+            stl_kwargs={"period": 12, "low_pass_window": 12},
+        )
+        assert_figure_valid(fig)
+
+
+
+
+class TestPlotComponentsPanel:
+    """Cover panel_group_names branch in plot_components."""
+
+    def test_panel_components_dict(self):
+        """Panel components with dict input returns dict of figures."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        y = pl.DataFrame({
+            "time": dates,
+            "y__a": [float(i) + (i % 7) * 3.0 for i in range(91)],
+            "y__b": [float(i) * 2 + (i % 5) * 2.0 for i in range(91)],
+        })
+        trend = pl.DataFrame({
+            "time": dates,
+            "y__a": [float(i) for i in range(91)],
+            "y__b": [float(i) * 2 for i in range(91)],
+        })
+        result = plot_components(
+            y, {"Trend": trend}, panel_group_names=["y"], show_original=True,
+        )
+        assert isinstance(result, dict)
+        assert "y" in result
+        assert isinstance(result["y"], go.Figure)
+        assert len(result["y"].data) >= 2
+
+    def test_panel_components_no_original(self):
+        """Panel components with show_original=False."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        y = pl.DataFrame({
+            "time": dates,
+            "y__a": [float(i) for i in range(91)],
+            "y__b": [float(i) * 2 for i in range(91)],
+        })
+        trend = pl.DataFrame({
+            "time": dates,
+            "y__a": [float(i) * 0.5 for i in range(91)],
+            "y__b": [float(i) for i in range(91)],
+        })
+        result = plot_components(
+            y, {"Trend": trend}, panel_group_names=["y"], show_original=False,
+        )
+        assert isinstance(result, dict)
+        assert len(result["y"].data) >= 2
+
+
+
+
+class TestComponentsFallbackColumns:
+    """Cover component DataFrame with renamed columns (not matching y)."""
+
+    def test_component_renamed_columns(self):
+        """Component with different column names falls back to own columns."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        y = pl.DataFrame({
+            "time": dates,
+            "y": [float(i) + (i % 7) * 3.0 for i in range(91)],
+        })
+        # Component has a different column name than y's columns
+        trend = pl.DataFrame({
+            "time": dates,
+            "log_off_0.0_tourists": [float(i) * 0.5 for i in range(91)],
+        })
+        fig = plot_components(y, {"Trend": trend}, show_original=True)
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 2
+
+
+
+
+class TestMultiModelShowTransition:
+    """Cover multi-model with show_transition and coverage_rates."""
+
+    @pytest.fixture
+    def multi_model_transition_data(self):
+        y_train = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [100.0 + i for i in range(91)],
+        })
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True),
+            "y": [191.0 + i for i in range(10)],
+        })
+        y_pred_a = pl.DataFrame({
+            "time": y_test["time"],
+            "y": [190.0 + i for i in range(10)],
+            "y_lower_0.9": [185.0 + i for i in range(10)],
+            "y_upper_0.9": [195.0 + i for i in range(10)],
+        })
+        y_pred_b = pl.DataFrame({
+            "time": y_test["time"],
+            "y": [192.0 + i for i in range(10)],
+            "y_lower_0.9": [187.0 + i for i in range(10)],
+            "y_upper_0.9": [197.0 + i for i in range(10)],
+        })
+        return y_train, y_test, {"A": y_pred_a, "B": y_pred_b}
+
+    def test_multi_model_transition_intervals(self, multi_model_transition_data):
+        """Multi-model with show_transition=True and intervals."""
+        y_train, y_test, y_preds = multi_model_transition_data
+        fig = plot_forecast(
+            y_test, y_preds,
+            y_train=y_train,
+            coverage_rates=[0.9],
+            show_transition=True,
+        )
+        assert_figure_valid(fig)
+        names = [t.name for t in fig.data if t.name is not None]
+        assert any("PI" in n for n in names)
+
+    def test_multi_model_no_intervals(self, multi_model_transition_data):
+        """Multi-model without coverage_rates skips interval rendering."""
+        y_train, y_test, y_preds = multi_model_transition_data
+        fig = plot_forecast(
+            y_test, y_preds, y_train=y_train, show_transition=True,
+        )
+        assert_figure_valid(fig)
+
+
+
+
+class TestSingleModelIntervalRender:
+    """Cover single-model forecast with multiple coverage rates."""
+
+    def test_multiple_coverage_rates(self):
+        """Single-model with multiple coverage_rates renders layered bands."""
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True),
+            "y": [100.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "time": y_test["time"],
+            "y": [101.0 + i for i in range(10)],
+            "y_lower_0.5": [99.0 + i for i in range(10)],
+            "y_upper_0.5": [103.0 + i for i in range(10)],
+            "y_lower_0.9": [96.0 + i for i in range(10)],
+            "y_upper_0.9": [106.0 + i for i in range(10)],
+        })
+        fig = plot_forecast(y_test, y_pred, coverage_rates=[0.5, 0.9])
+        assert_figure_valid(fig)
+        names = [t.name for t in fig.data if t.name is not None]
+        assert any("50%" in n for n in names)
+        assert any("90%" in n for n in names)
+
+    def test_single_model_transition_with_intervals(self):
+        """Single-model with show_transition=True and intervals."""
+        y_train = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [100.0 + i for i in range(91)],
+        })
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True),
+            "y": [191.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "time": y_test["time"],
+            "y": [190.0 + i for i in range(10)],
+            "y_lower_0.9": [185.0 + i for i in range(10)],
+            "y_upper_0.9": [195.0 + i for i in range(10)],
+        })
+        fig = plot_forecast(
+            y_test, y_pred, y_train=y_train,
+            coverage_rates=[0.9], show_transition=True,
+        )
+        assert_figure_valid(fig)
+
+
+
+
+class TestPanelForecastPIBranches:
+    """Cover panel forecast interval rendering with multi-model."""
+
+    def test_panel_multi_model_intervals(self):
+        """Panel forecast with multi-model and intervals."""
+        dates_test = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates_test,
+            "y__a": [191.0 + i for i in range(10)],
+            "y__b": [291.0 + i for i in range(10)],
+        })
+        y_pred_m1 = pl.DataFrame({
+            "time": dates_test,
+            "y__a": [190.0 + i for i in range(10)],
+            "y__b": [289.0 + i for i in range(10)],
+            "y__a_lower_0.9": [185.0 + i for i in range(10)],
+            "y__a_upper_0.9": [195.0 + i for i in range(10)],
+            "y__b_lower_0.9": [284.0 + i for i in range(10)],
+            "y__b_upper_0.9": [294.0 + i for i in range(10)],
+        })
+        y_pred_m2 = pl.DataFrame({
+            "time": dates_test,
+            "y__a": [192.0 + i for i in range(10)],
+            "y__b": [292.0 + i for i in range(10)],
+        })
+        fig = plot_forecast(
+            y_test,
+            {"M1": y_pred_m1, "M2": y_pred_m2},
+            coverage_rates=[0.9],
+            panel_group_names=["y"],
+        )
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("statsmodels"),
+    reason="statsmodels not installed",
+)
+class TestMSTLIntervalFallback:
+    """Cover MSTL label inference when interval is unknown."""
+
+    def test_mstl_unknown_interval_fallback(self):
+        """MSTL with unknown interval falls back to numeric seasonal labels."""
+        rng = np.random.default_rng(42)
+        n = 200
+        df = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2022, 1, 1),
+                pl.datetime(2022, 1, 1) + pl.duration(hours=n - 1),
+                "1h", eager=True,
+            ),
+            "y": [50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal() for i in range(n)],
+        })
+        fig = plot_components(
+            df, ["trend", "seasonal", "residual"],
+            columns="y", show_original=False,
+            stl_kwargs={"periods": [24]},
+        )
+        assert_figure_valid(fig)

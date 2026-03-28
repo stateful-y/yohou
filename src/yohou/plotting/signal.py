@@ -34,16 +34,16 @@ def plot_phase(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
     connect_gaps: bool = False,
-    **kwargs,
+    line_width: float = 2.0,
 ) -> go.Figure:
-    """Plot the phase of a time series.
+    r"""Plot the phase of a time series.
 
     Shows the phase angle of each frequency component computed via FFT.
     Useful for understanding temporal alignment of periodic patterns.
@@ -60,10 +60,16 @@ def plot_phase(
         Unit for the phase angle axis.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
         Custom color palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -74,9 +80,10 @@ def plot_phase(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=1.5
+    connect_gaps : bool, default=False
+        Whether to connect gaps in the data with lines.
+    line_width : float, default=2.0
+        Width of the line traces.
 
     Returns
     -------
@@ -102,7 +109,7 @@ def plot_phase(
 
     See Also
     --------
-    `plot_spectrum` : Plot power spectral density.
+    [`plot_spectrum`][yohou.plotting.plot_spectrum] : Plot power spectral density.
     """
     use_degrees = angle_unit == "degree"
     unit = "degrees" if use_degrees else "radians"
@@ -121,7 +128,6 @@ def plot_phase(
         def _render_phase(ctx: RenderContext) -> None:
             """Render phase spectrum for a single panel group."""
             base = [c for c in ctx.sub_df.columns if c != "time"][0]
-            _lw = kwargs.get("line_width", 1.5)
             y_arr = ctx.sub_df[base].to_numpy().astype(float)
             spectrum = np.fft.rfft(y_arr)
             freqs = np.fft.rfftfreq(len(y_arr))
@@ -135,7 +141,7 @@ def plot_phase(
                     x=freqs[1:].tolist(),
                     y=phase[1:].tolist(),
                     mode="lines",
-                    line={"width": _lw, "color": _panel_colors[ctx.entity_idx]},
+                    line={"width": line_width, "color": _panel_colors[ctx.entity_idx]},
                     name=ctx.display_name,
                     legendgroup=ctx.display_name,
                     showlegend=_legend_tracker.should_show(ctx.display_name),
@@ -165,7 +171,6 @@ def plot_phase(
 
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     colors = resolve_color_palette(color_palette, len(plot_columns))
-    line_width = kwargs.get("line_width", 1.5)
 
     fig = go.Figure()
 
@@ -221,14 +226,16 @@ def plot_spectrum(
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    show_legend: bool = True,
     connect_gaps: bool = False,
-    **kwargs,
+    line_width: float = 2.0,
+    show_peaks: bool = False,
+    n_peaks: int = 3,
 ) -> go.Figure:
     """Plot periodogram (power spectral density) for frequency domain analysis.
 
@@ -247,10 +254,16 @@ def plot_spectrum(
         Use logarithmic scale for PSD axis.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
+    facet_by : Literal["group", "member"] | None, default="member"
+        Faceting axis for panel data.  ``"group"`` creates one subplot per
+        group, ``"member"`` one per member.  ``None`` disables faceting.
+        Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
         Custom color palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -261,11 +274,14 @@ def plot_spectrum(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=1.5
-        - show_peaks : bool, default=False
-        - n_peaks : int, default=3
+    connect_gaps : bool, default=False
+        Whether to connect gaps in the data with lines.
+    line_width : float, default=2.0
+        Width of the line traces.
+    show_peaks : bool, default=False
+        Whether to annotate dominant frequency peaks.
+    n_peaks : int, default=3
+        Number of peaks to annotate when ``show_peaks`` is True.
 
     Returns
     -------
@@ -293,7 +309,7 @@ def plot_spectrum(
 
     See Also
     --------
-    `plot_phase` : Plot phase spectrum.
+    [`plot_phase`][yohou.plotting.plot_phase] : Plot phase spectrum.
     """
     # Validate inputs
     validate_plotting_data(df)
@@ -311,7 +327,6 @@ def plot_spectrum(
         def _render_periodogram(ctx: RenderContext) -> None:
             """Render spectral periodogram with optional log scaling for a single column."""
             base = [c for c in ctx.sub_df.columns if c != "time"][0]
-            _lw = kwargs.get("line_width", 1.5)
             y_arr = ctx.sub_df[base].to_numpy()
             freqs, psd = scipy_periodogram(y_arr)
             ctx.fig.add_trace(
@@ -319,7 +334,7 @@ def plot_spectrum(
                     x=freqs[1:].tolist(),
                     y=psd[1:].tolist(),
                     mode="lines",
-                    line={"width": _lw, "color": _panel_colors[ctx.entity_idx]},
+                    line={"width": line_width, "color": _panel_colors[ctx.entity_idx]},
                     name=ctx.display_name,
                     legendgroup=ctx.display_name,
                     showlegend=_legend_tracker.should_show(ctx.display_name),
@@ -351,11 +366,6 @@ def plot_spectrum(
 
     # Resolve columns
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-
-    # Get kwargs
-    line_width = kwargs.get("line_width", 1.5)
-    show_peaks = kwargs.get("show_peaks", False)
-    n_peaks = kwargs.get("n_peaks", 3)
 
     # Get color sequence
     colors = resolve_color_palette(color_palette, len(plot_columns))
