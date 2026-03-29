@@ -18,7 +18,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "scikit-learn>=1.6.0",
@@ -27,6 +26,7 @@ dependencies = [
     "polars>=0.20",
     "plotly>=5.19",
     "plotly-resampler>=0.11",
+    "pytz",
     "anywidget>=0.9.21",
     "pydantic>=2.6",
     "pyarrow>=14.0.0",
