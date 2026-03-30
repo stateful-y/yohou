@@ -1938,10 +1938,16 @@ def plot_components(
         fig,
         title=title_default,
         x_label=None,
-        y_label=y_label,
+        y_label=None,
         width=width,
         height=height or default_height,
     )
+
+    # When the caller supplies a y-label, apply it to every subplot row
+    # so it appears on the left.  Otherwise keep the per-row titles that
+    # make_subplots already set (e.g. Trend, Seasonal, Residual).
+    if y_label is not None:
+        fig.update_yaxes(title_text=y_label)
 
     # Show x-axis label on bottom subplot only
     x_label_text = x_label if x_label is not None else "Time"
@@ -2000,7 +2006,6 @@ def _plot_components_panel(
             cols=1,
             shared_xaxes=True,
             vertical_spacing=_subplot_spacing(n_rows),
-            row_titles=comp_labels if n_rows > 1 else None,
         )
 
         def _add_traces(
@@ -2045,6 +2050,11 @@ def _plot_components_panel(
         for comp_idx, (_, comp_df) in enumerate(components.items()):
             _add_traces(comp_df, comp_row=comp_idx + 1 + row_offset)
 
+        # Set component names as y-axis titles on the left
+        for idx, label in enumerate(comp_labels):
+            yaxis_key = f"yaxis{idx + 1}" if idx > 0 else "yaxis"
+            fig.layout[yaxis_key].title = {"text": label, "font": {"size": 12}}
+
         title_default = title or f"Time Series Decomposition - {member}"
         default_height = max(300 * n_rows, 400)
 
@@ -2052,10 +2062,14 @@ def _plot_components_panel(
             fig,
             title=title_default,
             x_label=None,
-            y_label=y_label,
+            y_label=None,
             width=width,
             height=height or default_height,
         )
+
+        # When the caller supplies a y-label, override the per-row titles.
+        if y_label is not None:
+            fig.update_yaxes(title_text=y_label)
 
         # Show x-axis label on bottom subplot only
         x_label_text = x_label if x_label is not None else "Time"

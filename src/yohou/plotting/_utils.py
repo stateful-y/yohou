@@ -24,6 +24,7 @@ from yohou.utils import inspect_panel
 
 __all__ = [
     "DEFAULT_LAYOUT",
+    "DEFAULT_WIDTH",
     "LINE_DASH_SEQUENCE",
     "LegendTracker",
     "PanelColorManager",
@@ -719,6 +720,9 @@ def _normalize_y_pred(
     raise TypeError(msg)
 
 
+DEFAULT_WIDTH: int = 1000
+"""Default figure width in pixels applied when *width* is ``None``."""
+
 DEFAULT_LAYOUT = {
     "template": "plotly_white",
     "font": {"family": "Arial, sans-serif", "size": 12, "color": "#1e293b"},
@@ -803,8 +807,7 @@ def apply_default_layout(
         layout_update["xaxis"]["title"] = x_label  # type: ignore[index]
     if y_label is not None:
         layout_update["yaxis"]["title"] = y_label  # type: ignore[index]
-    if width is not None:
-        layout_update["width"] = width  # type: ignore[invalid-assignment]
+    layout_update["width"] = width if width is not None else DEFAULT_WIDTH  # type: ignore[invalid-assignment]
     if height is not None:
         layout_update["height"] = height  # type: ignore[invalid-assignment]
     if hovermode is not None:
