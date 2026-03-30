@@ -196,17 +196,17 @@ class TestComponentsPanelLayout:
         assert isinstance(result, dict)
         for fig in result.values():
             groups = legend_groups(fig)
-            assert len(groups) >= 2
+            assert len(groups) >= 1
 
 
 
 class TestSubseasonalityPanelLegend:
     def test_legendgroup_per_panel_member(self, panel_3year_df):
-        fig = plot_subseasonality(panel_3year_df, seasonality="month")
-        groups = legend_groups(fig)
-        # With grouped_legend_kwargs, legendgroup is now the group name
-        # (e.g. "y") not the member name. Still at least 1 group.
-        assert len(groups) >= 1
+        result = plot_subseasonality(panel_3year_df, seasonality="month")
+        assert isinstance(result, dict)
+        for fig in result.values():
+            groups = legend_groups(fig)
+            assert len(groups) >= 1
 
     def test_no_crash_with_sparse_data(self):
         dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
@@ -216,8 +216,10 @@ class TestSubseasonalityPanelLegend:
             "y__a": [float(i) if i % 3 != 0 else None for i in range(n)],
             "y__b": [float(i) if i % 5 != 0 else None for i in range(n)],
         })
-        fig = plot_subseasonality(df, seasonality="month")
-        assert_figure_valid(fig)
+        result = plot_subseasonality(df, seasonality="month")
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
 
 
@@ -493,8 +495,11 @@ class TestPanelLayoutContract:
         ids=[c[0] for c in _PANEL_LAYOUT_CASES],
     )
     def test_grid_returns_figure(self, name, func, kw):
+        """Default panel call returns dict (facet_by default is group or per-member)."""
         result = func(**kw)
-        assert isinstance(result, go.Figure), f"{name}: should return go.Figure"
+        assert isinstance(result, dict), f"{name}: should return dict"
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     @pytest.mark.parametrize(
         "name,func,kw",
@@ -502,8 +507,9 @@ class TestPanelLayoutContract:
         ids=[c[0] for c in _PANEL_LAYOUT_CASES],
     )
     def test_facet_returns_dict(self, name, func, kw):
-        result = func(**kw, separate=True)
-        assert isinstance(result, dict), f"{name}: separate=True should return dict"
+        """Panel call returns dict."""
+        result = func(**kw)
+        assert isinstance(result, dict), f"{name}: should return dict"
         for fig in result.values():
             assert_figure_valid(fig)
 
@@ -663,21 +669,15 @@ class TestSeasonalityLegend:
 
 
 class TestSubseasonalityPanelLayout:
-    """plot_subseasonality facet mode must return dict keyed by group name."""
+    """plot_subseasonality with panel data returns dict keyed by member name."""
 
-    def test_separate_returns_dict(self):
-        df = _make_3year_daily()
-        result = plot_subseasonality(df, seasonality="month", separate=True)
-        assert isinstance(result, dict)
-        assert "y" in result
-        for fig in result.values():
-            assert_figure_valid(fig)
-
-    def test_grid_returns_figure(self):
+    def test_returns_dict(self):
         df = _make_3year_daily()
         result = plot_subseasonality(df, seasonality="month")
-        assert isinstance(result, go.Figure)
-        assert_figure_valid(result)
+        assert isinstance(result, dict)
+        assert "a" in result
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_non_panel_ignores_panel_layout(self):
         dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)

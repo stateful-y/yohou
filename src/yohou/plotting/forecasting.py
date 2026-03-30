@@ -781,8 +781,11 @@ def _plot_forecast_panel(
 
     Supports both single-model (DataFrame) and multi-model (dict) predictions.
     Each subplot receives its own legend positioned inside the subplot area.
-    When a panel group contains multiple members (multivariate), each member
-    is drawn in a distinct colour with dashed lines for forecasts.
+    The ``facet_by`` parameter determines the subplot axis:
+
+    * ``"group"`` - one subplot per panel group, members overlaid by colour.
+    * ``"member"`` - one subplot per member, groups overlaid by colour.
+    * ``None`` - all series in a single subplot.
 
     Parameters
     ----------
@@ -799,6 +802,8 @@ def _plot_forecast_panel(
         Number of history points to show.
     panel_group_names : list[str] | None
         Groups to plot.
+    facet_by : Literal["group", "member"] | None
+        Controls subplot organisation.
     facet_n_cols : int
         Columns in facet grid.
     color_palette : list[str] | None
@@ -844,16 +849,61 @@ def _plot_forecast_panel(
         msg = f"No panel columns found for groups: {panel_group_names}"
         raise ValueError(msg)
 
-    # Detect multivariate panels (multiple members in any group)
-    multi_member = any(len(cols) > 1 for cols in groups.values())
+    all_flat_cols = [c for cols in groups.values() for c in cols]
+    _, all_members = _group_panel_columns(all_flat_cols)
+    all_group_names = list(groups.keys())
 
-    if multi_member:
-        all_flat_cols = [c for cols in groups.values() for c in cols]
-        _, all_members = _group_panel_columns(all_flat_cols)
-        member_palette = resolve_color_palette(_model_pal, len(all_members))
+    # --- Build faceting structure -------------------------------------------
+    # facets: dict from subplot label -> list of columns in that subplot
+    # sub_names: the distinct sub-identifiers used for coloring within facets
+    # get_sub_name(col) -> the sub-identifier for a column
+    if facet_by == "member":
+        facets: dict[str, list[str]] = {}
+        for member in all_members:
+            cols_for_member = []
+            for gcols in groups.values():
+                col = next((c for c in gcols if _member_name(c) == member), None)
+                if col:
+                    cols_for_member.append(col)
+            if cols_for_member:
+                facets[member] = cols_for_member
+        sub_names = all_group_names
+        sub_palette = resolve_color_palette(_model_pal, len(sub_names))
+
+        def _get_sub_name(col: str) -> str:
+            return col.split("__", 1)[0]
+
+        def _get_sub_color(col: str) -> str:
+            return sub_palette[sub_names.index(_get_sub_name(col))]
+
+    elif facet_by is None:
+        facets = {"All": all_flat_cols}
+        # Each column is its own sub-identifier
+        sub_names = [_member_name(c) if "__" in c else c for c in all_flat_cols]
+        sub_palette = resolve_color_palette(_model_pal, len(all_flat_cols))
+        _sub_col_map = dict(zip(all_flat_cols, range(len(all_flat_cols)), strict=False))
+
+        def _get_sub_name(col: str) -> str:
+            gname = col.split("__", 1)[0] if "__" in col else ""
+            mname = _member_name(col) if "__" in col else col
+            return f"{gname}/{mname}" if gname else mname
+
+        def _get_sub_color(col: str) -> str:
+            return sub_palette[_sub_col_map.get(col, 0)]
+
     else:
-        all_members = []
-        member_palette = []
+        # facet_by == "group" (default)
+        facets = groups
+        sub_names = all_members
+        sub_palette = resolve_color_palette(_model_pal, len(sub_names))
+
+        def _get_sub_name(col: str) -> str:
+            return _member_name(col)
+
+        def _get_sub_color(col: str) -> str:
+            return sub_palette[sub_names.index(_get_sub_name(col))]
+
+    multi_sub = any(len(cols) > 1 for cols in facets.values())
 
     # Normalise y_pred into a model-name -> DataFrame mapping
     is_multi_model = isinstance(y_pred, dict)
@@ -866,44 +916,40 @@ def _plot_forecast_panel(
         model_names = ["Forecast"]
         model_colors = [forecast_color]
 
-    n_groups = len(groups)
-    n_rows = (n_groups + facet_n_cols - 1) // facet_n_cols
-    n_cols_grid = min(n_groups, facet_n_cols)
+    n_facets = len(facets)
+    n_rows = (n_facets + facet_n_cols - 1) // facet_n_cols
+    n_cols_grid = min(n_facets, facet_n_cols)
 
     fig = _create_subplots(
         resampler,
         rows=n_rows,
         cols=n_cols_grid,
-        subplot_titles=list(groups.keys()),
+        subplot_titles=list(facets.keys()),
         shared_xaxes=True,
         vertical_spacing=0.08,
         horizontal_spacing=0.08,
     )
 
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
-
-    # Track which legend entries we have already shown globally
-    # to avoid duplicates when multiple groups share the same labels.
     legend_tracker = LegendTracker()
 
-    for group_idx, (_, group_cols) in enumerate(groups.items()):
-        row = group_idx // facet_n_cols + 1
-        col_grid = group_idx % facet_n_cols + 1
+    for facet_idx, (_, facet_cols) in enumerate(facets.items()):
+        row = facet_idx // facet_n_cols + 1
+        col_grid = facet_idx % facet_n_cols + 1
 
-        for col in group_cols:
-            member = _member_name(col)
+        for col in facet_cols:
+            sub_name = _get_sub_name(col)
+            base_color = _get_sub_color(col)
 
             # Resolve per-trace colours and labels
-            if multi_member:
-                member_idx = all_members.index(member)
-                base_color = member_palette[member_idx]
+            if multi_sub:
                 _hex = base_color.lstrip("#")
                 _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
                 train_c: str = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
                 actual_c = base_color
-                train_label = f"{member} (Train)"
-                actual_label = f"{member} (Actual)"
-                lg_key: str | None = member
+                train_label = f"{sub_name} (Train)"
+                actual_label = f"{sub_name} (Actual)"
+                lg_key: str | None = sub_name
             else:
                 train_c = history_color
                 actual_c = actual_color
@@ -939,10 +985,10 @@ def _plot_forecast_panel(
                 col=col,
                 interval_pattern=interval_pattern,
                 coverage_rates=coverage_rates,
-                multi_member=multi_member,
+                multi_member=multi_sub,
                 is_multi_model=is_multi_model,
-                base_color=base_color if multi_member else None,
-                member=member,
+                base_color=base_color if multi_sub else None,
+                member=sub_name,
                 band_opacity=band_opacity,
                 legend_tracker=legend_tracker,
                 lg_key=lg_key,
@@ -977,10 +1023,10 @@ def _plot_forecast_panel(
                 col=col,
                 interval_pattern=interval_pattern,
                 coverage_rates=coverage_rates,
-                multi_member=multi_member,
+                multi_member=multi_sub,
                 is_multi_model=is_multi_model,
-                base_color=base_color if multi_member else None,
-                member=member,
+                base_color=base_color if multi_sub else None,
+                member=sub_name,
                 line_width=line_width,
                 connect_gaps=connect_gaps,
                 show_transition=show_transition,
@@ -1150,37 +1196,72 @@ def plot_time_weight(
         # Collect unique member names for consistent colouring
         flat_cols = [c for cols in weight_panel_cols.values() for c in cols]
         _, all_members = _group_panel_columns(flat_cols)
+        all_group_names = list(weight_panel_cols.keys())
 
-        n_groups = len(weight_panel_cols)
+        # --- Build faceting structure ---------------------------------------
+        if facet_by == "member":
+            facets: dict[str, list[str]] = {}
+            for member in all_members:
+                cols_for_member = []
+                for gcols in weight_panel_cols.values():
+                    col = next((c for c in gcols if _member_name(c) == member), None)
+                    if col:
+                        cols_for_member.append(col)
+                if cols_for_member:
+                    facets[member] = cols_for_member
+            sub_names = all_group_names
 
-        # Get colors (one per unique member)
-        if color_palette is None:
-            color_palette = resolve_color_palette(None, len(all_members))
+            def _get_sub_name(col: str) -> str:
+                return col.split("__", 1)[0]
 
-        # Create subplots (one per group)
-        n_rows = (n_groups + facet_n_cols - 1) // facet_n_cols
-        n_cols_grid = min(n_groups, facet_n_cols)
+        elif facet_by is None:
+            facets = {"All": flat_cols}
+            sub_names = [
+                f"{c.split('__', 1)[0]}/{_member_name(c)}" if "__" in c else c
+                for c in flat_cols
+            ]
+
+            def _get_sub_name(col: str) -> str:
+                gname = col.split("__", 1)[0] if "__" in col else ""
+                mname = _member_name(col) if "__" in col else col
+                return f"{gname}/{mname}" if gname else mname
+
+        else:
+            # facet_by == "group" (default)
+            facets = weight_panel_cols
+            sub_names = all_members
+
+            def _get_sub_name(col: str) -> str:
+                return _member_name(col)
+
+        # Get colors (one per unique sub-identifier)
+        sub_palette = resolve_color_palette(color_palette, len(sub_names))
+
+        # Create subplots
+        n_facets = len(facets)
+        n_rows = (n_facets + facet_n_cols - 1) // facet_n_cols
+        n_cols_grid = min(n_facets, facet_n_cols)
         fig = _create_subplots(
             resampler,
             rows=n_rows,
             cols=n_cols_grid,
-            subplot_titles=list(weight_panel_cols.keys()),
+            subplot_titles=list(facets.keys()),
             shared_xaxes=True,
             vertical_spacing=0.08,
             horizontal_spacing=0.1,
         )
 
-        seen_members: set[str] = set()
-        for group_idx, (_, group_cols) in enumerate(weight_panel_cols.items()):
-            row = group_idx // facet_n_cols + 1
-            col_idx = group_idx % facet_n_cols + 1
+        seen_subs: set[str] = set()
+        for facet_idx, (_, facet_cols) in enumerate(facets.items()):
+            row = facet_idx // facet_n_cols + 1
+            col_idx = facet_idx % facet_n_cols + 1
 
-            for col in group_cols:
-                member_name = _member_name(col)
-                member_idx = all_members.index(member_name)
-                color = color_palette[member_idx % len(color_palette)]
-                first_seen = member_name not in seen_members
-                seen_members.add(member_name)
+            for col in facet_cols:
+                sub_name = _get_sub_name(col)
+                s_idx = sub_names.index(sub_name)
+                color = sub_palette[s_idx % len(sub_palette)]
+                first_seen = sub_name not in seen_subs
+                seen_subs.add(sub_name)
 
                 # Convert hex to rgba for fill
                 rgb = tuple(int(color[i : i + 2], 16) for i in (1, 3, 5))
@@ -1195,10 +1276,10 @@ def plot_time_weight(
                         connectgaps=connect_gaps,
                         fill="tozeroy" if fill else None,
                         fillcolor=rgba_fill if fill else None,
-                        name=member_name,
+                        name=sub_name,
                         showlegend=first_seen,
-                        legendgroup=member_name,
-                        hovertemplate=(f"{member_name}<br>Time: %{{x}}<br>Weight: %{{y:.3f}}<extra></extra>"),
+                        legendgroup=sub_name,
+                        hovertemplate=(f"{sub_name}<br>Time: %{{x}}<br>Weight: %{{y:.3f}}<extra></extra>"),
                     ),
                     row=row,
                     col=col_idx,
@@ -1548,8 +1629,6 @@ def plot_components(
     *,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
-    facet_by: Literal["group", "member"] | None = "member",
-    facet_n_cols: int = 2,
     show_original: bool = True,
     stl_kwargs: dict | None = None,
     color_palette: list[str] | None = None,
@@ -1599,14 +1678,9 @@ def plot_components(
         are used.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to include.  When panel data is detected
-        and this is ``None``, all groups are plotted.  Creates one
-        facet column per group.
-    facet_by : Literal["group", "member"] | None, default="member"
-        Faceting axis for panel data.  ``"group"`` creates one subplot per
-        group, ``"member"`` one per member.  ``None`` disables faceting.
-        Ignored for non-panel data.
-    facet_n_cols : int, default=2
-        Number of columns in the facet grid for panel data.
+        and this is ``None``, all groups are plotted.  For panel data,
+        returns one figure per member (short member name as key) with
+        groups overlaid by colour.
     show_original : bool, default=True
         Include the original series as the first subplot.  In STL mode this
         is automatically set to ``True`` when ``"observed"`` appears in
@@ -1763,8 +1837,6 @@ def plot_components(
             stl_mode=stl_mode,
             show_original=show_original,
             panel_group_names=panel_group_names,
-            facet_by=facet_by,
-            facet_n_cols=facet_n_cols,
             color_palette=color_palette,
             title=title,
             x_label=x_label,
@@ -1886,8 +1958,6 @@ def _plot_components_panel(
     stl_mode: bool,
     show_original: bool,
     panel_group_names: list[str],
-    facet_by: Literal["group", "member"] | None,
-    facet_n_cols: int,
     color_palette: list[str] | None,
     title: str | None,
     x_label: str | None,
@@ -1899,11 +1969,11 @@ def _plot_components_panel(
     line_dash: str,
     resampler: bool | Literal["widget"] | None,
     show_legend: bool = True,
-) -> dict[str, go.Figure]:
+) -> go.Figure | dict[str, go.Figure]:
     """Render ``plot_components`` for panel data.
 
-    Returns one figure per panel group, each with components stacked
-    vertically.  Members within a group are distinguished by colour.
+    Returns one figure per member with groups overlaid by colour.
+    When there is only one member, returns a single ``go.Figure``.
     """
     panel_cols = resolve_panel_columns(y, panel_group_names or None, None)
     groups, all_members = _group_panel_columns(panel_cols)
@@ -1920,7 +1990,7 @@ def _plot_components_panel(
 
     figures: dict[str, go.Figure] = {}
 
-    for gname, group_cols in groups.items():
+    for member in all_members:
         color_mgr = PanelColorManager(color_palette)
         legend_tracker = LegendTracker(show_legend=show_legend)
 
@@ -1937,28 +2007,30 @@ def _plot_components_panel(
             data_df: pl.DataFrame,
             comp_row: int,
             *,
-            _group_cols: list[str] = group_cols,
+            _member: str = member,
             _fig: go.Figure = fig,
             _color_mgr: PanelColorManager = color_mgr,
             _legend_tracker: LegendTracker = legend_tracker,
         ) -> None:
-            for member_col in _group_cols:
-                if member_col not in data_df.columns:
+            for gname, group_cols in groups.items():
+                col_name = next(
+                    (c for c in group_cols if _member_name(c) == _member), None,
+                )
+                if col_name is None or col_name not in data_df.columns:
                     continue
-                mname = _member_name(member_col)
                 _fig.add_trace(
                     go.Scatter(
                         x=data_df["time"],
-                        y=data_df[member_col],
+                        y=data_df[col_name],
                         mode="lines",
                         line={
-                            "color": _color_mgr.get_color(mname),
+                            "color": _color_mgr.get_color(gname),
                             "width": line_width,
                             "dash": line_dash,
                         },
-                        name=mname,
-                        legendgroup=mname,
-                        showlegend=_legend_tracker.should_show(mname),
+                        name=gname,
+                        legendgroup=gname,
+                        showlegend=_legend_tracker.should_show(gname),
                         connectgaps=connect_gaps,
                     ),
                     row=comp_row,
@@ -1973,7 +2045,7 @@ def _plot_components_panel(
         for comp_idx, (_, comp_df) in enumerate(components.items()):
             _add_traces(comp_df, comp_row=comp_idx + 1 + row_offset)
 
-        title_default = title or "Time Series Decomposition"
+        title_default = title or f"Time Series Decomposition - {member}"
         default_height = max(300 * n_rows, 400)
 
         fig = apply_default_layout(
@@ -1992,8 +2064,10 @@ def _plot_components_panel(
             fig.layout[xaxis_key].title = {"text": x_label_text}
 
         fig.update_layout(showlegend=show_legend)
-        figures[gname] = fig
+        figures[member] = fig
 
+    if len(figures) == 1:
+        return next(iter(figures.values()))
     return figures
 
 

@@ -134,7 +134,9 @@ class TestPlotCorrelationHeatmap:
             "y__b": list(range(10, 20)),
             "y__c": list(range(20, 30)),
         })
-        fig = plot_correlation_heatmap(df, panel_group_names=["y"])
+        result = plot_correlation_heatmap(df, panel_group_names=["y"])
+        assert isinstance(result, dict)
+        fig = result["y"]
         assert len(fig.data) == 1
         assert isinstance(fig.data[0], go.Heatmap)
 
@@ -485,9 +487,11 @@ class TestPlotSubseasonalityPanel:
         })
 
     def test_panel_produces_figure(self, panel_df):
-        """Panel data with subseasonality returns a valid figure."""
-        fig = plot_subseasonality(panel_df, seasonality="month")
-        assert_figure_valid(fig)
+        """Panel data with subseasonality returns a dict of figures per member."""
+        result = plot_subseasonality(panel_df, seasonality="month")
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_trace_type_is_scatter(self):
         """Traces produced by subseasonality are Scatter type."""
@@ -726,9 +730,11 @@ class TestDiagnosticsPanelAutoDetect:
         assert_figure_valid(fig)
 
     def test_correlation_heatmap_panel(self, panel_df):
-        """plot_correlation_heatmap with panel data auto-detects groups."""
-        fig = plot_correlation_heatmap(panel_df, panel_group_names=["y"])
-        assert_figure_valid(fig)
+        """plot_correlation_heatmap with panel data returns dict per group."""
+        result = plot_correlation_heatmap(panel_df, panel_group_names=["y"])
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_seasonality_panel(self, panel_df):
         """plot_seasonality with panel data auto-detects groups."""
@@ -827,8 +833,10 @@ class TestDiagnosticsAutoDetectPanel:
 
     def test_heatmap_auto_detect(self, auto_panel_df):
         """plot_correlation_heatmap auto-detects panel data."""
-        fig = plot_correlation_heatmap(auto_panel_df)
-        assert_figure_valid(fig)
+        result = plot_correlation_heatmap(auto_panel_df)
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_seasonality_auto_detect(self, auto_panel_df):
         """plot_seasonality auto-detects panel data."""
@@ -965,8 +973,10 @@ class TestCorrelationHeatmapPanelShowValues:
             "a__g2": [float(i + 10) for i in range(n)],
             "b__g2": [float(i * 3) for i in range(n)],
         })
-        fig = plot_correlation_heatmap(df, panel_group_names=["a", "b"], show_values=True)
-        assert_figure_valid(fig)
+        result = plot_correlation_heatmap(df, panel_group_names=["a", "b"], show_values=True)
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
 
 class TestCrossCorrelationBasic:
@@ -1271,13 +1281,15 @@ class TestPlotScatterMatrixPanelPaths:
         })
 
     def test_panel_grid_mode(self, panel_scatter_df):
-        """Panel data with separate=False produces a single combined figure."""
-        fig = plot_scatter_matrix(panel_scatter_df)
-        assert_figure_valid(fig)
+        """Panel data with default facet_by='group' returns dict of figures."""
+        result = plot_scatter_matrix(panel_scatter_df)
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_panel_separate_mode(self, panel_scatter_df):
-        """Panel data with separate=True returns dict of figures."""
-        result = plot_scatter_matrix(panel_scatter_df, separate=True)
+        """Panel data with facet_by='group' returns dict of figures."""
+        result = plot_scatter_matrix(panel_scatter_df, facet_by="group")
         assert isinstance(result, dict)
         assert len(result) > 0
         for fig in result.values():
@@ -1286,30 +1298,38 @@ class TestPlotScatterMatrixPanelPaths:
 
     def test_panel_with_seasonality(self, panel_scatter_df):
         """Season colouring works with panel scatter matrix."""
-        fig = plot_scatter_matrix(panel_scatter_df, seasonality="month")
-        assert_figure_valid(fig)
+        result = plot_scatter_matrix(panel_scatter_df, seasonality="month")
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_panel_with_seasonality_separate(self, panel_scatter_df):
-        """Season colouring + separate mode."""
-        result = plot_scatter_matrix(panel_scatter_df, seasonality="quarter", separate=True)
+        """Season colouring + facet_by='group' mode."""
+        result = plot_scatter_matrix(panel_scatter_df, seasonality="quarter", facet_by="group")
         assert isinstance(result, dict)
         for fig in result.values():
             assert_figure_valid(fig)
 
     def test_panel_diagonal_histogram(self, panel_scatter_df):
-        """Panel grid with histogram diagonal."""
-        fig = plot_scatter_matrix(panel_scatter_df, diagonal="histogram")
-        assert_figure_valid(fig)
+        """Panel with histogram diagonal."""
+        result = plot_scatter_matrix(panel_scatter_df, diagonal="histogram")
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_panel_diagonal_none(self, panel_scatter_df):
-        """Panel grid with no diagonal."""
-        fig = plot_scatter_matrix(panel_scatter_df, diagonal=None)
-        assert_figure_valid(fig)
+        """Panel with no diagonal."""
+        result = plot_scatter_matrix(panel_scatter_df, diagonal=None)
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_panel_show_correlation(self, panel_scatter_df):
-        """Panel grid with correlation annotations."""
-        fig = plot_scatter_matrix(panel_scatter_df, show_correlation=True)
-        assert_figure_valid(fig)
+        """Panel with correlation annotations."""
+        result = plot_scatter_matrix(panel_scatter_df, show_correlation=True)
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_nonpanel_seasonality_small_max_points(self):
         """Non-panel scatter matrix with seasonality and small max_points."""
@@ -1325,8 +1345,10 @@ class TestPlotScatterMatrixPanelPaths:
 
     def test_panel_group_names_filter(self, panel_scatter_df):
         """Passing explicit panel_group_names filters to those groups."""
-        fig = plot_scatter_matrix(panel_scatter_df, panel_group_names=["x"])
-        assert_figure_valid(fig)
+        result = plot_scatter_matrix(panel_scatter_df, panel_group_names=["x"])
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
 
 # Priority 2 - Correlation Heatmap Panel Paths
@@ -1349,8 +1371,8 @@ class TestPlotCorrelationHeatmapPanelPaths:
         })
 
     def test_panel_separate(self, panel_heatmap_df):
-        """separate=True returns a dict of figures."""
-        result = plot_correlation_heatmap(panel_heatmap_df, separate=True)
+        """facet_by='group' returns a dict of figures."""
+        result = plot_correlation_heatmap(panel_heatmap_df, facet_by="group")
         assert isinstance(result, dict)
         assert len(result) > 0
         for fig in result.values():
@@ -1358,8 +1380,8 @@ class TestPlotCorrelationHeatmapPanelPaths:
             assert len(fig.data) > 0
 
     def test_panel_grid(self, panel_heatmap_df):
-        """separate=False (default) with panel data returns a single figure."""
-        fig = plot_correlation_heatmap(panel_heatmap_df)
+        """facet_by=None with panel data returns a single figure."""
+        fig = plot_correlation_heatmap(panel_heatmap_df, facet_by=None)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
@@ -1451,17 +1473,20 @@ class TestPlotSubseasonalityPanelModes:
         })
 
     def test_panel_separate(self, panel_subseas_df):
-        """separate=True returns a dict of figures."""
-        result = plot_subseasonality(panel_subseas_df, seasonality="month", separate=True)
+        """Panel data returns a dict of figures per member."""
+        result = plot_subseasonality(panel_subseas_df, seasonality="month")
         assert isinstance(result, dict)
         assert len(result) > 0
         for fig in result.values():
             assert isinstance(fig, go.Figure)
 
     def test_panel_combined(self, panel_subseas_df):
-        """Default combined mode with panel data returns a single figure."""
-        fig = plot_subseasonality(panel_subseas_df, seasonality="month")
-        assert_figure_valid(fig)
+        """Default panel mode with single member returns a single figure."""
+        # With only 1 group and 2 members, returns dict
+        result = plot_subseasonality(panel_subseas_df, seasonality="month")
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
 
 class TestPlotSeasonalHeatmapPanel:
@@ -1611,14 +1636,14 @@ class TestScatterMatrixSeasonality:
         })
 
     def test_grid_mode_with_seasonality(self, seasonal_df):
-        """Grid mode with month seasonality hits season-colored scatter path."""
+        """Non-panel with month seasonality hits season-colored scatter path."""
         fig = plot_scatter_matrix(
-            seasonal_df, columns=["a", "b"], seasonality="month", separate=False,
+            seasonal_df, columns=["a", "b"], seasonality="month",
         )
         assert_figure_valid(fig)
 
     def test_separate_mode_with_seasonality(self):
-        """Panel data with separate=True and seasonality hits _scatter_matrix_facet."""
+        """Panel data with facet_by='group' and seasonality hits _scatter_matrix_facet."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
         n = len(dates)
         df = pl.DataFrame({
@@ -1627,9 +1652,8 @@ class TestScatterMatrixSeasonality:
             "grp__y": [200.0 + (i % 20) * 2 for i in range(n)],
         })
         result = plot_scatter_matrix(
-            df, seasonality="quarter", separate=True, panel_group_names=["grp"],
+            df, seasonality="quarter", facet_by="group", panel_group_names=["grp"],
         )
-        # separate=True with panel data returns a dict of figures
         assert isinstance(result, dict)
         for fig in result.values():
             assert isinstance(fig, go.Figure)
@@ -1642,7 +1666,6 @@ class TestScatterMatrixSeasonality:
             columns=["a", "b"],
             seasonality="quarter",
             max_points=50,
-            separate=False,
         )
         assert_figure_valid(fig)
 

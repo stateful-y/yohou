@@ -337,14 +337,14 @@ class TestPanelForecast:
         assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
 
     def test_multivariate_panel_member_names_in_legend(self, panel_two_groups_df):
-        """Member names appear in legend labels for multivariate panels."""
+        """Group names appear in legend labels for multivariate panels (facet_by=member)."""
         y_test = panel_two_groups_df.tail(30)
         y_pred = panel_two_groups_df.tail(30)
         fig = plot_forecast(y_test, y_pred)
         names = [tr.name for tr in fig.data if tr.name]
-        # At least some names should contain member postfixes
-        assert any("city_a" in n for n in names)
-        assert any("city_b" in n for n in names)
+        # With facet_by="member", groups (temp, wind) are overlaid per member subplot
+        assert any("temp" in n for n in names)
+        assert any("wind" in n for n in names)
 
 
 class TestPanelTimeWeight:
@@ -403,16 +403,20 @@ class TestPanelSubseasonality:
     """Panel tests for plot_subseasonality."""
 
     def test_two_groups(self, panel_daily_df):
-        """Two-group panel subseasonality produces a valid figure."""
-        fig = plot_subseasonality(panel_daily_df, seasonality="month")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        """Two-member panel subseasonality returns dict of figures."""
+        result = plot_subseasonality(panel_daily_df, seasonality="month")
+        assert isinstance(result, dict)
+        assert len(result) == 2
+        for fig in result.values():
+            assert len(fig.data) > 0
 
     def test_three_groups(self, panel_monthly_3groups):
-        """Three-group panel subseasonality produces traces."""
-        fig = plot_subseasonality(panel_monthly_3groups, seasonality="month")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        """Three-member panel subseasonality returns dict of figures."""
+        result = plot_subseasonality(panel_monthly_3groups, seasonality="month")
+        assert isinstance(result, dict)
+        assert len(result) == 3
+        for fig in result.values():
+            assert len(fig.data) > 0
 
     def test_mean_line_color_matches_series(self):
         """Mean line color matches its series color, not a single hardcoded color."""
@@ -420,9 +424,10 @@ class TestPanelSubseasonality:
         n = len(dates)
         df = pl.DataFrame({
             "time": dates,
-            "y__a": [100 + i % 30 for i in range(n)],
-            "y__b": [200 + i % 20 for i in range(n)],
+            "g1__a": [100 + i % 30 for i in range(n)],
+            "g2__a": [200 + i % 20 for i in range(n)],
         })
+        # Single member "a" with 2 groups → returns go.Figure
         fig = plot_subseasonality(df, seasonality="quarter", show_mean=True)
         series_colors = []
         mean_colors = []
@@ -431,7 +436,7 @@ class TestPanelSubseasonality:
                 series_colors.append(trace.line.color)
             elif trace.mode == "lines" and trace.line.dash == "dash":
                 mean_colors.append(trace.line.color)
-        # There must be at least 2 distinct series (y__a, y__b)
+        # There must be at least 2 distinct series (g1, g2)
         assert len(set(series_colors)) >= 2
         # Mean colors should not all be the same (they match their series)
         assert len(set(mean_colors)) >= 2

@@ -676,11 +676,10 @@ def _correlation_heatmap_separate(
     return figures
 
 
-def _correlation_heatmap_grid(
+def _correlation_heatmap_by_member(
     df: pl.DataFrame,
-    groups: dict[str, list[str]],
+    member_groups: dict[str, list[str]],
     *,
-    facet_n_cols: int,
     colorscale: str,
     show_values: bool,
     show_legend: bool,
@@ -689,30 +688,18 @@ def _correlation_heatmap_grid(
     y_label: str | None,
     width: int | None,
     height: int | None,
-) -> go.Figure:
-    """Build a faceted subplot grid with one heatmap per panel group."""
-    group_names = list(groups.keys())
-    n_groups = len(group_names)
-
-    grid_cols = min(n_groups, facet_n_cols)
-    grid_rows = math.ceil(n_groups / grid_cols)
-
-    fig = make_subplots(
-        rows=grid_rows,
-        cols=grid_cols,
-        subplot_titles=group_names,
-        horizontal_spacing=_subplot_spacing(grid_cols),
-    )
-
-    for gi, gname in enumerate(group_names):
-        gcols = groups[gname]
-        base_names = [c.split("__", 1)[1] if "__" in c else c for c in gcols]
-        sub = df.select(gcols).rename(dict(zip(gcols, base_names, strict=False)))
+) -> dict[str, go.Figure]:
+    """Build one standalone heatmap figure per member (groups as axis labels)."""
+    figures: dict[str, go.Figure] = {}
+    for mname, mcols in member_groups.items():
+        base_names = [c.split("__", 1)[0] if "__" in c else c for c in mcols]
+        sub = df.select(mcols).rename(dict(zip(mcols, base_names, strict=False)))
         corr = sub.drop_nulls().corr()
         text_ann = None
         if show_values:
             text_ann = [[f"{v:.2f}" if v is not None else "" for v in row] for row in corr.rows()]
-        fig.add_trace(
+        mfig = go.Figure()
+        mfig.add_trace(
             go.Heatmap(
                 z=corr.to_numpy(),
                 x=base_names,
@@ -721,23 +708,22 @@ def _correlation_heatmap_grid(
                 zmid=0,
                 text=text_ann,
                 texttemplate="%{text}" if show_values else None,
-                hovertemplate=(f"<b>{gname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"),
-                showscale=(gi == n_groups - 1),
-            ),
-            row=gi // grid_cols + 1,
-            col=gi % grid_cols + 1,
+                hovertemplate=(
+                    f"<b>{mname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"
+                ),
+            )
         )
-
-    fig = apply_default_layout(
-        fig,
-        title=title or "Correlation Heatmap",
-        x_label=x_label,
-        y_label=y_label,
-        width=width or max(400 * grid_cols, 600),
-        height=height or max(400 * grid_rows, 400),
-    )
-    fig.update_layout(showlegend=show_legend)
-    return fig
+        mfig = apply_default_layout(
+            mfig,
+            title=title or f"Correlation Heatmap - {mname}",
+            x_label=x_label,
+            y_label=y_label,
+            width=width,
+            height=height,
+        )
+        mfig.update_layout(showlegend=show_legend)
+        figures[mname] = mfig
+    return figures
 
 
 def _correlation_heatmap_single(
@@ -793,8 +779,6 @@ def plot_correlation_heatmap(
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "group",
-    separate: bool = False,
-    facet_n_cols: int = 3,
     show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
@@ -816,17 +800,14 @@ def plot_correlation_heatmap(
     columns : str | list[str] | None, default=None
         Column(s) to include. If None, uses all numeric columns except 'time'.
     panel_group_names : list[str] | None, default=None
-        Panel group prefixes to plot.
+        Panel group prefixes to plot.  When panel data is detected
+        and this is ``None``, all groups are included.
     facet_by : Literal["group", "member"] | None, default="group"
-        Faceting axis for panel data.  ``"group"`` creates one subplot
-        per panel group, ``"member"`` one per member.  ``None`` disables
-        faceting.  Ignored for non-panel data.
-    separate : bool, default=False
-        When ``True``, return a ``dict[str, go.Figure]`` with one
-        figure per facet level instead of a single combined figure.
-    facet_n_cols : int, default=3
-        Number of columns in the faceted grid when multiple panel groups
-        are present.
+        Faceting axis for panel data.  ``"group"`` returns one figure
+        per group (members as axis labels), ``"member"`` returns one
+        figure per member (groups as axis labels).  ``None`` returns a
+        single figure correlating all panel columns.
+        Ignored for non-panel data.
     show_legend : bool, default=True
         Whether to show the legend.
     title : str | None, default=None
@@ -847,8 +828,8 @@ def plot_correlation_heatmap(
     Returns
     -------
     go.Figure | dict[str, go.Figure]
-        Plotly figure object, or a dict of figures when
-        ``separate=True`` with panel data.
+        Single figure when non-panel or ``facet_by=None``.
+        Dict of figures keyed by group or member name otherwise.
 
     Examples
     --------
@@ -881,6 +862,8 @@ def plot_correlation_heatmap(
         panel_group_names = []
 
     if panel_group_names is not None:
+        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
+
         # Normalize columns to list for member filtering
         col_filter = [columns] if isinstance(columns, str) else columns
 
@@ -895,6 +878,9 @@ def plot_correlation_heatmap(
             msg = f"No panel groups found for {panel_group_names}. Available groups: {list(panel_groups.keys())}"
             raise ValueError(msg)
 
+        all_panel_cols = [c for gcols in groups.values() for c in gcols]
+        _, all_members = _group_panel_columns(all_panel_cols)
+
         _layout_kwargs = {
             "colorscale": colorscale,
             "show_values": show_values,
@@ -906,10 +892,23 @@ def plot_correlation_heatmap(
             "height": height,
         }
 
-        if separate:
+        if facet_by is None:
+            return _correlation_heatmap_single(df, all_panel_cols, **_layout_kwargs)
+
+        if facet_by == "group":
             return _correlation_heatmap_separate(df, groups, **_layout_kwargs)
 
-        return _correlation_heatmap_grid(df, groups, facet_n_cols=facet_n_cols, **_layout_kwargs)
+        # facet_by == "member"
+        member_groups: dict[str, list[str]] = {}
+        for member in all_members:
+            member_cols = []
+            for gname, gcols in groups.items():
+                col = next((c for c in gcols if _member_name(c) == member), None)
+                if col:
+                    member_cols.append(col)
+            if member_cols:
+                member_groups[member] = member_cols
+        return _correlation_heatmap_by_member(df, member_groups, **_layout_kwargs)
 
     # Non-panel path
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
@@ -1297,8 +1296,6 @@ def plot_subseasonality(
     seasonality: str = "month",
     show_mean: bool = True,
     panel_group_names: list[str] | None = None,
-    facet_by: Literal["group", "member"] | None = "member",
-    separate: bool = False,
     facet_n_cols: int = 4,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -1323,6 +1320,10 @@ def plot_subseasonality(
     view highlights both the *level* differences between seasons and any
     *trends within* each season over time.
 
+    For panel data, returns one figure per member with groups overlaid by
+    colour.  When only a single member exists, a plain ``go.Figure`` is
+    returned instead of a dict.
+
     Parameters
     ----------
     df : pl.DataFrame
@@ -1335,17 +1336,10 @@ def plot_subseasonality(
         Show a horizontal mean line within each season subplot.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
-    facet_by : Literal["group", "member"] | None, default="member"
-        Faceting axis for panel data.  ``"member"`` creates one subplot
-        per member, ``"group"`` one per panel group.  ``None`` disables
-        faceting.  Ignored for non-panel data.
-    separate : bool, default=False
-        When ``True``, return a ``dict[str, go.Figure]`` with one
-        figure per facet level instead of a single combined figure.
     facet_n_cols : int, default=4
         Number of columns in the subplot grid.
     color_palette : list[str] | None, default=None
-        Custom color palette (one color per column).
+        Custom color palette (one color per group).
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -1378,8 +1372,8 @@ def plot_subseasonality(
     Returns
     -------
     go.Figure | dict[str, go.Figure]
-        Plotly figure object, or a dict keyed by panel group name when
-        ``separate=True``.
+        Plotly figure for non-panel or single-member data.  For panel
+        data with multiple members, a dict keyed by member name.
 
     Examples
     --------
@@ -1427,17 +1421,19 @@ def plot_subseasonality(
         else:
             subplot_titles.append(str(s))
 
-    if panel_group_names is not None and separate:
+    if panel_group_names is not None:
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
-        groups, _all_members = _group_panel_columns(plot_columns)
+        groups, all_members = _group_panel_columns(plot_columns)
+
+        # Build one figure per member, groups overlaid by colour.
         figures: dict[str, go.Figure] = {}
 
-        for gname, group_cols in groups.items():
+        for member in all_members:
             color_mgr = PanelColorManager(color_palette)
             legend_tracker = LegendTracker(show_legend=show_legend)
 
-            gfig = _create_subplots(
+            mfig = _create_subplots(
                 resampler,
                 rows=nrow,
                 cols=facet_n_cols,
@@ -1451,17 +1447,28 @@ def plot_subseasonality(
                 c_pos = si % facet_n_cols + 1
                 season_df = df_aug.filter(pl.col("season") == season_val)
 
-                for col_name in group_cols:
-                    display_name = _member_name(col_name)
-                    col_color = color_mgr.get_color(display_name)
+                for gname, group_cols in groups.items():
+                    # Find this member's column within the group.
+                    col_name = next(
+                        (c for c in group_cols if _member_name(c) == member), None,
+                    )
+                    if col_name is None or col_name not in season_df.columns:
+                        continue
 
-                    agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
+                    display_name = gname
+                    col_color = color_mgr.get_color(gname)
+
+                    agg_df = (
+                        season_df.group_by("cycle")
+                        .agg(pl.col(col_name).mean())
+                        .sort("cycle")
+                    )
                     cycles = agg_df["cycle"].to_list()
                     values = agg_df[col_name].to_list()
                     if not cycles:
                         continue
 
-                    gfig.add_trace(
+                    mfig.add_trace(
                         go.Scatter(
                             x=cycles,
                             y=values,
@@ -1469,7 +1476,9 @@ def plot_subseasonality(
                             line={"color": col_color, "width": line_width},
                             marker={"size": marker_size, "opacity": marker_opacity},
                             connectgaps=connect_gaps,
-                            hovertemplate=_make_hovertemplate(display_name, "Cycle", "Value"),
+                            hovertemplate=_make_hovertemplate(
+                                display_name, "Cycle", "Value",
+                            ),
                             name=display_name,
                             legendgroup=display_name,
                             showlegend=legend_tracker.should_show(display_name),
@@ -1481,12 +1490,16 @@ def plot_subseasonality(
                     if show_mean:
                         mean_val = agg_df[col_name].mean()
                         if mean_val is not None and len(cycles) >= 2:
-                            gfig.add_trace(
+                            mfig.add_trace(
                                 go.Scatter(
                                     x=[cycles[0], cycles[-1]],
                                     y=[mean_val, mean_val],
                                     mode="lines",
-                                    line={"color": col_color, "width": mean_width, "dash": mean_dash},
+                                    line={
+                                        "color": col_color,
+                                        "width": mean_width,
+                                        "dash": mean_dash,
+                                    },
                                     name=f"Mean ({display_name})",
                                     legendgroup=display_name,
                                     showlegend=False,
@@ -1496,19 +1509,22 @@ def plot_subseasonality(
                                 col=c_pos,
                             )
 
-            gfig = apply_default_layout(
-                gfig,
-                title=title or "Seasonal Subseries",
+            mfig = apply_default_layout(
+                mfig,
+                title=title or f"Seasonal Subseries - {member}",
                 x_label=x_label,
                 y_label=y_label,
                 width=width,
                 height=height if height is not None else max(450, nrow * 280),
             )
-            gfig.update_layout(showlegend=show_legend)
-            figures[gname] = gfig
+            mfig.update_layout(showlegend=show_legend)
+            figures[member] = mfig
 
+        if len(figures) == 1:
+            return next(iter(figures.values()))
         return figures
 
+    # --- Non-panel path ---
     fig = _create_subplots(
         resampler,
         rows=nrow,
@@ -1519,44 +1535,24 @@ def plot_subseasonality(
     )
 
     colors = resolve_color_palette(color_palette, len(plot_columns))
-    _color_mgr = PanelColorManager(color_palette) if panel_group_names is not None else None
-    _legend_tracker = LegendTracker(show_legend=show_legend)
-    _seen_groups: set[str] = set()
+    legend_tracker = LegendTracker(show_legend=show_legend)
 
     for si, season_val in enumerate(seasons):
         r = si // facet_n_cols + 1
         c = si % facet_n_cols + 1
-
         season_df = df_aug.filter(pl.col("season") == season_val)
 
         for ci, col_name in enumerate(plot_columns):
-            display_name = _member_name(col_name) if _color_mgr is not None else col_name
-            col_color = _color_mgr.get_color(display_name) if _color_mgr is not None else colors[ci % len(colors)]
-            group_name = col_name.partition("__")[0] if _color_mgr is not None else col_name
-
-            # Aggregate by cycle (mean) when multiple observations exist
-            agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
+            col_color = colors[ci % len(colors)]
+            agg_df = (
+                season_df.group_by("cycle")
+                .agg(pl.col(col_name).mean())
+                .sort("cycle")
+            )
             cycles = agg_df["cycle"].to_list()
             values = agg_df[col_name].to_list()
-
             if not cycles:
                 continue
-
-            if _color_mgr is not None:
-                is_first = group_name not in _seen_groups
-                _seen_groups.add(group_name)
-                legend_kw = grouped_legend_kwargs(
-                    group_name,
-                    display_name,
-                    _legend_tracker,
-                    is_first_in_group=is_first,
-                )
-            else:
-                legend_kw = {
-                    "name": display_name,
-                    "legendgroup": display_name,
-                    "showlegend": _legend_tracker.should_show(display_name),
-                }
 
             fig.add_trace(
                 go.Scatter(
@@ -1566,8 +1562,10 @@ def plot_subseasonality(
                     line={"color": col_color, "width": line_width},
                     marker={"size": marker_size, "opacity": marker_opacity},
                     connectgaps=connect_gaps,
-                    hovertemplate=_make_hovertemplate(display_name, "Cycle", "Value"),
-                    **legend_kw,
+                    hovertemplate=_make_hovertemplate(col_name, "Cycle", "Value"),
+                    name=col_name,
+                    legendgroup=col_name,
+                    showlegend=legend_tracker.should_show(col_name),
                 ),
                 row=r,
                 col=c,
@@ -1586,8 +1584,8 @@ def plot_subseasonality(
                                 "width": mean_width,
                                 "dash": mean_dash,
                             },
-                            name=f"Mean ({display_name})",
-                            legendgroup=group_name if _color_mgr is not None else display_name,
+                            name=f"Mean ({col_name})",
+                            legendgroup=col_name,
                             showlegend=False,
                             hovertemplate=f"Mean: {mean_val:.2f}<extra></extra>",
                         ),
@@ -2684,11 +2682,10 @@ def _scatter_matrix_facet(  # noqa: PLR0913
     return figures
 
 
-def _scatter_matrix_grid(  # noqa: PLR0913
+def _scatter_matrix_by_member(  # noqa: PLR0913
     *,
     df: pl.DataFrame,
-    groups: dict[str, list[str]],
-    facet_n_cols: int,
+    member_groups: dict[str, list[str]],
     seasonality: str | None,
     diagonal: str | None,
     show_correlation: bool,
@@ -2701,56 +2698,38 @@ def _scatter_matrix_grid(  # noqa: PLR0913
     pearsonr,  # noqa: ANN001
     marker_size: float = 3.0,
     marker_opacity: float = 0.5,
-) -> go.Figure:
-    """Single figure with all groups' scatter matrices tiled in a grid."""
+) -> dict[str, go.Figure]:
+    """One figure per member, each containing its own G×G scatter matrix (groups as axes)."""
     corr_font_size = 28
 
-    group_names = list(groups.keys())
-    n_groups = len(group_names)
-    grid_cols = min(n_groups, facet_n_cols)
-    grid_rows = math.ceil(n_groups / grid_cols)
+    figures: dict[str, go.Figure] = {}
 
-    # Determine M (members per group) - use max across groups
-    ms = {g: len(cols) for g, cols in groups.items()}
-    m_max = max(ms.values())
-
-    total_rows = grid_rows * m_max
-    total_cols = grid_cols * m_max
-
-    fig = make_subplots(
-        rows=total_rows,
-        cols=total_cols,
-        horizontal_spacing=0.02,
-        vertical_spacing=0.02,
-    )
-
-    uniform_color = resolve_color_palette(color_palette, 1)[0]
-    is_first_group = True
-
-    for gi, gname in enumerate(group_names):
-        gcols = groups[gname]
-        base_names = [c.split("__", 1)[1] if "__" in c else c for c in gcols]
+    for mname, mcols in member_groups.items():
+        base_names = [c.split("__", 1)[0] if "__" in c else c for c in mcols]
+        sub_df = df.select(["time", *mcols]).rename(dict(zip(mcols, base_names, strict=False)))
         m = len(base_names)
         if m < 2:
             continue
 
-        sub_df = df.select(["time", *gcols]).rename(dict(zip(gcols, base_names, strict=False)))
         df_work, season_labels, season_colors, seasons_raw = _prepare_season_info(
             sub_df, seasonality, color_palette
         )
         df_work = _subsample_df(df_work, max_points, seasons_raw)
+        uniform_color = resolve_color_palette(color_palette, 1)[0]
 
-        gr = gi // grid_cols
-        gc = gi % grid_cols
-        row_off = gr * m_max
-        col_off = gc * m_max
+        fig = make_subplots(
+            rows=m,
+            cols=m,
+            horizontal_spacing=_subplot_spacing(m),
+            vertical_spacing=_subplot_spacing(m),
+        )
 
         _render_scatter_block(
             fig,
             df_work,
             base_names,
-            row_offset=row_off,
-            col_offset=col_off,
+            row_offset=0,
+            col_offset=0,
             n=m,
             seasonality=seasonality,
             season_labels=season_labels,
@@ -2762,62 +2741,40 @@ def _scatter_matrix_grid(  # noqa: PLR0913
             marker_size=marker_size,
             marker_opacity=marker_opacity,
             corr_font_size=corr_font_size,
-            show_legend=is_first_group,
-            total_cols=total_cols,
+            show_legend=True,
+            total_cols=m,
             gaussian_kde=gaussian_kde,
             pearsonr=pearsonr,
         )
-        is_first_group = False
 
-        # Axis labels for this block
+        # Axis labels on outermost edges
         for ri in range(m):
             for ci in range(m):
-                axis_idx = (row_off + ri) * total_cols + (col_off + ci) + 1
+                axis_idx = ri * m + ci + 1
                 x_key = f"xaxis{axis_idx}" if axis_idx > 1 else "xaxis"
                 y_key = f"yaxis{axis_idx}" if axis_idx > 1 else "yaxis"
                 if ri == m - 1:
-                    fig.layout[x_key].title = {"text": base_names[ci], "font": {"size": 10}}
+                    fig.layout[x_key].title = {"text": base_names[ci], "font": {"size": 11}}
                 else:
                     fig.layout[x_key].showticklabels = False
                 if ci == 0:
-                    fig.layout[y_key].title = {"text": base_names[ri], "font": {"size": 10}}
+                    fig.layout[y_key].title = {"text": base_names[ri], "font": {"size": 11}}
                 else:
                     fig.layout[y_key].showticklabels = False
 
-        # Group name annotation at top-centre of block
-        top_axis_idx = row_off * total_cols + col_off + 1
-        x_key_top = f"xaxis{top_axis_idx}" if top_axis_idx > 1 else "xaxis"
-        x_domain = fig.layout[x_key_top].domain
-        # last col in block
-        last_col_idx = row_off * total_cols + col_off + m
-        x_key_last = f"xaxis{last_col_idx}" if last_col_idx > 1 else "xaxis"
-        x_domain_last = fig.layout[x_key_last].domain
-        y_key_top = f"yaxis{top_axis_idx}" if top_axis_idx > 1 else "yaxis"
-        y_domain_top = fig.layout[y_key_top].domain
-        fig.add_annotation(
-            text=f"<b>{gname}</b>",
-            xref="paper",
-            yref="paper",
-            x=(x_domain[0] + x_domain_last[1]) / 2,
-            y=y_domain_top[1] + 0.01,
-            showarrow=False,
-            font={"size": 13},
+        cell_size = 180
+        default_size = max(600, m * cell_size + 100)
+        fig = apply_default_layout(
+            fig,
+            title=title or f"Scatter Matrix - {mname}",
+            x_label=None,
+            y_label=None,
+            width=width or default_size,
+            height=height or default_size,
         )
+        figures[mname] = fig
 
-    cell_size = 160
-    default_w = max(600, total_cols * cell_size + 100)
-    default_h = max(600, total_rows * cell_size + 100)
-
-    fig = apply_default_layout(
-        fig,
-        title=title or "Scatter Matrix",
-        x_label=None,
-        y_label=None,
-        width=width or default_w,
-        height=height or default_h,
-    )
-
-    return fig
+    return figures
 
 
 def plot_scatter_matrix(
@@ -2830,8 +2787,6 @@ def plot_scatter_matrix(
     max_points: int | None = 10_000,
     panel_group_names: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "group",
-    separate: bool = False,
-    facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
     title: str | None = None,
@@ -2876,14 +2831,11 @@ def plot_scatter_matrix(
         Panel group prefixes to plot.  When ``None`` and the DataFrame
         contains panel data, all groups are plotted automatically.
     facet_by : Literal["group", "member"] | None, default="group"
-        Faceting axis for panel data.  ``"group"`` creates one subplot
-        per panel group, ``"member"`` one per member.  ``None`` disables
-        faceting.  Ignored for non-panel data.
-    separate : bool, default=False
-        When ``True``, return a ``dict[str, go.Figure]`` with one
-        figure per facet level instead of a single combined figure.
-    facet_n_cols : int, default=2
-        Number of group columns in the subplot grid.
+        Faceting axis for panel data.  ``"group"`` returns one figure
+        per group (members as axis labels), ``"member"`` returns one
+        figure per member (groups as axis labels).  ``None`` returns
+        a single figure with all panel columns.
+        Ignored for non-panel data.
     color_palette : list[str] | None, default=None
         Custom colour palette.  If ``None``, uses yohou palette.
     show_legend : bool, default=True
@@ -2902,8 +2854,8 @@ def plot_scatter_matrix(
     Returns
     -------
     go.Figure | dict[str, go.Figure]
-        Plotly figure object, or a dict of figures when
-        ``separate=True`` with panel data.
+        Single figure when non-panel or ``facet_by=None``.
+        Dict of figures keyed by group or member name otherwise.
 
     Raises
     ------
@@ -2943,6 +2895,8 @@ def plot_scatter_matrix(
         panel_group_names = []
 
     if panel_group_names is not None:
+        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
+
         # Normalize columns to list for member filtering
         col_filter = [columns] if isinstance(columns, str) else columns
 
@@ -2961,43 +2915,44 @@ def plot_scatter_matrix(
             msg = f"No panel groups found for {panel_group_names}. Available groups: {list(_panel_groups.keys())}"
             raise ValueError(msg)
 
-        if separate:
-            return _scatter_matrix_facet(
-                df=df,
-                groups=groups,
-                seasonality=seasonality,
-                diagonal=diagonal,
-                show_correlation=show_correlation,
-                max_points=max_points,
-                color_palette=color_palette,
-                title=title,
-                width=width,
-                height=height,
-                gaussian_kde=gaussian_kde,
-                pearsonr=pearsonr,
-                marker_size=marker_size,
-                marker_opacity=marker_opacity,
-            )
+        _scatter_kwargs = {
+            "seasonality": seasonality,
+            "diagonal": diagonal,
+            "show_correlation": show_correlation,
+            "max_points": max_points,
+            "color_palette": color_palette,
+            "title": title,
+            "width": width,
+            "height": height,
+            "gaussian_kde": gaussian_kde,
+            "pearsonr": pearsonr,
+            "marker_size": marker_size,
+            "marker_opacity": marker_opacity,
+        }
 
-        return _scatter_matrix_grid(
-            df=df,
-            groups=groups,
-            facet_n_cols=facet_n_cols,
-            seasonality=seasonality,
-            diagonal=diagonal,
-            show_correlation=show_correlation,
-            max_points=max_points,
-            color_palette=color_palette,
-            title=title,
-            width=width,
-            height=height,
-            gaussian_kde=gaussian_kde,
-            pearsonr=pearsonr,
-            marker_size=marker_size,
-            marker_opacity=marker_opacity,
-        )
-
-    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+        if facet_by is None:
+            # Flatten all panel columns into a single scatter matrix
+            all_panel_cols = [c for gcols in groups.values() for c in gcols]
+            plot_columns = all_panel_cols
+            # Fall through to the non-panel path below
+        elif facet_by == "member":
+            all_panel_cols = [c for gcols in groups.values() for c in gcols]
+            _, all_members = _group_panel_columns(all_panel_cols)
+            member_groups: dict[str, list[str]] = {}
+            for member in all_members:
+                member_cols = []
+                for gname, gcols in groups.items():
+                    col = next((c for c in gcols if _member_name(c) == member), None)
+                    if col:
+                        member_cols.append(col)
+                if member_cols:
+                    member_groups[member] = member_cols
+            return _scatter_matrix_by_member(df=df, member_groups=member_groups, **_scatter_kwargs)
+        else:
+            # facet_by == "group"
+            return _scatter_matrix_facet(df=df, groups=groups, **_scatter_kwargs)
+    else:
+        plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     n = len(plot_columns)
     if n < 2:
         msg = f"plot_scatter_matrix requires at least 2 numeric columns, got {n}: {plot_columns}"

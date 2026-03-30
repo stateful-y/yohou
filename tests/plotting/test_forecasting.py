@@ -264,9 +264,9 @@ class TestPlotComponentsPanel:
         }
         result = plot_components(y, components)
         assert isinstance(result, dict)
-        assert "y" in result
-        assert_figure_valid(result["y"])
-        assert len(result["y"].data) >= 2
+        assert "a" in result
+        assert_figure_valid(result["a"])
+        assert len(result["a"].data) >= 2
 
     def test_custom_dimensions(self):
         """Custom dimensions are passed through."""
@@ -301,11 +301,11 @@ class TestPlotComponentsPanel:
         }
         result = plot_components(y, components)
         assert isinstance(result, dict)
-        assert "y" in result
-        fig = result["y"]
+        assert "a" in result
+        fig = result["a"]
         assert_figure_valid(fig)
-        # 3 rows (original + trend + residual) × 2 members = 6 traces
-        assert len(fig.data) >= 6
+        # 3 rows (original + trend + residual) x 1 group per member = 3 traces
+        assert len(fig.data) >= 3
 
     def test_panel_group_filter(self):
         """panel_group_names filters to specific groups."""
@@ -324,13 +324,11 @@ class TestPlotComponentsPanel:
             }),
         }
         result = plot_components(y, components, panel_group_names=["g1"])
-        assert isinstance(result, dict)
-        assert "g1" in result
-        assert "g2" not in result
-        fig = result["g1"]
-        assert_figure_valid(fig)
+        # With 1 group and 1 member "a", returns single go.Figure
+        assert isinstance(result, go.Figure)
+        assert_figure_valid(result)
         # Only g1 group -> 1 trace for original + 1 for trend
-        assert len(fig.data) == 2
+        assert len(result.data) == 2
 
 
 _has_statsmodels = importlib.util.find_spec("statsmodels") is not None
@@ -1375,9 +1373,9 @@ class TestPlotComponentsPanel:
             y, {"Trend": trend}, panel_group_names=["y"], show_original=True,
         )
         assert isinstance(result, dict)
-        assert "y" in result
-        assert isinstance(result["y"], go.Figure)
-        assert len(result["y"].data) >= 2
+        assert "a" in result
+        assert isinstance(result["a"], go.Figure)
+        assert len(result["a"].data) >= 2
 
     def test_panel_components_no_original(self):
         """Panel components with show_original=False."""
@@ -1396,7 +1394,7 @@ class TestPlotComponentsPanel:
             y, {"Trend": trend}, panel_group_names=["y"], show_original=False,
         )
         assert isinstance(result, dict)
-        assert len(result["y"].data) >= 2
+        assert len(result["a"].data) >= 1
 
 
 
