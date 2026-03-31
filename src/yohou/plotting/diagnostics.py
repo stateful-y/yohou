@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 from scipy.stats import norm
 
 from yohou.plotting._utils import (
+    DEFAULT_WIDTH,
     LegendTracker,
     PanelColorManager,
     RenderContext,
@@ -1807,7 +1808,7 @@ def plot_lag_scatter(
                 fig.update_yaxes(title_text=y_label or "y(t)", row=r, col=c)
 
             cell_size = 260
-            default_width = max(600, ncols_grid * cell_size + 100)
+            default_width = max(DEFAULT_WIDTH, ncols_grid * cell_size + 100)
             default_height = max(400, nrows_grid * cell_size + 100)
 
             fig = apply_default_layout(
@@ -1944,7 +1945,7 @@ def plot_lag_scatter(
                 fig.update_yaxes(title_text=y_label or "y(t)", row=r, col=c)
 
             cell_size = 260
-            default_width = max(600, ncols * cell_size + 100)
+            default_width = max(DEFAULT_WIDTH, ncols * cell_size + 100)
             default_height = max(400, nrows * cell_size + 100)
 
             fig = apply_default_layout(
