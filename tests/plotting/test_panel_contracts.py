@@ -238,15 +238,19 @@ class TestSeasonalHeatmapPanel:
 
 
 class TestLagScatterPanelColors:
-    def test_panel_grid_shows_member_legend(self, panel_df):
-        fig = plot_lag_scatter(panel_df, lags=[1])
-        names = visible_legend_names(fig)
-        assert len(names) >= 2
+    def test_panel_returns_dict_for_multi_member(self, panel_df):
+        result = plot_lag_scatter(panel_df, lags=[1])
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"a", "b"}
+        for fig in result.values():
+            assert isinstance(fig, go.Figure)
+            assert len(fig.data) > 0
 
-    def test_panel_members_have_legendgroup(self, panel_df):
-        fig = plot_lag_scatter(panel_df, lags=[1])
-        groups = legend_groups(fig)
-        assert len(groups) >= 2
+    def test_panel_groups_overlaid_per_member(self, panel_df):
+        result = plot_lag_scatter(panel_df, lags=[1])
+        for fig in result.values():
+            groups = legend_groups(fig)
+            assert len(groups) >= 1
 
     def test_seasonal_mode_has_legendgrouptitle(self):
         df = pl.DataFrame({
@@ -473,9 +477,11 @@ class TestColorConsistencyContract:
         ids=[c[0] for c in _PANEL_COLOR_CASES],
     )
     def test_consistent_colors(self, name, func, kw):
-        fig = func(**kw)
-        for g in legend_groups(fig):
-            assert_consistent_colors(fig, g)
+        result = func(**kw)
+        figs = result.values() if isinstance(result, dict) else [result]
+        for fig in figs:
+            for g in legend_groups(fig):
+                assert_consistent_colors(fig, g)
 
 
 

@@ -252,23 +252,28 @@ class TestPanelLagScatter:
 
     def test_multi_lag(self, panel_daily_df):
         """Two-group lag scatter with multiple lags."""
-        fig = plot_lag_scatter(
+        result = plot_lag_scatter(
             panel_daily_df,
             lags=[1, 7],
             panel_group_names=["y"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert isinstance(fig, go.Figure)
+            assert len(fig.data) > 0
 
     def test_three_groups(self, panel_monthly_3groups):
         """Three-group lag scatter."""
-        fig = plot_lag_scatter(
+        result = plot_lag_scatter(
             panel_monthly_3groups,
             lags=1,
             panel_group_names=["sales"],
         )
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert isinstance(result, dict)
+        assert len(result) == 3
+        for fig in result.values():
+            assert isinstance(fig, go.Figure)
+            assert len(fig.data) > 0
 
 
 class TestPanelSpectrum:

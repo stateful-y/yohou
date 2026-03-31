@@ -243,8 +243,11 @@ class TestPlotLagScatter:
             "y__a": short_df["y"],
             "y__b": short_df["x"],
         })
-        fig = plot_lag_scatter(df, lags=[1], panel_group_names=["y"])
-        assert len(fig.data) > 0
+        result = plot_lag_scatter(df, lags=[1], panel_group_names=["y"])
+        assert isinstance(result, dict)
+        assert len(result) == 2
+        for fig in result.values():
+            assert len(fig.data) > 0
 
     def test_multi_lag_grid(self, yearly_2col_df):
         """Test that multiple lags produce a subplot grid."""
@@ -743,8 +746,10 @@ class TestDiagnosticsPanelAutoDetect:
 
     def test_lag_scatter_panel(self, panel_df):
         """plot_lag_scatter with panel data auto-detects groups."""
-        fig = plot_lag_scatter(panel_df, lags=[1, 5], panel_group_names=["y"])
-        assert_figure_valid(fig)
+        result = plot_lag_scatter(panel_df, lags=[1, 5], panel_group_names=["y"])
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
 
 class TestDiagnosticsSeasonalityBranches:
@@ -845,8 +850,10 @@ class TestDiagnosticsAutoDetectPanel:
 
     def test_lag_scatter_auto_detect(self, auto_panel_df):
         """plot_lag_scatter auto-detects panel data."""
-        fig = plot_lag_scatter(auto_panel_df, lags=[1])
-        assert_figure_valid(fig)
+        result = plot_lag_scatter(auto_panel_df, lags=[1])
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
 
 class TestDiagnosticsCustomLabels:
@@ -1420,9 +1427,11 @@ class TestPlotLagScatterPanelAndExtras:
         })
 
     def test_panel_data(self, panel_lag_df):
-        """Panel data auto-detect produces a valid lag scatter figure."""
-        fig = plot_lag_scatter(panel_lag_df, lags=[1])
-        assert_figure_valid(fig)
+        """Panel data auto-detect produces a valid lag scatter dict."""
+        result = plot_lag_scatter(panel_lag_df, lags=[1])
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_seasonality_single_lag(self, yearly_2col_df):
         """Seasonality colouring with a single lag."""

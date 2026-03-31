@@ -17,6 +17,7 @@ from yohou.plotting._utils import (
     _auto_detect_panel,
     _create_figure,
     _create_subplots,
+    _group_panel_columns,
     _make_hovertemplate,
     _member_name,
     _subplot_spacing,
@@ -1615,7 +1616,6 @@ def plot_lag_scatter(
     show_diagonal: bool = True,
     show_regression: bool = False,
     panel_group_names: list[str] | None = None,
-    facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 3,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -1626,7 +1626,7 @@ def plot_lag_scatter(
     height: int | None = None,
     marker_size: float = 4.0,
     marker_opacity: float = 0.6,
-) -> go.Figure:
+) -> go.Figure | dict[str, go.Figure]:
     """Plot scatter plots of y(t) vs y(t-lag) for analysing temporal dependencies.
 
     Creates scatter plots showing the relationship between current values and
@@ -1634,6 +1634,13 @@ def plot_lag_scatter(
     correlations.  When ``lags`` has more than one entry, each lag
     gets its own subplot arranged in a grid.  Optionally colour points by
     season using the ``seasonality`` parameter.
+
+    For panel data, each member gets its own figure with one subplot per lag
+    and all groups overlaid by colour.  When there are multiple members, a
+    ``dict[str, go.Figure]`` keyed by member name is returned.
+
+    For non-panel multivariate data, each column gets its own figure with lag
+    subplots, and a ``dict[str, go.Figure]`` keyed by column name is returned.
 
     Parameters
     ----------
@@ -1653,12 +1660,8 @@ def plot_lag_scatter(
         Show a linear regression line fitted to the data.
     panel_group_names : list[str] | None, default=None
         Panel group prefixes to plot.
-    facet_by : Literal["group", "member"] | None, default="member"
-        Faceting axis for panel data.  ``"member"`` creates one subplot
-        per member, ``"group"`` one per panel group.  ``None`` disables
-        faceting.  Ignored for non-panel data.
     facet_n_cols : int, default=3
-        Number of columns in facet / subplot grid.
+        Number of columns in the subplot grid.
     color_palette : list[str] | None, default=None
         Custom color palette.
     show_legend : bool, default=True
@@ -1666,9 +1669,9 @@ def plot_lag_scatter(
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
-        X-axis label. Defaults to ``"y(t-{lag})"`` for single-lag plots.
+        X-axis label. Defaults to ``"y(t-{lag})"`` per subplot.
     y_label : str | None, default=None
-        Y-axis label. Defaults to ``"y(t)"``.
+        Y-axis label. Defaults to ``"y(t)"`` per subplot.
     width : int | None, default=None
         Plot width in pixels.
     height : int | None, default=None
@@ -1680,8 +1683,10 @@ def plot_lag_scatter(
 
     Returns
     -------
-    go.Figure
-        Plotly figure object.
+    go.Figure | dict[str, go.Figure]
+        Single figure for univariate data (one column or one panel member).
+        Dictionary of figures keyed by column/member name for multivariate
+        data.
 
     Examples
     --------
@@ -1707,7 +1712,9 @@ def plot_lag_scatter(
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
-    if isinstance(lags, int):
+    if lags is None:
+        lags = [1]
+    elif isinstance(lags, int):
         lags = list(range(1, lags + 1))
 
     # Auto-detect panel data
@@ -1715,84 +1722,74 @@ def plot_lag_scatter(
     if panel_group_names is None and columns is None and _panel_groups:
         panel_group_names = []
 
+    # ---- Panel path ----
     if panel_group_names is not None:
-        _lag_list = lags
+        panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        groups, all_members = _group_panel_columns(panel_cols)
 
-        col_filter = [columns] if isinstance(columns, str) else columns
-        groups: dict[str, list[str]] = {}
-        for g, gcols in _panel_groups.items():
-            if not panel_group_names or g in panel_group_names:
-                filtered = (
-                    [c for c in gcols if c.split("__", 1)[1] in col_filter]
-                    if col_filter is not None
-                    else gcols
-                )
-                if filtered:
-                    groups[g] = filtered
-        if not groups:
-            msg = f"No panel groups found for {panel_group_names}. Available: {list(_panel_groups.keys())}"
-            raise ValueError(msg)
+        n_lags = len(lags)
+        figures: dict[str, go.Figure] = {}
 
-        # Flatten all member columns across groups
-        all_members: list[tuple[str, str, str]] = []  # (full_col, base_name, group_name)
-        for gname, gcols in groups.items():
-            for c in gcols:
-                base = c.split("__", 1)[1] if "__" in c else c
-                all_members.append((c, base, gname))
+        for member in all_members:
+            color_mgr = PanelColorManager(color_palette)
+            legend_tracker = LegendTracker(show_legend=show_legend)
 
-        n_lags = len(_lag_list)
-        n_members = len(all_members)
+            ncols_grid = min(facet_n_cols, n_lags)
+            nrows_grid = math.ceil(n_lags / ncols_grid)
+            subtitles = [f"lag {k}" for k in lags]
 
-        color_mgr = PanelColorManager(color_palette)
-        legend_tracker = LegendTracker()
+            fig = make_subplots(
+                rows=nrows_grid,
+                cols=ncols_grid,
+                subplot_titles=subtitles,
+                horizontal_spacing=0.08,
+                vertical_spacing=max(0.04, 0.3 / nrows_grid),
+            )
 
-        row_titles = [f"lag {k}" for k in _lag_list]
-        col_titles = [f"{gn}: {bn}" for _, bn, gn in all_members]
+            for li, lag in enumerate(lags):
+                r = li // ncols_grid + 1
+                c = li % ncols_grid + 1
+                all_vals: list[float] = []
 
-        fig = make_subplots(
-            rows=n_lags,
-            cols=n_members,
-            subplot_titles=None,
-            row_titles=row_titles,
-            column_titles=col_titles,
-            horizontal_spacing=max(0.03, 0.25 / max(n_members, 1)),
-            vertical_spacing=max(0.03, 0.25 / max(n_lags, 1)),
-        )
+                for gname, group_cols in groups.items():
+                    col_name = next(
+                        (col for col in group_cols if _member_name(col) == member), None,
+                    )
+                    if col_name is None or col_name not in df.columns:
+                        continue
 
-        for li, lag in enumerate(_lag_list):
-            for mi, (full_col, base_name, _gn) in enumerate(all_members):
-                r = li + 1
-                c = mi + 1
-                member_color = color_mgr.get_color(base_name)
-                series = df.select(["time", full_col]).rename({full_col: base_name})
-                dl = series.with_columns(pl.col(base_name).shift(lag).alias("lagged")).drop_nulls()
+                    dl = df.select(col_name).with_columns(
+                        pl.col(col_name).shift(lag).alias("lagged"),
+                    ).drop_nulls()
+                    if len(dl) == 0:
+                        continue
 
-                legend_kw = grouped_legend_kwargs(
-                    base_name,
-                    f"lag {lag}",
-                    legend_tracker,
-                    is_first_in_group=li == 0,
-                )
-                fig.add_trace(
-                    go.Scattergl(
-                        x=dl["lagged"],
-                        y=dl[base_name],
-                        mode="markers",
-                        marker={"size": marker_size, "color": member_color, "opacity": marker_opacity},
-                        hovertemplate=(
-                            f"<b>{base_name}</b><br>"
-                            f"y(t-{lag}): %{{x:.2f}}<br>"
-                            f"y(t): %{{y:.2f}}<extra></extra>"
+                    group_color = color_mgr.get_color(gname)
+                    fig.add_trace(
+                        go.Scattergl(
+                            x=dl["lagged"],
+                            y=dl[col_name],
+                            mode="markers",
+                            marker={"size": marker_size, "color": group_color, "opacity": marker_opacity},
+                            name=gname,
+                            legendgroup=gname,
+                            showlegend=legend_tracker.should_show(gname),
+                            hovertemplate=(
+                                f"<b>{gname}: {member}</b><br>"
+                                f"y(t-{lag}): %{{x:.2f}}<br>"
+                                f"y(t): %{{y:.2f}}<extra></extra>"
+                            ),
                         ),
-                        **legend_kw,
-                    ),
-                    row=r,
-                    col=c,
-                )
+                        row=r,
+                        col=c,
+                    )
 
-                if show_diagonal and len(dl) > 0:
-                    vmin = min(float(dl[base_name].min()), float(dl["lagged"].min()))  # type: ignore[arg-type]
-                    vmax = max(float(dl[base_name].max()), float(dl["lagged"].max()))  # type: ignore[arg-type]
+                    all_vals.extend(dl[col_name].to_list())
+                    all_vals.extend(dl["lagged"].to_list())
+
+                if show_diagonal and all_vals:
+                    vmin = min(all_vals)
+                    vmax = max(all_vals)
                     fig.add_trace(
                         go.Scatter(
                             x=[vmin, vmax],
@@ -1806,22 +1803,30 @@ def plot_lag_scatter(
                         col=c,
                     )
 
-        cell_w = 240
-        cell_h = 240
-        fig = apply_default_layout(
-            fig,
-            title=title or "Lag Scatter",
-            x_label=None,
-            y_label=None,
-            width=width or max(600, n_members * cell_w + 120),
-            height=height or max(400, n_lags * cell_h + 120),
-        )
-        fig.update_layout(showlegend=show_legend)
-        return fig
+                fig.update_xaxes(title_text=x_label or f"y(t-{lag})", row=r, col=c)
+                fig.update_yaxes(title_text=y_label or "y(t)", row=r, col=c)
 
-    # Resolve columns
+            cell_size = 260
+            default_width = max(600, ncols_grid * cell_size + 100)
+            default_height = max(400, nrows_grid * cell_size + 100)
+
+            fig = apply_default_layout(
+                fig,
+                title=title or f"Lag Scatter - {member}",
+                x_label=None,
+                y_label=None,
+                width=width or default_width,
+                height=height or default_height,
+            )
+            fig.update_layout(showlegend=show_legend)
+            figures[member] = fig
+
+        if len(figures) == 1:
+            return next(iter(figures.values()))
+        return figures
+
+    # ---- Non-panel path ----
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-    lag_list = lags
 
     season_labels: list[str] | None = None
     season_colors: list[str] | None = None
@@ -1837,30 +1842,31 @@ def plot_lag_scatter(
         )
         season_colors = resolve_color_palette(color_palette, n_seasons)
 
-    use_subplots = len(lag_list) > 1
+    figures = {}
 
-    if use_subplots:
-        n_lags = len(lag_list)
-        ncols = min(facet_n_cols, n_lags)
-        nrows = math.ceil(n_lags / ncols)
+    for col in plot_columns:
+        use_subplots = len(lags) > 1
 
-        subtitles = [f"lag {k}" for k in lag_list]
-        fig = make_subplots(
-            rows=nrows,
-            cols=ncols,
-            subplot_titles=subtitles,
-            horizontal_spacing=0.08,
-            vertical_spacing=max(0.04, 0.3 / nrows),
-        )
+        if use_subplots:
+            n_lags = len(lags)
+            ncols = min(facet_n_cols, n_lags)
+            nrows = math.ceil(n_lags / ncols)
 
-        for lag_idx, lag in enumerate(lag_list):
-            r = lag_idx // ncols + 1
-            c = lag_idx % ncols + 1
-            is_first_cell = lag_idx == 0
+            subtitles = [f"lag {k}" for k in lags]
+            fig = make_subplots(
+                rows=nrows,
+                cols=ncols,
+                subplot_titles=subtitles,
+                horizontal_spacing=0.08,
+                vertical_spacing=max(0.04, 0.3 / nrows),
+            )
 
-            for col in plot_columns:
+            for lag_idx, lag in enumerate(lags):
+                r = lag_idx // ncols + 1
+                c = lag_idx % ncols + 1
+                is_first_cell = lag_idx == 0
+
                 if df_aug is not None and season_labels is not None and season_colors is not None:
-                    # Season-colored traces
                     seasons_raw = sorted(df_aug["season"].unique().to_list())
                     for si, (sval, slabel) in enumerate(zip(seasons_raw, season_labels, strict=False)):
                         sub = df_aug.filter(pl.col("season") == sval)
@@ -1879,7 +1885,9 @@ def plot_lag_scatter(
                                 },
                                 name=slabel,
                                 legendgroup=slabel,
-                                legendgrouptitle={"text": seasonality.title()} if is_first_cell and si == 0 else None,
+                                legendgrouptitle=(
+                                    {"text": seasonality.title()} if is_first_cell and si == 0 else None
+                                ),
                                 showlegend=is_first_cell,
                                 hovertemplate=(
                                     f"<b>{col}</b> ({slabel})<br>"
@@ -1891,8 +1899,7 @@ def plot_lag_scatter(
                             col=c,
                         )
                 else:
-                    # Uniform coloring
-                    colors = resolve_color_palette(color_palette, len(plot_columns))
+                    colors = resolve_color_palette(color_palette, 1)
                     dl = df.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
                     fig.add_trace(
                         go.Scattergl(
@@ -1901,7 +1908,7 @@ def plot_lag_scatter(
                             mode="markers",
                             marker={
                                 "size": marker_size,
-                                "color": colors[plot_columns.index(col) % len(colors)],
+                                "color": colors[0],
                                 "opacity": marker_opacity,
                             },
                             name=col,
@@ -1915,7 +1922,6 @@ def plot_lag_scatter(
                         col=c,
                     )
 
-                # Diagonal reference line
                 if show_diagonal:
                     source = df_aug if df_aug is not None else df
                     dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
@@ -1934,35 +1940,56 @@ def plot_lag_scatter(
                         col=c,
                     )
 
-        cell_size = 260
-        default_width = max(600, ncols * cell_size + 100)
-        default_height = max(400, nrows * cell_size + 100)
+                fig.update_xaxes(title_text=x_label or f"y(t-{lag})", row=r, col=c)
+                fig.update_yaxes(title_text=y_label or "y(t)", row=r, col=c)
 
-        fig = apply_default_layout(
-            fig,
-            title=title or "Lag Scatter",
-            x_label=None,
-            y_label=None,
-            width=width or default_width,
-            height=height or default_height,
-        )
-        fig.update_layout(showlegend=show_legend)
+            cell_size = 260
+            default_width = max(600, ncols * cell_size + 100)
+            default_height = max(400, nrows * cell_size + 100)
 
-        return fig
+            fig = apply_default_layout(
+                fig,
+                title=title or "Lag Scatter",
+                x_label=None,
+                y_label=None,
+                width=width or default_width,
+                height=height or default_height,
+            )
+        else:
+            fig = go.Figure()
+            lag = lags[0]
 
-    fig = go.Figure()
-
-    lag = lag_list[0]
-
-    for col in plot_columns:
-        if df_aug is not None and season_labels is not None and season_colors is not None:
-            # Season-colored traces
-            seasons_raw = sorted(df_aug["season"].unique().to_list())
-            for si, (sval, slabel) in enumerate(zip(seasons_raw, season_labels, strict=False)):
-                sub = df_aug.filter(pl.col("season") == sval)
-                dl = sub.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
-                if len(dl) == 0:
-                    continue
+            if df_aug is not None and season_labels is not None and season_colors is not None:
+                seasons_raw = sorted(df_aug["season"].unique().to_list())
+                for si, (sval, slabel) in enumerate(zip(seasons_raw, season_labels, strict=False)):
+                    sub = df_aug.filter(pl.col("season") == sval)
+                    dl = sub.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
+                    if len(dl) == 0:
+                        continue
+                    fig.add_trace(
+                        go.Scattergl(
+                            x=dl["lagged"],
+                            y=dl[col],
+                            mode="markers",
+                            marker={
+                                "size": marker_size,
+                                "color": season_colors[si % len(season_colors)],
+                                "opacity": marker_opacity,
+                            },
+                            name=slabel,
+                            legendgroup=slabel,
+                            legendgrouptitle={"text": seasonality.title()} if si == 0 else None,
+                            showlegend=True,
+                            hovertemplate=(
+                                f"<b>{col}</b> ({slabel})<br>"
+                                f"y(t-{lag}): %{{x:.2f}}<br>"
+                                f"y(t): %{{y:.2f}}<extra></extra>"
+                            ),
+                        )
+                    )
+            else:
+                colors = resolve_color_palette(color_palette, 1)
+                dl = df.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
                 fig.add_trace(
                     go.Scattergl(
                         x=dl["lagged"],
@@ -1970,114 +1997,84 @@ def plot_lag_scatter(
                         mode="markers",
                         marker={
                             "size": marker_size,
-                            "color": season_colors[si % len(season_colors)],
+                            "color": colors[0],
                             "opacity": marker_opacity,
                         },
-                        name=slabel,
-                        legendgroup=slabel,
-                        legendgrouptitle={"text": seasonality.title()} if si == 0 else None,
-                        showlegend=True,
+                        name=f"{col} (lag={lag})",
                         hovertemplate=(
-                            f"<b>{col}</b> ({slabel})<br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"
+                            f"<b>{col}</b><br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"
                         ),
                     )
                 )
-        else:
-            # Uniform coloring (original behaviour)
-            colors = resolve_color_palette(color_palette, len(plot_columns))
-            dl = df.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
-            fig.add_trace(
-                go.Scattergl(
-                    x=dl["lagged"],
-                    y=dl[col],
-                    mode="markers",
-                    marker={
-                        "size": marker_size,
-                        "color": colors[plot_columns.index(col) % len(colors)],
-                        "opacity": marker_opacity,
-                    },
-                    name=f"{col} (lag={lag})",
-                    hovertemplate=(f"<b>{col}</b><br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"),
-                )
-            )
 
-        # Add diagonal line if requested
-        if show_diagonal:
-            source = df_aug if df_aug is not None else df
-            dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
-            y_lagged_min = dl_all["lagged"].min()
-            y_lagged_max = dl_all["lagged"].max()
-            y_current_min = dl_all[col].min()
-            y_current_max = dl_all[col].max()
-            if y_lagged_min is not None and y_current_min is not None:
-                min_val = min(cast(float, y_lagged_min), cast(float, y_current_min))
-                max_val = max(cast(float, y_lagged_max), cast(float, y_current_max))
-                fig.add_trace(
-                    go.Scatter(
-                        x=[min_val, max_val],
-                        y=[min_val, max_val],
-                        mode="lines",
-                        line={"dash": "dash", "color": "#94a3b8", "width": 1},
-                        showlegend=False,
-                        hoverinfo="skip",
-                    )
-                )
-
-        # Add regression line if requested
-        if show_regression:
-            source = df_aug if df_aug is not None else df
-            dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
-            y_lagged = dl_all["lagged"]
-            y_current = dl_all[col]
-            x_mean = y_lagged.mean()
-            y_mean = y_current.mean()
-
-            numerator = ((y_lagged - x_mean) * (y_current - y_mean)).sum()
-            denominator = ((y_lagged - x_mean) ** 2).sum()
-
-            if denominator != 0 and x_mean is not None and y_mean is not None:
-                slope = float(numerator / denominator)
-                intercept = cast(float, y_mean) - slope * cast(float, x_mean)
-
-                y_lagged_min = y_lagged.min()
-                y_lagged_max = y_lagged.max()
-                if y_lagged_min is not None and y_lagged_max is not None:
-                    x_line = [cast(float, y_lagged_min), cast(float, y_lagged_max)]
-                    y_line = [slope * x + intercept for x in x_line]
-                    reg_colors = resolve_color_palette(color_palette, len(plot_columns))
+            if show_diagonal:
+                source = df_aug if df_aug is not None else df
+                dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
+                y_lagged_min = dl_all["lagged"].min()
+                y_lagged_max = dl_all["lagged"].max()
+                y_current_min = dl_all[col].min()
+                y_current_max = dl_all[col].max()
+                if y_lagged_min is not None and y_current_min is not None:
+                    min_val = min(cast(float, y_lagged_min), cast(float, y_current_min))
+                    max_val = max(cast(float, y_lagged_max), cast(float, y_current_max))
                     fig.add_trace(
                         go.Scatter(
-                            x=x_line,
-                            y=y_line,
+                            x=[min_val, max_val],
+                            y=[min_val, max_val],
                             mode="lines",
-                            line={
-                                "color": reg_colors[plot_columns.index(col) % len(reg_colors)],
-                                "width": 2,
-                            },
+                            line={"dash": "dash", "color": "#94a3b8", "width": 1},
                             showlegend=False,
                             hoverinfo="skip",
                         )
                     )
 
-    # Set default labels
-    if title is None:
-        title = f"Lag {lag} Scatter Plot"
+            if show_regression:
+                source = df_aug if df_aug is not None else df
+                dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
+                y_lagged = dl_all["lagged"]
+                y_current = dl_all[col]
+                x_mean = y_lagged.mean()
+                y_mean = y_current.mean()
 
-    x_label_default = x_label or f"y(t-{lag})"
-    y_label_default = y_label or "y(t)"
+                numerator = ((y_lagged - x_mean) * (y_current - y_mean)).sum()
+                denominator = ((y_lagged - x_mean) ** 2).sum()
 
-    # Apply default layout
-    fig = apply_default_layout(
-        fig,
-        title=title,
-        x_label=x_label_default,
-        y_label=y_label_default,
-        width=width,
-        height=height,
-    )
-    fig.update_layout(showlegend=show_legend)
+                if denominator != 0 and x_mean is not None and y_mean is not None:
+                    slope = float(numerator / denominator)
+                    intercept = cast(float, y_mean) - slope * cast(float, x_mean)
 
-    return fig
+                    y_lagged_min = y_lagged.min()
+                    y_lagged_max = y_lagged.max()
+                    if y_lagged_min is not None and y_lagged_max is not None:
+                        x_line = [cast(float, y_lagged_min), cast(float, y_lagged_max)]
+                        y_line = [slope * x + intercept for x in x_line]
+                        reg_colors = resolve_color_palette(color_palette, 1)
+                        fig.add_trace(
+                            go.Scatter(
+                                x=x_line,
+                                y=y_line,
+                                mode="lines",
+                                line={"color": reg_colors[0], "width": 2},
+                                showlegend=False,
+                                hoverinfo="skip",
+                            )
+                        )
+
+            fig = apply_default_layout(
+                fig,
+                title=title or f"Lag {lag} Scatter Plot",
+                x_label=x_label or f"y(t-{lag})",
+                y_label=y_label or "y(t)",
+                width=width,
+                height=height,
+            )
+
+        fig.update_layout(showlegend=show_legend)
+        figures[col] = fig
+
+    if len(figures) == 1:
+        return next(iter(figures.values()))
+    return figures
 
 
 def _compute_ccf(x: np.ndarray, y: np.ndarray, max_lags: int) -> list[float]:
@@ -2113,7 +2110,6 @@ def plot_cross_correlation(
     max_lags: int | None = None,
     confidence_level: float = 0.95,
     panel_group_names: list[str] | None = None,
-    facet_by: Literal["group", "member"] | None = "group",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -2151,10 +2147,6 @@ def plot_cross_correlation(
         Panel group prefixes.  When set (or auto-detected), CCF is
         computed between members within each group using an
         upper-triangle matrix layout.
-    facet_by : Literal["group", "member"] | None, default="group"
-        Faceting axis for panel data.  ``"group"`` creates one subplot
-        per panel group, ``"member"`` one per member.  ``None`` disables
-        faceting.  Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in the subplot grid.
     color_palette : list[str] | None, default=None
@@ -2259,8 +2251,6 @@ def plot_cross_correlation(
         panel_group_names = []
 
     if panel_group_names is not None:
-        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
-
         _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
         groups, _all_members = _group_panel_columns(_panel_cols)
         color_mgr = PanelColorManager(color_palette)
