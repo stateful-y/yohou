@@ -5,6 +5,7 @@ from typing import Literal
 import numpy as np
 import plotly.graph_objects as go
 import polars as pl
+from plotly.subplots import make_subplots
 
 from yohou.plotting._utils import (
     LINE_DASH_SEQUENCE,
@@ -15,6 +16,8 @@ from yohou.plotting._utils import (
     _create_figure,
     _group_panel_columns,
     _make_hovertemplate,
+    _member_name,
+    _subplot_spacing,
     apply_default_layout,
     grouped_legend_kwargs,
     linked_legendgroup_kwargs,
@@ -24,6 +27,7 @@ from yohou.plotting._utils import (
 )
 from yohou.preprocessing import RollingStatisticsTransformer
 from yohou.utils import validate_plotting_data, validate_plotting_params
+from yohou.utils.validation import interval_to_timedelta
 
 __all__ = [
     "plot_boxplot",
@@ -714,6 +718,135 @@ def plot_boxplot(
     return fig
 
 
+def _panel_heatmap_missing(
+    df: pl.DataFrame,
+    *,
+    kind: Literal["heatmap", "matrix"],
+    panel_group_names: list[str],
+    columns: str | list[str] | None,
+    facet_by: Literal["group", "member"],
+    facet_n_cols: int,
+    color_missing: str,
+    color_present: str,
+    time_aggregation: str | None,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+    row_height: int = 300,
+) -> go.Figure:
+    """Build a faceted heatmap/matrix of missing data for panel columns."""
+    panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    groups, all_members = _group_panel_columns(panel_cols)
+    all_group_names = list(groups.keys())
+
+    if facet_by == "member":
+        facet_keys = all_members
+        overlay_keys_per_facet: dict[str, list[str]] = {
+            m: [g for g, cols in groups.items() if any(_member_name(c) == m for c in cols)]
+            for m in all_members
+        }
+    else:
+        facet_keys = all_group_names
+        overlay_keys_per_facet = {
+            g: [_member_name(c) for c in cols]
+            for g, cols in groups.items()
+        }
+
+    n_facets = len(facet_keys)
+    n_cols_grid = min(n_facets, facet_n_cols)
+    n_rows = (n_facets + n_cols_grid - 1) // n_cols_grid
+
+    fig = make_subplots(
+        rows=n_rows,
+        cols=n_cols_grid,
+        subplot_titles=facet_keys,
+        shared_xaxes=True,
+        vertical_spacing=_subplot_spacing(n_rows),
+        horizontal_spacing=0.08,
+    )
+
+    colorscale = [[0, color_present], [1, color_missing]]
+
+    for facet_idx, facet_key in enumerate(facet_keys):
+        row = facet_idx // n_cols_grid + 1
+        col_idx = facet_idx % n_cols_grid + 1
+
+        overlay_keys = overlay_keys_per_facet[facet_key]
+        y_labels: list[str] = []
+        z_data: list[list[int]] = []
+
+        for overlay_key in overlay_keys:
+            if facet_by == "member":
+                group_name = overlay_key
+                member_name = facet_key
+                col_name = next(
+                    (c for c in groups[group_name] if _member_name(c) == member_name),
+                    None,
+                )
+                y_label_entry = group_name
+            else:
+                group_name = facet_key
+                member_name = overlay_key
+                col_name = next(
+                    (c for c in groups[group_name] if _member_name(c) == member_name),
+                    None,
+                )
+                y_label_entry = member_name
+
+            if col_name is None:
+                continue
+
+            y_labels.append(y_label_entry)
+
+            if time_aggregation:
+                df_agg = df.with_columns(
+                    pl.col("time").dt.truncate(time_aggregation).alias("period"),
+                )
+                periods = df_agg.select("period").unique().sort("period")["period"].to_list()
+                col_data = []
+                for period in periods:
+                    period_df = df_agg.filter(pl.col("period") == period)
+                    has_missing = period_df[col_name].null_count() > 0
+                    col_data.append(1 if has_missing else 0)
+                z_data.append(col_data)
+                x_vals = [str(p) for p in periods]
+            else:
+                col_data = df[col_name].is_null().cast(pl.Int8).to_list()
+                z_data.append(col_data)
+                x_vals = df["time"].to_list()
+
+        text_data = [["Missing" if v == 1 else "Present" for v in row] for row in z_data]
+
+        fig.add_trace(
+            go.Heatmap(
+                z=z_data,
+                x=x_vals,
+                y=y_labels,
+                colorscale=colorscale,
+                showscale=False,
+                customdata=text_data,
+                hovertemplate="<b>%{y}</b><br>%{x}<br>%{customdata}<extra></extra>",
+            ),
+            row=row,
+            col=col_idx,
+        )
+
+    default_height = max(row_height * n_rows, 400)
+
+    fig = apply_default_layout(
+        fig,
+        title=title or "Missing Data",
+        x_label=x_label or "Time",
+        y_label=y_label or "Column",
+        width=width,
+        height=height or default_height,
+    )
+
+    return fig
+
+
 def plot_missing_data(
     df: pl.DataFrame,
     *,
@@ -722,6 +855,7 @@ def plot_missing_data(
     panel_group_names: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
+    color_palette: list[str] | None = None,
     color_missing: str = "#DC2626",
     color_present: str = "#059669",
     show_legend: bool = True,
@@ -732,6 +866,7 @@ def plot_missing_data(
     height: int | None = None,
     show_percentages: bool = True,
     time_aggregation: str | None = None,
+    sampling_interval: str | None = None,
 ) -> go.Figure:
     """
     Visualize missing data patterns over time.
@@ -755,6 +890,10 @@ def plot_missing_data(
         Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
+    color_palette : list[str] | None, default=None
+        Custom colour hex codes used for bars traces. When ``None``
+        the default yohou palette is used.  Heatmap/matrix kinds
+        always use ``color_missing`` / ``color_present``.
     color_missing : str, default="#DC2626"
         Color for missing values (red).
     color_present : str, default="#059669"
@@ -776,6 +915,13 @@ def plot_missing_data(
     time_aggregation : str | None, default=None
         Aggregate to time periods before checking. Polars duration string
         (e.g. ``"1d"``, ``"1w"``, ``"1mo"``).
+    sampling_interval : str | None, default=None
+        Expected sampling frequency of the time series (e.g. ``"1h"``,
+        ``"1d"``).  When provided, the DataFrame is reindexed to the full
+        expected time range before counting missing values, so that absent
+        timestamps (gap rows) are also detected as missing.  Only
+        fixed-length intervals (convertible to ``timedelta``) are supported;
+        variable-length intervals such as ``"1mo"`` raise ``ValueError``.
 
     Returns
     -------
@@ -806,46 +952,94 @@ def plot_missing_data(
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
+    # Reindex to full time range when sampling_interval is given so that
+    # absent timestamps (gap rows) appear as nulls in the analysis.
+    if sampling_interval is not None:
+        td = interval_to_timedelta(sampling_interval)
+        if td is None:
+            msg = (
+                f"sampling_interval={sampling_interval!r} is a variable-length "
+                "interval and cannot be used for reindexing. Use a fixed-length "
+                "interval such as '1h' or '1d'."
+            )
+            raise ValueError(msg)
+        full_range = pl.DataFrame({
+            "time": pl.datetime_range(
+                df["time"].min(),  # type: ignore[arg-type]
+                df["time"].max(),  # type: ignore[arg-type]
+                interval=sampling_interval,
+                eager=True,
+            ),
+        })
+        df = full_range.join(df, on="time", how="left")
+
     if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
     if panel_group_names is not None:
+        effective_facet_by = facet_by or "member"
 
-        def _render_missing(ctx: RenderContext) -> None:
-            """Render missing data count bar chart for a single column."""
-            base = [c for c in ctx.sub_df.columns if c != "time"][0]
-            _sp = show_percentages
-            total = len(ctx.sub_df)
-            mc = ctx.sub_df[base].null_count()
-            pct = (mc / total) * 100 if total > 0 else 0
-            text = f"{pct:.1f}%" if _sp else None
-            ctx.fig.add_trace(
-                go.Bar(
-                    x=[base],
-                    y=[pct],
-                    marker={"color": color_missing},
-                    text=[text] if text else None,
-                    textposition="auto" if text else None,
-                    showlegend=False,
-                ),
-                row=ctx.row,
-                col=ctx.col,
+        if kind == "bars":
+            tracker = LegendTracker(show_legend)
+            color_mgr = PanelColorManager(color_palette)
+
+            def _render_missing(ctx: RenderContext) -> None:
+                """Render missing data count bar chart for a single column."""
+                base = [c for c in ctx.sub_df.columns if c != "time"][0]
+                _sp = show_percentages
+                total = len(ctx.sub_df)
+                mc = ctx.sub_df[base].null_count()
+                pct = (mc / total) * 100 if total > 0 else 0
+                text = f"{pct:.1f}%" if _sp else None
+                ctx.fig.add_trace(
+                    go.Bar(
+                        x=[base],
+                        y=[pct],
+                        name=ctx.display_name,
+                        legendgroup=ctx.display_name,
+                        showlegend=tracker.should_show(ctx.display_name),
+                        marker={"color": color_mgr.get_color(ctx.display_name)},
+                        text=[text] if text else None,
+                        textposition="auto" if text else None,
+                    ),
+                    row=ctx.row,
+                    col=ctx.col,
+                )
+
+            return panel_facet_figure(
+                df,
+                _render_missing,
+                panel_group_names=panel_group_names,
+                columns=columns,
+                facet_by=effective_facet_by,
+                facet_n_cols=facet_n_cols,
+                title=title or "Missing Data",
+                x_label=x_label or "Column",
+                y_label=y_label or "Missing (%)",
+                width=width,
+                height=height,
+                shared_xaxes=False,
             )
 
-        effective_facet_by = facet_by or "member"
-        return panel_facet_figure(
+        # Panel heatmap / matrix - custom subplot logic
+        if kind not in ("heatmap", "matrix"):
+            msg = f"Unknown kind: {kind}. Valid options: heatmap, bars, matrix"
+            raise ValueError(msg)
+        return _panel_heatmap_missing(
             df,
-            _render_missing,
+            kind=kind,
             panel_group_names=panel_group_names,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
-            title=title or "Missing Data",
-            x_label=x_label or "Column",
-            y_label=y_label or "Missing (%)",
+            color_missing=color_missing,
+            color_present=color_present,
+            time_aggregation=time_aggregation,
+            title=title,
+            x_label=x_label,
+            y_label=y_label,
             width=width,
             height=height,
-            shared_xaxes=False,
         )
 
     # Resolve columns
@@ -853,25 +1047,25 @@ def plot_missing_data(
 
     if kind == "bars":
         # Bar chart showing percentage missing per column
-        missing_counts = []
         total_rows = len(df)
-
-        for col in plot_columns:
-            missing = df[col].null_count()
-            pct = (missing / total_rows) * 100
-            missing_counts.append({"column": col, "missing_pct": pct})
+        colors = resolve_color_palette(color_palette, len(plot_columns))
 
         fig = go.Figure()
-        fig.add_trace(
-            go.Bar(
-                x=[item["column"] for item in missing_counts],
-                y=[item["missing_pct"] for item in missing_counts],
-                marker={"color": color_missing},
-                text=[f"{item['missing_pct']:.1f}%" for item in missing_counts] if show_percentages else None,
-                textposition="auto" if show_percentages else None,
-                hovertemplate="<b>%{x}</b><br>Missing: %{y:.1f}%<extra></extra>",
+        for i, col in enumerate(plot_columns):
+            missing = df[col].null_count()
+            pct = (missing / total_rows) * 100
+            text = f"{pct:.1f}%" if show_percentages else None
+            fig.add_trace(
+                go.Bar(
+                    x=[col],
+                    y=[pct],
+                    name=col,
+                    marker={"color": colors[i]},
+                    text=[text] if text else None,
+                    textposition="auto" if text else None,
+                    hovertemplate="<b>%{x}</b><br>Missing: %{y:.1f}%<extra></extra>",
+                )
             )
-        )
 
         if x_label is None:
             x_label = "Column"

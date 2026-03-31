@@ -758,6 +758,72 @@ class TestPlotMissingDataMatrix:
         assert len(fig.data) > 0
 
 
+class TestPlotMissingDataSamplingInterval:
+    """Tests for the sampling_interval parameter of plot_missing_data."""
+
+    @pytest.fixture
+    def df_with_gaps(self):
+        """Hourly DataFrame with 3 rows removed (gap rows, not nulls)."""
+        from datetime import datetime
+
+        full_times = pl.datetime_range(
+            datetime(2020, 1, 1),
+            datetime(2020, 1, 1, 9),
+            "1h",
+            eager=True,
+        )
+        # 10 timestamps (hours 0-9), drop indices 2, 5, 8 -> 7 rows remain
+        df = pl.DataFrame({
+            "time": full_times,
+            "y": [float(i) for i in range(10)],
+            "z": [float(i) * 10 for i in range(10)],
+        })
+        return df.filter(~pl.col("time").is_in([
+            full_times[2], full_times[5], full_times[8],
+        ]))
+
+    def test_bars_with_sampling_interval(self, df_with_gaps):
+        """Bars reflect gap rows as missing when sampling_interval is set."""
+        fig = plot_missing_data(df_with_gaps, kind="bars", sampling_interval="1h")
+        assert isinstance(fig, go.Figure)
+        # 10 expected rows, 3 gap rows -> 30% missing per column
+        bar = fig.data[0]
+        assert bar.y[0] == pytest.approx(30.0, abs=0.1)
+
+    def test_bars_without_sampling_interval(self, df_with_gaps):
+        """Bars report 0% missing without sampling_interval (no gap detection)."""
+        fig = plot_missing_data(df_with_gaps, kind="bars")
+        bar = fig.data[0]
+        assert bar.y[0] == pytest.approx(0.0, abs=0.1)
+
+    def test_heatmap_with_sampling_interval(self, df_with_gaps):
+        """Heatmap z-data includes gap rows as missing."""
+        fig = plot_missing_data(df_with_gaps, kind="heatmap", sampling_interval="1h")
+        assert isinstance(fig, go.Figure)
+        heatmap = fig.data[0]
+        # z_data[0] is the first column's missing indicator list (length = 10)
+        assert len(heatmap.z[0]) == 10
+        # 3 of 10 entries should be 1 (missing)
+        assert sum(heatmap.z[0]) == 3
+
+    def test_matrix_with_sampling_interval(self, df_with_gaps):
+        """Matrix z-data includes gap rows as missing."""
+        fig = plot_missing_data(df_with_gaps, kind="matrix", sampling_interval="1h")
+        heatmap = fig.data[0]
+        assert len(heatmap.z[0]) == 10
+        assert sum(heatmap.z[0]) == 3
+
+    def test_sampling_interval_none_unchanged(self, df_with_gaps):
+        """Default (None) preserves original behaviour - no reindexing."""
+        fig = plot_missing_data(df_with_gaps, kind="bars", sampling_interval=None)
+        bar = fig.data[0]
+        # No nulls in the 7 remaining rows
+        assert bar.y[0] == pytest.approx(0.0, abs=0.1)
+
+    def test_sampling_interval_variable_raises(self, df_with_gaps):
+        """Variable-length interval like '1mo' raises ValueError."""
+        with pytest.raises(ValueError, match="variable-length"):
+            plot_missing_data(df_with_gaps, kind="bars", sampling_interval="1mo")
 
 
 class TestDistributionPanelKde:
@@ -779,6 +845,176 @@ class TestDistributionPanelKde:
         assert len(fig.data) >= 4
 
 
+class TestPlotMissingDataBarTraces:
+    """Verify per-column bar traces, legend names, and color_palette."""
+
+    def test_non_panel_bars_one_trace_per_column(self, df_with_nulls):
+        """Non-panel bars creates one trace per column."""
+        fig = plot_missing_data(df_with_nulls, kind="bars")
+        # df_with_nulls has columns y and z
+        assert len(fig.data) == 2
+        assert all(isinstance(t, go.Bar) for t in fig.data)
+
+    def test_non_panel_bars_trace_names(self, df_with_nulls):
+        """Each bar trace is named after its column (no 'trace 0')."""
+        fig = plot_missing_data(df_with_nulls, kind="bars")
+        names = [t.name for t in fig.data]
+        assert "y" in names
+        assert "z" in names
+        assert "trace 0" not in names
+
+    def test_non_panel_bars_custom_palette(self, df_with_nulls):
+        """color_palette assigns custom colours to bar traces."""
+        palette = ["#111111", "#222222"]
+        fig = plot_missing_data(df_with_nulls, kind="bars", color_palette=palette)
+        colors = [t.marker.color for t in fig.data]
+        assert colors == palette
+
+    def test_non_panel_bars_show_legend_false(self, df_with_nulls):
+        """show_legend=False hides legend globally."""
+        fig = plot_missing_data(df_with_nulls, kind="bars", show_legend=False)
+        assert fig.layout.showlegend is False
+
+    def test_non_panel_univariate_single_trace(self, df_with_nulls):
+        """Single column produces exactly one bar trace."""
+        fig = plot_missing_data(df_with_nulls, kind="bars", columns="y")
+        assert len(fig.data) == 1
+        assert fig.data[0].name == "y"
+
+
+class TestPlotMissingDataPanelBarsLegend:
+    """Verify LegendTracker / PanelColorManager in panel bars mode."""
+
+    @pytest.fixture
+    def panel_df(self):
+        """Panel DataFrame with 2 groups x 2 members."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True)
+        return pl.DataFrame({
+            "time": dates,
+            "T3__a": [100.0, None, 120.0, None, 140.0, 150.0],
+            "T3__b": [None, 210.0, 220.0, 230.0, None, 250.0],
+            "T4__a": [300.0, 310.0, None, 330.0, 340.0, None],
+            "T4__b": [400.0, None, 420.0, None, 440.0, 450.0],
+        })
+
+    def test_panel_bars_trace_names(self, panel_df):
+        """Panel bar traces carry display names (not 'trace 0')."""
+        fig = plot_missing_data(panel_df, kind="bars", panel_group_names=["T3", "T4"])
+        names = {t.name for t in fig.data}
+        assert "trace 0" not in names
+        assert len(names) > 0
+
+    def test_panel_bars_legendgroup(self, panel_df):
+        """Each trace has a legendgroup matching its display name."""
+        fig = plot_missing_data(panel_df, kind="bars", panel_group_names=["T3", "T4"])
+        for t in fig.data:
+            assert t.legendgroup == t.name
+
+    def test_panel_bars_legend_dedup(self, panel_df):
+        """LegendTracker shows each name only once in the legend."""
+        fig = plot_missing_data(panel_df, kind="bars", panel_group_names=["T3", "T4"])
+        shown_names = [t.name for t in fig.data if t.showlegend is True]
+        assert len(shown_names) == len(set(shown_names))
+
+    def test_panel_bars_consistent_color(self, panel_df):
+        """Same display name has the same colour across facets."""
+        fig = plot_missing_data(panel_df, kind="bars", panel_group_names=["T3", "T4"])
+        color_map: dict[str, str] = {}
+        for t in fig.data:
+            if t.name in color_map:
+                assert t.marker.color == color_map[t.name]
+            else:
+                color_map[t.name] = t.marker.color
+
+    def test_panel_bars_custom_palette(self, panel_df):
+        """Custom color_palette is applied in panel bars mode."""
+        fig = plot_missing_data(
+            panel_df, kind="bars", panel_group_names=["T3", "T4"],
+            color_palette=["#AA0000", "#00BB00"],
+        )
+        colors = {t.marker.color for t in fig.data}
+        assert colors <= {"#AA0000", "#00BB00"}
+
+
+class TestPlotMissingDataPanelKinds:
+    """Verify panel data works with heatmap and matrix kinds."""
+
+    @pytest.fixture
+    def panel_df(self):
+        """Panel DataFrame with 2 groups x 2 members."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True)
+        return pl.DataFrame({
+            "time": dates,
+            "T3__a": [100.0, None, 120.0, None, 140.0, 150.0],
+            "T3__b": [None, 210.0, 220.0, 230.0, None, 250.0],
+            "T4__a": [300.0, 310.0, None, 330.0, 340.0, None],
+            "T4__b": [400.0, None, 420.0, None, 440.0, 450.0],
+        })
+
+    def test_panel_heatmap_facet_member(self, panel_df):
+        """Panel heatmap faceted by member creates one subplot per member."""
+        fig = plot_missing_data(
+            panel_df, kind="heatmap", panel_group_names=["T3", "T4"],
+            facet_by="member",
+        )
+        assert isinstance(fig, go.Figure)
+        heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
+        # 2 members -> 2 heatmaps
+        assert len(heatmaps) == 2
+
+    def test_panel_heatmap_facet_group(self, panel_df):
+        """Panel heatmap faceted by group creates one subplot per group."""
+        fig = plot_missing_data(
+            panel_df, kind="heatmap", panel_group_names=["T3", "T4"],
+            facet_by="group",
+        )
+        heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
+        # 2 groups -> 2 heatmaps
+        assert len(heatmaps) == 2
+
+    def test_panel_heatmap_y_labels(self, panel_df):
+        """Heatmap y-axis labels use overlay key names (group prefix)."""
+        fig = plot_missing_data(
+            panel_df, kind="heatmap", panel_group_names=["T3", "T4"],
+            facet_by="member",
+        )
+        heatmap = fig.data[0]
+        # facet_by="member" -> overlays are groups -> y labels are group names
+        assert set(heatmap.y) == {"T3", "T4"}
+
+    def test_panel_matrix_kind(self, panel_df):
+        """Panel matrix kind renders heatmap traces."""
+        fig = plot_missing_data(
+            panel_df, kind="matrix", panel_group_names=["T3", "T4"],
+            facet_by="group",
+        )
+        heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
+        assert len(heatmaps) == 2
+
+    def test_panel_heatmap_with_time_aggregation(self, panel_df):
+        """Panel heatmap supports time_aggregation."""
+        fig = plot_missing_data(
+            panel_df, kind="heatmap", panel_group_names=["T3", "T4"],
+            facet_by="group", time_aggregation="3mo",
+        )
+        heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
+        assert len(heatmaps) == 2
+
+    def test_panel_invalid_kind_raises(self, panel_df):
+        """Invalid kind in panel mode raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown kind"):
+            plot_missing_data(panel_df, kind="scatter", panel_group_names=["T3"])  # type: ignore
+
+    def test_panel_auto_detect_heatmap(self):
+        """Auto-detected panel data works with heatmap kind."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True),
+            "sales__store_1": [100.0, None, 120.0, None, 140.0, 150.0],
+            "sales__store_2": [None, 210.0, 220.0, 230.0, None, 250.0],
+        })
+        fig = plot_missing_data(df, kind="heatmap")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
 
 
 class TestOutlierMethodBranches:
