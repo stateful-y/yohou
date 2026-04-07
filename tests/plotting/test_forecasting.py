@@ -1,6 +1,7 @@
 """Tests for forecasting plotting functions."""
 
 import importlib.util
+from unittest.mock import patch
 
 import numpy as np
 import polars as pl
@@ -1722,4 +1723,176 @@ class TestPlotComponentsYLabel:
             "trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(n)]}),
         }
         fig = plot_components(y, components, y_label="Custom Y")
+        assert_figure_valid(fig)
+
+    def test_panel_y_label(self):
+        """y_label is applied to panel plot_components figures."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        n = len(dates)
+        y = pl.DataFrame({
+            "time": dates,
+            "y__a": list(range(n)),
+            "y__b": [i * 2 for i in range(n)],
+        })
+        components = {
+            "trend": pl.DataFrame({
+                "time": dates,
+                "y__a": [i * 0.5 for i in range(n)],
+                "y__b": [i * 1.0 for i in range(n)],
+            }),
+        }
+        result = plot_components(y, components, y_label="Custom Panel Y")
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
+
+
+class TestPlotForecastPanelFacetByGroup:
+    """Tests for plot_forecast panel data with facet_by='group'."""
+
+    def test_panel_facet_by_group(self):
+        """facet_by='group' creates one subplot per group."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates,
+            "y__s1": list(range(30)),
+            "y__s2": list(range(30, 60)),
+        })
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "y__s1": [x + 1 for x in range(30)],
+            "y__s2": [x + 1 for x in range(30, 60)],
+        })
+        fig = plot_forecast(y_test, y_pred, facet_by="group")
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 2
+
+
+class TestPlotTimeWeightPanelFacetByGroup:
+    """Tests for plot_time_weight panel data with facet_by='group'."""
+
+    def test_panel_facet_by_group(self):
+        """facet_by='group' creates one subplot per group in time weight."""
+        time_weight = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
+            "weight__store_1": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+            "weight__store_2": [0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.95, 1.0],
+        })
+        fig = plot_time_weight(time_weight, weight_column="weight", facet_by="group")
+        assert_figure_valid(fig)
+
+
+class TestPlotForecastPanelMissingPred:
+    """Tests for panel forecast where some columns have no matching prediction."""
+
+    def test_multi_model_column_without_pred(self):
+        """Multi-model panel where a y_test column has no matching prediction column."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates,
+            "y__s1": list(range(10)),
+            "y__s2": list(range(10, 20)),
+        })
+        # Only predict s1, not s2
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "y__s1": [x + 1 for x in range(10)],
+        })
+        fig = plot_forecast(y_test, {"M1": y_pred}, facet_by="group")
+        assert_figure_valid(fig)
+
+
+class TestComputeStlImportError:
+    """Test STL/MSTL import error branches."""
+
+    def test_stl_import_error(self):
+        """_compute_stl raises ImportError when statsmodels is missing."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if "statsmodels" in name:
+                raise ImportError("mocked")
+            return real_import(name, *args, **kwargs)
+
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        y = pl.DataFrame({"time": dates, "y": list(range(n))})
+
+        with (
+            patch("builtins.__import__", side_effect=mock_import),
+            pytest.raises(ImportError, match="statsmodels is required"),
+        ):
+            plot_components(y, ["trend", "seasonal", "residual"], columns="y")
+
+    def test_mstl_import_error(self):
+        """_compute_mstl raises ImportError when statsmodels is missing."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if "statsmodels" in name:
+                raise ImportError("mocked")
+            return real_import(name, *args, **kwargs)
+
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        y = pl.DataFrame({"time": dates, "y": list(range(n))})
+
+        with patch("builtins.__import__", side_effect=mock_import), pytest.raises(ImportError, match="statsmodels"):
+            plot_components(y, ["trend", "seasonal", "residual"], columns="y", stl_kwargs={"periods": [7, 365]})
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("statsmodels"),
+    reason="statsmodels not installed",
+)
+class TestMSTLAutoPeriodsError:
+    """Cover MSTL periods='auto' with unsupported interval."""
+
+    def test_auto_periods_unsupported_interval(self):
+        """MSTL auto periods raises ValueError for unsupported interval."""
+        n = 200
+        # 5-minute interval is not in _INTERVAL_TO_MSTL_PERIODS
+        df = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2022, 1, 1),
+                pl.datetime(2022, 1, 1) + pl.duration(minutes=5 * (n - 1)),
+                "5m",
+                eager=True,
+            ),
+            "y": [float(i) for i in range(n)],
+        })
+        with pytest.raises(ValueError, match="Cannot infer MSTL periods"):
+            plot_components(df, ["trend", "seasonal"], columns="y", stl_kwargs={"periods": "auto"})
+
+    def test_auto_periods_interval_fallback(self):
+        """MSTL with explicit periods and irregular data falls back to numeric labels."""
+        rng = np.random.default_rng(42)
+        n = 200
+        # Irregular timestamps → check_interval_consistency raises → interval=None
+        base = pl.datetime_range(
+            pl.datetime(2022, 1, 1),
+            pl.datetime(2022, 1, 1) + pl.duration(hours=n - 1),
+            "1h",
+            eager=True,
+        )
+        # Break regularity by shifting one point
+        from datetime import timedelta
+
+        base = base.to_list()
+        base[100] = base[100] + timedelta(minutes=17)
+        df = pl.DataFrame({
+            "time": base,
+            "y": [50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal() for i in range(n)],
+        })
+        fig = plot_components(
+            df,
+            ["trend", "seasonal", "residual"],
+            columns="y",
+            show_original=False,
+            stl_kwargs={"periods": [24]},
+        )
         assert_figure_valid(fig)

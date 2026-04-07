@@ -1136,3 +1136,98 @@ class TestResamplingComparisonAutoDetect:
         fig = plot_resampling_comparison(hourly, daily)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
+
+
+class TestMissingDataAsymmetricPanel:
+    """Cover col_name is None continue in heatmap panel path."""
+
+    def test_heatmap_asymmetric_panel(self):
+        """Heatmap panel where one group has fewer members skips missing pairs."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "g1__a": [1.0, None, 3.0, None, 5.0, 6.0, None, 8.0, 9.0, 10.0],
+            "g1__b": [None, 2.0, 3.0, 4.0, None, 6.0, 7.0, 8.0, None, 10.0],
+            "g2__a": [1.0, 2.0, None, 4.0, 5.0, None, 7.0, 8.0, 9.0, None],
+            # g2__b is missing - asymmetric panel
+        })
+        fig = plot_missing_data(df, kind="heatmap", panel_group_names=["g1", "g2"])
+        assert isinstance(fig, go.Figure)
+
+
+class TestOutlierNullSeries:
+    """Cover None guard branches in outlier detection."""
+
+    def test_iqr_all_null_series(self):
+        """IQR method with an all-null series returns no outliers."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y__a": pl.Series([None] * 10, dtype=pl.Float64),
+            "y__b": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 100.0],
+        })
+        fig = plot_outliers(df, method="iqr", panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+
+    def test_percentile_all_null_series(self):
+        """Percentile method with an all-null series returns no outliers."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "y__a": pl.Series([None] * 10, dtype=pl.Float64),
+            "y__b": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 100.0],
+        })
+        fig = plot_outliers(df, method="percentile", threshold=10.0, panel_group_names=["y"])
+        assert isinstance(fig, go.Figure)
+
+
+class TestPanelFacetFigureAsymmetricWarning:
+    """Cover asymmetric-panel warning in _utils.panel_facet_figure."""
+
+    def test_facet_by_member_asymmetric_warns(self):
+        """Asymmetric panel with facet_by='member' emits a warning."""
+        import warnings
+
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        df = pl.DataFrame({
+            "time": dates,
+            "g1__a": list(range(10)),
+            "g1__b": list(range(10)),
+            "g2__a": list(range(10)),
+            # g2__b intentionally missing -> asymmetric
+        })
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            fig = plot_time_series(df, panel_group_names=["g1", "g2"], facet_by="member")
+        assert isinstance(fig, go.Figure)
+        assert any("Asymmetric panel" in str(m.message) for m in w)
+
+
+class TestResamplingComparisonFacetByGroup:
+    """Cover facet_by='group' in panel resampling comparison."""
+
+    def test_panel_resampling_facet_by_group(self):
+        """Panel resampling comparison with facet_by='group' renders original traces."""
+        hourly = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2020, 1, 1),
+                pl.datetime(2020, 1, 7, 23),
+                "1h",
+                eager=True,
+            ),
+            "temp__a": [20.0 + i % 24 for i in range(7 * 24)],
+            "temp__b": [15.0 + i % 24 for i in range(7 * 24)],
+        })
+        daily = hourly.group_by_dynamic("time", every="1d").agg(
+            pl.col("temp__a").mean(),
+            pl.col("temp__b").mean(),
+        )
+        fig = plot_resampling_comparison(
+            hourly,
+            daily,
+            panel_group_names=["temp"],
+            facet_by="group",
+        )
+        assert isinstance(fig, go.Figure)
+        # Each panel should have original + resampled traces
+        assert len(fig.data) >= 2
