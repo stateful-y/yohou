@@ -117,7 +117,7 @@ def _(plot_time_series, y):
 
 @app.cell
 def _(plot_seasonality, y):
-    plot_seasonality(y, period="month", title="Monthly Seasonality Pattern")
+    plot_seasonality(y, seasonality="month", title="Monthly Seasonality Pattern")
     return
 
 

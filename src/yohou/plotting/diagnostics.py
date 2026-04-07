@@ -1166,7 +1166,12 @@ def plot_seasonality(
             # Add aggregated mean line (bold, on top)
             if season_vals:
                 mean_x = list(season_vals.keys())
-                mean_y = [float(np.mean(v)) for v in season_vals.values()]
+                mean_y = [
+                    float(np.mean([x for x in v if x is not None]))
+                    if any(x is not None for x in v)
+                    else float("nan")
+                    for v in season_vals.values()
+                ]
                 ctx.fig.add_trace(
                     go.Scatter(
                         x=mean_x,

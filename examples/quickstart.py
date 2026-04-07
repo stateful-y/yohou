@@ -991,7 +991,6 @@ def _(mo):
 
 @app.cell
 def _(
-    forecasting_horizon,
     plot_forecast,
     y_pred_reduction,
     y_pred_weighted,
@@ -1002,7 +1001,6 @@ def _(
         y_test,
         {"Unweighted": y_pred_reduction, "Time-weighted": y_pred_weighted},
         y_train=y_train,
-        forecasting_horizon=forecasting_horizon,
         title="Time-Weighted vs. Unweighted Forecast",
         y_label="Monthly tourists",
         height=400,

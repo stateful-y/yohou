@@ -315,7 +315,6 @@ def _(hosp_pred, hosp_test, hosp_train, plot_forecast):
         hosp_pred,
         y_train=hosp_train,
         title="Hospital: ColumnForecaster (Ridge for T1, SeasonalNaive for rest)",
-        columns=["T1_patients"],
     )
 
 
