@@ -1616,3 +1616,110 @@ class TestMSTLIntervalFallback:
             stl_kwargs={"periods": [24]},
         )
         assert_figure_valid(fig)
+
+
+class TestPlotForecastPanelFacetByNone:
+    """Tests for plot_forecast panel data with facet_by=None."""
+
+    def test_panel_facet_by_none(self):
+        """facet_by=None places all panel columns into a single subplot."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates,
+            "y__s1": list(range(30)),
+            "y__s2": list(range(30, 60)),
+        })
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "y__s1": [x + 1 for x in range(30)],
+            "y__s2": [x + 1 for x in range(30, 60)],
+        })
+        fig = plot_forecast(y_test, y_pred, facet_by=None)
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 2
+
+    def test_panel_facet_by_none_with_intervals(self):
+        """facet_by=None with prediction intervals produces band traces."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates,
+            "y__s1": list(range(30)),
+            "y__s2": list(range(30, 60)),
+        })
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "y__s1": [x + 1 for x in range(30)],
+            "y__s2": [x + 1 for x in range(30, 60)],
+            "y__s1_lower_0.9": [x - 2 for x in range(30)],
+            "y__s1_upper_0.9": [x + 4 for x in range(30)],
+            "y__s2_lower_0.9": [x + 28 for x in range(30)],
+            "y__s2_upper_0.9": [x + 62 for x in range(30)],
+        })
+        fig = plot_forecast(y_test, y_pred, facet_by=None, coverage_rates=[0.9])
+        assert_figure_valid(fig)
+        names = [t.name for t in fig.data if t.name is not None]
+        assert any("PI" in n for n in names)
+
+    def test_panel_facet_by_none_multi_model(self):
+        """facet_by=None with multi-model predictions."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates,
+            "y__s1": list(range(30)),
+            "y__s2": list(range(30, 60)),
+        })
+        pred_a = pl.DataFrame({
+            "time": dates,
+            "y__s1": [x + 1 for x in range(30)],
+            "y__s2": [x + 1 for x in range(30, 60)],
+        })
+        pred_b = pl.DataFrame({
+            "time": dates,
+            "y__s1": [x - 1 for x in range(30)],
+            "y__s2": [x - 1 for x in range(30, 60)],
+        })
+        fig = plot_forecast(y_test, {"A": pred_a, "B": pred_b}, facet_by=None)
+        assert_figure_valid(fig)
+        names = [t.name for t in fig.data if t.name is not None]
+        assert any("A" in n for n in names)
+        assert any("B" in n for n in names)
+
+
+class TestPlotTimeWeightPanelFacetByNone:
+    """Tests for plot_time_weight panel data with facet_by=None."""
+
+    def test_panel_facet_by_none(self):
+        """facet_by=None places all panel weight columns into a single subplot."""
+        time_weight = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
+            "weight__store_1": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+            "weight__store_2": [0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.95, 1.0],
+        })
+        fig = plot_time_weight(time_weight, weight_column="weight", facet_by=None)
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 2
+
+    def test_panel_facet_by_member(self):
+        """facet_by='member' creates one subplot per member."""
+        time_weight = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
+            "weight__store_1": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+            "weight__store_2": [0.05, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.95, 1.0],
+        })
+        fig = plot_time_weight(time_weight, weight_column="weight", facet_by="member")
+        assert_figure_valid(fig)
+
+
+class TestPlotComponentsYLabel:
+    """Tests for y_label parameter in plot_components."""
+
+    def test_stl_y_label(self):
+        """y_label overrides per-row labels in STL mode."""
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
+        n = len(dates)
+        y = pl.DataFrame({"time": dates, "y": list(range(n))})
+        components = {
+            "trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(n)]}),
+        }
+        fig = plot_components(y, components, y_label="Custom Y")
+        assert_figure_valid(fig)

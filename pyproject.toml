@@ -164,12 +164,13 @@ color = true
 omit-covered-files = false
 
 [tool.ty.rules]
+call-non-callable = "warn"
 invalid-argument-type = "warn"
 invalid-assignment = "warn"
-unresolved-attribute = "warn"
 invalid-return-type = "warn"
-unsupported-operator = "warn"
 no-matching-overload = "warn"
+unresolved-attribute = "warn"
+unsupported-operator = "warn"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
