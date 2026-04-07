@@ -22,7 +22,6 @@ def sine_wave_df():
     })
 
 
-
 class TestPlotPhase:
     """Tests for plot_phase function."""
 
@@ -291,8 +290,6 @@ class TestConnectGaps:
         })
         fig = plot_spectrum(df, columns="y", connect_gaps=True)
         assert_figure_valid(fig)
-
-
 
 
 class TestPlotPhaseAutoDetectPanel:

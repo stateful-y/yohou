@@ -30,7 +30,6 @@ def yearly_2col_df():
     })
 
 
-
 class TestPlotAutocorrelation:
     """Tests for plot_autocorrelation function."""
 
@@ -1101,8 +1100,6 @@ class TestScatterMatrixDiagonalModes:
         assert len(corr_annotations) >= 1
 
 
-
-
 class TestPlotSeasonalHeatmap:
     """Tests for plot_seasonal_heatmap function."""
 
@@ -1112,16 +1109,15 @@ class TestPlotSeasonalHeatmap:
         import math
 
         times = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2021, 12, 31, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2021, 12, 31, 23),
+            "1h",
+            eager=True,
         )
         n = len(times)
         return pl.DataFrame({
             "time": times,
-            "temp": [
-                20 + 10 * math.sin(i * 2 * math.pi / 24)
-                + 5 * math.sin(i * 2 * math.pi / 8760)
-                for i in range(n)
-            ],
+            "temp": [20 + 10 * math.sin(i * 2 * math.pi / 24) + 5 * math.sin(i * 2 * math.pi / 8760) for i in range(n)],
         })
 
     def test_hour_by_month(self, hourly_df):
@@ -1189,7 +1185,10 @@ class TestPlotSeasonalHeatmap:
     def test_panel_explicit(self):
         """Panel faceting with explicit panel_group_names."""
         times = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 3, 31, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 3, 31, 23),
+            "1h",
+            eager=True,
         )
         n = len(times)
         df = pl.DataFrame({
@@ -1210,7 +1209,10 @@ class TestPlotSeasonalHeatmap:
     def test_auto_column_multi(self):
         """Multiple numeric columns produce subplot grid."""
         times = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 6, 30, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 6, 30, 23),
+            "1h",
+            eager=True,
         )
         n = len(times)
         df = pl.DataFrame({
@@ -1225,7 +1227,10 @@ class TestPlotSeasonalHeatmap:
     def test_columns_list(self):
         """Explicit list of columns produces subplot grid."""
         times = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 6, 30, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 6, 30, 23),
+            "1h",
+            eager=True,
         )
         n = len(times)
         df = pl.DataFrame({
@@ -1240,7 +1245,10 @@ class TestPlotSeasonalHeatmap:
     def test_panel_auto_detect(self):
         """Panel data auto-detected when columns=None and no panel_group_names."""
         times = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 3, 31, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 3, 31, 23),
+            "1h",
+            eager=True,
         )
         n = len(times)
         df = pl.DataFrame({
@@ -1255,7 +1263,10 @@ class TestPlotSeasonalHeatmap:
     def test_panel_auto_detect_with_columns(self):
         """Panel auto-detect with columns filtering to specific member."""
         times = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 3, 31, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 3, 31, 23),
+            "1h",
+            eager=True,
         )
         n = len(times)
         df = pl.DataFrame({
@@ -1396,7 +1407,7 @@ class TestPlotCorrelationHeatmapPanelPaths:
 # Priority 3 - Other Panel Paths
 
 
-class TestPlotCrossCorrelationPanel:
+class TestPlotCrossCorrelationPanelData:
     """Cross-correlation panel data path."""
 
     def test_panel_data(self):
@@ -1504,7 +1515,10 @@ class TestPlotSeasonalHeatmapPanel:
     def test_panel_data(self):
         """Panel DataFrame auto-detect for seasonal heatmap."""
         times = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 3, 31, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 3, 31, 23),
+            "1h",
+            eager=True,
         )
         n = len(times)
         df = pl.DataFrame({
@@ -1518,7 +1532,10 @@ class TestPlotSeasonalHeatmapPanel:
     def test_multi_column_nonpanel(self):
         """Multiple non-panel columns produce subplot grid."""
         times = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 6, 30, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 6, 30, 23),
+            "1h",
+            eager=True,
         )
         n = len(times)
         df = pl.DataFrame({
@@ -1585,7 +1602,10 @@ class TestSeasonalityHighlightCycleMatch:
     def test_highlight_matching_year(self, multi_year_df):
         """Highlighting a year that exists as a cycle covers the is_hl=True branch."""
         fig = plot_seasonality(
-            multi_year_df, columns="y", seasonality="month", highlight=2020,
+            multi_year_df,
+            columns="y",
+            seasonality="month",
+            highlight=2020,
         )
         assert_figure_valid(fig)
 
@@ -1647,7 +1667,9 @@ class TestScatterMatrixSeasonality:
     def test_grid_mode_with_seasonality(self, seasonal_df):
         """Non-panel with month seasonality hits season-colored scatter path."""
         fig = plot_scatter_matrix(
-            seasonal_df, columns=["a", "b"], seasonality="month",
+            seasonal_df,
+            columns=["a", "b"],
+            seasonality="month",
         )
         assert_figure_valid(fig)
 
@@ -1661,7 +1683,10 @@ class TestScatterMatrixSeasonality:
             "grp__y": [200.0 + (i % 20) * 2 for i in range(n)],
         })
         result = plot_scatter_matrix(
-            df, seasonality="quarter", facet_by="group", panel_group_names=["grp"],
+            df,
+            seasonality="quarter",
+            facet_by="group",
+            panel_group_names=["grp"],
         )
         assert isinstance(result, dict)
         for fig in result.values():
@@ -1685,7 +1710,10 @@ class TestSeasonalHeatmapReverseY:
     def test_reverse_y_single_column(self):
         """Single column with reverse_y=True."""
         dates = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 2, 29, 23),
+            "1h",
+            eager=True,
         )
         df = pl.DataFrame({
             "time": dates,
@@ -1697,7 +1725,10 @@ class TestSeasonalHeatmapReverseY:
     def test_reverse_y_multi_column(self):
         """Multiple columns with reverse_y=True."""
         dates = pl.datetime_range(
-            pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True,
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 2, 29, 23),
+            "1h",
+            eager=True,
         )
         n = len(dates)
         df = pl.DataFrame({

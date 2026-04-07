@@ -96,7 +96,9 @@ class TestPlotRollingStatistics:
 
     def test_no_original(self, monthly_2col_df):
         """Test rolling mean without original series."""
-        fig = plot_rolling_statistics(monthly_2col_df, columns="y", window_size=3, statistics="mean", show_original=False)
+        fig = plot_rolling_statistics(
+            monthly_2col_df, columns="y", window_size=3, statistics="mean", show_original=False
+        )
         assert len(fig.data) == 1
 
     def test_multiple_stats(self, monthly_2col_df):
@@ -109,7 +111,9 @@ class TestPlotRollingStatistics:
         """Test all available statistics."""
         stats = ["mean", "std", "min", "max", "median", "q25", "q75", "sum"]
         for stat in stats:
-            fig = plot_rolling_statistics(monthly_2col_df, columns="y", window_size=3, statistics=stat, show_original=False)
+            fig = plot_rolling_statistics(
+                monthly_2col_df, columns="y", window_size=3, statistics=stat, show_original=False
+            )
             assert len(fig.data) == 1
 
     def test_invalid_stat(self, monthly_2col_df):
@@ -554,7 +558,10 @@ class TestPlotResamplingComparison:
         """Create matching hourly and daily DataFrames."""
         hourly = pl.DataFrame({
             "time": pl.datetime_range(
-                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 31, 23), "1h", eager=True,
+                pl.datetime(2020, 1, 1),
+                pl.datetime(2020, 1, 31, 23),
+                "1h",
+                eager=True,
             ),
             "temp": [20.0 + i % 24 for i in range(31 * 24)],
         })
@@ -573,14 +580,15 @@ class TestPlotResamplingComparison:
         """Test with multiple columns."""
         hourly = pl.DataFrame({
             "time": pl.datetime_range(
-                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 7, 23), "1h", eager=True,
+                pl.datetime(2020, 1, 1),
+                pl.datetime(2020, 1, 7, 23),
+                "1h",
+                eager=True,
             ),
             "temp": [20.0 + i % 24 for i in range(7 * 24)],
             "wind": [5.0 + i % 12 for i in range(7 * 24)],
         })
-        daily = hourly.group_by_dynamic("time", every="1d").agg(
-            pl.col("temp").mean(), pl.col("wind").mean()
-        )
+        daily = hourly.group_by_dynamic("time", every="1d").agg(pl.col("temp").mean(), pl.col("wind").mean())
         fig = plot_resampling_comparison(hourly, daily, columns=["temp", "wind"])
         # 2 originals + 2 resampled
         assert len(fig.data) == 4
@@ -589,8 +597,11 @@ class TestPlotResamplingComparison:
         """Test custom legend labels."""
         hourly, daily = hourly_and_daily
         fig = plot_resampling_comparison(
-            hourly, daily, columns="temp",
-            original_label="Hourly", resampled_label="Daily Avg",
+            hourly,
+            daily,
+            columns="temp",
+            original_label="Hourly",
+            resampled_label="Daily Avg",
         )
         assert "Hourly" in fig.data[0].name
         assert "Daily Avg" in fig.data[1].name
@@ -599,7 +610,10 @@ class TestPlotResamplingComparison:
         """Column in resampled but not in original raises ValueError."""
         original = pl.DataFrame({
             "time": pl.datetime_range(
-                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 2), "1h", eager=True,
+                pl.datetime(2020, 1, 1),
+                pl.datetime(2020, 1, 2),
+                "1h",
+                eager=True,
             ),
             "y": list(range(25)),
         })
@@ -684,8 +698,6 @@ class TestPanelLegendDedup:
         assert len(names) >= 4  # 2 stats × 2 members = 4 visible entries minimum
 
 
-
-
 class TestPanelRollingShowOriginalFalse:
     """Cover panel rolling stats with show_original=False."""
 
@@ -693,12 +705,13 @@ class TestPanelRollingShowOriginalFalse:
         """Panel rolling stats with show_original=False skips raw traces."""
         df = _make_three_group_panel()
         fig = plot_rolling_statistics(
-            df, window_size=3, statistics="mean", show_original=False,
+            df,
+            window_size=3,
+            statistics="mean",
+            show_original=False,
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
-
-
 
 
 class TestRollingStatsDefaultXLabel:
@@ -712,8 +725,6 @@ class TestRollingStatsDefaultXLabel:
         })
         fig = plot_rolling_statistics(df, columns="y", window_size=3, statistics="mean")
         assert isinstance(fig, go.Figure)
-
-
 
 
 class TestPlotMissingDataHeatmapAggregation:
@@ -739,8 +750,6 @@ class TestPlotMissingDataHeatmapAggregation:
         fig = plot_missing_data(df, kind="heatmap")
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
-
-
 
 
 class TestPlotMissingDataMatrix:
@@ -778,9 +787,13 @@ class TestPlotMissingDataSamplingInterval:
             "y": [float(i) for i in range(10)],
             "z": [float(i) * 10 for i in range(10)],
         })
-        return df.filter(~pl.col("time").is_in([
-            full_times[2], full_times[5], full_times[8],
-        ]))
+        return df.filter(
+            ~pl.col("time").is_in([
+                full_times[2],
+                full_times[5],
+                full_times[8],
+            ])
+        )
 
     def test_bars_with_sampling_interval(self, df_with_gaps):
         """Bars reflect gap rows as missing when sampling_interval is set."""
@@ -929,7 +942,9 @@ class TestPlotMissingDataPanelBarsLegend:
     def test_panel_bars_custom_palette(self, panel_df):
         """Custom color_palette is applied in panel bars mode."""
         fig = plot_missing_data(
-            panel_df, kind="bars", panel_group_names=["T3", "T4"],
+            panel_df,
+            kind="bars",
+            panel_group_names=["T3", "T4"],
             color_palette=["#AA0000", "#00BB00"],
         )
         colors = {t.marker.color for t in fig.data}
@@ -954,7 +969,9 @@ class TestPlotMissingDataPanelKinds:
     def test_panel_heatmap_facet_member(self, panel_df):
         """Panel heatmap faceted by member creates one subplot per member."""
         fig = plot_missing_data(
-            panel_df, kind="heatmap", panel_group_names=["T3", "T4"],
+            panel_df,
+            kind="heatmap",
+            panel_group_names=["T3", "T4"],
             facet_by="member",
         )
         assert isinstance(fig, go.Figure)
@@ -965,7 +982,9 @@ class TestPlotMissingDataPanelKinds:
     def test_panel_heatmap_facet_group(self, panel_df):
         """Panel heatmap faceted by group creates one subplot per group."""
         fig = plot_missing_data(
-            panel_df, kind="heatmap", panel_group_names=["T3", "T4"],
+            panel_df,
+            kind="heatmap",
+            panel_group_names=["T3", "T4"],
             facet_by="group",
         )
         heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
@@ -975,7 +994,9 @@ class TestPlotMissingDataPanelKinds:
     def test_panel_heatmap_y_labels(self, panel_df):
         """Heatmap y-axis labels use overlay key names (group prefix)."""
         fig = plot_missing_data(
-            panel_df, kind="heatmap", panel_group_names=["T3", "T4"],
+            panel_df,
+            kind="heatmap",
+            panel_group_names=["T3", "T4"],
             facet_by="member",
         )
         heatmap = fig.data[0]
@@ -985,7 +1006,9 @@ class TestPlotMissingDataPanelKinds:
     def test_panel_matrix_kind(self, panel_df):
         """Panel matrix kind renders heatmap traces."""
         fig = plot_missing_data(
-            panel_df, kind="matrix", panel_group_names=["T3", "T4"],
+            panel_df,
+            kind="matrix",
+            panel_group_names=["T3", "T4"],
             facet_by="group",
         )
         heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
@@ -994,8 +1017,11 @@ class TestPlotMissingDataPanelKinds:
     def test_panel_heatmap_with_time_aggregation(self, panel_df):
         """Panel heatmap supports time_aggregation."""
         fig = plot_missing_data(
-            panel_df, kind="heatmap", panel_group_names=["T3", "T4"],
-            facet_by="group", time_aggregation="3mo",
+            panel_df,
+            kind="heatmap",
+            panel_group_names=["T3", "T4"],
+            facet_by="group",
+            time_aggregation="3mo",
         )
         heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
         assert len(heatmaps) == 2
@@ -1043,8 +1069,6 @@ class TestOutlierMethodBranches:
         assert len(fig.data) > 0
 
 
-
-
 class TestResamplingComparisonPanel:
     """Cover panel path for plot_resampling_comparison."""
 
@@ -1052,16 +1076,22 @@ class TestResamplingComparisonPanel:
         """Panel resampling comparison routes through panel_facet_figure."""
         hourly = pl.DataFrame({
             "time": pl.datetime_range(
-                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 7, 23), "1h", eager=True,
+                pl.datetime(2020, 1, 1),
+                pl.datetime(2020, 1, 7, 23),
+                "1h",
+                eager=True,
             ),
             "temp__a": [20.0 + i % 24 for i in range(7 * 24)],
             "temp__b": [15.0 + i % 24 for i in range(7 * 24)],
         })
         daily = hourly.group_by_dynamic("time", every="1d").agg(
-            pl.col("temp__a").mean(), pl.col("temp__b").mean(),
+            pl.col("temp__a").mean(),
+            pl.col("temp__b").mean(),
         )
         fig = plot_resampling_comparison(
-            hourly, daily, panel_group_names=["temp"],
+            hourly,
+            daily,
+            panel_group_names=["temp"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -1090,13 +1120,17 @@ class TestResamplingComparisonAutoDetect:
         """Panel data without explicit panel_group_names triggers auto-detect."""
         hourly = pl.DataFrame({
             "time": pl.datetime_range(
-                pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 7, 23), "1h", eager=True,
+                pl.datetime(2020, 1, 1),
+                pl.datetime(2020, 1, 7, 23),
+                "1h",
+                eager=True,
             ),
             "temp__a": [20.0 + i % 24 for i in range(7 * 24)],
             "temp__b": [15.0 + i % 24 for i in range(7 * 24)],
         })
         daily = hourly.group_by_dynamic("time", every="1d").agg(
-            pl.col("temp__a").mean(), pl.col("temp__b").mean(),
+            pl.col("temp__a").mean(),
+            pl.col("temp__b").mean(),
         )
         # No columns= and no panel_group_names= → auto-detect
         fig = plot_resampling_comparison(hourly, daily)

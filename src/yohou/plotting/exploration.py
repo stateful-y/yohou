@@ -149,8 +149,6 @@ def plot_time_series(
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
-
-
     if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
@@ -744,15 +742,11 @@ def _panel_heatmap_missing(
     if facet_by == "member":
         facet_keys = all_members
         overlay_keys_per_facet: dict[str, list[str]] = {
-            m: [g for g, cols in groups.items() if any(_member_name(c) == m for c in cols)]
-            for m in all_members
+            m: [g for g, cols in groups.items() if any(_member_name(c) == m for c in cols)] for m in all_members
         }
     else:
         facet_keys = all_group_names
-        overlay_keys_per_facet = {
-            g: [_member_name(c) for c in cols]
-            for g, cols in groups.items()
-        }
+        overlay_keys_per_facet = {g: [_member_name(c) for c in cols] for g, cols in groups.items()}
 
     n_facets = len(facet_keys)
     n_cols_grid = min(n_facets, facet_n_cols)
@@ -1258,7 +1252,6 @@ def plot_distribution(
     validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
-
     if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
 
@@ -1284,9 +1277,7 @@ def plot_distribution(
                     legendgroup=ctx.display_name,
                     showlegend=_legend_tracker.should_show(ctx.display_name),
                     hovertemplate=(
-                        f"<b>{ctx.display_name}</b><br>"
-                        "Value: %{x:.2f}<br>"
-                        "Density: %{y:.4f}<extra></extra>"
+                        f"<b>{ctx.display_name}</b><br>Value: %{{x:.2f}}<br>Density: %{{y:.4f}}<extra></extra>"
                     ),
                 ),
                 row=ctx.row,
@@ -1307,9 +1298,7 @@ def plot_distribution(
                         legendgroup=ctx.display_name,
                         showlegend=False,
                         hovertemplate=(
-                            f"<b>{ctx.display_name} KDE</b><br>"
-                            "Value: %{x:.2f}<br>"
-                            "Density: %{y:.4f}<extra></extra>"
+                            f"<b>{ctx.display_name} KDE</b><br>Value: %{{x:.2f}}<br>Density: %{{y:.4f}}<extra></extra>"
                         ),
                     ),
                     row=ctx.row,
@@ -1352,11 +1341,7 @@ def plot_distribution(
                 marker={"color": colors[idx]},
                 opacity=bar_opacity,
                 histnorm=histnorm,
-                hovertemplate=(
-                    f"<b>{col}</b><br>"
-                    "Value: %{x:.2f}<br>"
-                    "Density: %{y:.4f}<extra></extra>"
-                ),
+                hovertemplate=(f"<b>{col}</b><br>Value: %{{x:.2f}}<br>Density: %{{y:.4f}}<extra></extra>"),
             )
         )
 
@@ -1372,11 +1357,7 @@ def plot_distribution(
                     mode="lines",
                     name=f"{col} (KDE)",
                     line={"color": colors[idx], "width": kde_width},
-                    hovertemplate=(
-                        f"<b>{col} KDE</b><br>"
-                        "Value: %{x:.2f}<br>"
-                        "Density: %{y:.4f}<extra></extra>"
-                    ),
+                    hovertemplate=(f"<b>{col} KDE</b><br>Value: %{{x:.2f}}<br>Density: %{{y:.4f}}<extra></extra>"),
                 )
             )
 
@@ -1521,7 +1502,6 @@ def plot_outliers(
         raise ValueError(msg)
     validate_plotting_params(width=width, height=height)
 
-
     def _compute_outlier_mask(series: pl.Series) -> tuple[pl.Series, float | None, float | None]:
         """Return (is_outlier_bool_series, lower_bound, upper_bound)."""
         if method == "zscore":
@@ -1570,10 +1550,7 @@ def plot_outliers(
                     line={"color": _c, "width": line_width},
                     opacity=line_opacity,
                     connectgaps=connect_gaps,
-                    hovertemplate=(
-                        f"<b>{ctx.display_name}</b><br>"
-                        "%{x}<br>%{y:.2f}<extra></extra>"
-                    ),
+                    hovertemplate=(f"<b>{ctx.display_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
                     **_lg,
                 ),
                 row=ctx.row,
@@ -1590,10 +1567,7 @@ def plot_outliers(
                         y=df_out[base],
                         mode="markers",
                         marker={"color": _c, "size": outlier_size, "symbol": outlier_symbol},
-                        hovertemplate=(
-                            f"<b>{base} OUTLIER</b><br>"
-                            "%{x}<br>%{y:.2f}<extra></extra>"
-                        ),
+                        hovertemplate=(f"<b>{base} OUTLIER</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
                         **_lg_sec,
                     ),
                     row=ctx.row,
@@ -1655,10 +1629,7 @@ def plot_outliers(
                 line={"color": col_color, "width": line_width},
                 opacity=line_opacity,
                 connectgaps=connect_gaps,
-                hovertemplate=(
-                    f"<b>{col}</b><br>"
-                    "%{x}<br>%{y:.2f}<extra></extra>"
-                ),
+                hovertemplate=(f"<b>{col}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
             )
         )
 
@@ -1678,10 +1649,7 @@ def plot_outliers(
                         "size": outlier_size,
                         "symbol": outlier_symbol,
                     },
-                    hovertemplate=(
-                        f"<b>{col} OUTLIER</b><br>"
-                        "%{x}<br>%{y:.2f}<extra></extra>"
-                    ),
+                    hovertemplate=(f"<b>{col} OUTLIER</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
                 )
             )
 
@@ -1820,7 +1788,10 @@ def plot_resampling_comparison(
 
     >>> hourly = pl.DataFrame({
     ...     "time": pl.datetime_range(
-    ...         pl.datetime(2020, 1, 1), pl.datetime(2020, 1, 2, 23), "1h", eager=True,
+    ...         pl.datetime(2020, 1, 1),
+    ...         pl.datetime(2020, 1, 2, 23),
+    ...         "1h",
+    ...         eager=True,
     ...     ),
     ...     "y": list(range(48)),
     ... })
@@ -1932,10 +1903,7 @@ def plot_resampling_comparison(
                 opacity=original_opacity,
                 connectgaps=connect_gaps,
                 legendgroup=col,
-                hovertemplate=(
-                    f"<b>{col} ({original_label})</b><br>"
-                    "%{x}<br>%{y:.2f}<extra></extra>"
-                ),
+                hovertemplate=(f"<b>{col} ({original_label})</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
             )
         )
 
@@ -1950,10 +1918,7 @@ def plot_resampling_comparison(
                 opacity=resampled_opacity,
                 connectgaps=connect_gaps,
                 legendgroup=col,
-                hovertemplate=(
-                    f"<b>{col} ({resampled_label})</b><br>"
-                    "%{x}<br>%{y:.2f}<extra></extra>"
-                ),
+                hovertemplate=(f"<b>{col} ({resampled_label})</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
             )
         )
 

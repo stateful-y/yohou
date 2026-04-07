@@ -161,9 +161,7 @@ def assert_consistent_colors(fig: go.Figure, group_name: str) -> None:
 def assert_linked_legend(fig: go.Figure, group_name: str, min_traces: int = 2) -> None:
     """Assert at least *min_traces* traces share legendgroup *group_name*."""
     count = sum(1 for t in fig.data if getattr(t, "legendgroup", None) == group_name)
-    assert count >= min_traces, (
-        f"Expected >= {min_traces} traces with legendgroup='{group_name}', got {count}"
-    )
+    assert count >= min_traces, f"Expected >= {min_traces} traces with legendgroup='{group_name}', got {count}"
 
 
 def assert_figure_valid(fig: go.Figure, *, min_traces: int = 1) -> None:
@@ -225,9 +223,7 @@ def trace_opacities(fig: go.Figure, legendgroup: str) -> list[float]:
 @pytest.fixture
 def panel_hourly_df():
     """Hourly panel DataFrame, 2 months, 2 members. For seasonal heatmap tests."""
-    dates = pl.datetime_range(
-        pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True
-    )
+    dates = pl.datetime_range(pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True)
     n = len(dates)
     return pl.DataFrame({
         "time": dates,

@@ -1,7 +1,5 @@
 """Tests for PanelColorManager and color consistency across plots."""
 
-import pytest
-
 from yohou.plotting._utils import PanelColorManager, palette_yohou
 
 

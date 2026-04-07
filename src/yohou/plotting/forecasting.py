@@ -630,6 +630,7 @@ def _render_interval_bands(
     row,
     col_grid,
 ):
+    """Add prediction-interval bands to the forecast figure."""
     for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
         m_color = model_colors[m_idx % len(model_colors)]
         pred_value_cols = [
@@ -653,9 +654,7 @@ def _render_interval_bands(
                 x_band = t + t[::-1]
                 y_band = y_upper + y_lower[::-1]
                 if multi_member:
-                    pi_label = (
-                        f"{member} {m_name} ({rate:.0%} PI)" if is_multi_model else f"{member} ({rate:.0%} PI)"
-                    )
+                    pi_label = f"{member} {m_name} ({rate:.0%} PI)" if is_multi_model else f"{member} ({rate:.0%} PI)"
                 else:
                     pi_label = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
                 _show_pi = legend_tracker.should_show(pi_label)
@@ -699,6 +698,7 @@ def _render_forecast_trace(
     row,
     col_grid,
 ):
+    """Add forecast line traces to the figure."""
     for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
         m_color = model_colors[m_idx % len(model_colors)]
         pred_value_cols = [
@@ -871,9 +871,11 @@ def _plot_forecast_panel(
         sub_palette = resolve_color_palette(_model_pal, len(sub_names))
 
         def _get_sub_name(col: str) -> str:
+            """Return group name from panel column."""
             return col.split("__", 1)[0]
 
         def _get_sub_color(col: str) -> str:
+            """Return palette color for the column."""
             return sub_palette[sub_names.index(_get_sub_name(col))]
 
     elif facet_by is None:
@@ -884,11 +886,13 @@ def _plot_forecast_panel(
         _sub_col_map = dict(zip(all_flat_cols, range(len(all_flat_cols)), strict=False))
 
         def _get_sub_name(col: str) -> str:
+            """Return composite group/member identifier."""
             gname = col.split("__", 1)[0] if "__" in col else ""
             mname = _member_name(col) if "__" in col else col
             return f"{gname}/{mname}" if gname else mname
 
         def _get_sub_color(col: str) -> str:
+            """Return palette color for the column."""
             return sub_palette[_sub_col_map.get(col, 0)]
 
     else:
@@ -898,9 +902,11 @@ def _plot_forecast_panel(
         sub_palette = resolve_color_palette(_model_pal, len(sub_names))
 
         def _get_sub_name(col: str) -> str:
+            """Return member name from panel column."""
             return _member_name(col)
 
         def _get_sub_color(col: str) -> str:
+            """Return palette color for the column."""
             return sub_palette[sub_names.index(_get_sub_name(col))]
 
     multi_sub = any(len(cols) > 1 for cols in facets.values())
@@ -1212,16 +1218,15 @@ def plot_time_weight(
             sub_names = all_group_names
 
             def _get_sub_name(col: str) -> str:
+                """Return group name from panel column."""
                 return col.split("__", 1)[0]
 
         elif facet_by is None:
             facets = {"All": flat_cols}
-            sub_names = [
-                f"{c.split('__', 1)[0]}/{_member_name(c)}" if "__" in c else c
-                for c in flat_cols
-            ]
+            sub_names = [f"{c.split('__', 1)[0]}/{_member_name(c)}" if "__" in c else c for c in flat_cols]
 
             def _get_sub_name(col: str) -> str:
+                """Return composite group/member identifier."""
                 gname = col.split("__", 1)[0] if "__" in col else ""
                 mname = _member_name(col) if "__" in col else col
                 return f"{gname}/{mname}" if gname else mname
@@ -1232,6 +1237,7 @@ def plot_time_weight(
             sub_names = all_members
 
             def _get_sub_name(col: str) -> str:
+                """Return member name from panel column."""
                 return _member_name(col)
 
         # Get colors (one per unique sub-identifier)
@@ -1785,10 +1791,7 @@ def plot_components(
 
         # Validate component names early
         valid_stl = {"trend", "seasonal", "residual", "seasonal_adjusted"}
-        unknown = {
-            c for c in components_list
-            if c not in valid_stl and not re.match(r"^seasonal_\w+$", c)
-        }
+        unknown = {c for c in components_list if c not in valid_stl and not re.match(r"^seasonal_\w+$", c)}
         if unknown:
             all_valid = sorted(valid_stl | {"observed"})
             msg = f"Unknown components: {unknown}. Valid: {all_valid} (also seasonal_<period>)"
@@ -1800,7 +1803,7 @@ def plot_components(
 
         value_cols = validate_plotting_data(y, columns=columns, exclude=["time"])
 
-        _is_mstl = isinstance((stl_kwargs or {}).get("periods"), (list, str))
+        _is_mstl = isinstance((stl_kwargs or {}).get("periods"), list | str)
         components = _stl_to_component_dict(y, components_list, value_cols, stl_kwargs)
         title = title or ("MSTL Decomposition" if _is_mstl else "STL Decomposition")
 
@@ -1988,10 +1991,7 @@ def _plot_components_panel(
     comp_labels: list[str] = []
     if show_original:
         comp_labels.append("Original")
-    comp_labels.extend(
-        _format_component_label(name) if stl_mode else name
-        for name in components
-    )
+    comp_labels.extend(_format_component_label(name) if stl_mode else name for name in components)
     n_rows = len(comp_labels)
 
     figures: dict[str, go.Figure] = {}
@@ -2017,9 +2017,11 @@ def _plot_components_panel(
             _color_mgr: PanelColorManager = color_mgr,
             _legend_tracker: LegendTracker = legend_tracker,
         ) -> None:
+            """Add component traces for a single member to the figure."""
             for gname, group_cols in groups.items():
                 col_name = next(
-                    (c for c in group_cols if _member_name(c) == _member), None,
+                    (c for c in group_cols if _member_name(c) == _member),
+                    None,
                 )
                 if col_name is None or col_name not in data_df.columns:
                     continue
@@ -2118,7 +2120,11 @@ def _stl_to_component_dict(
     periods = stl_opts.get("periods")
     if periods is not None:
         return _mstl_to_component_dict(
-            y, components, columns, periods, stl_opts.get("robust", True),
+            y,
+            components,
+            columns,
+            periods,
+            stl_opts.get("robust", True),
         )
 
     # Single-season STL

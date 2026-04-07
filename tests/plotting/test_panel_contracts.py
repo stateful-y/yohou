@@ -1,7 +1,5 @@
 """Tests for legend, color, and panel rendering contracts after the standardization refactoring."""
 
-import math
-
 import numpy as np
 import polars as pl
 import pytest
@@ -23,25 +21,21 @@ from yohou.plotting import (
     plot_resampling_comparison,
     plot_rolling_statistics,
     plot_scatter_matrix,
-    plot_seasonality,
     plot_seasonal_heatmap,
+    plot_seasonality,
     plot_spectrum,
     plot_subseasonality,
     plot_time_weight,
 )
-from yohou.plotting._utils import PanelColorManager, LegendTracker, linked_legendgroup_kwargs
+from yohou.plotting._utils import LegendTracker, linked_legendgroup_kwargs
 
 from .conftest import (
     assert_consistent_colors,
     assert_figure_valid,
-    assert_legend_groups,
-    assert_linked_legend,
-    has_legendgrouptitle,
     legend_groups,
     trace_opacities,
     visible_legend_names,
 )
-
 
 
 @pytest.fixture
@@ -72,9 +66,7 @@ def panel_3member_df():
 @pytest.fixture
 def panel_hourly_df():
     """Hourly panel DataFrame, ~1440 rows, 2 members."""
-    dates = pl.datetime_range(
-        pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True
-    )
+    dates = pl.datetime_range(pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True)
     n = len(dates)
     return pl.DataFrame({
         "time": dates,
@@ -93,7 +85,6 @@ def panel_3year_df():
         "y__a": [100.0 + i % 30 + (i % 7) * 3 for i in range(n)],
         "y__b": [200.0 + i % 20 + (i % 5) * 5 for i in range(n)],
     })
-
 
 
 class TestLinkedLegendgroupKwargs:
@@ -118,7 +109,6 @@ class TestLinkedLegendgroupKwargs:
         assert kw2["showlegend"] is False
 
 
-
 class TestBoxplotPanelLegend:
     def test_panel_legend_shows_groups(self, panel_df):
         """With facet_by='member' (default), groups appear in legend."""
@@ -133,7 +123,6 @@ class TestBoxplotPanelLegend:
         assert len(groups) >= 1
 
 
-
 class TestOutliersPanelLegend:
     def test_outlier_markers_share_legendgroup_with_line(self, panel_df):
         fig = plot_outliers(panel_df)
@@ -143,12 +132,14 @@ class TestOutliersPanelLegend:
 
     def test_default_outlier_symbol_is_x(self, panel_df):
         fig = plot_outliers(panel_df)
-        scatter_traces = [t for t in fig.data if isinstance(t, (go.Scatter, go.Scattergl))]
+        scatter_traces = [t for t in fig.data if isinstance(t, go.Scatter | go.Scattergl)]
         for t in scatter_traces:
-            if getattr(t, "marker", None) and getattr(t.marker, "symbol", None):
-                if t.marker.symbol not in (None, "circle"):
-                    assert t.marker.symbol == "x"
-
+            if (
+                getattr(t, "marker", None)
+                and getattr(t.marker, "symbol", None)
+                and t.marker.symbol not in (None, "circle")
+            ):
+                assert t.marker.symbol == "x"
 
 
 class TestRollingStatisticsPanelLegend:
@@ -165,7 +156,6 @@ class TestRollingStatisticsPanelLegend:
         for g in groups:
             count = sum(1 for t in fig.data if getattr(t, "legendgroup", None) == g)
             assert count >= 1
-
 
 
 class TestComponentsPanelLayout:
@@ -199,7 +189,6 @@ class TestComponentsPanelLayout:
             assert len(groups) >= 1
 
 
-
 class TestSubseasonalityPanelLegend:
     def test_legendgroup_per_panel_member(self, panel_3year_df):
         result = plot_subseasonality(panel_3year_df, seasonality="month")
@@ -222,7 +211,6 @@ class TestSubseasonalityPanelLegend:
             assert_figure_valid(fig)
 
 
-
 class TestSeasonalHeatmapPanel:
     def test_all_panel_members_get_subplot(self, panel_hourly_df):
         fig = plot_seasonal_heatmap(panel_hourly_df)
@@ -234,7 +222,6 @@ class TestSeasonalHeatmapPanel:
         annotations = [a.text for a in fig.layout.annotations if hasattr(a, "text")]
         assert any("a" in a for a in annotations)
         assert any("b" in a for a in annotations)
-
 
 
 class TestLagScatterPanelColors:
@@ -259,11 +246,9 @@ class TestLagScatterPanelColors:
         })
         fig = plot_lag_scatter(df, columns="y", lags=[1, 2], seasonality="month")
         traces_with_title = [
-            t for t in fig.data
-            if getattr(t, "legendgrouptitle", None) and getattr(t.legendgrouptitle, "text", None)
+            t for t in fig.data if getattr(t, "legendgrouptitle", None) and getattr(t.legendgrouptitle, "text", None)
         ]
         assert len(traces_with_title) >= 1
-
 
 
 class TestACFPanelLegend:
@@ -297,7 +282,6 @@ class TestPACFPanelLegend:
         groups = legend_groups(fig)
         # facet_by="member" (default): 1 group ("y") overlaid across member subplots
         assert len(groups) >= 1
-
 
 
 class TestCrossCorrelation:
@@ -354,7 +338,6 @@ class TestCrossCorrelation:
         assert len(groups) == 3
 
 
-
 def _make_daily_panel():
     """Small daily panel DataFrame for parametrized tests."""
     dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 29), "1d", eager=True)
@@ -379,9 +362,7 @@ def _make_3year_daily():
 
 def _make_hourly_panel():
     """Hourly panel for heatmap tests."""
-    dates = pl.datetime_range(
-        pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True
-    )
+    dates = pl.datetime_range(pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True)
     n = len(dates)
     return pl.DataFrame({
         "time": dates,
@@ -425,15 +406,40 @@ _TITLE_CASES: list[tuple[str, object, dict, str]] = [
     ("outliers", plot_outliers, {"df": _make_simple()}, "Outlier Detection"),
     ("acf", plot_autocorrelation, {"df": _make_simple(), "max_lags": 10}, "Autocorrelation (ACF)"),
     ("pacf", plot_partial_autocorrelation, {"df": _make_simple(), "max_lags": 10}, "Partial Autocorrelation (PACF)"),
-    ("seasonality", plot_seasonality, {"df": _make_3year_daily(), "columns": "y__a", "panel_group_names": None}, "Seasonal Pattern"),
-    ("subseasonality", plot_subseasonality, {"df": _make_3year_daily(), "columns": "y__a", "panel_group_names": None}, "Seasonal Subseries"),
+    (
+        "seasonality",
+        plot_seasonality,
+        {"df": _make_3year_daily(), "columns": "y__a", "panel_group_names": None},
+        "Seasonal Pattern",
+    ),
+    (
+        "subseasonality",
+        plot_subseasonality,
+        {"df": _make_3year_daily(), "columns": "y__a", "panel_group_names": None},
+        "Seasonal Subseries",
+    ),
     ("seasonal_heatmap", plot_seasonal_heatmap, {"df": _make_hourly_panel()}, "Seasonal Heatmap"),
     ("lag_scatter", plot_lag_scatter, {"df": _make_simple(), "lags": [1]}, "Lag 1 Scatter Plot"),
-    ("cross_correlation", plot_cross_correlation, {"df": _make_short_2col(), "columns": ["x", "y"], "max_lags": 10}, "Cross-Correlation"),
-    ("resampling_comparison", plot_resampling_comparison, {"df_original": _make_simple(), "df_resampled": _make_simple()}, "Original vs Resampled"),
+    (
+        "cross_correlation",
+        plot_cross_correlation,
+        {"df": _make_short_2col(), "columns": ["x", "y"], "max_lags": 10},
+        "Cross-Correlation",
+    ),
+    (
+        "resampling_comparison",
+        plot_resampling_comparison,
+        {"df_original": _make_simple(), "df_resampled": _make_simple()},
+        "Original vs Resampled",
+    ),
     ("correlation_heatmap", plot_correlation_heatmap, {"df": _make_short_2col()}, "Correlation Heatmap"),
     ("scatter_matrix", plot_scatter_matrix, {"df": _make_short_2col()}, "Scatter Matrix"),
-    ("model_comparison_bar", plot_model_comparison_bar, {"results": {"A": {"MAE": 0.5}, "B": {"MAE": 0.3}}}, "Model Comparison"),
+    (
+        "model_comparison_bar",
+        plot_model_comparison_bar,
+        {"results": {"A": {"MAE": 0.5}, "B": {"MAE": 0.3}}},
+        "Model Comparison",
+    ),
     ("time_weight", plot_time_weight, {"df": _make_weight_df()}, "Time Weights"),
     ("phase", plot_phase, {"df": _make_simple()}, "Phase Spectrum"),
     ("spectrum", plot_spectrum, {"df": _make_simple()}, "Periodogram"),
@@ -454,7 +460,6 @@ class TestDefaultTitleContract:
         assert fig.layout.title.text == expected_title, (
             f"{name}: expected title '{expected_title}', got '{fig.layout.title.text}'"
         )
-
 
 
 _PANEL_COLOR_CASES: list[tuple[str, object, dict]] = [
@@ -482,7 +487,6 @@ class TestColorConsistencyContract:
         for fig in figs:
             for g in legend_groups(fig):
                 assert_consistent_colors(fig, g)
-
 
 
 _PANEL_LAYOUT_CASES: list[tuple[str, object, dict]] = [
@@ -520,7 +524,6 @@ class TestPanelLayoutContract:
             assert_figure_valid(fig)
 
 
-
 class TestRollingStatsRawColor:
     """Raw trace color must match the rolling statistics traces of the same member."""
 
@@ -535,9 +538,7 @@ class TestRollingStatsRawColor:
                 line = getattr(t, "line", None)
                 if line and getattr(line, "color", None):
                     colors.add(line.color)
-            assert len(colors) == 1, (
-                f"Group '{group}': expected 1 color, got {colors}"
-            )
+            assert len(colors) == 1, f"Group '{group}': expected 1 color, got {colors}"
 
     def test_non_panel_single_col_uses_palette_color(self):
         df = _make_simple()
@@ -582,9 +583,7 @@ class TestSeasonalityLegend:
         fig = plot_seasonality(df)
         shown = [t.name for t in fig.data if getattr(t, "showlegend", None) is True]
         groups = legend_groups(fig)
-        assert set(shown) == groups, (
-            f"Expected one legend entry per member {groups}, got shown={shown}"
-        )
+        assert set(shown) == groups, f"Expected one legend entry per member {groups}, got shown={shown}"
 
     def test_non_panel_one_legend_entry_per_column(self):
         dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
@@ -608,9 +607,7 @@ class TestSeasonalityLegend:
                 line = getattr(t, "line", None)
                 assert line, f"Legend trace '{t.name}' has no line"
                 color = getattr(line, "color", "")
-                assert color.startswith("#"), (
-                    f"Legend swatch should use hex color, got '{color}'"
-                )
+                assert color.startswith("#"), f"Legend swatch should use hex color, got '{color}'"
 
     def test_no_cycle_at_full_opacity(self):
         """No data cycle should reach alpha=1.0; max is capped at 0.9."""
@@ -644,19 +641,15 @@ class TestSeasonalityLegend:
         opacities = trace_opacities(fig, "y")
         if len(opacities) >= 2:
             for i in range(len(opacities) - 1):
-                assert opacities[i] <= opacities[i + 1] + 0.01, (
-                    f"Opacities should increase with time: {opacities}"
-                )
+                assert opacities[i] <= opacities[i + 1] + 0.01, f"Opacities should increase with time: {opacities}"
 
     def test_opacity_power_kwarg(self):
         """Higher opacity_power makes intermediate cycles ramp to opaque faster."""
         df = _make_3year_daily()
         # Linear ramp
-        fig_linear = plot_seasonality(df, columns="y__a", panel_group_names=None,
-                                      opacity_power=1.0)
+        fig_linear = plot_seasonality(df, columns="y__a", panel_group_names=None, opacity_power=1.0)
         # Fast ramp - cycles get opaque sooner
-        fig_fast = plot_seasonality(df, columns="y__a", panel_group_names=None,
-                                    opacity_power=3.0)
+        fig_fast = plot_seasonality(df, columns="y__a", panel_group_names=None, opacity_power=3.0)
         op_linear = trace_opacities(fig_linear, "y__a")
         op_fast = trace_opacities(fig_fast, "y__a")
         assert op_linear and op_fast, "Expected opacity values"
@@ -669,8 +662,7 @@ class TestSeasonalityLegend:
         mid = len(op_linear) // 2
         if mid > 0:
             assert op_fast[mid] > op_linear[mid], (
-                f"Fast curve midpoint ({op_fast[mid]}) should be > "
-                f"linear midpoint ({op_linear[mid]})"
+                f"Fast curve midpoint ({op_fast[mid]}) should be > linear midpoint ({op_linear[mid]})"
             )
 
 

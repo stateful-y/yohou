@@ -1693,11 +1693,21 @@ def plot_score_distribution(
         for g_idx, gname in enumerate(_effective_groups):
             r = g_idx // n_cols_grid + 1
             c_i = g_idx % n_cols_grid + 1
-            g_cols_truth = [cn for cn in y_truth.columns if cn == "time" or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))]
+            g_cols_truth = [
+                cn
+                for cn in y_truth.columns
+                if cn == "time"
+                or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))
+            ]
             y_truth_g = y_truth.select(g_cols_truth) if len(g_cols_truth) > 1 else y_truth
             y_pred_dict_g: dict[str, pl.DataFrame] = {}
             for mname, y_pred_m in y_pred_dict.items():
-                gp_cols = [cn for cn in y_pred_m.columns if cn in ("time", "observed_time") or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))]
+                gp_cols = [
+                    cn
+                    for cn in y_pred_m.columns
+                    if cn in ("time", "observed_time")
+                    or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))
+                ]
                 y_pred_dict_g[mname] = y_pred_m.select(gp_cols) if len(gp_cols) > 2 else y_pred_m
             _render(pfig, y_truth_g, y_pred_dict_g, colors, show_legend and g_idx == 0, row=r, col=c_i)
         scorer_name = scorer.__class__.__name__
@@ -1716,7 +1726,10 @@ def plot_score_distribution(
     if _col_filter is not None:
         _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
         y_truth_filt = y_truth.select(_keep_truth)
-        y_pred_dict_filt = {k: v.select([c for c in v.columns if c in ("time", "observed_time") or c in _col_filter]) for k, v in y_pred_dict.items()}
+        y_pred_dict_filt = {
+            k: v.select([c for c in v.columns if c in ("time", "observed_time") or c in _col_filter])
+            for k, v in y_pred_dict.items()
+        }
         _render(fig, y_truth_filt, y_pred_dict_filt, colors, _show_legend=show_legend)
     else:
         _render(fig, y_truth, y_pred_dict, colors, _show_legend=show_legend)
@@ -1970,11 +1983,21 @@ def plot_score_per_horizon(
         for g_idx, gname in enumerate(_effective_groups):
             r = g_idx // n_cols_grid + 1
             c_i = g_idx % n_cols_grid + 1
-            g_cols_truth = [cn for cn in y_truth.columns if cn == "time" or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))]
+            g_cols_truth = [
+                cn
+                for cn in y_truth.columns
+                if cn == "time"
+                or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))
+            ]
             y_truth_g = y_truth.select(g_cols_truth) if len(g_cols_truth) > 1 else y_truth
             y_pred_dict_g: dict[str, pl.DataFrame] = {}
             for mname, y_pred_m in y_pred_dict.items():
-                gp_cols = [cn for cn in y_pred_m.columns if cn in ("time", "observed_time") or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))]
+                gp_cols = [
+                    cn
+                    for cn in y_pred_m.columns
+                    if cn in ("time", "observed_time")
+                    or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))
+                ]
                 y_pred_dict_g[mname] = y_pred_m.select(gp_cols) if len(gp_cols) > 2 else y_pred_m
             _render_horizon(pfig, y_truth_g, y_pred_dict_g, colors, show_legend and g_idx == 0, row=r, col=c_i)
         scorer_name = scorer.__class__.__name__
@@ -1995,7 +2018,10 @@ def plot_score_per_horizon(
     if _col_filter is not None:
         _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
         y_truth_filt = y_truth.select(_keep_truth)
-        y_pred_dict_filt = {k: v.select([c for c in v.columns if c in ("time", "observed_time") or c in _col_filter]) for k, v in y_pred_dict.items()}
+        y_pred_dict_filt = {
+            k: v.select([c for c in v.columns if c in ("time", "observed_time") or c in _col_filter])
+            for k, v in y_pred_dict.items()
+        }
         _render_horizon(fig, y_truth_filt, y_pred_dict_filt, colors, show_legend)
     else:
         _render_horizon(fig, y_truth, y_pred_dict, colors, show_legend)

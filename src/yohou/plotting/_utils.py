@@ -130,6 +130,8 @@ def _subplot_spacing(n: int, base: float = 0.3, floor: float = 0.04) -> float:
         ``max(floor, base / n)``
     """
     return max(floor, base / max(n, 1))
+
+
 """Ordered Plotly dash styles for distinguishing multiple line series."""
 
 
@@ -207,7 +209,7 @@ def get_config() -> dict:
     Examples
     --------
     >>> from yohou.plotting import get_config
-    >>> get_config()['resampler']
+    >>> get_config()["resampler"]
     False
 
     See Also
@@ -301,11 +303,7 @@ def _build_resampler_kwargs() -> dict:
         "resampler_trace_prefix_suffix": "resampled_trace_prefix_suffix",
         "resampler_show_mean_aggregation_size": "show_mean_aggregation_size",
     }
-    return {
-        kwarg: _global_config[key]
-        for key, kwarg in _config_to_kwarg.items()
-        if _global_config[key] is not None
-    }
+    return {kwarg: _global_config[key] for key, kwarg in _config_to_kwarg.items() if _global_config[key] is not None}
 
 
 def _create_figure(
@@ -1133,8 +1131,11 @@ def panel_facet_figure(
     >>> tracker = LegendTracker()
     >>> def render(ctx: RenderContext) -> None:
     ...     ctx.fig.add_scatter(
-    ...         x=ctx.sub_df["time"], y=ctx.sub_df[ctx.display_name],
-    ...         name=ctx.display_name, row=ctx.row, col=ctx.col,
+    ...         x=ctx.sub_df["time"],
+    ...         y=ctx.sub_df[ctx.display_name],
+    ...         name=ctx.display_name,
+    ...         row=ctx.row,
+    ...         col=ctx.col,
     ...     )
     >>> fig = panel_facet_figure(df, render)
     >>> len(fig.data) > 0
@@ -1152,8 +1153,7 @@ def panel_facet_figure(
     if facet_by == "member":
         facet_keys = all_members
         overlay_keys_per_facet = {
-            m: [g for g, cols in groups.items() if any(_member_name(c) == m for c in cols)]
-            for m in all_members
+            m: [g for g, cols in groups.items() if any(_member_name(c) == m for c in cols)] for m in all_members
         }
         # Warn about asymmetric groups
         full_group_set = set(all_group_names)
@@ -1170,10 +1170,7 @@ def panel_facet_figure(
             )
     else:
         facet_keys = all_group_names
-        overlay_keys_per_facet = {
-            g: [_member_name(c) for c in cols]
-            for g, cols in groups.items()
-        }
+        overlay_keys_per_facet = {g: [_member_name(c) for c in cols] for g, cols in groups.items()}
 
     n_facets = len(facet_keys)
     n_cols_grid = min(n_facets, facet_n_cols)

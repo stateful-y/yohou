@@ -2023,7 +2023,9 @@ class TestPlotScoreDistributionPanelAutoDetect:
             "grp__y": [21.0 + i for i in range(15)],
         })
         fig = plot_score_distribution(
-            MeanAbsoluteError(), y_truth, y_pred,
+            MeanAbsoluteError(),
+            y_truth,
+            y_pred,
             panel_group_names=["grp"],
             columns="x",
         )
@@ -2115,7 +2117,9 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "grp__y": [21.0 + i for i in range(10)],
         })
         fig = plot_score_per_horizon(
-            MeanAbsoluteError(), y_truth, y_pred,
+            MeanAbsoluteError(),
+            y_truth,
+            y_pred,
             panel_group_names=["grp"],
             columns="x",
         )
@@ -2178,9 +2182,7 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
         })
         scorer = MeanAbsoluteError()
         with pytest.raises(ValueError, match="No panel groups found"):
-            plot_score_time_series(
-                scorer, y_truth, y_pred, panel_group_names=["nonexistent"]
-            )
+            plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["nonexistent"])
 
     def test_panel_with_time_weight(self):
         """Panel score time series with time_weight parameter."""
@@ -2200,7 +2202,9 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
         weights = pl.DataFrame({"time": times, "weight": [1.0] * 5})
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(
-            scorer, y_truth, y_pred,
+            scorer,
+            y_truth,
+            y_pred,
             panel_group_names=["grp"],
             time_weight=weights,
         )

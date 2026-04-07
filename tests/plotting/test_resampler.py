@@ -4,8 +4,8 @@ import polars as pl
 import pytest
 from plotly import graph_objects as go
 from plotly_resampler import FigureResampler, FigureWidgetResampler
-from plotly_resampler.aggregation.aggregators import LTTB, MinMaxAggregator, MinMaxLTTB
-from plotly_resampler.aggregation.gap_handlers import MedDiffGapHandler, NoGapHandler
+from plotly_resampler.aggregation.aggregators import LTTB, MinMaxAggregator
+from plotly_resampler.aggregation.gap_handlers import NoGapHandler
 
 from yohou.plotting._utils import (
     _build_resampler_kwargs,
@@ -31,6 +31,7 @@ _DEFAULT_CONFIG = {
 
 # Fixtures
 
+
 @pytest.fixture(autouse=True)
 def _reset_config():
     """Ensure every test starts and ends with the default config."""
@@ -51,6 +52,7 @@ def monthly_1col_df():
 
 
 # Config system
+
 
 class TestGetConfig:
     def test_default(self):
@@ -94,9 +96,8 @@ class TestConfigContext:
         assert get_config()["resampler"] is False
 
     def test_restores_on_exception(self):
-        with pytest.raises(RuntimeError):
-            with config_context(resampler=True):
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError), config_context(resampler=True):
+            raise RuntimeError("boom")
         assert get_config()["resampler"] is False
 
     def test_none_leaves_unchanged(self):
@@ -115,6 +116,7 @@ class TestConfigContext:
 
 # _get_resampler_mode
 
+
 class TestGetResamplerMode:
     def test_explicit_true(self):
         assert _get_resampler_mode(True) is True
@@ -132,6 +134,7 @@ class TestGetResamplerMode:
 
 
 # _create_figure
+
 
 class TestCreateFigure:
     def test_default_returns_plain(self):
@@ -162,6 +165,7 @@ class TestCreateFigure:
 
 # _create_subplots
 
+
 class TestCreateSubplots:
     def test_default_returns_plain(self):
         fig = _create_subplots(rows=1, cols=2)
@@ -179,32 +183,38 @@ class TestCreateSubplots:
 
 # Resampler parameter pass-through in public functions
 
+
 class TestExplorationResampler:
     """Test that exploration functions accept and honour the resampler param."""
 
     def test_plot_time_series_resampler(self, monthly_1col_df):
         from yohou.plotting import plot_time_series
+
         fig = plot_time_series(monthly_1col_df, columns="y", resampler=True)
         assert isinstance(fig, FigureResampler)
 
     def test_plot_time_series_widget(self, monthly_1col_df):
         pytest.importorskip("anywidget")
         from yohou.plotting import plot_time_series
+
         fig = plot_time_series(monthly_1col_df, columns="y", resampler="widget")
         assert isinstance(fig, FigureWidgetResampler)
 
     def test_plot_time_series_default(self, monthly_1col_df):
         from yohou.plotting import plot_time_series
+
         fig = plot_time_series(monthly_1col_df, columns="y")
         assert type(fig) is go.Figure
 
     def test_plot_rolling_statistics_resampler(self, monthly_1col_df):
         from yohou.plotting import plot_rolling_statistics
+
         fig = plot_rolling_statistics(monthly_1col_df, columns="y", window_size=3, resampler=True)
         assert isinstance(fig, FigureResampler)
 
     def test_plot_outliers_resampler(self, monthly_1col_df):
         from yohou.plotting import plot_outliers
+
         fig = plot_outliers(monthly_1col_df, columns="y", resampler=True)
         assert isinstance(fig, FigureResampler)
 
@@ -214,9 +224,14 @@ class TestForecastingResampler:
 
     def test_plot_forecast_resampler(self, monthly_1col_df):
         from yohou.plotting import plot_forecast
-        y_pred = monthly_1col_df.rename({"y": "y_pred"}).with_columns(
-            pl.col("y_pred").alias("y_pred"),
-        ).select("time", pl.col("y_pred").alias("y"))
+
+        y_pred = (
+            monthly_1col_df.rename({"y": "y_pred"})
+            .with_columns(
+                pl.col("y_pred").alias("y_pred"),
+            )
+            .select("time", pl.col("y_pred").alias("y"))
+        )
         fig = plot_forecast(monthly_1col_df, y_pred, resampler=True)
         assert isinstance(fig, FigureResampler)
 
@@ -226,6 +241,7 @@ class TestConfigContextIntegration:
 
     def test_config_context_enables_resampler(self, monthly_1col_df):
         from yohou.plotting import config_context, plot_time_series
+
         with config_context(resampler=True):
             fig = plot_time_series(monthly_1col_df, columns="y")
         assert isinstance(fig, FigureResampler)
@@ -233,12 +249,14 @@ class TestConfigContextIntegration:
     def test_config_context_widget(self, monthly_1col_df):
         pytest.importorskip("anywidget")
         from yohou.plotting import config_context, plot_time_series
+
         with config_context(resampler="widget"):
             fig = plot_time_series(monthly_1col_df, columns="y")
         assert isinstance(fig, FigureWidgetResampler)
 
 
 # Extended config keys
+
 
 class TestSetConfigExtended:
     def test_n_shown_samples(self):
@@ -283,13 +301,13 @@ class TestConfigContextExtended:
         assert get_config()["resampler_downsampler"] is None
 
     def test_restores_extended_on_exception(self):
-        with pytest.raises(RuntimeError):
-            with config_context(resampler_n_shown_samples=500):
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError), config_context(resampler_n_shown_samples=500):
+            raise RuntimeError("boom")
         assert get_config()["resampler_n_shown_samples"] is None
 
 
 # _build_resampler_kwargs
+
 
 class TestBuildResamplerKwargs:
     def test_empty_when_all_none(self):
@@ -353,6 +371,7 @@ class TestCreateFigureForwardsConfig:
 
 # _fill_trace_kwargs
 
+
 class TestFillTraceKwargs:
     def test_plain_figure_returns_empty(self):
         fig = go.Figure()
@@ -367,9 +386,11 @@ class TestFillTraceKwargs:
 
 # Re-exports
 
+
 class TestReExports:
     def test_aggregators_importable(self):
         from yohou.plotting import LTTB, EveryNthPoint, MinMaxAggregator, MinMaxLTTB
+
         assert MinMaxLTTB is not None
         assert LTTB is not None
         assert MinMaxAggregator is not None
@@ -377,5 +398,6 @@ class TestReExports:
 
     def test_gap_handlers_importable(self):
         from yohou.plotting import MedDiffGapHandler, NoGapHandler
+
         assert MedDiffGapHandler is not None
         assert NoGapHandler is not None

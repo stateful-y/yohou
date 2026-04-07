@@ -23,7 +23,6 @@ from yohou.plotting._utils import (
     _member_name,
     _subplot_spacing,
     apply_default_layout,
-    grouped_legend_kwargs,
     panel_facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
@@ -230,9 +229,7 @@ def plot_autocorrelation(
         # Add confidence bands
         if show_confidence:
             ci = norm.ppf(1 - (1 - confidence_level) / 2) / math.sqrt(n_series)
-            _add_confidence_bands(
-                fig, list(range(max_lags + 1)), [ci] * (max_lags + 1), [-ci] * (max_lags + 1)
-            )
+            _add_confidence_bands(fig, list(range(max_lags + 1)), [ci] * (max_lags + 1), [-ci] * (max_lags + 1))
 
     # Set default labels
     if x_label is None:
@@ -660,9 +657,7 @@ def _correlation_heatmap_separate(
                 zmid=0,
                 text=text_ann,
                 texttemplate="%{text}" if show_values else None,
-                hovertemplate=(
-                    f"<b>{gname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"
-                ),
+                hovertemplate=(f"<b>{gname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"),
             )
         )
         gfig = apply_default_layout(
@@ -710,9 +705,7 @@ def _correlation_heatmap_by_member(
                 zmid=0,
                 text=text_ann,
                 texttemplate="%{text}" if show_values else None,
-                hovertemplate=(
-                    f"<b>{mname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"
-                ),
+                hovertemplate=(f"<b>{mname}</b><br>%{{x}} vs %{{y}}<br>Correlation: %{{z:.3f}}<extra></extra>"),
             )
         )
         mfig = apply_default_layout(
@@ -904,7 +897,7 @@ def plot_correlation_heatmap(
         member_groups: dict[str, list[str]] = {}
         for member in all_members:
             member_cols = []
-            for gname, gcols in groups.items():
+            for _gname, gcols in groups.items():
                 col = next((c for c in gcols if _member_name(c) == member), None)
                 if col:
                     member_cols.append(col)
@@ -1112,13 +1105,16 @@ def plot_seasonality(
             if is_legend_member:
                 ctx.fig.add_trace(
                     go.Scatter(
-                        x=[None], y=[None], mode="lines",
+                        x=[None],
+                        y=[None],
+                        mode="lines",
                         line={"color": member_color, "width": line_width},
                         name=ctx.display_name,
                         legendgroup=ctx.display_name,
                         showlegend=True,
                     ),
-                    row=ctx.row, col=ctx.col,
+                    row=ctx.row,
+                    col=ctx.col,
                 )
 
             for ci, cyc in enumerate(cycles):
@@ -1167,9 +1163,7 @@ def plot_seasonality(
             if season_vals:
                 mean_x = list(season_vals.keys())
                 mean_y = [
-                    float(np.mean([x for x in v if x is not None]))
-                    if any(x is not None for x in v)
-                    else float("nan")
+                    float(np.mean([x for x in v if x is not None])) if any(x is not None for x in v) else float("nan")
                     for v in season_vals.values()
                 ]
                 ctx.fig.add_trace(
@@ -1227,7 +1221,9 @@ def plot_seasonality(
         if show_for_col:
             fig.add_trace(
                 go.Scatter(
-                    x=[None], y=[None], mode="lines",
+                    x=[None],
+                    y=[None],
+                    mode="lines",
                     line={"color": col_color, "width": line_width},
                     name=col_name,
                     legendgroup=col_name,
@@ -1457,7 +1453,8 @@ def plot_subseasonality(
                 for gname, group_cols in groups.items():
                     # Find this member's column within the group.
                     col_name = next(
-                        (c for c in group_cols if _member_name(c) == member), None,
+                        (c for c in group_cols if _member_name(c) == member),
+                        None,
                     )
                     if col_name is None or col_name not in season_df.columns:
                         continue
@@ -1465,11 +1462,7 @@ def plot_subseasonality(
                     display_name = gname
                     col_color = color_mgr.get_color(gname)
 
-                    agg_df = (
-                        season_df.group_by("cycle")
-                        .agg(pl.col(col_name).mean())
-                        .sort("cycle")
-                    )
+                    agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
                     cycles = agg_df["cycle"].to_list()
                     values = agg_df[col_name].to_list()
                     if not cycles:
@@ -1484,7 +1477,9 @@ def plot_subseasonality(
                             marker={"size": marker_size, "opacity": marker_opacity},
                             connectgaps=connect_gaps,
                             hovertemplate=_make_hovertemplate(
-                                display_name, "Cycle", "Value",
+                                display_name,
+                                "Cycle",
+                                "Value",
                             ),
                             name=display_name,
                             legendgroup=display_name,
@@ -1551,11 +1546,7 @@ def plot_subseasonality(
 
         for ci, col_name in enumerate(plot_columns):
             col_color = colors[ci % len(colors)]
-            agg_df = (
-                season_df.group_by("cycle")
-                .agg(pl.col(col_name).mean())
-                .sort("cycle")
-            )
+            agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
             cycles = agg_df["cycle"].to_list()
             values = agg_df[col_name].to_list()
             if not cycles:
@@ -1759,14 +1750,19 @@ def plot_lag_scatter(
 
                 for gname, group_cols in groups.items():
                     col_name = next(
-                        (col for col in group_cols if _member_name(col) == member), None,
+                        (col for col in group_cols if _member_name(col) == member),
+                        None,
                     )
                     if col_name is None or col_name not in df.columns:
                         continue
 
-                    dl = df.select(col_name).with_columns(
-                        pl.col(col_name).shift(lag).alias("lagged"),
-                    ).drop_nulls()
+                    dl = (
+                        df.select(col_name)
+                        .with_columns(
+                            pl.col(col_name).shift(lag).alias("lagged"),
+                        )
+                        .drop_nulls()
+                    )
                     if len(dl) == 0:
                         continue
 
@@ -1781,9 +1777,7 @@ def plot_lag_scatter(
                             legendgroup=gname,
                             showlegend=legend_tracker.should_show(gname),
                             hovertemplate=(
-                                f"<b>{gname}: {member}</b><br>"
-                                f"y(t-{lag}): %{{x:.2f}}<br>"
-                                f"y(t): %{{y:.2f}}<extra></extra>"
+                                f"<b>{gname}: {member}</b><br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"
                             ),
                         ),
                         row=r,
@@ -1891,9 +1885,7 @@ def plot_lag_scatter(
                                 },
                                 name=slabel,
                                 legendgroup=slabel,
-                                legendgrouptitle=(
-                                    {"text": seasonality.title()} if is_first_cell and si == 0 else None
-                                ),
+                                legendgrouptitle=({"text": seasonality.title()} if is_first_cell and si == 0 else None),
                                 showlegend=is_first_cell,
                                 hovertemplate=(
                                     f"<b>{col}</b> ({slabel})<br>"
@@ -1984,12 +1976,10 @@ def plot_lag_scatter(
                             },
                             name=slabel,
                             legendgroup=slabel,
-                            legendgrouptitle={"text": seasonality.title()} if si == 0 else None,
+                            legendgrouptitle=({"text": seasonality.title()} if si == 0 else None),
                             showlegend=True,
                             hovertemplate=(
-                                f"<b>{col}</b> ({slabel})<br>"
-                                f"y(t-{lag}): %{{x:.2f}}<br>"
-                                f"y(t): %{{y:.2f}}<extra></extra>"
+                                f"<b>{col}</b> ({slabel})<br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"
                             ),
                         )
                     )
@@ -2007,9 +1997,7 @@ def plot_lag_scatter(
                             "opacity": marker_opacity,
                         },
                         name=f"{col} (lag={lag})",
-                        hovertemplate=(
-                            f"<b>{col}</b><br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"
-                        ),
+                        hovertemplate=(f"<b>{col}</b><br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"),
                     )
                 )
 
@@ -2304,9 +2292,14 @@ def plot_cross_correlation(
             pair_label = f"{a_name} vs {b_name}"
             pair_color = color_mgr.get_color(pair_label)
             _add_ccf_bar(
-                fig, _lag_vals, ccf, pair_color, pair_label,
+                fig,
+                _lag_vals,
+                ccf,
+                pair_color,
+                pair_label,
                 legend_tracker.should_show(pair_label),
-                row=r, col=c,
+                row=r,
+                col=c,
             )
             _add_ccf_bands(fig, len(x_arr), row=r, col=c)
 
@@ -2349,8 +2342,10 @@ def plot_cross_correlation(
             cb = norm.ppf(1 - (1 - confidence_level) / 2) / math.sqrt(n_pts)
             ci_pct = f"{confidence_level:.0%}"
             fig.add_hline(
-                y=cb, line={"dash": "dash", "color": "#DC2626", "width": 1},
-                annotation_text=f"{ci_pct} CI", annotation_position="right",
+                y=cb,
+                line={"dash": "dash", "color": "#DC2626", "width": 1},
+                annotation_text=f"{ci_pct} CI",
+                annotation_position="right",
             )
             fig.add_hline(y=-cb, line={"dash": "dash", "color": "#DC2626", "width": 1})
         fig.add_hline(y=0, line={"color": "#64748B", "width": 1})
@@ -2389,9 +2384,14 @@ def plot_cross_correlation(
         pair_label = f"{col_a} vs {col_b}"
         pair_color = color_mgr.get_color(pair_label)
         _add_ccf_bar(
-            fig, _lag_vals, ccf, pair_color, pair_label,
+            fig,
+            _lag_vals,
+            ccf,
+            pair_color,
+            pair_label,
             legend_tracker.should_show(pair_label),
-            row=r, col=c,
+            row=r,
+            col=c,
         )
         _add_ccf_bands(fig, len(x_arr), row=r, col=c)
 
@@ -2576,9 +2576,7 @@ def _prepare_season_info(
     label_map = _SEASON_LABELS_MAP.get(seasonality)
     seasons_raw = sorted(df_work["season"].unique().to_list())
     n_seasons = len(seasons_raw)
-    season_labels = (
-        [label_map[s - 1] for s in seasons_raw] if label_map is not None else [str(s) for s in seasons_raw]
-    )
+    season_labels = [label_map[s - 1] for s in seasons_raw] if label_map is not None else [str(s) for s in seasons_raw]
     season_colors = resolve_color_palette(color_palette, n_seasons)
     return df_work, season_labels, season_colors, seasons_raw
 
@@ -2612,9 +2610,7 @@ def _scatter_matrix_facet(  # noqa: PLR0913
         if m < 2:
             continue
 
-        df_work, season_labels, season_colors, seasons_raw = _prepare_season_info(
-            sub_df, seasonality, color_palette
-        )
+        df_work, season_labels, season_colors, seasons_raw = _prepare_season_info(sub_df, seasonality, color_palette)
         df_work = _subsample_df(df_work, max_points, seasons_raw)
         uniform_color = resolve_color_palette(color_palette, 1)[0]
 
@@ -2707,9 +2703,7 @@ def _scatter_matrix_by_member(  # noqa: PLR0913
         if m < 2:
             continue
 
-        df_work, season_labels, season_colors, seasons_raw = _prepare_season_info(
-            sub_df, seasonality, color_palette
-        )
+        df_work, season_labels, season_colors, seasons_raw = _prepare_season_info(sub_df, seasonality, color_palette)
         df_work = _subsample_df(df_work, max_points, seasons_raw)
         uniform_color = resolve_color_palette(color_palette, 1)[0]
 
@@ -2900,11 +2894,7 @@ def plot_scatter_matrix(
         groups: dict[str, list[str]] = {}
         for g, gcols in _panel_groups.items():
             if not panel_group_names or g in panel_group_names:
-                filtered = (
-                    [c for c in gcols if c.split("__", 1)[1] in col_filter]
-                    if col_filter is not None
-                    else gcols
-                )
+                filtered = [c for c in gcols if c.split("__", 1)[1] in col_filter] if col_filter is not None else gcols
                 if filtered:
                     groups[g] = filtered
         if not groups:
@@ -2937,7 +2927,7 @@ def plot_scatter_matrix(
             member_groups: dict[str, list[str]] = {}
             for member in all_members:
                 member_cols = []
-                for gname, gcols in groups.items():
+                for _gname, gcols in groups.items():
                     col = next((c for c in gcols if _member_name(c) == member), None)
                     if col:
                         member_cols.append(col)
@@ -3157,8 +3147,7 @@ _PERIOD_LABELS: dict[str, list[str] | None] = {
     "day_of_week": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     "day_of_month": None,
     "week": None,
-    "month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
     "quarter": ["Q1", "Q2", "Q3", "Q4"],
     "year": None,
 }
@@ -3186,10 +3175,7 @@ def _extract_period(col: pl.Expr, period: str) -> pl.Expr:
     """
     method_name = _PERIOD_EXTRACTORS.get(period)
     if method_name is None:
-        msg = (
-            f"Unknown period: {period!r}. "
-            f"Valid options: {', '.join(sorted(_PERIOD_EXTRACTORS))}"
-        )
+        msg = f"Unknown period: {period!r}. Valid options: {', '.join(sorted(_PERIOD_EXTRACTORS))}"
         raise ValueError(msg)
     return getattr(col.dt, method_name)()
 
@@ -3305,7 +3291,10 @@ def plot_seasonal_heatmap(
 
     >>> df = pl.DataFrame({
     ...     "time": pl.datetime_range(
-    ...         pl.datetime(2020, 1, 1), pl.datetime(2020, 12, 31, 23), "1h", eager=True,
+    ...         pl.datetime(2020, 1, 1),
+    ...         pl.datetime(2020, 12, 31, 23),
+    ...         "1h",
+    ...         eager=True,
     ...     ),
     ...     "temp": [20.0 + (i % 24) * 0.5 for i in range(8784)],
     ... })
@@ -3350,12 +3339,7 @@ def plot_seasonal_heatmap(
 
         # Aggregate
         agg_expr = _AGG_MAP[agg](target_col).alias("_val")
-        df_agg = (
-            df_aug
-            .group_by("_y", "_x")
-            .agg(agg_expr)
-            .sort("_y", "_x")
-        )
+        df_agg = df_aug.group_by("_y", "_x").agg(agg_expr).sort("_y", "_x")
 
         # Pivot to matrix
         pivot = df_agg.pivot(on="_x", index="_y", values="_val").sort("_y")
@@ -3368,10 +3352,7 @@ def plot_seasonal_heatmap(
 
         text_ann = None
         if show_values:
-            text_ann = [
-                [f"{v:{value_format}}" if v is not None and not np.isnan(v) else "" for v in row]
-                for row in z
-            ]
+            text_ann = [[f"{v:{value_format}}" if v is not None and not np.isnan(v) else "" for v in row] for row in z]
 
         label = display_name or target_col
         return go.Heatmap(
@@ -3382,10 +3363,7 @@ def plot_seasonal_heatmap(
             text=text_ann,
             texttemplate="%{text}" if show_values else None,
             hovertemplate=(
-                f"<b>{label}</b><br>"
-                f"{x_period}: %{{x}}<br>"
-                f"{y_period}: %{{y}}<br>"
-                f"{agg}: %{{z:.2f}}<extra></extra>"
+                f"<b>{label}</b><br>{x_period}: %{{x}}<br>{y_period}: %{{y}}<br>{agg}: %{{z:.2f}}<extra></extra>"
             ),
         )
 

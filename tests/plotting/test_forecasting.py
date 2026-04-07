@@ -433,14 +433,16 @@ class TestPlotComponentsMstl:
         n = 24 * 7 * 12  # ~12 weeks of hourly data
         return pl.DataFrame({
             "time": pl.datetime_range(
-                pl.datetime(2022, 1, 1), pl.datetime(2022, 1, 1) + pl.duration(hours=n - 1),
-                "1h", eager=True,
+                pl.datetime(2022, 1, 1),
+                pl.datetime(2022, 1, 1) + pl.duration(hours=n - 1),
+                "1h",
+                eager=True,
             ),
             "y": [
                 50
-                + 10 * np.sin(2 * np.pi * i / 24)        # daily
-                + 5 * np.sin(2 * np.pi * i / (24 * 7))   # weekly
-                + 0.01 * i                                # trend
+                + 10 * np.sin(2 * np.pi * i / 24)  # daily
+                + 5 * np.sin(2 * np.pi * i / (24 * 7))  # weekly
+                + 0.01 * i  # trend
                 + rng.standard_normal()
                 for i in range(n)
             ],
@@ -555,13 +557,11 @@ class TestComputeMstl:
     def series(self):
         rng = np.random.default_rng(42)
         n = 24 * 7 * 8  # 8 weeks hourly
-        return pl.Series([
-            50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal()
-            for i in range(n)
-        ])
+        return pl.Series([50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal() for i in range(n)])
 
     def test_return_keys(self, series):
         from yohou.plotting.forecasting import _compute_mstl
+
         result = _compute_mstl(series, periods=[24, 24 * 7])
         assert "observed" in result
         assert "trend" in result
@@ -571,6 +571,7 @@ class TestComputeMstl:
 
     def test_components_sum_to_observed(self, series):
         from yohou.plotting.forecasting import _compute_mstl
+
         result = _compute_mstl(series, periods=[24, 24 * 7])
         observed = np.array(result["observed"])
         reconstructed = (
@@ -583,6 +584,7 @@ class TestComputeMstl:
 
     def test_single_period(self, series):
         from yohou.plotting.forecasting import _compute_mstl
+
         result = _compute_mstl(series, periods=[24])
         assert "seasonal_24" in result
         assert len(result) == 4  # observed, trend, seasonal_24, residual
@@ -605,30 +607,37 @@ class TestFormatComponentLabel:
 
     def test_trend(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("trend") == "Trend"
 
     def test_residual(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("residual") == "Residual"
 
     def test_seasonal_adjusted(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("seasonal_adjusted") == "Seasonal Adjusted"
 
     def test_seasonal_daily(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("seasonal_daily") == "Seasonal (daily)"
 
     def test_seasonal_weekly(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("seasonal_weekly") == "Seasonal (weekly)"
 
     def test_seasonal_annual(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("seasonal_annual") == "Seasonal (annual)"
 
     def test_seasonal_numeric_fallback(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("seasonal_99") == "Seasonal (99)"
 
 
@@ -637,42 +646,52 @@ class TestPeriodToLabel:
 
     def test_hourly_daily(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(24, "1h") == "daily"
 
     def test_hourly_weekly(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(168, "1h") == "weekly"
 
     def test_hourly_annual(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(24 * 365, "1h") == "annual"
 
     def test_daily_weekly(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(7, "1d") == "weekly"
 
     def test_daily_annual(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(365, "1d") == "annual"
 
     def test_15min_daily(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(96, "15min") == "daily"
 
     def test_15min_weekly(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(96 * 7, "15min") == "weekly"
 
     def test_monthly_annual(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(12, "1mo") == "annual"
 
     def test_unknown_interval_returns_period(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(24, None) == "24"
 
     def test_sub_daily(self):
         from yohou.plotting.forecasting import _period_to_label
+
         # 6 observations at 1h = 6 hours < 0.5 day
         assert _period_to_label(6, "1h") == "6h"
 
@@ -1264,26 +1283,28 @@ class TestInvalidDimensions:
             plot_components(y, components, height=-5)
 
 
-
-
 class TestPeriodToLabelExtraBranches:
     """Cover the quarterly and semi-annual branches."""
 
     def test_daily_monthly(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(30, "1d") == "monthly"
 
     def test_daily_quarterly(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(90, "1d") == "quarterly"
 
     def test_daily_semi_annual(self):
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(180, "1d") == "semi-annual"
 
     def test_unknown_interval_string(self):
         """Unrecognized interval returns period as string."""
         from yohou.plotting.forecasting import _period_to_label
+
         assert _period_to_label(42, "7s") == "42"
 
 
@@ -1292,13 +1313,13 @@ class TestFormatComponentLabelExtra:
 
     def test_multi_word_name(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("low_pass") == "Low Pass"
 
     def test_single_word(self):
         from yohou.plotting.forecasting import _format_component_label
+
         assert _format_component_label("observed") == "Observed"
-
-
 
 
 @pytest.mark.skipif(
@@ -1317,7 +1338,10 @@ class TestSTLEvenWindows:
             "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
         })
         fig = plot_components(
-            df, ["trend", "seasonal"], columns="y", show_original=False,
+            df,
+            ["trend", "seasonal"],
+            columns="y",
+            show_original=False,
             stl_kwargs={"period": 12, "trend_window": 14},
         )
         assert_figure_valid(fig)
@@ -1331,7 +1355,10 @@ class TestSTLEvenWindows:
             "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
         })
         fig = plot_components(
-            df, ["trend", "seasonal"], columns="y", show_original=False,
+            df,
+            ["trend", "seasonal"],
+            columns="y",
+            show_original=False,
             stl_kwargs={"period": 12, "seasonal_window": 8},
         )
         assert_figure_valid(fig)
@@ -1345,15 +1372,16 @@ class TestSTLEvenWindows:
             "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
         })
         fig = plot_components(
-            df, ["trend", "seasonal"], columns="y", show_original=False,
+            df,
+            ["trend", "seasonal"],
+            columns="y",
+            show_original=False,
             stl_kwargs={"period": 12, "low_pass_window": 12},
         )
         assert_figure_valid(fig)
 
 
-
-
-class TestPlotComponentsPanel:
+class TestPlotComponentsPanelGroupNames:
     """Cover panel_group_names branch in plot_components."""
 
     def test_panel_components_dict(self):
@@ -1370,7 +1398,10 @@ class TestPlotComponentsPanel:
             "y__b": [float(i) * 2 for i in range(91)],
         })
         result = plot_components(
-            y, {"Trend": trend}, panel_group_names=["y"], show_original=True,
+            y,
+            {"Trend": trend},
+            panel_group_names=["y"],
+            show_original=True,
         )
         assert isinstance(result, dict)
         assert "a" in result
@@ -1391,12 +1422,13 @@ class TestPlotComponentsPanel:
             "y__b": [float(i) for i in range(91)],
         })
         result = plot_components(
-            y, {"Trend": trend}, panel_group_names=["y"], show_original=False,
+            y,
+            {"Trend": trend},
+            panel_group_names=["y"],
+            show_original=False,
         )
         assert isinstance(result, dict)
         assert len(result["a"].data) >= 1
-
-
 
 
 class TestComponentsFallbackColumns:
@@ -1417,8 +1449,6 @@ class TestComponentsFallbackColumns:
         fig = plot_components(y, {"Trend": trend}, show_original=True)
         assert_figure_valid(fig)
         assert len(fig.data) >= 2
-
-
 
 
 class TestMultiModelShowTransition:
@@ -1452,7 +1482,8 @@ class TestMultiModelShowTransition:
         """Multi-model with show_transition=True and intervals."""
         y_train, y_test, y_preds = multi_model_transition_data
         fig = plot_forecast(
-            y_test, y_preds,
+            y_test,
+            y_preds,
             y_train=y_train,
             coverage_rates=[0.9],
             show_transition=True,
@@ -1465,11 +1496,12 @@ class TestMultiModelShowTransition:
         """Multi-model without coverage_rates skips interval rendering."""
         y_train, y_test, y_preds = multi_model_transition_data
         fig = plot_forecast(
-            y_test, y_preds, y_train=y_train, show_transition=True,
+            y_test,
+            y_preds,
+            y_train=y_train,
+            show_transition=True,
         )
         assert_figure_valid(fig)
-
-
 
 
 class TestSingleModelIntervalRender:
@@ -1512,12 +1544,13 @@ class TestSingleModelIntervalRender:
             "y_upper_0.9": [195.0 + i for i in range(10)],
         })
         fig = plot_forecast(
-            y_test, y_pred, y_train=y_train,
-            coverage_rates=[0.9], show_transition=True,
+            y_test,
+            y_pred,
+            y_train=y_train,
+            coverage_rates=[0.9],
+            show_transition=True,
         )
         assert_figure_valid(fig)
-
-
 
 
 class TestPanelForecastPIBranches:
@@ -1555,8 +1588,6 @@ class TestPanelForecastPIBranches:
         assert len(fig.data) > 0
 
 
-
-
 @pytest.mark.skipif(
     not importlib.util.find_spec("statsmodels"),
     reason="statsmodels not installed",
@@ -1572,13 +1603,16 @@ class TestMSTLIntervalFallback:
             "time": pl.datetime_range(
                 pl.datetime(2022, 1, 1),
                 pl.datetime(2022, 1, 1) + pl.duration(hours=n - 1),
-                "1h", eager=True,
+                "1h",
+                eager=True,
             ),
             "y": [50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal() for i in range(n)],
         })
         fig = plot_components(
-            df, ["trend", "seasonal", "residual"],
-            columns="y", show_original=False,
+            df,
+            ["trend", "seasonal", "residual"],
+            columns="y",
+            show_original=False,
             stl_kwargs={"periods": [24]},
         )
         assert_figure_valid(fig)

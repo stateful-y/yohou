@@ -163,6 +163,14 @@ whitelist-regex = []
 color = true
 omit-covered-files = false
 
+[tool.ty.rules]
+invalid-argument-type = "warn"
+invalid-assignment = "warn"
+unresolved-attribute = "warn"
+invalid-return-type = "warn"
+unsupported-operator = "warn"
+no-matching-overload = "warn"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = [
