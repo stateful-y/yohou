@@ -1788,10 +1788,7 @@ def _compute_classical(
     seasonal = result.seasonal
     residual = result.resid
 
-    if model == "multiplicative":
-        seasonal_adjusted = observed / seasonal
-    else:
-        seasonal_adjusted = observed - seasonal
+    seasonal_adjusted = observed / seasonal if model == "multiplicative" else observed - seasonal
 
     return {
         "observed": np.asarray(observed).tolist(),
@@ -1982,7 +1979,11 @@ def plot_decomposition(
             raise ValueError(msg)
 
         # Warn on mismatched params
-        _stl_only = {"trend_window": trend_window, "seasonal_window": seasonal_window, "low_pass_window": low_pass_window}
+        _stl_only = {
+            "trend_window": trend_window,
+            "seasonal_window": seasonal_window,
+            "low_pass_window": low_pass_window,
+        }
         _classical_only = {"two_sided": two_sided, "extrapolate_trend": extrapolate_trend}
 
         if method != "stl":
@@ -2033,16 +2034,27 @@ def plot_decomposition(
             title = title or "MSTL Decomposition"
         elif method == "classical":
             components = _classical_to_component_dict(
-                y, components_list, value_cols, period=period, model=model,
-                two_sided=two_sided, extrapolate_trend=extrapolate_trend,
+                y,
+                components_list,
+                value_cols,
+                period=period,
+                model=model,
+                two_sided=two_sided,
+                extrapolate_trend=extrapolate_trend,
             )
             title = title or "Classical Decomposition"
         else:
             # method == "stl"
             components = _stl_to_component_dict(
-                y, components_list, value_cols, period=period, model=model,
-                robust=robust, trend_window=trend_window,
-                seasonal_window=seasonal_window, low_pass_window=low_pass_window,
+                y,
+                components_list,
+                value_cols,
+                period=period,
+                model=model,
+                robust=robust,
+                trend_window=trend_window,
+                seasonal_window=seasonal_window,
+                low_pass_window=low_pass_window,
             )
             title = title or "STL Decomposition"
 

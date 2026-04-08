@@ -8,9 +8,9 @@ from plotly import graph_objects as go
 from yohou.plotting import (
     plot_autocorrelation,
     plot_boxplot,
-    plot_decomposition,
     plot_correlation_heatmap,
     plot_cross_correlation,
+    plot_decomposition,
     plot_distribution,
     plot_lag_scatter,
     plot_missing_data,

@@ -1370,6 +1370,8 @@ def _add_kind_traces(
                 col=col,
             )
     return None
+
+
 def plot_subseasonality(
     df: pl.DataFrame,
     *,
@@ -1630,7 +1632,6 @@ def plot_subseasonality(
                                     col=c_pos,
                                 )
 
-
             mfig = apply_default_layout(
                 mfig,
                 title=title or f"Seasonal Subseries - {member}",
@@ -1736,7 +1737,6 @@ def plot_subseasonality(
                             row=r,
                             col=c,
                         )
-
 
     fig = apply_default_layout(
         fig,

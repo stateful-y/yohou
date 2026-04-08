@@ -685,7 +685,11 @@ class TestPlotDecompositionClassical:
     def test_custom_title(self, monthly_df):
         """Test classical mode custom title."""
         fig = plot_decomposition(
-            monthly_df, ["trend"], method="classical", columns="y", title="My Classical",
+            monthly_df,
+            ["trend"],
+            method="classical",
+            columns="y",
+            title="My Classical",
         )
         assert_layout(fig, title="My Classical")
 
@@ -786,10 +790,7 @@ class TestDecompositionMultiplicative:
                 "1h",
                 eager=True,
             ),
-            "y": [
-                50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal()
-                for i in range(n)
-            ],
+            "y": [50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal() for i in range(n)],
         })
         with pytest.warns(UserWarning, match="log-transform"):
             fig = plot_decomposition(
