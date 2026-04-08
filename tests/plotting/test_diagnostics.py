@@ -378,6 +378,81 @@ class TestPlotSubseasonality:
         assert_figure_valid(fig)
 
 
+class TestPlotSubseasonalityKind:
+    """Tests for the ``kind`` parameter of plot_subseasonality."""
+
+    @pytest.fixture
+    def multi_year_df(self):
+        """3-year daily data so each month has multiple cycles."""
+        dates = pl.date_range(
+            pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True
+        )
+        return pl.DataFrame({
+            "time": dates,
+            "y": [100 + i % 30 for i in range(len(dates))],
+        })
+
+    def test_kind_mean_default(self, multi_year_df):
+        """Default kind='mean' produces only go.Scatter traces."""
+        fig = plot_subseasonality(multi_year_df, columns="y", seasonality="month")
+        assert_figure_valid(fig)
+        assert all(isinstance(t, go.Scatter) for t in fig.data)
+
+    def test_kind_lines(self, multi_year_df):
+        """kind='lines' adds Scattergl per-cycle traces plus Scatter mean overlay."""
+        fig = plot_subseasonality(
+            multi_year_df, columns="y", seasonality="month", kind="lines"
+        )
+        assert_figure_valid(fig)
+        has_scattergl = any(isinstance(t, go.Scattergl) for t in fig.data)
+        has_scatter = any(isinstance(t, go.Scatter) for t in fig.data)
+        assert has_scattergl, "Expected Scattergl traces for per-cycle lines"
+        assert has_scatter, "Expected Scatter traces for mean overlay"
+
+    def test_kind_box_per_cycle(self, multi_year_df):
+        """kind='box' produces one Box trace per cycle per season."""
+        fig = plot_subseasonality(
+            multi_year_df, columns="y", seasonality="month", kind="box"
+        )
+        assert_figure_valid(fig)
+        box_traces = [t for t in fig.data if isinstance(t, go.Box)]
+        assert len(box_traces) > 12, "Expected multiple Box traces (one per cycle per season)"
+
+    def test_kind_violin_per_cycle(self, multi_year_df):
+        """kind='violin' produces one Violin trace per cycle per season."""
+        fig = plot_subseasonality(
+            multi_year_df, columns="y", seasonality="month", kind="violin"
+        )
+        assert_figure_valid(fig)
+        violin_traces = [t for t in fig.data if isinstance(t, go.Violin)]
+        assert len(violin_traces) > 12, "Expected multiple Violin traces (one per cycle per season)"
+
+    def test_kind_invalid(self, multi_year_df):
+        """Invalid kind raises ValueError."""
+        with pytest.raises(ValueError, match="kind must be one of"):
+            plot_subseasonality(
+                multi_year_df, columns="y", seasonality="month", kind="invalid"
+            )
+
+    def test_kind_lines_panel(self):
+        """kind='lines' works with panel data."""
+        dates = pl.date_range(
+            pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True
+        )
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y__a": [100 + i % 30 for i in range(n)],
+            "y__b": [200 + (i % 20) * 2 for i in range(n)],
+        })
+        result = plot_subseasonality(df, seasonality="month", kind="lines")
+        assert isinstance(result, dict)
+        for fig in result.values():
+            assert_figure_valid(fig)
+            has_scattergl = any(isinstance(t, go.Scattergl) for t in fig.data)
+            assert has_scattergl
+
+
 class TestPlotScatterMatrix:
     """Tests for plot_scatter_matrix function."""
 

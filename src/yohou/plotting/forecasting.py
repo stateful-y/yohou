@@ -30,7 +30,7 @@ from yohou.utils import inspect_panel, validate_plotting_data, validate_plotting
 _PALETTE = list(palette_yohou().values())
 
 __all__ = [
-    "plot_components",
+    "plot_decomposition",
     "plot_forecast",
     "plot_time_weight",
 ]
@@ -1360,6 +1360,11 @@ def plot_time_weight(
 
 
 _INTERVAL_TO_STL_PERIOD: dict[str, int] = {
+    "1m": 60,
+    "5m": 12 * 24,
+    "10m": 6 * 24,
+    "15m": 4 * 24,
+    "30m": 2 * 24,
     "1h": 24,
     "1d": 7,
     "7d": 52,
@@ -1370,6 +1375,11 @@ _INTERVAL_TO_STL_PERIOD: dict[str, int] = {
 }
 
 _INTERVAL_TO_MSTL_PERIODS: dict[str, list[int]] = {
+    "1m": [60, 60 * 24],
+    "5m": [12, 12 * 24],
+    "10m": [6, 6 * 24],
+    "15m": [4 * 24, 4 * 24 * 7],
+    "30m": [2 * 24, 2 * 24 * 7],
     "1h": [24, 24 * 365],
     "1d": [7, 365],
     "7d": [4, 52],
@@ -1377,10 +1387,15 @@ _INTERVAL_TO_MSTL_PERIODS: dict[str, list[int]] = {
 }
 
 _INTERVAL_HOURS: dict[str, float] = {
+    "1m": 1 / 60,
     "1min": 1 / 60,
+    "5m": 5 / 60,
     "5min": 5 / 60,
+    "10m": 10 / 60,
     "10min": 10 / 60,
+    "15m": 0.25,
     "15min": 0.25,
+    "30m": 0.5,
     "30min": 0.5,
     "1h": 1,
     "2h": 2,
@@ -1507,6 +1522,7 @@ def _compute_stl(
     seasonal_window: int | None = None,
     low_pass_window: int | None = None,
     robust: bool = True,
+    model: Literal["additive", "multiplicative"] = "additive",
 ) -> dict[str, list[float]]:
     """Run STL decomposition on a single numeric series.
 
@@ -1524,6 +1540,9 @@ def _compute_stl(
         Low-pass filter window.  Passed to ``STL(low_pass=...)``.
     robust : bool
         Whether to use robust fitting (down-weights outliers).
+    model : {"additive", "multiplicative"}
+        Decomposition model.  ``"multiplicative"`` applies a log-transform
+        before STL and exponentiates the results back.
 
     Returns
     -------
@@ -1532,6 +1551,8 @@ def _compute_stl(
         ``seasonal_adjusted``.
 
     """
+    import warnings  # noqa: PLC0415
+
     try:
         from statsmodels.tsa.seasonal import STL  # noqa: PLC0415
     except ImportError:
@@ -1544,6 +1565,22 @@ def _compute_stl(
 
     clean_np = _clean_series(series)
 
+    # Multiplicative: log-transform with auto-offset
+    _offset = 0.0
+    if model == "multiplicative":
+        warnings.warn(
+            "Multiplicative STL uses a log-transform approximation "
+            "(log -> additive STL -> exp).  Results may differ from "
+            "a true multiplicative decomposition.",
+            UserWarning,
+            stacklevel=3,
+        )
+        min_val = clean_np.min()
+        if min_val <= 0:
+            _offset = abs(min_val) + 1e-8
+            clean_np = clean_np + _offset
+        clean_np = np.log(clean_np)
+
     stl_kwargs: dict = {"period": period, "robust": robust}
     if trend_window is not None:
         stl_kwargs["trend"] = trend_window if trend_window % 2 == 1 else trend_window + 1
@@ -1554,12 +1591,25 @@ def _compute_stl(
 
     result = STL(clean_np, **stl_kwargs).fit()
 
+    if model == "multiplicative":
+        observed = np.exp(clean_np) - _offset
+        trend = np.exp(result.trend)
+        seasonal = np.exp(result.seasonal)
+        residual = np.exp(result.resid)
+        seasonal_adjusted = observed / seasonal
+    else:
+        observed = clean_np
+        trend = result.trend
+        seasonal = result.seasonal
+        residual = result.resid
+        seasonal_adjusted = observed - seasonal
+
     return {
-        "observed": clean_np.tolist(),
-        "trend": result.trend.tolist(),
-        "seasonal": result.seasonal.tolist(),
-        "residual": result.resid.tolist(),
-        "seasonal_adjusted": (clean_np - result.seasonal).tolist(),
+        "observed": np.asarray(observed).tolist(),
+        "trend": np.asarray(trend).tolist(),
+        "seasonal": np.asarray(seasonal).tolist(),
+        "residual": np.asarray(residual).tolist(),
+        "seasonal_adjusted": np.asarray(seasonal_adjusted).tolist(),
     }
 
 
@@ -1568,6 +1618,7 @@ def _compute_mstl(
     *,
     periods: list[int],
     robust: bool = True,
+    model: Literal["additive", "multiplicative"] = "additive",
 ) -> dict[str, list[float]]:
     """Run MSTL (multi-seasonal) decomposition on a single numeric series.
 
@@ -1580,14 +1631,19 @@ def _compute_mstl(
         data with daily and annual cycles).
     robust : bool
         Whether to use robust fitting (down-weights outliers).
+    model : {"additive", "multiplicative"}
+        Decomposition model.  ``"multiplicative"`` applies a log-transform
+        before MSTL and exponentiates the results back.
 
     Returns
     -------
     dict[str, list[float]]
         Keys: ``observed``, ``trend``, ``seasonal_<period>`` for each
-        period, ``residual``.
+        period, ``residual``, ``seasonal_adjusted``.
 
     """
+    import warnings  # noqa: PLC0415
+
     try:
         from statsmodels.tsa.seasonal import MSTL  # noqa: PLC0415
     except ImportError:
@@ -1599,15 +1655,27 @@ def _compute_mstl(
         raise ImportError(msg) from None
 
     clean_np = _clean_series(series)
+
+    # Multiplicative: log-transform with auto-offset
+    _offset = 0.0
+    if model == "multiplicative":
+        warnings.warn(
+            "Multiplicative MSTL uses a log-transform approximation "
+            "(log -> additive MSTL -> exp).  Results may differ from "
+            "a true multiplicative decomposition.",
+            UserWarning,
+            stacklevel=3,
+        )
+        min_val = clean_np.min()
+        if min_val <= 0:
+            _offset = abs(min_val) + 1e-8
+            clean_np = clean_np + _offset
+        clean_np = np.log(clean_np)
+
     sorted_periods = sorted(periods)
 
     result = MSTL(clean_np, periods=sorted_periods, stl_kwargs={"robust": robust}).fit()
 
-    out: dict[str, list[float]] = {
-        "observed": clean_np.tolist(),
-        "trend": result.trend.tolist(),
-        "residual": result.resid.tolist(),
-    }
     seasonal = result.seasonal
     if seasonal.ndim == 1:
         seasonal = seasonal.reshape(-1, 1)
@@ -1619,24 +1687,138 @@ def _compute_mstl(
             f"{len(sorted_periods)} period(s) were requested. "
             f"Period(s) {dropped} were dropped by statsmodels - the "
             f"series is too short for these periods (need at least "
-            f"2× the period length). Either remove the large period(s) "
+            f"2x the period length). Either remove the large period(s) "
             f"or use a longer time series."
         )
         raise ValueError(msg)
-    for i, p in enumerate(sorted_periods):
-        out[f"seasonal_{p}"] = seasonal[:, i].tolist()
+
+    if model == "multiplicative":
+        observed = np.exp(clean_np) - _offset
+        trend = np.exp(result.trend)
+        residual = np.exp(result.resid)
+        out: dict[str, list[float]] = {
+            "observed": np.asarray(observed).tolist(),
+            "trend": np.asarray(trend).tolist(),
+            "residual": np.asarray(residual).tolist(),
+        }
+        seasonal_product = np.ones_like(clean_np)
+        for i, p in enumerate(sorted_periods):
+            s = np.exp(seasonal[:, i])
+            out[f"seasonal_{p}"] = np.asarray(s).tolist()
+            seasonal_product *= s
+        out["seasonal_adjusted"] = np.asarray(observed / seasonal_product).tolist()
+    else:
+        out = {
+            "observed": clean_np.tolist(),
+            "trend": result.trend.tolist(),
+            "residual": result.resid.tolist(),
+        }
+        seasonal_sum = np.zeros_like(clean_np)
+        for i, p in enumerate(sorted_periods):
+            s = seasonal[:, i]
+            out[f"seasonal_{p}"] = s.tolist()
+            seasonal_sum += s
+        out["seasonal_adjusted"] = (clean_np - seasonal_sum).tolist()
 
     return out
 
 
-def plot_components(
+def _compute_classical(
+    series: pl.Series,
+    *,
+    period: int,
+    model: Literal["additive", "multiplicative"] = "additive",
+    two_sided: bool = True,
+    extrapolate_trend: int | str = 0,
+) -> dict[str, list[float]]:
+    """Run classical seasonal decomposition on a single numeric series.
+
+    Parameters
+    ----------
+    series : pl.Series
+        Numeric values (NaN-interpolated before decomposition).
+    period : int
+        Seasonal period in observations.
+    model : {"additive", "multiplicative"}
+        Decomposition model.
+    two_sided : bool
+        Use a two-sided (centered) moving average for the trend.
+    extrapolate_trend : int | str
+        If set to > 0, the trend resulting from the convolution is
+        linear least-squares extrapolated on both ends.  Use ``"freq"``
+        to extrapolate by ``period`` observations.
+
+    Returns
+    -------
+    dict[str, list[float]]
+        Keys: ``observed``, ``trend``, ``seasonal``, ``residual``,
+        ``seasonal_adjusted``.
+
+    """
+    try:
+        from statsmodels.tsa.seasonal import seasonal_decompose  # noqa: PLC0415
+    except ImportError:
+        msg = (
+            "statsmodels is required for classical decomposition. "
+            "Install it with:  pip install yohou[plotting]  "
+            "or  pip install statsmodels"
+        )
+        raise ImportError(msg) from None
+
+    clean_np = _clean_series(series)
+
+    # Auto-offset for multiplicative model with non-positive values
+    _offset = 0.0
+    if model == "multiplicative":
+        min_val = clean_np.min()
+        if min_val <= 0:
+            _offset = abs(min_val) + 1e-8
+            clean_np = clean_np + _offset
+
+    result = seasonal_decompose(
+        clean_np,
+        model=model,
+        period=period,
+        two_sided=two_sided,
+        extrapolate_trend=extrapolate_trend,
+    )
+
+    observed = clean_np - _offset
+    trend = result.trend
+    seasonal = result.seasonal
+    residual = result.resid
+
+    if model == "multiplicative":
+        seasonal_adjusted = observed / seasonal
+    else:
+        seasonal_adjusted = observed - seasonal
+
+    return {
+        "observed": np.asarray(observed).tolist(),
+        "trend": np.asarray(trend).tolist(),
+        "seasonal": np.asarray(seasonal).tolist(),
+        "residual": np.asarray(residual).tolist(),
+        "seasonal_adjusted": np.asarray(seasonal_adjusted).tolist(),
+    }
+
+
+def plot_decomposition(
     y: pl.DataFrame,
     components: dict[str, pl.DataFrame] | list[str] | tuple[str, ...],
     *,
+    method: Literal["stl", "mstl", "classical"] | None = None,
     columns: str | list[str] | None = None,
     panel_group_names: list[str] | None = None,
     show_original: bool = True,
-    stl_kwargs: dict | None = None,
+    period: int | str = "auto",
+    periods: list[int] | str | None = None,
+    model: Literal["additive", "multiplicative"] = "additive",
+    robust: bool = True,
+    trend_window: int | None = None,
+    seasonal_window: int | None = None,
+    low_pass_window: int | None = None,
+    two_sided: bool = True,
+    extrapolate_trend: int | str = 0,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
     title: str | None = None,
@@ -1656,99 +1838,101 @@ def plot_components(
 
     There are two modes of operation:
 
-    **Pre-computed mode** (default) -- pass *components* as a ``dict`` mapping
+    **Pre-computed mode** (default) - pass *components* as a ``dict`` mapping
     component names to DataFrames produced by a Yohou decomposition pipeline.
 
-    **STL mode** -- pass *components* as a ``list`` or ``tuple`` of component
-    names (subset of ``"observed"``, ``"trend"``, ``"seasonal"``,
-    ``"residual"``, ``"seasonal_adjusted"``).  The function runs
-    ``statsmodels.tsa.seasonal.STL`` internally and renders the requested
-    components.  Use *stl_kwargs* to configure the decomposition.
+    **Decomposition mode** - pass *components* as a ``list`` or ``tuple`` of
+    component names and set *method* to ``"stl"``, ``"mstl"``, or
+    ``"classical"``.  The function runs the decomposition internally and
+    renders the requested components.
 
     Parameters
     ----------
     y : pl.DataFrame
         Original time series with ``"time"`` column.
     components : dict[str, pl.DataFrame] | list[str] | tuple[str, ...]
-        **dict** -- mapping of component names to DataFrames (pre-computed
+        **dict** - mapping of component names to DataFrames (pre-computed
         mode).  Each DataFrame must have a ``"time"`` column plus value
-        columns matching *y*.  Typical keys are ``"trend"``,
-        ``"seasonality"``, ``"residual"``.
+        columns matching *y*.
 
-        **list/tuple of str** -- STL component names to compute and display.
+        **list/tuple of str** - component names to compute and display.
+        Requires *method* to be set.
         Valid names: ``"observed"``, ``"trend"``, ``"seasonal"``,
-        ``"residual"``, ``"seasonal_adjusted"``.  When ``"observed"`` is
-        included it is equivalent to ``show_original=True``.
-    columns : str | list[str] | None, default=None
-        Value columns to plot. If None, all numeric non-time columns of *y*
-        are used.
-    panel_group_names : list[str] | None, default=None
-        Panel group prefixes to include.  When panel data is detected
-        and this is ``None``, all groups are plotted.  For panel data,
-        returns one figure per member (short member name as key) with
-        groups overlaid by colour.
-    show_original : bool, default=True
-        Include the original series as the first subplot.  In STL mode this
-        is automatically set to ``True`` when ``"observed"`` appears in
-        *components*.
-    stl_kwargs : dict | None, default=None
-        Extra keyword arguments forwarded to the internal STL computation.
-        Only used in STL mode (ignored when *components* is a dict).
-        Supported keys:
-
-        - ``period`` (int | str): seasonal period (default ``"auto"``).
-        - ``trend_window`` (int | None): trend smoother window length.
-        - ``seasonal_window`` (int | None): seasonal smoother window length.
-        - ``low_pass_window`` (int | None): low-pass filter window length.
-        - ``robust`` (bool): use robust fitting (default ``True``).
-    color_palette : list[str] | None, default=None
-        Custom color palette. Falls back to the default yohou palette.
-    show_legend : bool, default=True
+        ``"residual"``, ``"seasonal_adjusted"``.
+    method : {"stl", "mstl", "classical"} or None
+        Decomposition backend.  Required when *components* is a list.
+        ``None`` means pre-computed dict mode.
+    columns : str | list[str] | None
+        Value columns to plot.  ``None`` uses all numeric non-time columns.
+    panel_group_names : list[str] | None
+        Panel group prefixes to include.  For panel data, returns one
+        figure per member with groups overlaid by colour.
+    show_original : bool
+        Include the original series as the first subplot.
+    period : int | str
+        Seasonal period (STL, MSTL, classical).  ``"auto"`` infers from
+        the sampling interval.
+    periods : list[int] | str | None
+        Seasonal periods for MSTL.  **Required** when ``method="mstl"``.
+    model : {"additive", "multiplicative"}
+        Decomposition model.  STL/MSTL use a log-transform approximation
+        for multiplicative; classical uses native statsmodels support.
+    robust : bool
+        Use robust fitting (STL/MSTL only, down-weights outliers).
+    trend_window : int | None
+        Trend smoother window (STL only).
+    seasonal_window : int | None
+        Seasonal smoother window (STL only).
+    low_pass_window : int | None
+        Low-pass filter window (STL only).
+    two_sided : bool
+        Two-sided (centered) moving average for trend (classical only).
+    extrapolate_trend : int | str
+        Extrapolate trend at edges (classical only).  ``0`` leaves NaN.
+    color_palette : list[str] | None
+        Custom color palette.
+    show_legend : bool
         Whether to show the legend.
-    title : str | None, default=None
-        Plot title. Defaults to ``"Time Series Decomposition"`` (pre-computed)
-        or ``"STL Decomposition"`` (STL mode).
-    x_label : str | None, default=None
-        X-axis label shown on the bottom subplot. Defaults to ``"Time"``.
-    y_label : str | None, default=None
+    title : str | None
+        Plot title.
+    x_label : str | None
+        X-axis label on bottom subplot.  Defaults to ``"Time"``.
+    y_label : str | None
         Y-axis label.
-    width : int | None, default=None
+    width : int | None
         Plot width in pixels.
-    height : int | None, default=None
+    height : int | None
         Plot height in pixels.
-    connect_gaps : bool, default=False
-        Whether to connect gaps in the data with lines.
-    resampler : bool | Literal["widget"] | None, default=None
-        Enable plotly-resampler for large datasets.  ``True`` or
-        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
-        ``None`` uses a plain ``go.Figure``.
-    line_width : float, default=2.0
-        Width of the component line traces.
-    line_dash : str, default="solid"
-        Dash style for component lines (STL mode only).
+    connect_gaps : bool
+        Whether to connect gaps with lines.
+    resampler : bool | Literal["widget"] | None
+        Enable plotly-resampler for large datasets.
+    line_width : float
+        Width of component line traces.
+    line_dash : str
+        Dash style for component lines.
 
     Returns
     -------
-    go.Figure
-        Plotly figure with vertically stacked subplots.
+    go.Figure | dict[str, go.Figure]
+        Plotly figure (or dict of figures for panel data).
 
     Raises
     ------
     TypeError
         If *y* is not a Polars DataFrame.
     ValueError
-        If DataFrames are empty, missing ``"time"`` column, *components*
-        is empty, or unknown STL component names are given.
+        If *components* is a list without *method*, DataFrames are empty,
+        unknown component names, or ``method="mstl"`` without *periods*.
     ImportError
-        When *components* is a list/tuple and ``statsmodels`` is not
-        installed.
+        When ``statsmodels`` is not installed.
 
     Examples
     --------
     Pre-computed mode:
 
     >>> import polars as pl
-    >>> from yohou.plotting import plot_components
+    >>> from yohou.plotting import plot_decomposition
 
     >>> dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
     >>> y = pl.DataFrame({"time": dates, "y": list(range(len(dates)))})
@@ -1756,7 +1940,7 @@ def plot_components(
     ...     "trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(len(dates))]}),
     ...     "residual": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(len(dates))]}),
     ... }
-    >>> fig = plot_components(y, comps)
+    >>> fig = plot_decomposition(y, comps)
     >>> len(fig.data) >= 3
     True
 
@@ -1766,22 +1950,63 @@ def plot_components(
     ...     "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2022, 12, 31), "1mo", eager=True),
     ...     "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(60)],
     ... })
-    >>> fig = plot_components(df, ["trend", "seasonal"])  # doctest: +SKIP
-    >>> len(fig.data) > 0  # doctest: +SKIP
-    True
+    >>> fig = plot_decomposition(df, ["trend", "seasonal"], method="stl")  # doctest: +SKIP
+
+    Classical mode:
+
+    >>> fig = plot_decomposition(df, ["trend", "seasonal"], method="classical")  # doctest: +SKIP
 
     See Also
     --------
     [`plot_forecast`][yohou.plotting.plot_forecast] : Forecast visualization.
     [`plot_seasonality`][yohou.plotting.plot_seasonality] : Seasonal pattern analysis.
     """
+    import warnings  # noqa: PLC0415
+
     validate_plotting_data(y)
     validate_plotting_params(width=width, height=height)
 
-    stl_mode = isinstance(components, list | tuple) and (not components or isinstance(components[0], str))
+    decomp_mode = isinstance(components, list | tuple) and (not components or isinstance(components[0], str))
 
-    # -- STL mode: compute decomposition, then convert to dict ---------------
-    if stl_mode:
+    # -- Decomposition mode --------------------------------------------------
+    if decomp_mode:
+        if method is None:
+            msg = (
+                "method is required when components is a list/tuple. "
+                "Use method='stl', method='mstl', or method='classical'."
+            )
+            raise ValueError(msg)
+
+        if method == "mstl" and periods is None:
+            msg = "periods is required when method='mstl'."
+            raise ValueError(msg)
+
+        # Warn on mismatched params
+        _stl_only = {"trend_window": trend_window, "seasonal_window": seasonal_window, "low_pass_window": low_pass_window}
+        _classical_only = {"two_sided": two_sided, "extrapolate_trend": extrapolate_trend}
+
+        if method != "stl":
+            for pname, pval in _stl_only.items():
+                if pval is not None:
+                    warnings.warn(
+                        f"'{pname}' is only used with method='stl' (got method='{method}'); ignored.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+        if method != "classical":
+            if two_sided is not True:
+                warnings.warn(
+                    f"'two_sided' is only used with method='classical' (got method='{method}'); ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            if extrapolate_trend != 0:
+                warnings.warn(
+                    f"'extrapolate_trend' is only used with method='classical' (got method='{method}'); ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
         components_list = list(components)
 
         # "observed" in the list maps to show_original
@@ -1790,10 +2015,10 @@ def plot_components(
             components_list.remove("observed")
 
         # Validate component names early
-        valid_stl = {"trend", "seasonal", "residual", "seasonal_adjusted"}
-        unknown = {c for c in components_list if c not in valid_stl and not re.match(r"^seasonal_\w+$", c)}
+        valid_names = {"trend", "seasonal", "residual", "seasonal_adjusted"}
+        unknown = {c for c in components_list if c not in valid_names and not re.match(r"^seasonal_\w+$", c)}
         if unknown:
-            all_valid = sorted(valid_stl | {"observed"})
+            all_valid = sorted(valid_names | {"observed"})
             msg = f"Unknown components: {unknown}. Valid: {all_valid} (also seasonal_<period>)"
             raise ValueError(msg)
 
@@ -1803,16 +2028,31 @@ def plot_components(
 
         value_cols = validate_plotting_data(y, columns=columns, exclude=["time"])
 
-        _is_mstl = isinstance((stl_kwargs or {}).get("periods"), list | str)
-        components = _stl_to_component_dict(y, components_list, value_cols, stl_kwargs)
-        title = title or ("MSTL Decomposition" if _is_mstl else "STL Decomposition")
+        if method == "mstl":
+            components = _mstl_to_component_dict(y, components_list, value_cols, periods, robust, model=model)
+            title = title or "MSTL Decomposition"
+        elif method == "classical":
+            components = _classical_to_component_dict(
+                y, components_list, value_cols, period=period, model=model,
+                two_sided=two_sided, extrapolate_trend=extrapolate_trend,
+            )
+            title = title or "Classical Decomposition"
+        else:
+            # method == "stl"
+            components = _stl_to_component_dict(
+                y, components_list, value_cols, period=period, model=model,
+                robust=robust, trend_window=trend_window,
+                seasonal_window=seasonal_window, low_pass_window=low_pass_window,
+            )
+            title = title or "STL Decomposition"
 
         # Fall through to the shared dict plotting below
 
     # -- Dict validation -----------------------------------------------------
     if not isinstance(components, dict):
         msg = (
-            "components must be a dict[str, pl.DataFrame] (pre-computed mode) or a list[str]/tuple[str, ...] (STL mode)"
+            "components must be a dict[str, pl.DataFrame] (pre-computed mode) "
+            "or a list[str]/tuple[str, ...] with method set (decomposition mode)"
         )
         raise TypeError(msg)
 
@@ -1833,11 +2073,11 @@ def plot_components(
         panel_group_names = []
 
     if is_panel and panel_group_names is not None:
-        return _plot_components_panel(
+        return _plot_decomposition_panel(
             y=y,
             components=components,
             value_cols=value_cols,
-            stl_mode=stl_mode,
+            decomp_mode=decomp_mode,
             show_original=show_original,
             panel_group_names=panel_group_names,
             color_palette=color_palette,
@@ -1857,7 +2097,7 @@ def plot_components(
     panel_names: list[str] = []
     if show_original:
         panel_names.append("Original")
-    panel_names.extend(_format_component_label(name) if stl_mode else name for name in components)
+    panel_names.extend(_format_component_label(name) if decomp_mode else name for name in components)
 
     n_rows = len(panel_names)
     fig = _create_subplots(
@@ -1914,7 +2154,7 @@ def plot_components(
             # Use the original value_cols name for legend when available,
             # otherwise use the component column name.
             legend_col = value_cols[i] if i < len(value_cols) else col
-            display_name = _format_component_label(comp_name) if stl_mode else legend_col
+            display_name = _format_component_label(comp_name) if decomp_mode else legend_col
             fig.add_trace(
                 go.Scatter(
                     x=comp_df["time"],
@@ -1926,7 +2166,7 @@ def plot_components(
                         "dash": line_dash,
                     },
                     name=display_name,
-                    legendgroup=display_name if stl_mode else legend_col,
+                    legendgroup=display_name if decomp_mode else legend_col,
                     showlegend=(comp_idx == 0 and not show_original),
                     connectgaps=connect_gaps,
                 ),
@@ -1960,11 +2200,11 @@ def plot_components(
     return fig
 
 
-def _plot_components_panel(
+def _plot_decomposition_panel(
     y: pl.DataFrame,
     components: dict[str, pl.DataFrame],
     value_cols: list[str],
-    stl_mode: bool,
+    decomp_mode: bool,
     show_original: bool,
     panel_group_names: list[str],
     color_palette: list[str] | None,
@@ -1979,7 +2219,7 @@ def _plot_components_panel(
     resampler: bool | Literal["widget"] | None,
     show_legend: bool = True,
 ) -> go.Figure | dict[str, go.Figure]:
-    """Render ``plot_components`` for panel data.
+    """Render ``plot_decomposition`` for panel data.
 
     Returns one figure per member with groups overlaid by colour.
     When there is only one member, returns a single ``go.Figure``.
@@ -1991,7 +2231,7 @@ def _plot_components_panel(
     comp_labels: list[str] = []
     if show_original:
         comp_labels.append("Original")
-    comp_labels.extend(_format_component_label(name) if stl_mode else name for name in components)
+    comp_labels.extend(_format_component_label(name) if decomp_mode else name for name in components)
     n_rows = len(comp_labels)
 
     figures: dict[str, go.Figure] = {}
@@ -2091,9 +2331,15 @@ def _stl_to_component_dict(
     y: pl.DataFrame,
     components: list[str],
     columns: list[str],
-    stl_kwargs: dict | None,
+    *,
+    period: int | str = "auto",
+    model: Literal["additive", "multiplicative"] = "additive",
+    robust: bool = True,
+    trend_window: int | None = None,
+    seasonal_window: int | None = None,
+    low_pass_window: int | None = None,
 ) -> dict[str, pl.DataFrame]:
-    """Compute STL or MSTL decomposition and return as component DataFrames.
+    """Compute STL decomposition and return as component DataFrames.
 
     Parameters
     ----------
@@ -2103,9 +2349,14 @@ def _stl_to_component_dict(
         Component names to compute (e.g. ``"trend"``, ``"seasonal"``).
     columns : list[str]
         Numeric column names from *y* to decompose.
-    stl_kwargs : dict | None
-        Keyword arguments. Use ``periods`` (list) for MSTL,
-        ``period`` (int) for single-season STL.
+    period : int | str
+        Seasonal period or ``"auto"`` to infer.
+    model : {"additive", "multiplicative"}
+        Decomposition model.
+    robust : bool
+        Use robust fitting.
+    trend_window, seasonal_window, low_pass_window : int | None
+        Smoother window parameters forwarded to STL.
 
     Returns
     -------
@@ -2114,26 +2365,6 @@ def _stl_to_component_dict(
         one column per decomposed series.
 
     """
-    stl_opts = stl_kwargs or {}
-
-    # MSTL routing: ``periods`` key means multi-seasonal
-    periods = stl_opts.get("periods")
-    if periods is not None:
-        return _mstl_to_component_dict(
-            y,
-            components,
-            columns,
-            periods,
-            stl_opts.get("robust", True),
-        )
-
-    # Single-season STL
-    period = stl_opts.get("period", "auto")
-    trend_window = stl_opts.get("trend_window")
-    seasonal_window = stl_opts.get("seasonal_window")
-    low_pass_window = stl_opts.get("low_pass_window")
-    robust = stl_opts.get("robust", True)
-
     # Resolve STL period
     if isinstance(period, str) and period == "auto":
         from yohou.utils.validation import check_interval_consistency  # noqa: PLC0415
@@ -2144,7 +2375,7 @@ def _stl_to_component_dict(
             msg = (
                 f"Cannot infer STL period for interval '{interval}'. "
                 f"Supported intervals: {sorted(_INTERVAL_TO_STL_PERIOD)}. "
-                f"Pass an explicit integer via stl_kwargs={{'period': <int>}}."
+                f"Pass an explicit period."
             )
             raise ValueError(msg)
     else:
@@ -2161,6 +2392,7 @@ def _stl_to_component_dict(
             seasonal_window=seasonal_window,
             low_pass_window=low_pass_window,
             robust=robust,
+            model=model,
         )
         for comp in components:
             result_data[comp][col_name] = stl_result[comp]
@@ -2176,6 +2408,8 @@ def _mstl_to_component_dict(
     columns: list[str],
     periods: list[int] | str,
     robust: bool,
+    *,
+    model: Literal["additive", "multiplicative"] = "additive",
 ) -> dict[str, pl.DataFrame]:
     """Compute MSTL decomposition and return as component DataFrames.
 
@@ -2216,7 +2450,7 @@ def _mstl_to_component_dict(
             msg = (
                 f"Cannot infer MSTL periods for interval '{interval}'. "
                 f"Supported intervals: {sorted(_INTERVAL_TO_MSTL_PERIODS)}. "
-                f"Pass an explicit list via stl_kwargs={{'periods': [...]}}."
+                f"Pass an explicit list via periods=[...]."
             )
             raise ValueError(msg)
         sorted_periods = sorted(resolved)
@@ -2250,9 +2484,78 @@ def _mstl_to_component_dict(
     result_data: dict[str, dict[str, list[float]]] = {hk: {} for hk in human_keys}
 
     for col_name in columns:
-        mstl_result = _compute_mstl(y[col_name], periods=sorted_periods, robust=robust)
+        mstl_result = _compute_mstl(y[col_name], periods=sorted_periods, robust=robust, model=model)
         for nk, hk in zip(expanded_numeric, human_keys, strict=True):
             result_data[hk][col_name] = mstl_result[nk]
+
+    time_col = y["time"]
+    return {comp: pl.DataFrame({"time": time_col, **col_values}) for comp, col_values in result_data.items()}
+
+
+def _classical_to_component_dict(
+    y: pl.DataFrame,
+    components: list[str],
+    columns: list[str],
+    *,
+    period: int | str = "auto",
+    model: Literal["additive", "multiplicative"] = "additive",
+    two_sided: bool = True,
+    extrapolate_trend: int | str = 0,
+) -> dict[str, pl.DataFrame]:
+    """Compute classical seasonal decomposition and return as component DataFrames.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        Input DataFrame with ``"time"`` column and numeric columns.
+    components : list[str]
+        Component names to compute (e.g. ``"trend"``, ``"seasonal"``).
+    columns : list[str]
+        Numeric column names from *y* to decompose.
+    period : int | str
+        Seasonal period or ``"auto"`` to infer.
+    model : {"additive", "multiplicative"}
+        Decomposition model.
+    two_sided : bool
+        Use centered moving average for trend.
+    extrapolate_trend : int | str
+        Extrapolate trend at edges.
+
+    Returns
+    -------
+    dict[str, pl.DataFrame]
+        Mapping from component name to a DataFrame with ``"time"`` plus
+        one column per decomposed series.
+
+    """
+    # Resolve period
+    if isinstance(period, str) and period == "auto":
+        from yohou.utils.validation import check_interval_consistency  # noqa: PLC0415
+
+        interval = check_interval_consistency(y)
+        classical_period = _INTERVAL_TO_STL_PERIOD.get(interval)
+        if classical_period is None:
+            msg = (
+                f"Cannot infer period for interval '{interval}'. "
+                f"Supported intervals: {sorted(_INTERVAL_TO_STL_PERIOD)}. "
+                f"Pass an explicit period."
+            )
+            raise ValueError(msg)
+    else:
+        classical_period = int(period)
+
+    result_data: dict[str, dict[str, list[float]]] = {comp: {} for comp in components}
+
+    for col_name in columns:
+        classical_result = _compute_classical(
+            y[col_name],
+            period=classical_period,
+            model=model,
+            two_sided=two_sided,
+            extrapolate_trend=extrapolate_trend,
+        )
+        for comp in components:
+            result_data[comp][col_name] = classical_result[comp]
 
     time_col = y["time"]
     return {comp: pl.DataFrame({"time": time_col, **col_values}) for comp, col_values in result_data.items()}

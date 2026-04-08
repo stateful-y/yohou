@@ -486,7 +486,7 @@ class TestPlotOutlierDetection:
 
     def test_percentile(self, monthly_2col_df):
         """Test percentile method."""
-        fig = plot_outliers(monthly_2col_df, columns="y", method="percentile", threshold=10.0)
+        fig = plot_outliers(monthly_2col_df, columns="y", method="percentile", threshold=90.0)
         assert_figure_valid(fig)
 
     def test_multiple_columns(self, monthly_2col_df):
@@ -1064,7 +1064,7 @@ class TestOutlierMethodBranches:
             "y__a": [100, 120, 115, 130, 140, 135, 150, 500, 155, 170, 180, 175],
             "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
         })
-        fig = plot_outliers(df, method="percentile", threshold=10.0, panel_group_names=["y"])
+        fig = plot_outliers(df, method="percentile", threshold=90.0, panel_group_names=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
@@ -1177,7 +1177,7 @@ class TestOutlierNullSeries:
             "y__a": pl.Series([None] * 10, dtype=pl.Float64),
             "y__b": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 100.0],
         })
-        fig = plot_outliers(df, method="percentile", threshold=10.0, panel_group_names=["y"])
+        fig = plot_outliers(df, method="percentile", threshold=90.0, panel_group_names=["y"])
         assert isinstance(fig, go.Figure)
 
 

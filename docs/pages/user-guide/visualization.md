@@ -201,18 +201,24 @@ from yohou.plotting import plot_scatter_matrix
 fig = plot_scatter_matrix(df, columns=["a", "b", "c"])
 ```
 
-### STL Components
+### Time Series Decomposition
 
-[`plot_components`][yohou.plotting.plot_components] renders decomposition components (trend, seasonal, residual) as vertically stacked subplots. Accepts pre-computed component DataFrames or builds STL/MSTL decomposition on the fly from component names.
+[`plot_decomposition`][yohou.plotting.plot_decomposition] renders decomposition components (trend, seasonal, residual) as vertically stacked subplots. Supports three decomposition backends via the `method` parameter: STL, MSTL, and classical (`seasonal_decompose`). Also accepts pre-computed component DataFrames.
 
 ```python
-from yohou.plotting import plot_components
+from yohou.plotting import plot_decomposition
 
-# From component names (auto STL)
-fig = plot_components(y, components=["trend", "seasonal", "resid"])
+# STL decomposition
+fig = plot_decomposition(y, ["trend", "seasonal", "residual"], method="stl")
+
+# Classical decomposition (multiplicative)
+fig = plot_decomposition(y, ["trend", "seasonal", "residual"], method="classical", model="multiplicative")
+
+# MSTL (multi-seasonal)
+fig = plot_decomposition(y, ["trend", "seasonal", "residual"], method="mstl", periods=[24, 168])
 
 # From pre-computed DataFrames
-fig = plot_components(y, components={"trend": trend_df, "seasonal": seasonal_df})
+fig = plot_decomposition(y, {"trend": trend_df, "seasonal": seasonal_df})
 ```
 
 ### Subseasonality
@@ -244,9 +250,9 @@ from yohou.plotting import plot_time_weight
 fig = plot_time_weight(y, time_weight=weight_fn)
 ```
 
-### plot_components
+### plot_decomposition
 
-See [STL Components](#stl-components) above.
+See [Time Series Decomposition](#time-series-decomposition) above.
 
 ## Evaluation Plots
 

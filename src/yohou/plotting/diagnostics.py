@@ -1292,11 +1292,90 @@ def plot_seasonality(
     return fig
 
 
+def _hex_to_rgba(hex_color: str, opacity: float) -> str:
+    """Convert ``#RRGGBB`` to ``rgba(r, g, b, opacity)``."""
+    _hex = hex_color.lstrip("#")
+    r, g, b = (int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r}, {g}, {b}, {opacity})"
+
+
+def _add_kind_traces(
+    fig: go.Figure,
+    *,
+    kind: str,
+    season_df: pl.DataFrame,
+    col_name: str,
+    display_name: str,
+    col_color: str,
+    overlay_opacity: float,
+    line_width: float,
+    row: int,
+    col: int,
+    legend_tracker: LegendTracker | None = None,
+) -> dict[str, list[float]] | None:
+    """Add background traces for non-mean ``kind`` values.
+
+    Returns a mapping with ``"midpoints"`` and ``"total"`` when
+    *kind* is ``"lines"`` so callers can place the aggregated mean
+    trace on the same numeric x-axis.  Returns ``None`` otherwise.
+    """
+    if kind == "lines":
+        rgba = _hex_to_rgba(col_color, overlay_opacity)
+        offset = 0
+        midpoints: list[float] = []
+        for _cyc, _grp in season_df.group_by("cycle", maintain_order=True):
+            _vals = _grp[col_name].to_list()
+            n = len(_vals)
+            _xs = list(range(offset, offset + n))
+            midpoints.append(offset + (n - 1) / 2)
+            offset += n
+            fig.add_trace(
+                go.Scattergl(
+                    x=_xs,
+                    y=_vals,
+                    mode="lines",
+                    line={"color": rgba, "width": line_width * 0.5},
+                    name=display_name,
+                    legendgroup=display_name,
+                    showlegend=False,
+                    hoverinfo="skip",
+                ),
+                row=row,
+                col=col,
+            )
+        return {"midpoints": midpoints, "total": [float(offset)]}
+    elif kind in ("box", "violin"):
+        trace_cls = go.Box if kind == "box" else go.Violin
+        color_key = "marker_color" if kind == "box" else "line_color"
+        first_legend = True
+        for _cyc, _grp in season_df.group_by("cycle", maintain_order=True):
+            vals = _grp[col_name].drop_nulls().to_list()
+            cycle_val = _cyc[0] if isinstance(_cyc, tuple) else _cyc
+            if first_legend and legend_tracker is not None:
+                show_leg = legend_tracker.should_show(display_name)
+                first_legend = False
+            else:
+                show_leg = False
+            fig.add_trace(
+                trace_cls(
+                    y=vals,
+                    x=[cycle_val] * len(vals),
+                    name=display_name,
+                    legendgroup=display_name,
+                    showlegend=show_leg,
+                    hoverinfo="skip",
+                    **{color_key: col_color},
+                ),
+                row=row,
+                col=col,
+            )
+    return None
 def plot_subseasonality(
     df: pl.DataFrame,
     *,
     columns: str | list[str] | None = None,
     seasonality: str = "month",
+    kind: Literal["mean", "lines", "box", "violin"] = "mean",
     show_mean: bool = True,
     panel_group_names: list[str] | None = None,
     facet_n_cols: int = 4,
@@ -1312,6 +1391,7 @@ def plot_subseasonality(
     line_width: float = 2.0,
     marker_size: float = 4,
     marker_opacity: float = 0.8,
+    overlay_opacity: float = 0.15,
     mean_width: float = 2.0,
     mean_dash: str = "dash",
 ) -> go.Figure | dict[str, go.Figure]:
@@ -1335,6 +1415,14 @@ def plot_subseasonality(
         Column(s) to plot. If None, uses all numeric columns except 'time'.
     seasonality : str, default="month"
         Seasonal frequency: "month", "quarter", "weekday", "week", "hour".
+    kind : {"mean", "lines", "box", "violin"}, default="mean"
+        Visualization style within each season subplot:
+
+        - ``"mean"`` - aggregated mean-per-cycle line with markers (default).
+        - ``"lines"`` - one thin line per cycle at *overlay_opacity*, with
+          the mean line overlaid on top.
+        - ``"box"`` - one box per cycle showing value distribution.
+        - ``"violin"`` - one violin per cycle showing value distribution.
     show_mean : bool, default=True
         Show a horizontal mean line within each season subplot.
     panel_group_names : list[str] | None, default=None
@@ -1367,6 +1455,8 @@ def plot_subseasonality(
         Marker size for data points.
     marker_opacity : float, default=0.8
         Opacity of scatter markers.
+    overlay_opacity : float, default=0.15
+        Opacity of per-cycle lines when ``kind="lines"``.
     mean_width : float, default=2.0
         Line width for the horizontal mean line.
     mean_dash : str, default="dash"
@@ -1400,7 +1490,12 @@ def plot_subseasonality(
     [`plot_time_series`][yohou.plotting.plot_time_series] : Plot basic time series.
     """
     validate_plotting_data(df, min_rows=2)
-    validate_plotting_params(width=width, height=height)
+    validate_plotting_params(
+        kind=kind,
+        valid_kinds={"mean", "lines", "box", "violin"},
+        width=width,
+        height=height,
+    )
 
     if _auto_detect_panel(df) and panel_group_names is None and columns is None:
         panel_group_names = []
@@ -1462,54 +1557,79 @@ def plot_subseasonality(
                     display_name = gname
                     col_color = color_mgr.get_color(gname)
 
-                    agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
-                    cycles = agg_df["cycle"].to_list()
-                    values = agg_df[col_name].to_list()
-                    if not cycles:
-                        continue
+                    lines_info = None
+                    if kind != "mean":
+                        lines_info = _add_kind_traces(
+                            mfig,
+                            kind=kind,
+                            season_df=season_df,
+                            col_name=col_name,
+                            display_name=display_name,
+                            col_color=col_color,
+                            overlay_opacity=overlay_opacity,
+                            line_width=line_width,
+                            row=r,
+                            col=c_pos,
+                            legend_tracker=legend_tracker,
+                        )
 
-                    mfig.add_trace(
-                        go.Scatter(
-                            x=cycles,
-                            y=values,
-                            mode="lines+markers",
-                            line={"color": col_color, "width": line_width},
-                            marker={"size": marker_size, "opacity": marker_opacity},
-                            connectgaps=connect_gaps,
-                            hovertemplate=_make_hovertemplate(
-                                display_name,
-                                "Cycle",
-                                "Value",
-                            ),
-                            name=display_name,
-                            legendgroup=display_name,
-                            showlegend=legend_tracker.should_show(display_name),
-                        ),
-                        row=r,
-                        col=c_pos,
-                    )
+                    if kind in ("mean", "lines"):
+                        agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
+                        cycles = agg_df["cycle"].to_list()
+                        values = agg_df[col_name].to_list()
+                        if not cycles:
+                            continue
 
-                    if show_mean:
-                        mean_val = agg_df[col_name].mean()
-                        if mean_val is not None and len(cycles) >= 2:
-                            mfig.add_trace(
-                                go.Scatter(
-                                    x=[cycles[0], cycles[-1]],
-                                    y=[mean_val, mean_val],
-                                    mode="lines",
-                                    line={
-                                        "color": col_color,
-                                        "width": mean_width,
-                                        "dash": mean_dash,
-                                    },
-                                    name=f"Mean ({display_name})",
-                                    legendgroup=display_name,
-                                    showlegend=False,
-                                    hovertemplate=f"Mean: {mean_val:.2f}<extra></extra>",
+                        if lines_info is not None:
+                            x_vals = lines_info["midpoints"]
+                            x_mean_range = [0.0, lines_info["total"][0]]
+                        else:
+                            x_vals = cycles
+                            x_mean_range = [cycles[0], cycles[-1]]
+
+                        mfig.add_trace(
+                            go.Scatter(
+                                x=x_vals,
+                                y=values,
+                                mode="lines+markers",
+                                line={"color": col_color, "width": line_width},
+                                marker={"size": marker_size, "opacity": marker_opacity},
+                                connectgaps=connect_gaps,
+                                hovertemplate=_make_hovertemplate(
+                                    display_name,
+                                    "Cycle",
+                                    "Value",
                                 ),
-                                row=r,
-                                col=c_pos,
-                            )
+                                name=display_name,
+                                legendgroup=display_name,
+                                showlegend=legend_tracker.should_show(display_name),
+                            ),
+                            row=r,
+                            col=c_pos,
+                        )
+
+                        if show_mean:
+                            mean_val = agg_df[col_name].mean()
+                            if mean_val is not None and len(cycles) >= 2:
+                                mfig.add_trace(
+                                    go.Scatter(
+                                        x=x_mean_range,
+                                        y=[mean_val, mean_val],
+                                        mode="lines",
+                                        line={
+                                            "color": col_color,
+                                            "width": mean_width,
+                                            "dash": mean_dash,
+                                        },
+                                        name=f"Mean ({display_name})",
+                                        legendgroup=display_name,
+                                        showlegend=False,
+                                        hovertemplate=f"Mean: {mean_val:.2f}<extra></extra>",
+                                    ),
+                                    row=r,
+                                    col=c_pos,
+                                )
+
 
             mfig = apply_default_layout(
                 mfig,
@@ -1546,50 +1666,77 @@ def plot_subseasonality(
 
         for ci, col_name in enumerate(plot_columns):
             col_color = colors[ci % len(colors)]
-            agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
-            cycles = agg_df["cycle"].to_list()
-            values = agg_df[col_name].to_list()
-            if not cycles:
-                continue
 
-            fig.add_trace(
-                go.Scatter(
-                    x=cycles,
-                    y=values,
-                    mode="lines+markers",
-                    line={"color": col_color, "width": line_width},
-                    marker={"size": marker_size, "opacity": marker_opacity},
-                    connectgaps=connect_gaps,
-                    hovertemplate=_make_hovertemplate(col_name, "Cycle", "Value"),
-                    name=col_name,
-                    legendgroup=col_name,
-                    showlegend=legend_tracker.should_show(col_name),
-                ),
-                row=r,
-                col=c,
-            )
+            lines_info = None
+            if kind != "mean":
+                lines_info = _add_kind_traces(
+                    fig,
+                    kind=kind,
+                    season_df=season_df,
+                    col_name=col_name,
+                    display_name=col_name,
+                    col_color=col_color,
+                    overlay_opacity=overlay_opacity,
+                    line_width=line_width,
+                    row=r,
+                    col=c,
+                    legend_tracker=legend_tracker,
+                )
 
-            if show_mean:
-                mean_val = agg_df[col_name].mean()
-                if mean_val is not None and len(cycles) >= 2:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=[cycles[0], cycles[-1]],
-                            y=[mean_val, mean_val],
-                            mode="lines",
-                            line={
-                                "color": col_color,
-                                "width": mean_width,
-                                "dash": mean_dash,
-                            },
-                            name=f"Mean ({col_name})",
-                            legendgroup=col_name,
-                            showlegend=False,
-                            hovertemplate=f"Mean: {mean_val:.2f}<extra></extra>",
-                        ),
-                        row=r,
-                        col=c,
-                    )
+            if kind in ("mean", "lines"):
+                agg_df = season_df.group_by("cycle").agg(pl.col(col_name).mean()).sort("cycle")
+                cycles = agg_df["cycle"].to_list()
+                values = agg_df[col_name].to_list()
+                if not cycles:
+                    continue
+
+                # When kind="lines", remap x-values to the numeric axis.
+                if lines_info is not None:
+                    x_vals = lines_info["midpoints"]
+                    x_mean_range = [0.0, lines_info["total"][0]]
+                else:
+                    x_vals = cycles
+                    x_mean_range = [cycles[0], cycles[-1]]
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=x_vals,
+                        y=values,
+                        mode="lines+markers",
+                        line={"color": col_color, "width": line_width},
+                        marker={"size": marker_size, "opacity": marker_opacity},
+                        connectgaps=connect_gaps,
+                        hovertemplate=_make_hovertemplate(col_name, "Cycle", "Value"),
+                        name=col_name,
+                        legendgroup=col_name,
+                        showlegend=legend_tracker.should_show(col_name),
+                    ),
+                    row=r,
+                    col=c,
+                )
+
+                if show_mean:
+                    mean_val = agg_df[col_name].mean()
+                    if mean_val is not None and len(cycles) >= 2:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=x_mean_range,
+                                y=[mean_val, mean_val],
+                                mode="lines",
+                                line={
+                                    "color": col_color,
+                                    "width": mean_width,
+                                    "dash": mean_dash,
+                                },
+                                name=f"Mean ({col_name})",
+                                legendgroup=col_name,
+                                showlegend=False,
+                                hovertemplate=f"Mean: {mean_val:.2f}<extra></extra>",
+                            ),
+                            row=r,
+                            col=c,
+                        )
+
 
     fig = apply_default_layout(
         fig,

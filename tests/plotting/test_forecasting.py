@@ -9,7 +9,7 @@ import pytest
 from plotly import graph_objects as go
 
 from yohou.plotting import (
-    plot_components,
+    plot_decomposition,
     plot_forecast,
     plot_time_weight,
 )
@@ -165,33 +165,33 @@ def multi_model_data():
     return y_test, {"Model A": y_pred_a, "Model B": y_pred_b}
 
 
-class TestPlotComponents:
-    """Tests for plot_components function."""
+class TestPlotDecomposition:
+    """Tests for plot_decomposition function."""
 
     def test_basic(self, decomposition_data):
         """Test basic decomposition plot."""
         y, components = decomposition_data
-        fig = plot_components(y, components)
+        fig = plot_decomposition(y, components)
         # Original + 3 components = 4 traces
         assert len(fig.data) >= 4
 
     def test_no_original(self, decomposition_data):
         """Test decomposition without original series."""
         y, components = decomposition_data
-        fig = plot_components(y, components, show_original=False)
+        fig = plot_decomposition(y, components, show_original=False)
         # 3 component traces only
         assert len(fig.data) >= 3
 
     def test_custom_title(self, decomposition_data):
         """Test custom title."""
         y, components = decomposition_data
-        fig = plot_components(y, components, title="My Decomposition")
+        fig = plot_decomposition(y, components, title="My Decomposition")
         assert_layout(fig, title="My Decomposition")
 
     def test_default_title(self, decomposition_data):
         """Test default title."""
         y, components = decomposition_data
-        fig = plot_components(y, components)
+        fig = plot_decomposition(y, components)
         assert_layout(fig, title="Time Series Decomposition")
 
     def test_specific_columns(self):
@@ -210,7 +210,7 @@ class TestPlotComponents:
                 "y2": [i * 1.0 for i in range(n)],
             }),
         }
-        fig = plot_components(y, components, columns="y1")
+        fig = plot_decomposition(y, components, columns="y1")
         # Original y1 + trend y1 = 2 traces
         assert len(fig.data) == 2
 
@@ -221,17 +221,17 @@ class TestPlotComponents:
             "y": list(range(10)),
         })
         with pytest.raises(ValueError, match="non-empty"):
-            plot_components(y, {})
+            plot_decomposition(y, {})
 
     def test_invalid_y(self):
         """Test that invalid y raises TypeError."""
         with pytest.raises(TypeError, match="DataFrame"):
-            plot_components("not a df", {"trend": pl.DataFrame({"time": [], "y": []})})
+            plot_decomposition("not a df", {"trend": pl.DataFrame({"time": [], "y": []})})
 
     def test_custom_palette(self, decomposition_data):
         """Test custom color palette."""
         y, components = decomposition_data
-        fig = plot_components(y, components, color_palette=["#ff0000"])
+        fig = plot_decomposition(y, components, color_palette=["#ff0000"])
         assert fig.data[0].line.color == "#ff0000"
 
     def test_invalid_components_type(self):
@@ -241,11 +241,11 @@ class TestPlotComponents:
             "y": list(range(10)),
         })
         with pytest.raises(TypeError, match="dict.*list.*tuple"):
-            plot_components(y, 42)
+            plot_decomposition(y, 42)
 
 
-class TestPlotComponentsPanel:
-    """Panel data tests for plot_components."""
+class TestPlotDecompositionPanel:
+    """Panel data tests for plot_decomposition."""
 
     def test_panel_dict_components(self):
         """Panel data with dict components produces a dict of figures."""
@@ -263,7 +263,7 @@ class TestPlotComponentsPanel:
                 "y__b": [i * 1.0 for i in range(n)],
             }),
         }
-        result = plot_components(y, components)
+        result = plot_decomposition(y, components)
         assert isinstance(result, dict)
         assert "a" in result
         assert_figure_valid(result["a"])
@@ -276,7 +276,7 @@ class TestPlotComponentsPanel:
         components = {
             "trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(10)]}),
         }
-        fig = plot_components(y, components, width=900, height=500)
+        fig = plot_decomposition(y, components, width=900, height=500)
         assert_layout(fig, width=900, height=500)
 
     def test_panel_faceted_layout(self):
@@ -300,7 +300,7 @@ class TestPlotComponentsPanel:
                 "y__b": [i * 0.2 for i in range(n)],
             }),
         }
-        result = plot_components(y, components)
+        result = plot_decomposition(y, components)
         assert isinstance(result, dict)
         assert "a" in result
         fig = result["a"]
@@ -324,7 +324,7 @@ class TestPlotComponentsPanel:
                 "g2__a": [i * 1.0 for i in range(n)],
             }),
         }
-        result = plot_components(y, components, panel_group_names=["g1"])
+        result = plot_decomposition(y, components, panel_group_names=["g1"])
         # With 1 group and 1 member "a", returns single go.Figure
         assert isinstance(result, go.Figure)
         assert_figure_valid(result)
@@ -336,8 +336,8 @@ _has_statsmodels = importlib.util.find_spec("statsmodels") is not None
 
 
 @pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
-class TestPlotComponentsStl:
-    """Tests for plot_components STL mode (list/tuple components)."""
+class TestPlotDecompositionStl:
+    """Tests for plot_decomposition STL mode (list/tuple components)."""
 
     @pytest.fixture
     def monthly_df(self):
@@ -349,83 +349,124 @@ class TestPlotComponentsStl:
         })
 
     def test_basic(self, monthly_df):
-        """Test basic STL decomposition via plot_components."""
-        fig = plot_components(
+        """Test basic STL decomposition via plot_decomposition."""
+        fig = plot_decomposition(
             monthly_df,
             ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
+            method="stl",
             columns="y",
         )
         assert len(fig.data) >= 4
 
     def test_explicit_period(self, monthly_df):
-        """Test STL mode with explicit period via stl_kwargs."""
-        fig = plot_components(
+        """Test STL mode with explicit period."""
+        fig = plot_decomposition(
             monthly_df,
             ["observed", "trend", "seasonal", "residual"],
+            method="stl",
             columns="y",
-            stl_kwargs={"period": 12},
+            period=12,
         )
         assert len(fig.data) >= 4
 
     def test_subset_components(self, monthly_df):
         """Test showing only a subset of STL components."""
-        fig = plot_components(monthly_df, ["trend", "seasonal"], columns="y", show_original=False)
+        fig = plot_decomposition(monthly_df, ["trend", "seasonal"], method="stl", columns="y", show_original=False)
         assert len(fig.data) == 2
 
     def test_observed_sets_show_original(self, monthly_df):
         """Test that 'observed' in components enables original trace."""
-        fig = plot_components(monthly_df, ["observed", "trend"], columns="y")
+        fig = plot_decomposition(monthly_df, ["observed", "trend"], method="stl", columns="y")
         names = [t.name for t in fig.data]
         # "observed" maps to show_original, so the first trace uses the column name
         assert "y" in names
         assert "Trend" in names
 
-    def test_stl_kwargs_robust(self, monthly_df):
-        """Test passing robust=False via stl_kwargs."""
-        fig = plot_components(
+    def test_robust_false(self, monthly_df):
+        """Test passing robust=False."""
+        fig = plot_decomposition(
             monthly_df,
             ["trend", "seasonal"],
+            method="stl",
             columns="y",
             show_original=False,
-            stl_kwargs={"robust": False},
+            robust=False,
         )
         assert len(fig.data) == 2
 
-    def test_stl_kwargs_windows(self, monthly_df):
-        """Test passing window parameters via stl_kwargs."""
-        fig = plot_components(
+    def test_window_params(self, monthly_df):
+        """Test passing window parameters."""
+        fig = plot_decomposition(
             monthly_df,
             ["trend", "residual"],
+            method="stl",
             columns="y",
             show_original=False,
-            stl_kwargs={"period": 12, "seasonal_window": 15, "trend_window": 25},
+            period=12,
+            seasonal_window=15,
+            trend_window=25,
         )
         assert len(fig.data) == 2
 
     def test_stl_default_title(self, monthly_df):
         """Test STL mode default title."""
-        fig = plot_components(monthly_df, ["trend"], columns="y")
+        fig = plot_decomposition(monthly_df, ["trend"], method="stl", columns="y")
         assert_layout(fig, title="STL Decomposition")
 
     def test_stl_custom_title(self, monthly_df):
         """Test STL mode custom title."""
-        fig = plot_components(monthly_df, ["trend"], columns="y", title="My STL")
+        fig = plot_decomposition(monthly_df, ["trend"], method="stl", columns="y", title="My STL")
         assert_layout(fig, title="My STL")
 
     def test_unknown_component(self, monthly_df):
         """Test unknown STL component raises ValueError."""
         with pytest.raises(ValueError, match="Unknown components"):
-            plot_components(monthly_df, ["trend", "bogus"], columns="y")
+            plot_decomposition(monthly_df, ["trend", "bogus"], method="stl", columns="y")
 
     def test_tuple_components(self, monthly_df):
         """Test that tuple components trigger STL mode."""
-        fig = plot_components(monthly_df, ("trend", "seasonal"), columns="y", show_original=False)
+        fig = plot_decomposition(monthly_df, ("trend", "seasonal"), method="stl", columns="y", show_original=False)
         assert len(fig.data) == 2
+
+    def test_nan_interpolation_warning(self):
+        """STL mode warns when NaN values are interpolated."""
+        dates = pl.date_range(
+            pl.date(2018, 1, 1),
+            pl.date(2022, 12, 31),
+            "1mo",
+            eager=True,
+        )
+        n = len(dates)
+        values = [100 + 10 * (i % 12) + i * 0.5 for i in range(n)]
+        values[5] = None
+        values[10] = None
+        df = pl.DataFrame({"time": dates, "y": values})
+        with pytest.warns(UserWarning, match="Interpolated"):
+            fig = plot_decomposition(df, ["trend", "residual"], method="stl")
+        assert_figure_valid(fig)
+
+    def test_unsupported_interval_error(self):
+        """Auto-period with unsupported interval frequency raises ValueError."""
+        from datetime import datetime
+
+        dates = pl.datetime_range(
+            datetime(2020, 1, 1),
+            datetime(2020, 1, 1, 0, 18),
+            "2m",
+            eager=True,
+        )
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "y": list(range(n)),
+        })
+        with pytest.raises(ValueError, match="Cannot infer STL period"):
+            plot_decomposition(df, ["trend", "seasonal"], method="stl")
 
 
 @pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
-class TestPlotComponentsMstl:
-    """Tests for plot_components MSTL mode (multi-seasonal decomposition)."""
+class TestPlotDecompositionMstl:
+    """Tests for plot_decomposition MSTL mode (multi-seasonal decomposition)."""
 
     @pytest.fixture
     def hourly_df(self):
@@ -451,35 +492,38 @@ class TestPlotComponentsMstl:
 
     def test_basic_mstl(self, hourly_df):
         """Test basic MSTL decomposition with two periods."""
-        fig = plot_components(
+        fig = plot_decomposition(
             hourly_df,
             ["observed", "trend", "seasonal", "residual"],
+            method="mstl",
             columns="y",
-            stl_kwargs={"periods": [24, 24 * 7]},
+            periods=[24, 24 * 7],
         )
         # observed + trend + seasonal_24 + seasonal_168 + residual = 5 traces
         assert len(fig.data) == 5
 
     def test_explicit_periods(self, hourly_df):
         """Test MSTL with explicitly listed periods."""
-        fig = plot_components(
+        fig = plot_decomposition(
             hourly_df,
             ["trend", "seasonal"],
+            method="mstl",
             columns="y",
             show_original=False,
-            stl_kwargs={"periods": [24, 24 * 7]},
+            periods=[24, 24 * 7],
         )
         # trend + seasonal_24 + seasonal_168 = 3 traces
         assert len(fig.data) == 3
 
     def test_mstl_component_names(self, hourly_df):
         """Test that MSTL produces expected seasonal trace names."""
-        fig = plot_components(
+        fig = plot_decomposition(
             hourly_df,
             ["trend", "seasonal", "residual"],
+            method="mstl",
             columns="y",
             show_original=False,
-            stl_kwargs={"periods": [24, 24 * 7]},
+            periods=[24, 24 * 7],
         )
         names = [t.name for t in fig.data]
         assert "Trend" in names
@@ -489,33 +533,36 @@ class TestPlotComponentsMstl:
 
     def test_mstl_default_title(self, hourly_df):
         """Test MSTL mode sets MSTL-specific default title."""
-        fig = plot_components(
+        fig = plot_decomposition(
             hourly_df,
             ["trend"],
+            method="mstl",
             columns="y",
-            stl_kwargs={"periods": [24, 24 * 7]},
+            periods=[24, 24 * 7],
         )
         assert_layout(fig, title="MSTL Decomposition")
 
     def test_mstl_custom_title(self, hourly_df):
         """Test MSTL mode respects custom title."""
-        fig = plot_components(
+        fig = plot_decomposition(
             hourly_df,
             ["trend"],
+            method="mstl",
             columns="y",
             title="Custom MSTL",
-            stl_kwargs={"periods": [24, 24 * 7]},
+            periods=[24, 24 * 7],
         )
         assert_layout(fig, title="Custom MSTL")
 
     def test_mstl_subplot_labels(self, hourly_df):
         """Test that MSTL subplot labels use human-readable period names."""
-        fig = plot_components(
+        fig = plot_decomposition(
             hourly_df,
             ["trend", "seasonal", "residual"],
+            method="mstl",
             columns="y",
             show_original=False,
-            stl_kwargs={"periods": [24, 24 * 7]},
+            periods=[24, 24 * 7],
         )
         yaxis_titles = []
         for i in range(4):  # trend + seasonal_24 + seasonal_168 + residual
@@ -529,29 +576,32 @@ class TestPlotComponentsMstl:
 
     def test_mstl_robust_false(self, hourly_df):
         """Test passing robust=False to MSTL."""
-        fig = plot_components(
+        fig = plot_decomposition(
             hourly_df,
             ["trend", "seasonal"],
+            method="mstl",
             columns="y",
             show_original=False,
-            stl_kwargs={"periods": [24, 24 * 7], "robust": False},
+            periods=[24, 24 * 7],
+            robust=False,
         )
         assert len(fig.data) == 3
 
     def test_mstl_single_period_list(self, hourly_df):
         """Test MSTL with a single-element periods list."""
-        fig = plot_components(
+        fig = plot_decomposition(
             hourly_df,
             ["trend", "seasonal", "residual"],
+            method="mstl",
             columns="y",
             show_original=False,
-            stl_kwargs={"periods": [24]},
+            periods=[24],
         )
         # trend + seasonal_24 + residual = 3 traces
         assert len(fig.data) == 3
 
 
-class TestComputeMstl:
+class TestComputeDecompositionMstl:
     """Unit tests for the _compute_mstl helper."""
 
     @pytest.fixture
@@ -569,6 +619,7 @@ class TestComputeMstl:
         assert "residual" in result
         assert "seasonal_24" in result
         assert "seasonal_168" in result
+        assert "seasonal_adjusted" in result
 
     def test_components_sum_to_observed(self, series):
         from yohou.plotting.forecasting import _compute_mstl
@@ -588,7 +639,7 @@ class TestComputeMstl:
 
         result = _compute_mstl(series, periods=[24])
         assert "seasonal_24" in result
-        assert len(result) == 4  # observed, trend, seasonal_24, residual
+        assert len(result) == 5  # observed, trend, seasonal_24, residual, seasonal_adjusted
 
     def test_fewer_seasonal_columns_than_periods(self, series):
         """MSTL raises when a period is too large for the series length.
@@ -601,6 +652,183 @@ class TestComputeMstl:
         # series is ~8 weeks hourly (1344 rows).  8760 needs ~1 year.
         with pytest.raises(ValueError, match="too short"):
             _compute_mstl(series, periods=[24, 168, 8760])
+
+
+@pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
+class TestPlotDecompositionClassical:
+    """Tests for plot_decomposition classical (seasonal_decompose) mode."""
+
+    @pytest.fixture
+    def monthly_df(self):
+        """Create monthly data suitable for classical decomposition."""
+        rng = np.random.default_rng(42)
+        return pl.DataFrame({
+            "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2023, 12, 1), "1mo", eager=True),
+            "y": [100 + 2 * i + 10 * np.sin(2 * np.pi * i / 12) + rng.standard_normal() for i in range(72)],
+        })
+
+    def test_basic(self, monthly_df):
+        """Test basic classical decomposition."""
+        fig = plot_decomposition(
+            monthly_df,
+            ["observed", "trend", "seasonal", "residual"],
+            method="classical",
+            columns="y",
+        )
+        assert len(fig.data) >= 4
+
+    def test_default_title(self, monthly_df):
+        """Test classical mode default title."""
+        fig = plot_decomposition(monthly_df, ["trend"], method="classical", columns="y")
+        assert_layout(fig, title="Classical Decomposition")
+
+    def test_custom_title(self, monthly_df):
+        """Test classical mode custom title."""
+        fig = plot_decomposition(
+            monthly_df, ["trend"], method="classical", columns="y", title="My Classical",
+        )
+        assert_layout(fig, title="My Classical")
+
+    def test_multiplicative(self, monthly_df):
+        """Test classical decomposition with multiplicative model."""
+        fig = plot_decomposition(
+            monthly_df,
+            ["trend", "seasonal", "residual"],
+            method="classical",
+            columns="y",
+            model="multiplicative",
+            show_original=False,
+        )
+        assert len(fig.data) >= 3
+
+    def test_two_sided_false(self, monthly_df):
+        """Test classical with two_sided=False."""
+        fig = plot_decomposition(
+            monthly_df,
+            ["trend", "residual"],
+            method="classical",
+            columns="y",
+            two_sided=False,
+            show_original=False,
+        )
+        assert len(fig.data) == 2
+
+    def test_extrapolate_trend(self, monthly_df):
+        """Test classical with extrapolate_trend='freq'."""
+        fig = plot_decomposition(
+            monthly_df,
+            ["trend", "seasonal"],
+            method="classical",
+            columns="y",
+            extrapolate_trend="freq",
+            show_original=False,
+        )
+        assert len(fig.data) == 2
+
+    def test_explicit_period(self, monthly_df):
+        """Test classical with explicit period."""
+        fig = plot_decomposition(
+            monthly_df,
+            ["trend", "seasonal"],
+            method="classical",
+            columns="y",
+            period=12,
+            show_original=False,
+        )
+        assert len(fig.data) == 2
+
+    def test_seasonal_adjusted(self, monthly_df):
+        """Test classical seasonal_adjusted component."""
+        fig = plot_decomposition(
+            monthly_df,
+            ["seasonal_adjusted"],
+            method="classical",
+            columns="y",
+            show_original=False,
+        )
+        assert len(fig.data) == 1
+
+
+@pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
+class TestDecompositionMultiplicative:
+    """Tests for multiplicative model across all decomposition methods."""
+
+    @pytest.fixture
+    def monthly_df(self):
+        """Create positive monthly data suitable for multiplicative decomposition."""
+        rng = np.random.default_rng(42)
+        return pl.DataFrame({
+            "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2023, 12, 1), "1mo", eager=True),
+            "y": [100 + 2 * i + 10 * np.sin(2 * np.pi * i / 12) + rng.standard_normal() for i in range(72)],
+        })
+
+    def test_stl_multiplicative_warns(self, monthly_df):
+        """STL multiplicative emits UserWarning about log-transform approximation."""
+        with pytest.warns(UserWarning, match="log-transform"):
+            fig = plot_decomposition(
+                monthly_df,
+                ["trend", "seasonal"],
+                method="stl",
+                columns="y",
+                model="multiplicative",
+                show_original=False,
+            )
+        assert len(fig.data) == 2
+
+    def test_mstl_multiplicative_warns(self):
+        """MSTL multiplicative emits UserWarning about log-transform approximation."""
+        rng = np.random.default_rng(42)
+        n = 24 * 7 * 12
+        df = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2022, 1, 1),
+                pl.datetime(2022, 1, 1) + pl.duration(hours=n - 1),
+                "1h",
+                eager=True,
+            ),
+            "y": [
+                50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal()
+                for i in range(n)
+            ],
+        })
+        with pytest.warns(UserWarning, match="log-transform"):
+            fig = plot_decomposition(
+                df,
+                ["trend", "seasonal"],
+                method="mstl",
+                columns="y",
+                model="multiplicative",
+                periods=[24, 24 * 7],
+                show_original=False,
+            )
+        assert len(fig.data) >= 2
+
+    def test_classical_multiplicative_no_warning(self, monthly_df):
+        """Classical multiplicative does not emit log-transform warning."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            fig = plot_decomposition(
+                monthly_df,
+                ["trend", "seasonal"],
+                method="classical",
+                columns="y",
+                model="multiplicative",
+                show_original=False,
+            )
+        assert len(fig.data) == 2
+
+    def test_mismatched_stl_params_warns(self, monthly_df):
+        """STL-only params with classical method emit UserWarning."""
+        with pytest.warns(UserWarning, match="trend_window.*only used with method='stl'"):
+            plot_decomposition(
+                monthly_df,
+                ["trend"],
+                method="classical",
+                columns="y",
+                trend_window=15,
+            )
 
 
 class TestFormatComponentLabel:
@@ -912,123 +1140,6 @@ class TestPlotForecastPanelTrainAndIntervals:
         assert any("PI" in n for n in names)
 
 
-class TestPlotComponentsSTL:
-    """Tests for plot_components in STL decomposition mode."""
-
-    @pytest.fixture
-    def monthly_series(self):
-        """Create a monthly series with trend and seasonal pattern."""
-        dates = pl.date_range(
-            pl.date(2018, 1, 1),
-            pl.date(2022, 12, 31),
-            "1mo",
-            eager=True,
-        )
-        n = len(dates)
-        return pl.DataFrame({
-            "time": dates,
-            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
-        })
-
-    @pytest.mark.skipif(
-        not importlib.util.find_spec("statsmodels"),
-        reason="statsmodels not installed",
-    )
-    def test_stl_trend_seasonal(self, monthly_series):
-        """STL mode with trend and seasonal components works."""
-        fig = plot_components(monthly_series, ["trend", "seasonal"])
-        assert_figure_valid(fig)
-        assert len(fig.data) >= 2
-
-    @pytest.mark.skipif(
-        not importlib.util.find_spec("statsmodels"),
-        reason="statsmodels not installed",
-    )
-    def test_stl_with_nan_interpolation_warning(self):
-        """STL mode warns when NaN values are interpolated."""
-        dates = pl.date_range(
-            pl.date(2018, 1, 1),
-            pl.date(2022, 12, 31),
-            "1mo",
-            eager=True,
-        )
-        n = len(dates)
-        values = [100 + 10 * (i % 12) + i * 0.5 for i in range(n)]
-        values[5] = None
-        values[10] = None
-        df = pl.DataFrame({"time": dates, "y": values})
-        with pytest.warns(UserWarning, match="Interpolated"):
-            fig = plot_components(df, ["trend", "residual"])
-        assert_figure_valid(fig)
-
-    @pytest.mark.skipif(
-        not importlib.util.find_spec("statsmodels"),
-        reason="statsmodels not installed",
-    )
-    def test_stl_explicit_period(self):
-        """STL mode with explicit period instead of auto-detect."""
-        dates = pl.date_range(
-            pl.date(2018, 1, 1),
-            pl.date(2022, 12, 31),
-            "1mo",
-            eager=True,
-        )
-        n = len(dates)
-        df = pl.DataFrame({
-            "time": dates,
-            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
-        })
-        fig = plot_components(df, ["trend", "seasonal"], stl_kwargs={"period": 12})
-        assert_figure_valid(fig)
-        assert len(fig.data) >= 2
-
-    @pytest.mark.skipif(
-        not importlib.util.find_spec("statsmodels"),
-        reason="statsmodels not installed",
-    )
-    def test_stl_with_window_kwargs(self):
-        """STL mode forwards trend/seasonal/low_pass window kwargs."""
-        dates = pl.date_range(
-            pl.date(2018, 1, 1),
-            pl.date(2022, 12, 31),
-            "1mo",
-            eager=True,
-        )
-        n = len(dates)
-        df = pl.DataFrame({
-            "time": dates,
-            "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
-        })
-        fig = plot_components(
-            df,
-            ["trend", "seasonal"],
-            stl_kwargs={"period": 12, "trend_window": 15, "seasonal_window": 7, "low_pass_window": 13},
-        )
-        assert_figure_valid(fig)
-
-    @pytest.mark.skipif(
-        not importlib.util.find_spec("statsmodels"),
-        reason="statsmodels not installed",
-    )
-    def test_stl_unsupported_interval_error(self):
-        """Auto-period with unsupported interval frequency raises ValueError."""
-        from datetime import datetime
-
-        dates = pl.datetime_range(
-            datetime(2020, 1, 1),
-            datetime(2020, 1, 1, 0, 9),
-            "1m",
-            eager=True,
-        )
-        n = len(dates)
-        df = pl.DataFrame({
-            "time": dates,
-            "y": list(range(n)),
-        })
-        with pytest.raises(ValueError, match="Cannot infer STL period"):
-            plot_components(df, ["trend", "seasonal"])
-
-
 class TestPlotForecastMultiModelTrainHistory:
     """Tests for multi-model forecast with training history and n_history."""
 
@@ -1106,8 +1217,8 @@ class TestPlotTimeWeightPanelErrors:
         assert_figure_valid(fig)
 
 
-class TestPlotComponentsErrors:
-    """Tests for plot_components error paths."""
+class TestPlotDecompositionErrors:
+    """Tests for plot_decomposition error paths."""
 
     def test_empty_components_no_original_raises(self):
         """Empty components list with show_original=False raises ValueError."""
@@ -1116,7 +1227,25 @@ class TestPlotComponentsErrors:
             "y": [float(i) for i in range(91)],
         })
         with pytest.raises(ValueError, match="components must contain at least one displayable component"):
-            plot_components(y, [], show_original=False)
+            plot_decomposition(y, [], method="stl", show_original=False)
+
+    def test_list_without_method_raises(self):
+        """List components without method raises ValueError."""
+        y = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [float(i) for i in range(91)],
+        })
+        with pytest.raises(ValueError, match="method is required"):
+            plot_decomposition(y, ["trend", "seasonal"])
+
+    def test_mstl_without_periods_raises(self):
+        """MSTL without periods raises ValueError."""
+        y = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "y": [float(i) for i in range(91)],
+        })
+        with pytest.raises(ValueError, match="periods is required"):
+            plot_decomposition(y, ["trend", "seasonal"], method="mstl")
 
 
 class TestPlotForecastWithIntervals:
@@ -1183,8 +1312,8 @@ class TestPlotTimeWeightNonPanel:
         assert_figure_valid(fig)
 
 
-class TestPlotComponentsShowOriginal:
-    """Tests for plot_components show_original=True branch."""
+class TestPlotDecompositionShowOriginal:
+    """Tests for plot_decomposition show_original=True branch."""
 
     def test_show_original_true(self):
         """show_original=True adds original series panel to the subplot."""
@@ -1196,7 +1325,7 @@ class TestPlotComponentsShowOriginal:
             "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
             "y": [float(i) for i in range(91)],
         })
-        fig = plot_components(y, {"Trend": trend}, show_original=True)
+        fig = plot_decomposition(y, {"Trend": trend}, show_original=True)
         assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
@@ -1276,12 +1405,12 @@ class TestInvalidDimensions:
         with pytest.raises(ValueError, match="width"):
             plot_time_weight(df, width=0)
 
-    def test_plot_components_invalid_height(self):
+    def test_plot_decomposition_invalid_height(self):
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
         y = pl.DataFrame({"time": dates, "y": list(range(10))})
         components = {"trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(10)]})}
         with pytest.raises(ValueError, match="height"):
-            plot_components(y, components, height=-5)
+            plot_decomposition(y, components, height=-5)
 
 
 class TestPeriodToLabelExtraBranches:
@@ -1338,12 +1467,14 @@ class TestSTLEvenWindows:
             "time": dates,
             "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
         })
-        fig = plot_components(
+        fig = plot_decomposition(
             df,
             ["trend", "seasonal"],
+            method="stl",
             columns="y",
             show_original=False,
-            stl_kwargs={"period": 12, "trend_window": 14},
+            period=12,
+            trend_window=14,
         )
         assert_figure_valid(fig)
 
@@ -1355,12 +1486,14 @@ class TestSTLEvenWindows:
             "time": dates,
             "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
         })
-        fig = plot_components(
+        fig = plot_decomposition(
             df,
             ["trend", "seasonal"],
+            method="stl",
             columns="y",
             show_original=False,
-            stl_kwargs={"period": 12, "seasonal_window": 8},
+            period=12,
+            seasonal_window=8,
         )
         assert_figure_valid(fig)
 
@@ -1372,18 +1505,20 @@ class TestSTLEvenWindows:
             "time": dates,
             "y": [100 + 10 * (i % 12) + i * 0.5 for i in range(n)],
         })
-        fig = plot_components(
+        fig = plot_decomposition(
             df,
             ["trend", "seasonal"],
+            method="stl",
             columns="y",
             show_original=False,
-            stl_kwargs={"period": 12, "low_pass_window": 12},
+            period=12,
+            low_pass_window=12,
         )
         assert_figure_valid(fig)
 
 
-class TestPlotComponentsPanelGroupNames:
-    """Cover panel_group_names branch in plot_components."""
+class TestPlotDecompositionPanelGroupNames:
+    """Cover panel_group_names branch in plot_decomposition."""
 
     def test_panel_components_dict(self):
         """Panel components with dict input returns dict of figures."""
@@ -1398,7 +1533,7 @@ class TestPlotComponentsPanelGroupNames:
             "y__a": [float(i) for i in range(91)],
             "y__b": [float(i) * 2 for i in range(91)],
         })
-        result = plot_components(
+        result = plot_decomposition(
             y,
             {"Trend": trend},
             panel_group_names=["y"],
@@ -1422,7 +1557,7 @@ class TestPlotComponentsPanelGroupNames:
             "y__a": [float(i) * 0.5 for i in range(91)],
             "y__b": [float(i) for i in range(91)],
         })
-        result = plot_components(
+        result = plot_decomposition(
             y,
             {"Trend": trend},
             panel_group_names=["y"],
@@ -1447,7 +1582,7 @@ class TestComponentsFallbackColumns:
             "time": dates,
             "log_off_0.0_tourists": [float(i) * 0.5 for i in range(91)],
         })
-        fig = plot_components(y, {"Trend": trend}, show_original=True)
+        fig = plot_decomposition(y, {"Trend": trend}, show_original=True)
         assert_figure_valid(fig)
         assert len(fig.data) >= 2
 
@@ -1609,12 +1744,13 @@ class TestMSTLIntervalFallback:
             ),
             "y": [50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal() for i in range(n)],
         })
-        fig = plot_components(
+        fig = plot_decomposition(
             df,
             ["trend", "seasonal", "residual"],
+            method="mstl",
             columns="y",
             show_original=False,
-            stl_kwargs={"periods": [24]},
+            periods=[24],
         )
         assert_figure_valid(fig)
 
@@ -1711,8 +1847,8 @@ class TestPlotTimeWeightPanelFacetByNone:
         assert_figure_valid(fig)
 
 
-class TestPlotComponentsYLabel:
-    """Tests for y_label parameter in plot_components."""
+class TestPlotDecompositionYLabel:
+    """Tests for y_label parameter in plot_decomposition."""
 
     def test_stl_y_label(self):
         """y_label overrides per-row labels in STL mode."""
@@ -1722,11 +1858,11 @@ class TestPlotComponentsYLabel:
         components = {
             "trend": pl.DataFrame({"time": dates, "y": [i * 0.5 for i in range(n)]}),
         }
-        fig = plot_components(y, components, y_label="Custom Y")
+        fig = plot_decomposition(y, components, y_label="Custom Y")
         assert_figure_valid(fig)
 
     def test_panel_y_label(self):
-        """y_label is applied to panel plot_components figures."""
+        """y_label is applied to panel plot_decomposition figures."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         n = len(dates)
         y = pl.DataFrame({
@@ -1741,7 +1877,7 @@ class TestPlotComponentsYLabel:
                 "y__b": [i * 1.0 for i in range(n)],
             }),
         }
-        result = plot_components(y, components, y_label="Custom Panel Y")
+        result = plot_decomposition(y, components, y_label="Custom Panel Y")
         assert isinstance(result, dict)
         for fig in result.values():
             assert_figure_valid(fig)
@@ -1824,7 +1960,7 @@ class TestComputeStlImportError:
             patch("builtins.__import__", side_effect=mock_import),
             pytest.raises(ImportError, match="statsmodels is required"),
         ):
-            plot_components(y, ["trend", "seasonal", "residual"], columns="y")
+            plot_decomposition(y, ["trend", "seasonal", "residual"], method="stl", columns="y")
 
     def test_mstl_import_error(self):
         """_compute_mstl raises ImportError when statsmodels is missing."""
@@ -1842,7 +1978,7 @@ class TestComputeStlImportError:
         y = pl.DataFrame({"time": dates, "y": list(range(n))})
 
         with patch("builtins.__import__", side_effect=mock_import), pytest.raises(ImportError, match="statsmodels"):
-            plot_components(y, ["trend", "seasonal", "residual"], columns="y", stl_kwargs={"periods": [7, 365]})
+            plot_decomposition(y, ["trend", "seasonal", "residual"], method="mstl", columns="y", periods=[7, 365])
 
 
 @pytest.mark.skipif(
@@ -1855,18 +1991,18 @@ class TestMSTLAutoPeriodsError:
     def test_auto_periods_unsupported_interval(self):
         """MSTL auto periods raises ValueError for unsupported interval."""
         n = 200
-        # 5-minute interval is not in _INTERVAL_TO_MSTL_PERIODS
+        # 3-minute interval is not in _INTERVAL_TO_MSTL_PERIODS
         df = pl.DataFrame({
             "time": pl.datetime_range(
                 pl.datetime(2022, 1, 1),
-                pl.datetime(2022, 1, 1) + pl.duration(minutes=5 * (n - 1)),
-                "5m",
+                pl.datetime(2022, 1, 1) + pl.duration(minutes=3 * (n - 1)),
+                "3m",
                 eager=True,
             ),
             "y": [float(i) for i in range(n)],
         })
         with pytest.raises(ValueError, match="Cannot infer MSTL periods"):
-            plot_components(df, ["trend", "seasonal"], columns="y", stl_kwargs={"periods": "auto"})
+            plot_decomposition(df, ["trend", "seasonal"], method="mstl", columns="y", periods="auto")
 
     def test_auto_periods_interval_fallback(self):
         """MSTL with explicit periods and irregular data falls back to numeric labels."""
@@ -1888,11 +2024,12 @@ class TestMSTLAutoPeriodsError:
             "time": base,
             "y": [50 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal() for i in range(n)],
         })
-        fig = plot_components(
+        fig = plot_decomposition(
             df,
             ["trend", "seasonal", "residual"],
+            method="mstl",
             columns="y",
             show_original=False,
-            stl_kwargs={"periods": [24]},
+            periods=[24],
         )
         assert_figure_valid(fig)

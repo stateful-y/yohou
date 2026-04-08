@@ -30,7 +30,7 @@ def _():
     from yohou.datasets import fetch_sunspot, fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.plotting import (
-        plot_components,
+        plot_decomposition,
         plot_forecast,
         plot_time_weight,
     )
@@ -56,7 +56,7 @@ def _():
         fetch_tourism_monthly,
         linear_decay_weight,
         pl,
-        plot_components,
+        plot_decomposition,
         plot_forecast,
         plot_time_weight,
     )
@@ -70,7 +70,7 @@ def _(mo):
     ## What You'll Learn
 
     - Plotting forecasts from single and multiple models with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
-    - Visualizing decomposition components with [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/)
+    - Visualizing decomposition components with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/)
     - Rendering time weight functions with [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/)
 
     ## Prerequisites
@@ -212,7 +212,7 @@ def _(mo):
     mo.md(r"""
     ## 3. Decomposition Visualization
 
-    [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/) displays a fitted [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)'s components
+    [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) displays a fitted [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)'s components
     as stacked subplots. Toggle **show_original** and pass a subset of components.
     """)
 
@@ -241,8 +241,8 @@ def _(
 
 
 @app.cell
-def _(decomp_components, fh, plot_components, y_test):
-    plot_components(
+def _(decomp_components, fh, plot_decomposition, y_test):
+    plot_decomposition(
         y_test.tail(fh),
         decomp_components,
         show_original=True,
@@ -251,8 +251,8 @@ def _(decomp_components, fh, plot_components, y_test):
 
 
 @app.cell
-def _(decomp_components, fh, plot_components, y_train):
-    plot_components(
+def _(decomp_components, fh, plot_decomposition, y_train):
+    plot_decomposition(
         y_train.tail(fh),
         decomp_components,
         show_original=False,
@@ -261,8 +261,8 @@ def _(decomp_components, fh, plot_components, y_train):
 
 
 @app.cell
-def _(decomp_components, fh, plot_components, y_test):
-    plot_components(
+def _(decomp_components, fh, plot_decomposition, y_test):
+    plot_decomposition(
         y_test.tail(fh),
         {"trend": decomp_components["trend"]},
         title="Decomposition - Trend Only",
@@ -324,7 +324,7 @@ def _(mo):
     ## Key Takeaways
 
     - **plot_forecast** handles single models, multi-model dicts, and prediction intervals via `coverage_rates`; `n_history` trims the visible training window
-    - **plot_components** stacks components vertically; `show_original` toggles whether the raw series appears as the first panel
+    - **plot_decomposition** stacks components vertically; `show_original` toggles whether the raw series appears as the first panel
     - **plot_time_weight** visualizes weighting schemes; `fill=True` shows the area under the curve, `fill_opacity` controls transparency
 
     ## Next Steps

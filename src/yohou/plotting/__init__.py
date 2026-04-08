@@ -50,7 +50,7 @@ from yohou.plotting.exploration import (
     plot_time_series,
 )
 from yohou.plotting.forecasting import (
-    plot_components,
+    plot_decomposition,
     plot_forecast,
     plot_time_weight,
 )
@@ -80,7 +80,7 @@ __all__ = [
     "plot_correlation_heatmap",
     "plot_cross_correlation",
     "plot_cv_results_scatter",
-    "plot_components",
+    "plot_decomposition",
     "plot_distribution",
     "plot_forecast",
     "plot_lag_scatter",

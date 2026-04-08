@@ -1417,8 +1417,8 @@ def plot_outliers(
         Outlier detection method:
         - "zscore": points with |z-score| > threshold (default 3.0)
         - "iqr": points outside [Q1 - threshold*IQR, Q3 + threshold*IQR] (default 1.5)
-        - "percentile": points below threshold-th or above (100-threshold)-th
-          percentile (default 5.0)
+        - "percentile": points above the threshold-th percentile or below
+          the (100-threshold)-th percentile (default 95.0, flags outer 5%)
     threshold : float, default=3.0
         Detection threshold. Interpretation depends on *method*.
     panel_group_names : list[str] | None, default=None
@@ -1522,8 +1522,8 @@ def plot_outliers(
             upper = q3 + threshold * iqr
             mask = (series < lower) | (series > upper)
         else:  # percentile
-            lower = series.quantile(threshold / 100)
-            upper = series.quantile(1 - threshold / 100)
+            lower = series.quantile(1 - threshold / 100)
+            upper = series.quantile(threshold / 100)
             if lower is None or upper is None:
                 return pl.Series([False] * len(series)), None, None
             mask = (series < lower) | (series > upper)

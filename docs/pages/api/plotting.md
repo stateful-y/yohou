@@ -28,7 +28,7 @@ Interactive time series visualization functions using Plotly. All plotting funct
 
 | Name | Description |
 | --- | --- |
-| [`plot_components`](generated/yohou.plotting.forecasting.plot_components.md) | Plot time series decomposition as vertically stacked subplots. |
+| [`plot_decomposition`](generated/yohou.plotting.forecasting.plot_decomposition.md) | Plot time series decomposition as vertically stacked subplots. |
 | [`plot_residuals`](generated/yohou.plotting.evaluation.plot_residuals.md) | Plot diagnostic plots for model residuals. |
 | [`plot_boxplot`](generated/yohou.plotting.exploration.plot_boxplot.md) | Plot boxplots grouped by time periods. |
 | [`plot_calibration`](generated/yohou.plotting.evaluation.plot_calibration.md) | Plot prediction interval calibration. |

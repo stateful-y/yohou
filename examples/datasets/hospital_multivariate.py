@@ -23,7 +23,7 @@ def _():
     from yohou.datasets import fetch_hospital
     from yohou.plotting import (
         plot_autocorrelation,
-        plot_components,
+        plot_decomposition,
         plot_correlation_heatmap,
         plot_cross_correlation,
         plot_lag_scatter,
@@ -37,7 +37,7 @@ def _():
         mo,
         pl,
         plot_autocorrelation,
-        plot_components,
+        plot_decomposition,
         plot_correlation_heatmap,
         plot_cross_correlation,
         plot_lag_scatter,
@@ -137,12 +137,13 @@ def _(mo):
 
 
 @app.cell
-def _(hospital, plot_components):
-    plot_components(
+def _(hospital, plot_decomposition):
+    plot_decomposition(
         hospital,
         ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
         columns="patients_A",
-        stl_kwargs={"period": 12},
+        method="stl",
+        period=12,
         title="Patients A (T1) - STL Decomposition",
     )
 

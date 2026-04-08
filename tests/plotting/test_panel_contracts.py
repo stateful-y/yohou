@@ -8,7 +8,7 @@ from plotly import graph_objects as go
 from yohou.plotting import (
     plot_autocorrelation,
     plot_boxplot,
-    plot_components,
+    plot_decomposition,
     plot_correlation_heatmap,
     plot_cross_correlation,
     plot_distribution,
@@ -175,14 +175,14 @@ class TestComponentsPanelLayout:
 
     def test_panel_grid_produces_figure(self, panel_components):
         y, components = panel_components
-        result = plot_components(y, components)
+        result = plot_decomposition(y, components)
         assert isinstance(result, dict)
         for fig in result.values():
             assert_figure_valid(fig)
 
     def test_panel_traces_have_legendgroup(self, panel_components):
         y, components = panel_components
-        result = plot_components(y, components)
+        result = plot_decomposition(y, components)
         assert isinstance(result, dict)
         for fig in result.values():
             groups = legend_groups(fig)
@@ -551,7 +551,7 @@ class TestRollingStatsRawColor:
 
 
 class TestComponentsResampler:
-    """plot_components panel path should support resampler config."""
+    """plot_decomposition panel path should support resampler config."""
 
     def test_panel_dict_does_not_crash(self):
         """Panel components with default config produces valid dict."""
@@ -569,7 +569,7 @@ class TestComponentsResampler:
                 "y__b": [i * 1.0 for i in range(n)],
             }),
         }
-        result = plot_components(y, components)
+        result = plot_decomposition(y, components)
         assert isinstance(result, dict)
         for fig in result.values():
             assert_figure_valid(fig)

@@ -51,7 +51,7 @@ def _():
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_sunspot, fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_components, plot_forecast, plot_time_series
+    from yohou.plotting import plot_decomposition, plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.stationarity import (
@@ -72,7 +72,7 @@ def _():
         fetch_sunspot,
         fetch_tourism_quarterly,
         pl,
-        plot_components,
+        plot_decomposition,
         plot_forecast,
         plot_time_series,
         train_test_split,
@@ -155,12 +155,12 @@ def _(
 
 
 @app.cell
-def _(fc_two, horizon, plot_components, y_test):
+def _(fc_two, horizon, plot_decomposition, y_test):
     _components = {}
     for _name, _forecaster in fc_two.forecasters_:
         _pred = _forecaster.predict(forecasting_horizon=horizon)
         _components[_name] = _pred.drop("observed_time")
-    plot_components(y_test, _components, title="Two-Component Decomposition")
+    plot_decomposition(y_test, _components, title="Two-Component Decomposition")
 
 
 @app.cell(hide_code=True)
@@ -214,12 +214,12 @@ def _(
 
 
 @app.cell
-def _(fc_three, horizon, plot_components, y_test):
+def _(fc_three, horizon, plot_decomposition, y_test):
     _components = {}
     for _name, _forecaster in fc_three.forecasters_:
         _pred = _forecaster.predict(forecasting_horizon=horizon)
         _components[_name] = _pred.drop("observed_time")
-    plot_components(y_test, _components, title="Three-Component Decomposition")
+    plot_decomposition(y_test, _components, title="Three-Component Decomposition")
 
 
 @app.cell(hide_code=True)
