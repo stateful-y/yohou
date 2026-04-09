@@ -138,8 +138,8 @@ def plot_autocorrelation(
                 else:
                     s1 = series[:-lag] - mean_v
                     s2 = series[lag:] - mean_v
-                    num = (s1 * s2).sum()
-                    den = ((series - mean_v) ** 2).sum()
+                    num = float((s1 * s2).sum())
+                    den = float(((series - mean_v) ** 2).sum())
                     acf_vals.append(num / den if den != 0 else 0)
             fig.add_trace(
                 go.Bar(x=list(range(_ml + 1)), y=acf_vals, marker={"color": _bc}, showlegend=False),
@@ -206,8 +206,8 @@ def plot_autocorrelation(
                 # Compute correlation at lag
                 series1 = series[:-lag] - mean_val
                 series2 = series[lag:] - mean_val
-                numerator = (series1 * series2).sum()
-                denominator = ((series - mean_val) ** 2).sum()
+                numerator = float((series1 * series2).sum())
+                denominator = float(((series - mean_val) ** 2).sum())
                 acf = numerator / denominator if denominator != 0 else 0
                 acf_values.append(acf)
 
@@ -1607,11 +1607,11 @@ def plot_lag_scatter(
             x_mean = y_lagged.mean()
             y_mean = y_current.mean()
 
-            numerator = ((y_lagged - x_mean) * (y_current - y_mean)).sum()
-            denominator = ((y_lagged - x_mean) ** 2).sum()
+            numerator = float(((y_lagged - x_mean) * (y_current - y_mean)).sum())
+            denominator = float(((y_lagged - x_mean) ** 2).sum())
 
             if denominator != 0 and x_mean is not None and y_mean is not None:
-                slope = float(numerator / denominator)
+                slope = numerator / denominator
                 intercept = cast(float, y_mean) - slope * cast(float, x_mean)
 
                 y_lagged_min = y_lagged.min()

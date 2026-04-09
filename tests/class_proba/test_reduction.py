@@ -346,3 +346,75 @@ class TestDirectStrategyPanelData:
         assert len(y_pred) == 3
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) > 0
+
+
+class TestMultiTargetReduction:
+    """Tests for multi-target class-probability forecasting."""
+
+    def test_multi_target_multi_output(self, class_proba_y_X_factory):
+        """Multi-target with multi-output strategy predicts all targets."""
+        y, X = class_proba_y_X_factory(
+            length=100,
+            n_targets=2,
+            n_features=2,
+            n_classes=3,
+            seed=42,
+        )
+        y_train = y[:80]
+        X_train = X[:80] if X is not None else None
+
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+            reduction_strategy="multi-output",
+        )
+        forecaster.fit(y_train, X_train, forecasting_horizon=1)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=1)
+
+        assert len(y_pred) == 1
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        # 2 targets x 3 classes = 6 proba columns
+        assert len(proba_cols) == 6
+
+    def test_multi_target_direct(self, class_proba_y_X_factory):
+        """Multi-target with direct strategy predicts all targets."""
+        y, X = class_proba_y_X_factory(
+            length=100,
+            n_targets=2,
+            n_features=2,
+            n_classes=3,
+            seed=42,
+        )
+        y_train = y[:80]
+        X_train = X[:80] if X is not None else None
+
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+            reduction_strategy="direct",
+        )
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+
+        assert len(y_pred) == 3
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) == 6
+
+    def test_multi_target_predict_returns_labels(self, class_proba_y_X_factory):
+        """Multi-target predict returns argmax labels for each target."""
+        y, X = class_proba_y_X_factory(
+            length=100,
+            n_targets=2,
+            n_features=2,
+            n_classes=3,
+            seed=42,
+        )
+        y_train = y[:80]
+        X_train = X[:80] if X is not None else None
+
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+        )
+        forecaster.fit(y_train, X_train, forecasting_horizon=1)
+        y_pred = forecaster.predict(forecasting_horizon=1)
+
+        assert "y_0" in y_pred.columns
+        assert "y_1" in y_pred.columns

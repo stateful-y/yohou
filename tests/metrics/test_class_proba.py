@@ -442,6 +442,33 @@ class TestComponentwiseRename:
         assert isinstance(result, pl.DataFrame)
         assert any("accuracy" in c for c in result.columns)
 
+    def test_log_loss_single_target_componentwise(self, class_proba_data):
+        """LogLoss single-target componentwise renames 'score' column."""
+        y_true, y_pred = class_proba_data
+        scorer = LogLoss(aggregation_method=["componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "log_loss" in result.columns
+
+    def test_brier_score_single_target_componentwise(self, class_proba_data):
+        """BrierScore single-target componentwise renames 'score' column."""
+        y_true, y_pred = class_proba_data
+        scorer = BrierScore(aggregation_method=["componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "brier_score" in result.columns
+
+    def test_accuracy_single_target_componentwise(self, class_proba_data):
+        """Accuracy single-target componentwise renames 'score' column."""
+        y_true, y_pred = class_proba_data
+        scorer = Accuracy(aggregation_method=["componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "accuracy" in result.columns
+
 
 class TestUnknownLabel:
     """Tests for unknown label handling in LogLoss."""
