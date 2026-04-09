@@ -38,7 +38,7 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         """
         tags = super().__sklearn_tags__()
         assert tags.scorer_tags is not None
-        tags.scorer_tags.prediction_type = "conformity"  # type: ignore[assignment, invalid-assignment]  # ty:ignore[invalid-assignment]
+        tags.scorer_tags.prediction_type = "conformity"  # ty: ignore[invalid-assignment]
         return tags
 
     @_fit_context(prefer_skip_nested_validation=True)

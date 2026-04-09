@@ -213,7 +213,7 @@ def plot_forecast(
     validate_plotting_data(y_test)
     if isinstance(y_pred, dict):
         for _name, pred_df in y_pred.items():
-            validate_plotting_data(pred_df)  # type: ignore[invalid-argument-type]  # ty:ignore[invalid-argument-type]
+            validate_plotting_data(pred_df)  # ty: ignore[invalid-argument-type]
     else:
         validate_plotting_data(y_pred)
     if y_train is not None:
@@ -292,7 +292,7 @@ def plot_forecast(
     if isinstance(y_pred, dict):
         return _plot_forecast_multi_model(
             y_test=y_test,
-            y_preds=y_pred,  # type: ignore[invalid-argument-type]  # ty:ignore[invalid-argument-type]
+            y_preds=y_pred,  # ty: ignore[invalid-argument-type]
             y_train=y_train,
             coverage_rates=coverage_rates,
             n_history=n_history,
@@ -1756,11 +1756,11 @@ def _plot_forecast_panel(
     is_multi_model = isinstance(y_pred, dict)
     if is_multi_model:
         assert isinstance(y_pred, dict)
-        model_preds: dict[str, pl.DataFrame] = y_pred  # type: ignore[assignment, invalid-assignment]  # ty:ignore[invalid-assignment]
+        model_preds: dict[str, pl.DataFrame] = y_pred  # ty: ignore[invalid-assignment]
         model_names = list(model_preds.keys())
         model_colors = resolve_color_palette(_model_pal, len(model_names))
     else:
-        model_preds = {"Forecast": y_pred}  # type: ignore[dict-item]
+        model_preds = {"Forecast": y_pred}
         model_names = ["Forecast"]
         model_colors = [forecast_color]
 
@@ -2876,7 +2876,7 @@ def plot_decomposition(
                 y,
                 components_list,
                 value_cols,
-                periods,  # ty:ignore[invalid-argument-type]
+                periods,  # ty: ignore[invalid-argument-type]
                 robust,
                 model=model,
             )

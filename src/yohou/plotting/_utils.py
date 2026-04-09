@@ -828,16 +828,16 @@ def apply_default_layout(
     layout_update: dict[str, Any] = copy.deepcopy(DEFAULT_LAYOUT)
 
     if title is not None:
-        layout_update["title"]["text"] = title  # type: ignore[index, invalid-assignment]  # ty:ignore[invalid-assignment]
+        layout_update["title"]["text"] = title  # ty: ignore[invalid-assignment]
     if x_label is not None:
-        layout_update["xaxis"]["title"] = x_label  # type: ignore[index, invalid-assignment]  # ty:ignore[invalid-assignment]
+        layout_update["xaxis"]["title"] = x_label  # ty: ignore[invalid-assignment]
     if y_label is not None:
-        layout_update["yaxis"]["title"] = y_label  # type: ignore[index, invalid-assignment]  # ty:ignore[invalid-assignment]
-    layout_update["width"] = width if width is not None else DEFAULT_WIDTH  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+        layout_update["yaxis"]["title"] = y_label  # ty: ignore[invalid-assignment]
+    layout_update["width"] = width if width is not None else DEFAULT_WIDTH  # ty: ignore[invalid-assignment]
     if height is not None:
-        layout_update["height"] = height  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+        layout_update["height"] = height  # ty: ignore[invalid-assignment]
     if hovermode is not None:
-        layout_update["hovermode"] = hovermode  # type: ignore[invalid-assignment]
+        layout_update["hovermode"] = hovermode  # ty: ignore[invalid-assignment]
 
     fig.update_layout(layout_update)
     return fig

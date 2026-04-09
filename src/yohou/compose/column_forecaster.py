@@ -235,9 +235,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
         """
         try:
-            return [(name, forecaster) for name, forecaster, _ in self.forecasters]  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+            return [(name, forecaster) for name, forecaster, _ in self.forecasters]  # ty: ignore[invalid-assignment]
         except (TypeError, ValueError):
-            return self.forecasters  # type: ignore[invalid-return-type, return-value]  # ty:ignore[invalid-return-type]
+            return self.forecasters  # ty: ignore[invalid-return-type]
 
     @_forecasters.setter
     def _forecasters(self, value: list[tuple[str, BaseForecaster]]) -> None:
@@ -329,7 +329,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
         """
         # Validate unique names
-        names = [name for name, _, _ in self.forecasters]  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+        names = [name for name, _, _ in self.forecasters]  # ty: ignore[invalid-assignment]
         name_counts = Counter(names)
         duplicates = [name for name, count in name_counts.items() if count > 1]
         if duplicates:
@@ -339,7 +339,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         column_map: dict[str, list[str]] = {}
         assigned_columns: list[str] = []
 
-        for name, _, columns in self.forecasters:  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+        for name, _, columns in self.forecasters:  # ty: ignore[invalid-assignment]
             cols = [columns] if isinstance(columns, str) else list(columns)
 
             # Check columns exist
@@ -480,7 +480,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 forecasting_horizon,
                 routed_params.get(name, Bunch(fit={})),
             )
-            for name, forecaster, cols in self.forecasters  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+            for name, forecaster, cols in self.forecasters  # ty: ignore[invalid-assignment]
             for cols in [column_map[name]]  # Normalize columns
         )
 
@@ -1087,7 +1087,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         )
 
         # Add routing for each named forecaster
-        for name, forecaster, _ in self.forecasters:  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+        for name, forecaster, _ in self.forecasters:  # ty: ignore[invalid-assignment]
             router.add(**{name: forecaster}, method_mapping=method_mapping)
 
         # Add routing for remainder forecaster (only if it's a forecaster)

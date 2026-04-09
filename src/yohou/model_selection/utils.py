@@ -76,7 +76,7 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
             f"values. Got {scoring}."
         )
 
-    return scorers  # type: ignore[invalid-return-type, return-value]  # ty:ignore[invalid-return-type]
+    return scorers  # ty: ignore[invalid-return-type]
 
 
 class _MultimetricScorer:
@@ -132,7 +132,7 @@ class _MultimetricScorer:
                 params = routed_params.get(name)
                 if params is None:
                     raise ValueError(f"Missing routing params for scorer '{name}'")
-                scores[name] = scorer(y_truth, y_pred, **params.score)  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+                scores[name] = scorer(y_truth, y_pred, **params.score)  # ty: ignore[invalid-assignment]
             except Exception as e:
                 if self._raise_exc:
                     raise e
@@ -529,7 +529,7 @@ def _score(
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):
             scorer.fit(y_train)
-        scores = scorer(y_test, y_pred, **score_params)  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
+        scores = scorer(y_test, y_pred, **score_params)  # ty: ignore[invalid-assignment]
 
     except Exception:  # noqa: BLE001
         if isinstance(scorer, _MultimetricScorer):

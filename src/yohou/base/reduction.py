@@ -829,7 +829,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             # Augment features with in-sample predictions for next step
             if step < forecasting_horizon - 1:
-                preds = est.predict(X_aug)  # type: ignore[attr-defined, unresolved-attribute]  # ty:ignore[unresolved-attribute]
+                preds = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
                 if preds.ndim == 1:
                     preds = preds.reshape(-1, 1)
                 X_aug = np.hstack([X_aug, preds])
@@ -964,7 +964,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         if self.panel_group_names_ is None:
             X_tab = self._get_predict_features()
-            y_tab_pred = estimator.predict(X_tab)  # type: ignore[attr-defined, unresolved-attribute]  # ty:ignore[unresolved-attribute]
+            y_tab_pred = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return self._reshape_predictions(y_tab_pred)
 
         y_pred_dict = {}
@@ -1003,7 +1003,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         def _predict_step(est: BaseEstimator, X_tab: np.ndarray) -> np.ndarray:
             """Predict a single horizon step."""
-            pred = est.predict(X_tab)  # type: ignore[attr-defined, unresolved-attribute]  # ty:ignore[unresolved-attribute]
+            pred = est.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return np.atleast_1d(pred.ravel())[:n_targets]
 
         if self.panel_group_names_ is None:
@@ -1058,7 +1058,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             X_aug = X_tab.copy()
             rows = []
             for est in estimators:
-                pred = est.predict(X_aug)  # type: ignore[attr-defined, unresolved-attribute]  # ty:ignore[unresolved-attribute]
+                pred = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
                 pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
                 # Augment features for next model
