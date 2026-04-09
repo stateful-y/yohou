@@ -1325,12 +1325,6 @@ def on_pre_build(config):
     if not examples_dir.exists():
         return
 
-    _skip_stems: set[str] = set()
-    try:
-        import yohou_nixtla  # noqa: F401
-    except ModuleNotFoundError:
-        _skip_stems |= {"nixtla_forecasters", "nixtla_panel"}
-
     # Find all marimo notebooks (recursively, excluding __marimo__ and bugs dirs)
     notebooks = [
         p
@@ -1348,10 +1342,6 @@ def on_pre_build(config):
     for notebook in notebooks:
         rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
-
-        if notebook.stem in _skip_stems:
-            print(f"[hooks] skipping {rel_path} (missing optional dependency)")
-            continue
 
         if output_dir.exists():
             shutil.rmtree(output_dir)

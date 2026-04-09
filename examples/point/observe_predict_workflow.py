@@ -307,8 +307,9 @@ def _(mo):
     the forecaster's memory and the next prediction produces lower/upper
     bounds at the requested coverage rate.
 
-    The rolling loop returns one prediction per stride.  We use
-    `.tail(fh)` to extract the final prediction for plotting.
+    The output DataFrame contains `"time"`, `"observed_time"`, and a pair
+    of columns per coverage level:
+    `{target}_upper_{rate}` / `{target}_lower_{rate}`.
     """)
 
 
@@ -335,13 +336,12 @@ def _(conformal, pl, plot_forecast, ss_cal, ss_fh, ss_test, ss_train):
         ss_cal,
         forecasting_horizon=ss_fh,
         coverage_rates=[0.9],
-    )
+    ).sort("time")
 
-    _y_truth_int = ss_test.head(ss_fh)
     _y_history_int = pl.concat([ss_train, ss_cal])
     plot_forecast(
-        _y_truth_int,
-        y_pred_interval.tail(ss_fh),
+        ss_test,
+        y_pred_interval,
         y_train=_y_history_int,
         coverage_rates=[0.9],
         n_history=60,
@@ -407,12 +407,12 @@ def _(cls_X_cal, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, plot_forecast):
         cls_y_cal,
         X=cls_X_cal,
         forecasting_horizon=cls_fh,
-    )
+    ).sort("time")
 
     print("Probability columns:", [c for c in cls_y_proba.columns if "_proba_" in c])
     plot_forecast(
-        cls_y_test.head(cls_fh),
-        cls_y_proba.tail(cls_fh),
+        cls_y_test,
+        cls_y_proba,
         title="observe_predict_class_proba - Stacked Area",
     )
 
@@ -441,12 +441,12 @@ def _(cls_X_cal, cls_fh, cls_forecaster_hard, cls_y_cal, cls_y_test, cls_y_train
         cls_y_cal,
         X=cls_X_cal,
         forecasting_horizon=cls_fh,
-    )
+    ).sort("time")
 
     print("Hard-label dtypes:", cls_y_labels.dtypes)
     plot_forecast(
-        cls_y_test.head(cls_fh),
-        cls_y_labels.tail(cls_fh),
+        cls_y_test,
+        cls_y_labels,
         y_train=cls_y_train,
         n_history=50,
         title="observe_predict (hard labels) - Step Chart",
