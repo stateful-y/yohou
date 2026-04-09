@@ -549,7 +549,7 @@ def check_prediction_types_property(forecaster) -> None:
     tags = forecaster.__sklearn_tags__()
     forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    valid_types = {"point", "interval", "both", None}
+    valid_types = {"point", "interval", "both", "class_proba", None}
     assert forecaster_type in valid_types, f"forecaster_type tag should be one of {valid_types}, got {forecaster_type}"
 
 
@@ -620,8 +620,8 @@ def check_clone_preserves_forecaster_params(forecaster) -> None:
 
                 # Check estimator params match
                 if hasattr(orig_est, "get_params"):
-                    orig_est_params = orig_est.get_params(deep=True)
-                    cloned_est_params = cloned_est.get_params(deep=True)
+                    orig_est_params = orig_est.get_params(deep=True)  # ty: ignore[call-non-callable]
+                    cloned_est_params = cloned_est.get_params(deep=True)  # ty: ignore[unresolved-attribute]
                     for param_key in orig_est_params:
                         orig_param = orig_est_params.get(param_key)
                         cloned_param = cloned_est_params.get(param_key)

@@ -1,7 +1,6 @@
 """Base class for point forecasters."""
 
 import abc
-from copy import deepcopy
 
 import polars as pl
 from pydantic import StrictInt
@@ -207,56 +206,49 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
 
-        forecaster = deepcopy(self)
-
         if panel_group_names is not None and X is not None:
-            # Filter X
             X = select_panel_columns(
                 X,
                 panel_group_names,
                 include_global=True,
             )
 
-        y_pred = pl.DataFrame()
-        for step in range(0, forecasting_horizon, self.fit_forecasting_horizon_):
-            y_pred_step, y_pred_step_inv = forecaster._predict(panel_group_names or [])
+        def step_fn(forecaster, groups):
+            """Produce one point-prediction block."""
+            y_pred_step, y_pred_step_inv = forecaster._predict(groups)
+            y_accumulate = y_pred_step if predict_transformed else y_pred_step_inv
+            return y_accumulate, y_pred_step_inv
 
-            # Choose which version to accumulate based on predict_transformed
-            y_pred = pl.concat([y_pred, y_pred_step]) if predict_transformed else pl.concat([y_pred, y_pred_step_inv])
+        def derive_observation_fn(forecaster, y_pred_step_inv, X, step):
+            """Derive observation from inverse-transformed prediction."""
+            if self.panel_group_names_ is None:
+                y = y_pred_step_inv.select(["time"] + list(self.local_y_schema_.keys()))
+            else:
+                y_columns = ["time"]
+                for group_name in self.panel_group_names_:
+                    y_columns.extend([f"{group_name}__{col}" for col in self.local_y_schema_])
+                y = y_pred_step_inv.select(y_columns)
 
-            if step + self.fit_forecasting_horizon_ < forecasting_horizon:
-                # Use inverse-transformed predictions for recursive update
-                # Select columns based on whether we have panel data or not
-                if self.panel_group_names_ is None:
-                    # Non-panel data: schemas contain actual column names
-                    y = y_pred_step_inv.select(["time"] + list(self.local_y_schema_.keys()))
-                else:
-                    # Panel data: reconstruct prefixed column names from schema
-                    y_columns = ["time"]
-                    for group_name in self.panel_group_names_:
-                        y_columns.extend([f"{group_name}__{col}" for col in self.local_y_schema_])
-                    y = y_pred_step_inv.select(y_columns)
+            X_slice = None
+            if X is not None:
+                start_idx = step
+                end_idx = start_idx + self.fit_forecasting_horizon_
+                X_slice = X[start_idx:end_idx]
 
-                X_slice = None
-                if X is not None:
-                    start_idx = step
-                    end_idx = start_idx + self.fit_forecasting_horizon_
-                    X_slice = X[start_idx:end_idx]
+                if len(X_slice) != len(y):
+                    raise ValueError(
+                        f"Missing X for future steps. Needed {len(y)} rows, but X slice has {len(X_slice)} rows."
+                    )
 
-                    if len(X_slice) != len(y):
-                        raise ValueError(
-                            f"Missing X for future steps. Needed {len(y)} rows, but X slice has {len(X_slice)} rows."
-                        )
+            return y, X_slice
 
-                forecaster.observe(y, X_slice)
-
-        y_pred = y_pred.with_columns(observed_time=y_pred["observed_time"][0])
-
-        if forecasting_horizon % self.fit_forecasting_horizon_:
-            end = self.fit_forecasting_horizon_ - forecasting_horizon % self.fit_forecasting_horizon_
-            y_pred = y_pred[:-end]
-
-        return y_pred
+        return self._recursive_predict(
+            X=X,
+            forecasting_horizon=forecasting_horizon,
+            panel_group_names=panel_group_names,
+            step_fn=step_fn,
+            derive_observation_fn=derive_observation_fn,
+        )
 
     def observe_predict(
         self,
@@ -329,42 +321,13 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if stride is None:
             stride = self.fit_forecasting_horizon_
 
-        # Initial prediction with predict_transformed parameter
-        y_pred_i = self.predict(
+        return self._observe_predict_loop(
+            predict_fn=self.predict,
+            y=y,
             X=X,
-            forecasting_horizon=forecasting_horizon,
             panel_group_names=panel_group_names,
+            stride=stride,
+            forecasting_horizon=forecasting_horizon,
             predict_transformed=predict_transformed,
             **params,
         )
-
-        y_pred = y_pred_i
-        for i in range(0, len(y), stride):
-            y_slice = y[i : i + stride]
-
-            X_slice = None
-            if X is not None:
-                # Filter X to match y_slice times
-                # Use semi-join to f ilter X rows that have matching times in y_slice
-                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
-
-            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
-
-            X_future = None
-            if X is not None:
-                # Filter X to start after the last observed time
-                # This ensures predict() gets features aligned with the forecast horizon
-                last_time = y_slice["time"][-1]
-                X_future = X.filter(pl.col("time") > last_time)
-
-            y_pred_i = self.predict(
-                X=X_future,
-                forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
-                predict_transformed=predict_transformed,
-                **params,
-            )
-
-            y_pred = pl.concat([y_pred, y_pred_i])
-
-        return y_pred

@@ -475,6 +475,13 @@ def validate_scorer_data(
     check_time_column(y_true)
     check_time_column(y_pred)
 
+    tags = scorer.__sklearn_tags__()
+    scorer_tags = getattr(tags, "scorer_tags", None)
+    pred_type = getattr(scorer_tags, "prediction_type", None) if scorer_tags is not None else None
+
+    if pred_type is None:
+        raise ValueError("Scorer tags must have prediction_type attribute")
+
     # Panel consistency check
     _, y_groups = inspect_panel(y_true)
     _, X_groups = inspect_panel(y_pred)
@@ -482,13 +489,6 @@ def validate_scorer_data(
         raise ValueError(
             f"Panel groups mismatch. `y_true` has {sorted(y_groups.keys())}. `y_pred` has {sorted(X_groups.keys())}."
         )
-
-    tags = scorer.__sklearn_tags__()
-    scorer_tags = getattr(tags, "scorer_tags", None)
-    pred_type = getattr(scorer_tags, "prediction_type", None) if scorer_tags is not None else None
-
-    if pred_type is None:
-        raise ValueError("Scorer tags must have prediction_type attribute")
 
     # Validate column presence and types
     for col in y_true.columns:
@@ -518,6 +518,16 @@ def validate_scorer_data(
                         f"Column '{rc}' type mismatch. `y_true` '{col}': {y_true.schema[col]}, "
                         f"`y_pred`: {y_pred.schema[rc]}. Both must be numeric."
                     )
+        elif pred_type == "class_proba":
+            proba_cols = [c for c in y_pred.columns if c.startswith(f"{col}_proba_")]
+            if not proba_cols:
+                raise ValueError(
+                    f"No probability columns found for target '{col}' in `y_pred`. "
+                    f"Expected columns matching '{col}_proba_<class_label>'."
+                )
+            for pc in proba_cols:
+                if not y_pred.schema[pc].is_numeric():
+                    raise ValueError(f"Probability column '{pc}' must be numeric, got {y_pred.schema[pc]}.")
 
     # Align by time (inner join on time column)
     time_truth = y_true.select("time")

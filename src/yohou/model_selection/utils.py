@@ -20,7 +20,7 @@ from sklearn.utils.metadata_routing import (
 )
 
 from yohou.base import BaseForecaster
-from yohou.metrics.base import BaseIntervalScorer, BasePointScorer, BaseScorer
+from yohou.metrics.base import BaseIntervalScorer, BaseScorer
 from yohou.utils._compat import _check_method_params, _num_samples, _safe_split
 
 
@@ -76,7 +76,7 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
             f"values. Got {scoring}."
         )
 
-    return scorers  # type: ignore[return-value]
+    return scorers  # ty: ignore[invalid-return-type]
 
 
 class _MultimetricScorer:
@@ -130,7 +130,7 @@ class _MultimetricScorer:
                 params = routed_params.get(name)
                 if params is None:
                     raise ValueError(f"Missing routing params for scorer '{name}'")
-                scores[name] = scorer(y_truth, y_pred, **params.score)  # type: ignore[assignment]
+                scores[name] = scorer(y_truth, y_pred, **params.score)  # ty: ignore[invalid-assignment]
             except Exception as e:
                 if self._raise_exc:
                     raise e
@@ -385,18 +385,34 @@ def _fit_and_score(
     return result
 
 
-def _needs_interval_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
-    """Check if any scorer requires interval predictions."""
-    if isinstance(scorer, _MultimetricScorer):
-        return any(isinstance(s, BaseIntervalScorer) for s in scorer._scorers.values())
-    return isinstance(scorer, BaseIntervalScorer)
+_RESPONSE_METHOD_PRIORITY: dict[str, int] = {
+    "predict": 0,
+    "predict_interval": 1,
+    "predict_class_proba": 2,
+}
+
+_OBSERVE_METHOD_MAP: dict[str, str] = {
+    "predict": "observe_predict",
+    "predict_interval": "observe_predict_interval",
+    "predict_class_proba": "observe_predict_class_proba",
+}
 
 
-def _needs_point_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
-    """Check if any scorer requires point predictions."""
+def _get_response_methods(scorer: BaseScorer | _MultimetricScorer) -> set[str]:
+    """Get the set of response methods needed by scorer(s)."""
     if isinstance(scorer, _MultimetricScorer):
-        return any(isinstance(s, BasePointScorer) for s in scorer._scorers.values())
-    return isinstance(scorer, BasePointScorer)
+        return {s._response_method for s in scorer._scorers.values()}  # ty: ignore[unresolved-attribute]
+    return {scorer._response_method}  # ty: ignore[unresolved-attribute]
+
+
+def _resolve_response_method(scorer: BaseScorer | _MultimetricScorer) -> str:
+    """Resolve the single response method to use for prediction.
+
+    When multiple scorers need different prediction types, the
+    highest-priority (richest) method is chosen.
+    """
+    methods = _get_response_methods(scorer)
+    return max(methods, key=lambda m: _RESPONSE_METHOD_PRIORITY[m])
 
 
 def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[float] | None:
@@ -440,21 +456,33 @@ def _validate_forecaster_scorer_compatibility(
     tags = forecaster.__sklearn_tags__()
     forecaster_type = getattr(tags.forecaster_tags, "forecaster_type", None)
 
-    needs_interval = _needs_interval_predictions(scorer)
-    needs_point = _needs_point_predictions(scorer)
+    methods = _get_response_methods(scorer)
 
-    if needs_interval and forecaster_type == "point":
+    if "predict_interval" in methods and forecaster_type == "point":
         raise ValueError(
             "Scorer requires interval predictions but forecaster "
             f"(type='{forecaster_type}') does not support predict_interval. "
             "Use an interval or 'both'-type forecaster."
         )
 
-    if not needs_interval and needs_point and forecaster_type == "interval":
+    if methods == {"predict"} and forecaster_type == "interval":
         raise ValueError(
             "Forecaster (type='interval') does not support observe_predict "
             "required by point-only scorers. "
             "Use a 'both'-type forecaster or interval scorers."
+        )
+
+    if "predict_class_proba" in methods and forecaster_type != "class_proba":
+        raise ValueError(
+            "Scorer requires class-probability predictions but forecaster "
+            f"(type='{forecaster_type}') does not support predict_class_proba. "
+            "Use a class_proba-type forecaster."
+        )
+
+    if forecaster_type == "class_proba" and (methods - {"predict_class_proba"}):
+        raise ValueError(
+            "Forecaster (type='class_proba') does not support point or interval "
+            "predictions required by the scorer. Use class-probability scorers."
         )
 
 
@@ -478,16 +506,17 @@ def _score(
 
     scores: float | dict[str, float | str] | str
     try:
-        # Detect whether interval predictions are needed
-        needs_interval = _needs_interval_predictions(scorer)
+        # Resolve which forecaster method to call
+        response_method = _resolve_response_method(scorer)
+        observe_method = _OBSERVE_METHOD_MAP[response_method]
 
-        if needs_interval:
+        if response_method == "predict_interval":
             coverage_rates_for_predict = _collect_coverage_rates(scorer)
-            y_pred = forecaster.observe_predict_interval(  # type: ignore[union-attr]
+            y_pred = getattr(forecaster, observe_method)(
                 y_test, X_test, coverage_rates=coverage_rates_for_predict, **predict_func_params
             )
         else:
-            y_pred = forecaster.observe_predict(y_test, X_test, **predict_func_params)  # type: ignore[arg-type]
+            y_pred = getattr(forecaster, observe_method)(y_test, X_test, **predict_func_params)
 
         # observe_predict produces overlapping prediction windows when the last
         # observation chunk is smaller than stride. Deduplicate (keeping the most
@@ -499,7 +528,7 @@ def _score(
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):
             scorer.fit(y_train)
-        scores = scorer(y_test, y_pred, **score_params)  # type: ignore[assignment]
+        scores = scorer(y_test, y_pred, **score_params)  # ty: ignore[invalid-assignment]
 
     except Exception:  # noqa: BLE001
         if isinstance(scorer, _MultimetricScorer):

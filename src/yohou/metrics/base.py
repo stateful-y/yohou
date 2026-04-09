@@ -13,7 +13,7 @@ from sklearn.base import BaseEstimator
 from yohou.utils import Tags, inspect_panel, validate_callable_signature, validate_scorer_data
 from yohou.utils._compat import StrOptions, _fit_context
 
-__all__ = ["BaseIntervalScorer", "BasePointScorer", "BaseScorer"]
+__all__ = ["BaseClassProbaScorer", "BaseIntervalScorer", "BasePointScorer", "BaseScorer"]
 
 
 class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
@@ -445,6 +445,97 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                         f"not found in data. Available components: {sorted(available_components)}"
                     )
 
+    def _aggregate_scores(self, raw_scores: pl.DataFrame, time_values: list | None = None) -> float | pl.DataFrame:
+        """Apply aggregation strategy to raw per-timestep per-component scores.
+
+        Parameters
+        ----------
+        raw_scores : pl.DataFrame
+            DataFrame with per-timestep (rows) per-component (columns) scores.
+        time_values : list or None, default=None
+            Time values for componentwise aggregation. Required if aggregation_method
+            includes "componentwise".
+
+        Returns
+        -------
+        float or pl.DataFrame
+            Aggregated scores based on aggregation_method.
+
+        """
+        # Normalize aggregation_method to list
+        if self.aggregation_method == "all":  # ty: ignore[unresolved-attribute]
+            agg_methods = ["timewise", "componentwise", "groupwise"]
+        elif isinstance(self.aggregation_method, str):  # ty: ignore[unresolved-attribute]
+            agg_methods = [self.aggregation_method]  # ty: ignore[unresolved-attribute]
+        else:
+            agg_methods = self.aggregation_method  # ty: ignore[unresolved-attribute]
+
+        # Apply aggregations in order
+        if "timewise" in agg_methods and "componentwise" in agg_methods:
+            # Check for groupwise aggregation on panel data
+            if "groupwise" in agg_methods:
+                _, panel_groups = inspect_panel(raw_scores)
+
+                if len(panel_groups) > 0:
+                    # 1. Aggregate time (mean per column)
+                    col_means = raw_scores.mean()
+
+                    # 2. Aggregate components within groups
+                    group_scores = {}
+                    for group_name, group_cols in panel_groups.items():
+                        # Extract float values for this group's columns
+                        vals = [float(col_means[col][0]) for col in group_cols]
+                        group_scores[group_name] = float(np.mean(vals))
+
+                    # 3. Aggregate groups (weighted)
+                    return self._apply_panel_weights(group_scores, list(panel_groups.keys()))
+
+            # Aggregate both dimensions to scalar (flat aggregation)
+            return float(np.nanmean(raw_scores.to_numpy()))
+
+        # Apply groupwise pre-processing for partial combinations
+        if "groupwise" in agg_methods:
+            raw_scores = self._aggregate_groupwise(raw_scores)
+
+        if "timewise" in agg_methods:
+            # Aggregate across time, return per-component scores (1 row)
+            return raw_scores.select(pl.all().mean())
+        elif "componentwise" in agg_methods:
+            # Aggregate across components, return per-timestep scores
+
+            _, panel_groups = inspect_panel(raw_scores)
+
+            if len(panel_groups) > 0:
+                # Panel data: Aggregate within each group separately
+                step_data: dict[str, list | None] = {"time": time_values}
+
+                for group_name, group_cols in panel_groups.items():
+                    group_scores = []
+                    for step in range(len(raw_scores)):
+                        step_errors = [float(raw_scores[col][step]) for col in group_cols]
+                        group_scores.append(float(np.mean(step_errors)))
+                    step_data[f"{group_name}__score"] = group_scores
+
+                return pl.DataFrame(step_data)
+            else:
+                # Global data: Aggregate across all components
+                step_scores = []
+
+                for step in range(len(raw_scores)):
+                    step_errors = [float(raw_scores[col][step]) for col in raw_scores.columns]
+                    step_scores.append(float(np.mean(step_errors)))
+
+                return pl.DataFrame({"time": time_values, "score": step_scores})
+        elif "groupwise" in agg_methods:
+            # Groupwise only: return per-component per-timestep DataFrame
+            result_data: dict[str, list] = {"time": time_values} if time_values is not None else {}
+            for col in raw_scores.columns:
+                result_data[col] = raw_scores[col].to_list()
+            return pl.DataFrame(result_data)
+        else:
+            # No aggregation specified, return raw scores
+            return raw_scores
+
     @abc.abstractmethod
     def score(
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params
@@ -514,6 +605,9 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
     Point forecasters produce single-value predictions. Metrics derived from this
     class evaluate prediction accuracy (e.g., MeanAbsoluteError, RootMeanSquaredError, MAPE).
 
+    .. note:: The ``_response_method`` attribute indicates which forecaster
+       method produces the predictions that this scorer expects.
+
     Parameters
     ----------
     aggregation_method : list of str or str, default="all"
@@ -547,6 +641,8 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
     `BasePointForecaster` : Produces point forecasts.
 
     """
+
+    _response_method: str = "predict"
 
     _parameter_constraints: dict = {
         **BaseScorer._parameter_constraints,
@@ -619,103 +715,15 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         tags.scorer_tags.prediction_type = "point"
         return tags
 
-    def _aggregate_scores(self, raw_scores: pl.DataFrame, time_values: list | None = None) -> float | pl.DataFrame:
-        """Apply aggregation strategy to raw per-timestep per-component scores.
-
-        Parameters
-        ----------
-        raw_scores : pl.DataFrame
-            DataFrame with per-timestep (rows) per-component (columns) scores.
-        time_values : list or None, default=None
-            Time values for componentwise aggregation. Required if aggregation_method
-            includes "componentwise".
-
-        Returns
-        -------
-        float or pl.DataFrame
-            Aggregated scores based on aggregation_method.
-
-        """
-        # Normalize aggregation_method to list
-        if self.aggregation_method == "all":
-            agg_methods = ["timewise", "componentwise", "groupwise"]
-        elif isinstance(self.aggregation_method, str):
-            agg_methods = [self.aggregation_method]
-        else:
-            agg_methods = self.aggregation_method
-
-        # Apply aggregations in order
-        if "timewise" in agg_methods and "componentwise" in agg_methods:
-            # Check for groupwise aggregation on panel data
-            if "groupwise" in agg_methods:
-                _, panel_groups = inspect_panel(raw_scores)
-
-                if len(panel_groups) > 0:
-                    # 1. Aggregate time (mean per column)
-                    col_means = raw_scores.mean()
-
-                    # 2. Aggregate components within groups
-                    group_scores = {}
-                    for group_name, group_cols in panel_groups.items():
-                        # Extract float values for this group's columns
-                        vals = [float(col_means[col][0]) for col in group_cols]
-                        group_scores[group_name] = float(np.mean(vals))
-
-                    # 3. Aggregate groups (weighted)
-                    return self._apply_panel_weights(group_scores, list(panel_groups.keys()))
-
-            # Aggregate both dimensions to scalar (flat aggregation)
-            return float(np.nanmean(raw_scores.to_numpy()))
-
-        # Apply groupwise pre-processing for partial combinations
-        if "groupwise" in agg_methods:
-            raw_scores = self._aggregate_groupwise(raw_scores)
-
-        if "timewise" in agg_methods:
-            # Aggregate across time, return per-component scores (1 row)
-            return raw_scores.select(pl.all().mean())
-        elif "componentwise" in agg_methods:
-            # Aggregate across components, return per-timestep scores
-
-            _, panel_groups = inspect_panel(raw_scores)
-
-            if len(panel_groups) > 0:
-                # Panel data: Aggregate within each group separately
-                step_data: dict[str, list | None] = {"time": time_values}
-
-                for group_name, group_cols in panel_groups.items():
-                    group_scores = []
-                    for step in range(len(raw_scores)):
-                        step_errors = [float(raw_scores[col][step]) for col in group_cols]
-                        group_scores.append(float(np.mean(step_errors)))
-                    step_data[f"{group_name}__score"] = group_scores
-
-                return pl.DataFrame(step_data)
-            else:
-                # Global data: Aggregate across all components
-                step_scores = []
-
-                for step in range(len(raw_scores)):
-                    step_errors = [float(raw_scores[col][step]) for col in raw_scores.columns]
-                    step_scores.append(float(np.mean(step_errors)))
-
-                return pl.DataFrame({"time": time_values, "score": step_scores})
-        elif "groupwise" in agg_methods:
-            # Groupwise only: return per-component per-timestep DataFrame
-            result_data: dict[str, list] = {"time": time_values} if time_values is not None else {}
-            for col in raw_scores.columns:
-                result_data[col] = raw_scores[col].to_list()
-            return pl.DataFrame(result_data)
-        else:
-            # No aggregation specified, return raw scores
-            return raw_scores
-
 
 class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
     """Base class for interval forecast metrics.
 
     Interval forecasters produce prediction intervals. Metrics derived from this
     class evaluate coverage and width trade-offs.
+
+    .. note:: The ``_response_method`` attribute indicates which forecaster
+       method produces the predictions that this scorer expects.
 
     Parameters
     ----------
@@ -753,6 +761,8 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
     `BaseIntervalForecaster` : Produces interval forecasts.
 
     """
+
+    _response_method: str = "predict_interval"
 
     _parameter_constraints: dict = {
         **BaseScorer._parameter_constraints,
@@ -873,7 +883,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         tags.scorer_tags.prediction_type = "interval"
         return tags
 
-    def _aggregate_scores(
+    def _aggregate_scores(  # ty: ignore[invalid-method-override]
         self,
         raw_scores: dict[float, pl.DataFrame],
         time_values: list | None = None,
@@ -1133,4 +1143,158 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         """
         # After _validate_inputs, time columns are already removed
+        return y_truth.columns
+
+
+class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
+    """Base class for class-probability forecast metrics.
+
+    Class-probability forecasters produce per-class probability distributions.
+    Metrics derived from this class evaluate the quality of predicted
+    probability distributions against true class labels.
+
+    .. note:: The ``_response_method`` attribute indicates which forecaster
+       method produces the predictions that this scorer expects.
+
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "timewise": Aggregate across time, return per-component DataFrame
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["timewise", "componentwise", "groupwise"].
+        Example outputs:
+        - "timewise" or ["timewise"]: Per-component (and per-group) DataFrame.
+        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
+        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
+        - ["timewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
+        - "all": Scalar float (hierarchically aggregated for panel data).
+    panel_group_names : list of str or None, default=None
+        List of panel group names to include in scoring. If None, all panel groups
+        are included. Only applicable for panel data. Validated at fit time.
+    component_names : list of str or None, default=None
+        List of component (target column) names to include in scoring. If None, all
+        components are included. For panel data, these are unprefixed column names.
+        Validated at fit time.
+    panel_group_weight : dict or None, default=None
+        Weights for panel groups. See `BaseScorer` for details.
+
+    See Also
+    --------
+    `LogLoss` : Logarithmic loss scorer.
+    `BrierScore` : Brier score for multi-class probabilities.
+    `Accuracy` : Accuracy from argmax of predicted probabilities.
+    `BaseClassProbaForecaster` : Produces class-probability forecasts.
+
+    """
+
+    _response_method: str = "predict_class_proba"
+
+    _parameter_constraints: dict = {
+        **BaseScorer._parameter_constraints,
+        "aggregation_method": [list, StrOptions({"all", "timewise", "componentwise", "groupwise"})],
+    }
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        panel_group_names: list[str] | None = None,
+        component_names: list[str] | None = None,
+        panel_group_weight: dict[str, float] | None = None,
+    ):
+        super().__init__(
+            panel_group_names=panel_group_names,
+            component_names=component_names,
+            panel_group_weight=panel_group_weight,
+        )
+        self.aggregation_method = aggregation_method
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, y_train: pl.DataFrame, **params) -> "BaseClassProbaScorer":
+        """Fit the scorer on training data.
+
+        Validates ``aggregation_method``, ``panel_group_names``, and
+        ``component_names``.
+
+        Parameters
+        ----------
+        y_train : pl.DataFrame
+            Training target time series with a ``"time"`` column and one or
+            more categorical value columns.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        self
+            The fitted scorer instance.
+
+        Raises
+        ------
+        ValueError
+            If ``aggregation_method`` contains invalid values, or if
+            ``panel_group_names`` / ``component_names`` are not found in
+            ``y_train``.
+
+        """
+        valid_methods = {"timewise", "componentwise", "groupwise"}
+        self._validate_parameters(
+            y_train=y_train,
+            aggregation_method=self.aggregation_method,
+            valid_aggregation_methods=valid_methods,
+        )
+        return super().fit(y_train, **params)
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with scorer-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        tags.scorer_tags.prediction_type = "class_proba"
+        return tags
+
+    @staticmethod
+    def _extract_class_proba_columns(y_pred: pl.DataFrame, target_col: str) -> tuple[list[str], list[str]]:
+        """Extract probability columns and class labels for a target.
+
+        Parameters
+        ----------
+        y_pred : pl.DataFrame
+            Probability predictions with columns ``{target}_proba_{class}``.
+        target_col : str
+            Target column name.
+
+        Returns
+        -------
+        tuple of (list of str, list of str)
+            Probability column names and corresponding class labels.
+
+        """
+        proba_cols = [c for c in y_pred.columns if c.startswith(f"{target_col}_proba_")]
+        class_labels = [c.split("_proba_", 1)[1] for c in proba_cols]
+        return proba_cols, class_labels
+
+    @staticmethod
+    def _extract_target_columns(y_truth: pl.DataFrame) -> list[str]:
+        """Extract target column names from truth DataFrame.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            Ground truth (time columns already removed).
+
+        Returns
+        -------
+        list of str
+            Target column names.
+
+        """
         return y_truth.columns

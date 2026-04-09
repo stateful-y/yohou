@@ -1753,3 +1753,91 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
+
+
+class TestPlotReliabilityDiagram:
+    """Tests for plot_calibration with class-probability data."""
+
+    @pytest.fixture
+    def reliability_data(self):
+        """Create sample data for reliability diagram tests."""
+        n = 50
+        rng = np.random.default_rng(42)
+        times = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True)
+        labels = rng.choice(["sunny", "rainy", "cloudy"], size=n)
+        probs_sunny = rng.uniform(0, 1, n)
+        probs_rainy = rng.uniform(0, 1, n)
+        probs_cloudy = rng.uniform(0, 1, n)
+        total = probs_sunny + probs_rainy + probs_cloudy
+        y_pred = pl.DataFrame({
+            "time": times,
+            "w_proba_sunny": probs_sunny / total,
+            "w_proba_rainy": probs_rainy / total,
+            "w_proba_cloudy": probs_cloudy / total,
+        })
+        y_truth = pl.DataFrame({
+            "time": times,
+            "w": labels.tolist(),
+        })
+        return y_pred, y_truth
+
+    def test_basic(self, reliability_data):
+        """Basic reliability diagram returns Figure."""
+        y_pred, y_truth = reliability_data
+        fig = plot_calibration(y_pred, y_truth)
+        assert isinstance(fig, go.Figure)
+        # 3 class traces + 1 reference diagonal
+        assert len(fig.data) == 4
+
+    def test_custom_bins(self, reliability_data):
+        """Custom bin count works."""
+        y_pred, y_truth = reliability_data
+        fig = plot_calibration(y_pred, y_truth, n_bins=5)
+        assert isinstance(fig, go.Figure)
+
+    def test_title_propagated(self, reliability_data):
+        """Custom title is applied."""
+        y_pred, y_truth = reliability_data
+        fig = plot_calibration(y_pred, y_truth, title="My Reliability")
+        assert fig.layout.title.text == "My Reliability"
+
+    def test_no_proba_columns_raises(self):
+        """DataFrame without proba columns and no coverage_rates raises ValueError."""
+        from datetime import datetime
+
+        df = pl.DataFrame({"time": [datetime(2020, 1, 1)], "a": [1.0]})
+        y_truth = pl.DataFrame({"time": [datetime(2020, 1, 1)], "a": ["x"]})
+        with pytest.raises(ValueError, match="coverage_rates is required"):
+            plot_calibration(df, y_truth)
+
+    def test_multi_target_without_target_raises(self):
+        """Ambiguous multi-target raises ValueError."""
+        from datetime import datetime
+
+        df = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "a_proba_x": [0.5],
+            "a_proba_y": [0.5],
+            "b_proba_x": [0.5],
+            "b_proba_y": [0.5],
+        })
+        y_truth = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "a": ["x"],
+            "b": ["x"],
+        })
+        with pytest.raises(ValueError, match="Multiple targets"):
+            plot_calibration(df, y_truth)
+
+    def test_invalid_target_raises(self, reliability_data):
+        """Non-existent target raises ValueError."""
+        y_pred, y_truth = reliability_data
+        with pytest.raises(ValueError, match="Target 'invalid'"):
+            plot_calibration(y_pred, y_truth, target="invalid")
+
+    def test_target_not_in_truth_raises(self, reliability_data):
+        """Target in pred but not in truth raises ValueError."""
+        y_pred, y_truth = reliability_data
+        y_truth_bad = y_truth.rename({"w": "other"})
+        with pytest.raises(ValueError, match="not found in y_truth"):
+            plot_calibration(y_pred, y_truth_bad)

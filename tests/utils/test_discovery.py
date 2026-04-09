@@ -14,12 +14,12 @@ class TestAllEstimators:
     def test_all_estimators_total_count(self):
         """Test all_estimators returns correct total count."""
         estimators = all_estimators()
-        assert len(estimators) == 71
+        assert len(estimators) == 75
 
     def test_all_estimators_forecaster_filter(self):
         """Test forecaster type filter (matches estimator_type == 'forecaster')."""
         forecasters = all_estimators(type_filter="forecaster")
-        assert len(forecasters) == 6
+        assert len(forecasters) == 7
 
     def test_all_estimators_point_filter(self):
         """Test point forecaster sub-type filter."""
@@ -34,7 +34,7 @@ class TestAllEstimators:
     def test_all_estimators_scorer_filter(self):
         """Test scorer type filter."""
         scorers = all_estimators(type_filter="scorer")
-        assert len(scorers) == 17
+        assert len(scorers) == 20
 
     def test_all_estimators_transformer_filter(self):
         """Test transformer type filter."""
@@ -49,7 +49,7 @@ class TestAllEstimators:
     def test_all_estimators_multiple_filters(self):
         """Test multiple type filters combined."""
         multi = all_estimators(type_filter=["forecaster", "transformer"])
-        assert len(multi) == 35  # 6 forecasters + 29 transformers
+        assert len(multi) == 36  # 7 forecasters + 29 transformers  (class_proba scorers not included)
 
     def test_all_estimators_invalid_filter(self):
         """Test invalid filter raises error with proper message."""
@@ -73,7 +73,7 @@ class TestAllFunctions:
     def test_all_functions(self):
         """Test all_functions returns correct count."""
         functions = all_functions()
-        assert len(functions) == 183
+        assert len(functions) == 191
 
 
 class TestAllEstimatorsAdvancedFilters:
@@ -94,7 +94,8 @@ class TestAllEstimatorsAdvancedFilters:
         point_scorers = all_estimators(type_filter="point_scorer")
         interval_scorers = all_estimators(type_filter="interval_scorer")
         conformity_scorers = all_estimators(type_filter="conformity_scorer")
-        combined = len(point_scorers) + len(interval_scorers) + len(conformity_scorers)
+        class_proba_scorers = all_estimators(type_filter="class_proba_scorer")
+        combined = len(point_scorers) + len(interval_scorers) + len(conformity_scorers) + len(class_proba_scorers)
         assert len(all_scorers) == combined
 
     def test_generic_forecaster_filter(self):
@@ -103,10 +104,12 @@ class TestAllEstimatorsAdvancedFilters:
         assert len(all_forecasters) > 0
         point_forecasters = all_estimators(type_filter="point")
         interval_forecasters = all_estimators(type_filter="interval")
+        class_proba_forecasters = all_estimators(type_filter="class_proba")
         point_names = {name for name, _ in point_forecasters}
         interval_names = {name for name, _ in interval_forecasters}
+        class_proba_names = {name for name, _ in class_proba_forecasters}
         all_names = {name for name, _ in all_forecasters}
-        assert all_names == point_names | interval_names
+        assert all_names == point_names | interval_names | class_proba_names
 
     def test_list_filter_with_scorer(self):
         """List filter with scorer type returns matching estimators."""

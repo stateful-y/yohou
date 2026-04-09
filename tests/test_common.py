@@ -176,6 +176,17 @@ def _uses_point_data(cls: type) -> bool:
         return True  # Default to point data if can't determine
 
 
+def _uses_class_proba_data(cls: type) -> bool:
+    """Check if a scorer uses class-probability data."""
+    try:
+        instance = cls()
+        tags = instance.__sklearn_tags__()
+        prediction_type = getattr(tags.scorer_tags, "prediction_type", None)
+        return prediction_type == "class_proba"
+    except Exception:
+        return False
+
+
 class TestTransformerCommon:
     """Run systematic checks on all discovered transformers."""
 
@@ -307,12 +318,51 @@ class TestIntervalScorerCommon:
 
     @pytest.mark.parametrize(
         "name,cls",
-        [(n, c) for n, c in _collect_scorers() if not _uses_point_data(c)],
-        ids=[n for n, c in _collect_scorers() if not _uses_point_data(c)],
+        [(n, c) for n, c in _collect_scorers() if not _uses_point_data(c) and not _uses_class_proba_data(c)],
+        ids=[n for n, c in _collect_scorers() if not _uses_point_data(c) and not _uses_class_proba_data(c)],
     )
     def test_interval_scorer_checks(self, name, cls):
         """Run all applicable check-generator checks for an interval scorer."""
         y_truth, y_pred = _make_interval_scorer_data()
+
+        try:
+            instance = cls()
+        except TypeError:
+            pytest.skip(f"{name} requires constructor arguments")
+            return
+
+        with contextlib.suppress(Exception):
+            instance.fit(y_truth)
+
+        run_checks(instance, _yield_yohou_scorer_checks(instance, y_truth, y_pred))
+
+
+def _make_class_proba_scorer_data():
+    """Create class-probability data for class_proba scorer tests."""
+    time = [datetime(2021, 1, 1, 0, 0, i) for i in range(10)]
+    labels = ["cat_a", "cat_b", "cat_a", "cat_c", "cat_b", "cat_a", "cat_c", "cat_b", "cat_a", "cat_c"]
+    y_truth = pl.DataFrame({"time": time, "target": labels})
+    y_pred = pl.DataFrame({
+        "observed_time": [datetime(2020, 12, 31)] * 10,
+        "time": time,
+        "target_proba_cat_a": [0.7, 0.1, 0.6, 0.1, 0.2, 0.8, 0.1, 0.2, 0.7, 0.1],
+        "target_proba_cat_b": [0.2, 0.7, 0.2, 0.1, 0.6, 0.1, 0.1, 0.7, 0.2, 0.2],
+        "target_proba_cat_c": [0.1, 0.2, 0.2, 0.8, 0.2, 0.1, 0.8, 0.1, 0.1, 0.7],
+    })
+    return y_truth, y_pred
+
+
+class TestClassProbaScorerCommon:
+    """Run systematic checks on all discovered class-probability scorers."""
+
+    @pytest.mark.parametrize(
+        "name,cls",
+        [(n, c) for n, c in _collect_scorers() if _uses_class_proba_data(c)],
+        ids=[n for n, c in _collect_scorers() if _uses_class_proba_data(c)],
+    )
+    def test_class_proba_scorer_checks(self, name, cls):
+        """Run all applicable check-generator checks for a class_proba scorer."""
+        y_truth, y_pred = _make_class_proba_scorer_data()
 
         try:
             instance = cls()

@@ -217,7 +217,7 @@ class EmpiricalCoverage(BaseIntervalScorer):
         ):
             result = result.rename({col: f"coverage_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # ty: ignore[invalid-return-type]
 
 
 class MeanIntervalWidth(BaseIntervalScorer):
@@ -393,7 +393,7 @@ class MeanIntervalWidth(BaseIntervalScorer):
         ):
             result = result.rename({col: f"width_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # ty: ignore[invalid-return-type]
 
 
 class IntervalScore(BaseIntervalScorer):
@@ -591,7 +591,7 @@ class IntervalScore(BaseIntervalScorer):
         ) and isinstance(result, pl.DataFrame):
             result = result.rename({col: f"interval_score_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # ty: ignore[invalid-return-type]
 
 
 class PinballLoss(BaseIntervalScorer):
@@ -779,10 +779,10 @@ class PinballLoss(BaseIntervalScorer):
 
                     # Extract series from polars expressions
                     loss_lower_series = y_pred.select(
-                        loss_lower.alias("loss_lower")  # type: ignore[union-attr]
+                        loss_lower.alias("loss_lower")  # ty: ignore[unresolved-attribute]
                     )["loss_lower"]
                     loss_upper_series = y_pred.select(
-                        loss_upper.alias("loss_upper")  # type: ignore[union-attr]
+                        loss_upper.alias("loss_upper")  # ty: ignore[unresolved-attribute]
                     )["loss_upper"]
 
                     # Sum losses for upper and lower bounds
@@ -816,7 +816,7 @@ class PinballLoss(BaseIntervalScorer):
         ):
             result = result.rename({col: f"loss_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # ty: ignore[invalid-return-type]
 
 
 class CalibrationError(BaseIntervalScorer):
@@ -1016,4 +1016,4 @@ class CalibrationError(BaseIntervalScorer):
         ):
             result = result.rename({col: f"calibration_error_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # ty: ignore[invalid-return-type]

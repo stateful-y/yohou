@@ -573,3 +573,51 @@ class TestIntervalReductionWithFeaturesSystematicChecks:
             forecaster,
             _yield_yohou_forecaster_checks(forecaster, y_train, X_train, y_test, X_test),
         )
+
+
+class TestMultiStepPanelInterval:
+    """Tests for multi-step interval prediction with panel data."""
+
+    @pytest.mark.slow
+    def test_multi_step_panel_predict_interval(self, panel_splits):
+        """Multi-step interval prediction works with panel data (triggers recursive path)."""
+        y_train, _y_test, X_train, X_test = panel_splits
+        coverage_rates = [0.9]
+        forecaster = IntervalReductionForecaster()
+        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=1, coverage_rates=coverage_rates)
+
+        y_pred = forecaster.predict_interval(
+            forecasting_horizon=3,
+            X=X_test,
+            coverage_rates=coverage_rates,
+        )
+
+        assert y_pred.shape[0] == 3
+        for group in ["x", "y"]:
+            for target in ["a", "b"]:
+                for cr in coverage_rates:
+                    assert f"{group}__{target}_lower_{cr}" in y_pred.columns
+                    assert f"{group}__{target}_upper_{cr}" in y_pred.columns
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("strategy", ["point", "mean"])
+    def test_multi_step_interval_strategy(self, strategy, standard_splits):
+        """Multi-step interval prediction works with all derive strategies."""
+        y_train, _y_test, X_train, X_test = standard_splits
+        coverage_rates = [0.5]
+        forecaster = IntervalReductionForecaster()
+        forecaster.fit(
+            y=y_train,
+            X=X_train,
+            forecasting_horizon=1,
+            coverage_rates=coverage_rates,
+        )
+
+        y_pred = forecaster.predict_interval(
+            forecasting_horizon=3,
+            X=X_test,
+            coverage_rates=coverage_rates,
+            strategy=strategy,
+        )
+
+        assert y_pred.shape[0] == 3

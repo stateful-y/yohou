@@ -250,7 +250,7 @@ class TestPlotMissingData:
     def test_invalid_kind(self, df_with_nulls):
         """Test that invalid kind raises ValueError."""
         with pytest.raises(ValueError, match="Unknown kind"):
-            plot_missing_data(df_with_nulls, kind="invalid")  # type: ignore
+            plot_missing_data(df_with_nulls, kind="invalid")
 
     def test_panel(self, df_with_nulls):
         """Test panel faceting for missing data."""

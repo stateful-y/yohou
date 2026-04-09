@@ -92,10 +92,11 @@ class ForecasterTags:
 
     Parameters
     ----------
-    forecaster_type : {"point", "interval", "both"} or None, default=None
+    forecaster_type : {"point", "interval", "class_proba", "both"} or None, default=None
         Type of forecaster output:
         - "point": Produces point forecasts only
         - "interval": Produces prediction intervals only
+        - "class_proba": Produces class-probability forecasts
         - "both": Produces both point forecasts and intervals
         - None: Not determined or not applicable
     stateful : bool, default=False
@@ -129,7 +130,7 @@ class ForecasterTags:
 
     """
 
-    forecaster_type: Literal["point", "interval", "both"] | None = None
+    forecaster_type: Literal["point", "interval", "class_proba", "both"] | None = None
     stateful: bool = False
     uses_reduction: bool = False
     uses_target_transformer: bool = False
@@ -146,10 +147,11 @@ class ScorerTags:
 
     Parameters
     ----------
-    prediction_type : {"point", "interval"} or None, default=None
+    prediction_type : {"point", "interval", "class_proba"} or None, default=None
         Type of prediction this scorer evaluates:
         - "point": Evaluates point forecasts
         - "interval": Evaluates prediction intervals
+        - "class_proba": Evaluates class-probability forecasts
         - None: Not determined or not applicable
     lower_is_better : bool, default=True
         Whether lower scores indicate better performance (e.g., MeanAbsoluteError, MSE).
@@ -159,7 +161,7 @@ class ScorerTags:
 
     """
 
-    prediction_type: Literal["point", "interval"] | None = None
+    prediction_type: Literal["point", "interval", "class_proba"] | None = None
     lower_is_better: bool = True
     requires_calibration: bool = False
 

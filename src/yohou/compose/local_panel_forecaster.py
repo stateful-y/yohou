@@ -246,7 +246,7 @@ class LocalPanelForecaster(BaseForecaster):
             )
 
         panel_group_names_: list[str] = sorted(y_panel_groups.keys())
-        self.panel_group_names_ = panel_group_names_  # type: ignore[invalid-assignment]
+        self.panel_group_names_ = panel_group_names_  # ty: ignore[invalid-assignment]
 
         # Derive local schemas (unprefixed column names + dtypes)
         first_group = panel_group_names_[0]

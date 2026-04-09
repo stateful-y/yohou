@@ -1198,8 +1198,9 @@ def _(mo):
 
     | Topic | Notebook |
     |-------|----------|
-    | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
     | Feature engineering | [`point/feature_forecasting.py`](/examples/point/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/) |
+    | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
+    | Class probability | [`point/class_proba_forecaster.py`](/examples/point/class_proba_forecaster/), [`metrics/class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) |
     | Interval forecasting | [`interval/interval_reduction.py`](/examples/interval/interval_reduction/), [`metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/) |
     | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/stationarity/decomposition/) |
     | Metrics guide | [`metrics/point_metrics.py`](/examples/metrics/point_metrics/), [`metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) |

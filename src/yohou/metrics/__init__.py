@@ -1,6 +1,7 @@
-"""Scoring functions for point, interval, and conformity predictions."""
+"""Scoring functions for point, interval, class-probability, and conformity predictions."""
 
-from .base import BaseIntervalScorer, BasePointScorer
+from .base import BaseClassProbaScorer, BaseIntervalScorer, BasePointScorer
+from .class_proba import Accuracy, BrierScore, LogLoss
 from .conformity import (
     AbsoluteGammaResidual,
     AbsoluteQuantileResidual,
@@ -30,6 +31,7 @@ from .point import (
 
 __all__ = [
     # Base classes
+    "BaseClassProbaScorer",
     "BaseConformityScorer",
     "BaseIntervalScorer",
     "BasePointScorer",
@@ -55,4 +57,8 @@ __all__ = [
     "IntervalScore",
     "MeanIntervalWidth",
     "PinballLoss",
+    # Class-probability scorers
+    "BrierScore",
+    "Accuracy",
+    "LogLoss",
 ]

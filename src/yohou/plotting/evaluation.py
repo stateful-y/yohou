@@ -481,12 +481,159 @@ def _compute_empirical_coverages(
     return empirical
 
 
-def plot_calibration(
-    y_pred_int: pl.DataFrame,
+def _plot_calibration_class_proba(
+    y_pred: pl.DataFrame,
     y_truth: pl.DataFrame,
-    coverage_rates: list[StrictFloat],
+    *,
+    target: str | None,
+    n_bins: int,
+    color_palette: list[str] | None,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+    **kwargs,
+) -> go.Figure:
+    """Reliability diagram for class-probability predictions.
+
+    Parameters
+    ----------
+    y_pred : pl.DataFrame
+        Class-probability predictions with ``{target}_proba_{class}``
+        columns.
+    y_truth : pl.DataFrame
+        Ground truth with categorical target columns.
+    target : str or None
+        Target column name.
+    n_bins : int
+        Number of probability bins.
+    color_palette : list of str or None
+        Custom color palette.
+    title : str or None
+        Figure title.
+    x_label : str or None
+        X-axis label.
+    y_label : str or None
+        Y-axis label.
+    width : int or None
+        Figure width.
+    height : int or None
+        Figure height.
+    **kwargs : dict
+        Styling overrides.
+
+    Returns
+    -------
+    go.Figure
+        Reliability diagram figure.
+
+    """
+    validate_plotting_data(y_pred, min_rows=1)
+    validate_plotting_data(y_truth, min_rows=1)
+
+    line_width = kwargs.get("line_width", 2.0)
+    reference_color = kwargs.get("reference_color", "#1e293b")
+    reference_dash = kwargs.get("reference_dash", "dash")
+    show_legend = kwargs.get("show_legend", True)
+
+    proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+    targets = _discover_proba_targets(proba_cols)
+
+    if target is None:
+        if len(targets) > 1:
+            msg = f"Multiple targets found: {sorted(targets)}. Please specify the 'target' parameter."
+            raise ValueError(msg)
+        target = next(iter(targets))
+
+    if target not in targets:
+        msg = f"Target '{target}' not found. Available targets: {sorted(targets)}"
+        raise ValueError(msg)
+
+    if target not in y_truth.columns:
+        msg = f"Target '{target}' not found in y_truth columns: {y_truth.columns}"
+        raise ValueError(msg)
+
+    target_proba_cols = targets[target]
+    class_labels = [c.split("_proba_", 1)[1] for c in target_proba_cols]
+    colors = resolve_color_palette(color_palette, n=len(class_labels))
+
+    # Align on time
+    common = y_pred.select("time").join(y_truth.select("time"), on="time", how="inner")
+    pred_aligned = y_pred.join(common, on="time", how="inner").sort("time")
+    truth_aligned = y_truth.join(common, on="time", how="inner").sort("time")
+    true_labels = truth_aligned[target].cast(pl.String)
+
+    fig = go.Figure()
+
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+
+    for i, (pcol, label) in enumerate(zip(target_proba_cols, class_labels, strict=True)):
+        predicted_probs = pred_aligned[pcol].to_numpy()
+        is_class = (true_labels == label).to_numpy()
+
+        mean_pred: list[float] = []
+        empirical_freq: list[float] = []
+
+        for b in range(n_bins):
+            lo, hi = bin_edges[b], bin_edges[b + 1]
+            if b < n_bins - 1:
+                mask = (predicted_probs >= lo) & (predicted_probs < hi)
+            else:
+                mask = (predicted_probs >= lo) & (predicted_probs <= hi)
+            count = int(mask.sum())
+            if count == 0:
+                continue
+            mean_pred.append(float(predicted_probs[mask].mean()))
+            empirical_freq.append(float(is_class[mask].mean()))
+
+        if mean_pred:
+            fig.add_trace(
+                go.Scatter(
+                    x=mean_pred,
+                    y=empirical_freq,
+                    mode="lines+markers",
+                    name=label,
+                    line={"color": colors[i], "width": line_width},
+                    hovertemplate=(
+                        f"<b>{label}</b><br>Predicted: %{{x:.3f}}<br>Observed: %{{y:.3f}}<br><extra></extra>"
+                    ),
+                )
+            )
+
+    # Perfect calibration diagonal
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 1],
+            y=[0, 1],
+            mode="lines",
+            name="Perfect calibration",
+            line={"color": reference_color, "width": 2.0, "dash": reference_dash},
+            hovertemplate="<b>Perfect</b><br>%{x:.2f}<extra></extra>",
+        )
+    )
+
+    fig = apply_default_layout(
+        fig,
+        title=title or "Reliability Diagram",
+        x_label=x_label or "Mean predicted probability",
+        y_label=y_label or "Empirical frequency",
+        width=width,
+        height=height,
+    )
+    fig.update_layout(showlegend=show_legend)
+
+    return fig
+
+
+def plot_calibration(
+    y_pred: pl.DataFrame,
+    y_truth: pl.DataFrame,
+    coverage_rates: list[StrictFloat] | None = None,
     *,
     columns: str | list[str] | None = None,
+    target: str | None = None,
+    n_bins: int = 10,
     panel_group_names: list[str] | None = None,
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -497,40 +644,59 @@ def plot_calibration(
     height: int | None = None,
     **kwargs,
 ) -> go.Figure:
-    """Plot prediction interval calibration.
+    """Plot calibration for interval or class-probability forecasts.
 
-    Compares empirical coverage against nominal coverage rates to assess
-    whether prediction intervals are properly calibrated. A well-calibrated
-    model should have points close to the diagonal reference line.
+    Automatically detects the prediction type from column names:
+
+    - **Interval predictions**: columns named
+      ``"{target}_upper_{rate}"`` / ``"{target}_lower_{rate}"`` are
+      compared against nominal *coverage_rates* (empirical vs nominal
+      coverage).
+    - **Class-probability predictions**: columns containing
+      ``"_proba_"`` are binned and compared against empirical
+      frequencies (reliability diagram).
+
+    A well-calibrated model has points close to the diagonal.
 
     Parameters
     ----------
-    y_pred_int : pl.DataFrame
-        Prediction intervals time series with columns named
-        ``"{target_column}_upper_{coverage_rate}"`` and
-        ``"{target_column}_lower_{coverage_rate}"``.
+    y_pred : pl.DataFrame
+        Predicted values.  Either prediction intervals with
+        ``"{target}_upper_{rate}"`` / ``"{target}_lower_{rate}"``
+        columns, or class-probability predictions with
+        ``"{target}_proba_{class}"`` columns.
     y_truth : pl.DataFrame
-        Target time series with actual values to compare against intervals.
-    coverage_rates : list of float
-        List of coverage rates to check calibration for (e.g., [0.9, 0.95]).
+        Ground truth values.
+    coverage_rates : list of float or None, default=None
+        Nominal coverage rates for interval calibration (e.g.,
+        ``[0.9, 0.95]``).  Required when *y_pred* contains interval
+        columns; ignored for class-probability predictions.
     columns : str | list[str] | None, default=None
-        Target column name(s).  When *panel_group_names* is set this acts
-        as a member postfix filter (e.g. ``"a"`` selects ``group__a``).
-        When ``None``, all common non-time columns of *y_truth* are used.
+        Target column name(s) for interval calibration.  When
+        *panel_group_names* is set this acts as a member postfix
+        filter.  Ignored for class-probability predictions (use
+        *target* instead).
+    target : str or None, default=None
+        Target column name for class-probability calibration.  Required
+        when multiple targets are present in the probability columns.
+        Ignored for interval calibration.
+    n_bins : int, default=10
+        Number of bins for class-probability calibration.  Ignored for
+        interval calibration.
     panel_group_names : list[str] | None, default=None
-        Panel group prefixes for faceted subplots.  When provided, each
-        resolved panel column gets its own subplot.
+        Panel group prefixes for faceted subplots (interval mode only).
     facet_n_cols : int, default=2
         Number of columns in the facet grid when *panel_group_names* is
         used.
     color_palette : list[str] | None, default=None
         Custom color palette as hex codes. If None, uses yohou palette.
     title : str | None, default=None
-        Plot title. Defaults to ``"Calibration plot"``.
+        Plot title. Defaults to ``"Calibration plot"`` for intervals or
+        ``"Reliability Diagram"`` for class probabilities.
     x_label : str | None, default=None
-        X-axis label. Defaults to ``"Nominal coverage"``.
+        X-axis label.
     y_label : str | None, default=None
-        Y-axis label. Defaults to ``"Empirical coverage"``.
+        Y-axis label.
     width : int | None, default=None
         Plot width in pixels.
     height : int | None, default=None
@@ -553,11 +719,14 @@ def plot_calibration(
     Raises
     ------
     ValueError
-        If the requested column is not found in y_truth or interval columns
-        are missing.
+        If interval columns are missing, *coverage_rates* is not
+        provided for interval predictions, or class-probability columns
+        are ambiguous.
 
     Examples
     --------
+    Interval calibration:
+
     >>> import polars as pl
     >>> import numpy as np
     >>> from yohou.plotting import plot_calibration
@@ -577,23 +746,48 @@ def plot_calibration(
     >>> len(fig.data)
     2
 
-    >>> # Multi-column calibration
-    >>> y_truth_mc = pl.DataFrame({"a": np.random.randn(n), "b": np.random.randn(n)})
-    >>> y_pred_mc = pl.DataFrame({
-    ...     "a_upper_0.9": np.random.randn(n) + 1.65,
-    ...     "a_lower_0.9": np.random.randn(n) - 1.65,
-    ...     "b_upper_0.9": np.random.randn(n) + 1.65,
-    ...     "b_lower_0.9": np.random.randn(n) - 1.65,
+    Class-probability calibration (reliability diagram):
+
+    >>> from datetime import datetime
+    >>> y_pred_proba = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 11)],
+    ...     "w_proba_sunny": [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.9, 0.85],
+    ...     "w_proba_rainy": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.1, 0.15],
     ... })
-    >>> fig = plot_calibration(y_pred_mc, y_truth_mc, coverage_rates=[0.9])
-    >>> len(fig.data)  # 2 column traces + 1 reference line
-    3
+    >>> y_truth_cat = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 11)],
+    ...     "w": ["sunny", "sunny", "sunny", "rainy", "rainy", "rainy", "rainy", "rainy", "sunny", "sunny"],
+    ... })
+    >>> fig = plot_calibration(y_pred_proba, y_truth_cat)
+    >>> isinstance(fig, go.Figure)
+    True
 
     See Also
     --------
     `plot_forecast` : Plot forecast with optional prediction intervals.
     `plot_residuals` : Residual diagnostics with panel facets.
     """
+    # Detect class-probability columns
+    proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+    if proba_cols:
+        return _plot_calibration_class_proba(
+            y_pred=y_pred,
+            y_truth=y_truth,
+            target=target,
+            n_bins=n_bins,
+            color_palette=color_palette,
+            title=title,
+            x_label=x_label,
+            y_label=y_label,
+            width=width,
+            height=height,
+            **kwargs,
+        )
+
+    # Interval calibration path
+    if coverage_rates is None:
+        msg = "coverage_rates is required for interval calibration. Pass a list of coverage rates (e.g., [0.9, 0.95])."
+        raise ValueError(msg)
     # Styling kwargs
     line_width = kwargs.get("line_width", 2.0)
     line_opacity = kwargs.get("line_opacity", 1.0)
@@ -640,7 +834,7 @@ def plot_calibration(
                 seen_members.add(member_name)
 
                 truth_vals = y_truth[panel_col].to_numpy().flatten()
-                emp_cov = _compute_empirical_coverages(truth_vals, y_pred_int, panel_col, coverage_rates)
+                emp_cov = _compute_empirical_coverages(truth_vals, y_pred, panel_col, coverage_rates)
 
                 fig.add_trace(
                     go.Scatter(
@@ -703,7 +897,7 @@ def plot_calibration(
 
     for col_idx, target_column in enumerate(target_columns):
         truth_vals = y_truth[target_column].to_numpy().flatten()
-        emp_cov = _compute_empirical_coverages(truth_vals, y_pred_int, target_column, coverage_rates)
+        emp_cov = _compute_empirical_coverages(truth_vals, y_pred, target_column, coverage_rates)
 
         trace_name = target_column if len(target_columns) > 1 else "Empirical coverage"
         fig.add_trace(
@@ -1806,3 +2000,47 @@ def plot_score_per_horizon(
     fig.update_layout(showlegend=show_legend)
 
     return fig
+
+
+def _discover_proba_targets(
+    proba_cols: list[str],
+) -> dict[str, list[str]]:
+    """Group probability columns by target name.
+
+    Parameters
+    ----------
+    proba_cols : list of str
+        Column names containing ``_proba_``.
+
+    Returns
+    -------
+    dict
+        Mapping from target name to list of probability column names.
+
+    """
+    targets: dict[str, list[str]] = {}
+    for col in proba_cols:
+        target_name = col.split("_proba_", 1)[0]
+        targets.setdefault(target_name, []).append(col)
+    return targets
+
+
+def _hex_to_rgba(hex_color: str, opacity: float) -> str:
+    """Convert hex color to rgba string with given opacity.
+
+    Parameters
+    ----------
+    hex_color : str
+        Hex color string (e.g., ``"#1f77b4"``).
+    opacity : float
+        Opacity value between 0 and 1.
+
+    Returns
+    -------
+    str
+        RGBA color string (e.g., ``"rgba(31, 119, 180, 0.6)"``).
+
+    """
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {opacity})"

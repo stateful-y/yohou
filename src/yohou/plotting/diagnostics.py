@@ -138,8 +138,8 @@ def plot_autocorrelation(
                 else:
                     s1 = series[:-lag] - mean_v
                     s2 = series[lag:] - mean_v
-                    num = (s1 * s2).sum()
-                    den = ((series - mean_v) ** 2).sum()
+                    num = float((s1 * s2).sum())
+                    den = float(((series - mean_v) ** 2).sum())
                     acf_vals.append(num / den if den != 0 else 0)
             fig.add_trace(
                 go.Bar(x=list(range(_ml + 1)), y=acf_vals, marker={"color": _bc}, showlegend=False),
@@ -206,8 +206,8 @@ def plot_autocorrelation(
                 # Compute correlation at lag
                 series1 = series[:-lag] - mean_val
                 series2 = series[lag:] - mean_val
-                numerator = (series1 * series2).sum()
-                denominator = ((series - mean_val) ** 2).sum()
+                numerator = float((series1 * series2).sum())
+                denominator = float(((series - mean_val) ** 2).sum())
                 acf = numerator / denominator if denominator != 0 else 0
                 acf_values.append(acf)
 
@@ -370,7 +370,7 @@ def _compute_pacf(
         return _compute_pacf_durbin_levinson(values, nlags, alpha)
 
     if alpha is not None:
-        pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # type: ignore[arg-type]
+        pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # fmt: skip  # ty: ignore[invalid-argument-type]
         # statsmodels returns CIs centered on the PACF values (pacf ± z/√n).
         # For significance testing we need horizontal bands at ±z/√n (centered
         # on zero), so subtract the PACF values from both bounds.
@@ -378,8 +378,8 @@ def _compute_pacf(
         ci_hi = (confint[:, 1] - pacf_result).tolist()
         return pacf_result.tolist(), ci_lo, ci_hi
 
-    pacf_result = sm_pacf(values, nlags=nlags, method=method)  # type: ignore[arg-type]
-    return pacf_result.tolist(), None, None  # type: ignore[union-attr]
+    pacf_result = sm_pacf(values, nlags=nlags, method=method)  # ty: ignore[invalid-argument-type]
+    return pacf_result.tolist(), None, None  # ty: ignore[unresolved-attribute]
 
 
 def plot_partial_autocorrelation(
@@ -1495,8 +1495,8 @@ def plot_lag_scatter(
                 if show_diagonal:
                     source = df_aug if df_aug is not None else df
                     dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
-                    vmin = min(float(dl_all[col].min()), float(dl_all["lagged"].min()))  # type: ignore[arg-type]
-                    vmax = max(float(dl_all[col].max()), float(dl_all["lagged"].max()))  # type: ignore[arg-type]
+                    vmin = min(float(dl_all[col].min()), float(dl_all["lagged"].min()))  # fmt: skip  # ty: ignore[invalid-argument-type]
+                    vmax = max(float(dl_all[col].max()), float(dl_all["lagged"].max()))  # fmt: skip  # ty: ignore[invalid-argument-type]
                     fig.add_trace(
                         go.Scatter(
                             x=[vmin, vmax],
@@ -1607,11 +1607,11 @@ def plot_lag_scatter(
             x_mean = y_lagged.mean()
             y_mean = y_current.mean()
 
-            numerator = ((y_lagged - x_mean) * (y_current - y_mean)).sum()
-            denominator = ((y_lagged - x_mean) ** 2).sum()
+            numerator = float(((y_lagged - x_mean) * (y_current - y_mean)).sum())
+            denominator = float(((y_lagged - x_mean) ** 2).sum())
 
             if denominator != 0 and x_mean is not None and y_mean is not None:
-                slope = float(numerator / denominator)
+                slope = numerator / denominator
                 intercept = cast(float, y_mean) - slope * cast(float, x_mean)
 
                 y_lagged_min = y_lagged.min()
@@ -2010,7 +2010,7 @@ def plot_scatter_matrix(
                             pass
                         else:
                             data_range = float(vals.max()) - float(vals.min())
-                            if data_range > 0 and kde.factor > 1e-10:
+                            if data_range > 0 and kde.factor > 1e-10:  # ty: ignore[unsupported-operator]
                                 x_grid = np.linspace(float(vals.min()), float(vals.max()), 200)
                                 fig.add_trace(
                                     go.Scatter(

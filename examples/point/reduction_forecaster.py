@@ -431,6 +431,7 @@ def _(mo):
     - **Multi-column forecasting**: See [`multi_column_forecasting.py`](/examples/point/multi_column_forecasting/) for multivariate data
     - **Interval prediction**: See [Interval](/examples/#interval-forecasting) examples for uncertainty quantification
     - **Decomposition**: See [Stationarity](/examples/#stationarity) for trend/seasonality extraction before forecasting
+    - **Classification**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for categorical forecasting via reduction
     """)
     return
 
