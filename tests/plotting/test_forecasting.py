@@ -2039,3 +2039,110 @@ class TestMSTLAutoPeriodsError:
             periods=[24],
         )
         assert_figure_valid(fig)
+
+
+@pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
+class TestDecompositionNonPositiveOffset:
+    """Tests for multiplicative decomposition with non-positive data (offset logic)."""
+
+    @pytest.fixture
+    def monthly_zero_df(self):
+        """Monthly data with zero and negative values for offset testing."""
+        rng = np.random.default_rng(42)
+        return pl.DataFrame({
+            "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2023, 12, 1), "1mo", eager=True),
+            "y": [-5 + 2 * i + 10 * np.sin(2 * np.pi * i / 12) + rng.standard_normal() for i in range(72)],
+        })
+
+    def test_stl_multiplicative_non_positive(self, monthly_zero_df):
+        """STL multiplicative with non-positive values applies offset."""
+        with pytest.warns(UserWarning, match="log-transform"):
+            fig = plot_decomposition(
+                monthly_zero_df,
+                ["trend", "seasonal"],
+                method="stl",
+                columns="y",
+                model="multiplicative",
+                show_original=False,
+            )
+        assert_figure_valid(fig)
+
+    def test_classical_multiplicative_non_positive(self, monthly_zero_df):
+        """Classical multiplicative with non-positive values applies offset."""
+        fig = plot_decomposition(
+            monthly_zero_df,
+            ["trend", "seasonal"],
+            method="classical",
+            columns="y",
+            model="multiplicative",
+            show_original=False,
+        )
+        assert_figure_valid(fig)
+
+    def test_mstl_multiplicative_non_positive(self):
+        """MSTL multiplicative with non-positive values applies offset."""
+        rng = np.random.default_rng(42)
+        n = 24 * 7 * 12
+        df = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2022, 1, 1),
+                pl.datetime(2022, 1, 1) + pl.duration(hours=n - 1),
+                "1h",
+                eager=True,
+            ),
+            "y": [-10 + 10 * np.sin(2 * np.pi * i / 24) + rng.standard_normal() for i in range(n)],
+        })
+        with pytest.warns(UserWarning, match="log-transform"):
+            fig = plot_decomposition(
+                df,
+                ["trend", "seasonal"],
+                method="mstl",
+                columns="y",
+                model="multiplicative",
+                periods=[24, 24 * 7],
+                show_original=False,
+            )
+        assert_figure_valid(fig)
+
+
+@pytest.mark.skipif(not _has_statsmodels, reason="statsmodels not installed")
+class TestDecompositionParameterWarnings:
+    """Tests for parameter mismatch warnings in plot_decomposition."""
+
+    @pytest.fixture
+    def monthly_df(self):
+        """Monthly data for decomposition tests."""
+        rng = np.random.default_rng(42)
+        return pl.DataFrame({
+            "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2023, 12, 1), "1mo", eager=True),
+            "y": [100 + 2 * i + 10 * np.sin(2 * np.pi * i / 12) + rng.standard_normal() for i in range(72)],
+        })
+
+    def test_two_sided_with_stl_warns(self, monthly_df):
+        """Passing two_sided to STL method emits a warning."""
+        with pytest.warns(UserWarning, match="two_sided.*only used with method='classical'"):
+            plot_decomposition(
+                monthly_df, ["trend"], method="stl", columns="y", two_sided=False,
+            )
+
+    def test_extrapolate_trend_with_stl_warns(self, monthly_df):
+        """Passing extrapolate_trend to STL method emits a warning."""
+        with pytest.warns(UserWarning, match="extrapolate_trend.*only used with method='classical'"):
+            plot_decomposition(
+                monthly_df, ["trend"], method="stl", columns="y", extrapolate_trend="freq",
+            )
+
+    def test_classical_auto_period_unsupported_interval(self):
+        """Classical decomposition with period='auto' and unsupported interval raises."""
+        from datetime import datetime
+
+        dates = pl.datetime_range(
+            datetime(2020, 1, 1),
+            datetime(2020, 1, 1, 0, 18),
+            "2m",
+            eager=True,
+        )
+        n = len(dates)
+        df = pl.DataFrame({"time": dates, "y": list(range(n))})
+        with pytest.raises(ValueError, match="Cannot infer period"):
+            plot_decomposition(df, ["trend"], method="classical")

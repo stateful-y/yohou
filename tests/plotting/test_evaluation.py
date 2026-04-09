@@ -2294,3 +2294,143 @@ class TestMultiComponentScoreBranches:
         scorer = MeanAbsoluteError()
         fig = plot_score_per_horizon(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
+
+
+class TestScorerReturnValidation:
+    """Tests for scorer return-type checks in componentwise aggregation."""
+
+    @pytest.fixture
+    def panel_data(self):
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(10)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "sales__store_1": [10.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "time": times,
+            "sales__store_1": [11.0 + i for i in range(10)],
+        })
+        return y_truth, {"model_a": y_pred}
+
+    @pytest.fixture
+    def simple_data(self):
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(10)]
+        y_truth = pl.DataFrame({"time": times, "y": [10.0 + i for i in range(10)]})
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "time": times,
+            "y": [11.0 + i for i in range(10)],
+        })
+        return y_truth, {"model_a": y_pred}
+
+    def test_panel_score_time_series_non_dataframe_raises(self, panel_data):
+        """Panel score_time_series raises TypeError when scorer.score returns non-DataFrame."""
+        from unittest.mock import patch
+
+        y_truth, y_pred = panel_data
+        scorer = MeanAbsoluteError()
+        with patch.object(MeanAbsoluteError, "score", return_value=42.0):
+            with pytest.raises(TypeError, match="Scorer must return DataFrame"):
+                plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["sales"])
+
+    def test_panel_score_time_series_no_time_col_raises(self, panel_data):
+        """Panel score_time_series raises ValueError when scorer.score returns no 'time' column."""
+        from unittest.mock import patch
+
+        y_truth, y_pred = panel_data
+        scorer = MeanAbsoluteError()
+        bad_df = pl.DataFrame({"sales__store_1": [1.0] * 10})
+        with patch.object(MeanAbsoluteError, "score", return_value=bad_df):
+            with pytest.raises(ValueError, match="'time' column"):
+                plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["sales"])
+
+    def test_score_time_series_non_dataframe_raises(self, simple_data):
+        """Non-panel score_time_series raises TypeError when scorer.score returns non-DataFrame."""
+        from unittest.mock import patch
+
+        y_truth, y_pred = simple_data
+        scorer = MeanAbsoluteError()
+        with patch.object(MeanAbsoluteError, "score", return_value=42.0):
+            with pytest.raises(TypeError, match="Scorer must return DataFrame"):
+                plot_score_time_series(scorer, y_truth, y_pred)
+
+    def test_score_time_series_no_time_col_raises(self, simple_data):
+        """Non-panel score_time_series raises ValueError when scorer.score returns no 'time' column."""
+        from unittest.mock import patch
+
+        y_truth, y_pred = simple_data
+        scorer = MeanAbsoluteError()
+        bad_df = pl.DataFrame({"y": [1.0] * 10})
+        with patch.object(MeanAbsoluteError, "score", return_value=bad_df):
+            with pytest.raises(ValueError, match="'time' column"):
+                plot_score_time_series(scorer, y_truth, y_pred)
+
+    def test_score_distribution_non_dataframe_raises(self, simple_data):
+        """plot_score_distribution raises TypeError when scorer.score returns non-DataFrame."""
+        from unittest.mock import patch
+
+        y_truth, y_pred = simple_data
+        scorer = MeanAbsoluteError()
+        with patch.object(MeanAbsoluteError, "score", return_value=42.0):
+            with pytest.raises(TypeError, match="Scorer must return DataFrame"):
+                plot_score_distribution(scorer, y_truth, y_pred)
+
+    def test_per_horizon_non_dataframe_raises(self, simple_data):
+        """plot_score_per_horizon raises TypeError when scorer.score returns non-DataFrame."""
+        from unittest.mock import patch
+
+        y_truth, y_pred = simple_data
+        scorer = MeanAbsoluteError()
+        with patch.object(MeanAbsoluteError, "score", return_value=42.0):
+            with pytest.raises(TypeError, match="Scorer must return DataFrame"):
+                plot_score_per_horizon(scorer, y_truth, y_pred)
+
+
+class TestPanelMultiMemberScoring:
+    """Tests for multi-member panel scoring (multi-column else branches)."""
+
+    @pytest.fixture
+    def panel_multi_member(self):
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(15)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "sales__store_1": [10.0 + i for i in range(15)],
+            "sales__store_2": [20.0 + i for i in range(15)],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "time": times,
+            "sales__store_1": [11.0 + i for i in range(15)],
+            "sales__store_2": [21.0 + i for i in range(15)],
+        })
+        return y_truth, {"model_a": y_pred}
+
+    def test_panel_score_distribution_multi_member(self, panel_multi_member):
+        """Score distribution multi-member panel triggers multi-column flatten."""
+        y_truth, y_pred = panel_multi_member
+        scorer = MeanAbsoluteError()
+        fig = plot_score_distribution(scorer, y_truth, y_pred, panel_group_names=["sales"])
+        assert_figure_valid(fig)
+
+    def test_panel_score_per_horizon_multi_member(self, panel_multi_member):
+        """Per-horizon multi-member panel triggers multi-column mean_horizontal."""
+        y_truth, y_pred = panel_multi_member
+        scorer = MeanAbsoluteError()
+        fig = plot_score_per_horizon(scorer, y_truth, y_pred, panel_group_names=["sales"])
+        assert_figure_valid(fig)
+
+    def test_panel_score_time_series_filtered_empty_group(self, panel_multi_member):
+        """Panel score_time_series with column filter leaving no matches skips group."""
+        y_truth, y_pred = panel_multi_member
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(
+            scorer, y_truth, y_pred, panel_group_names=["sales"], columns="nonexistent_member",
+        )
+        assert isinstance(fig, go.Figure)

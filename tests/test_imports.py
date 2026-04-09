@@ -57,3 +57,21 @@ def test_import_yohou_plotting_without_plotly_raises():
     )
     assert result.returncode != 0
     assert "yohou[plotting]" in result.stderr
+
+
+class TestLazySubmoduleImport:
+    """Tests for __getattr__ lazy import in yohou.__init__."""
+
+    def test_lazy_plotting_import(self):
+        """Accessing yohou.plotting via __getattr__ returns the plotting module."""
+        import yohou
+
+        mod = yohou.__getattr__("plotting")
+        assert hasattr(mod, "plot_forecast")
+
+    def test_nonexistent_attr_raises(self):
+        """Accessing a nonexistent attribute via __getattr__ raises AttributeError."""
+        import yohou
+
+        with pytest.raises(AttributeError, match="has no attribute"):
+            yohou.__getattr__("nonexistent_submodule_xyz")
