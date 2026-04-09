@@ -8,7 +8,7 @@
 
 import marimo
 
-__generated_with = "0.23.0"
+__generated_with = "0.20.2"
 app = marimo.App(width="medium")
 
 
@@ -24,7 +24,7 @@ def _(mo):
     mo.md(r"""
     # Class-Probability Forecasting
 
-    This notebook demonstrates **class-probability forecasting** - predicting the
+    This notebook demonstrates **class-probability forecasting**, that is, predicting the
     probability distribution over categorical outcomes at future time steps.
 
     ## What You'll Learn
@@ -48,6 +48,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -153,7 +154,7 @@ def _(mo):
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(
-        y,
+        y.tail(200),
         title="Air Quality Target Over Time",
     )
     return
@@ -170,10 +171,8 @@ def _(mo):
 
 
 @app.cell
-def _(X, y):
-    split_point = len(y) - 200
-    y_train, y_test = y[:split_point], y[split_point:]
-    X_train, X_test = X[:split_point], X[split_point:]
+def _(X, train_test_split, y):
+    y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=200, shuffle=False)
     forecasting_horizon = 24
 
     print(f"Training: {len(y_train)} obs")
@@ -289,29 +288,6 @@ def _(plot_forecast, y_pred, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Categorical Forecast (Hard Labels)
-
-    The hard-label predictions from `predict()` compared against actuals.
-    Dashed steps show the forecast, solid steps show the true class.
-    """)
-    return
-
-
-@app.cell
-def _(plot_forecast, y_pred, y_test, y_train):
-    plot_forecast(
-        y_test,
-        y_pred,
-        y_train=y_train,
-        n_history=48,
-        title="Categorical Forecast vs Actual (with History)",
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ## 6. Evaluate with Metrics
 
     Yohou provides three class-probability metrics:
@@ -340,57 +316,11 @@ def _(Accuracy, BrierScore, LogLoss, y_proba, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7. Rolling Observe-Predict
-
-    The `observe_predict_class_proba()` method performs rolling evaluation:
-    observe new data, then predict the next horizon. This simulates real-world
-    deployment where predictions are updated as new observations arrive.
-    """)
-    return
-
-
-@app.cell
-def _(X_test, forecaster, y_test):
-    y_rolling_proba = forecaster.observe_predict_class_proba(
-        y=y_test,
-        X=X_test,
-    ).sort("time")
-    print(f"Rolling predictions: {len(y_rolling_proba)} rows")
-    return (y_rolling_proba,)
-
-
-@app.cell
-def _(y_rolling_proba):
-    y_rolling_proba
-    return
-
-
-@app.cell
-def _(plot_forecast, y_rolling_proba, y_test):
-    plot_forecast(
-        y_test,
-        y_rolling_proba,
-        title="Rolling Probability Forecast",
-    )
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ### Score Evolution Over Time
 
     Per-timestep LogLoss and BrierScore reveal when the model is most
     uncertain. Spikes indicate time steps where predictions deviated
     most from reality.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 8. Score Over Time
 
     [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/)
     shows how forecast quality varies across time steps. Spikes reveal periods
@@ -436,7 +366,45 @@ def _(Accuracy, plot_score_time_series, y_rolling_proba, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 9. Calibration Plot
+    ## 7. Rolling Observe-Predict
+
+    The `observe_predict_class_proba()` method performs rolling evaluation:
+    observe new data, then predict the next horizon. This simulates real-world
+    deployment where predictions are updated as new observations arrive.
+    """)
+    return
+
+
+@app.cell
+def _(X_test, forecaster, y_test):
+    y_rolling_proba = forecaster.observe_predict_class_proba(
+        y=y_test,
+        X=X_test,
+    ).sort("time")
+    print(f"Rolling predictions: {len(y_rolling_proba)} rows")
+    return (y_rolling_proba,)
+
+
+@app.cell
+def _(y_rolling_proba):
+    y_rolling_proba
+    return
+
+
+@app.cell
+def _(plot_forecast, y_rolling_proba, y_test):
+    plot_forecast(
+        y_test,
+        y_rolling_proba,
+        title="Rolling Probability Forecast",
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 8. Calibration Plot
 
     [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
     automatically detects class-probability columns and renders a calibration
@@ -452,7 +420,7 @@ def _(plot_calibration, y_rolling_proba, y_test):
         y_rolling_proba,
         y_test,
         n_bins=8,
-        title="Reliability Diagram (Rolling Predictions)",
+        title="Calibration Plot (Rolling Predictions)",
     )
     return
 

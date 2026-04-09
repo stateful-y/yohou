@@ -180,7 +180,7 @@ def _(
     )
     dt.fit(y_train, X_train, forecasting_horizon=fh)
     dt_hard = deepcopy(dt)
-    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X=X_test).sort("time")
+    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X=X_test)
 
     rf = ClassProbaReductionForecaster(
         estimator=RandomForestClassifier(n_estimators=50, random_state=42),
@@ -188,7 +188,7 @@ def _(
     )
     rf.fit(y_train, X_train, forecasting_horizon=fh)
     rf_hard = deepcopy(rf)
-    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X=X_test).sort("time")
+    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X=X_test)
 
     print(f"DT predictions: {len(y_proba_dt)} rows")
     print(f"RF predictions: {len(y_proba_rf)} rows")
@@ -208,8 +208,8 @@ def _(mo):
 
 @app.cell
 def _(X_test, dt_hard, fh, plot_forecast, rf_hard, y_test):
-    y_pred_dt = dt_hard.observe_predict(y=y_test, X=X_test).sort("time")
-    y_pred_rf = rf_hard.observe_predict(y=y_test, X=X_test).sort("time")
+    y_pred_dt = dt_hard.observe_predict(y=y_test, X=X_test)
+    y_pred_rf = rf_hard.observe_predict(y=y_test, X=X_test)
     plot_forecast(
         y_test,
         {"Decision Tree": y_pred_dt, "Random Forest": y_pred_rf},
