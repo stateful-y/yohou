@@ -232,6 +232,29 @@ class TestValidateForecasterScorerCompatibility:
         forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=10)
         _validate_forecaster_scorer_compatibility(forecaster, IntervalScore(coverage_rates=[0.9]))
 
+    def test_class_proba_scorer_with_point_forecaster_raises(self):
+        """Class-proba scorer + point forecaster raises ValueError."""
+        from yohou.metrics.class_proba import LogLoss
+        from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
+
+        forecaster = SeasonalNaive()
+        scorer = LogLoss()
+        with pytest.raises(ValueError, match="does not support predict_class_proba"):
+            _validate_forecaster_scorer_compatibility(forecaster, scorer)
+
+    def test_point_scorer_with_class_proba_forecaster_raises(self):
+        """Point scorer + class-proba forecaster raises ValueError."""
+        from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
+
+        forecaster = MagicMock()
+        mock_tags = MagicMock()
+        mock_tags.forecaster_tags.forecaster_type = "class_proba"
+        forecaster.__sklearn_tags__ = MagicMock(return_value=mock_tags)
+
+        scorer = MeanAbsoluteError()
+        with pytest.raises(ValueError, match="does not support point or interval"):
+            _validate_forecaster_scorer_compatibility(forecaster, scorer)
+
 
 @pytest.fixture()
 def fit_and_score_data():

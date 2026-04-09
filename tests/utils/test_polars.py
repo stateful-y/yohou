@@ -216,3 +216,21 @@ class TestCast:
         # Rounds to nearest even number when exactly halfway between two integers
         # 0.5→0 (even), 1.5→2 (even), 2.5→2 (even), 3.5→4 (even), 4.5→4 (even)
         assert result["a"].to_list() == [0, 2, 2, 4, 4]
+
+    def test_cast_float_to_string(self):
+        """Test casting float column to non-numeric type (String)."""
+        df = pl.DataFrame({"a": [1.0, 2.5, 3.0]})
+        schema = {"a": pl.String}
+        result = cast(df, schema)
+
+        assert result.schema["a"] == pl.String
+        assert result["a"].to_list() == ["1.0", "2.5", "3.0"]
+
+    def test_cast_float_to_boolean(self):
+        """Test casting float column to Boolean type."""
+        df = pl.DataFrame({"a": [1.0, 0.0, 1.0]})
+        schema = {"a": pl.Boolean}
+        result = cast(df, schema)
+
+        assert result.schema["a"] == pl.Boolean
+        assert result["a"].to_list() == [True, False, True]

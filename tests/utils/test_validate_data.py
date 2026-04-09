@@ -1161,3 +1161,48 @@ class TestValidateTransformerInversePaths:
             observation_horizon=3,
         )
         assert result is not None
+
+
+class TestValidateScorerDataClassProba:
+    """Tests for validate_score_data with class_proba prediction type."""
+
+    def test_class_proba_missing_proba_columns_raises(self):
+        """Missing probability columns for a target raises ValueError."""
+        from yohou.metrics.class_proba import LogLoss
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 5),
+            interval="1d",
+            eager=True,
+        )
+        y_true = pl.DataFrame({"time": time, "weather": ["sun", "rain", "sun", "rain", "sun"]})
+        # y_pred has no weather_proba_* columns
+        y_pred = pl.DataFrame({"time": time, "other_proba_a": [0.5] * 5, "other_proba_b": [0.5] * 5})
+
+        scorer = LogLoss()
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="No probability columns found for target"):
+            scorer.score(y_true, y_pred)
+
+    def test_class_proba_non_numeric_proba_columns_raises(self):
+        """Non-numeric probability columns raise ValueError."""
+        from yohou.metrics.class_proba import LogLoss
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 5),
+            interval="1d",
+            eager=True,
+        )
+        y_true = pl.DataFrame({"time": time, "weather": ["sun", "rain", "sun", "rain", "sun"]})
+        y_pred = pl.DataFrame({
+            "time": time,
+            "weather_proba_sun": ["high", "low", "high", "low", "high"],
+            "weather_proba_rain": ["low", "high", "low", "high", "low"],
+        })
+
+        scorer = LogLoss()
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="must be numeric"):
+            scorer.score(y_true, y_pred)

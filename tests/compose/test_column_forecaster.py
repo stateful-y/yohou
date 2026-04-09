@@ -1428,3 +1428,43 @@ class TestClassProbaColumnForecaster:
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) > 0
+
+    def test_predict_class_proba_with_remainder(self):
+        """predict_class_proba includes remainder forecaster predictions."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=79),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "animal": [["cat", "dog", "bird"][i % 3] for i in range(80)],
+            "color": [["red", "blue"][i % 2] for i in range(80)],
+        })
+        forecaster = ColumnForecaster(
+            [
+                (
+                    "animal_model",
+                    ClassProbaReductionForecaster(
+                        estimator=DecisionTreeClassifier(random_state=42),
+                    ),
+                    "animal",
+                ),
+            ],
+            remainder=ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+            ),
+        )
+        forecaster.fit(y, forecasting_horizon=3)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+
+        animal_proba = [c for c in y_pred.columns if "animal_proba_" in c]
+        color_proba = [c for c in y_pred.columns if "color_proba_" in c]
+        assert len(animal_proba) == 3
+        assert len(color_proba) == 2
+        assert len(y_pred) == 3

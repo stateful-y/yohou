@@ -1051,6 +1051,18 @@ class TestPlotForecastPanelClassProba:
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 4
 
+    def test_panel_with_training_data(self, _panel_proba_data):
+        """Panel class-proba data with y_train renders training traces."""
+        y_test, y_pred = _panel_proba_data
+        y_train = pl.DataFrame({
+            "time": pl.date_range(pl.date(2019, 12, 27), pl.date(2019, 12, 31), "1d", eager=True),
+            "weather__east": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
+            "weather__west": ["cloudy", "sunny", "rainy", "cloudy", "sunny"],
+        })
+        fig = plot_forecast(y_test, y_pred, y_train=y_train)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) >= 2
+
 
 class TestPlotForecastPanelCategorical:
     """Tests for plot_forecast with panel categorical data."""
