@@ -62,7 +62,6 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | 
         If default prediction doesn't include all groups
 
     """
-
     # Predict with default (panel_group=None)
     y_pred = _call_predict(forecaster, X=X_panel, forecasting_horizon=3, panel_group=None)
 
@@ -100,7 +99,6 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.Data
         If filtered prediction doesn't match specified group
 
     """
-
     _, y_panel_groups = inspect_panel(y_panel)
 
     if len(y_panel_groups) > 0:
@@ -141,7 +139,6 @@ def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel:
         If ValueError is not raised for invalid group
 
     """
-
     _, y_panel_groups = inspect_panel(y_panel)
 
     if len(y_panel_groups) > 0:

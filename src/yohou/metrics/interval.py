@@ -17,7 +17,7 @@ __all__ = [
 
 
 class EmpiricalCoverage(BaseIntervalScorer):
-    """Empirical coverage rate for prediction intervals.
+    r"""Empirical coverage rate for prediction intervals.
 
     Measures the proportion of true values falling within the predicted
     intervals. A well-calibrated forecaster should achieve coverage close
@@ -217,11 +217,11 @@ class EmpiricalCoverage(BaseIntervalScorer):
         ):
             result = result.rename({col: f"coverage_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # type: ignore[invalid-return-type, return-value]  # ty:ignore[invalid-return-type]
 
 
 class MeanIntervalWidth(BaseIntervalScorer):
-    """Mean width of prediction intervals.
+    r"""Mean width of prediction intervals.
 
     Measures the average width of prediction intervals. Narrower intervals are
     preferred (more informative), provided coverage is maintained.
@@ -393,11 +393,11 @@ class MeanIntervalWidth(BaseIntervalScorer):
         ):
             result = result.rename({col: f"width_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # type: ignore[invalid-return-type, return-value]  # ty:ignore[invalid-return-type]
 
 
 class IntervalScore(BaseIntervalScorer):
-    """Interval Score (Winkler Score) for prediction intervals.
+    r"""Interval Score (Winkler Score) for prediction intervals.
 
     Combines interval width with penalties for observations falling outside
     the interval. Balances sharpness and coverage in a single metric.
@@ -591,11 +591,11 @@ class IntervalScore(BaseIntervalScorer):
         ) and isinstance(result, pl.DataFrame):
             result = result.rename({col: f"interval_score_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # type: ignore[invalid-return-type, return-value]  # ty:ignore[invalid-return-type]
 
 
 class PinballLoss(BaseIntervalScorer):
-    """Pinball Loss (Quantile Score) for prediction intervals.
+    r"""Pinball Loss (Quantile Score) for prediction intervals.
 
     Evaluates quantile forecasts with asymmetric penalty. Each interval bound
     corresponds to a quantile: lower bound = (1-α)/2, upper bound = (1+α)/2.
@@ -779,10 +779,10 @@ class PinballLoss(BaseIntervalScorer):
 
                     # Extract series from polars expressions
                     loss_lower_series = y_pred.select(
-                        loss_lower.alias("loss_lower")  # type: ignore[union-attr]
+                        loss_lower.alias("loss_lower")  # type: ignore[union-attr, unresolved-attribute]  # ty:ignore[unresolved-attribute]
                     )["loss_lower"]
                     loss_upper_series = y_pred.select(
-                        loss_upper.alias("loss_upper")  # type: ignore[union-attr]
+                        loss_upper.alias("loss_upper")  # type: ignore[union-attr, unresolved-attribute]  # ty:ignore[unresolved-attribute]
                     )["loss_upper"]
 
                     # Sum losses for upper and lower bounds
@@ -816,11 +816,11 @@ class PinballLoss(BaseIntervalScorer):
         ):
             result = result.rename({col: f"loss_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # type: ignore[invalid-return-type, return-value]  # ty:ignore[invalid-return-type]
 
 
 class CalibrationError(BaseIntervalScorer):
-    """Calibration Error for prediction intervals.
+    r"""Calibration Error for prediction intervals.
 
     Measures the discrepancy between nominal coverage rate and empirical coverage
     across different rates. Indicates if intervals are well-calibrated.
@@ -1016,4 +1016,4 @@ class CalibrationError(BaseIntervalScorer):
         ):
             result = result.rename({col: f"calibration_error_{col}" for col in result.columns})
 
-        return result  # type: ignore[return-value]
+        return result  # type: ignore[invalid-return-type, return-value]  # ty:ignore[invalid-return-type]

@@ -152,7 +152,7 @@ class TestObserveRewind:
     """Tests for observe and rewind methods."""
 
     def test_observe_predict_cycle(self, panel_y):
-        """observe then predict should use new observations."""
+        """Observe then predict should use new observations."""
         y = panel_y
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
         f.fit(y[:80], forecasting_horizon=5)
@@ -175,7 +175,7 @@ class TestObserveRewind:
         assert len(y_pred) == 5
 
     def test_rewind(self, panel_y):
-        """rewind should reset observation state per group."""
+        """Rewind should reset observation state per group."""
         y = panel_y
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
         f.fit(y[:80], forecasting_horizon=5)

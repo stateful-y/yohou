@@ -32,6 +32,7 @@ dependencies = [
 plotting = [
     "plotly>=5.19",
     "plotly-resampler>=0.11",
+    "pytz",
     "statsmodels>=0.14",
 ]
 
@@ -53,7 +54,7 @@ tests = [
 ]
 lint = [
     "ruff>=0.8.0",
-    "ty>=0.0.12",
+    "ty>=0.0.29",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -134,10 +135,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415"]  # Allow assert statements, prints, magic values, and imports not at the top
+"tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415", "D"]  # Allow assert statements, prints, magic values, imports not at the top, and no docstrings
 "docs/**/*" = ["T201", "ARG001", "PLW0603", "SIM105", "SIM108"]  # Allow prints, unused args, globals, and simplifiable patterns in documentation hooks
-"src/yohou/**/*" = ["D"]  # Ignore pydocstyle everywhere except plotting
-"src/yohou/plotting/**/*" = []  # Re-enable all rules (including D) for plotting
+
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
@@ -156,6 +156,7 @@ ignore-module = false
 ignore-nested-functions = false
 ignore-nested-classes = true
 ignore-setters = false
+ignore-overloaded-functions = true
 fail-under = 100
 exclude = ["setup.py", "docs", "build", "tests", "*_version.py"]
 ignore-regex = ["^get$", "^mock_.*", ".*BaseClass.*"]
@@ -165,14 +166,6 @@ whitelist-regex = []
 color = true
 omit-covered-files = false
 
-[tool.ty.rules]
-call-non-callable = "warn"
-invalid-argument-type = "warn"
-invalid-assignment = "warn"
-invalid-return-type = "warn"
-no-matching-overload = "warn"
-unresolved-attribute = "warn"
-unsupported-operator = "warn"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

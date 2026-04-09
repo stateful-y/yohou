@@ -96,7 +96,6 @@ class _BaseTrendForecaster(BasePointForecaster):
             Transformed features.
 
         """
-
         y_t, X_t = super()._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
 
         # Panel data

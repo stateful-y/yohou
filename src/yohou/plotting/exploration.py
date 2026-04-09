@@ -968,7 +968,7 @@ def plot_missing_data(
                 df["time"].max(),  # type: ignore[arg-type]
                 interval=sampling_interval,
                 eager=True,
-            ),
+            ),  # ty:ignore[no-matching-overload]
         })
         df = full_range.join(df, on="time", how="left")
 
@@ -1514,8 +1514,8 @@ def plot_outliers(
             std = series.std()
             if std is None or std == 0 or mean is None:
                 return pl.Series([False] * len(series)), None, None
-            lower = mean - threshold * std
-            upper = mean + threshold * std
+            lower = mean - threshold * std  # ty:ignore[unsupported-operator]
+            upper = mean + threshold * std  # ty:ignore[unsupported-operator]
             mask = ((series - mean).abs() / std) > threshold
         elif method == "iqr":
             q1 = series.quantile(0.25)

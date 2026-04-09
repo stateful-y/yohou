@@ -207,7 +207,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             Transformer weight.
 
         """
-        return sklearn_FeatureUnion._iter(self)  # type: ignore[arg-type,return-value]
+        return sklearn_FeatureUnion._iter(self)  # type: ignore[arg-type, invalid-argument-type, return-value]  # ty:ignore[invalid-argument-type]
 
     def __getitem__(self, ind: int | str | slice) -> Any:
         """Return a sub-union or a single transformer.
@@ -291,7 +291,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             Results from parallel execution.
 
         """
-        return sklearn_FeatureUnion._parallel_func(self, X, y, func, routed_params)  # type: ignore[arg-type]
+        return sklearn_FeatureUnion._parallel_func(self, X, y, func, routed_params)  # type: ignore[arg-type, invalid-argument-type]  # ty:ignore[invalid-argument-type]
 
     def _update_transformer_list(self, transformers: Any) -> None:
         """Update transformer_list with fitted transformers.
@@ -419,7 +419,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             True if the union is fitted.
 
         """
-        return sklearn_FeatureUnion.__sklearn_is_fitted__(self)  # type: ignore[return-value]
+        return sklearn_FeatureUnion.__sklearn_is_fitted__(self)  # type: ignore[invalid-argument-type, return-value]  # ty:ignore[invalid-argument-type]
 
     def _sk_visual_block_(self) -> Any:
         """Get visual block representation.
@@ -430,7 +430,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             Visual block representation.
 
         """
-        return sklearn_FeatureUnion._sk_visual_block_(self)  # type: ignore[arg-type]
+        return sklearn_FeatureUnion._sk_visual_block_(self)  # type: ignore[arg-type, invalid-argument-type]  # ty:ignore[invalid-argument-type]
 
     def _get_observation_horizons(self) -> list[int]:
         """Get observation horizons from all transformers.

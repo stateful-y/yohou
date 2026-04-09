@@ -1,5 +1,10 @@
 """Tests for PanelColorManager and color consistency across plots."""
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 from yohou.plotting._utils import PanelColorManager, palette_yohou
 
 

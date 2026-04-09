@@ -109,4 +109,5 @@ class TestSubdirExamples:
     @pytest.mark.parametrize("notebook_file", _collect_notebooks("plotting"))
     def test_plotting_example(self, notebook_file: pathlib.Path) -> None:
         """Test that a plotting/ notebook example runs successfully."""
+        pytest.importorskip("plotly_resampler", reason="plotting extra not installed")
         _run_notebook(notebook_file)

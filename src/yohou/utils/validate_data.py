@@ -325,9 +325,7 @@ def validate_scorer_data(
     scores: None = None,
     reset: bool = True,
     inverse: bool = False,
-) -> tuple[pl.DataFrame, None, None]:
-    """Validate scorer data in fit context."""
-    ...
+) -> tuple[pl.DataFrame, None, None]: ...
 
 
 @overload
@@ -339,9 +337,7 @@ def validate_scorer_data(
     scores: pl.DataFrame = ...,
     reset: bool = False,
     inverse: bool = True,
-) -> tuple[pl.DataFrame, pl.DataFrame, list]:
-    """Validate scorer data in inverse context."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame, list]: ...
 
 
 @overload
@@ -353,9 +349,7 @@ def validate_scorer_data(
     scores: None = None,
     reset: bool = False,
     inverse: bool = False,
-) -> tuple[pl.DataFrame, pl.DataFrame, list]:
-    """Validate scorer data in score context."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame, list]: ...
 
 
 def validate_scorer_data(
@@ -576,15 +570,13 @@ def validate_scorer_data(
 @overload
 def validate_splitter_data(
     splitter: BaseSplitter, y: pl.DataFrame, X: pl.DataFrame | None
-) -> tuple[pl.DataFrame, pl.DataFrame | None]:
-    """Validate splitter data with non-None y."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame | None]: ...
 
 
 @overload
-def validate_splitter_data(splitter: BaseSplitter, y: None, X: pl.DataFrame | None) -> tuple[None, pl.DataFrame | None]:
-    """Validate splitter data with None y."""
-    ...
+def validate_splitter_data(
+    splitter: BaseSplitter, y: None, X: pl.DataFrame | None
+) -> tuple[None, pl.DataFrame | None]: ...
 
 
 def validate_splitter_data(
@@ -650,9 +642,7 @@ def validate_forecaster_data(
     *,
     reset: Literal[True] = True,
     panel_group_names: list[str] | None = None,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, None]:
-    """Validate forecaster data in fit context with non-None y."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame | None, None]: ...
 
 
 @overload
@@ -663,9 +653,7 @@ def validate_forecaster_data(
     *,
     reset: Literal[True] = True,
     panel_group_names: list[str] | None = None,
-) -> tuple[None, pl.DataFrame | None, None]:
-    """Validate forecaster data in fit context with None y."""
-    ...
+) -> tuple[None, pl.DataFrame | None, None]: ...
 
 
 @overload
@@ -676,9 +664,7 @@ def validate_forecaster_data(
     *,
     reset: Literal[False],
     panel_group_names: list[str] | None = None,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, list[str] | None]:
-    """Validate forecaster data in predict/update context with non-None y."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame | None, list[str] | None]: ...
 
 
 @overload
@@ -689,9 +675,7 @@ def validate_forecaster_data(
     *,
     reset: Literal[False],
     panel_group_names: list[str] | None = None,
-) -> tuple[None, pl.DataFrame | None, list[str] | None]:
-    """Validate forecaster data in predict/update context with None y."""
-    ...
+) -> tuple[None, pl.DataFrame | None, list[str] | None]: ...
 
 
 def validate_forecaster_data(
@@ -825,9 +809,7 @@ def validate_transformer_data(
     observation_horizon: int | None = None,
     stateful: bool = False,
     **check_params,
-) -> pl.DataFrame:
-    """Validate transformer data in fit context."""
-    ...
+) -> pl.DataFrame: ...
 
 
 @overload
@@ -842,9 +824,7 @@ def validate_transformer_data(
     observation_horizon: int | None = None,
     stateful: Literal[True],
     **check_params,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Validate transformer data for stateful inverse transform."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame]: ...
 
 
 @overload
@@ -859,9 +839,7 @@ def validate_transformer_data(
     observation_horizon: int | None = None,
     stateful: Literal[False] = ...,
     **check_params,
-) -> tuple[pl.DataFrame, None]:
-    """Validate transformer data for stateless inverse transform."""
-    ...
+) -> tuple[pl.DataFrame, None]: ...
 
 
 @overload
@@ -876,9 +854,7 @@ def validate_transformer_data(
     observation_horizon: int | None = None,
     stateful: bool = False,
     **check_params,
-) -> pl.DataFrame:
-    """Validate transformer data for forward transform."""
-    ...
+) -> pl.DataFrame: ...
 
 
 def validate_transformer_data(

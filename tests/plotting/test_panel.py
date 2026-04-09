@@ -7,6 +7,11 @@ Tests deeper panel scenarios not covered by per-module tests:
 - Subplot count validation
 """
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 import plotly.graph_objects as go
 import polars as pl
 import pytest

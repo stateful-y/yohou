@@ -316,7 +316,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             forecasting_horizon = self.fit_forecasting_horizon_
         if coverage_rates is None:
             # fit_coverage_rates_ is set by concrete subclasses during fit().
-            coverage_rates = self.fit_coverage_rates_  # type: ignore[attr-defined]
+            coverage_rates = self.fit_coverage_rates_  # type: ignore[attr-defined, unresolved-attribute]  # ty:ignore[unresolved-attribute]
         return self._validate_fit_params(forecasting_horizon, coverage_rates)
 
     def predict_interval(
@@ -423,7 +423,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                         # Note: median_horizontal exists in polars but ty's stubs
                         # don't include it yet. Safe to ignore.
                         y_data[col] = y_pred_step_inv.select(
-                            pl.median_horizontal(all_bound_cols)  # type: ignore[attr-defined]
+                            pl.median_horizontal(all_bound_cols)  # type: ignore[attr-defined, unresolved-attribute]  # ty:ignore[unresolved-attribute]
                         ).to_series()
                     else:
                         y_data[col] = y_pred_step_inv.select(pl.mean_horizontal(all_bound_cols)).to_series()

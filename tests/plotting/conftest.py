@@ -1,9 +1,14 @@
 """Shared fixtures for plotting tests."""
 
-import numpy as np
-import polars as pl
 import pytest
-from plotly import graph_objects as go
+
+# Skip the entire plotting test directory when the plotting extra is not installed
+# (e.g. on Python 3.14 where tsdownsample cannot be built yet).
+plotly = pytest.importorskip("plotly", reason="plotting extra not installed")
+
+import numpy as np  # noqa: E402
+import polars as pl  # noqa: E402
+from plotly import graph_objects as go  # noqa: E402
 
 
 @pytest.fixture

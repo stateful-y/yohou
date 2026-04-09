@@ -1,5 +1,10 @@
 """Tests for forecasting plotting functions."""
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 import importlib.util
 from unittest.mock import patch
 

@@ -181,7 +181,7 @@ def plot_forecast(
     validate_plotting_data(y_test)
     if isinstance(y_pred, dict):
         for _name, pred_df in y_pred.items():
-            validate_plotting_data(pred_df)  # type: ignore[invalid-argument-type]
+            validate_plotting_data(pred_df)  # type: ignore[invalid-argument-type]  # ty:ignore[invalid-argument-type]
     else:
         validate_plotting_data(y_pred)
     if y_train is not None:
@@ -227,7 +227,7 @@ def plot_forecast(
     if isinstance(y_pred, dict):
         return _plot_forecast_multi_model(
             y_test=y_test,
-            y_preds=y_pred,  # type: ignore[invalid-argument-type]
+            y_preds=y_pred,  # type: ignore[invalid-argument-type]  # ty:ignore[invalid-argument-type]
             y_train=y_train,
             coverage_rates=coverage_rates,
             n_history=n_history,
@@ -919,7 +919,7 @@ def _plot_forecast_panel(
     # Normalise y_pred into a model-name -> DataFrame mapping
     is_multi_model = isinstance(y_pred, dict)
     if is_multi_model:
-        model_preds: dict[str, pl.DataFrame] = y_pred  # type: ignore[assignment]
+        model_preds: dict[str, pl.DataFrame] = y_pred  # type: ignore[assignment, invalid-assignment]  # ty:ignore[invalid-assignment]
         model_names = list(model_preds.keys())
         model_colors = resolve_color_palette(_model_pal, len(model_names))
     else:
@@ -1563,7 +1563,8 @@ def _compute_stl(
     except ImportError:
         msg = (
             "statsmodels is required for STL decomposition. "
-            "Install it with: pip install yohou[plotting]"
+            "Install it with:  pip install yohou[plotting]  "
+            "or  pip install statsmodels"
         )
         raise ImportError(msg) from None
 
@@ -1653,7 +1654,8 @@ def _compute_mstl(
     except ImportError:
         msg = (
             "statsmodels>=0.14 is required for MSTL decomposition. "
-            "Install it with: pip install yohou[plotting]"
+            "Install it with:  pip install yohou[plotting]  "
+            "or  pip install 'statsmodels>=0.14'"
         )
         raise ImportError(msg) from None
 
@@ -1763,7 +1765,8 @@ def _compute_classical(
     except ImportError:
         msg = (
             "statsmodels is required for classical decomposition. "
-            "Install it with: pip install yohou[plotting]"
+            "Install it with:  pip install yohou[plotting]  "
+            "or  pip install statsmodels"
         )
         raise ImportError(msg) from None
 
@@ -2032,7 +2035,14 @@ def plot_decomposition(
         value_cols = validate_plotting_data(y, columns=columns, exclude=["time"])
 
         if method == "mstl":
-            components = _mstl_to_component_dict(y, components_list, value_cols, periods, robust, model=model)
+            components = _mstl_to_component_dict(
+                y,
+                components_list,
+                value_cols,
+                periods,  # ty:ignore[invalid-argument-type]
+                robust,
+                model=model,
+            )
             title = title or "MSTL Decomposition"
         elif method == "classical":
             components = _classical_to_component_dict(

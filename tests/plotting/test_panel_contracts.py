@@ -1,5 +1,10 @@
 """Tests for legend, color, and panel rendering contracts after the standardization refactoring."""
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 import numpy as np
 import polars as pl
 import pytest

@@ -1,5 +1,10 @@
 """Tests for diagnostic plotting functions (ACF, PACF, spectrum, etc.)."""
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 import numpy as np
 import polars as pl
 import pytest
@@ -1280,9 +1285,6 @@ class TestPlotSeasonalHeatmap:
         assert_figure_valid(fig)
 
 
-# Priority 1 - Scatter Matrix Panel Paths
-
-
 class TestPlotScatterMatrixPanelPaths:
     """Cover scatter matrix panel branches: grid, facet, season, diagonal."""
 
@@ -1371,9 +1373,6 @@ class TestPlotScatterMatrixPanelPaths:
             assert_figure_valid(fig)
 
 
-# Priority 2 - Correlation Heatmap Panel Paths
-
-
 class TestPlotCorrelationHeatmapPanelPaths:
     """Cover correlation heatmap panel separate and grid branches."""
 
@@ -1404,9 +1403,6 @@ class TestPlotCorrelationHeatmapPanelPaths:
         fig = plot_correlation_heatmap(panel_heatmap_df, facet_by=None)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
-
-
-# Priority 3 - Other Panel Paths
 
 
 class TestPlotCrossCorrelationPanelData:
@@ -1568,9 +1564,6 @@ class TestPlotPartialAutocorrelationMultiColumn:
         fig = plot_partial_autocorrelation(yearly_2col_df, columns=["y", "y2"], max_lags=10)
         assert_figure_valid(fig)
         assert len(fig.data) > 1
-
-
-# Priority 4 - Edge Cases
 
 
 class TestSeasonalityHighlightCycleMatch:

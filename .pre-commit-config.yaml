@@ -40,7 +40,7 @@ repos:
 
   # Markdown linting and formatting with rumdl
   - repo: https://github.com/rvben/rumdl-pre-commit
-    rev: v0.1.33
+    rev: v0.1.68
     hooks:
       - id: rumdl
       - id: rumdl-fmt
@@ -50,7 +50,7 @@ repos:
     hooks:
       - id: ty
         name: ty
-        entry: uv run ty check src
+        entry: uv run --extra plotting ty check src
         language: system
         types: [python]
         files: ^src/
@@ -58,7 +58,7 @@ repos:
 
   # Markdown linting and formatting with rumdl
   - repo: https://github.com/rvben/rumdl-pre-commit
-    rev: v0.1.33
+    rev: v0.1.68
     hooks:
       - id: rumdl
       - id: rumdl-fmt

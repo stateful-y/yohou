@@ -253,7 +253,6 @@ def fit_and_score_data():
 @pytest.fixture()
 def fitted_forecaster_data():
     """Fitted forecaster with train/test data for direct _score tests."""
-
     length = 30
     fh = 5
     time = pl.datetime_range(
@@ -341,7 +340,6 @@ class TestFitAndScoreVerbose:
 
     def test_verbose_3_with_split_progress(self, fit_and_score_data):
         """Verbose > 2 builds progress and parameter messages."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -364,7 +362,6 @@ class TestFitAndScoreVerbose:
 
     def test_verbose_10_with_candidate_progress(self, fit_and_score_data):
         """Verbose > 9 includes candidate progress in message."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -386,7 +383,6 @@ class TestFitAndScoreVerbose:
 
     def test_verbose_3_multimetric_formats_dict_scores(self, fit_and_score_data):
         """Verbose > 2 with multimetric scorer formats dict test_scores."""
-
         y, train, test, fh = fit_and_score_data
         ms = _MultimetricScorer(
             scorers={"mae": MeanAbsoluteError(), "mse": MeanSquaredError()},
@@ -412,7 +408,6 @@ class TestFitAndScoreVerbose:
 
     def test_verbose_2_without_parameters(self, fit_and_score_data):
         """Verbose > 1 with parameters=None produces empty params_msg."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -553,7 +548,6 @@ class TestFitAndScoreReturnTrainScore:
 
     def test_train_score_computed_after_rewind(self, fit_and_score_data):
         """Training scores computed by rewinding and scoring on train data."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -581,7 +575,6 @@ class TestFitAndScoreOptionalReturns:
 
     def test_return_times(self, fit_and_score_data):
         """Fit and score times returned when return_times=True."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -605,7 +598,6 @@ class TestFitAndScoreOptionalReturns:
 
     def test_return_n_test_samples(self, fit_and_score_data):
         """Number of test samples returned when flag is set."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -626,7 +618,6 @@ class TestFitAndScoreOptionalReturns:
 
     def test_return_parameters(self, fit_and_score_data):
         """Evaluated parameters returned when flag is set."""
-
         y, train, test, fh = fit_and_score_data
         params = {"seasonality": 1}
         result = _fit_and_score(
@@ -648,7 +639,6 @@ class TestFitAndScoreOptionalReturns:
 
     def test_return_forecaster(self, fit_and_score_data):
         """Fitted forecaster returned when flag is set."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),

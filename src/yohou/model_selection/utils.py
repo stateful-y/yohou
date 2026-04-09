@@ -76,11 +76,13 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
             f"values. Got {scoring}."
         )
 
-    return scorers  # type: ignore[return-value]
+    return scorers  # type: ignore[invalid-return-type, return-value]  # ty:ignore[invalid-return-type]
 
 
 class _MultimetricScorer:
-    """Callable for multimetric scoring used to avoid repeated calls
+    """Callable for multimetric scoring used to avoid repeated calls.
+
+    Avoids repeated calls
     to `predict_proba`, `predict`, and `decision_function`.
 
     `_MultimetricScorer` will return a dictionary of scores corresponding to
@@ -130,7 +132,7 @@ class _MultimetricScorer:
                 params = routed_params.get(name)
                 if params is None:
                     raise ValueError(f"Missing routing params for scorer '{name}'")
-                scores[name] = scorer(y_truth, y_pred, **params.score)  # type: ignore[assignment]
+                scores[name] = scorer(y_truth, y_pred, **params.score)  # ty:ignore[invalid-assignment]
             except Exception as e:
                 if self._raise_exc:
                     raise e
@@ -149,7 +151,6 @@ class _MultimetricScorer:
         routing : MetadataRouter
             A `MetadataRouter` encapsulating routing information.
         """
-
         router = MetadataRouter(owner=self)
         for name, scorer in self._scorers.items():
             router.add(
@@ -483,11 +484,13 @@ def _score(
 
         if needs_interval:
             coverage_rates_for_predict = _collect_coverage_rates(scorer)
-            y_pred = forecaster.observe_predict_interval(  # type: ignore[union-attr]
+            y_pred = forecaster.observe_predict_interval(  # ty:ignore[unresolved-attribute]
                 y_test, X_test, coverage_rates=coverage_rates_for_predict, **predict_func_params
             )
         else:
-            y_pred = forecaster.observe_predict(y_test, X_test, **predict_func_params)  # type: ignore[arg-type]
+            y_pred = forecaster.observe_predict(  # ty:ignore[unresolved-attribute]
+                y_test, X_test, **predict_func_params
+            )
 
         # observe_predict produces overlapping prediction windows when the last
         # observation chunk is smaller than stride. Deduplicate (keeping the most
@@ -499,7 +502,7 @@ def _score(
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):
             scorer.fit(y_train)
-        scores = scorer(y_test, y_pred, **score_params)  # type: ignore[assignment]
+        scores = scorer(y_test, y_pred, **score_params)  # ty:ignore[invalid-assignment]
 
     except Exception:  # noqa: BLE001
         if isinstance(scorer, _MultimetricScorer):

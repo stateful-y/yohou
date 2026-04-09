@@ -1,5 +1,10 @@
 """Tests for signal plotting functions."""
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 import polars as pl
 import pytest
 from plotly import graph_objects as go

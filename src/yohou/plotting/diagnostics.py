@@ -282,7 +282,7 @@ def _compute_acf_values(series: pl.Series, max_lags: int) -> list[float]:
             s2 = series[lag:] - mean_val
             numerator = (s1 * s2).sum()
             denominator = ((series - mean_val) ** 2).sum()
-            acf_values.append(numerator / denominator if denominator != 0 else 0)
+            acf_values.append(numerator / denominator if denominator != 0 else 0)  # ty:ignore[unsupported-operator]
     return acf_values
 
 
@@ -320,14 +320,11 @@ def _compute_pacf(
     try:
         from statsmodels.tsa.stattools import pacf as sm_pacf  # noqa: PLC0415
     except ImportError:
-        msg = (
-            "statsmodels is required for PACF computation. "
-            "Install it with: pip install yohou[plotting]"
-        )
+        msg = "statsmodels is required for PACF computation. Install it with: pip install yohou[plotting]"
         raise ImportError(msg) from None
 
     if alpha is not None:
-        pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # type: ignore[arg-type]
+        pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # type: ignore[arg-type, invalid-argument-type]  # ty:ignore[invalid-argument-type]
         # statsmodels returns CIs centered on the PACF values (pacf +/- z/sqrt(n)).
         # For significance testing we need horizontal bands at +/-z/sqrt(n) (centered
         # on zero), so subtract the PACF values from both bounds.
@@ -335,8 +332,8 @@ def _compute_pacf(
         ci_hi = (confint[:, 1] - pacf_result).tolist()
         return pacf_result.tolist(), ci_lo, ci_hi
 
-    pacf_result = sm_pacf(values, nlags=nlags, method=method)  # type: ignore[arg-type]
-    return pacf_result.tolist(), None, None  # type: ignore[union-attr]
+    pacf_result = sm_pacf(values, nlags=nlags, method=method)  # type: ignore[arg-type, invalid-argument-type]  # ty:ignore[invalid-argument-type]
+    return pacf_result.tolist(), None, None  # type: ignore[union-attr, unresolved-attribute]  # ty:ignore[unresolved-attribute]
 
 
 def plot_partial_autocorrelation(
@@ -1973,7 +1970,11 @@ def plot_lag_scatter(
                                 },
                                 name=slabel,
                                 legendgroup=slabel,
-                                legendgrouptitle=({"text": seasonality.title()} if is_first_cell and si == 0 else None),
+                                legendgrouptitle=(
+                                    {"text": seasonality.title()}  # ty:ignore[unresolved-attribute]
+                                    if is_first_cell and si == 0
+                                    else None
+                                ),
                                 showlegend=is_first_cell,
                                 hovertemplate=(
                                     f"<b>{col}</b> ({slabel})<br>"
@@ -2011,8 +2012,8 @@ def plot_lag_scatter(
                 if show_diagonal:
                     source = df_aug if df_aug is not None else df
                     dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
-                    vmin = min(float(dl_all[col].min()), float(dl_all["lagged"].min()))  # type: ignore[arg-type]
-                    vmax = max(float(dl_all[col].max()), float(dl_all["lagged"].max()))  # type: ignore[arg-type]
+                    vmin = min(float(dl_all[col].min()), float(dl_all["lagged"].min()))  # type: ignore[arg-type, invalid-argument-type]  # ty:ignore[invalid-argument-type]
+                    vmax = max(float(dl_all[col].max()), float(dl_all["lagged"].max()))  # type: ignore[arg-type, invalid-argument-type]  # ty:ignore[invalid-argument-type]
                     fig.add_trace(
                         go.Scatter(
                             x=[vmin, vmax],
@@ -2064,7 +2065,9 @@ def plot_lag_scatter(
                             },
                             name=slabel,
                             legendgroup=slabel,
-                            legendgrouptitle=({"text": seasonality.title()} if si == 0 else None),
+                            legendgrouptitle=(
+                                {"text": seasonality.title()} if si == 0 else None  # ty:ignore[unresolved-attribute]
+                            ),
                             showlegend=True,
                             hovertemplate=(
                                 f"<b>{col}</b> ({slabel})<br>y(t-{lag}): %{{x:.2f}}<br>y(t): %{{y:.2f}}<extra></extra>"
@@ -2122,7 +2125,7 @@ def plot_lag_scatter(
                 denominator = ((y_lagged - x_mean) ** 2).sum()
 
                 if denominator != 0 and x_mean is not None and y_mean is not None:
-                    slope = float(numerator / denominator)
+                    slope = float(numerator / denominator)  # ty:ignore[unsupported-operator]
                     intercept = cast(float, y_mean) - slope * cast(float, x_mean)
 
                     y_lagged_min = y_lagged.min()
@@ -3093,7 +3096,7 @@ def plot_scatter_matrix(
                             pass
                         else:
                             data_range = float(vals.max()) - float(vals.min())
-                            if data_range > 0 and kde.factor > 1e-10:
+                            if data_range > 0 and kde.factor > 1e-10:  # ty:ignore[unsupported-operator]
                                 x_grid = np.linspace(float(vals.min()), float(vals.max()), 200)
                                 fig.add_trace(
                                     go.Scatter(

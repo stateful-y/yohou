@@ -1,5 +1,10 @@
 """Tests for model evaluation plotting functions."""
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 import numpy as np
 import polars as pl
 import pytest

@@ -32,7 +32,7 @@ try:
         cleaned = [_BACKTICK_NAME_RE.sub(r"\1", line) for line in content]
         return _original_parse_see_also(self, cleaned)
 
-    NumpyDocString._parse_see_also = _parse_see_also_strip_backticks  # type: ignore[invalid-assignment]
+    NumpyDocString._parse_see_also = _parse_see_also_strip_backticks  # type: ignore[invalid-assignment]  # ty:ignore[invalid-assignment]
 except (ImportError, AttributeError):
     pass
 
