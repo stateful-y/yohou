@@ -3,7 +3,12 @@
 from typing import Literal
 
 import polars as pl
-from plotly import graph_objects as go
+
+try:
+    from plotly import graph_objects as go
+except ImportError as e:
+    msg = "plotly is required for yohou plotting. Install: pip install yohou[plotting]"
+    raise ImportError(msg) from e
 
 from yohou.model_selection import BaseSplitter
 from yohou.plotting._utils import _create_figure, apply_default_layout, resolve_color_palette

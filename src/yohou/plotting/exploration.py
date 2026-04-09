@@ -3,9 +3,14 @@
 from typing import Literal
 
 import numpy as np
-import plotly.graph_objects as go
 import polars as pl
-from plotly.subplots import make_subplots
+
+try:
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+except ImportError as e:
+    msg = "plotly is required for yohou plotting. Install: pip install yohou[plotting]"
+    raise ImportError(msg) from e
 
 from yohou.plotting._utils import (
     LINE_DASH_SEQUENCE,

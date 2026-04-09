@@ -5,11 +5,16 @@ from collections.abc import Callable
 from typing import Literal
 
 import numpy as np
-import plotly.graph_objects as go
 import polars as pl
-from plotly.subplots import make_subplots
 from pydantic import StrictFloat
 from scipy import stats
+
+try:
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+except ImportError as e:
+    msg = "plotly is required for yohou plotting. Install: pip install yohou[plotting]"
+    raise ImportError(msg) from e
 
 from yohou.metrics import BaseIntervalScorer
 from yohou.metrics.base import BaseScorer

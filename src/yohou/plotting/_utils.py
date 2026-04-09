@@ -7,18 +7,19 @@ import warnings
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-import plotly.graph_objects as go
-import polars as pl
-from plotly.subplots import make_subplots
-from plotly_resampler import FigureResampler, FigureWidgetResampler
-from plotly_resampler.aggregation.aggregation_interface import AbstractAggregator
-from plotly_resampler.aggregation.gap_handler_interface import AbstractGapHandler
-from plotly_resampler.aggregation.gap_handlers import NoGapHandler
-from plotly_resampler.figure_resampler.figure_resampler_interface import (
-    AbstractFigureAggregator,
-)
+try:
+    import plotly.graph_objects as go
+    import polars as pl
+    from plotly.subplots import make_subplots
+except ImportError as e:
+    msg = "plotly is required for yohou plotting. Install: pip install yohou[plotting]"
+    raise ImportError(msg) from e
+
+if TYPE_CHECKING:
+    from plotly_resampler.aggregation.aggregation_interface import AbstractAggregator
+    from plotly_resampler.aggregation.gap_handler_interface import AbstractGapHandler
 
 from yohou.utils import inspect_panel
 
@@ -326,11 +327,21 @@ def _create_figure(
     """
     mode = _get_resampler_mode(resampler)
     if mode == "widget":
+        try:
+            from plotly_resampler import FigureWidgetResampler  # noqa: PLC0415
+        except ImportError as e:
+            msg = "plotly-resampler is required for resampler mode. Install: pip install plotly-resampler"
+            raise ImportError(msg) from e
         return FigureWidgetResampler(
             go.Figure(**kwargs),
             **_build_resampler_kwargs(),
         )
     if mode:
+        try:
+            from plotly_resampler import FigureResampler  # noqa: PLC0415
+        except ImportError as e:
+            msg = "plotly-resampler is required for resampler mode. Install: pip install plotly-resampler"
+            raise ImportError(msg) from e
         return FigureResampler(
             go.Figure(**kwargs),
             **_build_resampler_kwargs(),
@@ -359,11 +370,21 @@ def _create_subplots(
     fig = make_subplots(**subplots_kwargs)
     mode = _get_resampler_mode(resampler)
     if mode == "widget":
+        try:
+            from plotly_resampler import FigureWidgetResampler  # noqa: PLC0415
+        except ImportError as e:
+            msg = "plotly-resampler is required for resampler mode. Install: pip install plotly-resampler"
+            raise ImportError(msg) from e
         return FigureWidgetResampler(
             fig,
             **_build_resampler_kwargs(),
         )
     if mode:
+        try:
+            from plotly_resampler import FigureResampler  # noqa: PLC0415
+        except ImportError as e:
+            msg = "plotly-resampler is required for resampler mode. Install: pip install plotly-resampler"
+            raise ImportError(msg) from e
         return FigureResampler(
             fig,
             **_build_resampler_kwargs(),
@@ -380,6 +401,13 @@ def _fill_trace_kwargs(fig: go.Figure) -> dict:
 
     Returns an empty dict for plain figures.
     """
+    try:
+        from plotly_resampler.aggregation.gap_handlers import NoGapHandler  # noqa: PLC0415
+        from plotly_resampler.figure_resampler.figure_resampler_interface import (  # noqa: PLC0415
+            AbstractFigureAggregator,
+        )
+    except ImportError:
+        return {}
     if isinstance(fig, AbstractFigureAggregator):
         return {"gap_handler": NoGapHandler()}
     return {}

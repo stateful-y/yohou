@@ -387,17 +387,3 @@ class TestFillTraceKwargs:
 # Re-exports
 
 
-class TestReExports:
-    def test_aggregators_importable(self):
-        from yohou.plotting import LTTB, EveryNthPoint, MinMaxAggregator, MinMaxLTTB
-
-        assert MinMaxLTTB is not None
-        assert LTTB is not None
-        assert MinMaxAggregator is not None
-        assert EveryNthPoint is not None
-
-    def test_gap_handlers_importable(self):
-        from yohou.plotting import MedDiffGapHandler, NoGapHandler
-
-        assert MedDiffGapHandler is not None
-        assert NoGapHandler is not None

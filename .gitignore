@@ -141,9 +141,11 @@ llm-instructions/
 .aider*
 .continue/
 
+# Git worktrees
+.worktrees/
+
 # Pytorch-Lightning
 lightning_logs
 
 # CatBoost
 catboost_info
-.worktrees/

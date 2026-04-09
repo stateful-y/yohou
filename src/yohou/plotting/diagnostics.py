@@ -4,10 +4,15 @@ import math
 from typing import Literal, cast
 
 import numpy as np
-import plotly.graph_objects as go
 import polars as pl
-from plotly.subplots import make_subplots
 from scipy.stats import norm
+
+try:
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+except ImportError as e:
+    msg = "plotly is required for yohou plotting. Install: pip install yohou[plotting]"
+    raise ImportError(msg) from e
 
 from yohou.plotting._utils import (
     DEFAULT_WIDTH,
@@ -281,66 +286,6 @@ def _compute_acf_values(series: pl.Series, max_lags: int) -> list[float]:
     return acf_values
 
 
-def _compute_pacf_durbin_levinson(
-    values: np.ndarray,
-    nlags: int,
-    alpha: float | None,
-) -> tuple[list[float], list[float] | None, list[float] | None]:
-    """Compute PACF using Durbin-Levinson recursion (built-in fallback).
-
-    Parameters
-    ----------
-    values : np.ndarray
-        1-D numeric array with no NaNs.
-    nlags : int
-        Number of lags.
-    alpha : float | None
-        Significance level for confidence intervals.  If *None*, no
-        intervals are returned.
-
-    Returns
-    -------
-    tuple[list[float], list[float] | None, list[float] | None]
-        ``(pacf_values, ci_lower, ci_upper)``.  ``ci_lower`` and
-        ``ci_upper`` are *None* when *alpha* is *None*.
-
-    """
-    n = len(values)
-    mean_val = float(np.nanmean(values))
-
-    # ACF
-    acf: list[float] = [1.0]
-    centered = values - mean_val
-    denom = float(np.sum(centered**2))
-    for lag in range(1, nlags + 1):
-        num = float(np.sum(centered[:-lag] * centered[lag:]))
-        acf.append(num / denom if denom != 0 else 0.0)
-
-    # Durbin-Levinson
-    pacf_vals: list[float] = [1.0]
-    if nlags > 0:
-        phi: list[list[float]] = [[acf[1]]]
-        pacf_vals.append(acf[1])
-        for k in range(2, nlags + 1):
-            num = acf[k] - sum(phi[k - 2][j] * acf[k - j - 1] for j in range(k - 1))
-            den = 1.0 - sum(phi[k - 2][j] * acf[j + 1] for j in range(k - 1))
-            pk = num / den if abs(den) > 1e-10 else 0.0
-            pacf_vals.append(pk)
-            new_phi = [phi[k - 2][j] - pk * phi[k - 2][k - j - 2] for j in range(k - 1)]
-            new_phi.append(pk)
-            phi.append(new_phi)
-
-    ci_lo: list[float] | None = None
-    ci_hi: list[float] | None = None
-    if alpha is not None:
-        z = norm.ppf(1 - alpha / 2)
-        ci = z / math.sqrt(n)
-        ci_lo = [-ci] * (nlags + 1)
-        ci_hi = [ci] * (nlags + 1)
-
-    return pacf_vals, ci_lo, ci_hi
-
-
 def _compute_pacf(
     values: np.ndarray,
     nlags: int,
@@ -348,7 +293,7 @@ def _compute_pacf(
     method: str = "yw",
     alpha: float | None = None,
 ) -> tuple[list[float], list[float] | None, list[float] | None]:
-    """Compute PACF, preferring statsmodels when available.
+    """Compute PACF using ``statsmodels.tsa.stattools.pacf``.
 
     Parameters
     ----------
@@ -357,8 +302,7 @@ def _compute_pacf(
     nlags : int
         Number of lags.
     method : str
-        PACF method (see ``statsmodels.tsa.stattools.pacf``).  Ignored
-        when falling back to Durbin-Levinson.
+        PACF method (see ``statsmodels.tsa.stattools.pacf``).
     alpha : float | None
         Significance level for confidence intervals.
 
@@ -367,27 +311,25 @@ def _compute_pacf(
     tuple[list[float], list[float] | None, list[float] | None]
         ``(pacf_values, ci_lower, ci_upper)``.
 
-    """
-    import warnings  # noqa: PLC0415
+    Raises
+    ------
+    ImportError
+        If ``statsmodels`` is not installed.
 
+    """
     try:
         from statsmodels.tsa.stattools import pacf as sm_pacf  # noqa: PLC0415
     except ImportError:
-        if method != "yw":
-            warnings.warn(
-                f"statsmodels is not installed; ignoring method='{method}' "
-                "and falling back to built-in Durbin-Levinson (equivalent to "
-                "'yw'). Install statsmodels for additional PACF methods: "
-                "pip install yohou[plotting]",
-                UserWarning,
-                stacklevel=3,
-            )
-        return _compute_pacf_durbin_levinson(values, nlags, alpha)
+        msg = (
+            "statsmodels is required for PACF computation. "
+            "Install it with: pip install yohou[plotting]"
+        )
+        raise ImportError(msg) from None
 
     if alpha is not None:
         pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # type: ignore[arg-type]
-        # statsmodels returns CIs centered on the PACF values (pacf ± z/√n).
-        # For significance testing we need horizontal bands at ±z/√n (centered
+        # statsmodels returns CIs centered on the PACF values (pacf +/- z/sqrt(n)).
+        # For significance testing we need horizontal bands at +/-z/sqrt(n) (centered
         # on zero), so subtract the PACF values from both bounds.
         ci_lo = (confint[:, 0] - pacf_result).tolist()
         ci_hi = (confint[:, 1] - pacf_result).tolist()
@@ -422,10 +364,9 @@ def plot_partial_autocorrelation(
     Shows correlation between the series and its lagged values after removing
     the effect of intermediate lags. Useful for determining appropriate AR order.
 
-    When ``statsmodels`` is installed the computation is delegated to
-    ``statsmodels.tsa.stattools.pacf`` which supports several estimation
-    methods and proper confidence intervals.  Without ``statsmodels`` a
-    built-in Durbin-Levinson recursion is used (equivalent to ``method="yw"``).
+    The computation is delegated to ``statsmodels.tsa.stattools.pacf`` which
+    supports several estimation methods and proper confidence intervals.
+    Requires ``yohou[plotting]``.
 
     Parameters
     ----------
@@ -436,10 +377,10 @@ def plot_partial_autocorrelation(
     max_lags : int | None, default=None
         Maximum number of lags to compute. If None, uses min(len(df)//2, 40).
     method : str, default="yw"
-        PACF estimation method (requires ``statsmodels``).  Options:
-        ``"yw"`` (Yule-Walker), ``"ols"`` (OLS), ``"ywm"`` (Yule-Walker
-        mean-adjusted), ``"burg"``, ``"ldb"`` (Levinson-Durbin biased),
-        ``"ldbiased"``.  Ignored when ``statsmodels`` is not installed.
+        PACF estimation method passed to ``statsmodels.tsa.stattools.pacf``.
+        Options: ``"yw"`` (Yule-Walker), ``"ols"`` (OLS), ``"ywm"``
+        (Yule-Walker mean-adjusted), ``"burg"``, ``"ldb"``
+        (Levinson-Durbin biased), ``"ldbiased"``.
     confidence_level : float, default=0.95
         Confidence level for confidence bands (e.g. ``0.95`` for 95%).
     show_confidence : bool, default=True
@@ -1647,7 +1588,7 @@ def plot_subseasonality(
             return next(iter(figures.values()))
         return figures
 
-    # --- Non-panel path ---
+    # Non-panel path
     fig = _create_subplots(
         resampler,
         rows=nrow,
@@ -1866,7 +1807,7 @@ def plot_lag_scatter(
     if panel_group_names is None and columns is None and _panel_groups:
         panel_group_names = []
 
-    # ---- Panel path ----
+    # Panel path
     if panel_group_names is not None:
         panel_cols = resolve_panel_columns(df, panel_group_names, columns)
         groups, all_members = _group_panel_columns(panel_cols)
@@ -1972,7 +1913,7 @@ def plot_lag_scatter(
             return next(iter(figures.values()))
         return figures
 
-    # ---- Non-panel path ----
+    # Non-panel path
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
 
     season_labels: list[str] | None = None

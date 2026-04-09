@@ -1,13 +1,5 @@
 """Time series plotting module for yohou."""
 
-from plotly_resampler.aggregation.aggregators import (
-    LTTB,
-    EveryNthPoint,
-    MinMaxAggregator,
-    MinMaxLTTB,
-)
-from plotly_resampler.aggregation.gap_handlers import MedDiffGapHandler, NoGapHandler
-
 from yohou.plotting._utils import (
     LINE_DASH_SEQUENCE,
     PanelColorManager,
@@ -58,13 +50,7 @@ from yohou.plotting.model_selection import plot_cv_results_scatter, plot_splits
 from yohou.plotting.signal import plot_phase, plot_spectrum
 
 __all__ = [
-    "EveryNthPoint",
-    "LTTB",
     "LINE_DASH_SEQUENCE",
-    "MedDiffGapHandler",
-    "MinMaxAggregator",
-    "MinMaxLTTB",
-    "NoGapHandler",
     "PanelColorManager",
     "RenderContext",
     "config_context",

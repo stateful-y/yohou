@@ -4,8 +4,13 @@ import re
 from typing import Literal
 
 import numpy as np
-import plotly.graph_objects as go
 import polars as pl
+
+try:
+    import plotly.graph_objects as go
+except ImportError as e:
+    msg = "plotly is required for yohou plotting. Install: pip install yohou[plotting]"
+    raise ImportError(msg) from e
 
 from yohou.plotting._utils import (
     LegendTracker,
@@ -853,7 +858,7 @@ def _plot_forecast_panel(
     _, all_members = _group_panel_columns(all_flat_cols)
     all_group_names = list(groups.keys())
 
-    # --- Build faceting structure -------------------------------------------
+    # Build faceting structure
     # facets: dict from subplot label -> list of columns in that subplot
     # sub_names: the distinct sub-identifiers used for coloring within facets
     # get_sub_name(col) -> the sub-identifier for a column
@@ -1204,7 +1209,7 @@ def plot_time_weight(
         _, all_members = _group_panel_columns(flat_cols)
         all_group_names = list(weight_panel_cols.keys())
 
-        # --- Build faceting structure ---------------------------------------
+        # Build faceting structure
         if facet_by == "member":
             facets: dict[str, list[str]] = {}
             for member in all_members:
@@ -1558,8 +1563,7 @@ def _compute_stl(
     except ImportError:
         msg = (
             "statsmodels is required for STL decomposition. "
-            "Install it with:  pip install yohou[plotting]  "
-            "or  pip install statsmodels"
+            "Install it with: pip install yohou[plotting]"
         )
         raise ImportError(msg) from None
 
@@ -1649,8 +1653,7 @@ def _compute_mstl(
     except ImportError:
         msg = (
             "statsmodels>=0.14 is required for MSTL decomposition. "
-            "Install it with:  pip install yohou[plotting]  "
-            "or  pip install 'statsmodels>=0.14'"
+            "Install it with: pip install yohou[plotting]"
         )
         raise ImportError(msg) from None
 
@@ -1760,8 +1763,7 @@ def _compute_classical(
     except ImportError:
         msg = (
             "statsmodels is required for classical decomposition. "
-            "Install it with:  pip install yohou[plotting]  "
-            "or  pip install statsmodels"
+            "Install it with: pip install yohou[plotting]"
         )
         raise ImportError(msg) from None
 
@@ -1965,7 +1967,7 @@ def plot_decomposition(
 
     decomp_mode = isinstance(components, list | tuple) and (not components or isinstance(components[0], str))
 
-    # -- Decomposition mode --------------------------------------------------
+    # Decomposition mode
     if decomp_mode:
         if method is None:
             msg = (
@@ -2060,7 +2062,7 @@ def plot_decomposition(
 
         # Fall through to the shared dict plotting below
 
-    # -- Dict validation -----------------------------------------------------
+    # Dict validation
     if not isinstance(components, dict):
         msg = (
             "components must be a dict[str, pl.DataFrame] (pre-computed mode) "
@@ -2076,7 +2078,7 @@ def plot_decomposition(
 
     value_cols = validate_plotting_data(y, columns=columns)
 
-    # -- Detect panel data ---------------------------------------------------
+    # Detect panel data
     _, panel_groups = inspect_panel(y)
     is_panel = bool(panel_groups)
 
@@ -2105,7 +2107,7 @@ def plot_decomposition(
             show_legend=show_legend,
         )
 
-    # -- Build subplot structure (shared by both modes) ----------------------
+    # Build subplot structure (shared by both modes)
     panel_names: list[str] = []
     if show_original:
         panel_names.append("Original")

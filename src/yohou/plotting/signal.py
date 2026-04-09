@@ -3,9 +3,14 @@
 from typing import Literal
 
 import numpy as np
-import plotly.graph_objects as go
 import polars as pl
 from scipy.signal import periodogram as scipy_periodogram
+
+try:
+    import plotly.graph_objects as go
+except ImportError as e:
+    msg = "plotly is required for yohou plotting. Install: pip install yohou[plotting]"
+    raise ImportError(msg) from e
 
 from yohou.plotting._utils import (
     LegendTracker,

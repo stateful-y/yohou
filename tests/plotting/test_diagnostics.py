@@ -709,67 +709,6 @@ class TestPlotSeasonalityHighlight:
         assert_figure_valid(fig)
 
 
-class TestPacfDurbinLevinsonFallback:
-    """Tests for built-in PACF when statsmodels is unavailable."""
-
-    def test_durbin_levinson_direct(self):
-        """Direct call to _compute_pacf_durbin_levinson returns valid PACF."""
-        from yohou.plotting.diagnostics import _compute_pacf_durbin_levinson
-
-        rng = np.random.default_rng(42)
-        values = rng.standard_normal(200)
-        pacf_vals, ci_lo, ci_hi = _compute_pacf_durbin_levinson(values, nlags=10, alpha=None)
-
-        assert len(pacf_vals) == 11
-        assert pacf_vals[0] == pytest.approx(1.0)
-        assert ci_lo is None
-        assert ci_hi is None
-
-    def test_durbin_levinson_with_confidence(self):
-        """Confidence intervals are returned when alpha is given."""
-        from yohou.plotting.diagnostics import _compute_pacf_durbin_levinson
-
-        rng = np.random.default_rng(42)
-        values = rng.standard_normal(200)
-        pacf_vals, ci_lo, ci_hi = _compute_pacf_durbin_levinson(values, nlags=5, alpha=0.05)
-
-        assert len(pacf_vals) == 6
-        assert ci_lo is not None
-        assert ci_hi is not None
-        assert len(ci_lo) == 6
-        assert len(ci_hi) == 6
-        assert all(lo < 0 for lo in ci_lo)
-        assert all(hi > 0 for hi in ci_hi)
-
-    def test_statsmodels_fallback_warning(self, monkeypatch):
-        """When statsmodels is missing and method != 'yw', a warning is raised."""
-        import importlib
-        import warnings
-
-        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
-
-        def mock_import(name, *args, **kwargs):
-            if "statsmodels" in name:
-                raise ImportError("mocked")
-            return original_import(name, *args, **kwargs)
-
-        rng = np.random.default_rng(42)
-        values = rng.standard_normal(100)
-
-        monkeypatch.setattr("builtins.__import__", mock_import)
-        try:
-            importlib.invalidate_caches()
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-                from yohou.plotting.diagnostics import _compute_pacf
-
-                pacf_vals, _, _ = _compute_pacf(values, nlags=5, method="ols", alpha=0.05)
-                assert len(pacf_vals) == 6
-                assert any("statsmodels is not installed" in str(wi.message) for wi in w)
-        finally:
-            monkeypatch.undo()
-
-
 class TestDiagnosticsPanelAutoDetect:
     """Tests for panel auto-detection branches in diagnostic plots."""
 
@@ -1632,21 +1571,6 @@ class TestPlotPartialAutocorrelationMultiColumn:
 
 
 # Priority 4 - Edge Cases
-
-
-class TestPacfEdgeCases:
-    """PACF edge cases: statsmodels fallback and zero-variance input."""
-
-    def test_durbin_levinson_zero_variance(self):
-        """Zero-variance input returns PACF of zeros after lag 0."""
-        from yohou.plotting.diagnostics import _compute_pacf_durbin_levinson
-
-        values = np.full(100, 42.0)
-        pacf_vals, ci_lo, ci_hi = _compute_pacf_durbin_levinson(values, nlags=5, alpha=None)
-        assert pacf_vals[0] == pytest.approx(1.0)
-        # All autocorrelations are 0 for constant series
-        for v in pacf_vals[1:]:
-            assert v == pytest.approx(0.0, abs=1e-10)
 
 
 class TestSeasonalityHighlightCycleMatch:

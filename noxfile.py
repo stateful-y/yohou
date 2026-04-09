@@ -28,6 +28,8 @@ def test_coverage(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -56,6 +58,8 @@ def test(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         "--group",
@@ -85,6 +89,8 @@ def test_fast(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -113,6 +119,8 @@ def test_slow(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -139,6 +147,8 @@ def test_examples(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         "--group",
@@ -168,6 +178,8 @@ def test_docstrings(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -181,32 +193,6 @@ def test_docstrings(session: nox.Session) -> None:
         "--no-cov",
         "src/yohou",
         *session.posargs,
-    )
-
-
-@nox.session(venv_backend="uv")
-def validate_docstrings(session: nox.Session) -> None:
-    """Validate numpydoc-style docstrings in the plotting module.
-
-    Runs ruff D-rules (pydocstyle) with the numpy convention against
-    ``src/yohou/plotting/`` to catch docstring formatting regressions.
-    """
-    session.run_install(
-        "uv",
-        "sync",
-        "--no-default-groups",
-        "--group",
-        "lint",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
-    )
-    targets = session.posargs or ["src/yohou/plotting/"]
-    session.run(
-        "ruff",
-        "check",
-        "--select",
-        "D",
-        *targets,
-        external=True,
     )
 
 
@@ -228,6 +214,8 @@ def test_compat(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -304,6 +292,8 @@ def build_docs(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "docs",
         "--group",
@@ -323,6 +313,8 @@ def serve_docs(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "docs",
         "--group",

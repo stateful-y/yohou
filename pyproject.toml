@@ -18,22 +18,22 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "scikit-learn>=1.6.0",
     "sklearn-wrap",
     "scipy>=1.13",
     "polars>=0.20",
-    "plotly>=5.19",
-    "plotly-resampler>=0.11",
-    "pytz",
-    "anywidget>=0.9.21",
     "pydantic>=2.6",
-    "pyarrow>=14.0.0",
 ]
 
 [project.optional-dependencies]
-plotting = ["statsmodels>=0.14"]
+plotting = [
+    "plotly>=5.19",
+    "plotly-resampler>=0.11",
+    "statsmodels>=0.14",
+]
 
 [dependency-groups]
 dev = [
@@ -41,6 +41,7 @@ dev = [
     {include-group = "lint"},
     {include-group = "docs"},
     {include-group = "fix"},
+    {include-group = "examples"}
 ]
 tests = [
     "pytest>=8.3",
@@ -49,7 +50,6 @@ tests = [
     "pytest-xdist>=3.8",
     "covdefaults>=2.3",
     "hypothesis>=6.100",
-    "statsmodels>=0.14",
 ]
 lint = [
     "ruff>=0.8.0",
@@ -69,7 +69,6 @@ fix = [
 examples = [
     "marimo>=0.19.0",
     "catboost>=1.2",
-    "statsmodels>=0.14",
     "yohou-optuna",
     "yohou-nixtla; python_version < '3.14'",
 ]
@@ -119,6 +118,7 @@ select = [
     "SIM", # flake8-simplify
     "PL",  # Pylint
     "T201", # Print statement
+    "D",   # pydocstyle (numpy convention, scoped to plotting)
 ]
 ignore = [
     "E203",   # space before : (needed for how black formats slicing)
@@ -136,6 +136,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415"]  # Allow assert statements, prints, magic values, and imports not at the top
 "docs/**/*" = ["T201", "ARG001", "PLW0603", "SIM105", "SIM108"]  # Allow prints, unused args, globals, and simplifiable patterns in documentation hooks
+"src/yohou/**/*" = ["D"]  # Ignore pydocstyle everywhere except plotting
+"src/yohou/plotting/**/*" = []  # Re-enable all rules (including D) for plotting
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
