@@ -4,6 +4,7 @@ Verifies that ``import yohou`` succeeds even when optional plotting
 dependencies (plotly, plotly-resampler) are not installed.
 """
 
+import importlib.util
 import subprocess
 import sys
 
@@ -62,6 +63,10 @@ def test_import_yohou_plotting_without_plotly_raises():
 class TestLazySubmoduleImport:
     """Tests for __getattr__ lazy import in yohou.__init__."""
 
+    @pytest.mark.skipif(
+        importlib.util.find_spec("plotly") is None,
+        reason="plotly not installed",
+    )
     def test_lazy_plotting_import(self):
         """Accessing yohou.plotting via __getattr__ returns the plotting module."""
         import yohou

@@ -2334,9 +2334,11 @@ class TestScorerReturnValidation:
 
         y_truth, y_pred = panel_data
         scorer = MeanAbsoluteError()
-        with patch.object(MeanAbsoluteError, "score", return_value=42.0):
-            with pytest.raises(TypeError, match="Scorer must return DataFrame"):
-                plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["sales"])
+        with (
+            patch.object(MeanAbsoluteError, "score", return_value=42.0),
+            pytest.raises(TypeError, match="Scorer must return DataFrame"),
+        ):
+            plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["sales"])
 
     def test_panel_score_time_series_no_time_col_raises(self, panel_data):
         """Panel score_time_series raises ValueError when scorer.score returns no 'time' column."""
@@ -2345,9 +2347,11 @@ class TestScorerReturnValidation:
         y_truth, y_pred = panel_data
         scorer = MeanAbsoluteError()
         bad_df = pl.DataFrame({"sales__store_1": [1.0] * 10})
-        with patch.object(MeanAbsoluteError, "score", return_value=bad_df):
-            with pytest.raises(ValueError, match="'time' column"):
-                plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["sales"])
+        with (
+            patch.object(MeanAbsoluteError, "score", return_value=bad_df),
+            pytest.raises(ValueError, match="'time' column"),
+        ):
+            plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["sales"])
 
     def test_score_time_series_non_dataframe_raises(self, simple_data):
         """Non-panel score_time_series raises TypeError when scorer.score returns non-DataFrame."""
@@ -2355,9 +2359,11 @@ class TestScorerReturnValidation:
 
         y_truth, y_pred = simple_data
         scorer = MeanAbsoluteError()
-        with patch.object(MeanAbsoluteError, "score", return_value=42.0):
-            with pytest.raises(TypeError, match="Scorer must return DataFrame"):
-                plot_score_time_series(scorer, y_truth, y_pred)
+        with (
+            patch.object(MeanAbsoluteError, "score", return_value=42.0),
+            pytest.raises(TypeError, match="Scorer must return DataFrame"),
+        ):
+            plot_score_time_series(scorer, y_truth, y_pred)
 
     def test_score_time_series_no_time_col_raises(self, simple_data):
         """Non-panel score_time_series raises ValueError when scorer.score returns no 'time' column."""
@@ -2366,9 +2372,11 @@ class TestScorerReturnValidation:
         y_truth, y_pred = simple_data
         scorer = MeanAbsoluteError()
         bad_df = pl.DataFrame({"y": [1.0] * 10})
-        with patch.object(MeanAbsoluteError, "score", return_value=bad_df):
-            with pytest.raises(ValueError, match="'time' column"):
-                plot_score_time_series(scorer, y_truth, y_pred)
+        with (
+            patch.object(MeanAbsoluteError, "score", return_value=bad_df),
+            pytest.raises(ValueError, match="'time' column"),
+        ):
+            plot_score_time_series(scorer, y_truth, y_pred)
 
     def test_score_distribution_non_dataframe_raises(self, simple_data):
         """plot_score_distribution raises TypeError when scorer.score returns non-DataFrame."""
@@ -2376,9 +2384,11 @@ class TestScorerReturnValidation:
 
         y_truth, y_pred = simple_data
         scorer = MeanAbsoluteError()
-        with patch.object(MeanAbsoluteError, "score", return_value=42.0):
-            with pytest.raises(TypeError, match="Scorer must return DataFrame"):
-                plot_score_distribution(scorer, y_truth, y_pred)
+        with (
+            patch.object(MeanAbsoluteError, "score", return_value=42.0),
+            pytest.raises(TypeError, match="Scorer must return DataFrame"),
+        ):
+            plot_score_distribution(scorer, y_truth, y_pred)
 
     def test_per_horizon_non_dataframe_raises(self, simple_data):
         """plot_score_per_horizon raises TypeError when scorer.score returns non-DataFrame."""
@@ -2386,9 +2396,11 @@ class TestScorerReturnValidation:
 
         y_truth, y_pred = simple_data
         scorer = MeanAbsoluteError()
-        with patch.object(MeanAbsoluteError, "score", return_value=42.0):
-            with pytest.raises(TypeError, match="Scorer must return DataFrame"):
-                plot_score_per_horizon(scorer, y_truth, y_pred)
+        with (
+            patch.object(MeanAbsoluteError, "score", return_value=42.0),
+            pytest.raises(TypeError, match="Scorer must return DataFrame"),
+        ):
+            plot_score_per_horizon(scorer, y_truth, y_pred)
 
 
 class TestPanelMultiMemberScoring:
@@ -2431,6 +2443,10 @@ class TestPanelMultiMemberScoring:
         y_truth, y_pred = panel_multi_member
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(
-            scorer, y_truth, y_pred, panel_group_names=["sales"], columns="nonexistent_member",
+            scorer,
+            y_truth,
+            y_pred,
+            panel_group_names=["sales"],
+            columns="nonexistent_member",
         )
         assert isinstance(fig, go.Figure)

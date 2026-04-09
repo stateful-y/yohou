@@ -2122,14 +2122,22 @@ class TestDecompositionParameterWarnings:
         """Passing two_sided to STL method emits a warning."""
         with pytest.warns(UserWarning, match="two_sided.*only used with method='classical'"):
             plot_decomposition(
-                monthly_df, ["trend"], method="stl", columns="y", two_sided=False,
+                monthly_df,
+                ["trend"],
+                method="stl",
+                columns="y",
+                two_sided=False,
             )
 
     def test_extrapolate_trend_with_stl_warns(self, monthly_df):
         """Passing extrapolate_trend to STL method emits a warning."""
         with pytest.warns(UserWarning, match="extrapolate_trend.*only used with method='classical'"):
             plot_decomposition(
-                monthly_df, ["trend"], method="stl", columns="y", extrapolate_trend="freq",
+                monthly_df,
+                ["trend"],
+                method="stl",
+                columns="y",
+                extrapolate_trend="freq",
             )
 
     def test_classical_auto_period_unsupported_interval(self):

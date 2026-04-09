@@ -326,33 +326,29 @@ class TestResamplerImportErrors:
         """_create_figure with resampler='widget' raises when plotly-resampler missing."""
         from yohou.plotting._utils import _create_figure
 
-        with self._block_resampler():
-            with pytest.raises(ImportError, match="plotly-resampler"):
-                _create_figure(resampler="widget")
+        with self._block_resampler(), pytest.raises(ImportError, match="plotly-resampler"):
+            _create_figure(resampler="widget")
 
     def test_create_figure_bool_no_resampler_raises(self):
         """_create_figure with resampler=True raises when plotly-resampler missing."""
         from yohou.plotting._utils import _create_figure
 
-        with self._block_resampler():
-            with pytest.raises(ImportError, match="plotly-resampler"):
-                _create_figure(resampler=True)
+        with self._block_resampler(), pytest.raises(ImportError, match="plotly-resampler"):
+            _create_figure(resampler=True)
 
     def test_create_subplots_widget_no_resampler_raises(self):
         """_create_subplots with resampler='widget' raises when plotly-resampler missing."""
         from yohou.plotting._utils import _create_subplots
 
-        with self._block_resampler():
-            with pytest.raises(ImportError, match="plotly-resampler"):
-                _create_subplots(resampler="widget", rows=1, cols=1)
+        with self._block_resampler(), pytest.raises(ImportError, match="plotly-resampler"):
+            _create_subplots(resampler="widget", rows=1, cols=1)
 
     def test_create_subplots_bool_no_resampler_raises(self):
         """_create_subplots with resampler=True raises when plotly-resampler missing."""
         from yohou.plotting._utils import _create_subplots
 
-        with self._block_resampler():
-            with pytest.raises(ImportError, match="plotly-resampler"):
-                _create_subplots(resampler=True, rows=1, cols=1)
+        with self._block_resampler(), pytest.raises(ImportError, match="plotly-resampler"):
+            _create_subplots(resampler=True, rows=1, cols=1)
 
     def test_fill_trace_kwargs_no_resampler_returns_empty(self):
         """_fill_trace_kwargs returns empty dict when plotly-resampler missing."""
@@ -368,9 +364,7 @@ class TestResamplerImportErrors:
 class TestResamplerSuccessPaths:
     """Tests for the resampler success paths when plotly-resampler is installed."""
 
-    _has_resampler = pytest.importorskip(
-        "plotly_resampler", reason="plotly-resampler not installed"
-    ) is not None
+    _has_resampler = pytest.importorskip("plotly_resampler", reason="plotly-resampler not installed") is not None
 
     def test_create_figure_resampler(self):
         """_create_figure(resampler=True) returns a FigureResampler."""
