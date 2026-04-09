@@ -874,3 +874,236 @@ def fetch_kdd_cup(
     bunch.frame = _restructure_kdd_cup_columns(bunch.frame)
     bunch.feature_names = [c for c in bunch.frame.columns if c != "time"]
     return bunch
+
+
+_WHO_PM25_THRESHOLDS = (15.0, 35.0, 75.0)
+_WHO_PM25_LABELS = ("good", "moderate", "unhealthy", "hazardous")
+
+
+def fetch_air_quality_classification(
+    *,
+    data_home: str | os.PathLike | None = None,
+    download_if_missing: bool = True,
+    n_retries: int = 3,
+    delay: float = 1.0,
+) -> Bunch:
+    """Fetch a categorical air quality dataset derived from KDD Cup 2018.
+
+    Downloads the KDD Cup 2018 dataset (single station) and bins its
+    PM2.5 values into four WHO air quality categories using guideline
+    thresholds of 15, 35, and 75 ug/m3. The remaining five pollutant
+    measurements (PM10, NO2, CO, O3, SO2) become exogenous features.
+    Rows with null PM2.5 values are dropped.
+
+    Parameters
+    ----------
+    data_home : str, PathLike, or None
+        Specify another download and cache folder for the datasets.
+        By default all yohou data is stored in ``~/yohou_data/``.
+    download_if_missing : bool, default=True
+        If ``False``, raise an ``OSError`` if the data is not locally
+        available instead of trying to download it.
+    n_retries : int, default=3
+        Number of retries when HTTP errors are encountered.
+    delay : float, default=1.0
+        Number of seconds between retries.
+
+    Returns
+    -------
+    Bunch
+        Dictionary-like object with the following attributes:
+
+        y : pl.DataFrame
+            DataFrame with ``"time"`` (Datetime) and ``"air_quality"``
+            (Utf8) columns. The ``"air_quality"`` column contains one
+            of ``"good"``, ``"moderate"``, ``"unhealthy"``, or
+            ``"hazardous"``.
+        X : pl.DataFrame
+            DataFrame with ``"time"`` and 5 pollutant feature columns
+            (``"pm10"``, ``"no2"``, ``"co"``, ``"o3"``, ``"so2"``).
+        feature_names : list of str
+            Feature column names (excludes ``"time"``).
+        target_names : list of str
+            ``["air_quality"]``.
+        classes : list of str
+            ``["good", "hazardous", "moderate", "unhealthy"]`` (sorted).
+        DESCR : str
+            Human-readable dataset description.
+
+    See Also
+    --------
+    `fetch_kdd_cup` : Full KDD Cup 2018 air quality dataset.
+    `fetch_demand_classification` : Categorical electricity demand dataset.
+
+    Examples
+    --------
+    >>> from yohou.datasets import fetch_air_quality_classification
+    >>> data = fetch_air_quality_classification()  # doctest: +SKIP
+    >>> data.y.columns  # doctest: +SKIP
+    ['time', 'air_quality']
+    >>> sorted(data.classes)  # doctest: +SKIP
+    ['good', 'hazardous', 'moderate', 'unhealthy']
+
+    """
+    bunch = fetch_kdd_cup(
+        n_groups=1,
+        data_home=data_home,
+        download_if_missing=download_if_missing,
+        n_retries=n_retries,
+        delay=delay,
+    )
+    frame = bunch.frame
+
+    # Identify station prefix from first non-time column
+    non_time = [c for c in frame.columns if c != "time"]
+    station_prefix = non_time[0].split("__")[0]
+
+    pm25_col = f"{station_prefix}__pm2.5"
+    feature_measurements = ["pm10", "no2", "co", "o3", "so2"]
+    feature_cols = [f"{station_prefix}__{m}" for m in feature_measurements]
+
+    # Drop rows with null PM2.5
+    frame = frame.drop_nulls(subset=[pm25_col])
+
+    # Bin PM2.5 into WHO categories
+    air_quality = (
+        pl.when(pl.col(pm25_col) < _WHO_PM25_THRESHOLDS[0])
+        .then(pl.lit("good"))
+        .when(pl.col(pm25_col) < _WHO_PM25_THRESHOLDS[1])
+        .then(pl.lit("moderate"))
+        .when(pl.col(pm25_col) < _WHO_PM25_THRESHOLDS[2])
+        .then(pl.lit("unhealthy"))
+        .otherwise(pl.lit("hazardous"))
+    )
+
+    y = frame.select("time", air_quality.alias("air_quality"))
+    X = frame.select("time", *feature_cols).rename({c: c.split("__")[1] for c in feature_cols})
+
+    classes = sorted(set(y["air_quality"].to_list()))
+
+    return Bunch(
+        y=y,
+        X=X,
+        feature_names=[c for c in X.columns if c != "time"],
+        target_names=["air_quality"],
+        classes=classes,
+        DESCR=(
+            "Air quality classification dataset derived from KDD Cup 2018. "
+            "PM2.5 values are binned into four WHO air quality categories: "
+            "good (<15 ug/m3), moderate (15-35), unhealthy (35-75), "
+            "hazardous (>75). Features are the remaining five pollutant "
+            "measurements (PM10, NO2, CO, O3, SO2) from the same station."
+        ),
+    )
+
+
+def fetch_demand_classification(
+    *,
+    data_home: str | os.PathLike | None = None,
+    download_if_missing: bool = True,
+    n_retries: int = 3,
+    delay: float = 1.0,
+) -> Bunch:
+    """Fetch a categorical electricity demand dataset from Monash/Zenodo.
+
+    Downloads the Australian Electricity Demand dataset and bins
+    Victoria's half-hourly demand into three levels (low, medium, high)
+    using tercile thresholds. The remaining four states (NSW, QLD, SA,
+    TAS) become exogenous features. Rows with null Victoria demand are
+    dropped.
+
+    Parameters
+    ----------
+    data_home : str, PathLike, or None
+        Specify another download and cache folder for the datasets.
+        By default all yohou data is stored in ``~/yohou_data/``.
+    download_if_missing : bool, default=True
+        If ``False``, raise an ``OSError`` if the data is not locally
+        available instead of trying to download it.
+    n_retries : int, default=3
+        Number of retries when HTTP errors are encountered.
+    delay : float, default=1.0
+        Number of seconds between retries.
+
+    Returns
+    -------
+    Bunch
+        Dictionary-like object with the following attributes:
+
+        y : pl.DataFrame
+            DataFrame with ``"time"`` (Datetime) and ``"demand_level"``
+            (Utf8) columns. The ``"demand_level"`` column contains one
+            of ``"low"``, ``"medium"``, or ``"high"``.
+        X : pl.DataFrame
+            DataFrame with ``"time"`` and 4 state demand columns
+            (``"nsw__demand"``, ``"qun__demand"``, ``"sa__demand"``,
+            ``"tas__demand"``).
+        feature_names : list of str
+            Feature column names (excludes ``"time"``).
+        target_names : list of str
+            ``["demand_level"]``.
+        classes : list of str
+            ``["high", "low", "medium"]`` (sorted).
+        DESCR : str
+            Human-readable dataset description.
+
+    See Also
+    --------
+    `fetch_electricity_demand` : Full Australian electricity demand dataset.
+    `fetch_air_quality_classification` : Categorical air quality dataset.
+
+    Examples
+    --------
+    >>> from yohou.datasets import fetch_demand_classification
+    >>> data = fetch_demand_classification()  # doctest: +SKIP
+    >>> data.y.columns  # doctest: +SKIP
+    ['time', 'demand_level']
+    >>> sorted(data.classes)  # doctest: +SKIP
+    ['high', 'low', 'medium']
+
+    """
+    bunch = fetch_electricity_demand(
+        data_home=data_home,
+        download_if_missing=download_if_missing,
+        n_retries=n_retries,
+        delay=delay,
+    )
+    frame = bunch.frame
+
+    target_col = "vic__demand"
+    feature_cols = ["nsw__demand", "qun__demand", "sa__demand", "tas__demand"]
+
+    # Drop rows with null target
+    frame = frame.drop_nulls(subset=[target_col])
+
+    # Compute tercile thresholds
+    q33 = frame[target_col].quantile(1 / 3)
+    q66 = frame[target_col].quantile(2 / 3)
+
+    demand_level = (
+        pl.when(pl.col(target_col) < q33)
+        .then(pl.lit("low"))
+        .when(pl.col(target_col) < q66)
+        .then(pl.lit("medium"))
+        .otherwise(pl.lit("high"))
+    )
+
+    y = frame.select("time", demand_level.alias("demand_level"))
+    X = frame.select("time", *feature_cols)
+
+    classes = sorted(set(y["demand_level"].to_list()))
+
+    return Bunch(
+        y=y,
+        X=X,
+        feature_names=[c for c in X.columns if c != "time"],
+        target_names=["demand_level"],
+        classes=classes,
+        DESCR=(
+            "Electricity demand classification dataset derived from the "
+            "Australian Electricity Demand dataset (Monash/Zenodo). "
+            "Victoria's half-hourly demand is binned into three tercile-based "
+            "levels: low, medium, high. Features are the demand series from "
+            "the remaining four Australian states (NSW, QLD, SA, TAS)."
+        ),
+    )

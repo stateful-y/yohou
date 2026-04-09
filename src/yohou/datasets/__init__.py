@@ -2,6 +2,8 @@
 
 from yohou.datasets._fetchers import (
     clear_data_home,
+    fetch_air_quality_classification,
+    fetch_demand_classification,
     fetch_dominick,
     fetch_electricity_demand,
     fetch_hospital,
@@ -15,6 +17,8 @@ from yohou.datasets._fetchers import (
 
 __all__ = [
     "clear_data_home",
+    "fetch_air_quality_classification",
+    "fetch_demand_classification",
     "fetch_dominick",
     "fetch_electricity_demand",
     "fetch_hospital",

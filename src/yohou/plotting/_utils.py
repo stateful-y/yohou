@@ -7,7 +7,7 @@ import warnings
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 try:
     import plotly.graph_objects as go
@@ -825,7 +825,7 @@ def apply_default_layout(
     >>> fig.layout.title.text
     'Test'
     """
-    layout_update = copy.deepcopy(DEFAULT_LAYOUT)
+    layout_update: dict[str, Any] = copy.deepcopy(DEFAULT_LAYOUT)
 
     if title is not None:
         layout_update["title"]["text"] = title  # type: ignore[index, invalid-assignment]  # ty:ignore[invalid-assignment]

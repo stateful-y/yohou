@@ -314,7 +314,6 @@ def _(MeanAbsoluteError, plot_score_time_series, y_pred_global, y_pred_local2, y
         panel_group_names=["T3", "T4", "T5"],
         title="Local vs Global: MAE Over Time",
     )
-    return (fc_local2,)
 
 
 @app.cell(hide_code=True)

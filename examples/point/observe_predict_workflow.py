@@ -38,6 +38,9 @@ def _(mo):
     - `observe(y, X)`: push new observations into the forecaster's memory
     - `predict(forecasting_horizon)`: generate forecasts recursively from observed state
     - `observe_predict(y, X)`: atomic observe + predict in a single call
+    - `observe_predict_interval(y, X)`: observe + predict prediction intervals
+    - `observe_predict_class_proba(y, X)`: observe + predict class probabilities
+    - `observe_predict(y, X)` on a class-proba forecaster: observe + predict hard labels
     - `rewind(y, X)`: reset state to a specific window without refitting
     - Panel data: selective group observation with `panel_group_names`
 
@@ -54,20 +57,37 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
+    from sklearn.tree import DecisionTreeClassifier
 
-    from yohou.datasets import fetch_dominick, fetch_tourism_monthly
+    from yohou.class_proba import ClassProbaReductionForecaster
+    from yohou.datasets import (
+        fetch_air_quality_classification,
+        fetch_dominick,
+        fetch_sunspot,
+        fetch_tourism_monthly,
+    )
+    from yohou.interval import SplitConformalForecaster
     from yohou.plotting import plot_forecast, plot_time_series
-    from yohou.point import PointReductionForecaster
+    from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
 
     return (
+        ClassProbaReductionForecaster,
+        DecisionTreeClassifier,
         LagTransformer,
         PointReductionForecaster,
         Ridge,
+        SeasonalNaive,
+        SplitConformalForecaster,
+        deepcopy,
+        fetch_air_quality_classification,
         fetch_dominick,
+        fetch_sunspot,
         fetch_tourism_monthly,
         pl,
         plot_forecast,
@@ -278,7 +298,166 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7. Panel Data: Selective Observation
+    ## 7. Observe-Predict-Interval
+
+    [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
+    (and other interval forecasters) expose `observe_predict_interval()`.
+    It works exactly like `observe_predict()` but returns **prediction
+    intervals** instead of point forecasts.  Each observation step updates
+    the forecaster's memory and the next prediction produces lower/upper
+    bounds at the requested coverage rate.
+
+    The output DataFrame contains `"time"`, `"observed_time"`, and a pair
+    of columns per coverage level:
+    `{target}_upper_{rate}` / `{target}_lower_{rate}`.
+    """)
+
+
+@app.cell
+def _(SeasonalNaive, SplitConformalForecaster, fetch_sunspot, train_test_split):
+    sunspots = fetch_sunspot().frame
+    ss_train, _ss_rest = train_test_split(sunspots, test_size=0.3, shuffle=False)
+    ss_cal, ss_test = train_test_split(_ss_rest, test_size=0.5, shuffle=False)
+    ss_fh = 12
+
+    conformal = SplitConformalForecaster(
+        point_forecaster=SeasonalNaive(seasonality=132),
+    )
+    conformal.fit(ss_train, forecasting_horizon=ss_fh)
+
+    print(f"Train: {len(ss_train)}, Cal: {len(ss_cal)}, Test: {len(ss_test)}")
+    return conformal, ss_cal, ss_fh, ss_test, ss_train
+
+
+@app.cell
+def _(conformal, pl, plot_forecast, ss_cal, ss_fh, ss_test, ss_train):
+    # Observe calibration data and predict intervals in one call
+    y_pred_interval = conformal.observe_predict_interval(
+        ss_cal,
+        forecasting_horizon=ss_fh,
+        coverage_rates=[0.9],
+    ).sort("time")
+
+    _y_history_int = pl.concat([ss_train, ss_cal])
+    plot_forecast(
+        ss_test,
+        y_pred_interval,
+        y_train=_y_history_int,
+        coverage_rates=[0.9],
+        n_history=60,
+        title="observe_predict_interval - 90% Prediction Interval",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 8. Observe-Predict-Class-Proba (Soft Classification)
+
+    [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/)
+    exposes `observe_predict_class_proba()`.  It updates the forecaster's
+    memory with newly arrived categorical observations and returns the full
+    **probability distribution** over classes for the next horizon.
+
+    The output DataFrame contains `"time"`, `"observed_time"`, and one
+    column per class: `{target}_proba_{class_label}` (float values summing
+    to 1.0 at each time step).  [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
+    auto-detects these `_proba_` columns and renders a stacked area chart.
+    """)
+
+
+@app.cell
+def _(
+    ClassProbaReductionForecaster,
+    DecisionTreeClassifier,
+    LagTransformer,
+    deepcopy,
+    fetch_air_quality_classification,
+    train_test_split,
+):
+    cls_data = fetch_air_quality_classification()
+    cls_y, cls_X = cls_data.y, cls_data.X
+    cls_train_end = len(cls_y) - 400
+    cls_cal_end = len(cls_y) - 200
+
+    cls_y_train, _cls_rest_y = train_test_split(cls_y, train_size=cls_train_end, shuffle=False)
+    cls_y_cal, cls_y_test = train_test_split(_cls_rest_y, train_size=cls_cal_end - cls_train_end, shuffle=False)
+    cls_X_train, _cls_rest_X = train_test_split(cls_X, train_size=cls_train_end, shuffle=False)
+    cls_X_cal, cls_X_test = train_test_split(_cls_rest_X, train_size=cls_cal_end - cls_train_end, shuffle=False)
+    cls_fh = 24
+
+    cls_forecaster = ClassProbaReductionForecaster(
+        estimator=DecisionTreeClassifier(random_state=42),
+        feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
+    )
+    cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
+
+    # Independent copy for hard-label demo (section 9) so both cells
+    # can call observe_predict_* on their own fitted forecaster.
+    cls_forecaster_hard = deepcopy(cls_forecaster)
+
+    print(f"Classes: {cls_data.classes}")
+    print(f"Train: {len(cls_y_train)}, Cal: {len(cls_y_cal)}, Test: {len(cls_y_test)}")
+    return cls_X_cal, cls_X_test, cls_fh, cls_forecaster, cls_forecaster_hard, cls_y_cal, cls_y_test, cls_y_train
+
+
+@app.cell
+def _(cls_X_cal, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, plot_forecast):
+    # Observe calibration data and predict class probabilities in one call
+    cls_y_proba = cls_forecaster.observe_predict_class_proba(
+        cls_y_cal,
+        X=cls_X_cal,
+        forecasting_horizon=cls_fh,
+    ).sort("time")
+
+    print("Probability columns:", [c for c in cls_y_proba.columns if "_proba_" in c])
+    plot_forecast(
+        cls_y_test,
+        cls_y_proba,
+        title="observe_predict_class_proba - Stacked Area",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 9. Observe-Predict on a Class-Proba Forecaster (Hard Labels)
+
+    Calling `observe_predict()` (without `_class_proba`) on a
+    [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/)
+    returns the **argmax class** at each time step instead of the full
+    probability distribution.  This is the hard-label counterpart.
+
+    The output DataFrame contains `"time"`, `"observed_time"`, and one
+    `String`-typed column per target with the most-likely class name.
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) auto-detects the categorical dtype
+    and renders a step chart.
+    """)
+
+
+@app.cell
+def _(cls_X_cal, cls_fh, cls_forecaster_hard, cls_y_cal, cls_y_test, cls_y_train, plot_forecast):
+    # Same forecaster, but observe_predict returns hard labels
+    cls_y_labels = cls_forecaster_hard.observe_predict(
+        cls_y_cal,
+        X=cls_X_cal,
+        forecasting_horizon=cls_fh,
+    ).sort("time")
+
+    print("Hard-label dtypes:", cls_y_labels.dtypes)
+    plot_forecast(
+        cls_y_test,
+        cls_y_labels,
+        y_train=cls_y_train,
+        n_history=50,
+        title="observe_predict (hard labels) - Step Chart",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 10. Panel Data: Selective Observation
 
     With panel data, you can observe and predict for **specific groups only**
     using `panel_group_names`. This is useful when different groups receive
@@ -342,9 +521,18 @@ def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
+    | Method | Forecaster Type | Returns |
+    |--------|----------------|--------|
+    | `observe_predict()` | Point | Numeric predictions |
+    | `observe_predict()` | Class-proba | Argmax hard labels (String) |
+    | `observe_predict_interval()` | Interval | Lower/upper bounds per coverage rate |
+    | `observe_predict_class_proba()` | Class-proba | Probability per class (float) |
+
     - **`observe(y, X)`** appends new data to the forecaster's memory without refitting (cheap, incremental)
     - **`predict(forecasting_horizon)`** generates forecasts from the current observed state
     - **`observe_predict(y, X)`** is the atomic combination: the workhorse of rolling evaluation
+    - **`observe_predict_interval(y, X)`** returns prediction intervals with `coverage_rates`
+    - **`observe_predict_class_proba(y, X)`** returns full probability distributions over classes
     - **`rewind(y, X)`** resets state to a specific window without refitting (useful for backtesting)
     - **Panel selective observation**: Use `panel_group_names` to observe/predict subsets of groups independently
     - Observations update transformer state (buffers) but **do not refit the model**
@@ -352,9 +540,10 @@ def _(mo):
     ## Next Steps
 
     - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output, direct, and dir-rec comparison
-    - **Cross-validation**: See `examples/cross_validation.py` for automated rolling-origin evaluation with [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
-    - **Scoring**: See `examples/scoring.py` for evaluating forecast quality with point and interval metrics
-    - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/) for comprehensive panel workflows
+    - **Interval forecasting**: See [`interval_metrics.py`](/examples/metrics/interval_metrics/) for scoring prediction intervals
+    - **Classification forecasting**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for the full classification workflow
+    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for LogLoss, BrierScore, and Accuracy
+    - **Panel forecasting**: See [`panel_forecasting.py`](/examples/point/panel_forecasting/) for comprehensive panel workflows
     """)
 
 

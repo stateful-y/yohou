@@ -5,6 +5,7 @@ from typing import Literal
 
 import numpy as np
 import polars as pl
+from plotly.subplots import make_subplots
 
 try:
     import plotly.graph_objects as go
@@ -27,6 +28,7 @@ from yohou.plotting._utils import (
     resolve_color_palette,
     resolve_panel_columns,
 )
+from yohou.plotting.evaluation import _discover_proba_targets, _hex_to_rgba
 from yohou.utils import inspect_panel, validate_plotting_data, validate_plotting_params
 
 # The full palette list is used as the default effective palette in every
@@ -39,6 +41,30 @@ __all__ = [
     "plot_forecast",
     "plot_time_weight",
 ]
+
+
+def _detect_prediction_mode(df: pl.DataFrame) -> str:
+    """Detect the prediction type from a single prediction DataFrame.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        A prediction DataFrame to inspect.
+
+    Returns
+    -------
+    str
+        ``"class_proba"`` if ``_proba_`` columns are present,
+        ``"categorical"`` if any value column is String/Categorical,
+        ``"numeric"`` otherwise.
+
+    """
+    if any("_proba_" in c for c in df.columns):
+        return "class_proba"
+    value_cols = [c for c in df.columns if c not in ("time", "observed_time")]
+    if value_cols and any(df[c].dtype in (pl.String, pl.Categorical) for c in value_cols):
+        return "categorical"
+    return "numeric"
 
 
 def plot_forecast(
@@ -73,6 +99,12 @@ def plot_forecast(
     When *y_pred* is a ``dict[str, pl.DataFrame]``, each entry is treated as
     a separate model and plotted with a distinct color for side-by-side
     comparison.
+
+    **Categorical support**: When *y_pred* contains class-probability
+    columns (``{target}_proba_{class}`` pattern), renders a stacked area
+    chart of predicted probabilities with ground-truth class markers from
+    *y_test*. When *y_pred* contains categorical (string) columns, renders
+    a step chart comparing predicted and actual class labels over time.
 
     Parameters
     ----------
@@ -198,6 +230,10 @@ def plot_forecast(
     _, y_test_panels = inspect_panel(y_test)
     is_panel = bool(y_test_panels)
 
+    # Auto-detect prediction type from the first prediction DataFrame
+    _first_pred = next(iter(y_pred.values())) if isinstance(y_pred, dict) else y_pred
+    prediction_mode = _detect_prediction_mode(_first_pred)  # ty: ignore[invalid-argument-type]
+
     # For panel data, delegate to faceted handler (single or multi-model)
     if is_panel:
         return _plot_forecast_panel(
@@ -221,6 +257,35 @@ def plot_forecast(
             connect_gaps=connect_gaps,
             resampler=resampler,
             show_legend=show_legend,
+            prediction_mode=prediction_mode,
+        )
+
+    # Non-panel class-probability predictions
+    if prediction_mode == "class_proba":
+        return _plot_forecast_class_proba(
+            y_test=y_test,
+            y_pred=y_pred,
+            color_palette=color_palette,
+            title=title,
+            x_label=x_label,
+            y_label=y_label,
+            width=width,
+            height=height,
+        )
+
+    # Non-panel categorical predictions
+    if prediction_mode == "categorical":
+        return _plot_forecast_categorical(
+            y_test=y_test,
+            y_pred=y_pred,
+            y_train=y_train,
+            n_history=n_history,
+            color_palette=color_palette,
+            title=title,
+            x_label=x_label,
+            y_label=y_label,
+            width=width,
+            height=height,
         )
 
     # Multi-model dict: delegate to dedicated helper
@@ -397,6 +462,521 @@ def plot_forecast(
     )
     fig.update_layout(showlegend=show_legend)
 
+    return fig
+
+
+def _render_class_proba_traces(
+    fig: go.Figure,
+    pred_df: pl.DataFrame,
+    y_test: pl.DataFrame,
+    *,
+    colors: list[str],
+    target_proba_cols: list[str],
+    class_labels: list[str],
+    target: str,
+    stack_group: str = "proba",
+    row: int | None = None,
+    col: int | None = None,
+    show_legend: bool = True,
+    line_width: float = 1.5,
+    band_opacity: float = 0.6,
+    marker_size: int = 10,
+    seen_legend: set[str] | None = None,
+) -> None:
+    """Add class-probability traces (stacked area + truth markers) to a figure.
+
+    Parameters
+    ----------
+    fig : go.Figure
+        Figure to add traces to (may have subplots).
+    pred_df : pl.DataFrame
+        Single prediction DataFrame with ``_proba_`` columns.
+    y_test : pl.DataFrame
+        Ground-truth DataFrame.
+    colors : list of str
+        One hex color per class label.
+    target_proba_cols : list of str
+        Probability columns for the target.
+    class_labels : list of str
+        Class label names (same order as ``target_proba_cols``).
+    target : str
+        Target column name in ``y_test``.
+    stack_group : str
+        Plotly stackgroup identifier.
+    row : int or None
+        Subplot row (None for single-figure).
+    col : int or None
+        Subplot column (None for single-figure).
+    show_legend : bool
+        Whether to show legend for these traces.
+    line_width : float
+        Line width.
+    band_opacity : float
+        Fill opacity.
+    marker_size : int
+        Truth marker size.
+    seen_legend : set of str or None
+        Legend dedup tracker for panel mode.
+
+    """
+    _add = {"row": row, "col": col} if row is not None else {}
+
+    for i, (proba_col, label) in enumerate(zip(target_proba_cols, class_labels, strict=True)):
+        _show = show_legend if seen_legend is None else (label not in seen_legend and show_legend)
+        if seen_legend is not None:
+            seen_legend.add(label)
+        fig.add_trace(
+            go.Scatter(
+                x=pred_df["time"],
+                y=pred_df[proba_col],
+                name=label,
+                mode="lines",
+                line={"width": line_width, "color": colors[i]},
+                stackgroup=stack_group,
+                fillcolor=_hex_to_rgba(colors[i], band_opacity),
+                showlegend=_show,
+                legendgroup=label,
+                hovertemplate=f"<b>{label}</b><br>Time: %{{x}}<br>P: %{{y:.3f}}<extra></extra>",
+            ),
+            **_add,
+        )
+
+    if target in y_test.columns:
+        common_times = set(y_test["time"].to_list()) & set(pred_df["time"].to_list())
+        if common_times:
+            truth_f = y_test.filter(pl.col("time").is_in(list(common_times))).sort("time")
+            pred_f = pred_df.filter(pl.col("time").is_in(list(common_times))).sort("time")
+            label_to_idx = {lb: idx for idx, lb in enumerate(class_labels)}
+            marker_y: list[float] = []
+            m_colors: list[str] = []
+            for r_idx in range(len(truth_f)):
+                tl = str(truth_f[target][r_idx])
+                if tl in label_to_idx:
+                    cn = target_proba_cols[label_to_idx[tl]]
+                    marker_y.append(float(pred_f[cn][r_idx]))
+                    m_colors.append(colors[label_to_idx[tl]])
+                else:
+                    marker_y.append(0.0)
+                    m_colors.append(colors[0])
+
+            _show_truth = show_legend if seen_legend is None else ("True class" not in seen_legend and show_legend)
+            if seen_legend is not None:
+                seen_legend.add("True class")
+            fig.add_trace(
+                go.Scatter(
+                    x=truth_f["time"],
+                    y=marker_y,
+                    name="True class",
+                    mode="markers",
+                    marker={"size": marker_size, "color": m_colors, "symbol": "diamond"},
+                    showlegend=_show_truth,
+                    legendgroup="truth",
+                    hovertemplate="<b>True: %{text}</b><br>Time: %{x}<br>P(true): %{y:.3f}<extra></extra>",
+                    text=truth_f[target].cast(pl.String).to_list(),
+                ),
+                **_add,
+            )
+
+
+def _render_categorical_traces(
+    fig: go.Figure,
+    pred_df: pl.DataFrame,
+    y_test: pl.DataFrame,
+    y_train: pl.DataFrame | None,
+    *,
+    cat_cols: list[str],
+    cat_to_int: dict[str, int],
+    model_name: str,
+    model_color: str,
+    actual_color: str,
+    is_multi_model: bool,
+    n_history: int | None = None,
+    row: int | None = None,
+    col: int | None = None,
+    show_legend: bool = True,
+    line_width: float = 2.0,
+    seen_legend: set[str] | None = None,
+) -> None:
+    """Add categorical traces (step chart) to a figure.
+
+    Parameters
+    ----------
+    fig : go.Figure
+        Figure to add traces to (may have subplots).
+    pred_df : pl.DataFrame
+        Prediction DataFrame with categorical columns.
+    y_test : pl.DataFrame
+        Ground-truth DataFrame.
+    y_train : pl.DataFrame or None
+        Training data.
+    cat_cols : list of str
+        Categorical column names.
+    cat_to_int : dict
+        Category-name to integer mapping.
+    model_name : str
+        Model display name.
+    model_color : str
+        Hex color for this model.
+    actual_color : str
+        Hex color for actual traces.
+    is_multi_model : bool
+        Whether multiple models are being compared.
+    n_history : int or None
+        Training rows to show.
+    row : int or None
+        Subplot row (None for single-figure).
+    col : int or None
+        Subplot column (None for single-figure).
+    show_legend : bool
+        Whether to show legend.
+    line_width : float
+        Line width.
+    seen_legend : set of str or None
+        Legend dedup tracker for panel mode.
+
+    """
+    _add = {"row": row, "col": col} if row is not None else {}
+
+    for cat_col in cat_cols:
+        # Training data
+        if y_train is not None and cat_col in y_train.columns:
+            train_df = y_train.tail(n_history) if n_history is not None else y_train
+            y_vals = [cat_to_int.get(str(v), -1) for v in train_df[cat_col].to_list()]
+            _hex = actual_color.lstrip("#")
+            _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+            _train_c = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+            train_label = f"{cat_col} (Train)"
+            _show = show_legend if seen_legend is None else (train_label not in seen_legend and show_legend)
+            if seen_legend is not None:
+                seen_legend.add(train_label)
+            fig.add_trace(
+                go.Scatter(
+                    x=train_df["time"],
+                    y=y_vals,
+                    mode="lines+markers",
+                    line={"color": _train_c, "width": line_width, "shape": "hv"},
+                    marker={"size": 4},
+                    name=train_label,
+                    showlegend=_show,
+                    legendrank=0,
+                    text=[str(v) for v in train_df[cat_col].to_list()],
+                    hovertemplate=f"<b>{cat_col} Train</b><br>Time: %{{x}}<br>Class: %{{text}}<extra></extra>",
+                ),
+                **_add,
+            )
+
+        # Actual test data
+        if cat_col in y_test.columns:
+            y_vals = [cat_to_int.get(str(v), -1) for v in y_test[cat_col].to_list()]
+            actual_label = f"{cat_col} (Actual)"
+            _show = show_legend if seen_legend is None else (actual_label not in seen_legend and show_legend)
+            if seen_legend is not None:
+                seen_legend.add(actual_label)
+            fig.add_trace(
+                go.Scatter(
+                    x=y_test["time"],
+                    y=y_vals,
+                    mode="lines+markers",
+                    line={"color": actual_color, "width": line_width, "shape": "hv"},
+                    marker={"size": 6},
+                    name=actual_label,
+                    showlegend=_show,
+                    legendrank=1,
+                    text=[str(v) for v in y_test[cat_col].to_list()],
+                    hovertemplate=f"<b>{cat_col} Actual</b><br>Time: %{{x}}<br>Class: %{{text}}<extra></extra>",
+                ),
+                **_add,
+            )
+
+        # Prediction
+        if cat_col not in pred_df.columns:
+            continue
+        y_vals = [cat_to_int.get(str(v), -1) for v in pred_df[cat_col].to_list()]
+        fc_name = f"{cat_col} ({model_name})" if is_multi_model else f"{cat_col} (Forecast)"
+        _show = show_legend if seen_legend is None else (fc_name not in seen_legend and show_legend)
+        if seen_legend is not None:
+            seen_legend.add(fc_name)
+        fig.add_trace(
+            go.Scatter(
+                x=pred_df["time"],
+                y=y_vals,
+                mode="lines+markers",
+                line={"color": model_color, "width": line_width, "shape": "hv", "dash": "dash"},
+                marker={"size": 5, "symbol": "square"},
+                name=fc_name,
+                showlegend=_show,
+                legendrank=10,
+                text=[str(v) for v in pred_df[cat_col].to_list()],
+                hovertemplate=f"<b>{fc_name}</b><br>Time: %{{x}}<br>Class: %{{text}}<extra></extra>",
+            ),
+            **_add,
+        )
+
+
+def _collect_categories(
+    cat_cols: list[str],
+    y_test: pl.DataFrame,
+    preds: dict[str, pl.DataFrame],
+    y_train: pl.DataFrame | None,
+) -> tuple[list[str], dict[str, int]]:
+    """Collect and sort all unique categories across data sources.
+
+    Parameters
+    ----------
+    cat_cols : list of str
+        Categorical column names.
+    y_test : pl.DataFrame
+        Test data.
+    preds : dict of str to pl.DataFrame
+        Model predictions.
+    y_train : pl.DataFrame or None
+        Training data.
+
+    Returns
+    -------
+    sorted_cats : list of str
+        Sorted unique category names.
+    cat_to_int : dict of str to int
+        Category to integer mapping.
+
+    """
+    all_categories: set[str] = set()
+    for cat_col in cat_cols:
+        if cat_col in y_test.columns:
+            all_categories.update(y_test[cat_col].cast(pl.String).unique().to_list())
+        for pred_df in preds.values():
+            if cat_col in pred_df.columns:
+                all_categories.update(pred_df[cat_col].cast(pl.String).unique().to_list())
+        if y_train is not None and cat_col in y_train.columns:
+            all_categories.update(y_train[cat_col].cast(pl.String).unique().to_list())
+    sorted_cats = sorted(all_categories)
+    cat_to_int = {cat: i for i, cat in enumerate(sorted_cats)}
+    return sorted_cats, cat_to_int
+
+
+def _extract_member_df(df: pl.DataFrame, suffix: str) -> pl.DataFrame:
+    """Extract columns for a panel member and strip the panel group prefix.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        DataFrame with panel columns (``prefix__suffix`` naming).
+    suffix : str
+        Panel member suffix to extract.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with ``"time"`` and unprefixed columns for the member.
+
+    """
+    cols: dict[str, pl.Series] = {"time": df["time"]}
+    if "observed_time" in df.columns:
+        cols["observed_time"] = df["observed_time"]
+    for c in df.columns:
+        if c in ("time", "observed_time"):
+            continue
+        prefix, sep, member = c.partition("__")
+        if sep and member == suffix:
+            cols[prefix] = df[c]
+    return pl.DataFrame(cols)
+
+
+def _plot_forecast_class_proba(
+    y_test: pl.DataFrame,
+    y_pred: pl.DataFrame | dict[str, pl.DataFrame],
+    *,
+    color_palette: list[str] | None,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+    **kwargs: object,
+) -> go.Figure:
+    """Plot class-probability forecasts as stacked area charts with truth markers.
+
+    Parameters
+    ----------
+    y_test : pl.DataFrame
+        Ground-truth DataFrame with ``"time"`` and categorical target columns.
+    y_pred : pl.DataFrame or dict of str to pl.DataFrame
+        Predictions with ``{target}_proba_{class}`` columns.
+    color_palette : list of str or None
+        Custom color palette.
+    title : str or None
+        Plot title.
+    x_label : str or None
+        X-axis label.
+    y_label : str or None
+        Y-axis label.
+    width : int or None
+        Plot width in pixels.
+    height : int or None
+        Plot height in pixels.
+    **kwargs : object
+        ``line_width``, ``band_opacity``, ``marker_size``.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with stacked area chart.
+
+    """
+    line_width = kwargs.get("line_width", 1.5)
+    band_opacity = kwargs.get("band_opacity", 0.6)
+    marker_size = kwargs.get("marker_size", 10)
+
+    preds = y_pred if isinstance(y_pred, dict) else {"Forecast": y_pred}
+    model_names = list(preds.keys())
+    n_models = len(model_names)
+
+    if n_models > 1:
+        fig = make_subplots(
+            rows=n_models,
+            cols=1,
+            subplot_titles=model_names,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+        )
+    else:
+        fig = go.Figure()
+
+    for model_idx, (model_name, pred_df) in enumerate(preds.items()):
+        proba_cols = [c for c in pred_df.columns if "_proba_" in c]  # ty: ignore[unresolved-attribute]
+        targets = _discover_proba_targets(proba_cols)
+        target = next(iter(targets))
+        target_proba_cols = targets[target]
+        class_labels = [c.split("_proba_", 1)[1] for c in target_proba_cols]
+        colors = resolve_color_palette(color_palette, n=len(class_labels))
+
+        _render_class_proba_traces(
+            fig,
+            pred_df,  # ty: ignore[invalid-argument-type]
+            y_test,
+            colors=colors,
+            target_proba_cols=target_proba_cols,
+            class_labels=class_labels,
+            target=target,
+            stack_group=f"proba_{model_name}",
+            row=model_idx + 1 if n_models > 1 else None,
+            col=1 if n_models > 1 else None,
+            show_legend=model_idx == 0,
+            line_width=line_width,  # ty: ignore[invalid-argument-type]
+            band_opacity=band_opacity,  # ty: ignore[invalid-argument-type]
+            marker_size=marker_size,  # ty: ignore[invalid-argument-type]
+        )
+
+    fig = apply_default_layout(
+        fig,
+        title=title or "Class Probability Forecast",
+        x_label=x_label or "Time",
+        y_label=y_label or "Probability",
+        width=width,
+        height=height or (300 * n_models if n_models > 1 else None),
+    )
+    return fig
+
+
+def _plot_forecast_categorical(
+    y_test: pl.DataFrame,
+    y_pred: pl.DataFrame | dict[str, pl.DataFrame],
+    *,
+    y_train: pl.DataFrame | None,
+    n_history: int | None,
+    color_palette: list[str] | None,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+    **kwargs: object,
+) -> go.Figure:
+    """Plot categorical forecasts as step charts with class labels on the y-axis.
+
+    Parameters
+    ----------
+    y_test : pl.DataFrame
+        Actual test values with ``"time"`` and categorical target columns.
+    y_pred : pl.DataFrame or dict of str to pl.DataFrame
+        Predicted class labels with the same target column names.
+    y_train : pl.DataFrame or None
+        Historical training data.
+    n_history : int or None
+        Number of historical observations to show.
+    color_palette : list of str or None
+        Custom color palette.
+    title : str or None
+        Plot title.
+    x_label : str or None
+        X-axis label.
+    y_label : str or None
+        Y-axis label.
+    width : int or None
+        Plot width in pixels.
+    height : int or None
+        Plot height in pixels.
+    **kwargs : object
+        ``line_width``.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with categorical step chart.
+
+    """
+    line_width = kwargs.get("line_width", 2.0)
+
+    eff_palette = color_palette if color_palette is not None else _PALETTE
+    actual_color = eff_palette[2 % len(eff_palette)]
+    _model_pal = eff_palette[3:] or eff_palette
+
+    preds = y_pred if isinstance(y_pred, dict) else {"Forecast": y_pred}
+    model_names = list(preds.keys())
+    model_colors = resolve_color_palette(_model_pal, len(model_names))
+    first_pred = next(iter(preds.values()))
+
+    cat_cols = [
+        c
+        for c in first_pred.columns  # ty: ignore[unresolved-attribute]
+        if c not in ("time", "observed_time")
+        and first_pred[c].dtype in (pl.String, pl.Categorical)  # ty: ignore[not-subscriptable]
+    ]
+
+    sorted_cats, cat_to_int = _collect_categories(cat_cols, y_test, preds, y_train)  # ty: ignore[invalid-argument-type]
+
+    fig = go.Figure()
+
+    for model_idx, (model_name, pred_df) in enumerate(preds.items()):
+        _render_categorical_traces(
+            fig,
+            pred_df,  # ty: ignore[invalid-argument-type]
+            y_test,
+            y_train,
+            cat_cols=cat_cols,
+            cat_to_int=cat_to_int,
+            model_name=model_name,  # ty: ignore[invalid-argument-type]
+            model_color=model_colors[model_idx],
+            actual_color=actual_color,
+            is_multi_model=len(model_names) > 1,
+            n_history=n_history,
+            show_legend=model_idx == 0 or len(model_names) > 1,
+            line_width=line_width,  # ty: ignore[invalid-argument-type]
+        )
+
+    fig = apply_default_layout(
+        fig,
+        title=title or "Categorical Forecast",
+        x_label=x_label or "Time",
+        y_label=y_label or "Class",
+        width=width,
+        height=height,
+    )
+    fig.update_yaxes(
+        tickvals=list(range(len(sorted_cats))),
+        ticktext=sorted_cats,
+    )
+    return fig
     return fig
 
 
@@ -759,6 +1339,241 @@ def _render_forecast_trace(
             )
 
 
+def _plot_forecast_panel_typed(
+    y_test: pl.DataFrame,
+    y_pred: pl.DataFrame | dict[str, pl.DataFrame],
+    *,
+    prediction_mode: str,
+    y_train: pl.DataFrame | None,
+    n_history: int | None,
+    panel_group_names: list[str] | None,
+    facet_n_cols: int,
+    color_palette: list[str] | None,
+    title: str | None,
+    x_label: str | None,
+    y_label: str | None,
+    width: int | None,
+    height: int | None,
+    line_width: float,
+    band_opacity: float,
+) -> go.Figure:
+    """Panel plot for class-probability or categorical predictions.
+
+    Parameters
+    ----------
+    y_test : pl.DataFrame
+        Actual test values with panel columns.
+    y_pred : pl.DataFrame or dict of str to pl.DataFrame
+        Predictions with panel columns.
+    prediction_mode : str
+        ``"class_proba"`` or ``"categorical"``.
+    y_train : pl.DataFrame or None
+        Historical training data.
+    n_history : int or None
+        Number of training rows to show.
+    panel_group_names : list of str or None
+        Panel group prefixes to include.
+    facet_n_cols : int
+        Columns in facet grid.
+    color_palette : list of str or None
+        Custom color palette.
+    title : str or None
+        Plot title.
+    x_label : str or None
+        X-axis label.
+    y_label : str or None
+        Y-axis label.
+    width : int or None
+        Plot width in pixels.
+    height : int or None
+        Plot height in pixels.
+    line_width : float
+        Line width.
+    band_opacity : float
+        Fill opacity.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with faceted subplots.
+
+    """
+    eff_palette = color_palette if color_palette is not None else _PALETTE
+    actual_color = eff_palette[2 % len(eff_palette)]
+    _model_pal = eff_palette[3:] or eff_palette
+
+    is_multi_model = isinstance(y_pred, dict)
+    if is_multi_model:
+        model_preds: dict[str, pl.DataFrame] = y_pred  # ty: ignore[invalid-assignment]
+        model_names = list(model_preds.keys())
+        model_colors = resolve_color_palette(_model_pal, len(model_names))
+    else:
+        model_preds = {"Forecast": y_pred}
+        model_names = ["Forecast"]
+        model_colors = [eff_palette[1 % len(eff_palette)]]
+
+    # Collect unique panel member suffixes from test data
+    suffix_by_prefix: dict[str, set[str]] = {}
+    for c in y_test.columns:
+        if c in ("time", "observed_time"):
+            continue
+        prefix, sep, member = c.partition("__")
+        if sep:
+            suffix_by_prefix.setdefault(prefix, set()).add(member)
+
+    # Apply panel_group_names filter (filters by prefix)
+    if panel_group_names is not None:
+        suffix_by_prefix = {k: v for k, v in suffix_by_prefix.items() if k in panel_group_names}
+
+    all_suffixes: set[str] = set()
+    for members in suffix_by_prefix.values():
+        all_suffixes |= members
+    suffixes_list = sorted(all_suffixes)
+
+    if not suffixes_list:
+        msg = f"No panel members found for groups: {panel_group_names}"
+        raise ValueError(msg)
+
+    # Create subplots
+    n_panels = len(suffixes_list)
+    n_rows = (n_panels + facet_n_cols - 1) // facet_n_cols
+    n_cols_grid = min(n_panels, facet_n_cols)
+
+    fig = make_subplots(
+        rows=n_rows,
+        cols=n_cols_grid,
+        subplot_titles=suffixes_list,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        horizontal_spacing=0.08,
+    )
+
+    seen_legend: set[str] = set()
+
+    # Pre-compute category mapping for categorical mode
+    sorted_cats: list[str] = []
+    cat_to_int: dict[str, int] = {}
+    if prediction_mode == "categorical":
+        all_cats: set[str] = set()
+        for suffix in suffixes_list:
+            test_m = _extract_member_df(y_test, suffix)
+            train_m = _extract_member_df(y_train, suffix) if y_train is not None else None
+            for pred_df in model_preds.values():
+                pred_m = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
+                for cc in pred_m.columns:
+                    if cc in ("time", "observed_time"):
+                        continue
+                    if pred_m[cc].dtype in (pl.String, pl.Categorical):
+                        all_cats.update(pred_m[cc].cast(pl.String).unique().to_list())
+            for cc in test_m.columns:
+                if cc in ("time", "observed_time"):
+                    continue
+                if test_m[cc].dtype in (pl.String, pl.Categorical):
+                    all_cats.update(test_m[cc].cast(pl.String).unique().to_list())
+            if train_m is not None:
+                for cc in train_m.columns:
+                    if cc in ("time", "observed_time"):
+                        continue
+                    if train_m[cc].dtype in (pl.String, pl.Categorical):
+                        all_cats.update(train_m[cc].cast(pl.String).unique().to_list())
+        sorted_cats = sorted(all_cats)
+        cat_to_int = {cat: i for i, cat in enumerate(sorted_cats)}
+
+    for suffix_idx, suffix in enumerate(suffixes_list):
+        row = suffix_idx // facet_n_cols + 1
+        col_grid = suffix_idx % facet_n_cols + 1
+
+        test_member = _extract_member_df(y_test, suffix)
+        train_member = _extract_member_df(y_train, suffix) if y_train is not None else None
+
+        if prediction_mode == "class_proba":
+            for model_idx, (model_name, pred_df) in enumerate(model_preds.items()):
+                pred_member = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
+                proba_cols = [c for c in pred_member.columns if "_proba_" in c]
+                if not proba_cols:
+                    continue
+                targets = _discover_proba_targets(proba_cols)
+                target = next(iter(targets))
+                target_proba_cols = targets[target]
+                class_labels = [c.split("_proba_", 1)[1] for c in target_proba_cols]
+                colors = resolve_color_palette(color_palette, n=len(class_labels))
+
+                _render_class_proba_traces(
+                    fig,
+                    pred_member,
+                    test_member,
+                    colors=colors,
+                    target_proba_cols=target_proba_cols,
+                    class_labels=class_labels,
+                    target=target,
+                    stack_group=f"proba_{model_name}_{suffix}",
+                    row=row,
+                    col=col_grid,
+                    show_legend=model_idx == 0,
+                    line_width=line_width,
+                    band_opacity=band_opacity,
+                    marker_size=10,
+                    seen_legend=seen_legend,
+                )
+
+        elif prediction_mode == "categorical":
+            first_pred_member = _extract_member_df(
+                next(iter(model_preds.values())),  # ty: ignore[invalid-argument-type]
+                suffix,
+            )
+            cat_cols = [
+                c
+                for c in first_pred_member.columns
+                if c not in ("time", "observed_time") and first_pred_member[c].dtype in (pl.String, pl.Categorical)
+            ]
+
+            for model_idx, (model_name, pred_df) in enumerate(model_preds.items()):
+                pred_member = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
+                _render_categorical_traces(
+                    fig,
+                    pred_member,
+                    test_member,
+                    train_member,
+                    cat_cols=cat_cols,
+                    cat_to_int=cat_to_int,
+                    model_name=model_name,
+                    model_color=model_colors[model_idx],
+                    actual_color=actual_color,
+                    is_multi_model=is_multi_model,
+                    n_history=n_history,
+                    row=row,
+                    col=col_grid,
+                    show_legend=True,
+                    line_width=line_width,
+                    seen_legend=seen_legend,
+                )
+
+    default_title = "Class Probability Forecast" if prediction_mode == "class_proba" else "Categorical Forecast"
+    default_y = "Probability" if prediction_mode == "class_proba" else "Class"
+
+    fig = apply_default_layout(
+        fig,
+        title=title or (default_title + (" Comparison" if is_multi_model else "")),
+        width=width,
+        height=height or (300 * n_rows),
+    )
+
+    for c in range(1, n_cols_grid + 1):
+        fig.update_xaxes(title_text=x_label or "Time", row=n_rows, col=c)
+    fig.update_yaxes(title_text=y_label or default_y)
+
+    if prediction_mode == "categorical" and sorted_cats:
+        for suffix_idx in range(n_panels):
+            fig.update_yaxes(
+                tickvals=list(range(len(sorted_cats))),
+                ticktext=sorted_cats,
+                row=suffix_idx // facet_n_cols + 1,
+                col=suffix_idx % facet_n_cols + 1,
+            )
+
+    return fig
+
+
 def _plot_forecast_panel(
     y_test: pl.DataFrame,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
@@ -781,6 +1596,7 @@ def _plot_forecast_panel(
     connect_gaps: bool = False,
     resampler: bool | Literal["widget"] | None = None,
     show_legend: bool = True,
+    prediction_mode: str = "numeric",
 ) -> go.Figure:
     """Plot forecast with panel data as faceted subplots.
 
@@ -829,6 +1645,8 @@ def _plot_forecast_panel(
         Interval fill opacity.
     show_transition : bool
         Whether to connect train to forecast.
+    prediction_mode : str
+        One of ``"numeric"``, ``"class_proba"``, ``"categorical"``.
 
     Returns
     -------
@@ -836,6 +1654,24 @@ def _plot_forecast_panel(
         Plotly figure with faceted panel subplots.
 
     """
+    if prediction_mode != "numeric":
+        return _plot_forecast_panel_typed(
+            y_test,
+            y_pred,
+            prediction_mode=prediction_mode,
+            y_train=y_train,
+            n_history=n_history,
+            panel_group_names=panel_group_names,
+            facet_n_cols=facet_n_cols,
+            color_palette=color_palette,
+            title=title,
+            x_label=x_label,
+            y_label=y_label,
+            width=width,
+            height=height,
+            line_width=line_width,
+            band_opacity=band_opacity,
+        )
     eff_palette = color_palette if color_palette is not None else _PALETTE
     history_color = eff_palette[0]
     actual_color = eff_palette[2 % len(eff_palette)]
@@ -919,6 +1755,7 @@ def _plot_forecast_panel(
     # Normalise y_pred into a model-name -> DataFrame mapping
     is_multi_model = isinstance(y_pred, dict)
     if is_multi_model:
+        assert isinstance(y_pred, dict)
         model_preds: dict[str, pl.DataFrame] = y_pred  # type: ignore[assignment, invalid-assignment]  # ty:ignore[invalid-assignment]
         model_names = list(model_preds.keys())
         model_colors = resolve_color_palette(_model_pal, len(model_names))

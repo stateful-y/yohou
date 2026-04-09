@@ -215,3 +215,41 @@ class TestScorerCheckFunctionsInterval:
             y_pred,
             aggregation_methods=["timewise"],
         )
+
+
+class TestScorerCheckFunctionsClassProba:
+    """Tests that call scorer check functions with class-proba scorer."""
+
+    @pytest.fixture(scope="class")
+    def class_proba_forecaster_and_data(self):
+        """Fitted class-proba forecaster with y_truth."""
+        from sklearn.linear_model import LogisticRegression
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+
+        n = 80
+        times = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+            interval="1d",
+            eager=True,
+        )
+        labels = ["sun", "rain", "cloud"]
+        y = pl.DataFrame({
+            "time": times,
+            "weather": [labels[i % 3] for i in range(n)],
+        })
+        forecaster = ClassProbaReductionForecaster(
+            estimator=LogisticRegression(max_iter=200),
+        )
+        forecaster.fit(y, forecasting_horizon=1)
+        return forecaster, y
+
+    def test_class_proba_prediction_type_compatibility(self, class_proba_forecaster_and_data):
+        """Class-proba scorer paired with class-proba forecaster succeeds."""
+        from yohou.metrics.class_proba import LogLoss
+
+        forecaster, y = class_proba_forecaster_and_data
+        scorer = LogLoss()
+        scorer.fit(y)
+        check_scorer_prediction_type_compatibility(scorer, forecaster, y)

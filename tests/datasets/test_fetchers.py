@@ -12,6 +12,8 @@ from sklearn.utils import Bunch
 from yohou.datasets._fetchers import (
     _restructure_kdd_cup_columns,
     clear_data_home,
+    fetch_air_quality_classification,
+    fetch_demand_classification,
     fetch_dominick,
     fetch_electricity_demand,
     fetch_hospital,
@@ -287,3 +289,148 @@ class TestRestructureKddCup:
         }).cast({"time": pl.Datetime})
         result = _restructure_kdd_cup_columns(frame)
         assert result.columns == ["time", "T1__value", "T2__value"]
+
+
+@pytest.fixture(scope="module")
+def air_quality_data():
+    """Fetch the air quality classification dataset once per module."""
+    return fetch_air_quality_classification()
+
+
+@pytest.fixture(scope="module")
+def demand_data():
+    """Fetch the demand classification dataset once per module."""
+    return fetch_demand_classification()
+
+
+class TestFetchAirQualityClassification:
+    """Tests for fetch_air_quality_classification."""
+
+    def test_returns_bunch(self, air_quality_data):
+        """Result is a sklearn Bunch."""
+        assert isinstance(air_quality_data, Bunch)
+
+    def test_bunch_keys(self, air_quality_data):
+        """Bunch contains required keys."""
+        for key in ("y", "X", "feature_names", "target_names", "classes", "DESCR"):
+            assert key in air_quality_data
+
+    def test_y_schema(self, air_quality_data):
+        """y has time (datetime) and air_quality (string) columns."""
+        y = air_quality_data.y
+        assert "time" in y.columns
+        assert "air_quality" in y.columns
+        assert y["time"].dtype.is_temporal()
+        assert y["air_quality"].dtype == pl.Utf8
+
+    def test_x_schema(self, air_quality_data):
+        """X has time (datetime) and 5 numeric feature columns."""
+        X = air_quality_data.X
+        assert "time" in X.columns
+        assert len(X.columns) == 6  # time + 5 features
+        for col in X.columns:
+            if col != "time":
+                assert X[col].dtype.is_numeric()
+
+    def test_y_x_alignment(self, air_quality_data):
+        """y and X have the same length and time column."""
+        y, X = air_quality_data.y, air_quality_data.X
+        assert len(y) == len(X)
+        assert y["time"].equals(X["time"])
+
+    def test_classes(self, air_quality_data):
+        """Classes match WHO air quality categories."""
+        classes = sorted(air_quality_data.classes)
+        assert classes == ["good", "hazardous", "moderate", "unhealthy"]
+
+    def test_all_labels_in_classes(self, air_quality_data):
+        """All y labels are among the declared classes."""
+        labels = set(air_quality_data.y["air_quality"].to_list())
+        assert labels <= set(air_quality_data.classes)
+
+    def test_target_names(self, air_quality_data):
+        """target_names is ["air_quality"]."""
+        assert air_quality_data.target_names == ["air_quality"]
+
+    def test_feature_names(self, air_quality_data):
+        """feature_names matches X columns minus time."""
+        expected = [c for c in air_quality_data.X.columns if c != "time"]
+        assert air_quality_data.feature_names == expected
+
+    def test_no_nulls_in_y(self, air_quality_data):
+        """y has no null values."""
+        assert air_quality_data.y.null_count().row(0) == (0, 0)
+
+    def test_descr_is_string(self, air_quality_data):
+        """DESCR is a non-empty string."""
+        assert isinstance(air_quality_data.DESCR, str)
+        assert len(air_quality_data.DESCR) > 0
+
+
+class TestFetchDemandClassification:
+    """Tests for fetch_demand_classification."""
+
+    def test_returns_bunch(self, demand_data):
+        """Result is a sklearn Bunch."""
+        assert isinstance(demand_data, Bunch)
+
+    def test_bunch_keys(self, demand_data):
+        """Bunch contains required keys."""
+        for key in ("y", "X", "feature_names", "target_names", "classes", "DESCR"):
+            assert key in demand_data
+
+    def test_y_schema(self, demand_data):
+        """y has time (datetime) and demand_level (string) columns."""
+        y = demand_data.y
+        assert "time" in y.columns
+        assert "demand_level" in y.columns
+        assert y["time"].dtype.is_temporal()
+        assert y["demand_level"].dtype == pl.Utf8
+
+    def test_x_schema(self, demand_data):
+        """X has time (datetime) and 4 numeric feature columns."""
+        X = demand_data.X
+        assert "time" in X.columns
+        assert len(X.columns) == 5  # time + 4 features
+        for col in X.columns:
+            if col != "time":
+                assert X[col].dtype.is_numeric()
+
+    def test_y_x_alignment(self, demand_data):
+        """y and X have the same length and time column."""
+        y, X = demand_data.y, demand_data.X
+        assert len(y) == len(X)
+        assert y["time"].equals(X["time"])
+
+    def test_classes(self, demand_data):
+        """Classes are low, medium, high."""
+        classes = sorted(demand_data.classes)
+        assert classes == ["high", "low", "medium"]
+
+    def test_all_labels_in_classes(self, demand_data):
+        """All y labels are among the declared classes."""
+        labels = set(demand_data.y["demand_level"].to_list())
+        assert labels <= set(demand_data.classes)
+
+    def test_target_names(self, demand_data):
+        """target_names is ["demand_level"]."""
+        assert demand_data.target_names == ["demand_level"]
+
+    def test_feature_names(self, demand_data):
+        """feature_names matches X columns minus time."""
+        expected = [c for c in demand_data.X.columns if c != "time"]
+        assert demand_data.feature_names == expected
+
+    def test_feature_columns_are_panel(self, demand_data):
+        """Feature columns use __ separator convention."""
+        for col in demand_data.feature_names:
+            assert "__" in col
+
+    def test_no_nulls_in_y(self, demand_data):
+        """y has no null values."""
+        assert demand_data.y.null_count().row(0) == (0, 0)
+
+    def test_descr_is_string(self, demand_data):
+        """DESCR is a non-empty string."""
+        assert isinstance(demand_data.DESCR, str)
+        assert len(demand_data.DESCR) > 0

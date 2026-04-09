@@ -12,6 +12,14 @@ import polars as pl
 from yohou.model_selection import GridSearchCV
 from yohou.utils import inspect_panel
 
+from .class_proba import (
+    check_class_proba_classes_attribute,
+    check_class_proba_predict_returns_labels,
+    check_class_proba_prediction_bounds,
+    check_class_proba_prediction_structure,
+    check_class_proba_prediction_sums,
+    check_class_proba_prediction_types,
+)
 from .common import (
     check_metadata_routing_default_request,
     check_metadata_routing_get_metadata_routing,
@@ -530,6 +538,31 @@ def _yield_yohou_forecaster_checks(
             "check_coverage_rates_validation",
             check_coverage_rates_validation,
             {"y": y_train, "X": X_train},
+        )
+
+    # Class-probability forecaster checks
+    if tags.get("forecaster_type") == "class_proba":
+        yield (
+            "check_class_proba_prediction_structure",
+            check_class_proba_prediction_structure,
+            {"y_test": y_test, "X_test": X_test},
+        )
+        yield (
+            "check_class_proba_prediction_bounds",
+            check_class_proba_prediction_bounds,
+            {"y_test": y_test, "X_test": X_test},
+        )
+        yield (
+            "check_class_proba_prediction_sums",
+            check_class_proba_prediction_sums,
+            {"y_test": y_test, "X_test": X_test},
+        )
+        yield "check_class_proba_prediction_types", check_class_proba_prediction_types, {}
+        yield "check_class_proba_classes_attribute", check_class_proba_classes_attribute, {}
+        yield (
+            "check_class_proba_predict_returns_labels",
+            check_class_proba_predict_returns_labels,
+            {"y_test": y_test, "X_test": X_test},
         )
 
     # Reduction forecaster checks

@@ -926,6 +926,143 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
         return y_pred
 
+    @available_if(_column_forecaster_has("predict_class_proba"))
+    def predict_class_proba(
+        self,
+        forecasting_horizon: int | None = None,
+        X: pl.DataFrame | None = None,
+        panel_group_names: list[str] | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Predict class probabilities using all forecasters and concatenate results.
+
+        Parameters
+        ----------
+        forecasting_horizon : int, optional
+            Forecasting horizon. If None, uses horizon from fit.
+        X : pl.DataFrame, optional
+            Exogenous features with "time" column.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Concatenated class-probability predictions from all forecasters.
+
+        """
+        check_is_fitted(self, ["forecasters_", "column_map_", "remainder_cols_"])
+
+        _raise_for_params(params, self, "predict_class_proba")
+        routed_params = process_routing(self, "predict_class_proba", **params)
+
+        predictions: list[pl.DataFrame] = []
+        time_columns: pl.DataFrame | None = None
+        time_col_names: list[str] = []
+
+        for name, forecaster, _cols in self.forecasters_:
+            forecaster_params = routed_params.get(name, Bunch(predict_class_proba={}))
+            y_pred = forecaster.predict_class_proba(
+                forecasting_horizon=forecasting_horizon,
+                X=X,
+                panel_group_names=panel_group_names,
+                **forecaster_params.predict_class_proba,
+            )
+
+            if time_columns is None:
+                time_col_names = [c for c in ["observed_time", "time"] if c in y_pred.columns]
+                time_columns = y_pred.select(time_col_names)
+                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
+            else:
+                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
+
+        if self.remainder_forecaster_ is not None and self.remainder_cols_:
+            remainder_params = routed_params.get("remainder", Bunch(predict_class_proba={}))
+            y_pred_remainder = self.remainder_forecaster_.predict_class_proba(
+                forecasting_horizon=forecasting_horizon,
+                X=X,
+                panel_group_names=panel_group_names,
+                **remainder_params.predict_class_proba,
+            )
+            predictions.append(y_pred_remainder.select(~cs.by_name(*time_col_names)))
+
+        assert time_columns is not None
+        return pl.concat([time_columns] + predictions, how="horizontal")
+
+    @available_if(_column_forecaster_has("predict_class_proba"))
+    def observe_predict_class_proba(
+        self,
+        y: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+        forecasting_horizon: int | None = None,
+        panel_group_names: list[str] | None = None,
+        stride: int | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Alternate recursive predict_class_proba and observe.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series for updates.
+        X : pl.DataFrame or None, default=None
+            Feature time series for predictions.
+        forecasting_horizon : int or None, default=None
+            Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
+        panel_group_names : list of str or None, default=None
+            Group prefixes for panel data.
+        stride : int or None, default=None
+            Number of observations per update step. If None, uses
+            ``fit_forecasting_horizon_``.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Predicted class-probability time series.
+
+        """
+        check_is_fitted(self, ["forecasters_", "column_map_", "remainder_cols_"])
+
+        fh = forecasting_horizon if forecasting_horizon is not None else self.fit_forecasting_horizon_
+        if stride is None:
+            stride = self.fit_forecasting_horizon_
+
+        y_pred = self.predict_class_proba(
+            forecasting_horizon=fh,
+            X=X,
+            panel_group_names=panel_group_names,
+            **params,
+        )
+
+        for i in range(0, len(y), stride):
+            y_slice = y[i : i + stride]
+
+            X_slice = None
+            if X is not None:
+                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
+
+            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+
+            X_future = None
+            if X is not None:
+                last_time = y_slice["time"][-1]
+                X_future = X.filter(pl.col("time") > last_time)
+
+            y_pred_i = self.predict_class_proba(
+                forecasting_horizon=fh,
+                X=X_future,
+                panel_group_names=panel_group_names,
+                **params,
+            )
+
+            y_pred = pl.concat([y_pred, y_pred_i])
+
+        return y_pred
+
     def get_metadata_routing(self):
         """Get metadata routing for this estimator.
 
@@ -943,8 +1080,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             .add(caller="fit", callee="fit")
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict_interval")
+            .add(caller="predict_class_proba", callee="predict_class_proba")
             .add(caller="observe_predict", callee="observe_predict")
             .add(caller="observe_predict_interval", callee="observe_predict_interval")
+            .add(caller="observe_predict_class_proba", callee="observe_predict_class_proba")
         )
 
         # Add routing for each named forecaster

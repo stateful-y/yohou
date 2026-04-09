@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "scikit-learn",
 #     "yohou",
 # ]
 # ///
@@ -25,16 +26,24 @@ def _():
 @app.cell(hide_code=True)
 def _():
     import polars as pl
+    from sklearn.tree import DecisionTreeClassifier
 
+    from yohou.class_proba import ClassProbaReductionForecaster
     from yohou.compose import DecompositionPipeline
-    from yohou.datasets import fetch_sunspot, fetch_tourism_monthly
+    from yohou.datasets import (
+        fetch_air_quality_classification,
+        fetch_sunspot,
+        fetch_tourism_monthly,
+    )
     from yohou.interval import SplitConformalForecaster
     from yohou.plotting import (
+        plot_calibration,
         plot_decomposition,
         plot_forecast,
         plot_time_weight,
     )
     from yohou.point import PointReductionForecaster, SeasonalNaive
+    from yohou.preprocessing import LagTransformer
     from yohou.stationarity import (
         PatternSeasonalityForecaster,
         PolynomialTrendForecaster,
@@ -45,17 +54,22 @@ def _():
     )
 
     return (
+        ClassProbaReductionForecaster,
+        DecisionTreeClassifier,
         DecompositionPipeline,
+        LagTransformer,
         PatternSeasonalityForecaster,
         PointReductionForecaster,
         PolynomialTrendForecaster,
         SeasonalNaive,
         SplitConformalForecaster,
         exponential_decay_weight,
+        fetch_air_quality_classification,
         fetch_sunspot,
         fetch_tourism_monthly,
         linear_decay_weight,
         pl,
+        plot_calibration,
         plot_decomposition,
         plot_forecast,
         plot_time_weight,
@@ -70,6 +84,9 @@ def _(mo):
     ## What You'll Learn
 
     - Plotting forecasts from single and multiple models with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
+    - Visualizing **categorical** (hard-label) forecasts as step charts
+    - Visualizing **class-probability** (soft) forecasts as stacked area charts
+    - Checking probability calibration with [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
     - Visualizing decomposition components with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/)
     - Rendering time weight functions with [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/)
 
@@ -210,7 +227,135 @@ def _(plot_forecast, y_pred_naive, y_test, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 3. Decomposition Visualization
+    ## 3. Categorical (Hard-Label) Forecasts
+
+    `plot_forecast` **auto-detects** columns with `String` or `Categorical`
+    dtype and renders a **step chart**. Each class is mapped to a horizontal
+    band so temporal transitions between categories are easy to follow.
+
+    We use [`fetch_air_quality_classification`](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/)
+    (4-class air quality target derived from PM2.5 data) and fit a
+    [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/)
+    with a [`DecisionTreeClassifier`](https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeClassifier.html).
+    """)
+
+
+@app.cell
+def _(
+    ClassProbaReductionForecaster,
+    DecisionTreeClassifier,
+    LagTransformer,
+    fetch_air_quality_classification,
+):
+    cls_data = fetch_air_quality_classification()
+    cls_y, cls_X = cls_data.y, cls_data.X
+    cls_split = len(cls_y) - 200
+    cls_y_train, cls_y_test = cls_y[:cls_split], cls_y[cls_split:]
+    cls_X_train, cls_X_test = cls_X[:cls_split], cls_X[cls_split:]
+    cls_fh = 24
+
+    cls_forecaster = ClassProbaReductionForecaster(
+        estimator=DecisionTreeClassifier(random_state=42),
+        feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
+    )
+    cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
+
+    cls_y_pred_labels = cls_forecaster.predict(
+        X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+    )
+    cls_y_proba = cls_forecaster.predict_class_proba(
+        X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+    )
+    return cls_X_test, cls_fh, cls_forecaster, cls_y_pred_labels, cls_y_proba, cls_y_test, cls_y_train
+
+
+@app.cell
+def _(cls_y_pred_labels, cls_y_test, cls_y_train, plot_forecast):
+    plot_forecast(
+        cls_y_test,
+        cls_y_pred_labels,
+        y_train=cls_y_train,
+        n_history=50,
+        title="Categorical Forecast with Training History",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Multi-Model Categorical Comparison
+
+    Passing a **dict** of categorical predictions overlays step traces for
+    each model. Here we compare two rolling forecasts produced by
+    `observe_predict()` so the model updates its memory at every step.
+    """)
+
+
+@app.cell
+def _(cls_X_test, cls_fh, cls_forecaster, cls_y_test, cls_y_train, plot_forecast):
+    cls_forecaster_obs = cls_forecaster
+    cls_obs_labels = cls_forecaster_obs.observe_predict(
+        cls_y_test[:cls_fh], X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+    )
+    plot_forecast(
+        cls_y_test,
+        {"Static": cls_forecaster.predict(X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh),
+         "After Observe": cls_obs_labels},
+        y_train=cls_y_train,
+        n_history=50,
+        title="Multi-Model Categorical Comparison",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 4. Class-Probability (Soft) Forecasts
+
+    When predictions contain `_proba_` columns (from `predict_class_proba()`),
+    `plot_forecast` renders a **stacked area chart** where each class is a
+    coloured band whose height equals the predicted probability. Diamond
+    markers show the true class at each time step.
+    """)
+
+
+@app.cell
+def _(cls_y_proba, cls_y_test, plot_forecast):
+    plot_forecast(
+        cls_y_test,
+        cls_y_proba,
+        title="Class-Probability Forecast (Stacked Area)",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Reliability Diagram
+
+    [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
+    compares predicted probabilities against empirical frequencies. A
+    perfectly calibrated model follows the diagonal. Use **n_bins** to
+    control the number of probability bins.
+    """)
+
+
+@app.cell
+def _(cls_y_proba, cls_y_test, plot_calibration):
+    cls_y_truth = cls_y_test.head(len(cls_y_proba))
+    plot_calibration(
+        cls_y_proba,
+        cls_y_truth,
+        target="air_quality",
+        n_bins=8,
+        title="Reliability Diagram - Air Quality",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 5. Decomposition Visualization
 
     [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) displays a fitted [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)'s components
     as stacked subplots. Toggle **show_original** and pass a subset of components.
@@ -272,7 +417,7 @@ def _(decomp_components, fh, plot_decomposition, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Time Weight Visualization
+    ## 6. Time Weight Visualization
 
     [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/) renders weighting functions over time. Toggle the
     **fill** kwarg for an area chart and adjust **fill_opacity**.
@@ -324,6 +469,9 @@ def _(mo):
     ## Key Takeaways
 
     - **plot_forecast** handles single models, multi-model dicts, and prediction intervals via `coverage_rates`; `n_history` trims the visible training window
+    - **plot_forecast (categorical)** auto-detects `String`/`Categorical` columns and renders **step charts**; multi-model dicts overlay separate traces
+    - **plot_forecast (class-probability)** auto-detects `_proba_` columns and renders **stacked area charts** with diamond markers for the true class
+    - **plot_calibration** produces reliability diagrams for class-probability forecasts; `n_bins` controls granularity
     - **plot_decomposition** stacks components vertically; `show_original` toggles whether the raw series appears as the first panel
     - **plot_time_weight** visualizes weighting schemes; `fill=True` shows the area under the curve, `fill_opacity` controls transparency
 
@@ -332,6 +480,7 @@ def _(mo):
     - **Model evaluation**: See [`examples/plotting/evaluation.py`](/examples/plotting/evaluation/) for residual diagnostics, scoring distributions, and calibration plots
     - **Exploration**: See [`examples/plotting/exploration.py`](/examples/plotting/exploration/) for rolling statistics and missing data audits
     - **Cross-validation**: See [`examples/plotting/model_selection.py`](/examples/plotting/model_selection/) for CV split visualization and hyperparameter search results
+    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for LogLoss, BrierScore, and Accuracy evaluation
     """)
 
 

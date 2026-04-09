@@ -1325,12 +1325,6 @@ def on_pre_build(config):
     if not examples_dir.exists():
         return
 
-    _skip_stems: set[str] = set()
-    try:
-        import yohou_nixtla  # noqa: F401
-    except ModuleNotFoundError:
-        _skip_stems |= {"nixtla_forecasters", "nixtla_panel"}
-
     # Find all marimo notebooks (recursively, excluding __marimo__ and bugs dirs)
     notebooks = [
         p

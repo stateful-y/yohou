@@ -28,20 +28,22 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
 
     Parameters
     ----------
-    type_filter : {"forecaster", "point", "interval", \
+    type_filter : {"forecaster", "point", "interval", "class_proba", \
             "transformer", "splitter", "scorer", "point_scorer", \
-            "interval_scorer", "conformity_scorer"} or list of such str, default=None
+            "interval_scorer", "class_proba_scorer", "conformity_scorer"} or list of such str, default=None
         Which kind of estimators should be returned. If None, no filter is
         applied and all estimators are returned. Possible values are:
 
-        - 'forecaster': All forecasters (point, interval, or both)
+        - 'forecaster': All forecasters (point, interval, class_proba, or both)
         - 'point': Only point forecasters
         - 'interval': Only interval forecasters
+        - 'class_proba': Only class-probability forecasters
         - 'transformer': Transformers
         - 'splitter': Cross-validation splitters
         - 'scorer': All scorers
         - 'point_scorer': Only point scorers
         - 'interval_scorer': Only interval scorers
+        - 'class_proba_scorer': Only class-probability scorers
         - 'conformity_scorer': Only conformity scorers
 
     Returns
@@ -111,11 +113,13 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
             "forecaster",
             "point",
             "interval",
+            "class_proba",
             "transformer",
             "splitter",
             "scorer",
             "point_scorer",
             "interval_scorer",
+            "class_proba_scorer",
             "conformity_scorer",
         }
 
@@ -153,6 +157,8 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
                         and "point" in type_filter
                         or forecaster_type == "interval"
                         and "interval" in type_filter
+                        or forecaster_type == "class_proba"
+                        and "class_proba" in type_filter
                     ):
                         filtered_estimators.append((name, est_cls))
                     elif forecaster_type == "both":
@@ -172,6 +178,8 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
                         and "interval_scorer" in type_filter
                         or prediction_type == "conformity"
                         and "conformity_scorer" in type_filter
+                        or prediction_type == "class_proba"
+                        and "class_proba_scorer" in type_filter
                     ):
                         filtered_estimators.append((name, est_cls))
                     elif "scorer" in type_filter:

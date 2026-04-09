@@ -41,6 +41,14 @@ Using individual check functions::
 
 """
 
+from .class_proba import (
+    check_class_proba_classes_attribute,
+    check_class_proba_predict_returns_labels,
+    check_class_proba_prediction_bounds,
+    check_class_proba_prediction_structure,
+    check_class_proba_prediction_sums,
+    check_class_proba_prediction_types,
+)
 from .common import (
     check_metadata_routing_default_request,
     check_metadata_routing_get_metadata_routing,
@@ -162,6 +170,12 @@ from .transformer import (
 )
 
 __all__ = [
+    "check_class_proba_classes_attribute",
+    "check_class_proba_predict_returns_labels",
+    "check_class_proba_prediction_bounds",
+    "check_class_proba_prediction_structure",
+    "check_class_proba_prediction_sums",
+    "check_class_proba_prediction_types",
     "check_feature_names_out_match",
     "check_fit_idempotent",
     "check_fit_sets_attributes",

@@ -663,6 +663,94 @@ def y_X_factory():
 
 
 @pytest.fixture
+def class_proba_y_X_factory():
+    """Factory for generating categorical (y, X) tuples for class-proba testing.
+
+    Returns a callable that generates time series with categorical target columns
+    suitable for ``ClassProbaReductionForecaster`` and related tests.
+    """
+    from datetime import datetime, timedelta
+
+    import numpy as np
+
+    def _factory(
+        length=100,
+        n_targets=1,
+        n_features=2,
+        n_classes=3,
+        seed=42,
+        panel=False,
+        n_groups=2,
+    ):
+        """Generate class-probability forecaster test data.
+
+        Parameters
+        ----------
+        length : int
+            Number of time steps.
+        n_targets : int
+            Number of categorical target columns.
+        n_features : int
+            Number of numeric exogenous features (0 for None).
+        n_classes : int
+            Number of classes per target.
+        seed : int
+            Random seed.
+        panel : bool
+            Whether to create panel data.
+        n_groups : int
+            Number of panel groups when panel=True.
+
+        Returns
+        -------
+        y : pl.DataFrame
+            Target data with "time" column and string-valued categorical columns.
+        X : pl.DataFrame or None
+            Numeric features with "time" column.
+        """
+        rng = np.random.default_rng(seed)
+        class_labels = [f"class_{i}" for i in range(n_classes)]
+
+        time = pl.datetime_range(
+            start=datetime(2021, 12, 16),
+            end=datetime(2021, 12, 16) + timedelta(seconds=length - 1),
+            interval="1s",
+            eager=True,
+        )
+
+        if panel:
+            y = pl.DataFrame({"time": time})
+            for group_idx in range(n_groups):
+                for i in range(n_targets):
+                    col_name = f"group_{group_idx}__y_{i}"
+                    values = rng.choice(class_labels, size=length).tolist()
+                    y = y.with_columns(pl.Series(col_name, values, dtype=pl.String))
+
+            X = None
+            if n_features > 0:
+                X = pl.DataFrame({"time": time})
+                for group_idx in range(n_groups):
+                    for i in range(n_features):
+                        col_name = f"group_{group_idx}__X_{i}"
+                        X = X.with_columns(pl.Series(col_name, rng.random(length)))
+        else:
+            y = pl.DataFrame({"time": time})
+            for i in range(n_targets):
+                values = rng.choice(class_labels, size=length).tolist()
+                y = y.with_columns(pl.Series(f"y_{i}", values, dtype=pl.String))
+
+            X = None
+            if n_features > 0:
+                X = pl.DataFrame({"time": time})
+                for i in range(n_features):
+                    X = X.with_columns(pl.Series(f"X_{i}", rng.random(length)))
+
+        return y, X
+
+    return _factory
+
+
+@pytest.fixture
 def y_X_panel_factory():
     """Factory for generating panel data (y, X) tuples for testing.
 
