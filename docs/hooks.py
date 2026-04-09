@@ -1349,6 +1349,10 @@ def on_pre_build(config):
         rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
 
+        if notebook.stem in _skip_stems:
+            print(f"[hooks] skipping {rel_path} (missing optional dependency)")
+            continue
+
         if output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)

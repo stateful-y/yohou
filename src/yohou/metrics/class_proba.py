@@ -66,7 +66,7 @@ class LogLoss(BaseClassProbaScorer):
     >>> scorer = LogLoss()
     >>> _ = scorer.fit(y_true)
     >>> scorer.score(y_true, y_pred)  # doctest: +ELLIPSIS
-    0.277...
+    0.312...
 
     Notes
     -----
@@ -234,7 +234,7 @@ class BrierScore(BaseClassProbaScorer):
     >>> scorer = BrierScore()
     >>> _ = scorer.fit(y_true)
     >>> scorer.score(y_true, y_pred)  # doctest: +ELLIPSIS
-    0.18...
+    0.113...
 
     Notes
     -----

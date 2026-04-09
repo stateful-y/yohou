@@ -88,8 +88,8 @@ def _(mo):
     We use [`fetch_air_quality_classification`](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/)
     to derive a 4-class air quality target from the KDD Cup 2018 PM2.5 data,
     then fit two models of differing capacity: a Decision Tree and a
-    Random Forest. Both produce probability forecasts via rolling
-    `observe_predict_class_proba()`.
+    Random Forest. Both produce probability forecasts via
+    `predict_class_proba()` after observing the test set.
     """)
     return
 
@@ -175,14 +175,16 @@ def _(
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
     dt.fit(y_train, X_train, forecasting_horizon=fh)
-    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X=X_test).sort("time")
+    dt.observe(y=y_test, X=X_test)
+    y_proba_dt = dt.predict_class_proba(X=X_test, forecasting_horizon=fh).sort("time")
 
     rf = ClassProbaReductionForecaster(
         estimator=RandomForestClassifier(n_estimators=50, random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
     rf.fit(y_train, X_train, forecasting_horizon=fh)
-    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X=X_test).sort("time")
+    rf.observe(y=y_test, X=X_test)
+    y_proba_rf = rf.predict_class_proba(X=X_test, forecasting_horizon=fh).sort("time")
 
     print(f"DT predictions: {len(y_proba_dt)} rows")
     print(f"RF predictions: {len(y_proba_rf)} rows")
@@ -202,8 +204,8 @@ def _(mo):
 
 @app.cell
 def _(X_test, dt, fh, plot_forecast, rf, y_test):
-    y_pred_dt = dt.observe_predict(y=y_test, X=X_test).sort("time")
-    y_pred_rf = rf.observe_predict(y=y_test, X=X_test).sort("time")
+    y_pred_dt = dt.predict(X=X_test, forecasting_horizon=fh).sort("time")
+    y_pred_rf = rf.predict(X=X_test, forecasting_horizon=fh).sort("time")
     plot_forecast(
         y_test,
         {"Decision Tree": y_pred_dt, "Random Forest": y_pred_rf},

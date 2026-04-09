@@ -295,18 +295,15 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7. Observe-Predict-Interval
+    ## 7. Prediction Intervals
 
     [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
-    (and other interval forecasters) expose `observe_predict_interval()`.
-    It works exactly like `observe_predict()` but returns **prediction
-    intervals** instead of point forecasts.  Each observation step updates
-    the forecaster's memory and the next prediction produces lower/upper
-    bounds at the requested coverage rate.
+    (and other interval forecasters) support `observe()` and
+    `predict_interval()`.  After observing calibration data, the next
+    prediction produces lower/upper bounds at the requested coverage rate.
 
-    The output DataFrame contains `"time"`, `"observed_time"`, and a pair
-    of columns per coverage level:
-    `{target}_upper_{rate}` / `{target}_lower_{rate}`.
+    The output DataFrame contains `"time"` and a pair of columns per
+    coverage level: `{target}_upper_{rate}` / `{target}_lower_{rate}`.
     """)
 
 
@@ -328,9 +325,9 @@ def _(SeasonalNaive, SplitConformalForecaster, fetch_sunspot, train_test_split):
 
 @app.cell
 def _(conformal, pl, plot_forecast, ss_cal, ss_fh, ss_test, ss_train):
-    # Observe calibration data and predict intervals in one call
-    y_pred_interval = conformal.observe_predict_interval(
-        ss_cal,
+    # Observe calibration data, then predict intervals from the final state
+    conformal.observe(ss_cal)
+    y_pred_interval = conformal.predict_interval(
         forecasting_horizon=ss_fh,
         coverage_rates=[0.9],
     )
@@ -350,12 +347,12 @@ def _(conformal, pl, plot_forecast, ss_cal, ss_fh, ss_test, ss_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 8. Observe-Predict-Class-Proba (Soft Classification)
+    ## 8. Class-Probability Forecasting (Soft Classification)
 
     [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/)
-    exposes `observe_predict_class_proba()`.  It updates the forecaster's
-    memory with newly arrived categorical observations and returns the full
-    **probability distribution** over classes for the next horizon.
+    supports `observe()` and `predict_class_proba()`.  After observing
+    calibration data, it returns the full **probability distribution** over
+    classes for the next horizon.
 
     The output DataFrame contains `"time"`, `"observed_time"`, and one
     column per class: `{target}_proba_{class_label}` (float values summing
@@ -395,28 +392,28 @@ def _(
 
 
 @app.cell
-def _(cls_X_cal, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, plot_forecast):
-    # Observe calibration data and predict class probabilities
-    cls_y_proba = cls_forecaster.observe_predict_class_proba(
-        cls_y_cal,
-        X=cls_X_cal,
+def _(cls_X_cal, cls_X_test, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, plot_forecast):
+    # Observe calibration data, then predict class probabilities from the final state
+    cls_forecaster.observe(cls_y_cal, X=cls_X_cal)
+    cls_y_proba = cls_forecaster.predict_class_proba(
+        X=cls_X_test,
         forecasting_horizon=cls_fh,
     )
 
     print("Probability columns:", [c for c in cls_y_proba.columns if "_proba_" in c])
     plot_forecast(
-        cls_y_test,
+        cls_y_test.head(cls_fh),
         cls_y_proba,
-        title="observe_predict_class_proba - Stacked Area",
+        title="predict_class_proba - Stacked Area",
     )
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 9. Observe-Predict on a Class-Proba Forecaster (Hard Labels)
+    ## 9. Hard-Label Prediction on a Class-Proba Forecaster
 
-    Calling `observe_predict()` (without `_class_proba`) on a
+    Calling `predict()` on a
     [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/)
     returns the **argmax class** at each time step instead of the full
     probability distribution.  This is the hard-label counterpart.
@@ -429,21 +426,20 @@ def _(mo):
 
 
 @app.cell
-def _(cls_X_cal, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, cls_y_train, plot_forecast):
-    # Same forecaster, but observe_predict returns hard labels
-    cls_y_labels = cls_forecaster.observe_predict(
-        cls_y_cal,
-        X=cls_X_cal,
+def _(cls_X_test, cls_fh, cls_forecaster, cls_y_test, cls_y_train, plot_forecast):
+    # Predict from the already-observed state (hard labels via predict)
+    cls_y_labels = cls_forecaster.predict(
+        X=cls_X_test,
         forecasting_horizon=cls_fh,
     )
 
     print("Hard-label dtypes:", cls_y_labels.dtypes)
     plot_forecast(
-        cls_y_test,
+        cls_y_test.head(cls_fh),
         cls_y_labels,
         y_train=cls_y_train,
         n_history=50,
-        title="observe_predict (hard labels) - Step Chart",
+        title="predict (hard labels) - Step Chart",
     )
 
 

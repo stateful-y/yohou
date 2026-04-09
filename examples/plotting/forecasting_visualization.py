@@ -346,7 +346,7 @@ def _(cls_y_proba, cls_y_test, plot_calibration):
     plot_calibration(
         cls_y_proba,
         cls_y_truth,
-        target="quality",
+        target="air_quality",
         n_bins=8,
         title="Reliability Diagram - Air Quality",
     )
