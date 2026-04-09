@@ -984,3 +984,37 @@ class TestSystematicChecksPanel:
             search_cv,
             _yield_yohou_search_checks(search_cv, y_train, None, y_test, None),
         )
+
+
+class TestClassProbaSearch:
+    """Tests for search CV with class-probability forecasters."""
+
+    def test_grid_search_class_proba_predict(self, class_proba_y_X_factory):
+        """GridSearchCV with class_proba forecaster exposes predict_class_proba."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+        from yohou.metrics import LogLoss
+
+        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=0, n_classes=3, seed=42)
+        y_train, y_test = y[:80], y[80:]
+
+        search_cv = GridSearchCV(
+            forecaster=ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+            ),
+            param_grid={"estimator__max_depth": [2, 5]},
+            scoring=LogLoss(),
+            cv=2,
+            refit=True,
+        )
+        search_cv.fit(y_train, forecasting_horizon=3)
+
+        y_pred = search_cv.predict_class_proba(forecasting_horizon=3)
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) == 3
+        assert len(y_pred) == 3
+
+        y_pred2 = search_cv.observe_predict_class_proba(y=y_test[:3])
+        proba_cols2 = [c for c in y_pred2.columns if "_proba_" in c]
+        assert len(proba_cols2) == 3

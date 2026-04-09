@@ -178,16 +178,23 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
 
         # Discover classes from y before _pre_fit (which may transform y)
+        # Use unprefixed (base) column names so panel groups share class labels.
         self.classes_: dict[str, list[str]] = {}
         self.n_classes_: dict[str, int] = {}
         self.label_to_code_: dict[str, dict[str, int]] = {}
         for col in y.columns:
             if col == "time":
                 continue
+            base_col = col.split("__")[-1] if "__" in col else col
             unique_vals = sorted(y[col].drop_nulls().unique().cast(pl.String).to_list())
-            self.classes_[col] = unique_vals
-            self.n_classes_[col] = len(unique_vals)
-            self.label_to_code_[col] = {label: i for i, label in enumerate(unique_vals)}
+            if base_col in self.classes_:
+                merged = sorted(set(self.classes_[base_col]) | set(unique_vals))
+                self.classes_[base_col] = merged
+            else:
+                self.classes_[base_col] = unique_vals
+        for base_col, labels in self.classes_.items():
+            self.n_classes_[base_col] = len(labels)
+            self.label_to_code_[base_col] = {label: i for i, label in enumerate(labels)}
 
         # Encode target columns to integer codes for tabularization
         y_encoded = self._encode_target(y)
@@ -227,7 +234,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         for col in y.columns:
             if col == "time":
                 continue
-            mapping = self.label_to_code_[col]
+            base_col = col.split("__")[-1] if "__" in col else col
+            mapping = self.label_to_code_[base_col]
             # Cast to String first to handle Categorical/Enum/String uniformly,
             # then replace labels with integer codes.
             exprs.append(pl.col(col).cast(pl.String).replace_strict(mapping, return_dtype=pl.Float64).alias(col))

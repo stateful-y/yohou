@@ -1354,3 +1354,77 @@ class TestColumnForecasterMixedTags:
         )
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags.forecaster_type == "both"
+
+
+class TestClassProbaColumnForecaster:
+    """Tests for class-probability methods on ColumnForecaster."""
+
+    @pytest.fixture
+    def class_proba_column_setup(self):
+        """Create a fitted ColumnForecaster with class_proba forecasters."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=79),
+            interval="1d",
+            eager=True,
+        )
+        classes_a = ["cat", "dog", "bird"]
+        classes_b = ["red", "blue", "green"]
+        y = pl.DataFrame({
+            "time": time,
+            "animal": [classes_a[i % 3] for i in range(80)],
+            "color": [classes_b[i % 3] for i in range(80)],
+        })
+        X = pl.DataFrame({
+            "time": time,
+            "temp": [20.0 + (i % 10) for i in range(80)],
+        })
+
+        forecaster = ColumnForecaster([
+            (
+                "animal_model",
+                ClassProbaReductionForecaster(
+                    estimator=DecisionTreeClassifier(random_state=42),
+                ),
+                "animal",
+            ),
+            (
+                "color_model",
+                ClassProbaReductionForecaster(
+                    estimator=DecisionTreeClassifier(random_state=42),
+                ),
+                "color",
+            ),
+        ])
+        y_train, y_test = y[:60], y[60:]
+        X_train, X_test = X[:60], X[60:]
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        return forecaster, y_train, y_test, X_train, X_test
+
+    def test_predict_class_proba(self, class_proba_column_setup):
+        """predict_class_proba returns probabilities from all forecasters."""
+        forecaster, _, _, _, X_test = class_proba_column_setup
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X_test[:3])
+
+        assert "time" in y_pred.columns
+        animal_proba = [c for c in y_pred.columns if "animal_proba_" in c]
+        color_proba = [c for c in y_pred.columns if "color_proba_" in c]
+        assert len(animal_proba) == 3
+        assert len(color_proba) == 3
+        assert len(y_pred) == 3
+
+    def test_observe_predict_class_proba(self, class_proba_column_setup):
+        """observe_predict_class_proba observes and predicts probabilities."""
+        forecaster, _, y_test, _, X_test = class_proba_column_setup
+        y_pred = forecaster.observe_predict_class_proba(
+            y=y_test[:3],
+            X=X_test[:3],
+            forecasting_horizon=3,
+        )
+        assert "time" in y_pred.columns
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) > 0

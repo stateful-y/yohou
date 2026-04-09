@@ -270,6 +270,203 @@ class TestAccuracy:
         assert tags.scorer_tags.lower_is_better is False
 
 
+class TestTimeWeight:
+    """Tests for time_weight parameter in class-probability scorers."""
+
+    def test_log_loss_with_callable_time_weight(self, class_proba_data):
+        """LogLoss score changes when time_weight callable is provided."""
+        y_true, y_pred = class_proba_data
+        scorer = LogLoss()
+        scorer.fit(y_true)
+        score_unweighted = scorer.score(y_true, y_pred)
+        # Use linearly increasing weights so result differs from equal weights
+        score_weighted = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
+        )
+        assert isinstance(score_weighted, float)
+        assert score_weighted > 0
+        assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
+
+    def test_brier_score_with_callable_time_weight(self, class_proba_data):
+        """BrierScore score changes when time_weight callable is provided."""
+        y_true, y_pred = class_proba_data
+        scorer = BrierScore()
+        scorer.fit(y_true)
+        score_unweighted = scorer.score(y_true, y_pred)
+        score_weighted = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
+        )
+        assert isinstance(score_weighted, float)
+        assert score_weighted > 0
+        assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
+
+    def test_accuracy_with_callable_time_weight(self):
+        """Accuracy score changes when time_weight callable is provided."""
+        # Use data where some predictions are wrong so weighting actually matters
+        dates = [datetime(2020, 1, i) for i in range(1, 6)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "target": ["cat_a", "cat_b", "cat_c", "cat_a", "cat_b"],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "time": dates,
+            # Rows 1,2,3 correct; rows 4,5 wrong (argmax != true class)
+            "target_proba_cat_a": [0.7, 0.1, 0.1, 0.1, 0.5],
+            "target_proba_cat_b": [0.2, 0.8, 0.2, 0.5, 0.2],
+            "target_proba_cat_c": [0.1, 0.1, 0.7, 0.4, 0.3],
+        })
+        scorer = Accuracy()
+        scorer.fit(y_true)
+        score_unweighted = scorer.score(y_true, y_pred)
+        assert score_unweighted == pytest.approx(0.6)
+        score_weighted = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
+        )
+        assert isinstance(score_weighted, float)
+        assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
+
+    @pytest.fixture
+    def panel_class_proba_data(self):
+        """Panel data for time_weight tests."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "grpA__weather": ["sunny", "rainy", "cloudy"],
+            "grpB__weather": ["cloudy", "sunny", "rainy"],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "grpA__weather_proba_sunny": [0.7, 0.1, 0.2],
+            "grpA__weather_proba_rainy": [0.2, 0.8, 0.1],
+            "grpA__weather_proba_cloudy": [0.1, 0.1, 0.7],
+            "grpB__weather_proba_sunny": [0.2, 0.7, 0.1],
+            "grpB__weather_proba_rainy": [0.1, 0.2, 0.8],
+            "grpB__weather_proba_cloudy": [0.7, 0.1, 0.1],
+        })
+        return y_true, y_pred
+
+    def test_log_loss_panel_time_weight(self, panel_class_proba_data):
+        """LogLoss panel time_weight branch is exercised."""
+        y_true, y_pred = panel_class_proba_data
+        scorer = LogLoss()
+        scorer.fit(y_true)
+        score = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
+        )
+        assert isinstance(score, float)
+        assert score > 0
+
+    def test_brier_score_panel_time_weight(self, panel_class_proba_data):
+        """BrierScore panel time_weight branch is exercised."""
+        y_true, y_pred = panel_class_proba_data
+        scorer = BrierScore()
+        scorer.fit(y_true)
+        score = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
+        )
+        assert isinstance(score, float)
+        assert score > 0
+
+    def test_accuracy_panel_time_weight(self, panel_class_proba_data):
+        """Accuracy panel time_weight branch is exercised."""
+        y_true, y_pred = panel_class_proba_data
+        scorer = Accuracy()
+        scorer.fit(y_true)
+        score = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
+        )
+        assert isinstance(score, float)
+
+
+class TestComponentwiseRename:
+    """Tests for componentwise aggregation column renaming."""
+
+    @pytest.fixture
+    def multi_target_componentwise_data(self):
+        """Multi-target data for componentwise tests."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "weather": ["sunny", "rainy", "cloudy"],
+            "mood": ["happy", "sad", "happy"],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "weather_proba_sunny": [0.7, 0.1, 0.2],
+            "weather_proba_rainy": [0.2, 0.8, 0.1],
+            "weather_proba_cloudy": [0.1, 0.1, 0.7],
+            "mood_proba_happy": [0.8, 0.2, 0.9],
+            "mood_proba_sad": [0.2, 0.8, 0.1],
+        })
+        return y_true, y_pred
+
+    def test_log_loss_componentwise_renames(self, multi_target_componentwise_data):
+        """LogLoss with componentwise aggregation renames score columns."""
+        y_true, y_pred = multi_target_componentwise_data
+        scorer = LogLoss(aggregation_method=["componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert any("log_loss" in c for c in result.columns)
+
+    def test_brier_score_componentwise_renames(self, multi_target_componentwise_data):
+        """BrierScore with componentwise aggregation renames score columns."""
+        y_true, y_pred = multi_target_componentwise_data
+        scorer = BrierScore(aggregation_method=["componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert any("brier_score" in c for c in result.columns)
+
+    def test_accuracy_componentwise_renames(self, multi_target_componentwise_data):
+        """Accuracy with componentwise aggregation renames score columns."""
+        y_true, y_pred = multi_target_componentwise_data
+        scorer = Accuracy(aggregation_method=["componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert any("accuracy" in c for c in result.columns)
+
+
+class TestUnknownLabel:
+    """Tests for unknown label handling in LogLoss."""
+
+    def test_log_loss_unknown_label_penalty(self):
+        """LogLoss gives maximum penalty for labels not seen in predictions."""
+        dates = [datetime(2020, 1, i) for i in range(1, 3)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "target": ["cat_a", "cat_d"],  # cat_d is unknown
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "time": dates,
+            "target_proba_cat_a": [0.7, 0.2],
+            "target_proba_cat_b": [0.2, 0.5],
+            "target_proba_cat_c": [0.1, 0.3],
+        })
+        scorer = LogLoss()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert score > 0
+        assert np.isfinite(score)
+
+
 class TestMultiTarget:
     """Tests for multi-target class probability scoring."""
 

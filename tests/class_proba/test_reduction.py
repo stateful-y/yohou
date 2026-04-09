@@ -77,6 +77,36 @@ class TestClassProbaReductionSystematic:
             _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
         )
 
+    def test_systematic_checks_panel(self, class_proba_y_X_factory):
+        """Run systematic checks with panel data."""
+        y, X = class_proba_y_X_factory(
+            length=200,
+            n_targets=1,
+            n_features=2,
+            n_classes=3,
+            seed=42,
+            panel=True,
+            n_groups=2,
+        )
+        y_train, y_test = y[:160], y[160:]
+        X_train, X_test = (X[:160], X[160:]) if X is not None else (None, None)
+
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+        )
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+
+        run_checks(
+            forecaster,
+            _yield_yohou_forecaster_checks(forecaster, y_train, X_train, y_test, X_test),
+            expected_failures={
+                "check_predict_time_columns",
+                "check_class_proba_predict_returns_labels",
+                "check_panel_data",
+                "check_panel_single_group",
+            },
+        )
+
 
 class TestClassProbaReductionFitPredict:
     """Tests for fit/predict lifecycle."""
@@ -218,3 +248,101 @@ class TestTags:
         forecaster = ClassProbaReductionForecaster()
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags.uses_reduction is True
+
+
+class TestRecursivePredict:
+    """Tests for recursive prediction with horizon > fit horizon."""
+
+    def test_predict_longer_horizon_than_fit(self, class_proba_data):
+        """predict_class_proba with horizon > fit horizon uses recursive prediction."""
+        y_train, _, X_train, X_test = class_proba_data
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+        )
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+
+        # Predict with horizon=6, double the fit horizon
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=6, X=X_test[:6])
+        assert len(y_pred) == 6
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) == 3
+
+    def test_predict_longer_horizon_without_X(self, class_proba_data):
+        """Recursive prediction works without exogenous features."""
+        y_train, _, X_train, _ = class_proba_data
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+        )
+        forecaster.fit(y_train, forecasting_horizon=3)
+
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=6)
+        assert len(y_pred) == 6
+
+    def test_predict_argmax_longer_horizon(self, class_proba_data):
+        """predict (argmax) works with recursive prediction."""
+        y_train, _, X_train, X_test = class_proba_data
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+        )
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+
+        y_pred = forecaster.predict(forecasting_horizon=6, X=X_test[:6])
+        assert len(y_pred) == 6
+        assert "weather" in y_pred.columns
+        valid_classes = set(forecaster.classes_["weather"])
+        for val in y_pred["weather"].cast(pl.String).to_list():
+            assert val in valid_classes
+
+
+class TestDirectStrategyPanelData:
+    """Tests for direct strategy with panel data."""
+
+    def test_direct_strategy_panel(self, class_proba_y_X_factory):
+        """Direct strategy works with panel data."""
+        y, X = class_proba_y_X_factory(
+            length=100,
+            n_targets=1,
+            n_features=2,
+            n_classes=3,
+            seed=42,
+            panel=True,
+            n_groups=2,
+        )
+        y_train = y[:80]
+        X_train = X[:80] if X is not None else None
+
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+            reduction_strategy="direct",
+        )
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+
+        assert len(y_pred) == 3
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
+
+    def test_multi_output_strategy_panel(self, class_proba_y_X_factory):
+        """Multi-output strategy works with panel data."""
+        y, X = class_proba_y_X_factory(
+            length=100,
+            n_targets=1,
+            n_features=2,
+            n_classes=3,
+            seed=42,
+            panel=True,
+            n_groups=2,
+        )
+        y_train = y[:80]
+        X_train = X[:80] if X is not None else None
+
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+            reduction_strategy="multi-output",
+        )
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+
+        assert len(y_pred) == 3
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
