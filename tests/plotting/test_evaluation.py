@@ -1816,11 +1816,15 @@ class TestPlotReliabilityDiagram:
 
         df = pl.DataFrame({
             "time": [datetime(2020, 1, 1)],
-            "a_proba_x": [0.5], "a_proba_y": [0.5],
-            "b_proba_x": [0.5], "b_proba_y": [0.5],
+            "a_proba_x": [0.5],
+            "a_proba_y": [0.5],
+            "b_proba_x": [0.5],
+            "b_proba_y": [0.5],
         })
         y_truth = pl.DataFrame({
-            "time": [datetime(2020, 1, 1)], "a": ["x"], "b": ["x"],
+            "time": [datetime(2020, 1, 1)],
+            "a": ["x"],
+            "b": ["x"],
         })
         with pytest.raises(ValueError, match="Multiple targets"):
             plot_calibration(df, y_truth)

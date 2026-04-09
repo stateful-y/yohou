@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 from sklearn.base import clone
-from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 
 from conftest import run_checks
@@ -185,9 +184,7 @@ class TestObservePredictClassProba:
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
 
-        y_pred = forecaster.observe_predict_class_proba(
-            y=y_test[:3], X=X_test[:3], forecasting_horizon=3
-        )
+        y_pred = forecaster.observe_predict_class_proba(y=y_test[:3], X=X_test[:3], forecasting_horizon=3)
         assert "observed_time" in y_pred.columns
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
@@ -201,9 +198,7 @@ class TestObservePredictClassProba:
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
 
-        y_pred = forecaster.observe_predict(
-            y=y_test[:3], X=X_test[:3], forecasting_horizon=3
-        )
+        y_pred = forecaster.observe_predict(y=y_test[:3], X=X_test[:3], forecasting_horizon=3)
         assert "weather" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 0

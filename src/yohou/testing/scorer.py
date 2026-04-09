@@ -202,9 +202,9 @@ def check_scorer_prediction_type_compatibility(
         y_pred = forecaster.predict_interval(forecasting_horizon=3, X=X, coverage_rates=[0.9])
     elif scorer_tags.scorer_tags.prediction_type == "class_proba":
         # Class-probability scorer needs class_proba predictions
-        assert (
-            "class_proba" in forecaster_tags.forecaster_tags.forecaster_type
-        ), f"Class-proba scorer requires class_proba forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
+        assert "class_proba" in forecaster_tags.forecaster_tags.forecaster_type, (
+            f"Class-proba scorer requires class_proba forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
+        )
         y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X)
     else:
         raise AssertionError(f"Unknown prediction_type: {scorer_tags.scorer_tags.prediction_type}")

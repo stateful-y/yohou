@@ -370,7 +370,7 @@ def _compute_pacf(
         return _compute_pacf_durbin_levinson(values, nlags, alpha)
 
     if alpha is not None:
-        pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # type: ignore[arg-type]
+        pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # fmt: skip  # ty: ignore[invalid-argument-type]
         # statsmodels returns CIs centered on the PACF values (pacf ± z/√n).
         # For significance testing we need horizontal bands at ±z/√n (centered
         # on zero), so subtract the PACF values from both bounds.
@@ -378,8 +378,8 @@ def _compute_pacf(
         ci_hi = (confint[:, 1] - pacf_result).tolist()
         return pacf_result.tolist(), ci_lo, ci_hi
 
-    pacf_result = sm_pacf(values, nlags=nlags, method=method)  # type: ignore[arg-type]
-    return pacf_result.tolist(), None, None  # type: ignore[union-attr]
+    pacf_result = sm_pacf(values, nlags=nlags, method=method)  # ty: ignore[invalid-argument-type]
+    return pacf_result.tolist(), None, None  # ty: ignore[unresolved-attribute]
 
 
 def plot_partial_autocorrelation(
@@ -1495,8 +1495,8 @@ def plot_lag_scatter(
                 if show_diagonal:
                     source = df_aug if df_aug is not None else df
                     dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
-                    vmin = min(float(dl_all[col].min()), float(dl_all["lagged"].min()))  # type: ignore[arg-type]
-                    vmax = max(float(dl_all[col].max()), float(dl_all["lagged"].max()))  # type: ignore[arg-type]
+                    vmin = min(float(dl_all[col].min()), float(dl_all["lagged"].min()))  # fmt: skip  # ty: ignore[invalid-argument-type]
+                    vmax = max(float(dl_all[col].max()), float(dl_all["lagged"].max()))  # fmt: skip  # ty: ignore[invalid-argument-type]
                     fig.add_trace(
                         go.Scatter(
                             x=[vmin, vmax],
@@ -2010,7 +2010,7 @@ def plot_scatter_matrix(
                             pass
                         else:
                             data_range = float(vals.max()) - float(vals.min())
-                            if data_range > 0 and kde.factor > 1e-10:
+                            if data_range > 0 and kde.factor > 1e-10:  # ty: ignore[unsupported-operator]
                                 x_grid = np.linspace(float(vals.min()), float(vals.max()), 200)
                                 fig.add_trace(
                                     go.Scatter(

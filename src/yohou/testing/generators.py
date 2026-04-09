@@ -12,6 +12,14 @@ import polars as pl
 from yohou.model_selection import GridSearchCV
 from yohou.utils import inspect_panel
 
+from .class_proba import (
+    check_class_proba_classes_attribute,
+    check_class_proba_predict_returns_labels,
+    check_class_proba_prediction_bounds,
+    check_class_proba_prediction_structure,
+    check_class_proba_prediction_sums,
+    check_class_proba_prediction_types,
+)
 from .common import (
     check_metadata_routing_default_request,
     check_metadata_routing_get_metadata_routing,
@@ -43,14 +51,6 @@ from .panel import (
     check_panel_data,
     check_panel_invalid_group_raises,
     check_panel_single_group,
-)
-from .class_proba import (
-    check_class_proba_classes_attribute,
-    check_class_proba_predict_returns_labels,
-    check_class_proba_prediction_bounds,
-    check_class_proba_prediction_structure,
-    check_class_proba_prediction_sums,
-    check_class_proba_prediction_types,
 )
 from .point import check_point_prediction_structure, check_point_prediction_types
 from .reduction import check_estimator_parameter, check_reduction_strategy

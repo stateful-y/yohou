@@ -1,7 +1,7 @@
 """Scoring functions for point, interval, class-probability, and conformity predictions."""
 
 from .base import BaseClassProbaScorer, BaseIntervalScorer, BasePointScorer
-from .class_proba import BrierScore, Accuracy, LogLoss
+from .class_proba import Accuracy, BrierScore, LogLoss
 from .conformity import (
     AbsoluteGammaResidual,
     AbsoluteQuantileResidual,

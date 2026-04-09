@@ -620,8 +620,8 @@ def check_clone_preserves_forecaster_params(forecaster) -> None:
 
                 # Check estimator params match
                 if hasattr(orig_est, "get_params"):
-                    orig_est_params = orig_est.get_params(deep=True)
-                    cloned_est_params = cloned_est.get_params(deep=True)
+                    orig_est_params = orig_est.get_params(deep=True)  # ty: ignore[call-non-callable]
+                    cloned_est_params = cloned_est.get_params(deep=True)  # ty: ignore[unresolved-attribute]
                     for param_key in orig_est_params:
                         orig_param = orig_est_params.get(param_key)
                         cloned_param = cloned_est_params.get(param_key)

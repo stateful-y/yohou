@@ -179,7 +179,7 @@ def plot_forecast(
     validate_plotting_data(y_test)
     if isinstance(y_pred, dict):
         for _name, pred_df in y_pred.items():
-            validate_plotting_data(pred_df)  # type: ignore[invalid-argument-type]
+            validate_plotting_data(pred_df)  # ty: ignore[invalid-argument-type]
     else:
         validate_plotting_data(y_pred)
     if y_train is not None:
@@ -200,7 +200,7 @@ def plot_forecast(
 
     # Auto-detect prediction type from the first prediction DataFrame
     _first_pred = next(iter(y_pred.values())) if isinstance(y_pred, dict) else y_pred
-    prediction_mode = _detect_prediction_mode(_first_pred)
+    prediction_mode = _detect_prediction_mode(_first_pred)  # ty: ignore[invalid-argument-type]
 
     # For panel data, delegate to faceted handler (single or multi-model)
     if is_panel:
@@ -258,7 +258,7 @@ def plot_forecast(
     if isinstance(y_pred, dict):
         return _plot_forecast_multi_model(
             y_test=y_test,
-            y_preds=y_pred,  # type: ignore[invalid-argument-type]
+            y_preds=y_pred,  # ty: ignore[invalid-argument-type]
             y_train=y_train,
             coverage_rates=coverage_rates,
             n_history=n_history,
@@ -801,7 +801,7 @@ def _plot_forecast_class_proba(
         fig = go.Figure()
 
     for model_idx, (model_name, pred_df) in enumerate(preds.items()):
-        proba_cols = [c for c in pred_df.columns if "_proba_" in c]
+        proba_cols = [c for c in pred_df.columns if "_proba_" in c]  # ty: ignore[unresolved-attribute]
         targets = _discover_proba_targets(proba_cols)
         target = next(iter(targets))
         target_proba_cols = targets[target]
@@ -810,7 +810,7 @@ def _plot_forecast_class_proba(
 
         _render_class_proba_traces(
             fig,
-            pred_df,
+            pred_df,  # ty: ignore[invalid-argument-type]
             y_test,
             colors=colors,
             target_proba_cols=target_proba_cols,
@@ -820,9 +820,9 @@ def _plot_forecast_class_proba(
             row=model_idx + 1 if n_models > 1 else None,
             col=1 if n_models > 1 else None,
             show_legend=model_idx == 0,
-            line_width=line_width,
-            band_opacity=band_opacity,
-            marker_size=marker_size,
+            line_width=line_width,  # ty: ignore[invalid-argument-type]
+            band_opacity=band_opacity,  # ty: ignore[invalid-argument-type]
+            marker_size=marker_size,  # ty: ignore[invalid-argument-type]
         )
 
     fig = apply_default_layout(
@@ -896,29 +896,30 @@ def _plot_forecast_categorical(
 
     cat_cols = [
         c
-        for c in first_pred.columns
-        if c not in ("time", "observed_time") and first_pred[c].dtype in (pl.String, pl.Categorical)
+        for c in first_pred.columns  # ty: ignore[unresolved-attribute]
+        if c not in ("time", "observed_time")
+        and first_pred[c].dtype in (pl.String, pl.Categorical)  # ty: ignore[not-subscriptable]
     ]
 
-    sorted_cats, cat_to_int = _collect_categories(cat_cols, y_test, preds, y_train)
+    sorted_cats, cat_to_int = _collect_categories(cat_cols, y_test, preds, y_train)  # ty: ignore[invalid-argument-type]
 
     fig = go.Figure()
 
     for model_idx, (model_name, pred_df) in enumerate(preds.items()):
         _render_categorical_traces(
             fig,
-            pred_df,
+            pred_df,  # ty: ignore[invalid-argument-type]
             y_test,
             y_train,
             cat_cols=cat_cols,
             cat_to_int=cat_to_int,
-            model_name=model_name,
+            model_name=model_name,  # ty: ignore[invalid-argument-type]
             model_color=model_colors[model_idx],
             actual_color=actual_color,
             is_multi_model=len(model_names) > 1,
             n_history=n_history,
             show_legend=model_idx == 0 or len(model_names) > 1,
-            line_width=line_width,
+            line_width=line_width,  # ty: ignore[invalid-argument-type]
         )
 
     fig = apply_default_layout(
@@ -1212,11 +1213,11 @@ def _plot_forecast_panel_typed(
 
     is_multi_model = isinstance(y_pred, dict)
     if is_multi_model:
-        model_preds: dict[str, pl.DataFrame] = y_pred  # type: ignore[assignment]
+        model_preds: dict[str, pl.DataFrame] = y_pred  # ty: ignore[invalid-assignment]
         model_names = list(model_preds.keys())
         model_colors = resolve_color_palette(_model_pal, len(model_names))
     else:
-        model_preds = {"Forecast": y_pred}  # type: ignore[dict-item]
+        model_preds = {"Forecast": y_pred}
         model_names = ["Forecast"]
         model_colors = [eff_palette[1 % len(eff_palette)]]
 
@@ -1267,7 +1268,7 @@ def _plot_forecast_panel_typed(
             test_m = _extract_member_df(y_test, suffix)
             train_m = _extract_member_df(y_train, suffix) if y_train is not None else None
             for pred_df in model_preds.values():
-                pred_m = _extract_member_df(pred_df, suffix)
+                pred_m = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
                 for cc in pred_m.columns:
                     if cc in ("time", "observed_time"):
                         continue
@@ -1296,7 +1297,7 @@ def _plot_forecast_panel_typed(
 
         if prediction_mode == "class_proba":
             for model_idx, (model_name, pred_df) in enumerate(model_preds.items()):
-                pred_member = _extract_member_df(pred_df, suffix)
+                pred_member = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
                 proba_cols = [c for c in pred_member.columns if "_proba_" in c]
                 if not proba_cols:
                     continue
@@ -1325,7 +1326,10 @@ def _plot_forecast_panel_typed(
                 )
 
         elif prediction_mode == "categorical":
-            first_pred_member = _extract_member_df(next(iter(model_preds.values())), suffix)
+            first_pred_member = _extract_member_df(
+                next(iter(model_preds.values())),  # ty: ignore[invalid-argument-type]
+                suffix,
+            )
             cat_cols = [
                 c
                 for c in first_pred_member.columns
@@ -1333,7 +1337,7 @@ def _plot_forecast_panel_typed(
             ]
 
             for model_idx, (model_name, pred_df) in enumerate(model_preds.items()):
-                pred_member = _extract_member_df(pred_df, suffix)
+                pred_member = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
                 _render_categorical_traces(
                     fig,
                     pred_member,
@@ -1501,7 +1505,7 @@ def _plot_forecast_panel(
     is_multi_model = isinstance(y_pred, dict)
     if is_multi_model:
         assert isinstance(y_pred, dict)
-        model_preds: dict[str, pl.DataFrame] = y_pred  # type: ignore[assignment]
+        model_preds: dict[str, pl.DataFrame] = y_pred  # ty: ignore[invalid-assignment]
         model_names = list(model_preds.keys())
         model_colors = resolve_color_palette(_model_pal, len(model_names))
     else:

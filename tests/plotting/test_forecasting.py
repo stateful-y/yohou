@@ -885,8 +885,7 @@ class TestPlotForecastClassProba:
         times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
         y_test = pl.DataFrame({
             "time": times,
-            "weather": ["sunny", "sunny", "rainy", "cloudy", "sunny",
-                        "rainy", "cloudy", "sunny", "sunny", "rainy"],
+            "weather": ["sunny", "sunny", "rainy", "cloudy", "sunny", "rainy", "cloudy", "sunny", "sunny", "rainy"],
         })
         y_proba = pl.DataFrame({
             "time": times,
@@ -923,7 +922,8 @@ class TestPlotForecastClassProba:
         """Custom title and palette are applied."""
         y_test, y_proba = _class_proba_data
         fig = plot_forecast(
-            y_test, y_proba,
+            y_test,
+            y_proba,
             title="Custom Title",
             color_palette=["#ff0000", "#00ff00", "#0000ff"],
         )
@@ -946,13 +946,11 @@ class TestPlotForecastCategorical:
         times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
         y_test = pl.DataFrame({
             "time": times,
-            "weather": ["sunny", "sunny", "rainy", "cloudy", "sunny",
-                        "rainy", "cloudy", "sunny", "sunny", "rainy"],
+            "weather": ["sunny", "sunny", "rainy", "cloudy", "sunny", "rainy", "cloudy", "sunny", "sunny", "rainy"],
         })
         y_pred = pl.DataFrame({
             "time": times,
-            "weather": ["sunny", "rainy", "rainy", "cloudy", "sunny",
-                        "sunny", "cloudy", "sunny", "rainy", "rainy"],
+            "weather": ["sunny", "rainy", "rainy", "cloudy", "sunny", "sunny", "cloudy", "sunny", "rainy", "rainy"],
         })
         return y_test, y_pred
 
@@ -968,8 +966,9 @@ class TestPlotForecastCategorical:
         """Multiple model categorical predictions are overlaid."""
         y_test, y_pred = _categorical_data
         y_pred_b = y_pred.with_columns(
-            pl.Series("weather", ["cloudy", "sunny", "sunny", "rainy", "rainy",
-                                   "cloudy", "sunny", "rainy", "cloudy", "sunny"]),
+            pl.Series(
+                "weather", ["cloudy", "sunny", "sunny", "rainy", "rainy", "cloudy", "sunny", "rainy", "cloudy", "sunny"]
+            ),
         )
         fig = plot_forecast(
             y_test,
@@ -983,8 +982,7 @@ class TestPlotForecastCategorical:
         y_test, y_pred = _categorical_data
         y_train = pl.DataFrame({
             "time": pl.date_range(pl.date(2020, 3, 22), pl.date(2020, 3, 31), "1d", eager=True),
-            "weather": ["sunny", "sunny", "cloudy", "rainy", "sunny",
-                        "rainy", "cloudy", "sunny", "rainy", "sunny"],
+            "weather": ["sunny", "sunny", "cloudy", "rainy", "sunny", "rainy", "cloudy", "sunny", "rainy", "sunny"],
         })
         fig = plot_forecast(y_test, y_pred, y_train=y_train)
         assert isinstance(fig, go.Figure)

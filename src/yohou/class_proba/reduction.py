@@ -283,9 +283,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         """
         if self.reduction_strategy == "direct":
             assert isinstance(estimator, list)
-            return self._estimator_predict_proba_direct(
-                cast(list[BaseEstimator], estimator), panel_group_names
-            )
+            return self._estimator_predict_proba_direct(cast(list[BaseEstimator], estimator), panel_group_names)
         assert isinstance(estimator, BaseEstimator)
         return self._estimator_predict_proba_multi_output(estimator, panel_group_names)
 
@@ -392,7 +390,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         # For multi-output with H*n_targets outputs, sklearn wraps in
         # MultiOutputClassifier or similar. We handle both cases.
-        proba = estimator.predict_proba(X_tab)  # type: ignore[attr-defined]
+        proba = estimator.predict_proba(X_tab)  # ty: ignore[unresolved-attribute]
 
         # Build result row by row (one row per forecast step)
         result_data: dict[str, list[Any]] = {}
@@ -469,7 +467,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         assert self.local_y_t_schema_ is not None
         y_cols = list(self.local_y_t_schema_.keys())
 
-        proba = estimator.predict_proba(X_tab)  # type: ignore[attr-defined]
+        proba = estimator.predict_proba(X_tab)  # ty: ignore[unresolved-attribute]
 
         result_data: dict[str, list[float]] = {}
 

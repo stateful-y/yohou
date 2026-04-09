@@ -76,7 +76,7 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
             f"values. Got {scoring}."
         )
 
-    return scorers  # type: ignore[return-value]
+    return scorers  # ty: ignore[invalid-return-type]
 
 
 class _MultimetricScorer:
@@ -130,7 +130,7 @@ class _MultimetricScorer:
                 params = routed_params.get(name)
                 if params is None:
                     raise ValueError(f"Missing routing params for scorer '{name}'")
-                scores[name] = scorer(y_truth, y_pred, **params.score)  # type: ignore[assignment]
+                scores[name] = scorer(y_truth, y_pred, **params.score)  # ty: ignore[invalid-assignment]
             except Exception as e:
                 if self._raise_exc:
                     raise e
@@ -401,8 +401,8 @@ _OBSERVE_METHOD_MAP: dict[str, str] = {
 def _get_response_methods(scorer: BaseScorer | _MultimetricScorer) -> set[str]:
     """Get the set of response methods needed by scorer(s)."""
     if isinstance(scorer, _MultimetricScorer):
-        return {s._response_method for s in scorer._scorers.values()}
-    return {scorer._response_method}
+        return {s._response_method for s in scorer._scorers.values()}  # ty: ignore[unresolved-attribute]
+    return {scorer._response_method}  # ty: ignore[unresolved-attribute]
 
 
 def _resolve_response_method(scorer: BaseScorer | _MultimetricScorer) -> str:
@@ -528,7 +528,7 @@ def _score(
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):
             scorer.fit(y_train)
-        scores = scorer(y_test, y_pred, **score_params)  # type: ignore[assignment]
+        scores = scorer(y_test, y_pred, **score_params)  # ty: ignore[invalid-assignment]
 
     except Exception:  # noqa: BLE001
         if isinstance(scorer, _MultimetricScorer):

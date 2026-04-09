@@ -977,9 +977,7 @@ def fetch_air_quality_classification(
     )
 
     y = frame.select("time", air_quality.alias("air_quality"))
-    X = frame.select("time", *feature_cols).rename(
-        {c: c.split("__")[1] for c in feature_cols}
-    )
+    X = frame.select("time", *feature_cols).rename({c: c.split("__")[1] for c in feature_cols})
 
     classes = sorted(set(y["air_quality"].to_list()))
 

@@ -111,7 +111,7 @@ def _filter_estimator_params(estimator_class: type, params: dict) -> dict:
         Filtered parameters accepted by the class constructor.
 
     """
-    import inspect
+    import inspect  # noqa: PLC0415
 
     sig = inspect.signature(estimator_class.__init__)
     has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())

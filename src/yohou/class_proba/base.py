@@ -263,8 +263,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
                 if len(X_slice) != len(y_obs):
                     raise ValueError(
-                        f"Missing X for future steps. Needed {len(y_obs)} rows, "
-                        f"but X slice has {len(X_slice)} rows."
+                        f"Missing X for future steps. Needed {len(y_obs)} rows, but X slice has {len(X_slice)} rows."
                     )
 
             return y_obs, X_slice
@@ -420,9 +419,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             base_col = col.split("__")[-1] if "__" in col else col
             if base_col in self.label_to_code_:
                 mapping = self.label_to_code_[base_col]
-                exprs.append(
-                    pl.col(col).replace_strict(mapping, return_dtype=pl.Float64).alias(col)
-                )
+                exprs.append(pl.col(col).replace_strict(mapping, return_dtype=pl.Float64).alias(col))
         if exprs:
             return y.with_columns(exprs)
         return y
@@ -457,7 +454,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y = self._encode_y_input(y)
-        return super().observe(y, X, panel_group_names=panel_group_names)
+        return super().observe(y, X, panel_group_names=panel_group_names)  # ty: ignore[invalid-return-type]
 
     def rewind(
         self,
@@ -489,7 +486,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y = self._encode_y_input(y)
-        return super().rewind(y, X, panel_group_names=panel_group_names)
+        return super().rewind(y, X, panel_group_names=panel_group_names)  # ty: ignore[invalid-return-type]
 
     def observe_predict_class_proba(
         self,

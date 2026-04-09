@@ -463,12 +463,12 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         """
         # Normalize aggregation_method to list
-        if self.aggregation_method == "all":
+        if self.aggregation_method == "all":  # ty: ignore[unresolved-attribute]
             agg_methods = ["timewise", "componentwise", "groupwise"]
-        elif isinstance(self.aggregation_method, str):
-            agg_methods = [self.aggregation_method]
+        elif isinstance(self.aggregation_method, str):  # ty: ignore[unresolved-attribute]
+            agg_methods = [self.aggregation_method]  # ty: ignore[unresolved-attribute]
         else:
-            agg_methods = self.aggregation_method
+            agg_methods = self.aggregation_method  # ty: ignore[unresolved-attribute]
 
         # Apply aggregations in order
         if "timewise" in agg_methods and "componentwise" in agg_methods:
@@ -883,7 +883,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         tags.scorer_tags.prediction_type = "interval"
         return tags
 
-    def _aggregate_scores(
+    def _aggregate_scores(  # ty: ignore[invalid-method-override]
         self,
         raw_scores: dict[float, pl.DataFrame],
         time_values: list | None = None,
@@ -1262,9 +1262,7 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         return tags
 
     @staticmethod
-    def _extract_class_proba_columns(
-        y_pred: pl.DataFrame, target_col: str
-    ) -> tuple[list[str], list[str]]:
+    def _extract_class_proba_columns(y_pred: pl.DataFrame, target_col: str) -> tuple[list[str], list[str]]:
         """Extract probability columns and class labels for a target.
 
         Parameters

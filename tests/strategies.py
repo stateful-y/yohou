@@ -90,7 +90,7 @@ def st_time_series(
             mask = rng.random(length) < 0.1
             values = values.tolist()
             for idx in np.where(mask)[0]:
-                values[idx] = None  # type: ignore[index]
+                values[idx] = None
         data[f"col_{i}"] = values
 
     return pl.DataFrame(data)

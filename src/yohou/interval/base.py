@@ -315,7 +315,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             forecasting_horizon = self.fit_forecasting_horizon_
         if coverage_rates is None:
             # fit_coverage_rates_ is set by concrete subclasses during fit().
-            coverage_rates = self.fit_coverage_rates_  # type: ignore[attr-defined]
+            coverage_rates = self.fit_coverage_rates_  # ty: ignore[unresolved-attribute]
         return self._validate_fit_params(forecasting_horizon, coverage_rates)
 
     def predict_interval(
@@ -385,9 +385,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         y_columns = list(self.local_y_schema_.keys())
         if panel_group_names is not None:
-            y_columns = [
-                f"{panel_group}__{col}" for panel_group in panel_group_names for col in self.local_y_schema_
-            ]
+            y_columns = [f"{panel_group}__{col}" for panel_group in panel_group_names for col in self.local_y_schema_]
 
             if X is not None:
                 X = select_panel_columns(
@@ -416,7 +414,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     y_data[col] = y_pred_step_inv[col]
                 elif strategy == "median":
                     y_data[col] = y_pred_step_inv.select(
-                        pl.median_horizontal(all_bound_cols)  # type: ignore[attr-defined]
+                        pl.median_horizontal(all_bound_cols)  # ty: ignore[unresolved-attribute]
                     ).to_series()
                 else:
                     y_data[col] = y_pred_step_inv.select(pl.mean_horizontal(all_bound_cols)).to_series()

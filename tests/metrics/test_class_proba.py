@@ -8,7 +8,7 @@ import pytest
 from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks as _run_checks_base
-from yohou.metrics import BrierScore, Accuracy, LogLoss
+from yohou.metrics import Accuracy, BrierScore, LogLoss
 from yohou.testing import _yield_yohou_scorer_checks
 
 

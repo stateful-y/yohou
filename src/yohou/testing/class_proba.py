@@ -68,9 +68,7 @@ def check_class_proba_prediction_structure(
                 assert col_name in y_pred.columns, f"Missing probability column: {col_name}"
 
 
-def check_class_proba_prediction_bounds(
-    forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None
-) -> None:
+def check_class_proba_prediction_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
     """Check all probability values are in [0, 1].
 
     Parameters
@@ -102,9 +100,7 @@ def check_class_proba_prediction_bounds(
         assert max_val <= 1.0, f"Probability column {col} has values > 1 (max={max_val})"
 
 
-def check_class_proba_prediction_sums(
-    forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None
-) -> None:
+def check_class_proba_prediction_sums(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
     """Check probabilities sum to approximately 1.0 per row per target.
 
     Parameters
@@ -134,17 +130,14 @@ def check_class_proba_prediction_sums(
                 row_sums = y_pred.select(proba_cols).sum_horizontal()
                 for i, s in enumerate(row_sums):
                     assert abs(s - 1.0) < 1e-6, (
-                        f"Probabilities for {group_prefix}__{target_col} at row {i} "
-                        f"sum to {s}, expected ~1.0"
+                        f"Probabilities for {group_prefix}__{target_col} at row {i} sum to {s}, expected ~1.0"
                     )
     else:
         for target_col, class_labels in forecaster.classes_.items():
             proba_cols = [f"{target_col}_proba_{label}" for label in class_labels]
             row_sums = y_pred.select(proba_cols).sum_horizontal()
             for i, s in enumerate(row_sums):
-                assert abs(s - 1.0) < 1e-6, (
-                    f"Probabilities for {target_col} at row {i} sum to {s}, expected ~1.0"
-                )
+                assert abs(s - 1.0) < 1e-6, f"Probabilities for {target_col} at row {i} sum to {s}, expected ~1.0"
 
 
 def check_class_proba_prediction_types(forecaster) -> None:

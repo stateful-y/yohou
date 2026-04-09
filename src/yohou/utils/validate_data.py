@@ -527,10 +527,7 @@ def validate_scorer_data(
                 )
             for pc in proba_cols:
                 if not y_pred.schema[pc].is_numeric():
-                    raise ValueError(
-                        f"Probability column '{pc}' must be numeric, "
-                        f"got {y_pred.schema[pc]}."
-                    )
+                    raise ValueError(f"Probability column '{pc}' must be numeric, got {y_pred.schema[pc]}.")
 
     # Align by time (inner join on time column)
     time_truth = y_true.select("time")

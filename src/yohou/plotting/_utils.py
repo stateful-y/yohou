@@ -2,6 +2,7 @@
 
 import copy
 from collections.abc import Callable
+from typing import Any
 
 import plotly.graph_objects as go
 import polars as pl
@@ -227,18 +228,18 @@ def apply_default_layout(
     >>> fig.layout.title.text
     'Test'
     """
-    layout_update = copy.deepcopy(DEFAULT_LAYOUT)
+    layout_update: dict[str, Any] = copy.deepcopy(DEFAULT_LAYOUT)
 
     if title is not None:
-        layout_update["title"]["text"] = title  # type: ignore[index]
+        layout_update["title"]["text"] = title  # ty: ignore[invalid-assignment]
     if x_label is not None:
-        layout_update["xaxis"]["title"] = x_label  # type: ignore[index]
+        layout_update["xaxis"]["title"] = x_label  # ty: ignore[invalid-assignment]
     if y_label is not None:
-        layout_update["yaxis"]["title"] = y_label  # type: ignore[index]
+        layout_update["yaxis"]["title"] = y_label  # ty: ignore[invalid-assignment]
     if width is not None:
-        layout_update["width"] = width  # type: ignore[invalid-assignment]
+        layout_update["width"] = width  # ty: ignore[invalid-assignment]
     if height is not None:
-        layout_update["height"] = height  # type: ignore[invalid-assignment]
+        layout_update["height"] = height  # ty: ignore[invalid-assignment]
 
     fig.update_layout(layout_update)
     return fig
