@@ -294,6 +294,8 @@ def fix(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "dev",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
