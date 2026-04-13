@@ -261,7 +261,7 @@ def test_compat(session: nox.Session) -> None:
     )
 
 
-@nox.session(venv_backend="uv")
+@nox.session(venv_backend="uv", python=MIN_VERSION)
 def lint(session: nox.Session) -> None:
     """Run linters and type checkers."""
     # Install dependencies
@@ -286,7 +286,7 @@ def lint(session: nox.Session) -> None:
     session.run("ty", "check", "src", external=True)
 
 
-@nox.session(venv_backend="uv")
+@nox.session(venv_backend="uv", python=MIN_VERSION)
 def fix(session: nox.Session) -> None:
     """Format the code base to adhere to our styles, and complain about what we cannot do automatically."""
     # Install dependencies

@@ -272,9 +272,9 @@ def _compute_acf_values(series: pl.Series, max_lags: int) -> list[float]:
         else:
             s1 = series[:-lag] - mean_val
             s2 = series[lag:] - mean_val
-            numerator = (s1 * s2).sum()
-            denominator = ((series - mean_val) ** 2).sum()
-            acf_values.append(numerator / denominator if denominator != 0 else 0)
+            numerator = float((s1 * s2).sum())
+            denominator = float(((series - mean_val) ** 2).sum())
+            acf_values.append(numerator / denominator if denominator != 0 else 0.0)
     return acf_values
 
 
@@ -2093,11 +2093,11 @@ def plot_lag_scatter(
                 x_mean = y_lagged.mean()
                 y_mean = y_current.mean()
 
-                numerator = ((y_lagged - x_mean) * (y_current - y_mean)).sum()
-                denominator = ((y_lagged - x_mean) ** 2).sum()
+                numerator = float(((y_lagged - x_mean) * (y_current - y_mean)).sum())
+                denominator = float(((y_lagged - x_mean) ** 2).sum())
 
                 if denominator != 0 and x_mean is not None and y_mean is not None:
-                    slope = float(numerator / denominator)
+                    slope = numerator / denominator
                     intercept = cast(float, y_mean) - slope * cast(float, x_mean)
 
                     y_lagged_min = y_lagged.min()

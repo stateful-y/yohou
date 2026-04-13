@@ -1588,27 +1588,27 @@ def plot_outliers(
         if method == "zscore":
             mean = series.mean()
             std = series.std()
-            if std is None or std == 0 or mean is None:
+            if not isinstance(mean, (int, float)) or not isinstance(std, (int, float)) or std == 0:
                 return pl.Series([False] * len(series)), None, None
-            lower = mean - threshold * std  # ty: ignore[unsupported-operator]
-            upper = mean + threshold * std  # ty: ignore[unsupported-operator]
+            lower = mean - threshold * std
+            upper = mean + threshold * std
             mask = ((series - mean).abs() / std) > threshold
         elif method == "iqr":
             q1 = series.quantile(0.25)
             q3 = series.quantile(0.75)
-            if q1 is None or q3 is None:
+            if not isinstance(q1, (int, float)) or not isinstance(q3, (int, float)):
                 return pl.Series([False] * len(series)), None, None
-            iqr = q3 - q1  # ty: ignore[unsupported-operator]
+            iqr = q3 - q1
             lower = q1 - threshold * iqr
             upper = q3 + threshold * iqr
             mask = (series < lower) | (series > upper)
         else:  # percentile
             lower = series.quantile(1 - threshold / 100)
             upper = series.quantile(threshold / 100)
-            if lower is None or upper is None:
+            if not isinstance(lower, (int, float)) or not isinstance(upper, (int, float)):
                 return pl.Series([False] * len(series)), None, None
             mask = (series < lower) | (series > upper)
-        return mask.fill_null(False), lower, upper  # ty: ignore[invalid-return-type]
+        return mask.fill_null(False), lower, upper
 
     if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
