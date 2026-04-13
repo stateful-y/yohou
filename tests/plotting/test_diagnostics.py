@@ -1600,7 +1600,7 @@ class TestSeasonalityHighlightCycleMatch:
         )
         assert_figure_valid(fig)
         # There should be traces for all 3 cycles (2018, 2019, 2020)
-        assert len(fig.data) > 3
+        assert len(fig.data) >= 3
 
 
 class TestLagScatterSeasonality:

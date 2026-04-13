@@ -1078,7 +1078,7 @@ class TestResamplingComparisonPanel:
     """Cover panel path for plot_resampling_comparison."""
 
     def test_panel_resampling(self):
-        """Panel resampling comparison routes through panel_facet_figure."""
+        """Panel resampling comparison routes through facet_figure."""
         hourly = pl.DataFrame({
             "time": pl.datetime_range(
                 pl.datetime(2020, 1, 1),
@@ -1187,7 +1187,7 @@ class TestOutlierNullSeries:
 
 
 class TestPanelFacetFigureAsymmetricWarning:
-    """Cover asymmetric-panel warning in _utils.panel_facet_figure."""
+    """Cover asymmetric-panel warning in _utils.facet_figure."""
 
     def test_facet_by_member_asymmetric_warns(self):
         """Asymmetric panel with facet_by='member' emits a warning."""
@@ -1236,3 +1236,131 @@ class TestResamplingComparisonFacetByGroup:
         assert isinstance(fig, go.Figure)
         # Each panel should have original + resampled traces
         assert len(fig.data) >= 2
+
+
+@pytest.fixture
+def categorical_df():
+    """DataFrame with one categorical and one numeric column."""
+    return pl.DataFrame({
+        "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
+        "status": ["A", "B", "C", "A", "B", "C", "A", "B", "C", "A"],
+        "value": [10.0, 20.0, 15.0, 25.0, 30.0, 28.0, 35.0, 40.0, 38.0, 45.0],
+    })
+
+
+@pytest.fixture
+def categorical_only_df():
+    """DataFrame with only categorical columns."""
+    return pl.DataFrame({
+        "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 8), "1d", eager=True),
+        "color": ["red", "blue", "green", "red", "blue", "green", "red", "blue"],
+    })
+
+
+class TestPlotTimeSeriesCategorical:
+    """Tests for categorical column support in plot_time_series."""
+
+    def test_categorical_renders_step_chart(self, categorical_only_df):
+        """Categorical column renders as step chart with markers."""
+        fig = plot_time_series(categorical_only_df, columns=["color"])
+        assert_figure_valid(fig)
+        trace = fig.data[0]
+        assert trace.mode == "lines+markers"
+        assert trace.line.shape == "hv"
+
+    def test_categorical_uses_integer_y_values(self, categorical_only_df):
+        """Categorical y-values are mapped to integers."""
+        fig = plot_time_series(categorical_only_df, columns=["color"])
+        y_vals = list(fig.data[0].y)
+        assert all(isinstance(v, int) for v in y_vals)
+
+    def test_categorical_hover_shows_class_name(self, categorical_only_df):
+        """Hover template shows category name via text."""
+        fig = plot_time_series(categorical_only_df, columns=["color"])
+        trace = fig.data[0]
+        assert trace.text is not None
+        assert "Class" in trace.hovertemplate
+
+    def test_mixed_numeric_and_categorical(self, categorical_df):
+        """Mixed DataFrame renders both numeric and categorical columns."""
+        fig = plot_time_series(categorical_df, columns=["status", "value"])
+        assert len(fig.data) == 2
+        cat_trace = fig.data[0]
+        num_trace = fig.data[1]
+        assert cat_trace.line.shape == "hv"
+        assert num_trace.mode == "lines"
+
+    def test_categorical_auto_discovered(self, categorical_only_df):
+        """Categorical columns are auto-discovered when columns=None."""
+        fig = plot_time_series(categorical_only_df)
+        assert_figure_valid(fig)
+        assert fig.data[0].line.shape == "hv"
+
+    def test_categorical_yaxis_tick_labels(self, categorical_only_df):
+        """Y-axis shows category labels instead of integers."""
+        fig = plot_time_series(categorical_only_df, columns=["color"])
+        yaxis = fig.layout.yaxis
+        assert yaxis.ticktext is not None
+        tick_labels = list(yaxis.ticktext)
+        assert sorted(tick_labels) == ["blue", "green", "red"]
+
+
+class TestPlotDistributionCategorical:
+    """Tests for categorical column support in plot_distribution."""
+
+    def test_categorical_renders_bar_chart(self, categorical_only_df):
+        """Categorical column renders as bar chart instead of histogram."""
+        fig = plot_distribution(categorical_only_df, columns=["color"])
+        assert_figure_valid(fig)
+        trace = fig.data[0]
+        assert isinstance(trace, go.Bar)
+
+    def test_categorical_bar_shows_value_counts(self, categorical_only_df):
+        """Bar chart shows correct value counts for each category."""
+        fig = plot_distribution(categorical_only_df, columns=["color"])
+        trace = fig.data[0]
+        # Each category appears at least once
+        assert len(trace.x) > 0
+        assert all(v > 0 for v in trace.y)
+
+    def test_mixed_numeric_categorical_distribution(self, categorical_df):
+        """Mixed DataFrame: numeric gets histogram, categorical gets bar."""
+        fig = plot_distribution(categorical_df, columns=["status", "value"])
+        assert len(fig.data) >= 2
+        # First subplot (status) is a bar, second (value) is a histogram
+        assert isinstance(fig.data[0], go.Bar)
+        assert isinstance(fig.data[1], go.Histogram)
+
+    def test_categorical_auto_discovered_distribution(self, categorical_only_df):
+        """Categorical columns auto-discovered in plot_distribution."""
+        fig = plot_distribution(categorical_only_df)
+        assert_figure_valid(fig)
+        assert isinstance(fig.data[0], go.Bar)
+
+
+class TestPlotMissingDataCategorical:
+    """Tests for categorical column inclusion in plot_missing_data."""
+
+    def test_categorical_included_in_bars(self):
+        """Categorical columns are included in missing-data bar chart."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True),
+            "status": ["A", None, "C", None, "A"],
+            "value": [1.0, 2.0, None, 4.0, 5.0],
+        })
+        fig = plot_missing_data(df, kind="bars")
+        assert_figure_valid(fig)
+        # Both columns should appear
+        trace_names = {t.name for t in fig.data}
+        assert "status" in trace_names
+        assert "value" in trace_names
+
+    def test_categorical_only_missing_data(self):
+        """All-categorical DataFrame works with missing data bars."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True),
+            "color": ["red", None, "blue", None, "green"],
+        })
+        fig = plot_missing_data(df, kind="bars")
+        assert_figure_valid(fig)
+        assert fig.data[0].name == "color"

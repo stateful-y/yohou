@@ -16,8 +16,7 @@ from yohou.plotting._utils import (
     LegendTracker,
     RenderContext,
     _auto_detect_panel,
-    apply_default_layout,
-    panel_facet_figure,
+    facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
 )
@@ -157,7 +156,7 @@ def plot_phase(
             )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_phase,
             panel_group_names=panel_group_names,
@@ -174,14 +173,17 @@ def plot_phase(
         fig.update_layout(showlegend=show_legend)
         return fig
 
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-    colors = resolve_color_palette(color_palette, len(plot_columns))
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
+    unit = "degrees" if use_degrees else "radians"
 
-    fig = go.Figure()
-
-    for col_idx, col_name in enumerate(plot_columns):
-        y = df[col_name].to_numpy().astype(float)
-
+    def _render_phase(ctx: RenderContext) -> None:
+        """Render phase spectrum for one column into a subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
+        y = ctx.sub_df[base].to_numpy().astype(float)
         spectrum = np.fft.rfft(y)
         freqs = np.fft.rfftfreq(len(y))
         phase = np.angle(spectrum)
@@ -189,33 +191,36 @@ def plot_phase(
             phase = np.unwrap(phase)
         if use_degrees:
             phase = np.degrees(phase)
-
-        # Skip DC component
         freqs = freqs[1:]
         phase = phase[1:]
-
-        unit_label = "°" if use_degrees else "rad"
-        fig.add_trace(
+        unit_label = "\u00b0" if use_degrees else "rad"
+        ctx.fig.add_trace(
             go.Scatter(
                 x=freqs,
                 y=phase,
                 mode="lines",
-                line={"width": line_width, "color": colors[col_idx]},
-                name=col_name,
+                line={"width": line_width, "color": col_color},
+                name=base,
                 connectgaps=connect_gaps,
                 hovertemplate=(
-                    f"<b>{col_name}</b><br>Frequency: %{{x:.4f}}<br>Phase: %{{y:.2f}} {unit_label}<extra></extra>"
+                    f"<b>{base}</b><br>Frequency: %{{x:.4f}}<br>Phase: %{{y:.2f}} {unit_label}<extra></extra>"
                 ),
-            )
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
 
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_phase,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Phase Spectrum",
         x_label=x_label or "Frequency (cycles/sample)",
         y_label=y_label or f"Phase ({unit})",
         width=width,
         height=height,
+        shared_xaxes=False,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -352,7 +357,7 @@ def plot_spectrum(
                 ctx.fig.update_yaxes(type="log", row=ctx.row, col=ctx.col)
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_periodogram,
             panel_group_names=panel_group_names,
@@ -369,86 +374,79 @@ def plot_spectrum(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Resolve columns
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
 
-    # Get color sequence
-    colors = resolve_color_palette(color_palette, len(plot_columns))
-
-    # Create figure
-    fig = go.Figure()
-
-    for col_idx, col in enumerate(plot_columns):
-        # Get column values
-        y = df[col].to_numpy()
-
-        # Compute periodogram
+    def _render_spectrum(ctx: RenderContext) -> None:
+        """Render periodogram for one column into a subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
+        y = ctx.sub_df[base].to_numpy()
         freqs, power = scipy_periodogram(y)
-
-        # Skip zero frequency
         freqs = freqs[1:]
         power = power[1:]
-
-        # Always include period in hover text
         periods = np.where(freqs > 0, 1.0 / freqs, np.inf)
         hover = (
-            f"<b>{col}</b><br>"
+            f"<b>{base}</b><br>"
             f"Frequency: %{{x:.4f}}<br>"
             f"Period: %{{customdata:.1f}} samples<br>"
             f"PSD: %{{y:.4f}}<extra></extra>"
         )
-        fig.add_trace(
+        ctx.fig.add_trace(
             go.Scatter(
                 x=freqs,
                 y=power,
                 mode="lines",
-                line={"width": line_width, "color": colors[col_idx]},
-                name=col,
+                line={"width": line_width, "color": col_color},
+                name=base,
                 customdata=periods,
                 connectgaps=connect_gaps,
                 hovertemplate=hover,
-            )
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
-
-        # Add peak markers if requested
         if show_peaks and n_peaks > 0:
-            # Find n largest peaks
             peak_indices = np.argsort(power)[-n_peaks:][::-1]
             peak_freqs = freqs[peak_indices]
             peak_powers = power[peak_indices]
             peak_periods = np.where(peak_freqs > 0, 1.0 / peak_freqs, np.inf)
-
             hover_peak = (
-                f"<b>{col} Peak</b><br>"
+                f"<b>{base} Peak</b><br>"
                 f"Frequency: %{{x:.4f}}<br>"
                 f"Period: %{{customdata:.1f}} samples<br>"
                 f"PSD: %{{y:.4f}}<extra></extra>"
             )
-
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
                     x=peak_freqs,
                     y=peak_powers,
                     mode="markers+text",
-                    marker={"size": 8, "color": colors[col_idx], "symbol": "diamond"},
-                    name=f"{col} (peaks)",
+                    marker={"size": 8, "color": col_color, "symbol": "diamond"},
+                    name=f"{base} (peaks)",
                     customdata=peak_periods,
                     text=[f"T={p:.0f}" for p in peak_periods],
                     textposition="top center",
                     hovertemplate=hover_peak,
-                )
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_spectrum,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Periodogram",
         x_label=x_label or "Frequency (cycles/sample)",
         y_label=y_label or "Power Spectral Density",
         width=width,
         height=height,
+        shared_xaxes=False,
     )
-
-    # Apply log scale if requested
     if log_scale:
         fig.update_yaxes(type="log")
     fig.update_layout(showlegend=show_legend)

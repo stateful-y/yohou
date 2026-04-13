@@ -10,7 +10,7 @@ import polars as pl
 import polars.selectors as cs
 
 from yohou.utils.panel import inspect_panel
-from yohou.utils.polars import get_numeric_columns
+from yohou.utils.polars import get_numeric_columns, is_categorical_dtype
 from yohou.utils.validation import (
     check_continuity,
     check_inputs,
@@ -42,6 +42,7 @@ def validate_plotting_data(
     panel_group_names: list[str] | None = None,
     min_rows: int = 1,
     exclude: list[str] | None = None,
+    include_categorical: bool = False,
 ) -> list[str]:
     """Validate a DataFrame for plotting and resolve columns.
 
@@ -64,6 +65,10 @@ def validate_plotting_data(
     exclude : list of str or None, default=None
         Column names to exclude when ``columns=None`` and
         ``panel_group_names`` is ``None``.
+    include_categorical : bool, default=False
+        When ``True`` and ``columns=None``, also include
+        ``pl.String``, ``pl.Categorical``, and ``pl.Enum`` columns
+        alongside numeric columns.
 
     Returns
     -------
@@ -141,7 +146,13 @@ def validate_plotting_data(
 
     # Standard column resolution
     if columns is None:
-        return get_numeric_columns(df, exclude=exclude)
+        result = get_numeric_columns(df, exclude=exclude)
+        if include_categorical:
+            _excl = set(exclude or [])
+            result += [
+                c for c in df.columns if is_categorical_dtype(df[c].dtype) and c not in _excl and c not in result
+            ]
+        return result
 
     if isinstance(columns, str):
         columns = [columns]

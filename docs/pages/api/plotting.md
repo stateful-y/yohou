@@ -61,5 +61,5 @@ Interactive time series visualization functions using Plotly. All plotting funct
 | [`get_color_sequence`](generated/yohou.plotting._utils.get_color_sequence.md) | Get color sequence for plotting multiple series. |
 | [`palette_yohou`](generated/yohou.plotting._utils.palette_yohou.md) | Return the yohou color palette. |
 | [`resolve_color_palette`](generated/yohou.plotting._utils.resolve_color_palette.md) | Resolve a user-provided color palette or fall back to the default. |
-| [`panel_facet_figure`](generated/yohou.plotting._utils.panel_facet_figure.md) | Create a faceted subplot figure for panel data. |
+| [`facet_figure`](generated/yohou.plotting._utils.facet_figure.md) | Create a faceted subplot figure for panel data. |
 | [`resolve_panel_columns`](generated/yohou.plotting._utils.resolve_panel_columns.md) | Resolve which panel columns to plot. |

@@ -1231,12 +1231,16 @@ class ASinhTransformer(BaseTransformer):
             col_data = X_numeric.get_column(col)
             median_val = col_data.median()
             # Cast to float for numeric operations (polars median returns numeric type)
-            self.median_[col] = float(median_val) if median_val is not None else 0.0  # ty: ignore[invalid-argument-type]
+            self.median_[col] = (
+                float(median_val) if median_val is not None else 0.0
+            )  # ty: ignore[invalid-argument-type]
 
             # Compute MAD: median(|X - median(X)|) * scale
             abs_dev = (col_data - self.median_[col]).abs()
             mad_val = abs_dev.median()
-            mad_scaled = float(mad_val) * self.scale if mad_val is not None else 1.0  # ty: ignore[invalid-argument-type]
+            mad_scaled = (
+                float(mad_val) * self.scale if mad_val is not None else 1.0
+            )  # ty: ignore[invalid-argument-type]
 
             # Avoid division by zero
             self.mad_[col] = mad_scaled if mad_scaled != 0.0 else 1.0

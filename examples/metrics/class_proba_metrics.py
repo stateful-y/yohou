@@ -53,6 +53,7 @@ def _():
     from copy import deepcopy
 
     from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -80,6 +81,7 @@ def _():
         plot_forecast,
         plot_score_time_series,
         plot_time_series,
+        train_test_split,
     )
 
 
@@ -98,17 +100,20 @@ def _(mo):
 
 
 @app.cell
-def _(fetch_air_quality_classification):
+def _(fetch_air_quality_classification, train_test_split):
     data = fetch_air_quality_classification()
     y, X = data.y, data.X
 
-    split = len(y) - 200
-    y_train, y_test = y[:split], y[split:]
-    X_train, X_test = X[:split], X[split:]
+    y_train, y_test, X_train, X_test = train_test_split(
+        y,
+        X,
+        test_size=200,
+        shuffle=False,
+    )
 
     print(f"Classes: {data.classes}")
     print(f"Train: {len(y_train)} obs | Test: {len(y_test)} obs")
-    return X_test, X_train, data, split, y, y_test, y_train, X
+    return X_test, X_train, data, y, y_test, y_train, X
 
 
 @app.cell(hide_code=True)
@@ -374,8 +379,18 @@ def _(acc_dt, acc_rf, bs_dt, bs_rf, ll_dt, ll_rf, mo):
     _table = mo.ui.table(
         [
             {"Metric": "Log Loss", "Decision Tree": f"{ll_dt:.4f}", "Random Forest": f"{ll_rf:.4f}", "Better": "lower"},
-            {"Metric": "Brier Score", "Decision Tree": f"{bs_dt:.4f}", "Random Forest": f"{bs_rf:.4f}", "Better": "lower"},
-            {"Metric": "Accuracy", "Decision Tree": f"{acc_dt:.4f}", "Random Forest": f"{acc_rf:.4f}", "Better": "higher"},
+            {
+                "Metric": "Brier Score",
+                "Decision Tree": f"{bs_dt:.4f}",
+                "Random Forest": f"{bs_rf:.4f}",
+                "Better": "lower",
+            },
+            {
+                "Metric": "Accuracy",
+                "Decision Tree": f"{acc_dt:.4f}",
+                "Random Forest": f"{acc_rf:.4f}",
+                "Better": "higher",
+            },
         ],
         selection=None,
     )

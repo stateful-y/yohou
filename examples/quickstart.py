@@ -1038,9 +1038,12 @@ def _(fetch_dominick, inspect_panel):
 
 
 @app.cell
-def _(MeanAbsoluteError, SeasonalNaive, y_panel):
-    _split = len(y_panel) - 13
-    y_panel_train, y_panel_test = y_panel[:_split], y_panel[_split:]
+def _(MeanAbsoluteError, SeasonalNaive, train_test_split, y_panel):
+    y_panel_train, y_panel_test = train_test_split(
+        y_panel,
+        test_size=13,
+        shuffle=False,
+    )
 
     panel_baseline = SeasonalNaive(seasonality=52)
     panel_baseline.fit(y_panel_train, forecasting_horizon=13)

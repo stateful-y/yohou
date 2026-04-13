@@ -16,6 +16,7 @@ except ImportError as e:
 from yohou.plotting._utils import (
     LegendTracker,
     PanelColorManager,
+    RenderContext,
     _create_figure,
     _create_subplots,
     _fill_trace_kwargs,
@@ -24,6 +25,8 @@ from yohou.plotting._utils import (
     _member_name,
     _subplot_spacing,
     apply_default_layout,
+    build_category_map,
+    facet_figure,
     palette_yohou,
     resolve_color_palette,
     resolve_panel_columns,
@@ -72,6 +75,7 @@ def plot_forecast(
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
     y_train: pl.DataFrame | None = None,
+    columns: str | list[str] | None = None,
     coverage_rates: list[float] | None = None,
     n_history: int | None = None,
     panel_group_names: list[str] | None = None,
@@ -117,6 +121,11 @@ def plot_forecast(
     y_train : pl.DataFrame | None, default=None
         Historical training data with 'time' column. If provided, shown
         before the forecast period.
+    columns : str | list[str] | None, default=None
+        Target column(s) to plot from *y_test*.  When ``None``, all
+        non-time columns are used.  Associated interval columns
+        (``{col}_lower_{rate}`` / ``{col}_upper_{rate}``) are kept
+        automatically.
     coverage_rates : list[float] | None, default=None
         Coverage rates to display intervals for (e.g., [0.9, 0.95]).
         Looks for ``{col}_lower_{rate}`` / ``{col}_upper_{rate}`` in y_pred.
@@ -265,12 +274,14 @@ def plot_forecast(
         return _plot_forecast_class_proba(
             y_test=y_test,
             y_pred=y_pred,
+            columns=columns,
             color_palette=color_palette,
             title=title,
             x_label=x_label,
             y_label=y_label,
             width=width,
             height=height,
+            facet_n_cols=facet_n_cols,
         )
 
     # Non-panel categorical predictions
@@ -280,12 +291,14 @@ def plot_forecast(
             y_pred=y_pred,
             y_train=y_train,
             n_history=n_history,
+            columns=columns,
             color_palette=color_palette,
             title=title,
             x_label=x_label,
             y_label=y_label,
             width=width,
             height=height,
+            facet_n_cols=facet_n_cols,
         )
 
     # Multi-model dict: delegate to dedicated helper
@@ -296,12 +309,14 @@ def plot_forecast(
             y_train=y_train,
             coverage_rates=coverage_rates,
             n_history=n_history,
+            columns=columns,
             color_palette=color_palette,
             title=title,
             x_label=x_label,
             y_label=y_label,
             width=width,
             height=height,
+            facet_n_cols=facet_n_cols,
             line_width=line_width,
             band_opacity=band_opacity,
             show_transition=show_transition,
@@ -316,69 +331,50 @@ def plot_forecast(
         c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
     ]
     test_value_cols = [c for c in y_test.columns if c != "time"]
+
+    # Apply columns filter (Decision #8: columns param on plot_forecast)
+    if columns is not None:
+        col_list = [columns] if isinstance(columns, str) else list(columns)
+        test_value_cols = [c for c in col_list if c in test_value_cols]
     plot_columns = test_value_cols
 
-    multi_col = len(plot_columns) > 1
-    _model_pal = eff_palette[3:] or eff_palette
-    col_colors = resolve_color_palette(_model_pal, len(plot_columns)) if multi_col else []
-
-    fig = _create_figure(resampler)
-
-    for col_idx, col in enumerate(plot_columns):
-        # Colour & legend setup: per-column colours for multi-column plots
-        if multi_col:
-            col_color = col_colors[col_idx]
-            actual_c = col_color
-            forecast_c = col_color
-            f_dash: str | None = "dash"
-        else:
-            actual_c, forecast_c = actual_color, forecast_color
-            f_dash = None
-
-        actual_name = f"{col} (Actual)"
-        forecast_name = f"{col} (Forecast)"
-
-        # Compute pred_col early so interval rendering can hoist before Actual.
+    def _render_forecast(ctx: RenderContext) -> None:
+        """Render train/interval/actual/forecast traces for one target column."""
+        col = ctx.display_name
         pred_col = col if col in pred_value_cols else (pred_value_cols[0] if pred_value_cols else None)
-        fc_group = f"forecast_{col}" if multi_col else ""
 
         # Training data
         if y_train is not None and col in y_train.columns:
             train_df = y_train.tail(n_history) if n_history is not None else y_train
-            _hex = actual_c.lstrip("#")
+            _hex = actual_color.lstrip("#")
             _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
             _train_color = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
-            _train_name = f"{col} (Train)"
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
                     x=train_df["time"],
                     y=train_df[col],
                     mode="lines",
                     line={"color": _train_color, "width": line_width},
                     connectgaps=connect_gaps,
-                    name=_train_name,
-                    legendgroup=fc_group,
+                    name=f"{col} (Train)",
                     legendrank=0,
                     hovertemplate=_make_hovertemplate(f"{col} Train", "Time", "Value"),
-                )
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-        # Prediction intervals - rendered before Actual so the actual line sits on top.
-        # Works even when there is no point forecast (predict_interval-only DataFrames).
-        # legendrank >= 11 places them after Train (0), Actual (1), and Forecast (10).
+        # Prediction intervals (rendered before Actual so actual sits on top)
         if coverage_rates:
             interval_base = pred_col if pred_col is not None else col
-            _hex = forecast_c.lstrip("#")
+            _hex = forecast_color.lstrip("#")
             rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
             sorted_rates = sorted(coverage_rates)
             n_rates = len(sorted_rates)
             for sort_idx, rate in enumerate(sorted_rates):
                 lower_col = f"{interval_base}_lower_{rate}"
                 upper_col = f"{interval_base}_upper_{rate}"
-
                 if lower_col in y_pred.columns and upper_col in y_pred.columns:
-                    # Narrower bands (lower rate, lower sort_idx) rendered most opaque;
-                    # wider outer bands fade out gracefully.
                     rate_opacity = band_opacity * (1.0 - 0.45 * sort_idx / max(1, n_rates - 1))
                     rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {rate_opacity:.3f})"
                     t = y_pred["time"].to_list()
@@ -386,8 +382,7 @@ def plot_forecast(
                     y_lower = y_pred[lower_col].to_list()
                     x_band = t + t[::-1]
                     y_band = y_upper + y_lower[::-1]
-                    pi_name = f"{col} ({rate:.0%} PI)"
-                    fig.add_trace(
+                    ctx.fig.add_trace(
                         go.Scatter(
                             x=x_band,
                             y=y_band,
@@ -395,12 +390,12 @@ def plot_forecast(
                             fillcolor=rgba,
                             mode="lines",
                             line={"width": 0, "color": rgba},
-                            name=pi_name,
-                            legendgroup=fc_group,
+                            name=f"{col} ({rate:.0%} PI)",
                             legendrank=11 + sort_idx,
                             hoverinfo="skip",
                         ),
-                        **_fill_trace_kwargs(fig),
+                        row=ctx.row,
+                        col=ctx.col,
                     )
 
         # Actual test data (prepend last train point to close the gap)
@@ -409,56 +404,56 @@ def plot_forecast(
         if y_train is not None and col in y_train.columns:
             _x_actual = pl.concat([pl.Series("time", [y_train["time"][-1]]), _x_actual])
             _y_actual = pl.concat([pl.Series([y_train[col][-1]], dtype=_y_actual.dtype), _y_actual])
-        fig.add_trace(
+        ctx.fig.add_trace(
             go.Scatter(
                 x=_x_actual,
                 y=_y_actual,
                 mode="lines",
-                line={"color": actual_c, "width": line_width},
+                line={"color": actual_color, "width": line_width},
                 connectgaps=connect_gaps,
-                name=actual_name,
-                legendgroup=fc_group,
+                name=f"{col} (Actual)",
                 legendrank=1,
                 hovertemplate=_make_hovertemplate(f"{col} Actual", "Time", "Value"),
-            )
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
 
         # Forecast
         if pred_col is not None and pred_col in y_pred.columns:
             x_forecast = y_pred["time"]
             forecast_y = y_pred[pred_col]
-
             if show_transition and y_train is not None and col in y_train.columns:
                 last_train_time = y_train["time"][-1]
                 last_train_val = y_train[col][-1]
                 x_forecast = pl.concat([pl.Series("time", [last_train_time]), y_pred["time"]])
                 forecast_y = pl.concat([pl.Series([last_train_val], dtype=forecast_y.dtype), forecast_y])
-
-            line_spec: dict = {"color": forecast_c, "width": line_width}
-            if f_dash:
-                line_spec["dash"] = f_dash
-
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
                     x=x_forecast,
                     y=forecast_y,
                     mode="lines",
-                    line=line_spec,
+                    line={"color": forecast_color, "width": line_width},
                     connectgaps=connect_gaps,
-                    name=forecast_name,
-                    legendgroup=fc_group,
+                    name=f"{col} (Forecast)",
                     legendrank=10,
                     hovertemplate=_make_hovertemplate(f"{col} Forecast", "Time", "Value"),
-                )
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        y_test,
+        _render_forecast,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Forecast",
         x_label=x_label or "Time",
         y_label=y_label or "Value",
         width=width,
         height=height,
+        resampler=resampler,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -740,18 +735,16 @@ def _collect_categories(
         Category to integer mapping.
 
     """
-    all_categories: set[str] = set()
+    series_list: list[pl.Series] = []
     for cat_col in cat_cols:
         if cat_col in y_test.columns:
-            all_categories.update(y_test[cat_col].cast(pl.String).unique().to_list())
+            series_list.append(y_test[cat_col].cast(pl.String))
         for pred_df in preds.values():
             if cat_col in pred_df.columns:
-                all_categories.update(pred_df[cat_col].cast(pl.String).unique().to_list())
+                series_list.append(pred_df[cat_col].cast(pl.String))
         if y_train is not None and cat_col in y_train.columns:
-            all_categories.update(y_train[cat_col].cast(pl.String).unique().to_list())
-    sorted_cats = sorted(all_categories)
-    cat_to_int = {cat: i for i, cat in enumerate(sorted_cats)}
-    return sorted_cats, cat_to_int
+            series_list.append(y_train[cat_col].cast(pl.String))
+    return build_category_map(*series_list)
 
 
 def _extract_member_df(df: pl.DataFrame, suffix: str) -> pl.DataFrame:
@@ -786,12 +779,14 @@ def _plot_forecast_class_proba(
     y_test: pl.DataFrame,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
+    columns: str | list[str] | None,
     color_palette: list[str] | None,
     title: str | None,
     x_label: str | None,
     y_label: str | None,
     width: int | None,
     height: int | None,
+    facet_n_cols: int,
     **kwargs: object,
 ) -> go.Figure:
     """Plot class-probability forecasts as stacked area charts with truth markers.
@@ -802,6 +797,8 @@ def _plot_forecast_class_proba(
         Ground-truth DataFrame with ``"time"`` and categorical target columns.
     y_pred : pl.DataFrame or dict of str to pl.DataFrame
         Predictions with ``{target}_proba_{class}`` columns.
+    columns : str or list of str or None
+        Target name filter.
     color_palette : list of str or None
         Custom color palette.
     title : str or None
@@ -814,6 +811,8 @@ def _plot_forecast_class_proba(
         Plot width in pixels.
     height : int or None
         Plot height in pixels.
+    facet_n_cols : int
+        Number of facet columns.
     **kwargs : object
         ``line_width``, ``band_opacity``, ``marker_size``.
 
@@ -828,52 +827,53 @@ def _plot_forecast_class_proba(
     marker_size = kwargs.get("marker_size", 10)
 
     preds = y_pred if isinstance(y_pred, dict) else {"Forecast": y_pred}
-    model_names = list(preds.keys())
-    n_models = len(model_names)
+    first_pred = next(iter(preds.values()))
 
-    if n_models > 1:
-        fig = make_subplots(
-            rows=n_models,
-            cols=1,
-            subplot_titles=model_names,
-            shared_xaxes=True,
-            vertical_spacing=0.08,
-        )
-    else:
-        fig = go.Figure()
+    proba_cols = [c for c in first_pred.columns if "_proba_" in c]  # ty: ignore[unresolved-attribute]
+    all_targets = _discover_proba_targets(proba_cols)
 
-    for model_idx, (model_name, pred_df) in enumerate(preds.items()):
-        proba_cols = [c for c in pred_df.columns if "_proba_" in c]  # ty: ignore[unresolved-attribute]
-        targets = _discover_proba_targets(proba_cols)
-        target = next(iter(targets))
-        target_proba_cols = targets[target]
+    # Filter targets by columns parameter (Decision #10)
+    if columns is not None:
+        col_list = [columns] if isinstance(columns, str) else list(columns)
+        all_targets = {t: cols for t, cols in all_targets.items() if t in col_list}
+
+    target_names = list(all_targets.keys())
+
+    def _render_class_proba(ctx: RenderContext) -> None:
+        """Render stacked area + truth markers for one target across models."""
+        target = ctx.display_name
+        target_proba_cols = all_targets[target]
         class_labels = [c.split("_proba_", 1)[1] for c in target_proba_cols]
         colors = resolve_color_palette(color_palette, n=len(class_labels))
 
-        _render_class_proba_traces(
-            fig,
-            pred_df,  # ty: ignore[invalid-argument-type]
-            y_test,
-            colors=colors,
-            target_proba_cols=target_proba_cols,
-            class_labels=class_labels,
-            target=target,
-            stack_group=f"proba_{model_name}",
-            row=model_idx + 1 if n_models > 1 else None,
-            col=1 if n_models > 1 else None,
-            show_legend=model_idx == 0,
-            line_width=line_width,  # ty: ignore[invalid-argument-type]
-            band_opacity=band_opacity,  # ty: ignore[invalid-argument-type]
-            marker_size=marker_size,  # ty: ignore[invalid-argument-type]
-        )
+        for model_idx, (model_name, pred_df) in enumerate(preds.items()):
+            _render_class_proba_traces(
+                ctx.fig,
+                pred_df,  # ty: ignore[invalid-argument-type]
+                y_test,
+                colors=colors,
+                target_proba_cols=target_proba_cols,
+                class_labels=class_labels,
+                target=target,
+                stack_group=f"proba_{model_name}_{target}",
+                row=ctx.row,
+                col=ctx.col,
+                show_legend=model_idx == 0,
+                line_width=line_width,  # ty: ignore[invalid-argument-type]
+                band_opacity=band_opacity,  # ty: ignore[invalid-argument-type]
+                marker_size=marker_size,  # ty: ignore[invalid-argument-type]
+            )
 
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        y_test,
+        _render_class_proba,
+        columns=target_names,
+        facet_n_cols=facet_n_cols,
         title=title or "Class Probability Forecast",
         x_label=x_label or "Time",
         y_label=y_label or "Probability",
         width=width,
-        height=height or (300 * n_models if n_models > 1 else None),
+        height=height,
     )
     return fig
 
@@ -884,12 +884,14 @@ def _plot_forecast_categorical(
     *,
     y_train: pl.DataFrame | None,
     n_history: int | None,
+    columns: str | list[str] | None,
     color_palette: list[str] | None,
     title: str | None,
     x_label: str | None,
     y_label: str | None,
     width: int | None,
     height: int | None,
+    facet_n_cols: int,
     **kwargs: object,
 ) -> go.Figure:
     """Plot categorical forecasts as step charts with class labels on the y-axis.
@@ -904,6 +906,8 @@ def _plot_forecast_categorical(
         Historical training data.
     n_history : int or None
         Number of historical observations to show.
+    columns : str or list of str or None
+        Columns to include.
     color_palette : list of str or None
         Custom color palette.
     title : str or None
@@ -916,6 +920,8 @@ def _plot_forecast_categorical(
         Plot width in pixels.
     height : int or None
         Plot height in pixels.
+    facet_n_cols : int
+        Number of facet columns.
     **kwargs : object
         ``line_width``.
 
@@ -943,29 +949,38 @@ def _plot_forecast_categorical(
         and first_pred[c].dtype in (pl.String, pl.Categorical)  # ty: ignore[not-subscriptable]
     ]
 
+    if columns is not None:
+        col_list = [columns] if isinstance(columns, str) else list(columns)
+        cat_cols = [c for c in col_list if c in cat_cols]
+
     sorted_cats, cat_to_int = _collect_categories(cat_cols, y_test, preds, y_train)  # ty: ignore[invalid-argument-type]
 
-    fig = go.Figure()
+    def _render_categorical(ctx: RenderContext) -> None:
+        """Render categorical step chart traces for one column across models."""
+        for model_idx, (model_name, pred_df) in enumerate(preds.items()):
+            _render_categorical_traces(
+                ctx.fig,
+                pred_df,  # ty: ignore[invalid-argument-type]
+                y_test,
+                y_train,
+                cat_cols=[ctx.display_name],
+                cat_to_int=cat_to_int,
+                model_name=model_name,  # ty: ignore[invalid-argument-type]
+                model_color=model_colors[model_idx],
+                actual_color=actual_color,
+                is_multi_model=len(model_names) > 1,
+                n_history=n_history,
+                row=ctx.row,
+                col=ctx.col,
+                show_legend=model_idx == 0 or len(model_names) > 1,
+                line_width=line_width,  # ty: ignore[invalid-argument-type]
+            )
 
-    for model_idx, (model_name, pred_df) in enumerate(preds.items()):
-        _render_categorical_traces(
-            fig,
-            pred_df,  # ty: ignore[invalid-argument-type]
-            y_test,
-            y_train,
-            cat_cols=cat_cols,
-            cat_to_int=cat_to_int,
-            model_name=model_name,  # ty: ignore[invalid-argument-type]
-            model_color=model_colors[model_idx],
-            actual_color=actual_color,
-            is_multi_model=len(model_names) > 1,
-            n_history=n_history,
-            show_legend=model_idx == 0 or len(model_names) > 1,
-            line_width=line_width,  # ty: ignore[invalid-argument-type]
-        )
-
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        y_test,
+        _render_categorical,
+        columns=cat_cols,
+        facet_n_cols=facet_n_cols,
         title=title or "Categorical Forecast",
         x_label=x_label or "Time",
         y_label=y_label or "Class",
@@ -977,7 +992,6 @@ def _plot_forecast_categorical(
         ticktext=sorted_cats,
     )
     return fig
-    return fig
 
 
 def _plot_forecast_multi_model(
@@ -987,12 +1001,14 @@ def _plot_forecast_multi_model(
     y_train: pl.DataFrame | None,
     coverage_rates: list[float] | None,
     n_history: int | None,
+    columns: str | list[str] | None,
     color_palette: list[str] | None,
     title: str | None,
     x_label: str | None,
     y_label: str | None,
     width: int | None,
     height: int | None,
+    facet_n_cols: int,
     line_width: float,
     band_opacity: float,
     show_transition: bool,
@@ -1014,6 +1030,8 @@ def _plot_forecast_multi_model(
         Coverage rates for intervals.
     n_history : int | None
         Number of history points to show.
+    columns : str | list[str] | None
+        Columns to include.
     color_palette : list[str] | None
         Color palette. Slots 0/1/2 = history/forecast/actual; 3+ = models.
     title : str | None
@@ -1026,6 +1044,8 @@ def _plot_forecast_multi_model(
         Plot width.
     height : int | None
         Plot height.
+    facet_n_cols : int
+        Number of facet columns.
     line_width : float
         Line width.
     band_opacity : float
@@ -1042,52 +1062,50 @@ def _plot_forecast_multi_model(
     eff_palette = color_palette if color_palette is not None else _PALETTE
     actual_color = eff_palette[2 % len(eff_palette)]
     _model_pal = eff_palette[3:] or eff_palette
-    # Per-column colors for multivariate actual/train traces
-    _actual_pal = eff_palette[3:] or eff_palette
 
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
     test_value_cols = [c for c in y_test.columns if c != "time"]
+
+    if columns is not None:
+        col_list = [columns] if isinstance(columns, str) else list(columns)
+        test_value_cols = [c for c in col_list if c in test_value_cols]
     plot_columns = test_value_cols
 
     model_names = list(y_preds.keys())
     colors = resolve_color_palette(_model_pal, len(model_names))
 
-    fig = _create_figure(resampler)
-    multi_col = len(plot_columns) > 1
-    _col_colors = resolve_color_palette(_actual_pal, len(plot_columns)) if multi_col else []
+    def _render_multi_model(ctx: RenderContext) -> None:
+        """Render train/intervals/actual/forecast for one target column across models."""
+        col = ctx.display_name
 
-    for _, col in enumerate(plot_columns):
-        # Train data once
+        # Training data
         if y_train is not None and col in y_train.columns:
-            train_df = y_train
-            if n_history is not None:
-                train_df = train_df.tail(n_history)
-            _ac = _col_colors[list(plot_columns).index(col)] if multi_col else actual_color
-            _hex = _ac.lstrip("#")
+            train_df = y_train.tail(n_history) if n_history is not None else y_train
+            _hex = actual_color.lstrip("#")
             _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
             _train_color = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
-            _train_name = f"{col} (Train)"
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
                     x=train_df["time"],
                     y=train_df[col],
                     mode="lines",
                     line={"color": _train_color, "width": line_width},
                     connectgaps=connect_gaps,
-                    name=_train_name,
-                    legendgroup=f"col_{col}" if multi_col else "actual",
+                    name=f"{col} (Train)",
                     legendrank=0,
                     hovertemplate=_make_hovertemplate("Train", "Time", "Value"),
-                )
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-        # Interval bands first (behind everything else).
+        # Interval bands per model (behind everything else)
         for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
             model_color = colors[model_idx % len(colors)]
             pred_value_cols = [
                 c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
             ]
-            pred_col = col if col in pred_value_cols else pred_value_cols[0] if pred_value_cols else None
+            pred_col = col if col in pred_value_cols else (pred_value_cols[0] if pred_value_cols else None)
             interval_base = pred_col if (pred_col is not None and pred_col in y_pred.columns) else col
             if not coverage_rates:
                 continue
@@ -1102,7 +1120,7 @@ def _plot_forecast_multi_model(
                     y_lower = y_pred[lower_col].to_list()
                     x_band = t + t[::-1]
                     y_band = y_upper + y_lower[::-1]
-                    fig.add_trace(
+                    ctx.fig.add_trace(
                         go.Scatter(
                             x=x_band,
                             y=y_band,
@@ -1115,83 +1133,73 @@ def _plot_forecast_multi_model(
                             legendrank=10 + model_idx * 100 + sort_idx + 1,
                             hoverinfo="skip",
                         ),
-                        **_fill_trace_kwargs(fig),
+                        row=ctx.row,
+                        col=ctx.col,
                     )
 
-        # Actual data
-        _actual_group = f"col_{col}" if multi_col else "actual"
-        _ac = _col_colors[list(plot_columns).index(col)] if multi_col else actual_color
-        # Prepend last train point to close the gap between train and actual
+        # Actual test data (prepend last train point to close the gap)
         _x_actual = y_test["time"]
         _y_actual = y_test[col]
         if y_train is not None and col in y_train.columns:
             _x_actual = pl.concat([pl.Series("time", [y_train["time"][-1]]), _x_actual])
             _y_actual = pl.concat([pl.Series([y_train[col][-1]], dtype=_y_actual.dtype), _y_actual])
-        fig.add_trace(
+        ctx.fig.add_trace(
             go.Scatter(
                 x=_x_actual,
                 y=_y_actual,
                 mode="lines",
-                line={"color": _ac, "width": line_width},
+                line={"color": actual_color, "width": line_width},
                 connectgaps=connect_gaps,
                 name=f"{col} (Actual)",
-                legendgroup=_actual_group,
                 legendrank=1,
                 hovertemplate=_make_hovertemplate("Actual", "Time", "Value"),
-            )
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
 
-        # Forecast lines on top
+        # Forecast lines per model (on top)
         for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
             model_color = colors[model_idx % len(colors)]
             pred_value_cols = [
                 c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
             ]
-            pred_col = col if col in pred_value_cols else pred_value_cols[0] if pred_value_cols else None
-            interval_base = pred_col if (pred_col is not None and pred_col in y_pred.columns) else col
-            has_point = pred_col is not None and pred_col in y_pred.columns
-            has_intervals = bool(
-                coverage_rates and any(f"{interval_base}_lower_{rate}" in y_pred.columns for rate in coverage_rates)
+            pred_col = col if col in pred_value_cols else (pred_value_cols[0] if pred_value_cols else None)
+            if pred_col is None or pred_col not in y_pred.columns:
+                continue
+            x_fc = y_pred["time"]
+            y_fc = y_pred[pred_col]
+            if show_transition and y_train is not None and col in y_train.columns:
+                x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), y_pred["time"]])
+                y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
+            _fc_name = f"{col} ({model_name})"
+            ctx.fig.add_trace(
+                go.Scatter(
+                    x=x_fc,
+                    y=y_fc,
+                    mode="lines",
+                    line={"color": model_color, "width": line_width},
+                    connectgaps=connect_gaps,
+                    name=_fc_name,
+                    legendgroup=model_name,
+                    legendrank=10 + model_idx * 100,
+                    hovertemplate=_make_hovertemplate(_fc_name, "Time", "Value"),
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-            if not has_point and not has_intervals:
-                continue
-
-            if has_point:
-                assert pred_col is not None
-                x_fc = y_pred["time"]
-                y_fc = y_pred[pred_col]
-
-                if show_transition and y_train is not None and col in y_train.columns:
-                    x_fc = pl.concat([pl.Series("time", [y_train["time"][-1]]), y_pred["time"]])
-                    y_fc = pl.concat([pl.Series([y_train[col][-1]], dtype=y_fc.dtype), y_fc])
-
-                _fc_name = f"{col} ({model_name})"
-                fig.add_trace(
-                    go.Scatter(
-                        x=x_fc,
-                        y=y_fc,
-                        mode="lines",
-                        line={"color": model_color, "width": line_width},
-                        connectgaps=connect_gaps,
-                        name=_fc_name,
-                        legendgroup=model_name,
-                        legendrank=10 + model_idx * 100,
-                        hovertemplate=_make_hovertemplate(_fc_name, "Time", "Value"),
-                    )
-                )
-
-    title_default = title or "Forecast Comparison"
-    x_label_default = x_label or "Time"
-    y_label_default = y_label or "Value"
-
-    fig = apply_default_layout(
-        fig,
-        title=title_default,
-        x_label=x_label_default,
-        y_label=y_label_default,
+    fig = facet_figure(
+        y_test,
+        _render_multi_model,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
+        title=title or "Forecast Comparison",
+        x_label=x_label or "Time",
+        y_label=y_label or "Value",
         width=width,
         height=height,
+        resampler=resampler,
     )
     fig.update_layout(showlegend=show_legend)
 

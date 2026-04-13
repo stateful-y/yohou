@@ -29,7 +29,7 @@ from yohou.plotting._utils import (
     _normalize_y_pred,
     _subplot_spacing,
     apply_default_layout,
-    panel_facet_figure,
+    facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
 )
@@ -396,7 +396,7 @@ def plot_residuals(
             )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             residuals_df,
             _render_residual_scatter,
             panel_group_names=panel_group_names,
@@ -413,56 +413,44 @@ def plot_residuals(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Non-panel multi-column facets
-    n_cols_grid = min(len(target_cols), facet_n_cols)
-    n_rows = (len(target_cols) + n_cols_grid - 1) // n_cols_grid
-    colors = resolve_color_palette(color_palette, len(target_cols))
+    # Non-panel multi-column: column-mode facet_figure
+    _colors = resolve_color_palette(color_palette, len(target_cols))
+    _col_colors = dict(zip(target_cols, _colors, strict=False))
 
-    fig = _create_subplots(
-        resampler,
-        rows=n_rows,
-        cols=n_cols_grid,
-        subplot_titles=target_cols,
-        shared_xaxes=True,
-        vertical_spacing=max(0.04, 0.3 / n_rows),
-        horizontal_spacing=0.08,
-    )
-
-    for idx, col_name in enumerate(target_cols):
-        row = idx // n_cols_grid + 1
-        col_idx = idx % n_cols_grid + 1
-        fig.add_trace(
+    def _render_residual(ctx: RenderContext) -> None:
+        """Render residual scatter for one column into a subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
+        ctx.fig.add_trace(
             go.Scatter(
                 x=residuals_df["time"],
-                y=residuals_df[col_name],
+                y=residuals_df[base],
                 mode="markers",
-                marker={
-                    "size": marker_size,
-                    "color": colors[idx % len(colors)],
-                    "opacity": marker_opacity,
-                },
+                marker={"size": marker_size, "color": col_color, "opacity": marker_opacity},
                 showlegend=False,
             ),
-            row=row,
-            col=col_idx,
+            row=ctx.row,
+            col=ctx.col,
         )
-        fig.add_hline(
+        ctx.fig.add_hline(
             y=0,
             line={"dash": "dash", "color": "#DC2626", "width": 1},
-            row=row,
-            col=col_idx,
+            row=ctx.row,
+            col=ctx.col,
         )
 
-    row_height = 300
-    default_height = max(row_height * n_rows, 400)
-
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        residuals_df,
+        _render_residual,
+        columns=target_cols,
+        facet_n_cols=facet_n_cols,
         title=title or "Residual Diagnostics",
         x_label=x_label or "Time",
         y_label=y_label or "Residuals",
         width=width,
-        height=height or default_height,
+        height=height,
+        shared_xaxes=True,
+        resampler=resampler,
     )
     fig.update_layout(showlegend=show_legend)
 

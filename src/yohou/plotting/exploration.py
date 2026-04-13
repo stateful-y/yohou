@@ -18,20 +18,21 @@ from yohou.plotting._utils import (
     PanelColorManager,
     RenderContext,
     _auto_detect_panel,
-    _create_figure,
     _group_panel_columns,
     _make_hovertemplate,
     _member_name,
     _subplot_spacing,
     apply_default_layout,
+    build_category_map,
+    facet_figure,
     grouped_legend_kwargs,
     linked_legendgroup_kwargs,
-    panel_facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
 )
 from yohou.preprocessing import RollingStatisticsTransformer
 from yohou.utils import validate_plotting_data, validate_plotting_params
+from yohou.utils.polars import is_categorical_dtype
 from yohou.utils.validation import interval_to_timedelta
 
 __all__ = [
@@ -169,24 +170,53 @@ def plot_time_series(
         def _render_ts(ctx: RenderContext) -> None:
             """Render one trace into the faceted figure."""
             color = color_palette[ctx.entity_idx]
-            ctx.fig.add_trace(
-                go.Scatter(
-                    x=ctx.sub_df["time"],
-                    y=ctx.sub_df[ctx.display_name],
-                    mode="lines",
-                    name=ctx.display_name,
-                    line={"color": color, "width": line_width, "dash": line_dash},
-                    opacity=line_opacity,
-                    connectgaps=connect_gaps,
-                    showlegend=legend_tracker.should_show(ctx.display_name),
-                    legendgroup=ctx.display_name,
-                    hovertemplate=f"<b>{ctx.display_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
-                ),
-                row=ctx.row,
-                col=ctx.col,
-            )
+            _show = legend_tracker.should_show(ctx.display_name)
+            series = ctx.sub_df[ctx.display_name]
+            if is_categorical_dtype(series.dtype):
+                sorted_cats, cat_to_int = build_category_map(series)
+                y_vals = [cat_to_int.get(str(v), -1) for v in series.to_list()]
+                ctx.fig.add_trace(
+                    go.Scatter(
+                        x=ctx.sub_df["time"],
+                        y=y_vals,
+                        mode="lines+markers",
+                        name=ctx.display_name,
+                        line={"color": color, "width": line_width, "dash": line_dash, "shape": "hv"},
+                        marker={"size": 5},
+                        opacity=line_opacity,
+                        showlegend=_show,
+                        legendgroup=ctx.display_name,
+                        text=[str(v) for v in series.to_list()],
+                        hovertemplate=f"<b>{ctx.display_name}</b><br>%{{x}}<br>Class: %{{text}}<extra></extra>",
+                    ),
+                    row=ctx.row,
+                    col=ctx.col,
+                )
+                ctx.fig.update_yaxes(
+                    tickvals=list(range(len(sorted_cats))),
+                    ticktext=sorted_cats,
+                    row=ctx.row,
+                    col=ctx.col,
+                )
+            else:
+                ctx.fig.add_trace(
+                    go.Scatter(
+                        x=ctx.sub_df["time"],
+                        y=series,
+                        mode="lines",
+                        name=ctx.display_name,
+                        line={"color": color, "width": line_width, "dash": line_dash},
+                        opacity=line_opacity,
+                        connectgaps=connect_gaps,
+                        showlegend=_show,
+                        legendgroup=ctx.display_name,
+                        hovertemplate=f"<b>{ctx.display_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+                    ),
+                    row=ctx.row,
+                    col=ctx.col,
+                )
 
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_ts,
             panel_group_names=panel_group_names,
@@ -204,49 +234,74 @@ def plot_time_series(
 
         return fig
 
-    # Non-panel case: columns refer to actual column names
-    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-    # Get color palette
-    color_palette = resolve_color_palette(color_palette, len(plot_columns))
+    # Non-panel case: use column-mode facet_figure (one subplot per column)
+    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"], include_categorical=True)
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
 
-    # Create figure
-    fig = _create_figure(resampler)
+    # Pre-compute category maps for any categorical columns
+    _cat_maps: dict[str, tuple[list[str], dict[str, int]]] = {}
+    for _c in plot_columns:
+        if is_categorical_dtype(df[_c].dtype):
+            _cat_maps[_c] = build_category_map(df[_c])
 
-    # Plot each column
-    for idx, col in enumerate(plot_columns):
-        color = color_palette[idx]
-
-        fig.add_trace(
-            go.Scatter(
-                x=df["time"],
-                y=df[col],
-                mode="lines",
-                name=col,
-                line={
-                    "color": color,
-                    "width": line_width,
-                    "dash": line_dash,
-                },
-                opacity=line_opacity,
-                connectgaps=connect_gaps,
-                hovertemplate=f"<b>{col}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+    def _render_ts(ctx: RenderContext) -> None:
+        """Render one trace into a column-faceted subplot."""
+        col_name = ctx.display_name
+        color = _col_colors[col_name]
+        if col_name in _cat_maps:
+            sorted_cats, cat_to_int = _cat_maps[col_name]
+            series = ctx.sub_df[col_name]
+            y_vals = [cat_to_int.get(str(v), -1) for v in series.to_list()]
+            ctx.fig.add_trace(
+                go.Scatter(
+                    x=ctx.sub_df["time"],
+                    y=y_vals,
+                    mode="lines+markers",
+                    name=col_name,
+                    line={"color": color, "width": line_width, "dash": line_dash, "shape": "hv"},
+                    marker={"size": 5},
+                    opacity=line_opacity,
+                    text=[str(v) for v in series.to_list()],
+                    hovertemplate=f"<b>{col_name}</b><br>%{{x}}<br>Class: %{{text}}<extra></extra>",
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
-        )
+            ctx.fig.update_yaxes(
+                tickvals=list(range(len(sorted_cats))),
+                ticktext=sorted_cats,
+                row=ctx.row,
+                col=ctx.col,
+            )
+        else:
+            ctx.fig.add_trace(
+                go.Scatter(
+                    x=ctx.sub_df["time"],
+                    y=ctx.sub_df[col_name],
+                    mode="lines",
+                    name=col_name,
+                    line={"color": color, "width": line_width, "dash": line_dash},
+                    opacity=line_opacity,
+                    connectgaps=connect_gaps,
+                    hovertemplate=f"<b>{col_name}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+                ),
+                row=ctx.row,
+                col=ctx.col,
+            )
 
-    # Apply layout
-    if x_label is None:
-        x_label = "Time"
-
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_ts,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title,
-        x_label=x_label,
+        x_label=x_label or "Time",
         y_label=y_label,
         width=width,
         height=height,
+        resampler=resampler,
     )
-
-    # Update legend
     fig.update_layout(showlegend=show_legend)
 
     return fig
@@ -423,7 +478,7 @@ def plot_rolling_statistics(
                 )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_rolling,
             panel_group_names=panel_group_names,
@@ -440,80 +495,65 @@ def plot_rolling_statistics(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Resolve columns
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-
-    # Convert statistics to list
     if isinstance(statistics, str):
         statistics = [statistics]
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
 
-    multi_col = len(plot_columns) > 1
-    colors = resolve_color_palette(color_palette, max(len(plot_columns), len(statistics)))
-
-    fig = _create_figure(resampler)
-
-    for col_idx, col in enumerate(plot_columns):
-        col_color = colors[col_idx % len(colors)]
-
-        # Show original series if requested
+    def _render_rolling(ctx: RenderContext) -> None:
+        """Render rolling statistics into a column-faceted subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
         if show_original:
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
-                    x=df["time"],
-                    y=df[col],
+                    x=ctx.sub_df["time"],
+                    y=ctx.sub_df[base],
                     mode="lines",
-                    name=f"{col} (Original)" if multi_col else col,
+                    name=base,
                     line={"color": col_color, "width": line_width},
                     opacity=0.3,
-                    legendgroup=col if multi_col else None,
-                    hovertemplate=f"<b>{col}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+                    hovertemplate=f"<b>{base}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
                     connectgaps=connect_gaps,
-                )
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
-
-        # Compute rolling statistics
-        df_col = df.select(["time", col])
-        ws = window_size.get(col, 7) if isinstance(window_size, dict) else window_size
+        ws = window_size.get(base, 7) if isinstance(window_size, dict) else window_size
         transformer = RollingStatisticsTransformer(window_size=ws, statistics=statistics)
-        transformer.fit(df_col)
-        df_stats = transformer.transform(df_col)
-
-        # Build stat_data dict
-        stat_data: dict[str, pl.DataFrame] = {}
-        for stat in statistics:
-            stat_col = f"{col}_{stat}"
-            stat_data[stat] = df_stats.select(["time", stat_col])
-
-        stat_colors = [col_color] * len(statistics)
-        for s_idx, (stat, data) in enumerate(stat_data.items()):
-            col_name = [c for c in data.columns if c != "time"][0]
-            s_color = stat_colors[s_idx % len(stat_colors)]
-            s_dash = LINE_DASH_SEQUENCE[s_idx % len(LINE_DASH_SEQUENCE)] if multi_col else "solid"
-            fig.add_trace(
+        transformer.fit(ctx.sub_df)
+        df_stats = transformer.transform(ctx.sub_df)
+        for s_idx, stat in enumerate(statistics):
+            stat_col = f"{base}_{stat}"
+            s_dash = LINE_DASH_SEQUENCE[s_idx % len(LINE_DASH_SEQUENCE)] if len(statistics) > 1 else "solid"
+            ctx.fig.add_trace(
                 go.Scatter(
-                    x=data["time"],
-                    y=data[col_name],
+                    x=df_stats["time"],
+                    y=df_stats[stat_col],
                     mode="lines",
-                    name=f"{col} ({stat})" if multi_col else stat,
-                    line={"color": s_color, "width": smooth_width, "dash": s_dash},
+                    name=stat,
+                    line={"color": col_color, "width": smooth_width, "dash": s_dash},
                     opacity=smooth_opacity,
-                    legendgroup=col if multi_col else None,
                     hovertemplate=f"<b>{stat}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
                     connectgaps=connect_gaps,
-                )
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-    # Apply layout
-    if x_label is None:
-        x_label = "Time"
-
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_rolling,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Rolling Statistics",
-        x_label=x_label,
+        x_label=x_label or "Time",
         y_label=y_label,
         width=width,
         height=height,
+        resampler=resampler,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -647,7 +687,7 @@ def plot_boxplot(
                 )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_boxplot,
             panel_group_names=panel_group_names,
@@ -664,13 +704,11 @@ def plot_boxplot(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Resolve columns
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
 
-    multi_col = len(plot_columns) > 1
-    col_colors = resolve_color_palette(color_palette, len(plot_columns))
-
-    # Determine point display
     if show_points == "all":
         boxpoints: str | bool = "all"
     elif show_points == "outliers":
@@ -678,43 +716,43 @@ def plot_boxplot(
     else:
         boxpoints = False
 
-    # Group by period
     df_grouped = df.with_columns([pl.col("time").dt.truncate(period).alias("period")])
     periods = df_grouped.select("period").unique().sort("period")["period"].to_list()
     period_labels = [str(p) for p in periods]
 
-    fig = go.Figure()
-
-    for col_idx, col in enumerate(plot_columns):
-        c_color = col_colors[col_idx]
+    def _render_boxplot(ctx: RenderContext) -> None:
+        """Render boxplots for one column into a subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
         for p_idx, period_val in enumerate(periods):
-            period_data = df_grouped.filter(pl.col("period") == period_val)[col]
-            fig.add_trace(
+            period_data = df_grouped.filter(pl.col("period") == period_val)[base]
+            ctx.fig.add_trace(
                 go.Box(
                     y=period_data,
                     x=[period_labels[p_idx]] * len(period_data),
-                    name=col if multi_col else period_labels[p_idx],
-                    marker={"color": c_color},
+                    name=period_labels[p_idx],
+                    marker={"color": col_color},
                     opacity=bar_opacity,
                     boxpoints=boxpoints,
                     marker_size=marker_size if boxpoints else None,
-                    legendgroup=col if multi_col else None,
-                    showlegend=multi_col and p_idx == 0,
-                    offsetgroup=col if multi_col else None,
-                    hovertemplate=_make_hovertemplate(col, "Period", "Value"),
-                )
+                    showlegend=False,
+                    hovertemplate=_make_hovertemplate(base, "Period", "Value"),
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-    if multi_col:
-        fig.update_layout(boxmode="group")
-
-    fig = apply_default_layout(
-        fig,
-        title=title,
+    fig = facet_figure(
+        df,
+        _render_boxplot,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
+        title=title or "Boxplots",
         x_label=x_label or "Period",
-        y_label=y_label or (plot_columns[0] if not multi_col else "Value"),
+        y_label=y_label,
         width=width,
         height=height,
+        shared_xaxes=False,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -1005,7 +1043,7 @@ def plot_missing_data(
                     col=ctx.col,
                 )
 
-            return panel_facet_figure(
+            return facet_figure(
                 df,
                 _render_missing,
                 panel_group_names=panel_group_names,
@@ -1042,34 +1080,49 @@ def plot_missing_data(
         )
 
     # Resolve columns
-    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"], include_categorical=True)
 
     if kind == "bars":
-        # Bar chart showing percentage missing per column
+        # Column-mode facet_figure for bar chart
+        _colors = resolve_color_palette(color_palette, len(plot_columns))
+        _col_colors = dict(zip(plot_columns, _colors, strict=False))
         total_rows = len(df)
-        colors = resolve_color_palette(color_palette, len(plot_columns))
 
-        fig = go.Figure()
-        for i, col in enumerate(plot_columns):
-            missing = df[col].null_count()
+        def _render_missing(ctx: RenderContext) -> None:
+            """Render missing-data bar for one column into a subplot."""
+            base = ctx.display_name
+            col_color = _col_colors[base]
+            missing = ctx.sub_df[base].null_count()
             pct = (missing / total_rows) * 100
             text = f"{pct:.1f}%" if show_percentages else None
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Bar(
-                    x=[col],
+                    x=[base],
                     y=[pct],
-                    name=col,
-                    marker={"color": colors[i]},
+                    name=base,
+                    marker={"color": col_color},
                     text=[text] if text else None,
                     textposition="auto" if text else None,
                     hovertemplate="<b>%{x}</b><br>Missing: %{y:.1f}%<extra></extra>",
-                )
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-        if x_label is None:
-            x_label = "Column"
-        if y_label is None:
-            y_label = "Missing (%)"
+        fig = facet_figure(
+            df,
+            _render_missing,
+            columns=plot_columns,
+            facet_n_cols=facet_n_cols,
+            title=title or "Missing Data",
+            x_label=x_label or "Column",
+            y_label=y_label or "Missing (%)",
+            width=width,
+            height=height,
+            shared_xaxes=False,
+        )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
     elif kind == "heatmap":
         # Heatmap of missing values over time (binary: 1=missing, 0=present)
@@ -1311,7 +1364,7 @@ def plot_distribution(
                 )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_distribution,
             panel_group_names=panel_group_names,
@@ -1328,53 +1381,76 @@ def plot_distribution(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Non-panel case
-    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-    colors = resolve_color_palette(color_palette, len(plot_columns))
+    # Non-panel case: column-mode facet_figure
+    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"], include_categorical=True)
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
 
-    fig = go.Figure()
-
-    for idx, col in enumerate(plot_columns):
-        series = df[col].drop_nulls()
-        values = series.to_numpy()
-
-        fig.add_trace(
-            go.Histogram(
-                x=values,
-                nbinsx=n_bins,
-                name=col,
-                marker={"color": colors[idx]},
-                opacity=bar_opacity,
-                histnorm=histnorm,
-                hovertemplate=(f"<b>{col}</b><br>Value: %{{x:.2f}}<br>Density: %{{y:.4f}}<extra></extra>"),
+    def _render_distribution(ctx: RenderContext) -> None:
+        """Render histogram + optional KDE for one column into a subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
+        series = ctx.sub_df[base].drop_nulls()
+        if is_categorical_dtype(series.dtype):
+            counts = series.value_counts().sort("count", descending=True)
+            cat_col = [c for c in counts.columns if c != "count"][0]
+            ctx.fig.add_trace(
+                go.Bar(
+                    x=[str(v) for v in counts[cat_col].to_list()],
+                    y=counts["count"].to_list(),
+                    marker={"color": col_color},
+                    opacity=bar_opacity,
+                    name=base,
+                    hovertemplate=f"<b>{base}</b><br>%{{x}}<br>Count: %{{y}}<extra></extra>",
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
-        )
+        else:
+            values = series.to_numpy()
+            ctx.fig.add_trace(
+                go.Histogram(
+                    x=values,
+                    nbinsx=n_bins,
+                    marker={"color": col_color},
+                    opacity=bar_opacity,
+                    histnorm=histnorm,
+                    name=base,
+                    hovertemplate=(f"<b>{base}</b><br>Value: %{{x:.2f}}<br>Density: %{{y:.4f}}<extra></extra>"),
+                ),
+                row=ctx.row,
+                col=ctx.col,
+            )
+            if show_kde and len(values) > 1:
+                from scipy.stats import gaussian_kde  # noqa: PLC0415
 
-        if show_kde and len(values) > 1:
-            from scipy.stats import gaussian_kde  # noqa: PLC0415
-
-            kde = gaussian_kde(values)
-            x_range = np.linspace(float(values.min()), float(values.max()), kde_points)
-            fig.add_trace(
-                go.Scatter(
-                    x=x_range,
-                    y=kde(x_range),
-                    mode="lines",
-                    name=f"{col} (KDE)",
-                    line={"color": colors[idx], "width": kde_width},
-                    hovertemplate=(f"<b>{col} KDE</b><br>Value: %{{x:.2f}}<br>Density: %{{y:.4f}}<extra></extra>"),
+                kde = gaussian_kde(values)
+                x_range = np.linspace(float(values.min()), float(values.max()), kde_points)
+                ctx.fig.add_trace(
+                    go.Scatter(
+                        x=x_range,
+                        y=kde(x_range),
+                        mode="lines",
+                        line={"color": col_color, "width": kde_width},
+                        name=f"{base} KDE",
+                        showlegend=False,
+                        hovertemplate=(f"<b>{base} KDE</b><br>Value: %{{x:.2f}}<br>Density: %{{y:.4f}}<extra></extra>"),
+                    ),
+                    row=ctx.row,
+                    col=ctx.col,
                 )
-            )
 
-    fig.update_layout(barmode="overlay")
-
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_distribution,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Distribution",
         x_label=x_label or "Value",
         y_label=y_label or "Density",
         width=width,
         height=height,
+        shared_xaxes=False,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -1595,7 +1671,7 @@ def plot_outliers(
                     )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_outlier,
             panel_group_names=panel_group_names,
@@ -1612,76 +1688,76 @@ def plot_outliers(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Non-panel case
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
-    colors = resolve_color_palette(color_palette, len(plot_columns))
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
 
-    fig = _create_figure(resampler)
-
-    for idx, col in enumerate(plot_columns):
-        series = df[col]
+    def _render_outlier(ctx: RenderContext) -> None:
+        """Render outlier detection for one column into a subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
+        series = ctx.sub_df[base]
         mask, lower, upper = _compute_outlier_mask(series)
-        col_color = colors[idx]
 
-        # Series line
-        fig.add_trace(
+        ctx.fig.add_trace(
             go.Scatter(
-                x=df["time"],
+                x=ctx.sub_df["time"],
                 y=series,
                 mode="lines",
-                name=col,
-                legendgroup=col,
+                name=base,
                 line={"color": col_color, "width": line_width},
                 opacity=line_opacity,
                 connectgaps=connect_gaps,
-                hovertemplate=(f"<b>{col}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
-            )
+                hovertemplate=f"<b>{base}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
 
-        # Outlier markers
         df_outliers = df.filter(mask)
-        n_outliers = len(df_outliers)
-        if n_outliers > 0:
-            fig.add_trace(
+        if len(df_outliers) > 0:
+            ctx.fig.add_trace(
                 go.Scatter(
                     x=df_outliers["time"],
-                    y=df_outliers[col],
+                    y=df_outliers[base],
                     mode="markers",
-                    legendgroup=col,
                     showlegend=False,
-                    marker={
-                        "color": col_color,
-                        "size": outlier_size,
-                        "symbol": outlier_symbol,
-                    },
-                    hovertemplate=(f"<b>{col} OUTLIER</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
-                )
+                    marker={"color": col_color, "size": outlier_size, "symbol": outlier_symbol},
+                    hovertemplate=f"<b>{base} OUTLIER</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-        # Threshold bounds
         if show_bounds and lower is not None and upper is not None:
-            time_min = df["time"].min()
-            time_max = df["time"].max()
+            time_min = ctx.sub_df["time"].min()
+            time_max = ctx.sub_df["time"].max()
             for bound_val in (lower, upper):
-                fig.add_trace(
+                ctx.fig.add_trace(
                     go.Scatter(
                         x=[time_min, time_max],
                         y=[bound_val, bound_val],
                         mode="lines",
-                        legendgroup=col,
                         showlegend=False,
                         line={"dash": "dash", "color": col_color, "width": 1},
                         hoverinfo="skip",
-                    )
+                    ),
+                    row=ctx.row,
+                    col=ctx.col,
                 )
 
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_outlier,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Outlier Detection",
         x_label=x_label or "Time",
         y_label=y_label,
         width=width,
         height=height,
+        resampler=resampler,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -1865,7 +1941,7 @@ def plot_resampling_comparison(
             )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df_resampled,
             _render_resampling,
             panel_group_names=panel_group_names,
@@ -1882,58 +1958,60 @@ def plot_resampling_comparison(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Non-panel case: resolve columns from resampled
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df_resampled, columns=columns, exclude=["time"])
-
-    # Ensure columns exist in original
     for col in plot_columns:
         if col not in df_original.columns:
             msg = f"Column '{col}' not found in original DataFrame. Available: {df_original.columns}"
             raise ValueError(msg)
 
-    colors = resolve_color_palette(color_palette, len(plot_columns))
-    fig = _create_figure(resampler)
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
 
-    for idx, col in enumerate(plot_columns):
-        color = colors[idx]
-
-        # Original series (faded)
-        fig.add_trace(
+    def _render_resampling(ctx: RenderContext) -> None:
+        """Render original vs resampled for one column into a subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
+        ctx.fig.add_trace(
             go.Scatter(
                 x=df_original["time"],
-                y=df_original[col],
+                y=df_original[base],
                 mode="lines",
-                name=f"{col} ({original_label})",
-                line={"color": color, "width": original_width, "dash": original_dash},
+                name=f"{base} ({original_label})",
+                line={"color": col_color, "width": original_width, "dash": original_dash},
                 opacity=original_opacity,
                 connectgaps=connect_gaps,
-                legendgroup=col,
-                hovertemplate=(f"<b>{col} ({original_label})</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
-            )
+                hovertemplate=f"<b>{base} ({original_label})</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
-
-        # Resampled series (emphasized)
-        fig.add_trace(
+        ctx.fig.add_trace(
             go.Scatter(
-                x=df_resampled["time"],
-                y=df_resampled[col],
+                x=ctx.sub_df["time"],
+                y=ctx.sub_df[base],
                 mode="lines+markers",
-                name=f"{col} ({resampled_label})",
-                line={"color": color, "width": resampled_width, "dash": resampled_dash},
+                name=f"{base} ({resampled_label})",
+                line={"color": col_color, "width": resampled_width, "dash": resampled_dash},
                 opacity=resampled_opacity,
                 connectgaps=connect_gaps,
-                legendgroup=col,
-                hovertemplate=(f"<b>{col} ({resampled_label})</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
-            )
+                hovertemplate=f"<b>{base} ({resampled_label})</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
 
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df_resampled,
+        _render_resampling,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or f"{original_label} vs {resampled_label}",
         x_label=x_label or "Time",
         y_label=y_label,
         width=width,
         height=height,
+        resampler=resampler,
     )
     fig.update_layout(showlegend=show_legend)
 

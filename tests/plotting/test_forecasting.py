@@ -990,26 +990,27 @@ class TestPlotForecastMultiModel:
 class TestPlotForecastMultiColumn:
     """Tests for plot_forecast with multiple target columns."""
 
-    def test_multi_column_distinct_colors(self):
-        """Test that multi-column forecasts have distinct per-column colors."""
+    def test_multi_column_separate_subplots(self):
+        """Test that multi-column forecasts get separate subplots."""
         dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
         y_test = pl.DataFrame({"time": dates, "a": list(range(30)), "b": list(range(30, 60))})
         y_pred = pl.DataFrame({"time": dates, "a": [x + 1 for x in range(30)], "b": [x + 1 for x in range(30, 60)]})
         fig = plot_forecast(y_test, y_pred)
         a_fc = [t for t in fig.data if t.name == "a (Forecast)"][0]
         b_fc = [t for t in fig.data if t.name == "b (Forecast)"][0]
-        assert a_fc.line.color != b_fc.line.color
+        # Columns are on separate subplots (different yaxis)
+        assert a_fc.yaxis != b_fc.yaxis
 
-    def test_multi_column_per_column_colors(self):
-        """Test that multi-column actual/forecast share the same per-column color."""
+    def test_multi_column_semantic_colors(self):
+        """Test that multi-column actual/forecast use semantic colors per subplot."""
         dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
         y_test = pl.DataFrame({"time": dates, "a": list(range(30)), "b": list(range(30, 60))})
         y_pred = pl.DataFrame({"time": dates, "a": [x + 1 for x in range(30)], "b": [x + 1 for x in range(30, 60)]})
         fig = plot_forecast(y_test, y_pred)
         a_actual = [t for t in fig.data if t.name == "a (Actual)"][0]
-        b_actual = [t for t in fig.data if t.name == "b (Actual)"][0]
-        # Different columns get different colors
-        assert a_actual.line.color != b_actual.line.color
+        a_fc = [t for t in fig.data if t.name == "a (Forecast)"][0]
+        # Within a subplot, actual and forecast have different semantic colors
+        assert a_actual.line.color != a_fc.line.color
 
     def test_multi_column_per_column_train_legend(self):
         """Test that each column gets its own Train legend entry for multi-column."""
@@ -2155,6 +2156,7 @@ class TestDecompositionParameterWarnings:
         with pytest.raises(ValueError, match="Cannot infer period"):
             plot_decomposition(df, ["trend"], method="classical")
 
+
 class TestPlotForecastClassProba:
     """Tests for plot_forecast with class-probability predictions."""
 
@@ -2395,3 +2397,250 @@ class TestPlotForecastPanelCategorical:
         fig = plot_forecast(y_test, y_pred)
         yaxis = fig.layout.yaxis
         assert set(yaxis.ticktext) == {"cloudy", "rainy", "sunny"}
+
+
+# ---- Phase 3: facet_figure integration tests for plot_forecast ----
+
+_DATES_TRAIN = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+_DATES_TEST = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+
+
+@pytest.fixture()
+def _mc_data():
+    """Multi-column forecast data with 3 targets."""
+    y_train = pl.DataFrame({
+        "time": _DATES_TRAIN,
+        "a": list(range(91)),
+        "b": list(range(91, 182)),
+        "c": list(range(182, 273)),
+    })
+    y_test = pl.DataFrame({
+        "time": _DATES_TEST,
+        "a": list(range(30)),
+        "b": list(range(30, 60)),
+        "c": list(range(60, 90)),
+    })
+    y_pred = pl.DataFrame({
+        "time": _DATES_TEST,
+        "a": [x + 1 for x in range(30)],
+        "b": [x + 1 for x in range(30, 60)],
+        "c": [x + 1 for x in range(60, 90)],
+    })
+    return y_train, y_test, y_pred
+
+
+class TestPlotForecastColumns:
+    """Tests for the `columns` parameter on plot_forecast."""
+
+    def test_columns_string_selects_single(self, _mc_data):
+        """Passing a string selects one target column."""
+        _, y_test, y_pred = _mc_data
+        fig = plot_forecast(y_test, y_pred, columns="b")
+        names = {t.name for t in fig.data if t.name}
+        assert any(n.startswith("b ") for n in names)
+        assert not any(n.startswith("a ") for n in names)
+        assert not any(n.startswith("c ") for n in names)
+
+    def test_columns_list_selects_subset(self, _mc_data):
+        """Passing a list selects those columns only."""
+        _, y_test, y_pred = _mc_data
+        fig = plot_forecast(y_test, y_pred, columns=["a", "c"])
+        names = {t.name for t in fig.data if t.name}
+        assert any(n.startswith("a ") for n in names)
+        assert any(n.startswith("c ") for n in names)
+        assert not any(n.startswith("b ") for n in names)
+
+    def test_columns_none_shows_all(self, _mc_data):
+        """Passing None shows all target columns."""
+        _, y_test, y_pred = _mc_data
+        fig = plot_forecast(y_test, y_pred, columns=None)
+        names = {t.name for t in fig.data if t.name}
+        assert any(n.startswith("a ") for n in names)
+        assert any(n.startswith("b ") for n in names)
+        assert any(n.startswith("c ") for n in names)
+
+    def test_columns_with_train(self, _mc_data):
+        """Columns filter is applied when y_train is provided."""
+        y_train, y_test, y_pred = _mc_data
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, columns="a")
+        names = {t.name for t in fig.data if t.name}
+        assert any(n.startswith("a ") and "Train" in n for n in names)
+        assert not any(n.startswith("b ") for n in names)
+
+
+class TestPlotForecastSubplots:
+    """Tests for one-subplot-per-column behavior in plot_forecast."""
+
+    def test_single_column_uses_subplots(self):
+        """Even a single target column produces subplot-based figure."""
+        y_test = pl.DataFrame({"time": _DATES_TEST, "y": list(range(30))})
+        y_pred = pl.DataFrame({"time": _DATES_TEST, "y": list(range(1, 31))})
+        fig = plot_forecast(y_test, y_pred)
+        # Should have subplot annotations (subplot title)
+        assert len(fig.layout.annotations) >= 1
+        assert fig.layout.annotations[0].text == "y"
+
+    def test_multi_column_separate_yaxes(self, _mc_data):
+        """Each target column gets its own y-axis (separate subplot)."""
+        _, y_test, y_pred = _mc_data
+        fig = plot_forecast(y_test, y_pred)
+        yaxes = {t.yaxis for t in fig.data if t.yaxis}
+        assert len(yaxes) == 3
+
+    def test_multi_column_subplot_titles(self, _mc_data):
+        """Subplot titles match column names."""
+        _, y_test, y_pred = _mc_data
+        fig = plot_forecast(y_test, y_pred)
+        titles = {a.text for a in fig.layout.annotations}
+        assert titles == {"a", "b", "c"}
+
+    def test_facet_n_cols_controls_grid(self, _mc_data):
+        """facet_n_cols=1 produces a single-column grid."""
+        _, y_test, y_pred = _mc_data
+        fig = plot_forecast(y_test, y_pred, facet_n_cols=1)
+        # With 3 columns and facet_n_cols=1, expect 3 rows x 1 col
+        # All traces should have xaxis x, x2, x3 (one per row)
+        xaxes = {t.xaxis for t in fig.data if t.xaxis}
+        assert len(xaxes) == 3
+
+    def test_semantic_colors_per_subplot(self, _mc_data):
+        """Each subplot uses the same actual and forecast semantic colors."""
+        _, y_test, y_pred = _mc_data
+        fig = plot_forecast(y_test, y_pred)
+        a_fc = next(t for t in fig.data if t.name == "a (Forecast)")
+        c_fc = next(t for t in fig.data if t.name == "c (Forecast)")
+        # All forecast traces share the same semantic color
+        assert a_fc.line.color == c_fc.line.color
+
+    def test_intervals_per_subplot(self):
+        """Each column's intervals appear in its own subplot."""
+        y_test = pl.DataFrame({
+            "time": _DATES_TEST,
+            "a": list(range(30)),
+            "b": list(range(30, 60)),
+        })
+        y_pred = pl.DataFrame({
+            "time": _DATES_TEST,
+            "a": [x + 1 for x in range(30)],
+            "b": [x + 1 for x in range(30, 60)],
+            "a_lower_0.9": [x - 2 for x in range(30)],
+            "a_upper_0.9": [x + 4 for x in range(30)],
+            "b_lower_0.9": [x - 2 for x in range(30, 60)],
+            "b_upper_0.9": [x + 4 for x in range(30, 60)],
+        })
+        fig = plot_forecast(y_test, y_pred, coverage_rates=[0.9])
+        pi_traces = [t for t in fig.data if t.name and "PI" in t.name]
+        assert len(pi_traces) == 2
+        # Each PI trace is on a different subplot
+        pi_yaxes = {t.yaxis for t in pi_traces}
+        assert len(pi_yaxes) == 2
+
+
+class TestPlotForecastMultiModelColumns:
+    """Tests for columns parameter with multi-model dict predictions."""
+
+    def test_multi_model_columns_filter(self, _mc_data):
+        """Columns filter works with multi-model dict predictions."""
+        _, y_test, y_pred = _mc_data
+        y_pred_b = pl.DataFrame({
+            "time": _DATES_TEST,
+            "a": [x + 2 for x in range(30)],
+            "b": [x + 2 for x in range(30, 60)],
+            "c": [x + 2 for x in range(60, 90)],
+        })
+        fig = plot_forecast(y_test, {"M1": y_pred, "M2": y_pred_b}, columns=["a", "b"])
+        names = {t.name for t in fig.data if t.name}
+        assert any(n.startswith("a ") for n in names)
+        assert not any(n.startswith("c ") for n in names)
+
+    def test_multi_model_separate_subplots(self, _mc_data):
+        """Each target column gets its own subplot in multi-model mode."""
+        _, y_test, y_pred = _mc_data
+        y_pred_b = y_pred.clone()
+        fig = plot_forecast(y_test, {"M1": y_pred, "M2": y_pred_b})
+        titles = {a.text for a in fig.layout.annotations}
+        assert titles == {"a", "b", "c"}
+
+    def test_multi_model_model_colors_per_subplot(self, _mc_data):
+        """Different models use different colors within each subplot."""
+        _, y_test, y_pred = _mc_data
+        y_pred_b = y_pred.clone()
+        fig = plot_forecast(y_test, {"M1": y_pred, "M2": y_pred_b})
+        m1_trace = next(t for t in fig.data if t.name and "M1" in t.name)
+        m2_trace = next(t for t in fig.data if t.name and "M2" in t.name)
+        assert m1_trace.line.color != m2_trace.line.color
+
+
+class TestPlotForecastCategoricalColumns:
+    """Tests for columns parameter with categorical forecast."""
+
+    @pytest.fixture()
+    def _cat_data(self):
+        """Categorical forecast data with 2 targets."""
+        y_test = pl.DataFrame({
+            "time": _DATES_TEST,
+            "mood": ["happy", "sad"] * 15,
+            "weather": ["sunny", "rainy", "cloudy"] * 10,
+        })
+        y_pred = pl.DataFrame({
+            "time": _DATES_TEST,
+            "mood": ["happy", "happy"] * 15,
+            "weather": ["sunny", "sunny", "rainy"] * 10,
+        })
+        return y_test, y_pred
+
+    def test_categorical_uses_subplots(self, _cat_data):
+        """Categorical columns get separate subplots."""
+        y_test, y_pred = _cat_data
+        fig = plot_forecast(y_test, y_pred)
+        titles = {a.text for a in fig.layout.annotations}
+        assert titles == {"mood", "weather"}
+
+    def test_categorical_columns_filter(self, _cat_data):
+        """Columns filter selects specific categorical columns."""
+        y_test, y_pred = _cat_data
+        fig = plot_forecast(y_test, y_pred, columns="mood")
+        names = {t.name for t in fig.data if t.name}
+        assert any("mood" in n for n in names)
+        assert not any(n.startswith("weather ") or n.startswith("weather(") for n in names)
+
+    def test_categorical_y_axis_labels(self, _cat_data):
+        """Y-axis tick labels show category names for categorical subplots."""
+        y_test, y_pred = _cat_data
+        fig = plot_forecast(y_test, y_pred)
+        yaxis = fig.layout.yaxis
+        assert yaxis.ticktext is not None
+
+
+class TestPlotForecastClassProbaColumns:
+    """Tests for columns parameter with class probability forecast."""
+
+    @pytest.fixture()
+    def _proba_data(self):
+        """Class probability forecast data."""
+        y_test = pl.DataFrame({
+            "time": _DATES_TEST,
+            "status": ["A", "B", "C"] * 10,
+        })
+        y_pred = pl.DataFrame({
+            "time": _DATES_TEST,
+            "status_proba_A": [0.7] * 30,
+            "status_proba_B": [0.2] * 30,
+            "status_proba_C": [0.1] * 30,
+        })
+        return y_test, y_pred
+
+    def test_class_proba_uses_subplots(self, _proba_data):
+        """Class proba produces subplot per target."""
+        y_test, y_pred = _proba_data
+        fig = plot_forecast(y_test, y_pred)
+        # Should have subplot annotation for "status"
+        titles = {a.text for a in fig.layout.annotations}
+        assert "status" in titles
+
+    def test_class_proba_columns_filter(self, _proba_data):
+        """Columns filter targets by name."""
+        y_test, y_pred = _proba_data
+        fig = plot_forecast(y_test, y_pred, columns="status")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0

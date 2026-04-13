@@ -18,7 +18,7 @@ __all__ = [
 
 
 class LogLoss(BaseClassProbaScorer):
-    """Logarithmic loss (cross-entropy) for class-probability forecasts.
+    r"""Logarithmic loss (cross-entropy) for class-probability forecasts.
 
     Measures the quality of predicted probability distributions by computing
     the negative log-likelihood of the true class under the predicted
@@ -185,7 +185,7 @@ class LogLoss(BaseClassProbaScorer):
 
 
 class BrierScore(BaseClassProbaScorer):
-    """Multi-class Brier score for class-probability forecasts.
+    r"""Multi-class Brier score for class-probability forecasts.
 
     Measures the mean squared difference between predicted probabilities and
     one-hot encoded true class labels. Equivalent to the Brier score
@@ -350,7 +350,7 @@ class BrierScore(BaseClassProbaScorer):
 
 
 class Accuracy(BaseClassProbaScorer):
-    """Categorical accuracy from class-probability forecasts.
+    r"""Categorical accuracy from class-probability forecasts.
 
     Computes the fraction of time steps where the predicted class (argmax
     of probabilities) matches the true class.

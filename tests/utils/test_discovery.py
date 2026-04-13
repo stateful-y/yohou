@@ -77,7 +77,7 @@ class TestAllFunctions:
     def test_all_functions(self):
         """Test all_functions returns correct count."""
         functions = all_functions()
-        expected = 200 if _HAS_PLOTLY else 160
+        expected = 203 if _HAS_PLOTLY else 162
         assert len(functions) == expected
 
 

@@ -2451,6 +2451,7 @@ class TestPanelMultiMemberScoring:
         )
         assert isinstance(fig, go.Figure)
 
+
 class TestPlotReliabilityDiagram:
     """Tests for plot_calibration with class-probability data."""
 

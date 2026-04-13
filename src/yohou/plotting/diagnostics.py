@@ -21,14 +21,13 @@ from yohou.plotting._utils import (
     RenderContext,
     _add_confidence_bands,
     _auto_detect_panel,
-    _create_figure,
     _create_subplots,
     _group_panel_columns,
     _make_hovertemplate,
     _member_name,
     _subplot_spacing,
     apply_default_layout,
-    panel_facet_figure,
+    facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
 )
@@ -176,7 +175,7 @@ def plot_autocorrelation(
                 )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_acf,
             panel_group_names=panel_group_names,
@@ -193,63 +192,56 @@ def plot_autocorrelation(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Resolve columns
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
+    _default_bar_color = color  # fallback single-column color
 
-    # Get bar colors - distinct per column (palette or auto)
-    if color_palette is not None:
-        bar_colors = resolve_color_palette(color_palette, len(plot_columns))
-    elif len(plot_columns) > 1:
-        bar_colors = resolve_color_palette(None, len(plot_columns))
-    else:
-        _bc = color
-        bar_colors = [_bc]
-
-    # Determine max_lags
     n = len(df)
     if max_lags is None:
         max_lags = min(n // 2, 40)
 
-    # Create figure
-    fig = go.Figure()
-
-    # Compute ACF for each column
-    for col_idx, col in enumerate(plot_columns):
-        series = df[col].drop_nulls()
+    def _render_acf(ctx: RenderContext) -> None:
+        """Render ACF bars for one column into a subplot."""
+        base = ctx.display_name
+        _bar_color = _col_colors[base] if color_palette is not None else _default_bar_color
+        series = ctx.sub_df[base].drop_nulls()
         n_series = len(series)
-
         acf_values = _compute_acf_values(series, max_lags)
-
-        # Add bar trace
-        fig.add_trace(
+        ctx.fig.add_trace(
             go.Bar(
                 x=list(range(max_lags + 1)),
                 y=acf_values,
-                name=col,
-                marker={"color": bar_colors[col_idx % len(bar_colors)]},
-                hovertemplate=_make_hovertemplate(col, "Lag", "ACF", decimals=3),
-            )
+                name=base,
+                marker={"color": _bar_color},
+                hovertemplate=_make_hovertemplate(base, "Lag", "ACF", decimals=3),
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
-
-        # Add confidence bands
         if show_confidence:
             ci = norm.ppf(1 - (1 - confidence_level) / 2) / math.sqrt(n_series)
-            _add_confidence_bands(fig, list(range(max_lags + 1)), [ci] * (max_lags + 1), [-ci] * (max_lags + 1))
+            _add_confidence_bands(
+                ctx.fig,
+                list(range(max_lags + 1)),
+                [ci] * (max_lags + 1),
+                [-ci] * (max_lags + 1),
+                row=ctx.row,
+                col=ctx.col,
+            )
 
-    # Set default labels
-    if x_label is None:
-        x_label = "Lag"
-    if y_label is None:
-        y_label = "Autocorrelation"
-
-    # Apply default layout
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_acf,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Autocorrelation (ACF)",
-        x_label=x_label,
-        y_label=y_label,
+        x_label=x_label or "Lag",
+        y_label=y_label or "Autocorrelation",
         width=width,
         height=height,
+        shared_xaxes=False,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -324,7 +316,9 @@ def _compute_pacf(
         raise ImportError(msg) from None
 
     if alpha is not None:
-        pacf_result, confint = sm_pacf(values, nlags=nlags, method=method, alpha=alpha)  # ty: ignore[invalid-argument-type]
+        pacf_result, confint = sm_pacf(
+            values, nlags=nlags, method=method, alpha=alpha
+        )  # ty: ignore[invalid-argument-type]
         # statsmodels returns CIs centered on the PACF values (pacf +/- z/sqrt(n)).
         # For significance testing we need horizontal bands at +/-z/sqrt(n) (centered
         # on zero), so subtract the PACF values from both bounds.
@@ -478,7 +472,7 @@ def plot_partial_autocorrelation(
                 _add_confidence_bands(ctx.fig, list(range(_ml + 1)), ci_hi, ci_lo, row=ctx.row, col=ctx.col)
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_pacf,
             panel_group_names=panel_group_names,
@@ -495,68 +489,56 @@ def plot_partial_autocorrelation(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Resolve columns
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
+    _default_bar_color = color  # fallback single-column color
 
-    # Get bar colors - distinct per column (palette or auto)
-    if color_palette is not None:
-        bar_colors = resolve_color_palette(color_palette, len(plot_columns))
-    elif len(plot_columns) > 1:
-        bar_colors = resolve_color_palette(None, len(plot_columns))
-    else:
-        _bc = color
-        bar_colors = [_bc]
-
-    # Determine max_lags
     n = len(df)
     if max_lags is None:
         max_lags = min(n // 2, 40)
-
     alpha_val = 1 - confidence_level if show_confidence else None
 
-    # Create figure
-    fig = go.Figure()
-
-    for col_idx, col_name in enumerate(plot_columns):
-        series = df[col_name].drop_nulls()
+    def _render_pacf(ctx: RenderContext) -> None:
+        """Render PACF bars for one column into a subplot."""
+        base = ctx.display_name
+        _bar_color = _col_colors[base] if color_palette is not None else _default_bar_color
+        series = ctx.sub_df[base].drop_nulls()
         values = series.to_numpy()
-
-        pacf_values, ci_lo, ci_hi = _compute_pacf(
-            values,
-            max_lags,
-            method=method,
-            alpha=alpha_val,
-        )
-
-        # Add bar trace
-        fig.add_trace(
+        pacf_values, ci_lo, ci_hi = _compute_pacf(values, max_lags, method=method, alpha=alpha_val)
+        ctx.fig.add_trace(
             go.Bar(
                 x=list(range(max_lags + 1)),
                 y=pacf_values,
-                name=col_name,
-                marker={"color": bar_colors[col_idx % len(bar_colors)]},
-                hovertemplate=_make_hovertemplate(col_name, "Lag", "PACF", decimals=3),
-            )
+                name=base,
+                marker={"color": _bar_color},
+                hovertemplate=_make_hovertemplate(base, "Lag", "PACF", decimals=3),
+            ),
+            row=ctx.row,
+            col=ctx.col,
         )
-
-        # Add confidence bands
         if show_confidence and ci_lo is not None and ci_hi is not None:
-            _add_confidence_bands(fig, list(range(max_lags + 1)), ci_hi, ci_lo)
+            _add_confidence_bands(
+                ctx.fig,
+                list(range(max_lags + 1)),
+                ci_hi,
+                ci_lo,
+                row=ctx.row,
+                col=ctx.col,
+            )
 
-    # Set default labels
-    if x_label is None:
-        x_label = "Lag"
-    if y_label is None:
-        y_label = "Partial Autocorrelation"
-
-    # Apply default layout
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_pacf,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Partial Autocorrelation (PACF)",
-        x_label=x_label,
-        y_label=y_label,
+        x_label=x_label or "Lag",
+        y_label=y_label or "Partial Autocorrelation",
         width=width,
         height=height,
+        shared_xaxes=False,
     )
     fig.update_layout(showlegend=show_legend)
 
@@ -1121,7 +1103,7 @@ def plot_seasonality(
                 )
 
         effective_facet_by = facet_by or "member"
-        fig = panel_facet_figure(
+        fig = facet_figure(
             df,
             _render_season,
             panel_group_names=panel_group_names,
@@ -1139,36 +1121,20 @@ def plot_seasonality(
         fig.update_layout(showlegend=show_legend)
         return fig
 
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     season_labels = _SEASON_LABELS_MAP.get(seasonality)
-
     df_aug = _add_season_and_cycle(df, seasonality)
     cycles = sorted(df_aug["cycle"].unique().to_list())
-    colors = resolve_color_palette(color_palette, len(plot_columns))
-    _np_legend_tracker = LegendTracker(show_legend=show_legend)
-
-    fig = _create_figure(resampler)
+    _colors = resolve_color_palette(color_palette, len(plot_columns))
+    _col_colors = dict(zip(plot_columns, _colors, strict=False))
     n_cycles = len(cycles)
 
-    for col_idx, col_name in enumerate(plot_columns):
-        col_color = colors[col_idx % len(colors)]
-        show_for_col = _np_legend_tracker.should_show(col_name)
+    def _render_season(ctx: RenderContext) -> None:
+        """Render seasonal pattern for one column into a subplot."""
+        base = ctx.display_name
+        col_color = _col_colors[base]
         r, g, b = int(col_color[1:3], 16), int(col_color[3:5], 16), int(col_color[5:7], 16)
-
-        # Invisible trace for an opaque legend swatch
-        if show_for_col:
-            fig.add_trace(
-                go.Scatter(
-                    x=[None],
-                    y=[None],
-                    mode="lines",
-                    line={"color": col_color, "width": line_width},
-                    name=col_name,
-                    legendgroup=col_name,
-                    showlegend=True,
-                )
-            )
-
         for ci, cyc in enumerate(cycles):
             cyc_df = df_aug.filter(pl.col("cycle") == cyc).sort("season")
             x_vals = (
@@ -1178,7 +1144,6 @@ def plot_seasonality(
             )
             is_hl = bool(highlight_set) and cyc in highlight_set
             lw = highlight_width if is_hl else line_width
-            # Time-ordered opacity via RGBA so legend swatch stays opaque
             if is_hl:
                 alpha = 1.0
             elif highlight_set:
@@ -1186,45 +1151,42 @@ def plot_seasonality(
             else:
                 t = ci / max(n_cycles - 1, 1)
                 alpha = _oldest_alpha + (_newest_alpha - _oldest_alpha) * t ** (1.0 / opacity_power)
-
             line_rgba = f"rgba({r},{g},{b},{alpha:.2f})"
-
-            fig.add_trace(
+            ctx.fig.add_trace(
                 go.Scatter(
                     x=x_vals,
-                    y=cyc_df[col_name].to_list(),
+                    y=cyc_df[base].to_list(),
                     mode="lines",
                     line={"color": line_rgba, "width": lw},
-                    name=col_name,
-                    legendgroup=col_name,
+                    name=base,
+                    legendgroup=base,
                     showlegend=False,
                     connectgaps=connect_gaps,
-                    hovertemplate=f"<b>{col_name} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
-                )
+                    hovertemplate=f"<b>{base} - {cyc}</b><br>%{{x}}: %{{y:.2f}}<extra></extra>",
+                ),
+                row=ctx.row,
+                col=ctx.col,
             )
 
-    # Set default labels
-    if x_label is None:
-        x_label = seasonality.capitalize()
-    if y_label is None:
-        y_label = "Value"
-
-    # Update x-axis with categorical labels
+    fig = facet_figure(
+        df,
+        _render_season,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
+        title=title or "Seasonal Pattern",
+        x_label=x_label or seasonality.capitalize(),
+        y_label=y_label or "Value",
+        width=width,
+        height=height,
+        shared_xaxes=False,
+        resampler=resampler,
+    )
     if season_labels:
         fig.update_xaxes(
             tickmode="array",
             tickvals=list(range(len(season_labels))),
             ticktext=season_labels,
         )
-
-    fig = apply_default_layout(
-        fig,
-        title=title or "Seasonal Pattern",
-        x_label=x_label,
-        y_label=y_label,
-        width=width,
-        height=height,
-    )
     fig.update_layout(showlegend=show_legend)
 
     return fig
@@ -2012,8 +1974,12 @@ def plot_lag_scatter(
                 if show_diagonal:
                     source = df_aug if df_aug is not None else df
                     dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
-                    vmin = min(float(dl_all[col].min()), float(dl_all["lagged"].min()))  # ty: ignore[invalid-argument-type]
-                    vmax = max(float(dl_all[col].max()), float(dl_all["lagged"].max()))  # ty: ignore[invalid-argument-type]
+                    vmin = min(
+                        float(dl_all[col].min()), float(dl_all["lagged"].min())
+                    )  # ty: ignore[invalid-argument-type]
+                    vmax = max(
+                        float(dl_all[col].max()), float(dl_all["lagged"].max())
+                    )  # ty: ignore[invalid-argument-type]
                     fig.add_trace(
                         go.Scatter(
                             x=[vmin, vmax],
@@ -3510,54 +3476,30 @@ def plot_seasonal_heatmap(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    # Non-panel case - resolve columns
+    # Non-panel case: column-mode facet_figure
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+    _last_col = plot_columns[-1]
 
-    if len(plot_columns) == 1:
-        col = plot_columns[0]
-        trace = _build_heatmap(df, col)
-        fig = go.Figure(data=[trace])
+    def _render_heatmap(ctx: RenderContext) -> None:
+        """Render a single heatmap trace into a subplot."""
+        col_name = ctx.display_name
+        trace = _build_heatmap(ctx.sub_df, col_name, display_name=col_name)
+        trace.showscale = col_name == _last_col
+        ctx.fig.add_trace(trace, row=ctx.row, col=ctx.col)
 
-        if reverse_y:
-            fig.update_yaxes(autorange="reversed")
-
-        fig = apply_default_layout(
-            fig,
-            title=title or "Seasonal Heatmap",
-            x_label=x_label or x_period.replace("_", " ").title(),
-            y_label=y_label or y_period.replace("_", " ").title(),
-            width=width,
-            height=height,
-        )
-        fig.update_layout(showlegend=show_legend)
-        return fig
-
-    # Multi-column non-panel: one heatmap per column in a subplot grid
-    n = len(plot_columns)
-    n_cols = min(n, facet_n_cols)
-    n_rows = math.ceil(n / n_cols)
-    fig = make_subplots(
-        rows=n_rows,
-        cols=n_cols,
-        subplot_titles=plot_columns,
-    )
-    for idx, col in enumerate(plot_columns):
-        r = idx // n_cols + 1
-        c = idx % n_cols + 1
-        trace = _build_heatmap(df, col, display_name=col)
-        trace.showscale = idx == n - 1
-        fig.add_trace(trace, row=r, col=c)
-
-    if reverse_y:
-        fig.update_yaxes(autorange="reversed")
-
-    fig = apply_default_layout(
-        fig,
+    fig = facet_figure(
+        df,
+        _render_heatmap,
+        columns=plot_columns,
+        facet_n_cols=facet_n_cols,
         title=title or "Seasonal Heatmap",
         x_label=x_label or x_period.replace("_", " ").title(),
         y_label=y_label or y_period.replace("_", " ").title(),
         width=width,
         height=height,
+        shared_xaxes=False,
     )
+    if reverse_y:
+        fig.update_yaxes(autorange="reversed")
     fig.update_layout(showlegend=show_legend)
     return fig
