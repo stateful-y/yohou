@@ -548,13 +548,15 @@ class IntervalScore(BaseIntervalScorer):
 
                     # Penalty terms (need to extract series from expressions)
                     lower_penalty = (
-                        pl.when(y_truth[col] < y_pred[lower_col])
+                        pl
+                        .when(y_truth[col] < y_pred[lower_col])
                         .then((2.0 / rate) * (y_pred[lower_col] - y_truth[col]))
                         .otherwise(0.0)
                     )
 
                     upper_penalty = (
-                        pl.when(y_truth[col] > y_pred[upper_col])
+                        pl
+                        .when(y_truth[col] > y_pred[upper_col])
                         .then((2.0 / rate) * (y_truth[col] - y_pred[upper_col]))
                         .otherwise(0.0)
                     )

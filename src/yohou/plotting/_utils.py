@@ -845,7 +845,7 @@ def apply_default_layout(
     if height is not None:
         layout_update["height"] = height  # ty: ignore[invalid-assignment]
     if hovermode is not None:
-        layout_update["hovermode"] = hovermode  # ty: ignore[invalid-assignment]
+        layout_update["hovermode"] = hovermode
 
     fig.update_layout(layout_update)
     return fig

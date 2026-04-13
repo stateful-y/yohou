@@ -276,7 +276,8 @@ class TestRobustScaler:
         X = time_series_factory(length=50, n_components=1)
         # Add outlier
         X_with_outlier = X.with_columns([
-            pl.when(pl.col("time").dt.ordinal_day() == 1)
+            pl
+            .when(pl.col("time").dt.ordinal_day() == 1)
             .then(pl.lit(1000.0))  # Outlier
             .otherwise(pl.exclude("time"))
             .alias(X.columns[1])
@@ -835,7 +836,8 @@ class TestQuantileTransformer:
         X = time_series_factory(length=50, n_components=1)
         # Add extreme outlier
         X_with_outlier = X.with_columns([
-            pl.when(pl.col("time").dt.ordinal_day() == 1)
+            pl
+            .when(pl.col("time").dt.ordinal_day() == 1)
             .then(pl.lit(10000.0))
             .otherwise(pl.exclude("time"))
             .alias(X.columns[1])

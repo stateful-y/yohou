@@ -226,7 +226,8 @@ class TestForecastingResampler:
         from yohou.plotting import plot_forecast
 
         y_pred = (
-            monthly_1col_df.rename({"y": "y_pred"})
+            monthly_1col_df
+            .rename({"y": "y_pred"})
             .with_columns(
                 pl.col("y_pred").alias("y_pred"),
             )

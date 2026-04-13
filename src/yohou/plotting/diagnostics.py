@@ -274,7 +274,7 @@ def _compute_acf_values(series: pl.Series, max_lags: int) -> list[float]:
             s2 = series[lag:] - mean_val
             numerator = (s1 * s2).sum()
             denominator = ((series - mean_val) ** 2).sum()
-            acf_values.append(numerator / denominator if denominator != 0 else 0)  # ty: ignore[unsupported-operator]
+            acf_values.append(numerator / denominator if denominator != 0 else 0)
     return acf_values
 
 
@@ -317,8 +317,11 @@ def _compute_pacf(
 
     if alpha is not None:
         pacf_result, confint = sm_pacf(
-            values, nlags=nlags, method=method, alpha=alpha
-        )  # ty: ignore[invalid-argument-type]
+            values,
+            nlags=nlags,
+            method=method,  # ty: ignore[invalid-argument-type]
+            alpha=alpha,
+        )
         # statsmodels returns CIs centered on the PACF values (pacf +/- z/sqrt(n)).
         # For significance testing we need horizontal bands at +/-z/sqrt(n) (centered
         # on zero), so subtract the PACF values from both bounds.
@@ -1804,7 +1807,8 @@ def plot_lag_scatter(
                         continue
 
                     dl = (
-                        df.select(col_name)
+                        df
+                        .select(col_name)
                         .with_columns(
                             pl.col(col_name).shift(lag).alias("lagged"),
                         )
@@ -1975,11 +1979,13 @@ def plot_lag_scatter(
                     source = df_aug if df_aug is not None else df
                     dl_all = source.with_columns(pl.col(col).shift(lag).alias("lagged")).drop_nulls()
                     vmin = min(
-                        float(dl_all[col].min()), float(dl_all["lagged"].min())
-                    )  # ty: ignore[invalid-argument-type]
+                        float(dl_all[col].min()),  # ty: ignore[invalid-argument-type]
+                        float(dl_all["lagged"].min()),  # ty: ignore[invalid-argument-type]
+                    )
                     vmax = max(
-                        float(dl_all[col].max()), float(dl_all["lagged"].max())
-                    )  # ty: ignore[invalid-argument-type]
+                        float(dl_all[col].max()),  # ty: ignore[invalid-argument-type]
+                        float(dl_all["lagged"].max()),  # ty: ignore[invalid-argument-type]
+                    )
                     fig.add_trace(
                         go.Scatter(
                             x=[vmin, vmax],
@@ -2091,7 +2097,7 @@ def plot_lag_scatter(
                 denominator = ((y_lagged - x_mean) ** 2).sum()
 
                 if denominator != 0 and x_mean is not None and y_mean is not None:
-                    slope = float(numerator / denominator)  # ty: ignore[unsupported-operator]
+                    slope = float(numerator / denominator)
                     intercept = cast(float, y_mean) - slope * cast(float, x_mean)
 
                     y_lagged_min = y_lagged.min()

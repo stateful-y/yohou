@@ -939,13 +939,15 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             # exists, or else fit and transform
             if hasattr(trans, "fit_transform"):
                 (
-                    method_mapping.add(caller="fit", callee="fit_transform")
+                    method_mapping
+                    .add(caller="fit", callee="fit_transform")
                     .add(caller="fit_transform", callee="fit_transform")
                     .add(caller="fit_predict", callee="fit_transform")
                 )
             else:
                 (
-                    method_mapping.add(caller="fit", callee="fit")
+                    method_mapping
+                    .add(caller="fit", callee="fit")
                     .add(caller="fit", callee="transform")
                     .add(caller="fit_transform", callee="fit")
                     .add(caller="fit_transform", callee="transform")
@@ -954,7 +956,8 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
                 )
 
             (
-                method_mapping.add(caller="predict", callee="transform")
+                method_mapping
+                .add(caller="predict", callee="transform")
                 .add(caller="predict", callee="transform")
                 .add(caller="predict_proba", callee="transform")
                 .add(caller="decision_function", callee="transform")
@@ -977,7 +980,8 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         else:
             method_mapping.add(caller="fit", callee="fit").add(caller="fit", callee="transform")
         (
-            method_mapping.add(caller="fit", callee="fit")
+            method_mapping
+            .add(caller="fit", callee="fit")
             .add(caller="transform", callee="transform")
             .add(caller="inverse_transform", callee="inverse_transform")
             .add(caller="score", callee="score")

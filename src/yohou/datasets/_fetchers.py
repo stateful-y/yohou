@@ -967,7 +967,8 @@ def fetch_air_quality_classification(
 
     # Bin PM2.5 into WHO categories
     air_quality = (
-        pl.when(pl.col(pm25_col) < _WHO_PM25_THRESHOLDS[0])
+        pl
+        .when(pl.col(pm25_col) < _WHO_PM25_THRESHOLDS[0])
         .then(pl.lit("good"))
         .when(pl.col(pm25_col) < _WHO_PM25_THRESHOLDS[1])
         .then(pl.lit("moderate"))
@@ -1081,7 +1082,8 @@ def fetch_demand_classification(
     q66 = frame[target_col].quantile(2 / 3)
 
     demand_level = (
-        pl.when(pl.col(target_col) < q33)
+        pl
+        .when(pl.col(target_col) < q33)
         .then(pl.lit("low"))
         .when(pl.col(target_col) < q66)
         .then(pl.lit("medium"))

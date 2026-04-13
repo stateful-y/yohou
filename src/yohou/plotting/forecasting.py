@@ -945,8 +945,7 @@ def _plot_forecast_categorical(
     cat_cols = [
         c
         for c in first_pred.columns  # ty: ignore[unresolved-attribute]
-        if c not in ("time", "observed_time")
-        and first_pred[c].dtype in (pl.String, pl.Categorical)  # ty: ignore[not-subscriptable]
+        if c not in ("time", "observed_time") and first_pred[c].dtype in (pl.String, pl.Categorical)  # ty: ignore[not-subscriptable]
     ]
 
     if columns is not None:

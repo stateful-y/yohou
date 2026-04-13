@@ -1598,7 +1598,7 @@ def plot_outliers(
             q3 = series.quantile(0.75)
             if q1 is None or q3 is None:
                 return pl.Series([False] * len(series)), None, None
-            iqr = q3 - q1
+            iqr = q3 - q1  # ty: ignore[unsupported-operator]
             lower = q1 - threshold * iqr
             upper = q3 + threshold * iqr
             mask = (series < lower) | (series > upper)
@@ -1608,7 +1608,7 @@ def plot_outliers(
             if lower is None or upper is None:
                 return pl.Series([False] * len(series)), None, None
             mask = (series < lower) | (series > upper)
-        return mask.fill_null(False), lower, upper
+        return mask.fill_null(False), lower, upper  # ty: ignore[invalid-return-type]
 
     if panel_group_names is None and columns is None and _auto_detect_panel(df):
         panel_group_names = []
