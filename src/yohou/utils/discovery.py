@@ -84,7 +84,10 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
             module_parts = module_name.split(".")
             if any(part in _MODULE_TO_IGNORE for part in module_parts):
                 continue
-            module = import_module(module_name)
+            try:
+                module = import_module(module_name)
+            except ImportError:
+                continue
             classes = inspect.getmembers(module, inspect.isclass)
             classes = [
                 (name, est_cls)
@@ -225,7 +228,10 @@ def all_displays() -> list[tuple[str, type]]:
             module_parts = module_name.split(".")
             if any(part in _MODULE_TO_IGNORE for part in module_parts):
                 continue
-            module = import_module(module_name)
+            try:
+                module = import_module(module_name)
+            except ImportError:
+                continue
             classes = inspect.getmembers(module, inspect.isclass)
             classes = [
                 (name, display_class)
@@ -279,7 +285,10 @@ def all_functions() -> list[tuple[str, object]]:
             if any(part in _MODULE_TO_IGNORE for part in module_parts):
                 continue
 
-            module = import_module(module_name)
+            try:
+                module = import_module(module_name)
+            except ImportError:
+                continue
             functions = inspect.getmembers(module, _is_checked_function)
             functions = [(func.__name__, func) for name, func in functions if not name.startswith("_")]
             all_functions.extend(functions)

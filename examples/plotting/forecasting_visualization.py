@@ -26,6 +26,7 @@ def _():
 @app.cell(hide_code=True)
 def _():
     import polars as pl
+    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -38,7 +39,7 @@ def _():
     from yohou.interval import SplitConformalForecaster
     from yohou.plotting import (
         plot_calibration,
-        plot_components,
+        plot_decomposition,
         plot_forecast,
         plot_time_weight,
     )
@@ -70,7 +71,7 @@ def _():
         linear_decay_weight,
         pl,
         plot_calibration,
-        plot_components,
+        plot_decomposition,
         plot_forecast,
         plot_time_weight,
     )
@@ -87,7 +88,7 @@ def _(mo):
     - Visualizing **categorical** (hard-label) forecasts as step charts
     - Visualizing **class-probability** (soft) forecasts as stacked area charts
     - Checking probability calibration with [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
-    - Visualizing decomposition components with [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/)
+    - Visualizing decomposition components with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/)
     - Rendering time weight functions with [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/)
 
     ## Prerequisites
@@ -246,12 +247,16 @@ def _(
     DecisionTreeClassifier,
     LagTransformer,
     fetch_air_quality_classification,
+    train_test_split,
 ):
     cls_data = fetch_air_quality_classification()
     cls_y, cls_X = cls_data.y, cls_data.X
-    cls_split = len(cls_y) - 200
-    cls_y_train, cls_y_test = cls_y[:cls_split], cls_y[cls_split:]
-    cls_X_train, cls_X_test = cls_X[:cls_split], cls_X[cls_split:]
+    cls_y_train, cls_y_test, cls_X_train, cls_X_test = train_test_split(
+        cls_y,
+        cls_X,
+        test_size=200,
+        shuffle=False,
+    )
     cls_fh = 24
 
     cls_forecaster = ClassProbaReductionForecaster(
@@ -261,10 +266,12 @@ def _(
     cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
 
     cls_y_pred_labels = cls_forecaster.predict(
-        X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
     )
     cls_y_proba = cls_forecaster.predict_class_proba(
-        X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
     )
     return cls_X_test, cls_fh, cls_forecaster, cls_y_pred_labels, cls_y_proba, cls_y_test, cls_y_train
 
@@ -295,12 +302,16 @@ def _(mo):
 def _(cls_X_test, cls_fh, cls_forecaster, cls_y_test, cls_y_train, plot_forecast):
     cls_forecaster_obs = cls_forecaster
     cls_obs_labels = cls_forecaster_obs.observe_predict(
-        cls_y_test[:cls_fh], X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+        cls_y_test[:cls_fh],
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
     )
     plot_forecast(
         cls_y_test,
-        {"Static": cls_forecaster.predict(X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh),
-         "After Observe": cls_obs_labels},
+        {
+            "Static": cls_forecaster.predict(X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh),
+            "After Observe": cls_obs_labels,
+        },
         y_train=cls_y_train,
         n_history=50,
         title="Multi-Model Categorical Comparison",
@@ -357,7 +368,7 @@ def _(mo):
     mo.md(r"""
     ## 5. Decomposition Visualization
 
-    [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/) displays a fitted [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)'s components
+    [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) displays a fitted [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)'s components
     as stacked subplots. Toggle **show_original** and pass a subset of components.
     """)
 
@@ -386,8 +397,8 @@ def _(
 
 
 @app.cell
-def _(decomp_components, fh, plot_components, y_test):
-    plot_components(
+def _(decomp_components, fh, plot_decomposition, y_test):
+    plot_decomposition(
         y_test.tail(fh),
         decomp_components,
         show_original=True,
@@ -396,8 +407,8 @@ def _(decomp_components, fh, plot_components, y_test):
 
 
 @app.cell
-def _(decomp_components, fh, plot_components, y_train):
-    plot_components(
+def _(decomp_components, fh, plot_decomposition, y_train):
+    plot_decomposition(
         y_train.tail(fh),
         decomp_components,
         show_original=False,
@@ -406,8 +417,8 @@ def _(decomp_components, fh, plot_components, y_train):
 
 
 @app.cell
-def _(decomp_components, fh, plot_components, y_test):
-    plot_components(
+def _(decomp_components, fh, plot_decomposition, y_test):
+    plot_decomposition(
         y_test.tail(fh),
         {"trend": decomp_components["trend"]},
         title="Decomposition - Trend Only",
@@ -472,7 +483,7 @@ def _(mo):
     - **plot_forecast (categorical)** auto-detects `String`/`Categorical` columns and renders **step charts**; multi-model dicts overlay separate traces
     - **plot_forecast (class-probability)** auto-detects `_proba_` columns and renders **stacked area charts** with diamond markers for the true class
     - **plot_calibration** produces reliability diagrams for class-probability forecasts; `n_bins` controls granularity
-    - **plot_components** stacks components vertically; `show_original` toggles whether the raw series appears as the first panel
+    - **plot_decomposition** stacks components vertically; `show_original` toggles whether the raw series appears as the first panel
     - **plot_time_weight** visualizes weighting schemes; `fill=True` shows the area under the curve, `fill_opacity` controls transparency
 
     ## Next Steps

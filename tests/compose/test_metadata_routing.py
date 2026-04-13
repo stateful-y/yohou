@@ -545,7 +545,7 @@ class TestCompositeMethods:
         assert "observe_predict" in SIMPLE_METHODS
 
     def test_observe_not_in_simple_methods(self):
-        """observe should NOT be in SIMPLE_METHODS (not routed)."""
+        """Observe should NOT be in SIMPLE_METHODS (not routed)."""
         from yohou.utils._compat import SIMPLE_METHODS
 
         assert "observe" not in SIMPLE_METHODS

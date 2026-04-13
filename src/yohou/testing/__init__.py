@@ -5,17 +5,17 @@ and transformers, organized by type and capability.
 
 Modules
 -------
-transformer : Transformer validation checks (23 functions)
-forecaster : Common forecaster validation checks (12 functions)
-point : Point forecaster checks (2 functions)
-interval : Interval forecaster checks (5 functions)
-reduction : Reduction forecaster checks (2 functions)
-panel : Panel data/cross-learning checks (3 functions)
-splitter : Splitter validation checks (8 functions)
-scorer : Scorer validation checks (10 functions)
-search : Search CV validation checks (19 functions)
-common : Shared checks for metadata routing (2 functions)
-generators : Generator functions for systematic testing (5 functions)
+transformer : Transformer validation checks
+forecaster : Common forecaster validation checks
+point : Point forecaster checks
+interval : Interval forecaster checks
+reduction : Reduction forecaster checks
+panel : Panel data/cross-learning checks
+splitter : Splitter validation checks
+scorer : Scorer validation checks
+search : Search CV validation checks
+common : Shared checks for metadata routing
+generators : Generator functions for systematic testing
 metadata_routing : Test utilities for metadata routing validation
 
 Examples

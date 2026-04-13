@@ -38,7 +38,7 @@ def _(mo):
     - [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/): Repeat seasonal patterns (naive, average, median)
     - [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/): Fourier-based seasonal modeling
     - [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/): Chain trend + seasonality + residual forecasters
-    - Visualizing decomposition with [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/)
+    - Visualizing decomposition with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/)
 
     ## Prerequisites
 
@@ -54,7 +54,7 @@ def _():
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_components, plot_forecast, plot_time_series
+    from yohou.plotting import plot_decomposition, plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.stationarity import (
@@ -76,7 +76,7 @@ def _():
         PolynomialTrendForecaster,
         Ridge,
         fetch_tourism_monthly,
-        plot_components,
+        plot_decomposition,
         plot_forecast,
         plot_time_series,
         train_test_split,
@@ -248,13 +248,13 @@ def _(mo):
 
 
 @app.cell
-def _(decomp, fh, plot_components, y_test):
+def _(decomp, fh, plot_decomposition, y_test):
     components = {}
     for name, fc, *_ in decomp.forecasters_:
         comp_pred = fc.predict(forecasting_horizon=fh)
         components[name] = comp_pred
 
-    plot_components(
+    plot_decomposition(
         y_test,
         components,
         title="Decomposition Components",

@@ -23,7 +23,6 @@ def check_estimator_parameter(forecaster) -> None:
         If estimator is not a sklearn BaseEstimator
 
     """
-
     assert hasattr(forecaster, "estimator"), "Reduction forecaster must have 'estimator' parameter"
 
     estimator = forecaster.estimator

@@ -625,7 +625,6 @@ def check_grid_search_exhaustive(
         If not all parameter combinations are evaluated
 
     """
-
     if not isinstance(search_cv, GridSearchCV):
         raise ValueError("This check requires GridSearchCV instance")
 
@@ -671,7 +670,6 @@ def check_grid_search_param_grid_validation(search_cv) -> None:
         If param_grid format is not validated correctly
 
     """
-
     if not isinstance(search_cv, GridSearchCV):
         raise ValueError("This check requires GridSearchCV instance")
 
@@ -716,7 +714,6 @@ def check_randomized_search_n_iter(
         If number of combinations doesn't match n_iter
 
     """
-
     if not isinstance(search_cv, RandomizedSearchCV):
         raise ValueError("This check requires RandomizedSearchCV instance")
 
@@ -754,7 +751,6 @@ def check_randomized_search_reproducibility(
         If random_state doesn't produce reproducible results
 
     """
-
     if not isinstance(search_cv, RandomizedSearchCV):
         raise ValueError("This check requires RandomizedSearchCV instance")
 
@@ -821,7 +817,6 @@ def check_randomized_search_distributions(
         If distributions don't work correctly
 
     """
-
     if not isinstance(search_cv, RandomizedSearchCV):
         raise ValueError("This check requires RandomizedSearchCV instance")
 

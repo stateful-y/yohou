@@ -80,7 +80,9 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
 
 
 class _MultimetricScorer:
-    """Callable for multimetric scoring used to avoid repeated calls
+    """Callable for multimetric scoring used to avoid repeated calls.
+
+    Avoids repeated calls
     to `predict_proba`, `predict`, and `decision_function`.
 
     `_MultimetricScorer` will return a dictionary of scores corresponding to
@@ -149,7 +151,6 @@ class _MultimetricScorer:
         routing : MetadataRouter
             A `MetadataRouter` encapsulating routing information.
         """
-
         router = MetadataRouter(owner=self)
         for name, scorer in self._scorers.items():
             router.add(

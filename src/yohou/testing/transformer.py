@@ -773,7 +773,6 @@ def check_panel_data_support(transformer, X_panel: pl.DataFrame, y: pl.DataFrame
         If panel data handling fails
 
     """
-
     # Check if X_panel actually has panel columns
     global_names, panel_groups = inspect_panel(X_panel)
 

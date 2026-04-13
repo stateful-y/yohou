@@ -25,7 +25,7 @@ __all__ = [
 
 
 class MeanAbsoluteError(BasePointScorer):
-    """Mean Absolute Error metric for point forecasts.
+    r"""Mean Absolute Error metric for point forecasts.
 
     Computes the average of absolute differences between predictions and actual values.
     This metric is robust to outliers and provides intuitive interpretation in the
@@ -220,7 +220,7 @@ class MeanAbsoluteError(BasePointScorer):
 
 
 class MeanSquaredError(BasePointScorer):
-    """Mean Squared Error metric for point forecasts.
+    r"""Mean Squared Error metric for point forecasts.
 
     Computes the average of squared differences between predictions and actual values.
     This metric heavily penalizes large errors, making it sensitive to outliers.
@@ -367,7 +367,7 @@ class MeanSquaredError(BasePointScorer):
 
 
 class RootMeanSquaredError(BasePointScorer):
-    """Root Mean Squared Error metric for point forecasts.
+    r"""Root Mean Squared Error metric for point forecasts.
 
     Computes the square root of the average of squared differences between predictions
     and actual values. This metric penalizes large errors while maintaining the same
@@ -524,7 +524,7 @@ class RootMeanSquaredError(BasePointScorer):
 
 
 class RootMeanSquaredScaledError(BasePointScorer):
-    """Root Mean Squared Scaled Error metric for point forecasts.
+    r"""Root Mean Squared Scaled Error metric for point forecasts.
 
     Computes RMSE scaled by the in-sample naive seasonal forecast error. This provides
     a scale-independent metric that enables comparison across time series with different
@@ -770,7 +770,7 @@ class RootMeanSquaredScaledError(BasePointScorer):
 
 
 class MeanAbsolutePercentageError(BasePointScorer):
-    """Mean Absolute Percentage Error metric for point forecasts.
+    r"""Mean Absolute Percentage Error metric for point forecasts.
 
     Computes the average percentage error between predictions and actual values.
     This provides a scale-independent metric that enables comparison across time series
@@ -926,7 +926,7 @@ class MeanAbsolutePercentageError(BasePointScorer):
 
 
 class SymmetricMeanAbsolutePercentageError(BasePointScorer):
-    """Symmetric Mean Absolute Percentage Error metric for point forecasts.
+    r"""Symmetric Mean Absolute Percentage Error metric for point forecasts.
 
     Computes the symmetric average percentage error between predictions and actual values.
     This provides a scale-independent metric that treats over and under-predictions equally,
@@ -1084,7 +1084,7 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
 
 
 class MeanAbsoluteScaledError(BasePointScorer):
-    """Mean Absolute Scaled Error metric for point forecasts.
+    r"""Mean Absolute Scaled Error metric for point forecasts.
 
     Computes MAE scaled by the in-sample naive seasonal forecast error. This provides
     a scale-independent metric that enables comparison across time series with different
@@ -1319,7 +1319,7 @@ class MeanAbsoluteScaledError(BasePointScorer):
 
 
 class MedianAbsoluteError(BasePointScorer):
-    """Median Absolute Error metric for point forecasts.
+    r"""Median Absolute Error metric for point forecasts.
 
     Computes the median of absolute differences between predictions and actual values.
     This metric is highly robust to outliers and provides a more stable measure of

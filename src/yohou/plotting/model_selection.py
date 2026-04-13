@@ -1,11 +1,18 @@
 """Cross-validation and hyperparameter search visualization functions."""
 
+from typing import Literal
+
 import polars as pl
-from plotly import graph_objects as go
+
+try:
+    from plotly import graph_objects as go
+except ImportError as e:
+    msg = "plotly is required for yohou plotting. Install: pip install yohou[plotting]"
+    raise ImportError(msg) from e
 
 from yohou.model_selection import BaseSplitter
-from yohou.plotting._utils import apply_default_layout, resolve_color_palette
-from yohou.utils import validate_plotting_data
+from yohou.plotting._utils import _create_figure, apply_default_layout, resolve_color_palette
+from yohou.utils import validate_plotting_data, validate_plotting_params
 
 __all__ = ["plot_cv_results_scatter", "plot_splits"]
 
@@ -18,12 +25,15 @@ def plot_splits(
     train_color: str | None = None,
     test_color: str | None = None,
     gap_color: str = "#9ca3af",
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    resampler: bool | Literal["widget"] | None = None,
+    line_width: float = 10.0,
+    gap_opacity: float = 0.5,
 ) -> go.Figure:
     """
     Plot cross-validation splits as a timeline visualization.
@@ -45,6 +55,8 @@ def plot_splits(
         Color for test segments. If None, uses second color from yohou palette.
     gap_color : str, default="#9ca3af"
         Color for gap segments (if splitter has gap > 0).
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title. Defaults to "Cross-Validation Splits".
     x_label : str | None, default=None
@@ -55,10 +67,14 @@ def plot_splits(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels. Defaults to 300 + n_splits * 30.
-    **kwargs : dict
-        Additional styling parameters:
-        - line_width : float, default=10.0
-        - gap_opacity : float, default=0.5
+    resampler : bool | Literal["widget"] | None, default=None
+        Enable plotly-resampler for large datasets.  ``True`` or
+        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
+        ``None`` uses a plain ``go.Figure``.
+    line_width : float, default=10.0
+        Width of the train/test/gap bars.
+    gap_opacity : float, default=0.5
+        Opacity for gap segments.
 
     Returns
     -------
@@ -92,12 +108,13 @@ def plot_splits(
 
     See Also
     --------
-    `plot_cv_results_scatter` : Plot hyperparameter search results.
+    [`plot_cv_results_scatter`][yohou.plotting.plot_cv_results_scatter] : Plot hyperparameter search results.
     `ExpandingWindowSplitter` : Expanding window cross-validation.
     `SlidingWindowSplitter` : Sliding window cross-validation.
     """
     # Validate inputs
     validate_plotting_data(y)
+    validate_plotting_params(width=width, height=height)
 
     if not isinstance(splitter, BaseSplitter):
         msg = f"Expected BaseSplitter, got {type(splitter).__name__}"
@@ -108,16 +125,12 @@ def plot_splits(
     train_color = train_color or colors[0]
     test_color = test_color or colors[1]
 
-    # Get styling params
-    line_width = kwargs.get("line_width", 10.0)
-    gap_opacity = kwargs.get("gap_opacity", 0.5)
-
     # Get splits
     splits = list(splitter.split(y, X))
     n_splits = len(splits)
 
     # Create figure
-    fig = go.Figure()
+    fig = _create_figure(resampler)
 
     # Get time column
     times = y["time"]
@@ -197,6 +210,7 @@ def plot_splits(
         width=width,
         height=height_default,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig
 
@@ -209,12 +223,17 @@ def plot_cv_results_scatter(
     higher_is_better: bool = True,
     highlight_best: bool = True,
     color_palette: list[str] | None = None,
+    show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
     y_label: str | None = None,
     width: int | None = None,
     height: int | None = None,
-    **kwargs,
+    marker_size: float = 10.0,
+    marker_opacity: float = 0.8,
+    best_marker_size: float = 16.0,
+    best_marker_color: str = "#dc2626",
+    show_std: bool = True,
 ) -> go.Figure:
     """
     Plot hyperparameter search results as a scatter plot.
@@ -241,6 +260,8 @@ def plot_cv_results_scatter(
         Whether to highlight the best parameter value.
     color_palette : list[str] | None, default=None
         Custom color palette. If None, uses yohou palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
     title : str | None, default=None
         Plot title. Defaults to "CV Results: {param_name}".
     x_label : str | None, default=None
@@ -251,12 +272,16 @@ def plot_cv_results_scatter(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    **kwargs : dict
-        Additional styling parameters:
-        - marker_size : float, default=10.0
-        - best_marker_size : float, default=16.0
-        - best_marker_color : str, default="#dc2626"
-        - show_std : bool, default=True (shows error bars if std_test_{scorer} exists)
+    marker_size : float, default=10.0
+        Size of the scatter markers.
+    marker_opacity : float, default=0.8
+        Opacity of scatter markers.
+    best_marker_size : float, default=16.0
+        Size of the best-result star marker.
+    best_marker_color : str, default="#dc2626"
+        Color of the best-result star marker.
+    show_std : bool, default=True
+        Whether to show error bars (if std_test_{scorer} exists in cv_results).
 
     Returns
     -------
@@ -286,12 +311,13 @@ def plot_cv_results_scatter(
 
     See Also
     --------
-    `plot_splits` : Plot cross-validation splits.
+    [`plot_splits`][yohou.plotting.plot_splits] : Plot cross-validation splits.
     `GridSearchCV` : Grid search with cross-validation.
     `RandomizedSearchCV` : Randomized search with cross-validation.
     """
     # Construct key names
     param_key = f"param_{param_name}"
+    validate_plotting_params(width=width, height=height)
 
     # Auto-detect scorer name if not provided
     if scorer_name is None:
@@ -323,10 +349,7 @@ def plot_cv_results_scatter(
     mean_scores = [s * sign for s in mean_scores_raw]
 
     # Get styling params
-    marker_size = kwargs.get("marker_size", 10.0)
-    best_marker_size = kwargs.get("best_marker_size", 16.0)
-    best_marker_color = kwargs.get("best_marker_color", "#dc2626")
-    show_std = kwargs.get("show_std", True) and std_scores is not None
+    show_std_effective = show_std and std_scores is not None
 
     # Get colors
     if color_palette is None:
@@ -345,7 +368,7 @@ def plot_cv_results_scatter(
 
     # Add scatter trace with optional error bars
     error_y = None
-    if show_std:
+    if show_std_effective:
         error_y = {
             "type": "data",
             "array": std_scores,
@@ -361,6 +384,7 @@ def plot_cv_results_scatter(
             marker={
                 "size": marker_size,
                 "color": color_palette[0],
+                "opacity": marker_opacity,
             },
             error_y=error_y,
             name="CV Score",
@@ -399,5 +423,6 @@ def plot_cv_results_scatter(
         width=width,
         height=height,
     )
+    fig.update_layout(showlegend=show_legend)
 
     return fig

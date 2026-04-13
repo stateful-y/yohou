@@ -1,9 +1,15 @@
 """Unit tests for plotting utilities."""
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 import polars as pl
 import pytest
 
 from yohou.plotting._utils import (
+    LegendTracker,
     _group_panel_columns,
     _normalize_y_pred,
     get_color_sequence,
@@ -253,3 +259,127 @@ class TestGroupPanelColumns:
         groups, members = _group_panel_columns(["T__x", "plain"])
         assert groups == {"T": ["T__x"], "plain": ["plain"]}
         assert set(members) == {"x", "plain"}
+
+
+class TestLegendTracker:
+    """Tests for LegendTracker utility."""
+
+    def test_first_call_returns_true(self):
+        """First call for a name returns True."""
+        tracker = LegendTracker()
+        assert tracker.should_show("sales") is True
+
+    def test_second_call_returns_false(self):
+        """Second call for the same name returns False."""
+        tracker = LegendTracker()
+        tracker.should_show("sales")
+        assert tracker.should_show("sales") is False
+
+    def test_independent_names(self):
+        """Different names are tracked independently."""
+        tracker = LegendTracker()
+        assert tracker.should_show("sales") is True
+        assert tracker.should_show("demand") is True
+        assert tracker.should_show("sales") is False
+        assert tracker.should_show("demand") is False
+
+    def test_show_legend_false_always_returns_false(self):
+        """When show_legend=False, should_show always returns False."""
+        tracker = LegendTracker(show_legend=False)
+        assert tracker.should_show("sales") is False
+        assert tracker.should_show("demand") is False
+
+    def test_show_legend_true_default(self):
+        """Default show_legend=True allows first-seen tracking."""
+        tracker = LegendTracker(show_legend=True)
+        assert tracker.should_show("a") is True
+        assert tracker.should_show("a") is False
+
+
+class TestResolveColorPaletteEdgeCases:
+    """Edge cases for resolve_color_palette (lines 493-494)."""
+
+    def test_empty_list_raises(self):
+        """Passing an empty list raises ValueError."""
+        with pytest.raises(ValueError, match="must not be empty"):
+            resolve_color_palette([], 3)
+
+
+class TestResamplerImportErrors:
+    """Tests for plotly-resampler ImportError fallback paths."""
+
+    def _block_resampler(self):
+        """Return a mock import that blocks plotly_resampler sub-imports."""
+        import builtins
+        from unittest.mock import patch
+
+        orig = builtins.__import__
+
+        def _mock(name, *a, **kw):
+            if "plotly_resampler" in name:
+                raise ImportError("plotly_resampler is not installed")
+            return orig(name, *a, **kw)
+
+        return patch("builtins.__import__", side_effect=_mock)
+
+    def test_create_figure_widget_no_resampler_raises(self):
+        """_create_figure with resampler='widget' raises when plotly-resampler missing."""
+        from yohou.plotting._utils import _create_figure
+
+        with self._block_resampler(), pytest.raises(ImportError, match="plotly-resampler"):
+            _create_figure(resampler="widget")
+
+    def test_create_figure_bool_no_resampler_raises(self):
+        """_create_figure with resampler=True raises when plotly-resampler missing."""
+        from yohou.plotting._utils import _create_figure
+
+        with self._block_resampler(), pytest.raises(ImportError, match="plotly-resampler"):
+            _create_figure(resampler=True)
+
+    def test_create_subplots_widget_no_resampler_raises(self):
+        """_create_subplots with resampler='widget' raises when plotly-resampler missing."""
+        from yohou.plotting._utils import _create_subplots
+
+        with self._block_resampler(), pytest.raises(ImportError, match="plotly-resampler"):
+            _create_subplots(resampler="widget", rows=1, cols=1)
+
+    def test_create_subplots_bool_no_resampler_raises(self):
+        """_create_subplots with resampler=True raises when plotly-resampler missing."""
+        from yohou.plotting._utils import _create_subplots
+
+        with self._block_resampler(), pytest.raises(ImportError, match="plotly-resampler"):
+            _create_subplots(resampler=True, rows=1, cols=1)
+
+    def test_fill_trace_kwargs_no_resampler_returns_empty(self):
+        """_fill_trace_kwargs returns empty dict when plotly-resampler missing."""
+        import plotly.graph_objects as go
+
+        from yohou.plotting._utils import _fill_trace_kwargs
+
+        with self._block_resampler():
+            result = _fill_trace_kwargs(go.Figure())
+        assert result == {}
+
+
+class TestResamplerSuccessPaths:
+    """Tests for the resampler success paths when plotly-resampler is installed."""
+
+    _has_resampler = pytest.importorskip("plotly_resampler", reason="plotly-resampler not installed") is not None
+
+    def test_create_figure_resampler(self):
+        """_create_figure(resampler=True) returns a FigureResampler."""
+        from plotly_resampler import FigureResampler
+
+        from yohou.plotting._utils import _create_figure
+
+        fig = _create_figure(resampler=True)
+        assert isinstance(fig, FigureResampler)
+
+    def test_create_subplots_resampler(self):
+        """_create_subplots(resampler=True) returns a FigureResampler."""
+        from plotly_resampler import FigureResampler
+
+        from yohou.plotting._utils import _create_subplots
+
+        fig = _create_subplots(resampler=True, rows=1, cols=1)
+        assert isinstance(fig, FigureResampler)

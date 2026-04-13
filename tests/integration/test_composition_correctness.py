@@ -909,7 +909,8 @@ class TestRewindPropagation:
         # Multiple updates
         for i in range(4):
             y_observe_i = (
-                y1.select("time")
+                y1
+                .select("time")
                 .tail(105 + i * 3)
                 .tail(3)
                 .with_columns(
@@ -921,7 +922,8 @@ class TestRewindPropagation:
 
         # Rewind
         y_reset = (
-            y1.select("time")
+            y1
+            .select("time")
             .tail(10)
             .with_columns(
                 pl.lit(y1.select("value").to_series().tail(10)).alias("col1"),

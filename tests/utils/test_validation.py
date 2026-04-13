@@ -1073,7 +1073,6 @@ class TestCheckPanelGroupsMatch:
 class TestCheckScorerColumnSelection:
     def test_check_scorer_column_selection_no_filtering(self):
         """Test that no filtering is applied when scorer has no specifications."""
-
         from yohou.metrics import MeanAbsoluteError
 
         scorer = MeanAbsoluteError()
@@ -1097,7 +1096,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_panel_groups_point(self):
         """Test panel group filtering for point forecasts."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1133,7 +1131,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_component_names_panel(self):
         """Test component filtering for panel data."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1169,7 +1166,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_both_filters_panel(self):
         """Test both panel_group_names and component_names filters."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1205,7 +1201,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_component_names_global(self):
         """Test component filtering for global (non-panel) data."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1305,7 +1300,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_invalid_panel_group(self):
         """Test error when requesting non-existent panel group."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1326,7 +1320,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_invalid_component_global(self):
         """Test error when requesting non-existent component in global data."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1837,7 +1830,7 @@ class TestCheckInputsIntervalMismatch:
     """Tests for check_inputs with mismatched y/X time intervals."""
 
     def test_different_intervals_raises(self):
-        """y and X with different time intervals raises ValueError."""
+        """Y and X with different time intervals raises ValueError."""
         y = pl.DataFrame({
             "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 10), "1d", eager=True),
             "target": range(10),

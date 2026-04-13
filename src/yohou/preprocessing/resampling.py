@@ -211,7 +211,8 @@ class Downsampler(BaseTransformer):
                 agg_exprs.append(pl.col(col).median())
 
         result = (
-            X.sort("time")
+            X
+            .sort("time")
             .group_by_dynamic(
                 "time",
                 every=self.polars_interval_,

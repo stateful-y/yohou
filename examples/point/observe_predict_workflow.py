@@ -371,6 +371,7 @@ def _(
     ClassProbaReductionForecaster,
     DecisionTreeClassifier,
     LagTransformer,
+    deepcopy,
     fetch_air_quality_classification,
     train_test_split,
 ):

@@ -604,7 +604,7 @@ class TestComponentwise:
         assert default_score > 0, "Overall RootMeanSquaredScaledError should be positive"
 
     def test_per_step_multiple_columns(self, scorer_data_factory):
-        """componentwise aggregate should average across multiple columns."""
+        """Componentwise aggregate should average across multiple columns."""
         y, _ = scorer_data_factory(length=20, n_targets=2, n_features=0, seed=42)
 
         y_train = y[:15]
@@ -672,7 +672,6 @@ class TestMAPE:
 
     def test_mape_epsilon_prevents_division_by_zero(self):
         """MAPE epsilon should handle zero actuals."""
-
         y_true = pl.DataFrame({
             "time": [datetime(2020, 1, 1)],
             "value": [0.0],  # Zero actual
@@ -692,13 +691,11 @@ class TestMAPE:
 
     def test_mape_default_epsilon(self):
         """MAPE should have default epsilon=1e-8."""
-
         mape = MeanAbsolutePercentageError()
         assert mape.epsilon == 1e-8
 
     def test_mape_scale_independent(self):
         """MAPE should be scale-independent."""
-
         y_true_1 = pl.DataFrame({
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [100.0, 200.0],
@@ -724,7 +721,7 @@ class TestMAPE:
 
 class TestSMAPE:
     def test_smape_basic_computation(self, y_true_y_pred):
-        """sMAPE should compute symmetric mean absolute percentage error."""
+        """SMAPE should compute symmetric mean absolute percentage error."""
         y_true, y_pred = y_true_y_pred
 
         from yohou.metrics import SymmetricMeanAbsolutePercentageError
@@ -737,7 +734,7 @@ class TestSMAPE:
         assert 0 <= score <= 200  # sMAPE is bounded [0, 200]
 
     def test_smape_bounded(self):
-        """sMAPE should be bounded between 0 and 200."""
+        """SMAPE should be bounded between 0 and 200."""
         from yohou.metrics import SymmetricMeanAbsolutePercentageError
 
         y_true = pl.DataFrame({
@@ -767,7 +764,7 @@ class TestSMAPE:
         assert 195 < score_worst <= 200  # Close to theoretical max
 
     def test_smape_epsilon_handles_both_zero(self):
-        """sMAPE epsilon should handle when both actual and predicted are zero."""
+        """SMAPE epsilon should handle when both actual and predicted are zero."""
         from yohou.metrics import SymmetricMeanAbsolutePercentageError
 
         y_true = pl.DataFrame({

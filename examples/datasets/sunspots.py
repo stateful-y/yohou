@@ -161,7 +161,6 @@ def _(mo):
 def _(df, plot_spectrum):
     plot_spectrum(
         df,
-        detrend="linear",
         log_scale=True,
         show_peaks=True,
         n_peaks=5,

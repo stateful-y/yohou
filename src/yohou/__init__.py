@@ -76,13 +76,26 @@ from yohou import (  # noqa: E402
     interval,
     metrics,
     model_selection,
-    plotting,
     point,
     preprocessing,
     stationarity,
     testing,
     utils,
 )
+
+# Lazy-load plotting subpackage so that `import yohou` works without plotly.
+_LAZY_SUBMODULES = {"plotting"}
+
+
+def __getattr__(name: str):  # noqa: ANN202
+    """Lazy import for optional submodules that require extra dependencies."""
+    if name in _LAZY_SUBMODULES:
+        import importlib  # noqa: PLC0415
+
+        return importlib.import_module(f"yohou.{name}")
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
 
 __all__ = [
     "__version__",
