@@ -123,69 +123,69 @@ class TestCheckCv:
         assert cv.n_splits == 5
 
 
-class TestNeedsPointPredictions:
-    """Tests for _needs_point_predictions utility."""
+class TestGetResponseMethods:
+    """Tests for _get_response_methods utility."""
 
     def test_single_point_scorer(self):
-        """Single point scorer returns True."""
-        from yohou.model_selection.utils import _needs_point_predictions
+        """Single point scorer returns predict."""
+        from yohou.model_selection.utils import _get_response_methods
 
-        assert _needs_point_predictions(MeanAbsoluteError()) is True
+        assert _get_response_methods(MeanAbsoluteError()) == {"predict"}
 
     def test_single_interval_scorer(self):
-        """Single interval scorer returns False."""
+        """Single interval scorer returns predict_interval."""
         from yohou.metrics.interval import IntervalScore
-        from yohou.model_selection.utils import _needs_point_predictions
+        from yohou.model_selection.utils import _get_response_methods
 
-        assert _needs_point_predictions(IntervalScore(coverage_rates=[0.9])) is False
+        assert _get_response_methods(IntervalScore(coverage_rates=[0.9])) == {"predict_interval"}
 
-    def test_multimetric_with_point_scorer(self):
-        """Multimetric containing a point scorer returns True."""
+    def test_multimetric_mixed(self):
+        """Multimetric with mixed scorers returns both methods."""
         from yohou.metrics.interval import IntervalScore
-        from yohou.model_selection.utils import _needs_point_predictions
+        from yohou.model_selection.utils import _get_response_methods
 
         ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "is": IntervalScore(coverage_rates=[0.9])})
-        assert _needs_point_predictions(ms) is True
+        assert _get_response_methods(ms) == {"predict", "predict_interval"}
 
     def test_multimetric_only_interval_scorers(self):
-        """Multimetric with only interval scorers returns False."""
+        """Multimetric with only interval scorers returns predict_interval."""
         from yohou.metrics.interval import IntervalScore
-        from yohou.model_selection.utils import _needs_point_predictions
+        from yohou.model_selection.utils import _get_response_methods
 
         ms = _MultimetricScorer(scorers={"is": IntervalScore(coverage_rates=[0.9])})
-        assert _needs_point_predictions(ms) is False
+        assert _get_response_methods(ms) == {"predict_interval"}
 
 
-class TestNeedsIntervalPredictions:
-    """Tests for _needs_interval_predictions utility."""
+class TestResolveResponseMethod:
+    """Tests for _resolve_response_method utility."""
 
     def test_single_point_scorer(self):
-        """Single point scorer returns False."""
-        from yohou.model_selection.utils import _needs_interval_predictions
+        """Single point scorer resolves to predict."""
+        from yohou.model_selection.utils import _resolve_response_method
 
-        assert _needs_interval_predictions(MeanAbsoluteError()) is False
+        assert _resolve_response_method(MeanAbsoluteError()) == "predict"
 
     def test_single_interval_scorer(self):
-        """Single interval scorer returns True."""
+        """Single interval scorer resolves to predict_interval."""
         from yohou.metrics.interval import IntervalScore
-        from yohou.model_selection.utils import _needs_interval_predictions
+        from yohou.model_selection.utils import _resolve_response_method
 
-        assert _needs_interval_predictions(IntervalScore(coverage_rates=[0.9])) is True
+        assert _resolve_response_method(IntervalScore(coverage_rates=[0.9])) == "predict_interval"
 
-    def test_multimetric_with_interval_scorer(self):
-        """Multimetric containing an interval scorer returns True."""
+    def test_multimetric_mixed_picks_richest(self):
+        """Multimetric with mixed scorers resolves to the richest method."""
         from yohou.metrics.interval import IntervalScore
-        from yohou.model_selection.utils import _needs_interval_predictions
+        from yohou.model_selection.utils import _resolve_response_method
 
         ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "is": IntervalScore(coverage_rates=[0.9])})
-        assert _needs_interval_predictions(ms) is True
+        assert _resolve_response_method(ms) == "predict_interval"
 
     def test_multimetric_only_point_scorers(self):
-        """Multimetric with only point scorers returns False."""
-        from yohou.model_selection.utils import _needs_interval_predictions
+        """Multimetric with only point scorers resolves to predict."""
+        from yohou.model_selection.utils import _resolve_response_method
 
         ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "mse": MeanSquaredError()})
-        assert _needs_interval_predictions(ms) is False
+        assert _resolve_response_method(ms) == "predict"
 
 
 class TestValidateForecasterScorerCompatibility:
@@ -232,6 +232,29 @@ class TestValidateForecasterScorerCompatibility:
         forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=10)
         _validate_forecaster_scorer_compatibility(forecaster, IntervalScore(coverage_rates=[0.9]))
 
+    def test_class_proba_scorer_with_point_forecaster_raises(self):
+        """Class-proba scorer + point forecaster raises ValueError."""
+        from yohou.metrics.class_proba import LogLoss
+        from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
+
+        forecaster = SeasonalNaive()
+        scorer = LogLoss()
+        with pytest.raises(ValueError, match="does not support predict_class_proba"):
+            _validate_forecaster_scorer_compatibility(forecaster, scorer)
+
+    def test_point_scorer_with_class_proba_forecaster_raises(self):
+        """Point scorer + class-proba forecaster raises ValueError."""
+        from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
+
+        forecaster = MagicMock()
+        mock_tags = MagicMock()
+        mock_tags.forecaster_tags.forecaster_type = "class_proba"
+        forecaster.__sklearn_tags__ = MagicMock(return_value=mock_tags)
+
+        scorer = MeanAbsoluteError()
+        with pytest.raises(ValueError, match="does not support point or interval"):
+            _validate_forecaster_scorer_compatibility(forecaster, scorer)
+
 
 @pytest.fixture()
 def fit_and_score_data():
@@ -253,7 +276,6 @@ def fit_and_score_data():
 @pytest.fixture()
 def fitted_forecaster_data():
     """Fitted forecaster with train/test data for direct _score tests."""
-
     length = 30
     fh = 5
     time = pl.datetime_range(
@@ -341,7 +363,6 @@ class TestFitAndScoreVerbose:
 
     def test_verbose_3_with_split_progress(self, fit_and_score_data):
         """Verbose > 2 builds progress and parameter messages."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -364,7 +385,6 @@ class TestFitAndScoreVerbose:
 
     def test_verbose_10_with_candidate_progress(self, fit_and_score_data):
         """Verbose > 9 includes candidate progress in message."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -386,7 +406,6 @@ class TestFitAndScoreVerbose:
 
     def test_verbose_3_multimetric_formats_dict_scores(self, fit_and_score_data):
         """Verbose > 2 with multimetric scorer formats dict test_scores."""
-
         y, train, test, fh = fit_and_score_data
         ms = _MultimetricScorer(
             scorers={"mae": MeanAbsoluteError(), "mse": MeanSquaredError()},
@@ -412,7 +431,6 @@ class TestFitAndScoreVerbose:
 
     def test_verbose_2_without_parameters(self, fit_and_score_data):
         """Verbose > 1 with parameters=None produces empty params_msg."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -553,7 +571,6 @@ class TestFitAndScoreReturnTrainScore:
 
     def test_train_score_computed_after_rewind(self, fit_and_score_data):
         """Training scores computed by rewinding and scoring on train data."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -581,7 +598,6 @@ class TestFitAndScoreOptionalReturns:
 
     def test_return_times(self, fit_and_score_data):
         """Fit and score times returned when return_times=True."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -605,7 +621,6 @@ class TestFitAndScoreOptionalReturns:
 
     def test_return_n_test_samples(self, fit_and_score_data):
         """Number of test samples returned when flag is set."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -626,7 +641,6 @@ class TestFitAndScoreOptionalReturns:
 
     def test_return_parameters(self, fit_and_score_data):
         """Evaluated parameters returned when flag is set."""
-
         y, train, test, fh = fit_and_score_data
         params = {"seasonality": 1}
         result = _fit_and_score(
@@ -648,7 +662,6 @@ class TestFitAndScoreOptionalReturns:
 
     def test_return_forecaster(self, fit_and_score_data):
         """Fitted forecaster returned when flag is set."""
-
         y, train, test, fh = fit_and_score_data
         result = _fit_and_score(
             SeasonalNaive(seasonality=1),
@@ -711,6 +724,7 @@ class TestScoreDataFrameRejection:
         df_scorer = MagicMock()
         df_scorer.return_value = pl.DataFrame({"score": [1.0, 2.0]})
         df_scorer.fit = MagicMock()
+        df_scorer._response_method = "predict"
 
         with pytest.raises(ValueError, match="aggregation_method"):
             _score(
@@ -756,6 +770,7 @@ class TestScoreNegation:
         mock_scorer = MagicMock()
         mock_scorer.return_value = 5.0
         mock_scorer.fit = MagicMock()
+        mock_scorer._response_method = "predict"
         mock_tags = MagicMock()
         mock_tags.scorer_tags.lower_is_better = True
         mock_scorer.__sklearn_tags__ = MagicMock(return_value=mock_tags)
@@ -779,6 +794,7 @@ class TestScoreNegation:
         mock_scorer = MagicMock()
         mock_scorer.return_value = 5.0
         mock_scorer.fit = MagicMock()
+        mock_scorer._response_method = "predict"
         mock_tags = MagicMock()
         mock_tags.scorer_tags.lower_is_better = False
         mock_scorer.__sklearn_tags__ = MagicMock(return_value=mock_tags)
@@ -831,6 +847,7 @@ class TestScoreNegation:
         mock_scorer = MagicMock()
         mock_scorer.return_value = "error string"
         mock_scorer.fit = MagicMock()
+        mock_scorer._response_method = "predict"
 
         result = _score(
             forecaster,

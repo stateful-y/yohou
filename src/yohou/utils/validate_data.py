@@ -10,7 +10,7 @@ import polars as pl
 import polars.selectors as cs
 
 from yohou.utils.panel import inspect_panel
-from yohou.utils.polars import get_numeric_columns
+from yohou.utils.polars import get_numeric_columns, is_categorical_dtype
 from yohou.utils.validation import (
     check_continuity,
     check_inputs,
@@ -42,6 +42,7 @@ def validate_plotting_data(
     panel_group_names: list[str] | None = None,
     min_rows: int = 1,
     exclude: list[str] | None = None,
+    include_categorical: bool = False,
 ) -> list[str]:
     """Validate a DataFrame for plotting and resolve columns.
 
@@ -64,6 +65,10 @@ def validate_plotting_data(
     exclude : list of str or None, default=None
         Column names to exclude when ``columns=None`` and
         ``panel_group_names`` is ``None``.
+    include_categorical : bool, default=False
+        When ``True`` and ``columns=None``, also include
+        ``pl.String``, ``pl.Categorical``, and ``pl.Enum`` columns
+        alongside numeric columns.
 
     Returns
     -------
@@ -141,7 +146,13 @@ def validate_plotting_data(
 
     # Standard column resolution
     if columns is None:
-        return get_numeric_columns(df, exclude=exclude)
+        result = get_numeric_columns(df, exclude=exclude)
+        if include_categorical:
+            _excl = set(exclude or [])
+            result += [
+                c for c in df.columns if is_categorical_dtype(df[c].dtype) and c not in _excl and c not in result
+            ]
+        return result
 
     if isinstance(columns, str):
         columns = [columns]
@@ -160,6 +171,8 @@ def validate_plotting_params(
     valid_kinds: set[str] | None = None,
     facet_n_cols: int | None = None,
     n_bins: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> None:
     """Validate common plotting function parameters.
 
@@ -173,6 +186,10 @@ def validate_plotting_params(
         Number of facet columns (must be >= 1).
     n_bins : int or None
         Number of histogram bins (must be >= 1).
+    width : int or None
+        Figure width in pixels (must be >= 1).
+    height : int or None
+        Figure height in pixels (must be >= 1).
 
     Raises
     ------
@@ -198,6 +215,12 @@ def validate_plotting_params(
         raise ValueError(msg)
     if n_bins is not None and n_bins < 1:
         msg = f"n_bins must be >= 1, got {n_bins}"
+        raise ValueError(msg)
+    if width is not None and width < 1:
+        msg = f"width must be >= 1, got {width}"
+        raise ValueError(msg)
+    if height is not None and height < 1:
+        msg = f"height must be >= 1, got {height}"
         raise ValueError(msg)
 
 
@@ -313,9 +336,7 @@ def validate_scorer_data(
     scores: None = None,
     reset: bool = True,
     inverse: bool = False,
-) -> tuple[pl.DataFrame, None, None]:
-    """Validate scorer data in fit context."""
-    ...
+) -> tuple[pl.DataFrame, None, None]: ...
 
 
 @overload
@@ -327,9 +348,7 @@ def validate_scorer_data(
     scores: pl.DataFrame = ...,
     reset: bool = False,
     inverse: bool = True,
-) -> tuple[pl.DataFrame, pl.DataFrame, list]:
-    """Validate scorer data in inverse context."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame, list]: ...
 
 
 @overload
@@ -341,9 +360,7 @@ def validate_scorer_data(
     scores: None = None,
     reset: bool = False,
     inverse: bool = False,
-) -> tuple[pl.DataFrame, pl.DataFrame, list]:
-    """Validate scorer data in score context."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame, list]: ...
 
 
 def validate_scorer_data(
@@ -475,6 +492,13 @@ def validate_scorer_data(
     check_time_column(y_true)
     check_time_column(y_pred)
 
+    tags = scorer.__sklearn_tags__()
+    scorer_tags = getattr(tags, "scorer_tags", None)
+    pred_type = getattr(scorer_tags, "prediction_type", None) if scorer_tags is not None else None
+
+    if pred_type is None:
+        raise ValueError("Scorer tags must have prediction_type attribute")
+
     # Panel consistency check
     _, y_groups = inspect_panel(y_true)
     _, X_groups = inspect_panel(y_pred)
@@ -482,13 +506,6 @@ def validate_scorer_data(
         raise ValueError(
             f"Panel groups mismatch. `y_true` has {sorted(y_groups.keys())}. `y_pred` has {sorted(X_groups.keys())}."
         )
-
-    tags = scorer.__sklearn_tags__()
-    scorer_tags = getattr(tags, "scorer_tags", None)
-    pred_type = getattr(scorer_tags, "prediction_type", None) if scorer_tags is not None else None
-
-    if pred_type is None:
-        raise ValueError("Scorer tags must have prediction_type attribute")
 
     # Validate column presence and types
     for col in y_true.columns:
@@ -518,6 +535,16 @@ def validate_scorer_data(
                         f"Column '{rc}' type mismatch. `y_true` '{col}': {y_true.schema[col]}, "
                         f"`y_pred`: {y_pred.schema[rc]}. Both must be numeric."
                     )
+        elif pred_type == "class_proba":
+            proba_cols = [c for c in y_pred.columns if c.startswith(f"{col}_proba_")]
+            if not proba_cols:
+                raise ValueError(
+                    f"No probability columns found for target '{col}' in `y_pred`. "
+                    f"Expected columns matching '{col}_proba_<class_label>'."
+                )
+            for pc in proba_cols:
+                if not y_pred.schema[pc].is_numeric():
+                    raise ValueError(f"Probability column '{pc}' must be numeric, got {y_pred.schema[pc]}.")
 
     # Align by time (inner join on time column)
     time_truth = y_true.select("time")
@@ -564,15 +591,13 @@ def validate_scorer_data(
 @overload
 def validate_splitter_data(
     splitter: BaseSplitter, y: pl.DataFrame, X: pl.DataFrame | None
-) -> tuple[pl.DataFrame, pl.DataFrame | None]:
-    """Validate splitter data with non-None y."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame | None]: ...
 
 
 @overload
-def validate_splitter_data(splitter: BaseSplitter, y: None, X: pl.DataFrame | None) -> tuple[None, pl.DataFrame | None]:
-    """Validate splitter data with None y."""
-    ...
+def validate_splitter_data(
+    splitter: BaseSplitter, y: None, X: pl.DataFrame | None
+) -> tuple[None, pl.DataFrame | None]: ...
 
 
 def validate_splitter_data(
@@ -638,9 +663,7 @@ def validate_forecaster_data(
     *,
     reset: Literal[True] = True,
     panel_group_names: list[str] | None = None,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, None]:
-    """Validate forecaster data in fit context with non-None y."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame | None, None]: ...
 
 
 @overload
@@ -651,9 +674,7 @@ def validate_forecaster_data(
     *,
     reset: Literal[True] = True,
     panel_group_names: list[str] | None = None,
-) -> tuple[None, pl.DataFrame | None, None]:
-    """Validate forecaster data in fit context with None y."""
-    ...
+) -> tuple[None, pl.DataFrame | None, None]: ...
 
 
 @overload
@@ -664,9 +685,7 @@ def validate_forecaster_data(
     *,
     reset: Literal[False],
     panel_group_names: list[str] | None = None,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, list[str] | None]:
-    """Validate forecaster data in predict/update context with non-None y."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame | None, list[str] | None]: ...
 
 
 @overload
@@ -677,9 +696,7 @@ def validate_forecaster_data(
     *,
     reset: Literal[False],
     panel_group_names: list[str] | None = None,
-) -> tuple[None, pl.DataFrame | None, list[str] | None]:
-    """Validate forecaster data in predict/update context with None y."""
-    ...
+) -> tuple[None, pl.DataFrame | None, list[str] | None]: ...
 
 
 def validate_forecaster_data(
@@ -813,9 +830,7 @@ def validate_transformer_data(
     observation_horizon: int | None = None,
     stateful: bool = False,
     **check_params,
-) -> pl.DataFrame:
-    """Validate transformer data in fit context."""
-    ...
+) -> pl.DataFrame: ...
 
 
 @overload
@@ -830,9 +845,7 @@ def validate_transformer_data(
     observation_horizon: int | None = None,
     stateful: Literal[True],
     **check_params,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Validate transformer data for stateful inverse transform."""
-    ...
+) -> tuple[pl.DataFrame, pl.DataFrame]: ...
 
 
 @overload
@@ -847,9 +860,7 @@ def validate_transformer_data(
     observation_horizon: int | None = None,
     stateful: Literal[False] = ...,
     **check_params,
-) -> tuple[pl.DataFrame, None]:
-    """Validate transformer data for stateless inverse transform."""
-    ...
+) -> tuple[pl.DataFrame, None]: ...
 
 
 @overload
@@ -864,9 +875,7 @@ def validate_transformer_data(
     observation_horizon: int | None = None,
     stateful: bool = False,
     **check_params,
-) -> pl.DataFrame:
-    """Validate transformer data for forward transform."""
-    ...
+) -> pl.DataFrame: ...
 
 
 def validate_transformer_data(

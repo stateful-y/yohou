@@ -157,7 +157,7 @@ def _(mo):
 
     [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) evaluates per-timestep scorer values. Supports
     single and multi-model comparisons, different scorers, and extensive
-    styling via kwargs.
+    styling parameters.
     """)
 
 

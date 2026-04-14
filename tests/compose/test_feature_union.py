@@ -391,7 +391,7 @@ class TestFeatureUnionDropPassthrough:
         assert len(result) == len(X)
 
     def test_all_drop_transform_returns_time_only(self, time_series_factory):
-        """transform with all-drop transformers returns time column only."""
+        """Transform with all-drop transformers returns time column only."""
         X = time_series_factory(length=20, n_components=2)
         union = FeatureUnion([("d", "drop")])
         union.fit(X)
@@ -474,7 +474,7 @@ class TestFeatureUnionDropPassthrough:
         assert all("add1_" not in c for c in non_time)
 
     def test_verbose_false_transform(self, time_series_factory):
-        """transform with verbose_feature_names_out=False omits prefixes."""
+        """Transform with verbose_feature_names_out=False omits prefixes."""
         X = time_series_factory(length=30, n_components=1)
         union = FeatureUnion(
             [("add1", SimpleTransformer(observation_horizon=0, add_constant=1.0))],

@@ -625,7 +625,8 @@ class SeasonalImputer(BaseTransformer):
 
             for season_idx in range(self.period):
                 season_data = (
-                    X_with_season.filter(pl.col("_season_idx") == season_idx)[col_name]
+                    X_with_season
+                    .filter(pl.col("_season_idx") == season_idx)[col_name]
                     .drop_nulls()
                     .drop_nans()
                     .to_numpy()

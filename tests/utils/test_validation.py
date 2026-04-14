@@ -1073,7 +1073,6 @@ class TestCheckPanelGroupsMatch:
 class TestCheckScorerColumnSelection:
     def test_check_scorer_column_selection_no_filtering(self):
         """Test that no filtering is applied when scorer has no specifications."""
-
         from yohou.metrics import MeanAbsoluteError
 
         scorer = MeanAbsoluteError()
@@ -1097,7 +1096,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_panel_groups_point(self):
         """Test panel group filtering for point forecasts."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1133,7 +1131,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_component_names_panel(self):
         """Test component filtering for panel data."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1169,7 +1166,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_both_filters_panel(self):
         """Test both panel_group_names and component_names filters."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1205,7 +1201,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_component_names_global(self):
         """Test component filtering for global (non-panel) data."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1305,7 +1300,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_invalid_panel_group(self):
         """Test error when requesting non-existent panel group."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1326,7 +1320,6 @@ class TestCheckScorerColumnSelection:
 
     def test_check_scorer_column_selection_invalid_component_global(self):
         """Test error when requesting non-existent component in global data."""
-
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1402,6 +1395,70 @@ class TestCheckScorerColumnSelection:
             interval_pattern=interval_pattern,
         )
         assert set(y_pred_out.columns) == {"time", "value_lower_0.95", "value_upper_0.95"}
+
+    def test_check_scorer_class_proba_panel(self):
+        """Test class_proba column selection on panel data."""
+        from yohou.metrics import LogLoss
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 3), "1d", eager=True)
+        y_true = pl.DataFrame({
+            "time": times,
+            "grpA__weather": ["sunny", "rainy", "cloudy"],
+            "grpB__weather": ["cloudy", "sunny", "rainy"],
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "grpA__weather_proba_sunny": [0.7, 0.1, 0.2],
+            "grpA__weather_proba_rainy": [0.2, 0.8, 0.1],
+            "grpA__weather_proba_cloudy": [0.1, 0.1, 0.7],
+            "grpB__weather_proba_sunny": [0.2, 0.7, 0.1],
+            "grpB__weather_proba_rainy": [0.1, 0.2, 0.8],
+            "grpB__weather_proba_cloudy": [0.7, 0.1, 0.1],
+        })
+        scorer = LogLoss(panel_group_names=["grpA"])
+        y_true_out, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="class_proba",
+            coverage_rates=None,
+            interval_pattern=None,
+        )
+        assert "grpA__weather" in y_true_out.columns
+        assert "grpB__weather" not in y_true_out.columns
+        assert any("grpA__weather_proba_" in c for c in y_pred_out.columns)
+        assert not any("grpB__weather_proba_" in c for c in y_pred_out.columns)
+
+    def test_check_scorer_class_proba_component_global(self):
+        """Test class_proba column selection with component_names on global data."""
+        from yohou.metrics import LogLoss
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 3), "1d", eager=True)
+        y_true = pl.DataFrame({
+            "time": times,
+            "weather": ["sunny", "rainy", "cloudy"],
+            "mood": ["happy", "sad", "happy"],
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "weather_proba_sunny": [0.7, 0.1, 0.2],
+            "weather_proba_rainy": [0.2, 0.8, 0.1],
+            "weather_proba_cloudy": [0.1, 0.1, 0.7],
+            "mood_proba_happy": [0.8, 0.2, 0.9],
+            "mood_proba_sad": [0.2, 0.8, 0.1],
+        })
+        scorer = LogLoss(component_names=["weather"])
+        y_true_out, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="class_proba",
+            coverage_rates=None,
+            interval_pattern=None,
+        )
+        assert set(y_true_out.columns) == {"time", "weather"}
+        assert all("weather_proba_" in c for c in y_pred_out.columns if c != "time")
+        assert not any("mood" in c for c in y_pred_out.columns)
 
 
 class TestCheckTimeColumnEdgeCases:
@@ -1773,7 +1830,7 @@ class TestCheckInputsIntervalMismatch:
     """Tests for check_inputs with mismatched y/X time intervals."""
 
     def test_different_intervals_raises(self):
-        """y and X with different time intervals raises ValueError."""
+        """Y and X with different time intervals raises ValueError."""
         y = pl.DataFrame({
             "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 10), "1d", eager=True),
             "target": range(10),

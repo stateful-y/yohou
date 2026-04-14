@@ -6,7 +6,7 @@ import polars as pl
 import pytest
 from polars.exceptions import ComputeError, InvalidOperationError, SchemaError
 
-from yohou.utils.polars import cast
+from yohou.utils.polars import cast, get_categorical_columns, get_numeric_columns, is_categorical_dtype
 
 
 class TestCast:
@@ -216,3 +216,153 @@ class TestCast:
         # Rounds to nearest even number when exactly halfway between two integers
         # 0.5→0 (even), 1.5→2 (even), 2.5→2 (even), 3.5→4 (even), 4.5→4 (even)
         assert result["a"].to_list() == [0, 2, 2, 4, 4]
+
+    def test_cast_float_to_string(self):
+        """Test casting float column to non-numeric type (String)."""
+        df = pl.DataFrame({"a": [1.0, 2.5, 3.0]})
+        schema = {"a": pl.String}
+        result = cast(df, schema)
+
+        assert result.schema["a"] == pl.String
+        assert result["a"].to_list() == ["1.0", "2.5", "3.0"]
+
+    def test_cast_float_to_boolean(self):
+        """Test casting float column to Boolean type."""
+        df = pl.DataFrame({"a": [1.0, 0.0, 1.0]})
+        schema = {"a": pl.Boolean}
+        result = cast(df, schema)
+
+        assert result.schema["a"] == pl.Boolean
+        assert result["a"].to_list() == [True, False, True]
+
+
+class TestIsCategoricalDtype:
+    """Tests for the is_categorical_dtype utility function."""
+
+    def test_string_is_categorical(self):
+        """String dtype is categorical."""
+        assert is_categorical_dtype(pl.Series("x", ["a"]).dtype) is True
+
+    def test_categorical_is_categorical(self):
+        """Categorical dtype is categorical."""
+        assert is_categorical_dtype(pl.Series("x", ["a"]).cast(pl.Categorical).dtype) is True
+
+    def test_enum_is_categorical(self):
+        """Enum dtype is categorical."""
+        assert is_categorical_dtype(pl.Series("x", ["a"]).cast(pl.Enum(["a", "b"])).dtype) is True
+
+    def test_int64_not_categorical(self):
+        """Int64 dtype is not categorical."""
+        assert is_categorical_dtype(pl.Series("x", [1]).dtype) is False
+
+    def test_float64_not_categorical(self):
+        """Float64 dtype is not categorical."""
+        assert is_categorical_dtype(pl.Series("x", [1.0]).dtype) is False
+
+    def test_boolean_not_categorical(self):
+        """Boolean dtype is not categorical."""
+        assert is_categorical_dtype(pl.Series("x", [True]).dtype) is False
+
+    def test_datetime_not_categorical(self):
+        """Datetime dtype is not categorical."""
+        from datetime import datetime
+
+        assert is_categorical_dtype(pl.Series("x", [datetime(2020, 1, 1)]).dtype) is False
+
+    def test_series_string_dtype(self):
+        """String series dtype is detected as categorical."""
+        s = pl.Series("x", ["a", "b", "c"])
+        assert is_categorical_dtype(s.dtype) is True
+
+    def test_series_float_dtype(self):
+        """Float series dtype is not detected as categorical."""
+        s = pl.Series("x", [1.0, 2.0, 3.0])
+        assert is_categorical_dtype(s.dtype) is False
+
+
+class TestGetNumericColumns:
+    """Tests for the get_numeric_columns utility function."""
+
+    def test_basic(self):
+        """Returns numeric column names."""
+        df = pl.DataFrame({"a": [1, 2], "b": [1.0, 2.0], "c": ["x", "y"]})
+        assert get_numeric_columns(df) == ["a", "b"]
+
+    def test_exclude(self):
+        """Excludes specified columns."""
+        df = pl.DataFrame({"time": [1, 2], "y": [10.0, 20.0], "cat": ["A", "B"]})
+        assert get_numeric_columns(df, exclude=["time"]) == ["y"]
+
+    def test_no_numeric_columns(self):
+        """Returns empty list when no numeric columns exist."""
+        df = pl.DataFrame({"a": ["x", "y"], "b": ["p", "q"]})
+        assert get_numeric_columns(df) == []
+
+    def test_all_numeric(self):
+        """Returns all columns when all are numeric."""
+        df = pl.DataFrame({"a": [1, 2], "b": [3.0, 4.0], "c": pl.Series([5, 6], dtype=pl.UInt32)})
+        assert get_numeric_columns(df) == ["a", "b", "c"]
+
+    def test_empty_dataframe(self):
+        """Returns empty list for DataFrame with no rows but typed columns."""
+        df = pl.DataFrame({"a": pl.Series([], dtype=pl.Float64), "b": pl.Series([], dtype=pl.String)})
+        assert get_numeric_columns(df) == ["a"]
+
+    def test_exclude_nonexistent_column(self):
+        """Excluding a column not in the DataFrame is a no-op."""
+        df = pl.DataFrame({"a": [1, 2], "b": [3.0, 4.0]})
+        assert get_numeric_columns(df, exclude=["z"]) == ["a", "b"]
+
+
+class TestGetCategoricalColumns:
+    """Tests for the get_categorical_columns utility function."""
+
+    def test_basic(self):
+        """Returns string column names."""
+        df = pl.DataFrame({"a": [1, 2], "b": [1.0, 2.0], "c": ["x", "y"]})
+        assert get_categorical_columns(df) == ["c"]
+
+    def test_exclude(self):
+        """Excludes specified columns."""
+        df = pl.DataFrame({"cat1": ["a", "b"], "cat2": ["x", "y"], "num": [1, 2]})
+        assert get_categorical_columns(df, exclude=["cat1"]) == ["cat2"]
+
+    def test_no_categorical_columns(self):
+        """Returns empty list when no categorical columns exist."""
+        df = pl.DataFrame({"a": [1, 2], "b": [3.0, 4.0]})
+        assert get_categorical_columns(df) == []
+
+    def test_all_categorical(self):
+        """Returns all columns when all are categorical."""
+        df = pl.DataFrame({"a": ["x", "y"], "b": ["p", "q"]})
+        assert get_categorical_columns(df) == ["a", "b"]
+
+    def test_mixed_dtypes(self):
+        """Handles mixed numeric, string, datetime columns."""
+        df = pl.DataFrame({
+            "num": [1, 2],
+            "cat": ["a", "b"],
+            "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 2), "1d", eager=True),
+            "flag": [True, False],
+        })
+        assert get_categorical_columns(df) == ["cat"]
+
+    def test_categorical_dtype(self):
+        """Detects pl.Categorical dtype columns."""
+        df = pl.DataFrame({"a": pl.Series(["x", "y"]).cast(pl.Categorical), "b": [1, 2]})
+        assert get_categorical_columns(df) == ["a"]
+
+    def test_enum_dtype(self):
+        """Detects pl.Enum dtype columns."""
+        df = pl.DataFrame({"a": pl.Series(["x", "y"]).cast(pl.Enum(["x", "y", "z"])), "b": [1, 2]})
+        assert get_categorical_columns(df) == ["a"]
+
+    def test_empty_dataframe(self):
+        """Returns correctly for DataFrame with no rows."""
+        df = pl.DataFrame({"a": pl.Series([], dtype=pl.String), "b": pl.Series([], dtype=pl.Float64)})
+        assert get_categorical_columns(df) == ["a"]
+
+    def test_exclude_nonexistent_column(self):
+        """Excluding a column not in the DataFrame is a no-op."""
+        df = pl.DataFrame({"cat": ["a", "b"], "num": [1, 2]})
+        assert get_categorical_columns(df, exclude=["z"]) == ["cat"]

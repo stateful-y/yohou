@@ -65,7 +65,7 @@ class _Registry(list):
 
 
 def record_metadata(obj, record_default: bool = True, **params) -> None:
-    """Utility function to store passed metadata to a method of obj.
+    """Store passed metadata to a method of obj.
 
     If record_default is False, kwargs whose values are "default" are skipped.
     This is so that checks on keyword arguments whose default was not changed

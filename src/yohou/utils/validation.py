@@ -96,7 +96,7 @@ def check_scorer_column_selection(
     y_pred : pl.DataFrame
         Predicted values DataFrame.
     pred_type : str
-        Prediction type ('point', 'interval', 'conformity').
+        Prediction type ('point', 'interval', 'conformity', 'class_proba').
     coverage_rates : list[float], optional
         Coverage rates for interval forecasts.
     interval_pattern : re.Pattern, optional
@@ -118,7 +118,6 @@ def check_scorer_column_selection(
     `check_panel_group_names` : Validate panel group names for forecaster operations.
 
     """
-
     has_panel_specs = hasattr(scorer, "panel_group_names") and scorer.panel_group_names is not None
     has_component_specs = hasattr(scorer, "component_names") and scorer.component_names is not None
 
@@ -210,6 +209,15 @@ def check_scorer_column_selection(
 
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(y_pred_selected_cols)
+            elif pred_type == "class_proba":
+                # Class proba: y_pred has {target}_proba_{class} columns
+                y_pred_selected_cols = ["time"] if "time" in y_pred.columns else []
+                for col in selected_cols:
+                    if col == "time":
+                        continue
+                    y_pred_selected_cols.extend(c for c in y_pred.columns if c.startswith(f"{col}_proba_"))
+                y_true = y_true.select(selected_cols)
+                y_pred = y_pred.select(y_pred_selected_cols)
             else:
                 # Point forecast: columns should match directly
                 y_pred_cols = set(y_pred.columns)
@@ -256,6 +264,14 @@ def check_scorer_column_selection(
                         matches = rate_filtered
 
                     y_pred_selected_cols.extend(matches)
+                y_true = y_true.select(selected_cols)
+                y_pred = y_pred.select(y_pred_selected_cols)
+            elif pred_type == "class_proba":
+                y_pred_selected_cols = ["time"] if "time" in y_pred.columns else []
+                for col in selected_cols:
+                    if col == "time":
+                        continue
+                    y_pred_selected_cols.extend(c for c in y_pred.columns if c.startswith(f"{col}_proba_"))
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(y_pred_selected_cols)
             else:
@@ -487,7 +503,6 @@ def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame
     `inspect_panel` : Detect panel groups in a DataFrame.
 
     """
-
     _, groups = inspect_panel(df)
     if not groups:
         return  # No panel data, nothing to check
@@ -914,7 +929,6 @@ def validate_column_names(df: pl.DataFrame) -> None:
     `check_inputs` : Validates time intervals and calls this function
 
     """
-
     # Pattern: allows underscores in group/series names, but not adjacent to __
     # Valid: store_1__sales, my_store__my_sales
     # Invalid: store___sales (underscore adjacent to __), _store__sales, store__sales_
@@ -1262,7 +1276,7 @@ def check_continuity(
 
 
 def _timedelta_to_string(td: timedelta) -> str:
-    """Convert a timedelta to string interval format.
+    r"""Convert a timedelta to string interval format.
 
     Parameters
     ----------
@@ -1272,7 +1286,7 @@ def _timedelta_to_string(td: timedelta) -> str:
     Returns
     -------
     str
-        String representation like \"1d\", \"1h\", \"1w\", \"2w\", \"1ms\", \"1us\", etc.
+        String representation like "1d", "1h", "1w", "2w", "1ms", "1us", etc.
 
     Examples
     --------
@@ -1354,7 +1368,7 @@ def _infer_freq_from_deltas(time_series: list[datetime], unique_deltas: list[tim
 
 
 def _infer_monthly_freq(time_series: list[datetime]) -> str | None:
-    """Infer monthly frequency (1mo, 2mo, 3mo, etc.) by checking month differences.
+    r"""Infer monthly frequency (1mo, 2mo, 3mo, etc.) by checking month differences.
 
     Parameters
     ----------
@@ -1364,7 +1378,7 @@ def _infer_monthly_freq(time_series: list[datetime]) -> str | None:
     Returns
     -------
     str or None
-        Frequency string like \"1mo\", \"2mo\", \"3mo\", etc., or None if not monthly.
+        Frequency string like "1mo", "2mo", "3mo", etc., or None if not monthly.
 
     """
     if len(time_series) < 2:
@@ -1418,12 +1432,12 @@ def _check_day_of_month_consistency(time_series: list[datetime]) -> bool:
 
 
 def parse_interval(interval: str) -> tuple[int, str]:
-    """Parse interval string into (multiplier, unit).
+    r"""Parse interval string into (multiplier, unit).
 
     Parameters
     ----------
     interval : str
-        Interval string like \"1d\", \"3mo\", \"2w\".
+        Interval string like "1d", "3mo", "2w".
 
     Returns
     -------
@@ -1432,15 +1446,15 @@ def parse_interval(interval: str) -> tuple[int, str]:
 
     Examples
     --------
-    >>> parse_interval(\"1d\")
+    >>> parse_interval("1d")
     (1, 'd')
-    >>> parse_interval(\"3mo\")
+    >>> parse_interval("3mo")
     (3, 'mo')
-    >>> parse_interval(\"2w\")
+    >>> parse_interval("2w")
     (2, 'w')
-    >>> parse_interval(\"100ms\")
+    >>> parse_interval("100ms")
     (100, 'ms')
-    >>> parse_interval(\"50us\")
+    >>> parse_interval("50us")
     (50, 'us')
 
     See Also
@@ -1461,7 +1475,7 @@ def parse_interval(interval: str) -> tuple[int, str]:
 
 
 def interval_to_timedelta(interval: str) -> timedelta | None:
-    """Convert fixed interval to timedelta, or None for variable intervals.
+    r"""Convert fixed interval to timedelta, or None for variable intervals.
 
     Parameters
     ----------
@@ -1475,15 +1489,15 @@ def interval_to_timedelta(interval: str) -> timedelta | None:
 
     Examples
     --------
-    >>> interval_to_timedelta(\"1d\")
+    >>> interval_to_timedelta("1d")
     datetime.timedelta(days=1)
-    >>> interval_to_timedelta(\"2h\")
+    >>> interval_to_timedelta("2h")
     datetime.timedelta(seconds=7200)
-    >>> interval_to_timedelta(\"1mo\") is None
+    >>> interval_to_timedelta("1mo") is None
     True
-    >>> interval_to_timedelta(\"100ms\")
+    >>> interval_to_timedelta("100ms")
     datetime.timedelta(microseconds=100000)
-    >>> interval_to_timedelta(\"50us\")
+    >>> interval_to_timedelta("50us")
     datetime.timedelta(microseconds=50)
 
     See Also
@@ -1515,9 +1529,9 @@ def interval_to_timedelta(interval: str) -> timedelta | None:
 
 
 def add_interval(start: datetime, interval: str | timedelta, n: int = 1) -> datetime:
-    """Add n intervals to a datetime (handles variable-length intervals).
+    r"""Add n intervals to a datetime (handles variable-length intervals).
 
-    Supports multi-period intervals like \"2mo\", \"3mo\", \"6mo\", etc.
+    Supports multi-period intervals like "2mo", "3mo", "6mo", etc.
 
     Parameters
     ----------
@@ -1538,11 +1552,11 @@ def add_interval(start: datetime, interval: str | timedelta, n: int = 1) -> date
     Examples
     --------
     >>> from datetime import datetime
-    >>> add_interval(datetime(2020, 1, 15), \"1d\", 5)
+    >>> add_interval(datetime(2020, 1, 15), "1d", 5)
     datetime.datetime(2020, 1, 20, 0, 0)
-    >>> add_interval(datetime(2020, 1, 31), \"1mo\", 1)
+    >>> add_interval(datetime(2020, 1, 31), "1mo", 1)
     datetime.datetime(2020, 2, 29, 0, 0)
-    >>> add_interval(datetime(2020, 1, 31), \"2mo\", 2)
+    >>> add_interval(datetime(2020, 1, 31), "2mo", 2)
     datetime.datetime(2020, 5, 31, 0, 0)
 
     See Also

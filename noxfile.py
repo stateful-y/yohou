@@ -19,6 +19,24 @@ MIN_VERSION = "3.11"
 MAX_VERSION = "3.14"
 PYTHON_VERSIONS = [v for v in ALL_VERSIONS if v >= MIN_VERSION and v <= MAX_VERSION]
 
+# plotly-resampler -> tsdownsample does not yet ship Python 3.14 wheels,
+# so the plotting extra is only installable on 3.13 and below.
+_PLOTTING_UNSUPPORTED = {"3.14"}
+
+
+def _plotting_extras(session: nox.Session) -> tuple[str, ...]:
+    """Return ('--extra', 'plotting') when the session Python supports it."""
+    if session.python in _PLOTTING_UNSUPPORTED:
+        return ()
+    return ("--extra", "plotting")
+
+
+def _plotting_ignores(session: nox.Session) -> tuple[str, ...]:
+    """Return pytest ``--ignore`` flags for plotting paths when unsupported."""
+    if session.python in _PLOTTING_UNSUPPORTED:
+        return ("--ignore=src/yohou/plotting", "--ignore=tests/plotting")
+    return ()
+
 
 @nox.session(python=PYTHON_VERSIONS[0], venv_backend="uv")
 def test_coverage(session: nox.Session) -> None:
@@ -28,6 +46,8 @@ def test_coverage(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -56,6 +76,7 @@ def test(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        *_plotting_extras(session),
         "--group",
         "tests",
         "--group",
@@ -68,8 +89,10 @@ def test(session: nox.Session) -> None:
         "pytest",
         "tests",
         "src/yohou",
+        "--no-cov",
         "--doctest-modules",
         "--doctest-continue-on-failure",
+        *_plotting_ignores(session),
         "-n",
         "auto",
         "-v",
@@ -85,6 +108,7 @@ def test_fast(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        *_plotting_extras(session),
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -113,6 +137,7 @@ def test_slow(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        *_plotting_extras(session),
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -139,6 +164,8 @@ def test_examples(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "tests",
         "--group",
@@ -160,7 +187,7 @@ def test_examples(session: nox.Session) -> None:
     )
 
 
-@nox.session(venv_backend="uv")
+@nox.session(python=PYTHON_VERSIONS, venv_backend="uv")
 def test_docstrings(session: nox.Session) -> None:
     """Run docstring examples with pytest."""
     # Install dependencies
@@ -168,6 +195,7 @@ def test_docstrings(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        *_plotting_extras(session),
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -179,6 +207,7 @@ def test_docstrings(session: nox.Session) -> None:
         "--doctest-modules",
         "--doctest-continue-on-failure",
         "--no-cov",
+        *_plotting_ignores(session),
         "src/yohou",
         *session.posargs,
     )
@@ -202,6 +231,7 @@ def test_compat(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        *_plotting_extras(session),
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -231,7 +261,7 @@ def test_compat(session: nox.Session) -> None:
     )
 
 
-@nox.session(venv_backend="uv")
+@nox.session(venv_backend="uv", python=MIN_VERSION)
 def lint(session: nox.Session) -> None:
     """Run linters and type checkers."""
     # Install dependencies
@@ -239,6 +269,8 @@ def lint(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "lint",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -254,7 +286,7 @@ def lint(session: nox.Session) -> None:
     session.run("ty", "check", "src", external=True)
 
 
-@nox.session(venv_backend="uv")
+@nox.session(venv_backend="uv", python=MIN_VERSION)
 def fix(session: nox.Session) -> None:
     """Format the code base to adhere to our styles, and complain about what we cannot do automatically."""
     # Install dependencies
@@ -262,6 +294,8 @@ def fix(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "dev",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -278,6 +312,8 @@ def build_docs(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "docs",
         "--group",
@@ -297,6 +333,8 @@ def serve_docs(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
+        "--extra",
+        "plotting",
         "--group",
         "docs",
         "--group",

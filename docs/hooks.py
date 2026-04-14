@@ -1174,7 +1174,8 @@ def _process_api_page_content(html, page, config):
     if examples_h2:
         old = examples_h2.group(0)
         new = (
-            old.replace('<h2 id="examples">', '<h3 id="tutorials">')
+            old
+            .replace('<h2 id="examples">', '<h3 id="tutorials">')
             .replace("</h2>", "</h3>")
             .replace(">Examples<", ">Tutorials<")
             .replace("#examples", "#tutorials")
@@ -1324,12 +1325,6 @@ def on_pre_build(config):
 
     if not examples_dir.exists():
         return
-
-    _skip_stems: set[str] = set()
-    try:
-        import yohou_nixtla  # noqa: F401
-    except ModuleNotFoundError:
-        _skip_stems |= {"nixtla_forecasters", "nixtla_panel"}
 
     # Find all marimo notebooks (recursively, excluding __marimo__ and bugs dirs)
     notebooks = [

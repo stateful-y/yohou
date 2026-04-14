@@ -2,7 +2,7 @@
 
 import polars as pl
 
-__all__ = ["cast", "get_numeric_columns"]
+__all__ = ["cast", "get_categorical_columns", "get_numeric_columns", "is_categorical_dtype"]
 
 
 def cast(
@@ -62,6 +62,10 @@ def cast(
 
         if target_dtype.is_integer():
             exprs.append(pl.col(col).round().cast(target_dtype).alias(col))
+        elif not target_dtype.is_numeric():
+            # Non-numeric types (Categorical, Enum, String, Boolean, etc.)
+            # are cast directly without rounding.
+            exprs.append(pl.col(col).cast(target_dtype).alias(col))
         else:
             exprs.append(pl.col(col).cast(target_dtype).alias(col))
 
@@ -113,3 +117,69 @@ def get_numeric_columns(df: pl.DataFrame, exclude: list[str] | None = None) -> l
         pl.Float64,
     ]
     return [col for col in df.columns if any(df[col].dtype == dtype for dtype in numeric_types) and col not in exclude]
+
+
+def is_categorical_dtype(dtype: pl.DataType) -> bool:
+    """Check whether a polars dtype represents categorical data.
+
+    Parameters
+    ----------
+    dtype : pl.DataType
+        The polars data type to check.
+
+    Returns
+    -------
+    bool
+        ``True`` if the dtype is ``pl.String``, ``pl.Categorical``, or
+        ``pl.Enum``.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from yohou.utils.polars import is_categorical_dtype
+    >>> is_categorical_dtype(pl.Series("x", ["a"]).dtype)
+    True
+    >>> is_categorical_dtype(pl.Series("x", [1.0]).dtype)
+    False
+
+    """
+    return isinstance(dtype, pl.String | pl.Categorical | pl.Enum)
+
+
+def get_categorical_columns(df: pl.DataFrame, exclude: list[str] | None = None) -> list[str]:
+    """Get list of categorical column names from a DataFrame.
+
+    Categorical columns are those with ``pl.String``, ``pl.Categorical``,
+    or ``pl.Enum`` dtype.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Input DataFrame.
+    exclude : list[str] | None, default=None
+        Column names to exclude from the result.
+
+    Returns
+    -------
+    list[str]
+        List of categorical column names.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from yohou.utils.polars import get_categorical_columns
+    >>> df = pl.DataFrame({"time": [1, 2, 3], "y": [10.0, 20.0, 30.0], "cat": ["A", "B", "C"]})
+    >>> get_categorical_columns(df)
+    ['cat']
+
+    >>> get_categorical_columns(df, exclude=["cat"])
+    []
+
+    See Also
+    --------
+    `get_numeric_columns` : List numeric column names from a DataFrame.
+    `is_categorical_dtype` : Check if a dtype is categorical.
+
+    """
+    exclude = exclude or []
+    return [col for col in df.columns if is_categorical_dtype(df[col].dtype) and col not in exclude]

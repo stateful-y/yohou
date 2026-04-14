@@ -46,6 +46,7 @@ _ESTIMATOR_KWARGS: dict[str, dict] = {
 # Estimators where nested sub-estimators make get_params() equality fail
 # after pickle (different object identity). Check type + shallow param keys.
 _NESTED_ESTIMATORS = {
+    "ClassProbaReductionForecaster",
     "ColumnForecaster",
     "ForecastedFeatureForecaster",
     "FourierSeasonalityForecaster",

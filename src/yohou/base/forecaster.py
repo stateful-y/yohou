@@ -1,6 +1,8 @@
 """Base class for forecasters."""
 
 import abc
+from collections.abc import Callable
+from copy import deepcopy
 from typing import Any, Literal
 from typing import cast as typing_cast
 
@@ -22,7 +24,7 @@ from yohou.utils import (
 )
 from yohou.utils._compat import StrOptions, _fit_context
 
-PredictionType = Literal["point", "interval"]
+PredictionType = Literal["point", "interval", "class_proba"]
 
 __all__ = [
     "BaseForecaster",
@@ -527,6 +529,132 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         return self
 
+    def _recursive_predict(
+        self,
+        *,
+        X: pl.DataFrame | None,
+        forecasting_horizon: int,
+        panel_group_names: list[str] | None,
+        step_fn: Callable[["BaseForecaster", list[str]], tuple[pl.DataFrame, pl.DataFrame]],
+        derive_observation_fn: Callable[
+            ["BaseForecaster", pl.DataFrame, pl.DataFrame | None, int],
+            tuple[pl.DataFrame, pl.DataFrame | None],
+        ],
+    ) -> pl.DataFrame:
+        """Shared recursive multi-step prediction loop.
+
+        Produces predictions by repeatedly calling ``step_fn`` to get one
+        forecast block, then ``derive_observation_fn`` to convert that
+        prediction into an observation that is fed back via ``observe()``
+        for the next recursive step.
+
+        Parameters
+        ----------
+        X : pl.DataFrame or None
+            Exogenous features, already filtered for panel groups by the
+            caller if needed.
+        forecasting_horizon : int
+            Total number of time steps to forecast.
+        panel_group_names : list of str or None
+            Panel group prefixes to operate on.
+        step_fn : callable
+            ``step_fn(forecaster_copy, groups) -> (y_accumulate, y_for_obs)``
+            where ``y_accumulate`` is appended to output and ``y_for_obs``
+            is passed to ``derive_observation_fn``.
+        derive_observation_fn : callable
+            ``derive_observation_fn(forecaster_copy, y_for_obs, X, step_idx)
+            -> (y_obs, X_slice)`` where ``y_obs`` and ``X_slice`` are passed
+            to ``observe()``.
+
+        Returns
+        -------
+        pl.DataFrame
+            Concatenated predictions with ``"observed_time"`` set to the
+            first step's value and tail-trimmed to ``forecasting_horizon``.
+
+        """
+        forecaster = deepcopy(self)
+
+        y_pred = pl.DataFrame()
+        for step in range(0, forecasting_horizon, self.fit_forecasting_horizon_):
+            y_accumulate, y_for_obs = step_fn(forecaster, panel_group_names or [])
+            y_pred = pl.concat([y_pred, y_accumulate])
+
+            if step + self.fit_forecasting_horizon_ < forecasting_horizon:
+                y_obs, X_slice = derive_observation_fn(forecaster, y_for_obs, X, step)
+                forecaster.observe(y_obs, X_slice)
+
+        y_pred = y_pred.with_columns(observed_time=y_pred["observed_time"][0])
+
+        if forecasting_horizon % self.fit_forecasting_horizon_:
+            end = self.fit_forecasting_horizon_ - forecasting_horizon % self.fit_forecasting_horizon_
+            y_pred = y_pred[:-end]
+
+        return y_pred
+
+    def _observe_predict_loop(
+        self,
+        *,
+        predict_fn: Callable[..., pl.DataFrame],
+        y: pl.DataFrame,
+        X: pl.DataFrame | None,
+        panel_group_names: list[str] | None,
+        stride: int,
+        **predict_kwargs: Any,
+    ) -> pl.DataFrame:
+        """Shared observe-then-predict rolling loop.
+
+        Produces an initial prediction, then repeatedly observes a
+        ``stride``-sized slice of ``y`` and re-predicts. Used by
+        ``observe_predict``, ``observe_predict_interval``, and
+        ``observe_predict_class_proba``.
+
+        Parameters
+        ----------
+        predict_fn : callable
+            The predict method to call (e.g. ``self.predict``,
+            ``self.predict_interval``, ``self.predict_class_proba``).
+        y : pl.DataFrame
+            Historical target observations to incrementally observe.
+        X : pl.DataFrame or None
+            Exogenous features aligned with ``y``.
+        panel_group_names : list of str or None
+            Panel group prefixes to operate on.
+        stride : int
+            Number of rows to observe between successive predictions.
+        **predict_kwargs : dict
+            Extra keyword arguments forwarded to ``predict_fn``
+            (e.g. ``forecasting_horizon``, ``coverage_rates``).
+
+        Returns
+        -------
+        pl.DataFrame
+            Concatenated predictions from the initial call plus one
+            prediction after each observe step.
+
+        """
+        y_pred_i = predict_fn(X=X, panel_group_names=panel_group_names, **predict_kwargs)
+        y_pred = y_pred_i
+
+        for i in range(0, len(y), stride):
+            y_slice = y[i : i + stride]
+
+            X_slice = None
+            if X is not None:
+                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
+
+            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+
+            X_future = None
+            if X is not None:
+                last_time = y_slice["time"][-1]
+                X_future = X.filter(pl.col("time") > last_time)
+
+            y_pred_i = predict_fn(X=X_future, panel_group_names=panel_group_names, **predict_kwargs)
+            y_pred = pl.concat([y_pred, y_pred_i])
+
+        return y_pred
+
     def _add_time_columns(self, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Add time metadata columns to predictions.
 
@@ -672,7 +800,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
                 # Inverse transform (works with unprefixed/local columns)
                 y_observed_local = y_observed_dict[panel_group_name]
-                y_pred_step_group_inv = transformer.inverse_transform(  # type: ignore[union-attr]
+                y_pred_step_group_inv = transformer.inverse_transform(  # ty: ignore[unresolved-attribute]
                     X_t=y_pred_step_group,
                     X_p=y_observed_local,
                 )

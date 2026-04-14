@@ -200,6 +200,12 @@ def check_scorer_prediction_type_compatibility(
             or forecaster_tags.forecaster_tags.forecaster_type == "both"
         ), f"Interval scorer requires interval forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
         y_pred = forecaster.predict_interval(forecasting_horizon=3, X=X, coverage_rates=[0.9])
+    elif scorer_tags.scorer_tags.prediction_type == "class_proba":
+        # Class-probability scorer needs class_proba predictions
+        assert "class_proba" in forecaster_tags.forecaster_tags.forecaster_type, (
+            f"Class-proba scorer requires class_proba forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
+        )
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X)
     else:
         raise AssertionError(f"Unknown prediction_type: {scorer_tags.scorer_tags.prediction_type}")
 
@@ -440,7 +446,6 @@ def check_scorer_parameter_validation(
         If invalid value is accepted
 
     """
-
     # Create scorer instance to check its type
     scorer = scorer_class()
     tags = scorer.__sklearn_tags__()

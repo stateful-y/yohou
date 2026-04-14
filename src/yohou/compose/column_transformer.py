@@ -348,7 +348,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             The fitted transformers.
 
         """
-        return sklearn_ColumnTransformer._transformers.fget(self)  # type: ignore[attr-defined]
+        return sklearn_ColumnTransformer._transformers.fget(self)  # ty: ignore[invalid-argument-type]
 
     def _iter(
         self,
@@ -383,7 +383,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         """
         return sklearn_ColumnTransformer._iter(
-            self,  # type: ignore[arg-type]
+            self,  # ty: ignore[invalid-argument-type]
             fitted=fitted,
             column_as_labels=column_as_labels,
             skip_drop=skip_drop,
@@ -461,7 +461,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         """
         # Directly use sklearn's implementation - it's tightly coupled with internal state
-        sklearn_ColumnTransformer._update_fitted_transformers(self, transformers)  # type: ignore[arg-type]
+        sklearn_ColumnTransformer._update_fitted_transformers(self, transformers)  # ty: ignore[invalid-argument-type]
 
     def _get_feature_name_out_for_transformer(self, name: str, trans: Any, feature_names_in: Any) -> Any:
         """Get feature names for a transformer.
@@ -508,11 +508,11 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         """
         check_is_fitted(self, "transformers_")
         feature_names_out: list[str] = []
-        for name, trans, columns in self.transformers_:  # type: ignore[attr-defined]
+        for name, trans, columns in self.transformers_:  # ty: ignore[unresolved-attribute]
             if trans == "drop" or (isinstance(columns, list) and len(columns) == 0):
                 continue
             col_list = list(columns) if isinstance(columns, list) else [columns]
-            names: list[str] = col_list
+            names: list[str] = col_list  # ty: ignore[invalid-assignment]
             if hasattr(trans, "get_feature_names_out"):
                 result = trans.get_feature_names_out()
                 if result is not None:
@@ -540,7 +540,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         """
         # Directly use sklearn's implementation - it calls _get_remainder_cols_dtype internally
-        return sklearn_ColumnTransformer._get_remainder_cols(self, indices)  # type: ignore[arg-type]
+        return sklearn_ColumnTransformer._get_remainder_cols(self, indices)  # ty: ignore[invalid-argument-type]
 
     def _get_remainder_cols_dtype(self) -> Any:
         """Get dtype of remainder columns.
@@ -551,7 +551,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Data type of remainder columns.
 
         """
-        return sklearn_ColumnTransformer._get_remainder_cols_dtype(self)  # type: ignore[arg-type]
+        return sklearn_ColumnTransformer._get_remainder_cols_dtype(self)  # ty: ignore[invalid-argument-type]
 
     def _add_prefix_for_feature_names_out(self, feature_names_out: list) -> list[str]:
         """Add prefixes to feature names.
@@ -583,7 +583,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Visual block representation.
 
         """
-        return sklearn_ColumnTransformer._sk_visual_block_(self)  # type: ignore[arg-type]
+        return sklearn_ColumnTransformer._sk_visual_block_(self)  # ty: ignore[invalid-argument-type]
 
     def _validate_remainder(self, X: Any) -> None:
         """Validate remainder parameter.
@@ -595,7 +595,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         """
         # Let sklearn handle validation completely
-        sklearn_ColumnTransformer._validate_remainder(self, X)  # type: ignore[arg-type]
+        sklearn_ColumnTransformer._validate_remainder(self, X)  # ty: ignore[invalid-argument-type]
 
     def _validate_column_callables(self, X: Any) -> None:
         """Validate column callables.
@@ -607,7 +607,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         """
         # Let sklearn handle validation
-        sklearn_ColumnTransformer._validate_column_callables(self, X)  # type: ignore[arg-type]
+        sklearn_ColumnTransformer._validate_column_callables(self, X)  # ty: ignore[invalid-argument-type]
 
     def _record_output_indices(self, Xs: Any) -> None:
         """Record output indices for each transformer.
@@ -619,7 +619,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         """
         # Let sklearn handle recording
-        sklearn_ColumnTransformer._record_output_indices(self, Xs)  # type: ignore[arg-type]
+        sklearn_ColumnTransformer._record_output_indices(self, Xs)  # ty: ignore[invalid-argument-type]
 
     # Required by sklearn <1.8 _get_remainder_cols; unused by >=1.8.
     force_int_remainder_cols = FORCE_INT_REMAINDER_COLS
@@ -990,7 +990,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             # they were dropped
             non_dropped_indices = [
                 ind
-                for name, ind in self._transformer_to_input_indices.items()  # type: ignore[attr-defined]
+                for name, ind in self._transformer_to_input_indices.items()  # ty: ignore[unresolved-attribute]
                 if name in named_transformers and named_transformers[name] != "drop"
             ]
 
@@ -1003,7 +1003,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         else:
             # ndarray was used for fitting or transforming, thus we only
             # check that n_features_in_ is consistent
-            self._check_n_features(X_no_time, reset=False)  # type: ignore[attr-defined]
+            self._check_n_features(X_no_time, reset=False)  # ty: ignore[unresolved-attribute]
 
         routed_params = process_routing(self, "transform", **params)
 
@@ -1241,7 +1241,8 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
                 )
             else:
                 (
-                    method_mapping.add(caller="fit", callee="fit")
+                    method_mapping
+                    .add(caller="fit", callee="fit")
                     .add(caller="fit", callee="transform")
                     .add(caller="fit_transform", callee="fit")
                     .add(caller="fit_transform", callee="transform")

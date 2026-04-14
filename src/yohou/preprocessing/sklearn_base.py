@@ -28,6 +28,7 @@ def _transformer_has_inverse(self) -> bool:
 
     Note: Some transformers (e.g., SimpleImputer) have inverse_transform that only
     works under certain conditions.
+
     Parameters
     ----------
     self : SklearnTransformer

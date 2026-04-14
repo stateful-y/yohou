@@ -617,3 +617,96 @@ class TestTags:
         tags = forecaster.__sklearn_tags__()
         # SeasonalNaive is a point forecaster
         assert tags.forecaster_tags.forecaster_type == "point"
+
+
+class TestClassProbaForecastedFeature:
+    """Tests for class-probability methods on ForecastedFeatureForecaster."""
+
+    @pytest.fixture
+    def class_proba_fff_setup(self):
+        """Create a fitted ForecastedFeatureForecaster with class_proba target."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=79),
+            interval="1d",
+            eager=True,
+        )
+        classes = ["cat", "dog", "bird"]
+        y = pl.DataFrame({
+            "time": time,
+            "animal": [classes[i % 3] for i in range(80)],
+        })
+        X = pl.DataFrame({
+            "time": time,
+            "temp": [20.0 + (i % 10) for i in range(80)],
+        })
+
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+            ),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        y_train, y_test = y[:60], y[60:]
+        X_train, X_test = X[:60], X[60:]
+        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        return forecaster, y_train, y_test, X_train, X_test
+
+    def test_predict_class_proba(self, class_proba_fff_setup):
+        """predict_class_proba returns probabilities using forecasted features."""
+        forecaster, _, _, _, _ = class_proba_fff_setup
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+
+        assert "time" in y_pred.columns
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) == 3
+        assert len(y_pred) == 3
+
+    def test_observe_predict_class_proba(self, class_proba_fff_setup):
+        """observe_predict_class_proba observes and predicts probabilities."""
+        forecaster, _, y_test, _, X_test = class_proba_fff_setup
+        y_pred = forecaster.observe_predict_class_proba(
+            y=y_test[:3],
+            X=X_test[:3],
+        )
+        assert "time" in y_pred.columns
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
+
+    def test_predict_class_proba_with_x(self):
+        """predict_class_proba passes X through to target forecaster."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=79),
+            interval="1d",
+            eager=True,
+        )
+        classes = ["cat", "dog", "bird"]
+        y = pl.DataFrame({
+            "time": time,
+            "animal": [classes[i % 3] for i in range(80)],
+        })
+        X = pl.DataFrame({
+            "time": time,
+            "temp": [20.0 + (i % 10) for i in range(80)],
+        })
+
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+            ),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X[60:63])
+        assert "time" in y_pred.columns
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) == 3

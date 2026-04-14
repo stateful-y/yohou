@@ -37,6 +37,8 @@ def _(mo):
     - [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) with exhaustive grid search
     - [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) for larger search spaces
     - Using time series splitters with search
+    - Tuning a [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) with [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) scoring
+    - Visualizing soft (probability) and hard (label) predictions from the best model
     - Inspecting `cv_results_` and `best_params_`
     - Visualizing results with [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/)
 
@@ -51,30 +53,39 @@ def _():
     import polars as pl
     from scipy.stats import uniform
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
+    from sklearn.tree import DecisionTreeClassifier
 
-    from yohou.datasets import fetch_tourism_monthly
-    from yohou.metrics import MeanAbsoluteError
+    from yohou.class_proba import ClassProbaReductionForecaster
+    from yohou.datasets import fetch_air_quality_classification, fetch_tourism_monthly
+    from yohou.metrics import LogLoss, MeanAbsoluteError
     from yohou.model_selection import (
         ExpandingWindowSplitter,
         GridSearchCV,
         RandomizedSearchCV,
     )
-    from yohou.plotting import plot_cv_results_scatter, plot_time_series
+    from yohou.plotting import plot_cv_results_scatter, plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
     return (
+        ClassProbaReductionForecaster,
+        DecisionTreeClassifier,
         ExpandingWindowSplitter,
         GridSearchCV,
         LagTransformer,
+        LogLoss,
         MeanAbsoluteError,
         PointReductionForecaster,
         RandomizedSearchCV,
         Ridge,
+        fetch_air_quality_classification,
         fetch_tourism_monthly,
         pl,
         plot_cv_results_scatter,
+        plot_forecast,
         plot_time_series,
+        train_test_split,
         uniform,
     )
 
@@ -272,15 +283,155 @@ def _(plot_cv_results_scatter, rand_search):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 6. GridSearchCV for Classification
+
+    [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) works identically with class-probability forecasters.
+    Pass a classification scorer such as [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) and search over the
+    classifier and feature transformer hyperparameters. We use the
+    [`fetch_air_quality_classification`](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/)
+    dataset (4-class air quality target, 5 pollutant features).
+    """)
+
+
+@app.cell
+def _(fetch_air_quality_classification, train_test_split):
+    cls_data = fetch_air_quality_classification()
+    cls_y, cls_X = cls_data.y, cls_data.X
+    cls_y_train, cls_y_test, cls_X_train, cls_X_test = train_test_split(
+        cls_y,
+        cls_X,
+        test_size=200,
+        shuffle=False,
+    )
+    cls_fh = 24
+
+    print(f"Classes: {cls_data.classes}")
+    print(f"Train: {len(cls_y_train)}, Test: {len(cls_y_test)}, Horizon: {cls_fh}")
+    return cls_X_test, cls_X_train, cls_fh, cls_y_test, cls_y_train
+
+
+@app.cell
+def _(
+    ClassProbaReductionForecaster,
+    DecisionTreeClassifier,
+    ExpandingWindowSplitter,
+    GridSearchCV,
+    LagTransformer,
+    LogLoss,
+    cls_X_train,
+    cls_fh,
+    cls_y_train,
+):
+    cls_base = ClassProbaReductionForecaster(
+        estimator=DecisionTreeClassifier(random_state=42),
+        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+    )
+
+    cls_grid_search = GridSearchCV(
+        forecaster=cls_base,
+        param_grid={
+            "estimator__max_depth": [3, 5, 10, None],
+            "feature_transformer__lag": [
+                [1, 2, 3],
+                [1, 2, 3, 6, 12, 24],
+            ],
+        },
+        scoring=LogLoss(),
+        cv=ExpandingWindowSplitter(n_splits=2, test_size=cls_fh),
+    )
+
+    cls_grid_search.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
+
+    print(f"Best params: {cls_grid_search.best_params_}")
+    print(f"Best LogLoss: {cls_grid_search.best_score_:.4f}")
+    return (cls_grid_search,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Inspecting Classification Search Results
+
+    The `cv_results_` dict contains per-combination scores just like the
+    point forecaster search. [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) works with any
+    parameter name from the grid.
+    """)
+
+
+@app.cell
+def _(cls_grid_search, pl):
+    cls_cv_results = cls_grid_search.cv_results_
+    cls_results_df = pl.DataFrame({
+        "params": [str(p) for p in cls_cv_results["params"]],
+        "mean_test_score": cls_cv_results["mean_test_score"],
+        "rank_test_score": cls_cv_results["rank_test_score"],
+    }).sort("rank_test_score")
+
+    cls_results_df
+
+
+@app.cell
+def _(cls_grid_search, plot_cv_results_scatter):
+    plot_cv_results_scatter(
+        cls_grid_search.cv_results_,
+        param_name="estimator__max_depth",
+        title="Classification Grid Search: max_depth vs LogLoss",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 8. Predict with Best Classification Model
+
+    After fitting, the search object exposes both `predict()` (hard labels)
+    and `predict_class_proba()` (soft probabilities). [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
+    auto-detects the prediction type and renders step charts for categorical
+    data and stacked area charts for class probabilities.
+    """)
+
+
+@app.cell
+def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecast):
+    cls_y_pred_labels = cls_grid_search.predict(
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
+    )
+    plot_forecast(
+        cls_y_test,
+        cls_y_pred_labels,
+        y_train=cls_y_train,
+        n_history=50,
+        title="Best Model - Hard-Label Forecast",
+    )
+
+
+@app.cell
+def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, plot_forecast):
+    cls_y_proba = cls_grid_search.predict_class_proba(
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
+    )
+    plot_forecast(
+        cls_y_test,
+        cls_y_proba,
+        title="Best Model - Class-Probability Forecast",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Key Takeaways
 
     - [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/): Exhaustive search: best for small parameter grids
     - [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/): Random sampling: better for large/continuous spaces
     - Both use time-respecting splitters (never leak future data)
-    - `scoring` takes scorer **instances** (e.g., `MeanAbsoluteError()`)
+    - `scoring` takes scorer **instances** (e.g., `MeanAbsoluteError()`, `LogLoss()`)
+    - Works with **all forecaster types**: point, interval, and class-probability
+    - After fitting, use the search object directly as a forecaster (including `predict_class_proba()`)
     - Access results via `best_params_`, `best_score_`, `cv_results_`
     - Use [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) to visualize parameter-score relationships
-    - After fitting, use the search object directly as a forecaster
     """)
 
 
@@ -292,6 +443,8 @@ def _(mo):
     - **Splitters**: See [`cv_splitters.py`](/examples/model_selection/cv_splitters/) for splitter details
     - **Scoring**: See [Metrics](/examples/#metrics) for all available scorers
     - **Interval search**: Use [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) with search for interval tuning
+    - **Classification forecaster**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for the full classification workflow
+    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for LogLoss, BrierScore, and Accuracy evaluation
     """)
 
 

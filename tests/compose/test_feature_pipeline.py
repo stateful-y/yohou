@@ -260,6 +260,20 @@ class TestFeaturePipelineAccessors:
         assert "first" in pipe.named_steps
         assert "second" in pipe.named_steps
 
+    def test_n_features_in(self, time_series_factory):
+        """n_features_in_ returns count of non-time columns after fit."""
+        X = time_series_factory(length=50, n_components=3)
+        pipe = FeaturePipeline([("s1", SimpleTransformer(observation_horizon=0))])
+        pipe.fit(X)
+        assert pipe.n_features_in_ == 3
+
+    def test_feature_names_in(self, time_series_factory):
+        """feature_names_in_ returns column names after fit."""
+        X = time_series_factory(length=50, n_components=2)
+        pipe = FeaturePipeline([("s1", SimpleTransformer(observation_horizon=0))])
+        pipe.fit(X)
+        assert hasattr(pipe, "feature_names_in_")
+
 
 class TestFeaturePipelineValidation:
     """Tests for validation and error paths."""

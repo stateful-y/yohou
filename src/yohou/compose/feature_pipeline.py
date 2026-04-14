@@ -302,7 +302,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             Transformed data.
 
         """
-        return sklearn_Pipeline._fit(self, X, y, routed_params)  # type: ignore[return-value]
+        return sklearn_Pipeline._fit(self, X, y, routed_params)  # ty: ignore[invalid-argument-type]
 
     @property
     def named_steps(self) -> Bunch:
@@ -314,7 +314,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             Dictionary-like object with step names as keys.
 
         """
-        return sklearn_Pipeline.named_steps.fget(self)  # type: ignore[attr-defined]
+        return sklearn_Pipeline.named_steps.fget(self)  # ty: ignore[invalid-argument-type]
 
     @property
     def _final_estimator(self) -> Any:
@@ -326,7 +326,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             The final estimator in the pipeline.
 
         """
-        return sklearn_Pipeline._final_estimator.fget(self)  # type: ignore[attr-defined]
+        return sklearn_Pipeline._final_estimator.fget(self)  # ty: ignore[invalid-argument-type]
 
     def _log_message(self, step_idx: int) -> str:
         """Get log message for a step.
@@ -342,7 +342,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             Log message.
 
         """
-        return sklearn_Pipeline._log_message(self, step_idx)  # type: ignore[return-value]
+        return sklearn_Pipeline._log_message(self, step_idx)  # ty: ignore[invalid-argument-type]
 
     def _check_method_params(self, method: str, props: dict[str, Any]) -> Any:
         """Check and route method parameters.
@@ -391,7 +391,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             Number of input features.
 
         """
-        return sklearn_Pipeline.n_features_in_.fget(self)  # type: ignore[attr-defined]
+        return sklearn_Pipeline.n_features_in_.fget(self)  # ty: ignore[invalid-argument-type]
 
     @property
     def feature_names_in_(self) -> Any:
@@ -403,7 +403,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             Names of input features.
 
         """
-        return sklearn_Pipeline.feature_names_in_.fget(self)  # type: ignore[attr-defined]
+        return sklearn_Pipeline.feature_names_in_.fget(self)  # ty: ignore[invalid-argument-type]
 
     def __sklearn_is_fitted__(self) -> bool:
         """Check if the pipeline is fitted.
@@ -414,7 +414,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             True if the pipeline is fitted.
 
         """
-        return sklearn_Pipeline.__sklearn_is_fitted__(self)  # type: ignore[return-value]
+        return sklearn_Pipeline.__sklearn_is_fitted__(self)  # ty: ignore[invalid-argument-type]
 
     def _sk_visual_block_(self) -> Any:
         """Get visual block representation.
@@ -939,13 +939,15 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             # exists, or else fit and transform
             if hasattr(trans, "fit_transform"):
                 (
-                    method_mapping.add(caller="fit", callee="fit_transform")
+                    method_mapping
+                    .add(caller="fit", callee="fit_transform")
                     .add(caller="fit_transform", callee="fit_transform")
                     .add(caller="fit_predict", callee="fit_transform")
                 )
             else:
                 (
-                    method_mapping.add(caller="fit", callee="fit")
+                    method_mapping
+                    .add(caller="fit", callee="fit")
                     .add(caller="fit", callee="transform")
                     .add(caller="fit_transform", callee="fit")
                     .add(caller="fit_transform", callee="transform")
@@ -954,7 +956,8 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
                 )
 
             (
-                method_mapping.add(caller="predict", callee="transform")
+                method_mapping
+                .add(caller="predict", callee="transform")
                 .add(caller="predict", callee="transform")
                 .add(caller="predict_proba", callee="transform")
                 .add(caller="decision_function", callee="transform")
@@ -977,7 +980,8 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         else:
             method_mapping.add(caller="fit", callee="fit").add(caller="fit", callee="transform")
         (
-            method_mapping.add(caller="fit", callee="fit")
+            method_mapping
+            .add(caller="fit", callee="fit")
             .add(caller="transform", callee="transform")
             .add(caller="inverse_transform", callee="inverse_transform")
             .add(caller="score", callee="score")

@@ -9,6 +9,7 @@ Public sklearn imports (e.g. ``BaseEstimator``, ``clone``, ``check_is_fitted``,
 since they are part of sklearn's stable public surface.
 """
 
+import inspect
 import timeit
 from contextlib import contextmanager
 
@@ -111,8 +112,6 @@ def _filter_estimator_params(estimator_class: type, params: dict) -> dict:
         Filtered parameters accepted by the class constructor.
 
     """
-    import inspect
-
     sig = inspect.signature(estimator_class.__init__)
     has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
     if has_var_keyword:

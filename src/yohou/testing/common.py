@@ -65,7 +65,6 @@ def check_metadata_routing_get_metadata_routing(estimator_fitted) -> None:
         If get_metadata_routing implementation is incorrect
 
     """
-
     assert hasattr(estimator_fitted, "get_metadata_routing"), (
         f"{type(estimator_fitted).__name__} must implement get_metadata_routing()"
     )

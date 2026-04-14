@@ -991,7 +991,6 @@ def _(mo):
 
 @app.cell
 def _(
-    forecasting_horizon,
     plot_forecast,
     y_pred_reduction,
     y_pred_weighted,
@@ -1002,7 +1001,6 @@ def _(
         y_test,
         {"Unweighted": y_pred_reduction, "Time-weighted": y_pred_weighted},
         y_train=y_train,
-        forecasting_horizon=forecasting_horizon,
         title="Time-Weighted vs. Unweighted Forecast",
         y_label="Monthly tourists",
         height=400,
@@ -1040,9 +1038,12 @@ def _(fetch_dominick, inspect_panel):
 
 
 @app.cell
-def _(MeanAbsoluteError, SeasonalNaive, y_panel):
-    _split = len(y_panel) - 13
-    y_panel_train, y_panel_test = y_panel[:_split], y_panel[_split:]
+def _(MeanAbsoluteError, SeasonalNaive, train_test_split, y_panel):
+    y_panel_train, y_panel_test = train_test_split(
+        y_panel,
+        test_size=13,
+        shuffle=False,
+    )
 
     panel_baseline = SeasonalNaive(seasonality=52)
     panel_baseline.fit(y_panel_train, forecasting_horizon=13)
@@ -1198,8 +1199,9 @@ def _(mo):
 
     | Topic | Notebook |
     |-------|----------|
-    | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
     | Feature engineering | [`point/feature_forecasting.py`](/examples/point/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/) |
+    | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
+    | Class probability | [`point/class_proba_forecaster.py`](/examples/point/class_proba_forecaster/), [`metrics/class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) |
     | Interval forecasting | [`interval/interval_reduction.py`](/examples/interval/interval_reduction/), [`metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/) |
     | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/stationarity/decomposition/) |
     | Metrics guide | [`metrics/point_metrics.py`](/examples/metrics/point_metrics/), [`metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) |

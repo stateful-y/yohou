@@ -418,12 +418,201 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 9. Classification Accuracy (Hard Classification)
+
+    When forecasting **categorical outcomes** (e.g., weather, state transitions),
+    [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/) measures
+    the fraction of time steps where the predicted class matches the true class.
+
+    > **Caution**: Accuracy can be misleading on **imbalanced** datasets.  A model
+    > that always predicts the majority class can score high without learning
+    > anything useful. For imbalanced problems, prefer *soft* metrics like
+    > [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) or
+    > [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/),
+    > which evaluate the full probability distribution and penalize overconfident
+    > wrong predictions.
+    """)
+
+
+@app.cell(hide_code=True)
+def _():
+    from sklearn.tree import DecisionTreeClassifier
+
+    from yohou.class_proba import ClassProbaReductionForecaster
+    from yohou.datasets import fetch_air_quality_classification
+    from yohou.metrics import Accuracy
+
+    return (
+        Accuracy,
+        ClassProbaReductionForecaster,
+        DecisionTreeClassifier,
+        fetch_air_quality_classification,
+    )
+
+
+@app.cell
+def _(
+    ClassProbaReductionForecaster,
+    DecisionTreeClassifier,
+    LagTransformer,
+    fetch_air_quality_classification,
+    train_test_split,
+):
+    cls_data = fetch_air_quality_classification()
+    cls_y, cls_X = cls_data.y, cls_data.X
+    cls_y_train, cls_y_test, cls_X_train, cls_X_test = train_test_split(
+        cls_y,
+        cls_X,
+        test_size=200,
+        shuffle=False,
+    )
+    cls_fh = 24
+
+    cls_forecaster = ClassProbaReductionForecaster(
+        estimator=DecisionTreeClassifier(random_state=42),
+        feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
+    )
+    cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
+
+    # predict() returns hard class labels (argmax of probabilities)
+    cls_y_pred_labels = cls_forecaster.predict(
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
+    )
+    # predict_class_proba() returns the full probability distribution
+    cls_y_proba = cls_forecaster.predict_class_proba(
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
+    )
+
+    print(f"Classes: {cls_data.classes}")
+    print(f"\nHard predictions (predict):")
+    print(cls_y_pred_labels)
+    print(f"\nSoft predictions (predict_class_proba):")
+    print(cls_y_proba)
+    return cls_fh, cls_forecaster, cls_y_pred_labels, cls_y_proba, cls_y_test, cls_y_train
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Categorical Target Over Time
+
+    `plot_forecast` auto-detects categorical columns and renders a step chart.
+    Here we visualize the training and test target side by side.
+    """)
+    return
+
+
+@app.cell
+def _(cls_y_test, cls_y_train, plot_forecast):
+    plot_forecast(
+        cls_y_test,
+        cls_y_test,
+        y_train=cls_y_train,
+        n_history=100,
+        title="Air Quality Target (Categorical Time Series)",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Categorical Forecast vs Actual
+
+    The hard-label predictions from `predict()` are compared against the
+    true classes. Dashed lines show the forecast, solid lines the actual.
+    """)
+    return
+
+
+@app.cell
+def _(cls_y_pred_labels, cls_y_test, plot_forecast):
+    plot_forecast(
+        cls_y_test,
+        cls_y_pred_labels,
+        title="Categorical Forecast vs Actual",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Probability Forecast
+
+    The full probability distribution from `predict_class_proba()` is shown
+    as a stacked area chart. Diamond markers indicate the true class.
+    """)
+    return
+
+
+@app.cell
+def _(cls_y_proba, cls_y_test, plot_forecast):
+    plot_forecast(
+        cls_y_test,
+        cls_y_proba,
+        title="Class Probability Forecast",
+    )
+
+
+@app.cell
+def _(Accuracy, cls_y_proba, cls_y_test):
+    cls_y_truth = cls_y_test.head(len(cls_y_proba))
+
+    acc_all = Accuracy()
+    acc_all.fit(cls_y_truth)
+    print(f"Accuracy (scalar): {acc_all.score(cls_y_truth, cls_y_proba):.4f}")
+
+    # Timewise: see which time steps were correct
+    acc_tw = Accuracy(aggregation_method="timewise")
+    acc_tw.fit(cls_y_truth)
+    print("\nPer-timestep accuracy:")
+    print(acc_tw.score(cls_y_truth, cls_y_proba))
+    return (cls_y_truth,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Accuracy Over Time
+
+    Per-timestep accuracy for the 24-hour forecast window. A score of 1.0
+    means the argmax prediction matched the true class at that step.
+    """)
+    return
+
+
+@app.cell
+def _(Accuracy, cls_y_proba, cls_y_truth, plot_score_time_series):
+    plot_score_time_series(
+        Accuracy(),
+        cls_y_truth,
+        cls_y_proba,
+        title="Accuracy per Timestep",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    > **Hard vs Soft**: `Accuracy` scores 1.0 for a correct prediction and 0.0
+    > otherwise, regardless of confidence. A model that predicts the right class
+    > with 51% probability gets the same Accuracy as one that predicts with 99%.
+    > For calibration-aware evaluation, see the [soft classification metrics](/examples/metrics/class_proba_metrics/)
+    > (`LogLoss`, `BrierScore`).
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Key Takeaways
 
     - All point scorers follow `fit()` → `score()` pattern
     - Basic metrics (MAE, MSE, RMSE, MAPE, sMAPE, MedianAE) need no training data
     - Scaled metrics (MASE, RMSSE) fit on **training data** for normalization
     - `aggregation_method` controls granularity: `"all"`, `"timewise"`, `"componentwise"`
+    - [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/) evaluates hard classification correctness (use with care on imbalanced data)
     - Use [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) for temporal error analysis
     - Use [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/) for multi-model comparison
     """)
@@ -437,6 +626,7 @@ def _(mo):
     - **Interval metrics**: See [`interval_metrics.py`](/examples/metrics/interval_metrics/) for interval scoring
     - **Cross-validation**: See [Model Selection](/examples/#model-selection) for temporal CV with scoring
     - **Time weighting**: See [`time_weighted_scoring.py`](/examples/metrics/time_weighted_scoring/)
+    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for soft classification metrics (LogLoss, BrierScore) and reliability diagrams
     """)
 
 

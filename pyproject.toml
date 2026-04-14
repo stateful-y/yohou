@@ -25,13 +25,17 @@ dependencies = [
     "sklearn-wrap",
     "scipy>=1.13",
     "polars>=0.20",
-    "plotly>=5.19",
     "pydantic>=2.6",
-    "pyarrow>=14.0.0",
 ]
 
 [project.optional-dependencies]
-plotting = ["statsmodels>=0.14"]
+plotting = [
+    "anywidget>=0.9",
+    "plotly>=5.19",
+    "plotly-resampler>=0.11",
+    "pytz",
+    "statsmodels>=0.14",
+]
 
 [dependency-groups]
 dev = [
@@ -39,6 +43,7 @@ dev = [
     {include-group = "lint"},
     {include-group = "docs"},
     {include-group = "fix"},
+    {include-group = "examples"}
 ]
 tests = [
     "pytest>=8.3",
@@ -47,11 +52,10 @@ tests = [
     "pytest-xdist>=3.8",
     "covdefaults>=2.3",
     "hypothesis>=6.100",
-    "statsmodels>=0.14",
 ]
 lint = [
     "ruff>=0.8.0",
-    "ty>=0.0.12",
+    "ty>=0.0.29",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -67,7 +71,6 @@ fix = [
 examples = [
     "marimo>=0.19.0",
     "catboost>=1.2",
-    "statsmodels>=0.14",
     "yohou-optuna",
     "yohou-nixtla; python_version < '3.14'",
 ]
@@ -117,6 +120,7 @@ select = [
     "SIM", # flake8-simplify
     "PL",  # Pylint
     "T201", # Print statement
+    "D",   # pydocstyle (numpy convention, scoped to plotting)
 ]
 ignore = [
     "E203",   # space before : (needed for how black formats slicing)
@@ -132,8 +136,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415"]  # Allow assert statements, prints, magic values, and imports not at the top
-"docs/**/*" = ["T201", "ARG001", "PLW0603", "SIM105", "SIM108"]  # Allow prints, unused args, globals, and simplifiable patterns in documentation hooks
+"tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415", "D"]  # Allow assert statements, prints, magic values, imports not at the top, and no docstrings
+"docs/**/*" = ["T201", "ARG001", "PLW0603", "SIM105", "SIM108", "PLC0415"]  # Allow prints, unused args, globals, simplifiable patterns, and imports not at the top
+
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.ruff.lint.isort]
 known-first-party = ["yohou"]
@@ -149,6 +157,7 @@ ignore-module = false
 ignore-nested-functions = false
 ignore-nested-classes = true
 ignore-setters = false
+ignore-overloaded-functions = true
 fail-under = 100
 exclude = ["setup.py", "docs", "build", "tests", "*_version.py"]
 ignore-regex = ["^get$", "^mock_.*", ".*BaseClass.*"]
@@ -157,6 +166,7 @@ quiet = false
 whitelist-regex = []
 color = true
 omit-covered-files = false
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

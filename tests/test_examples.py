@@ -18,15 +18,12 @@ EXAMPLES_DIR = pathlib.Path(__file__).parent.parent / "examples"
 
 # Optional-dependency availability flags
 _has_yohou_optuna = importlib.util.find_spec("yohou_optuna") is not None
-_has_yohou_nixtla = importlib.util.find_spec("yohou_nixtla") is not None
 _has_statsmodels = importlib.util.find_spec("statsmodels") is not None
 _has_catboost = importlib.util.find_spec("catboost") is not None
 
 # Notebooks that require optional dependencies or have known issues, keyed by filename
 _NOTEBOOK_MARKS: dict[str, list[pytest.MarkDecorator]] = {
     "optuna_search.py": [pytest.mark.xfail(not _has_yohou_optuna, reason="requires yohou-optuna", strict=True)],
-    "nixtla_forecasters.py": [pytest.mark.xfail(not _has_yohou_nixtla, reason="requires yohou-nixtla", strict=True)],
-    "nixtla_panel.py": [pytest.mark.xfail(not _has_yohou_nixtla, reason="requires yohou-nixtla", strict=True)],
 }
 
 
@@ -109,4 +106,5 @@ class TestSubdirExamples:
     @pytest.mark.parametrize("notebook_file", _collect_notebooks("plotting"))
     def test_plotting_example(self, notebook_file: pathlib.Path) -> None:
         """Test that a plotting/ notebook example runs successfully."""
+        pytest.importorskip("plotly_resampler", reason="plotting extra not installed")
         _run_notebook(notebook_file)

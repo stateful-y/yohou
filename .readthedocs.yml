@@ -18,7 +18,7 @@ build:
       - uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
     install:
       # Sync doc-dependencies (the group "docs") and install the project itself
-      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --group docs
+      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --group docs --extra plotting
     post_install:
       # Pre-download all datasets so marimo HTML exports read from parquet cache
       # instead of downloading and parsing large TSF archives during the build
