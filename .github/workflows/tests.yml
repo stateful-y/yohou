@@ -186,7 +186,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Run docstring tests
-        run: nox -s test_docstrings
+        run: nox -s test_docstrings-3.11
 
 
   examples:
