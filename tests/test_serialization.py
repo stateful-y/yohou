@@ -41,6 +41,8 @@ _ESTIMATOR_KWARGS: dict[str, dict] = {
     },
     "SeasonalImputer": {"period": 7},
     "SlidingWindowFunctionTransformer": {"func": np.mean},
+    "VotingClassProbaForecaster": {"forecasters": []},
+    "VotingForecaster": {"forecasters": []},
 }
 
 # Estimators where nested sub-estimators make get_params() equality fail
@@ -58,6 +60,8 @@ _NESTED_ESTIMATORS = {
     "RandomizedSearchCV",
     "SimpleImputer",
     "SplitConformalForecaster",
+    "VotingClassProbaForecaster",
+    "VotingForecaster",
 }
 
 # Skip these: SklearnScaler/SklearnTransformer expect a class, not instance.

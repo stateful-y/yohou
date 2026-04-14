@@ -18,7 +18,7 @@ class TestAllEstimators:
     def test_all_estimators_total_count(self):
         """Test all_estimators returns correct total count."""
         estimators = all_estimators()
-        assert len(estimators) == 79
+        assert len(estimators) == 81
 
     def test_all_estimators_forecaster_filter(self):
         """Test forecaster type filter (matches estimator_type == 'forecaster')."""
