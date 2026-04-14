@@ -187,7 +187,7 @@ def test_examples(session: nox.Session) -> None:
     )
 
 
-@nox.session(venv_backend="uv")
+@nox.session(python=PYTHON_VERSIONS, venv_backend="uv")
 def test_docstrings(session: nox.Session) -> None:
     """Run docstring examples with pytest."""
     # Install dependencies
@@ -195,8 +195,7 @@ def test_docstrings(session: nox.Session) -> None:
         "uv",
         "sync",
         "--no-default-groups",
-        "--extra",
-        "plotting",
+        *_plotting_extras(session),
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -208,6 +207,7 @@ def test_docstrings(session: nox.Session) -> None:
         "--doctest-modules",
         "--doctest-continue-on-failure",
         "--no-cov",
+        *_plotting_ignores(session),
         "src/yohou",
         *session.posargs,
     )
