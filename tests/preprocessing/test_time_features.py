@@ -166,6 +166,23 @@ class TestFourierFeatureTransformerNonIntegerSeasonality:
         assert len(X_t) == len(X)
 
 
+class TestFourierFeatureTransformerMonthlyData:
+    """Tests for Fourier features on monthly/quarterly/yearly data."""
+
+    def test_monthly_data(self):
+        """Test Fourier features with monthly time interval."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2022, 1, 1), interval="1mo", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+
+        transformer = FourierFeatureTransformer(seasonality=12.0, harmonics=[1])
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        assert "fourier_12.0_sin_1" in X_t.columns
+        sin_vals = X_t["fourier_12.0_sin_1"].to_numpy()
+        np.testing.assert_allclose(sin_vals[0], sin_vals[12], atol=1e-10)
+
+
 class TestFourierFeatureTransformerContinuity:
     """Tests for boundary continuity of Fourier features."""
 
@@ -397,6 +414,47 @@ class TestTimeIndexTransformerPolynomial:
         X_t = transformer.transform(X)
 
         assert X_t["time_index_2"].dtype == pl.Float64
+
+
+class TestTimeIndexTransformerMonthlyData:
+    """Tests for TimeIndexTransformer on monthly/quarterly/yearly data."""
+
+    def test_monthly_data_index(self):
+        """Test time index with monthly interval."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2022, 1, 1), interval="1mo", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+
+        transformer = TimeIndexTransformer()
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        indices = X_t["time_index"].to_list()
+        assert indices[0] == 0
+        assert indices[12] == 12
+
+    def test_quarterly_data_index(self):
+        """Test time index with quarterly interval."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2022, 1, 1), interval="1q", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+
+        transformer = TimeIndexTransformer()
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        indices = X_t["time_index"].to_list()
+        assert indices[0] == 0
+
+    def test_yearly_data_index(self):
+        """Test time index with yearly interval."""
+        time = pl.datetime_range(start=datetime(2015, 1, 1), end=datetime(2025, 1, 1), interval="1y", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+
+        transformer = TimeIndexTransformer()
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        indices = X_t["time_index"].to_list()
+        assert indices[0] == 0
 
 
 class TestTimeIndexTransformerEdgeCases:

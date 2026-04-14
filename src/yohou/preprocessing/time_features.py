@@ -164,7 +164,7 @@ class FourierFeatureTransformer(BaseTransformer):
 
         interval = self.interval_
         time_diff = X["time"] - self.first_time_
-        if interval.endswith("mo") or interval.endswith("y") or interval.endswith("q"):
+        if interval.endswith("mo") or interval.endswith("y"):
             t = np.arange(len(X), dtype=np.float64)
         else:
             t = time_diff.dt.total_seconds().to_numpy().astype(np.float64)
@@ -338,7 +338,7 @@ class TimeIndexTransformer(BaseTransformer):
         interval = self.interval_
         time_diff = X["time"] - self.first_time_
 
-        if interval.endswith("mo") or interval.endswith("y") or interval.endswith("q"):
+        if interval.endswith("mo") or interval.endswith("y"):
             first_time = self.first_time_
             months = (
                 ((X["time"].dt.year() - first_time.year) * 12 + (X["time"].dt.month() - first_time.month))
@@ -347,8 +347,6 @@ class TimeIndexTransformer(BaseTransformer):
             )
             if interval.endswith("y"):
                 t = months / 12.0
-            elif interval.endswith("q"):
-                t = months / 3.0
             else:
                 mo_count = int(interval.replace("mo", ""))
                 t = months / mo_count

@@ -306,6 +306,25 @@ class TestHolidayFeatureTransformerBasic:
         with pytest.raises(ValueError, match="polars DataFrame"):
             transformer.fit(X)
 
+    def test_none_holidays_raises(self):
+        """Test ValueError when holidays is None."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 10), interval="1d", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+
+        transformer = HolidayFeatureTransformer()
+        with pytest.raises(ValueError, match="holidays must be provided"):
+            transformer.fit(X)
+
+    def test_wrong_date_dtype_raises(self):
+        """Test ValueError when date column has wrong dtype."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 10), interval="1d", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+        holidays = pl.DataFrame({"date": ["2020-01-05"]})
+
+        transformer = HolidayFeatureTransformer(holidays=holidays)
+        with pytest.raises(ValueError, match="Date or Datetime type"):
+            transformer.fit(X)
+
 
 class TestHolidayFeatureTransformerProximity:
     """Tests for proximity feature output."""
@@ -344,6 +363,34 @@ class TestHolidayFeatureTransformerProximity:
         since_last = X_t["holiday_days_since_last"].to_list()
         assert since_last[0] == 1  # Dec 26.
 
+    def test_days_to_next_only(self):
+        """Test days_to_next=True without days_since_last."""
+        time = pl.datetime_range(start=datetime(2020, 12, 23), end=datetime(2020, 12, 27), interval="1d", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+        holidays = pl.DataFrame({"date": [date(2020, 12, 25)]})
+
+        transformer = HolidayFeatureTransformer(holidays=holidays, days_to_next=True)
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        assert "holiday_days_to_next" in X_t.columns
+        assert "holiday_days_since_last" not in X_t.columns
+        assert X_t["holiday_days_to_next"][0] == 2
+
+    def test_days_since_last_only(self):
+        """Test days_since_last=True without days_to_next."""
+        time = pl.datetime_range(start=datetime(2020, 12, 26), end=datetime(2020, 12, 28), interval="1d", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+        holidays = pl.DataFrame({"date": [date(2020, 12, 25)]})
+
+        transformer = HolidayFeatureTransformer(holidays=holidays, days_since_last=True)
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        assert "holiday_days_since_last" in X_t.columns
+        assert "holiday_days_to_next" not in X_t.columns
+        assert X_t["holiday_days_since_last"][0] == 1
+
 
 class TestHolidayFeatureTransformerEdgeCases:
     """Edge case tests for HolidayFeatureTransformer."""
@@ -371,6 +418,34 @@ class TestHolidayFeatureTransformerEdgeCases:
         X_t = transformer.transform(X)
 
         assert all(v is None for v in X_t["holiday_days_to_next"].to_list())
+        assert all(v is None for v in X_t["holiday_days_since_last"].to_list())
+
+    def test_empty_holidays_days_to_next_only(self):
+        """Test empty holidays with only days_to_next produces nulls."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 5), interval="1d", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+        holidays = pl.DataFrame({"date": pl.Series([], dtype=pl.Date)})
+
+        transformer = HolidayFeatureTransformer(holidays=holidays, days_to_next=True)
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        assert "holiday_days_to_next" in X_t.columns
+        assert "holiday_days_since_last" not in X_t.columns
+        assert all(v is None for v in X_t["holiday_days_to_next"].to_list())
+
+    def test_empty_holidays_days_since_last_only(self):
+        """Test empty holidays with only days_since_last produces nulls."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 5), interval="1d", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+        holidays = pl.DataFrame({"date": pl.Series([], dtype=pl.Date)})
+
+        transformer = HolidayFeatureTransformer(holidays=holidays, days_since_last=True)
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        assert "holiday_days_since_last" in X_t.columns
+        assert "holiday_days_to_next" not in X_t.columns
         assert all(v is None for v in X_t["holiday_days_since_last"].to_list())
 
     def test_all_dates_are_holidays(self):
