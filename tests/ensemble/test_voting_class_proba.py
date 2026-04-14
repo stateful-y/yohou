@@ -591,6 +591,159 @@ class TestVotingClassProbaConsistency:
             ensemble._validate_classes_consistent()
 
 
+class TestVotingClassProbaObserveRewind:
+    """Tests for observe, rewind, and observe_predict delegation."""
+
+    def test_observe_and_predict(self, class_proba_y_X_factory):
+        """Test that observe delegates to all base forecasters."""
+        y, X = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("dt_1", _make_class_proba_forecaster()),
+                (
+                    "dt_2",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=123),
+                    ),
+                ),
+            ],
+            voting="soft",
+        )
+        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+        forecaster.observe(y=y[80:100], X=X[80:100])
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        assert len(y_pred) == 3
+
+    def test_rewind_and_predict(self, class_proba_y_X_factory):
+        """Test that rewind delegates to all base forecasters."""
+        y, X = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("dt_1", _make_class_proba_forecaster()),
+                (
+                    "dt_2",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=123),
+                    ),
+                ),
+            ],
+            voting="soft",
+        )
+        forecaster.fit(y[:90], X[:90], forecasting_horizon=3)
+        forecaster.observe(y=y[90:100], X=X[90:100])
+        forecaster.rewind(y=y[:90], X=X[:90])
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        assert len(y_pred) == 3
+
+    def test_observe_predict_class_proba_soft(self, class_proba_y_X_factory):
+        """Test observe_predict_class_proba exercises _predict_class_proba_one (soft)."""
+        y, X = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("dt_1", _make_class_proba_forecaster()),
+                (
+                    "dt_2",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=123),
+                    ),
+                ),
+            ],
+            voting="soft",
+        )
+        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X=X[80:90], forecasting_horizon=3)
+        assert len(y_proba) > 0
+        proba_cols = [c for c in y_proba.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
+
+    def test_observe_predict_class_proba_hard(self, class_proba_y_X_factory):
+        """Test observe_predict_class_proba exercises _predict_class_proba_one (hard)."""
+        y, X = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("dt_1", _make_class_proba_forecaster()),
+                (
+                    "dt_2",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=123),
+                    ),
+                ),
+                (
+                    "dt_3",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=999),
+                    ),
+                ),
+            ],
+            voting="hard",
+        )
+        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X=X[80:90], forecasting_horizon=3)
+        assert len(y_proba) > 0
+        proba_cols = [c for c in y_proba.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
+
+    def test_predict_class_proba_one_soft(self, class_proba_y_X_factory):
+        """Test _predict_class_proba_one directly for soft voting."""
+        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("dt_1", _make_class_proba_forecaster()),
+                (
+                    "dt_2",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=123),
+                    ),
+                ),
+            ],
+            voting="soft",
+            weights=[1.0, 3.0],
+        )
+        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+
+        y_proba = forecaster._predict_class_proba_one(panel_group_names=None)
+        proba_cols = [c for c in y_proba.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
+        assert "time" in y_proba.columns
+
+    def test_predict_class_proba_one_hard(self, class_proba_y_X_factory):
+        """Test _predict_class_proba_one directly for hard voting."""
+        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("dt_1", _make_class_proba_forecaster()),
+                (
+                    "dt_2",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=123),
+                    ),
+                ),
+                (
+                    "dt_3",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=999),
+                    ),
+                ),
+            ],
+            voting="hard",
+        )
+        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+
+        y_proba = forecaster._predict_class_proba_one(panel_group_names=None)
+        proba_cols = [c for c in y_proba.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
+        # Hard voting should produce one-hot probabilities
+        for col in proba_cols:
+            values = y_proba[col].to_numpy()
+            assert np.all((values == 0.0) | (values == 1.0))
+
+
 class TestVotingClassProbaSklearn:
     """Tests for sklearn compatibility."""
 

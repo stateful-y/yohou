@@ -496,6 +496,208 @@ class TestVotingForecasterInterval:
         assert not hasattr(forecaster, "predict_interval")
 
 
+class TestVotingForecasterObserveRewind:
+    """Tests for observe, rewind, observe_predict, and observe_predict_interval."""
+
+    def test_observe_and_predict(self, y_X_factory):
+        """Test that observe delegates to all base forecasters."""
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0, seed=42)
+
+        forecaster = VotingForecaster(
+            forecasters=[
+                ("n1", SeasonalNaive(seasonality=1)),
+                ("n7", SeasonalNaive(seasonality=7)),
+            ],
+            method="mean",
+        )
+        forecaster.fit(y[:40], forecasting_horizon=3)
+
+        # observe then predict should work
+        forecaster.observe(y=y[40:50])
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        assert len(y_pred) == 3
+
+    def test_rewind_and_predict(self, y_X_factory):
+        """Test that rewind delegates to all base forecasters."""
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0, seed=42)
+
+        forecaster = VotingForecaster(
+            forecasters=[
+                ("n1", SeasonalNaive(seasonality=1)),
+                ("n7", SeasonalNaive(seasonality=7)),
+            ],
+            method="mean",
+        )
+        forecaster.fit(y[:50], forecasting_horizon=3)
+        forecaster.observe(y=y[50:55])
+
+        # rewind back to fit data
+        forecaster.rewind(y=y[:50])
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        assert len(y_pred) == 3
+
+    def test_observe_predict_shortcut(self, y_X_factory):
+        """Test observe_predict convenience method."""
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0, seed=42)
+
+        forecaster = VotingForecaster(
+            forecasters=[
+                ("n1", SeasonalNaive(seasonality=1)),
+                ("n7", SeasonalNaive(seasonality=7)),
+            ],
+            method="mean",
+        )
+        forecaster.fit(y[:40], forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(y=y[40:50], forecasting_horizon=3)
+        assert len(y_pred) == 3
+
+    def test_observe_predict_interval_shortcut(self, y_X_factory):
+        """Test observe_predict_interval convenience method."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+
+        base_forecasters = [
+            (
+                "conf_1",
+                SplitConformalForecaster(
+                    point_forecaster=SeasonalNaive(seasonality=1),
+                    calibration_size=10,
+                ),
+            ),
+            (
+                "conf_7",
+                SplitConformalForecaster(
+                    point_forecaster=SeasonalNaive(seasonality=7),
+                    calibration_size=10,
+                ),
+            ),
+        ]
+
+        ensemble = VotingForecaster(
+            forecasters=base_forecasters,
+            method="mean",
+            interval_strategy="envelope",
+        )
+        ensemble.fit(y[:70], forecasting_horizon=3)
+        y_pred = ensemble.observe_predict_interval(y=y[70:80], forecasting_horizon=3)
+        assert len(y_pred) == 3
+
+        lower_cols = [c for c in y_pred.columns if "_lower_" in c]
+        assert len(lower_cols) > 0
+
+
+class TestVotingForecasterIntervalWeighted:
+    """Tests for interval aggregation with weights (mean strategy + weights)."""
+
+    def test_weighted_interval_mean_strategy(self, y_X_factory):
+        """Test that mean strategy with weights uses np.average for intervals."""
+        y, _ = y_X_factory(length=80, n_targets=1, n_features=0, seed=42)
+        y_train = y[:60]
+
+        base_forecasters = [
+            (
+                "conf_1",
+                SplitConformalForecaster(
+                    point_forecaster=SeasonalNaive(seasonality=1),
+                    calibration_size=10,
+                ),
+            ),
+            (
+                "conf_7",
+                SplitConformalForecaster(
+                    point_forecaster=SeasonalNaive(seasonality=7),
+                    calibration_size=10,
+                ),
+            ),
+        ]
+
+        weights = [1.0, 3.0]
+        ensemble = VotingForecaster(
+            forecasters=base_forecasters,
+            method="mean",
+            weights=weights,
+            interval_strategy="mean",
+        )
+        ensemble.fit(y_train, forecasting_horizon=3)
+        y_pred = ensemble.predict_interval(forecasting_horizon=3)
+
+        # Compute expected weighted average
+        preds = []
+        for _, f in base_forecasters:
+            fitted = clone(f).fit(y_train, forecasting_horizon=3)
+            preds.append(fitted.predict_interval(forecasting_horizon=3))
+
+        for col in y_pred.columns:
+            if col in ("observed_time", "time"):
+                continue
+            vals = np.column_stack([p[col].to_numpy() for p in preds])
+            expected = np.average(vals, axis=1, weights=weights)
+            np.testing.assert_allclose(y_pred[col].to_numpy(), expected)
+
+
+class TestVotingForecasterValidation:
+    """Tests for input validation edge cases."""
+
+    def test_malformed_tuple_raises(self, y_X_factory):
+        """Test that non-tuple entries raise ValueError."""
+        y, _ = y_X_factory(length=50, n_targets=1, n_features=0, seed=42)
+
+        forecaster = VotingForecaster(
+            forecasters=[SeasonalNaive(seasonality=1)],
+        )
+        with pytest.raises(ValueError, match="must be a.*tuple"):
+            forecaster.fit(y[:40], forecasting_horizon=3)
+
+    def test_non_string_name_raises(self, y_X_factory):
+        """Test that non-string name raises ValueError."""
+        y, _ = y_X_factory(length=50, n_targets=1, n_features=0, seed=42)
+
+        forecaster = VotingForecaster(
+            forecasters=[(42, SeasonalNaive(seasonality=1))],
+        )
+        with pytest.raises(ValueError, match="must be a string"):
+            forecaster.fit(y[:40], forecasting_horizon=3)
+
+    def test_non_forecaster_raises(self, y_X_factory):
+        """Test that non-BaseForecaster raises ValueError."""
+        y, _ = y_X_factory(length=50, n_targets=1, n_features=0, seed=42)
+
+        forecaster = VotingForecaster(
+            forecasters=[("bad", "not_a_forecaster")],
+        )
+        with pytest.raises(ValueError, match="must be a BaseForecaster"):
+            forecaster.fit(y[:40], forecasting_horizon=3)
+
+    def test_named_forecasters_property(self, y_X_factory):
+        """Test that named_forecasters_ returns a Bunch with correct keys."""
+        y, _ = y_X_factory(length=50, n_targets=1, n_features=0, seed=42)
+
+        forecaster = VotingForecaster(
+            forecasters=[
+                ("n1", SeasonalNaive(seasonality=1)),
+                ("n7", SeasonalNaive(seasonality=7)),
+            ],
+        )
+        forecaster.fit(y[:40], forecasting_horizon=3)
+
+        named = forecaster.named_forecasters_
+        assert hasattr(named, "n1")
+        assert hasattr(named, "n7")
+
+    def test_forecasters_setter(self, y_X_factory):
+        """Test that _forecasters setter updates forecasters attribute."""
+        forecaster = VotingForecaster(
+            forecasters=[
+                ("n1", SeasonalNaive(seasonality=1)),
+            ],
+        )
+        new_forecasters = [
+            ("a", SeasonalNaive(seasonality=2)),
+            ("b", SeasonalNaive(seasonality=3)),
+        ]
+        forecaster._forecasters = new_forecasters
+        assert forecaster.forecasters == new_forecasters
+
+
 class TestVotingForecasterSklearn:
     """Tests for sklearn compatibility."""
 

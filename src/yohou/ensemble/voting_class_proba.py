@@ -310,7 +310,7 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         panel_group_names: list[str],
         **params,
     ) -> pl.DataFrame:
-        """Produce aggregated probability forecasts.
+        """Produce aggregated probability forecasts for one step.
 
         Parameters
         ----------
@@ -325,30 +325,6 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
             Aggregated probability predictions.
 
         """
-        if self.voting == "soft":
-            return self._soft_vote_proba(panel_group_names=panel_group_names, **params)
-        return self._hard_vote_proba(panel_group_names=panel_group_names, **params)
-
-    def _soft_vote_proba(
-        self,
-        panel_group_names: list[str],
-        **params,
-    ) -> pl.DataFrame:
-        """Compute weighted average of class probabilities.
-
-        Parameters
-        ----------
-        panel_group_names : list of str
-            Panel group names to predict for.
-        **params : dict
-            Metadata routing parameters.
-
-        Returns
-        -------
-        pl.DataFrame
-            Averaged probability predictions.
-
-        """
         predictions = []
         for _name, forecaster in self.forecasters_:
             y_proba = forecaster.predict_class_proba(  # ty: ignore[unresolved-attribute]
@@ -360,67 +336,39 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         time_df = predictions[0].select(["observed_time", "time"])
         proba_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
 
-        agg_exprs = []
-        for col in proba_cols:
-            values = np.column_stack([pred[col].to_numpy() for pred in predictions])
+        if self.voting == "soft":
+            agg_exprs = []
+            for col in proba_cols:
+                values = np.column_stack([pred[col].to_numpy() for pred in predictions])
+                if self.weights_ is not None:
+                    aggregated = np.average(values, axis=1, weights=self.weights_)
+                else:
+                    aggregated = np.mean(values, axis=1)
+                agg_exprs.append(pl.Series(name=col, values=aggregated))
+            return time_df.with_columns(agg_exprs)
 
-            if self.weights_ is not None:
-                aggregated = np.average(values, axis=1, weights=self.weights_)
-            else:
-                aggregated = np.mean(values, axis=1)
-
-            agg_exprs.append(pl.Series(name=col, values=aggregated))
-
-        return time_df.with_columns(agg_exprs)
-
-    def _hard_vote_proba(
-        self,
-        panel_group_names: list[str],
-        **params,
-    ) -> pl.DataFrame:
-        """Compute majority vote and convert to one-hot probabilities.
-
-        Parameters
-        ----------
-        panel_group_names : list of str
-            Panel group names to predict for.
-        **params : dict
-            Metadata routing parameters.
-
-        Returns
-        -------
-        pl.DataFrame
-            One-hot probability predictions from majority vote.
-
-        """
-        predictions = []
+        # Hard voting: majority vote converted to one-hot probabilities
+        # Collect argmax predictions from each forecaster
+        hard_predictions = []
         for _name, forecaster in self.forecasters_:
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
                 panel_group_names=panel_group_names,
                 **params,
             )
-            predictions.append(y_pred)
+            hard_predictions.append(y_pred)
 
-        time_df = predictions[0].select(["observed_time", "time"])
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
-
+        target_cols = [c for c in hard_predictions[0].columns if c not in ("observed_time", "time")]
         result = time_df.clone()
         for target_col in target_cols:
             class_labels = self.classes_[target_col]
-            n_rows = len(predictions[0])
-
-            # Count votes for each row
+            n_rows = len(hard_predictions[0])
             winners = []
             for row_idx in range(n_rows):
-                votes = [pred[target_col][row_idx] for pred in predictions]
+                votes = [pred[target_col][row_idx] for pred in hard_predictions]
                 vote_counts = Counter(votes)
-                # Most common; ties broken by Counter ordering (insertion order)
-                # then by sorted class order for determinism
                 max_count = max(vote_counts.values())
                 candidates = sorted(label for label, count in vote_counts.items() if count == max_count)
                 winners.append(candidates[0])
-
-            # Build one-hot probability columns
             for label in class_labels:
                 col_name = f"{target_col}_proba_{label}"
                 proba_values = [1.0 if w == label else 0.0 for w in winners]

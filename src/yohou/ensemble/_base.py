@@ -179,50 +179,6 @@ class _BaseEnsembleForecaster:
 
         return fitted
 
-    def _observe_forecasters(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None,
-        **params,
-    ) -> None:
-        """Delegate observe to all successfully fitted forecasters.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            New target observations.
-        X : pl.DataFrame or None
-            New exogenous observations.
-        **params : dict
-            Metadata routing parameters.
-
-        """
-        check_is_fitted(self, ["forecasters_"])
-        for _name, forecaster in self.forecasters_:  # ty: ignore[unresolved-attribute]
-            forecaster.observe(y=y, X=X, **params)
-
-    def _rewind_forecasters(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None,
-        **params,
-    ) -> None:
-        """Delegate rewind to all successfully fitted forecasters.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target data to rewind to.
-        X : pl.DataFrame or None
-            Exogenous data to rewind to.
-        **params : dict
-            Metadata routing parameters.
-
-        """
-        check_is_fitted(self, ["forecasters_"])
-        for _name, forecaster in self.forecasters_:  # ty: ignore[unresolved-attribute]
-            forecaster.rewind(y=y, X=X, **params)
-
     @property
     def named_forecasters_(self) -> Bunch:
         """Access fitted forecasters by name.
