@@ -67,7 +67,7 @@ class FourierFeatureTransformer(BaseTransformer):
     >>> X = pl.DataFrame({"time": time, "value": range(len(time))})
     >>> transformer = FourierFeatureTransformer(seasonality=7.0, harmonics=[1, 2])
     >>> transformer.fit(X)
-    FourierFeatureTransformer(harmonics=[1, 2], seasonality=7.0)
+    FourierFeatureTransformer(harmonics=[1, 2])
     >>> X_t = transformer.transform(X)
     >>> "fourier_7.0_sin_1" in X_t.columns
     True

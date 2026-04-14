@@ -294,7 +294,7 @@ class HolidayFeatureTransformer(BaseTransformer):
 
     Parameters
     ----------
-    holidays : pl.DataFrame
+    holidays : pl.DataFrame or None, default=None
         DataFrame with a ``"date"`` column containing holiday dates.
         The column must be of ``Date`` or ``Datetime`` type.
     days_to_next : bool, default=False
@@ -344,7 +344,7 @@ class HolidayFeatureTransformer(BaseTransformer):
 
     def __init__(
         self,
-        holidays: pl.DataFrame,
+        holidays: pl.DataFrame | None = None,
         days_to_next: bool = False,
         days_since_last: bool = False,
     ):
@@ -376,6 +376,8 @@ class HolidayFeatureTransformer(BaseTransformer):
             wrong dtype.
 
         """
+        if self.holidays is None:
+            raise ValueError("holidays must be provided as a polars DataFrame, got None")
         if not isinstance(self.holidays, pl.DataFrame):
             raise ValueError(f"holidays must be a polars DataFrame, got {type(self.holidays).__name__}")
         if "date" not in self.holidays.columns:
