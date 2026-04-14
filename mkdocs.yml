@@ -159,6 +159,7 @@ nav:
     - pages/api/index.md
     - yohou.base: pages/api/base.md
     - yohou.compose: pages/api/compose.md
+    - yohou.ensemble: pages/api/ensemble.md
     - yohou.point: pages/api/point.md
     - yohou.interval: pages/api/interval.md
     - yohou.metrics: pages/api/metrics.md
@@ -175,6 +176,7 @@ nav:
     - Point Forecasting: pages/examples/point.md
     - Interval Forecasting: pages/examples/interval.md
     - Composition: pages/examples/compose.md
+    - Ensemble: pages/examples/ensemble.md
     - Preprocessing: pages/examples/preprocessing.md
     - Stationarity: pages/examples/stationarity.md
     - Metrics: pages/examples/metrics.md
