@@ -40,6 +40,15 @@ Time series transformers for feature engineering, scaling, imputation, outlier h
 | [`Normalizer`](generated/yohou.preprocessing.sklearn_wrappers.Normalizer.md) | Normalize samples individually to unit norm. |
 | [`RobustScaler`](generated/yohou.preprocessing.sklearn_wrappers.RobustScaler.md) | Scale features using statistics that are robust to outliers. |
 
+### Calendar and time features
+
+| Name | Description |
+| --- | --- |
+| [`CalendarFeatureTransformer`](generated/yohou.preprocessing.calendar.CalendarFeatureTransformer.md) | Extract calendar-based features (month, day of week, etc.) from the time column. |
+| [`HolidayFeatureTransformer`](generated/yohou.preprocessing.calendar.HolidayFeatureTransformer.md) | Binary holiday indicator from a user-provided DataFrame of dates. |
+| [`FourierFeatureTransformer`](generated/yohou.preprocessing.time_features.FourierFeatureTransformer.md) | Generate Fourier sin/cos harmonics at a specified seasonal period. |
+| [`TimeIndexTransformer`](generated/yohou.preprocessing.time_features.TimeIndexTransformer.md) | Convert the time column to a numeric index with optional polynomial terms. |
+
 ### Feature engineering
 
 | Name | Description |
