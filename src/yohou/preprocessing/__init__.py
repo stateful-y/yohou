@@ -1,5 +1,6 @@
 """Preprocessing transformers for stationarization and feature engineering."""
 
+from .calendar import CalendarFeatureTransformer, HolidayFeatureTransformer
 from .function import FunctionTransformer
 from .imputation import (
     SeasonalImputer,
@@ -35,6 +36,7 @@ from .sklearn_wrappers import (
     SplineTransformer,
     StandardScaler,
 )
+from .time_features import FourierFeatureTransformer, TimeIndexTransformer
 from .window import (
     ExponentialMovingAverage,
     LagTransformer,
@@ -78,4 +80,9 @@ __all__ = [
     # Outlier handling
     "OutlierThresholdHandler",
     "OutlierPercentileHandler",
+    # Calendar and time features
+    "CalendarFeatureTransformer",
+    "HolidayFeatureTransformer",
+    "FourierFeatureTransformer",
+    "TimeIndexTransformer",
 ]
