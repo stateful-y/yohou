@@ -1111,7 +1111,6 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             Sorted list of unique coverage rates.
 
         """
-
         rates = set()
         # Match both global (value_lower_0.95) and panel (sales__store_1_lower_0.95) patterns
         pattern = re.compile(r"^(.+)_(lower|upper)_(\d+\.?\d*)$")

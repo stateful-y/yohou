@@ -419,7 +419,7 @@ class AbsoluteGammaResidual(GammaResidual):
     """
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
-        """Compute absolute gamma residual conformity scores.
+        r"""Compute absolute gamma residual conformity scores.
 
         Parameters
         ----------

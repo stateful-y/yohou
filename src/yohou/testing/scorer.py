@@ -446,7 +446,6 @@ def check_scorer_parameter_validation(
         If invalid value is accepted
 
     """
-
     # Create scorer instance to check its type
     scorer = scorer_class()
     tags = scorer.__sklearn_tags__()

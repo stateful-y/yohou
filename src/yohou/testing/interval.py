@@ -36,7 +36,6 @@ def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame, X_test: 
         If interval column naming is incorrect
 
     """
-
     forecasting_horizon = min(3, len(y_test))
 
     # Call predict_interval for interval forecasters
@@ -94,7 +93,6 @@ def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame
         If upper bounds are less than lower bounds
 
     """
-
     forecasting_horizon = min(3, len(y_test))
     y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon, X=X_test)
 

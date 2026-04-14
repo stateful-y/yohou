@@ -234,21 +234,21 @@ This runs all notebooks in the `examples/` directory as Python scripts in parall
 Mark your tests appropriately to help maintain fast feedback during development:
 
 - Use `@pytest.mark.slow` for tests that:
-  - Take more than a few seconds to run
-  - Perform heavy computations
-  - Make network requests
-  - Access external resources
+    - Take more than a few seconds to run
+    - Perform heavy computations
+    - Make network requests
+    - Access external resources
 
 - Use `@pytest.mark.integration` for tests that:
-  - Run subprocess commands
-  - Test multiple components working together
-  - Require complex setup or teardown
-  - Exercise end-to-end workflows
+    - Run subprocess commands
+    - Test multiple components working together
+    - Require complex setup or teardown
+    - Exercise end-to-end workflows
 
 - `@pytest.mark.example` is used in `tests/test_examples.py` to:
-  - Validate example notebooks execute without errors
-  - Run notebooks in the `examples/` directory
-  - Test interactive documentation and tutorials
+    - Validate example notebooks execute without errors
+    - Run notebooks in the `examples/` directory
+    - Test interactive documentation and tutorials
 
 Example:
 
@@ -282,8 +282,8 @@ Follow these conventions when writing tests:
 The CI pipeline uses a two-tier testing strategy optimized for fast feedback:
 
 1. **Fast tests** (`test-fast` job): Runs on minimum and maximum Python versions (3.11, 3.14) only:
-   - **Draft PRs**: Ubuntu only - Quick feedback in ~2-3 minutes
-   - **Ready PRs/Main**: All OS - Ubuntu, Windows, macOS - Cross-platform validation
+    - **Draft PRs**: Ubuntu only - Quick feedback in ~2-3 minutes
+    - **Ready PRs/Main**: All OS - Ubuntu, Windows, macOS - Cross-platform validation
 
 2. **Full test suite** (`test-full` job): Runs all tests (fast + slow + integration) on Ubuntu across all Python versions (3.11-3.14) when the PR is not in draft mode or on the main branch. This comprehensive validation includes coverage reporting on the minimum supported Python version.
 
@@ -612,31 +612,31 @@ graph LR
     ```
 
 2. **Automated changelog workflow** (`changelog.yml`):
-   - Generates changelog from conventional commits using git-cliff
-   - Creates a **Pull Request** with the updated CHANGELOG.md
-   - Builds the package distributions (wheels and sdist) for **immediate validation**
-   - Stores distributions as workflow artifacts (reused later to avoid rebuilding)
+    - Generates changelog from conventional commits using git-cliff
+    - Creates a **Pull Request** with the updated CHANGELOG.md
+    - Builds the package distributions (wheels and sdist) for **immediate validation**
+    - Stores distributions as workflow artifacts (reused later to avoid rebuilding)
 
 3. **Review and merge the changelog PR:**
-   - A maintainer reviews the generated changelog
-   - Once approved, merge the PR to main
+    - A maintainer reviews the generated changelog
+    - Once approved, merge the PR to main
 
 4. **Automated release workflow** (`publish-release.yml`):
-   - Creates a GitHub Release with generated release notes
-   - Attaches distribution files to the release
-   - **Waits for manual approval** before proceeding to PyPI
+    - Creates a GitHub Release with generated release notes
+    - Attaches distribution files to the release
+    - **Waits for manual approval** before proceeding to PyPI
 
 5. **Manual approval for PyPI publishing:**
-   - Designated reviewers receive a notification
-   - Review the GitHub Release to verify everything is correct
-   - Approve the deployment to publish to PyPI
-   - Package is published using Trusted Publishing (OIDC, no tokens needed)
+    - Designated reviewers receive a notification
+    - Review the GitHub Release to verify everything is correct
+    - Approve the deployment to publish to PyPI
+    - Package is published using Trusted Publishing (OIDC, no tokens needed)
 
 6. **Release notes generation:**
-   - All commits since the last tag are analyzed
-   - Commits are grouped by type (Added, Fixed, Documentation, etc.)
-   - Only commits following conventional format are included
-   - Breaking changes are highlighted
+    - All commits since the last tag are analyzed
+    - Commits are grouped by type (Added, Fixed, Documentation, etc.)
+    - Only commits following conventional format are included
+    - Breaking changes are highlighted
 
 ### Version Numbering
 

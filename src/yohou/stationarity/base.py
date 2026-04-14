@@ -96,7 +96,6 @@ class _BaseTrendForecaster(BasePointForecaster):
             Transformed features.
 
         """
-
         y_t, X_t = super()._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
 
         # Panel data
@@ -318,7 +317,8 @@ class _BaseTrendForecaster(BasePointForecaster):
             y_pred = []
             for panel_group_name in panel_group_names:
                 X_time_indices_pred = (
-                    self._get_time_indices(self.fit_forecasting_horizon_, panel_group_name=panel_group_name)
+                    self
+                    ._get_time_indices(self.fit_forecasting_horizon_, panel_group_name=panel_group_name)
                     .to_numpy()
                     .reshape(-1, 1)
                 )

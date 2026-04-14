@@ -30,7 +30,7 @@ repos:
         exclude: .*_version\.py$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.9
+    rev: v0.15.10
     hooks:
       # Run the linter
       - id: ruff
@@ -38,19 +38,12 @@ repos:
       # Run the formatter
       - id: ruff-format
 
-  # Markdown linting and formatting with rumdl
-  - repo: https://github.com/rvben/rumdl-pre-commit
-    rev: v0.1.33
-    hooks:
-      - id: rumdl
-      - id: rumdl-fmt
-
   # Type checking with ty
   - repo: local
     hooks:
       - id: ty
         name: ty
-        entry: uv run ty check src
+        entry: ty check src
         language: system
         types: [python]
         files: ^src/
@@ -58,7 +51,7 @@ repos:
 
   # Markdown linting and formatting with rumdl
   - repo: https://github.com/rvben/rumdl-pre-commit
-    rev: v0.1.33
+    rev: v0.1.68
     hooks:
       - id: rumdl
       - id: rumdl-fmt

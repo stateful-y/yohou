@@ -17,7 +17,7 @@ __all__ = [
 
 
 class EmpiricalCoverage(BaseIntervalScorer):
-    """Empirical coverage rate for prediction intervals.
+    r"""Empirical coverage rate for prediction intervals.
 
     Measures the proportion of true values falling within the predicted
     intervals. A well-calibrated forecaster should achieve coverage close
@@ -221,7 +221,7 @@ class EmpiricalCoverage(BaseIntervalScorer):
 
 
 class MeanIntervalWidth(BaseIntervalScorer):
-    """Mean width of prediction intervals.
+    r"""Mean width of prediction intervals.
 
     Measures the average width of prediction intervals. Narrower intervals are
     preferred (more informative), provided coverage is maintained.
@@ -397,7 +397,7 @@ class MeanIntervalWidth(BaseIntervalScorer):
 
 
 class IntervalScore(BaseIntervalScorer):
-    """Interval Score (Winkler Score) for prediction intervals.
+    r"""Interval Score (Winkler Score) for prediction intervals.
 
     Combines interval width with penalties for observations falling outside
     the interval. Balances sharpness and coverage in a single metric.
@@ -548,13 +548,15 @@ class IntervalScore(BaseIntervalScorer):
 
                     # Penalty terms (need to extract series from expressions)
                     lower_penalty = (
-                        pl.when(y_truth[col] < y_pred[lower_col])
+                        pl
+                        .when(y_truth[col] < y_pred[lower_col])
                         .then((2.0 / rate) * (y_pred[lower_col] - y_truth[col]))
                         .otherwise(0.0)
                     )
 
                     upper_penalty = (
-                        pl.when(y_truth[col] > y_pred[upper_col])
+                        pl
+                        .when(y_truth[col] > y_pred[upper_col])
                         .then((2.0 / rate) * (y_truth[col] - y_pred[upper_col]))
                         .otherwise(0.0)
                     )
@@ -595,7 +597,7 @@ class IntervalScore(BaseIntervalScorer):
 
 
 class PinballLoss(BaseIntervalScorer):
-    """Pinball Loss (Quantile Score) for prediction intervals.
+    r"""Pinball Loss (Quantile Score) for prediction intervals.
 
     Evaluates quantile forecasts with asymmetric penalty. Each interval bound
     corresponds to a quantile: lower bound = (1-α)/2, upper bound = (1+α)/2.
@@ -820,7 +822,7 @@ class PinballLoss(BaseIntervalScorer):
 
 
 class CalibrationError(BaseIntervalScorer):
-    """Calibration Error for prediction intervals.
+    r"""Calibration Error for prediction intervals.
 
     Measures the discrepancy between nominal coverage rate and empirical coverage
     across different rates. Indicates if intervals are well-calibrated.

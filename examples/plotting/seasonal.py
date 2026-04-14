@@ -25,25 +25,29 @@ def _():
 @app.cell(hide_code=True)
 def _():
     from yohou.datasets import (
+        fetch_electricity_demand,
         fetch_sunspot,
         fetch_tourism_monthly,
         fetch_tourism_quarterly,
     )
     from yohou.plotting import (
         plot_autocorrelation,
-        plot_components,
+        plot_decomposition,
         plot_partial_autocorrelation,
+        plot_seasonal_heatmap,
         plot_seasonality,
         plot_subseasonality,
     )
 
     return (
+        fetch_electricity_demand,
         fetch_sunspot,
         fetch_tourism_monthly,
         fetch_tourism_quarterly,
         plot_autocorrelation,
-        plot_components,
+        plot_decomposition,
         plot_partial_autocorrelation,
+        plot_seasonal_heatmap,
         plot_seasonality,
         plot_subseasonality,
     )
@@ -60,7 +64,8 @@ def _(mo):
     - Inspecting subseasonal structure with [`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)
     - Identifying autocorrelation and partial autocorrelation patterns for AR/MA order selection
     - Applying these diagnostics to monthly, quarterly, and long-cycle datasets
-    - STL decomposition with [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/) and `stl_kwargs` tuning
+    - Visualising seasonal patterns with 2-D heatmaps via [`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/)
+    - STL decomposition with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) and flat decomposition parameters
 
     ## Prerequisites
 
@@ -145,8 +150,8 @@ def _(mo):
     ## 2. Subseries Analysis
 
     [`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/) creates one mini-plot per season category (e.g. January
-    values across all years). Toggle **show_mean** for a horizontal reference, and
-    adjust **n_cols** to change the grid layout.
+    values across all years). Use **kind** to control the visualization style
+    and toggle **show_mean** for a horizontal reference.
     """)
 
 
@@ -156,17 +161,7 @@ def _(plot_subseasonality, tourism_monthly):
         tourism_monthly,
         seasonality="month",
         show_mean=True,
-        title="Subseries - Monthly with Mean Line",
-    )
-
-
-@app.cell
-def _(plot_subseasonality, tourism_monthly):
-    plot_subseasonality(
-        tourism_monthly,
-        seasonality="quarter",
-        facet_n_cols=2,
-        title="Subseries - Quarterly (2-Column Grid)",
+        title="Subseries - Mean (default)",
     )
 
 
@@ -175,8 +170,29 @@ def _(plot_subseasonality, tourism_monthly):
     plot_subseasonality(
         tourism_monthly,
         seasonality="month",
-        show_mean=False,
-        title="Subseries - Monthly, No Mean Line",
+        kind="lines",
+        title="Subseries - Per-cycle lines overlay",
+    )
+
+
+@app.cell
+def _(plot_subseasonality, tourism_monthly):
+    plot_subseasonality(
+        tourism_monthly,
+        seasonality="quarter",
+        kind="box",
+        facet_n_cols=2,
+        title="Subseries - Box (quarterly, 2-column grid)",
+    )
+
+
+@app.cell
+def _(plot_subseasonality, tourism_monthly):
+    plot_subseasonality(
+        tourism_monthly,
+        seasonality="month",
+        kind="violin",
+        title="Subseries - Violin",
     )
 
 
@@ -265,27 +281,29 @@ def _(mo):
     mo.md(r"""
     ## 5. STL Decomposition
 
-    [`plot_components`](/pages/api/generated/yohou.plotting.forecasting.plot_components/) applies STL (Seasonal and Trend decomposition using Loess)
+    [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) applies STL (Seasonal and Trend decomposition using Loess)
     and displays selected **components**. By default all five panels are shown:
     observed, trend, seasonal, residual, and seasonal-adjusted.
-    Pass STL tuning parameters via the `stl_kwargs` dict.
+    Pass STL tuning parameters directly (e.g. `period`, `seasonal_window`, `robust`).
     """)
 
 
 @app.cell
-def _(plot_components, tourism_monthly):
-    plot_components(
+def _(plot_decomposition, tourism_monthly):
+    plot_decomposition(
         tourism_monthly,
         ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
+        method="stl",
         title="STL - All Components (Default)",
     )
 
 
 @app.cell
-def _(plot_components, tourism_monthly):
-    plot_components(
+def _(plot_decomposition, tourism_monthly):
+    plot_decomposition(
         tourism_monthly,
         ["trend", "seasonal"],
+        method="stl",
         title="STL - Trend and Seasonal Only",
     )
 
@@ -296,39 +314,94 @@ def _(mo):
     ## 6. STL Parameter Tuning
 
     Control the decomposition by setting **robust** (outlier resistance),
-    explicit **period**, and **seasonal_window** size via `stl_kwargs`.
+    explicit **period**, and **seasonal_window** size as flat parameters.
     Comparing robust vs non-robust helps gauge the impact of outliers on
     the trend estimate.
     """)
 
 
 @app.cell
-def _(plot_components, tourism_monthly):
-    plot_components(
+def _(plot_decomposition, tourism_monthly):
+    plot_decomposition(
         tourism_monthly,
         ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
-        stl_kwargs={"robust": False},
+        method="stl",
+        robust=False,
         title="STL - Non-Robust Estimation",
     )
 
 
 @app.cell
-def _(plot_components, tourism_monthly):
-    plot_components(
+def _(plot_decomposition, tourism_monthly):
+    plot_decomposition(
         tourism_monthly,
         ["observed", "trend", "seasonal", "residual", "seasonal_adjusted"],
-        stl_kwargs={"period": 12, "seasonal_window": 15},
+        method="stl",
+        period=12,
+        seasonal_window=15,
         title="STL - Explicit Period=12, Seasonal Window=15",
     )
 
 
 @app.cell
-def _(plot_components, tourism_monthly):
-    plot_components(
+def _(plot_decomposition, tourism_monthly):
+    plot_decomposition(
         tourism_monthly,
         ["residual"],
-        stl_kwargs={"robust": True},
+        method="stl",
+        robust=True,
         title="STL - Residual Only (Robust)",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Seasonal Heatmap
+
+    [`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/) aggregates values onto a 2-D grid
+    of two temporal periods. Vary **x_period**, **y_period**, and **agg** to
+    reveal different seasonal structures.
+    """)
+
+
+@app.cell
+def _(fetch_electricity_demand):
+    _elec = fetch_electricity_demand().frame.head(8760)
+    elec_heatmap = _elec.select("time", _elec.columns[1])
+    return (elec_heatmap,)
+
+
+@app.cell
+def _(elec_heatmap, plot_seasonal_heatmap):
+    plot_seasonal_heatmap(
+        elec_heatmap,
+        x_period="hour",
+        y_period="month",
+        title="Seasonal Heatmap - Hour x Month (Mean)",
+    )
+
+
+@app.cell
+def _(elec_heatmap, plot_seasonal_heatmap):
+    plot_seasonal_heatmap(
+        elec_heatmap,
+        x_period="hour",
+        y_period="day_of_week",
+        title="Seasonal Heatmap - Hour x Day of Week",
+    )
+
+
+@app.cell
+def _(elec_heatmap, plot_seasonal_heatmap):
+    plot_seasonal_heatmap(
+        elec_heatmap,
+        x_period="hour",
+        y_period="month",
+        agg="max",
+        colorscale="Hot",
+        reverse_y=True,
+        title="Seasonal Heatmap - Max, Hot Colorscale, Reversed Y",
     )
 
 
@@ -340,6 +413,7 @@ def _(mo):
     - **Seasonal overlays** ([`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/)) make year-over-year comparisons immediate; `highlight` draws attention to specific cycles
     - **Subseries plots** ([`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)) reveal within-season trends over time; the mean line shows each season's average level
     - **ACF** identifies repeating correlation patterns at seasonal multiples; **PACF** isolates direct lag effects for AR order selection
+    - **Seasonal heatmaps** ([`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/)) aggregate values across two time dimensions; the `x_period`/`y_period` pair reveals different seasonal structures
     - **STL decomposition** separates trend, seasonal, and residual components; `robust=True` reduces outlier influence
     - **Seasonal window** tuning controls seasonal component flexibility; larger values produce a more stable pattern
 

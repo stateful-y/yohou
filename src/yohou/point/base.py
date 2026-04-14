@@ -90,7 +90,6 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             structure (e.g., missing ``"time"`` column).
 
         """
-
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
 
         BaseForecaster._pre_fit(

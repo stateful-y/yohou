@@ -1241,7 +1241,8 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
                 )
             else:
                 (
-                    method_mapping.add(caller="fit", callee="fit")
+                    method_mapping
+                    .add(caller="fit", callee="fit")
                     .add(caller="fit", callee="transform")
                     .add(caller="fit_transform", callee="fit")
                     .add(caller="fit_transform", callee="transform")

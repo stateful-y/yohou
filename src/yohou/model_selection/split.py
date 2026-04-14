@@ -93,6 +93,7 @@ class BaseSplitter(BaseEstimator, ABC):
             Target time series.
         X : pl.DataFrame, optional
             Exogenous features.
+
         Yields
         ------
         test : ndarray

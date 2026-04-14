@@ -1,3 +1,5 @@
+import importlib.util
+
 import pytest
 
 from yohou.utils.discovery import (
@@ -6,6 +8,8 @@ from yohou.utils.discovery import (
     all_estimators,
     all_functions,
 )
+
+_HAS_PLOTLY = importlib.util.find_spec("plotly") is not None
 
 
 class TestAllEstimators:
@@ -73,7 +77,8 @@ class TestAllFunctions:
     def test_all_functions(self):
         """Test all_functions returns correct count."""
         functions = all_functions()
-        assert len(functions) == 191
+        expected = 203 if _HAS_PLOTLY else 162
+        assert len(functions) == expected
 
 
 class TestAllEstimatorsAdvancedFilters:

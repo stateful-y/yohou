@@ -456,12 +456,16 @@ def _(
     DecisionTreeClassifier,
     LagTransformer,
     fetch_air_quality_classification,
+    train_test_split,
 ):
     cls_data = fetch_air_quality_classification()
     cls_y, cls_X = cls_data.y, cls_data.X
-    cls_split = len(cls_y) - 200
-    cls_y_train, cls_y_test = cls_y[:cls_split], cls_y[cls_split:]
-    cls_X_train, cls_X_test = cls_X[:cls_split], cls_X[cls_split:]
+    cls_y_train, cls_y_test, cls_X_train, cls_X_test = train_test_split(
+        cls_y,
+        cls_X,
+        test_size=200,
+        shuffle=False,
+    )
     cls_fh = 24
 
     cls_forecaster = ClassProbaReductionForecaster(
@@ -472,11 +476,13 @@ def _(
 
     # predict() returns hard class labels (argmax of probabilities)
     cls_y_pred_labels = cls_forecaster.predict(
-        X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
     )
     # predict_class_proba() returns the full probability distribution
     cls_y_proba = cls_forecaster.predict_class_proba(
-        X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
     )
 
     print(f"Classes: {cls_data.classes}")

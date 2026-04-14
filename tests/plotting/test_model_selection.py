@@ -1,11 +1,17 @@
 """Tests for cross-validation plotting functions."""
 
+import pytest
+
+pytest.importorskip("plotly", reason="plotting extra not installed")
+
+
 import polars as pl
 import pytest
-from plotly import graph_objects as go
 
 from yohou.model_selection import ExpandingWindowSplitter, SlidingWindowSplitter
 from yohou.plotting import plot_cv_results_scatter, plot_splits
+
+from .conftest import assert_figure_valid, assert_layout
 
 
 @pytest.fixture
@@ -35,15 +41,13 @@ class TestPlotSplits:
         """Test basic expanding window split visualization."""
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=30)
         fig = plot_splits(sample_y, splitter)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
     def test_basic_sliding_window(self, sample_y):
         """Test basic sliding window split visualization."""
         splitter = SlidingWindowSplitter(n_splits=3, test_size=30)
         fig = plot_splits(sample_y, splitter)
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
     def test_has_train_and_test_traces(self, sample_y):
         """Test that figure has both train and test traces."""
@@ -74,14 +78,13 @@ class TestPlotSplits:
             x_label="Date",
             y_label="Split",
         )
-        assert fig.layout.title.text == "My Splits"
+        assert_layout(fig, title="My Splits")
 
     def test_custom_dimensions(self, sample_y):
         """Test custom width and height."""
         splitter = ExpandingWindowSplitter(n_splits=2, test_size=30)
         fig = plot_splits(sample_y, splitter, width=800, height=400)
-        assert fig.layout.width == 800
-        assert fig.layout.height == 400
+        assert_layout(fig, width=800, height=400)
 
     def test_kwargs_line_width(self, sample_y):
         """Test line_width kwarg."""
@@ -124,8 +127,7 @@ class TestPlotCvResultsScatter:
     def test_basic_scatter(self, sample_cv_results):
         """Test basic CV results scatter plot."""
         fig = plot_cv_results_scatter(sample_cv_results, param_name="alpha")
-        assert isinstance(fig, go.Figure)
-        assert len(fig.data) > 0
+        assert_figure_valid(fig)
 
     def test_highlight_best(self, sample_cv_results):
         """Test highlighting of best result."""
@@ -158,7 +160,7 @@ class TestPlotCvResultsScatter:
             x_label="Alpha",
             y_label="Score",
         )
-        assert fig.layout.title.text == "Custom Title"
+        assert_layout(fig, title="Custom Title")
 
     def test_custom_dimensions(self, sample_cv_results):
         """Test custom width and height."""
@@ -168,8 +170,7 @@ class TestPlotCvResultsScatter:
             width=800,
             height=600,
         )
-        assert fig.layout.width == 800
-        assert fig.layout.height == 600
+        assert_layout(fig, width=800, height=600)
 
     def test_with_error_bars(self, sample_cv_results):
         """Test that error bars are shown when std scores available."""
@@ -256,3 +257,19 @@ class TestPlotCvResultsScatter:
         scatter_y = list(fig.data[0].y)
         assert scatter_y == [-0.5, -0.3, -0.2]
         assert len(fig.data) > 0
+
+
+class TestPlotSplitsGap:
+    """Test gap rendering in plot_splits (line 164)."""
+
+    def test_gap_renders_extra_traces(self, sample_y):
+        """Splitter with gap > 0 adds gap traces between train and test."""
+        splitter = SlidingWindowSplitter(n_splits=3, test_size=30, gap=10)
+        fig = plot_splits(sample_y, splitter)
+        assert_figure_valid(fig)
+        # With gap > 0, each fold gets 3 traces (train + gap + test)
+        # 3 folds x 3 traces = 9 minimum
+        assert len(fig.data) >= 9
+        # At least one trace should belong to the "gap" legendgroup
+        gap_traces = [t for t in fig.data if getattr(t, "legendgroup", None) == "gap"]
+        assert len(gap_traces) >= 1

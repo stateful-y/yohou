@@ -1206,3 +1206,92 @@ class TestValidateScorerDataClassProba:
         scorer.fit(y_true)
         with pytest.raises(ValueError, match="must be numeric"):
             scorer.score(y_true, y_pred)
+
+
+class TestValidatePlottingDataCategorical:
+    """Tests for validate_plotting_data with include_categorical parameter."""
+
+    def test_default_excludes_categorical(self):
+        """By default, categorical columns are excluded."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 3),
+            interval="1d",
+            eager=True,
+        )
+        df = pl.DataFrame({"time": time, "y": [1.0, 2.0, 3.0], "cat": ["a", "b", "c"]})
+        result = validate_plotting_data(df, exclude=["time"])
+        assert result == ["y"]
+
+    def test_include_categorical_true(self):
+        """include_categorical=True returns categorical columns alongside numeric."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 3),
+            interval="1d",
+            eager=True,
+        )
+        df = pl.DataFrame({"time": time, "y": [1.0, 2.0, 3.0], "cat": ["a", "b", "c"]})
+        result = validate_plotting_data(df, exclude=["time"], include_categorical=True)
+        assert "y" in result
+        assert "cat" in result
+
+    def test_include_categorical_no_duplicates(self):
+        """Numeric columns are not duplicated when include_categorical=True."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 3),
+            interval="1d",
+            eager=True,
+        )
+        df = pl.DataFrame({"time": time, "y": [1.0, 2.0, 3.0]})
+        result = validate_plotting_data(df, exclude=["time"], include_categorical=True)
+        assert result == ["y"]
+
+    def test_include_categorical_only_categorical(self):
+        """Works when DataFrame has only categorical columns (besides time)."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 3),
+            interval="1d",
+            eager=True,
+        )
+        df = pl.DataFrame({"time": time, "cat1": ["a", "b", "c"], "cat2": ["x", "y", "z"]})
+        result = validate_plotting_data(df, exclude=["time"], include_categorical=True)
+        assert result == ["cat1", "cat2"]
+
+    def test_include_categorical_respects_exclude(self):
+        """Excluded columns are excluded even when include_categorical=True."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 3),
+            interval="1d",
+            eager=True,
+        )
+        df = pl.DataFrame({"time": time, "y": [1.0, 2.0, 3.0], "cat": ["a", "b", "c"]})
+        result = validate_plotting_data(df, exclude=["time", "cat"], include_categorical=True)
+        assert result == ["y"]
+
+    def test_include_categorical_with_explicit_columns(self):
+        """When columns are explicitly specified, include_categorical is irrelevant."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 3),
+            interval="1d",
+            eager=True,
+        )
+        df = pl.DataFrame({"time": time, "y": [1.0, 2.0, 3.0], "cat": ["a", "b", "c"]})
+        result = validate_plotting_data(df, columns=["cat"])
+        assert result == ["cat"]

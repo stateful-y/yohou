@@ -53,6 +53,7 @@ def _():
     import polars as pl
     from scipy.stats import uniform
     from sklearn.linear_model import Ridge
+    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -84,6 +85,7 @@ def _():
         plot_cv_results_scatter,
         plot_forecast,
         plot_time_series,
+        train_test_split,
         uniform,
     )
 
@@ -292,12 +294,15 @@ def _(mo):
 
 
 @app.cell
-def _(fetch_air_quality_classification):
+def _(fetch_air_quality_classification, train_test_split):
     cls_data = fetch_air_quality_classification()
     cls_y, cls_X = cls_data.y, cls_data.X
-    cls_split = len(cls_y) - 200
-    cls_y_train, cls_y_test = cls_y[:cls_split], cls_y[cls_split:]
-    cls_X_train, cls_X_test = cls_X[:cls_split], cls_X[cls_split:]
+    cls_y_train, cls_y_test, cls_X_train, cls_X_test = train_test_split(
+        cls_y,
+        cls_X,
+        test_size=200,
+        shuffle=False,
+    )
     cls_fh = 24
 
     print(f"Classes: {cls_data.classes}")
@@ -389,7 +394,8 @@ def _(mo):
 @app.cell
 def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecast):
     cls_y_pred_labels = cls_grid_search.predict(
-        X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
     )
     plot_forecast(
         cls_y_test,
@@ -403,7 +409,8 @@ def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecas
 @app.cell
 def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, plot_forecast):
     cls_y_proba = cls_grid_search.predict_class_proba(
-        X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh,
+        X=cls_X_test[:cls_fh],
+        forecasting_horizon=cls_fh,
     )
     plot_forecast(
         cls_y_test,
