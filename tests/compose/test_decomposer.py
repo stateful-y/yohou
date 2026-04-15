@@ -110,7 +110,7 @@ class TestBasicFitPredict:
         ])
 
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == "point"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
 
 class TestResiduals:

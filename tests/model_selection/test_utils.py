@@ -208,7 +208,7 @@ class TestValidateForecasterScorerCompatibility:
         # Mock a pure interval-only forecaster
         forecaster = MagicMock()
         mock_tags = MagicMock()
-        mock_tags.forecaster_tags.forecaster_type = "interval"
+        mock_tags.forecaster_tags.forecaster_type = frozenset({"interval"})
         forecaster.__sklearn_tags__ = MagicMock(return_value=mock_tags)
 
         scorer = MeanAbsoluteError()
@@ -248,11 +248,11 @@ class TestValidateForecasterScorerCompatibility:
 
         forecaster = MagicMock()
         mock_tags = MagicMock()
-        mock_tags.forecaster_tags.forecaster_type = "class_proba"
+        mock_tags.forecaster_tags.forecaster_type = frozenset({"class_proba"})
         forecaster.__sklearn_tags__ = MagicMock(return_value=mock_tags)
 
         scorer = MeanAbsoluteError()
-        with pytest.raises(ValueError, match="does not support point or interval"):
+        with pytest.raises(ValueError, match="does not support observe_predict"):
             _validate_forecaster_scorer_compatibility(forecaster, scorer)
 
 

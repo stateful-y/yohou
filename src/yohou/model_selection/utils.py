@@ -459,30 +459,30 @@ def _validate_forecaster_scorer_compatibility(
 
     methods = _get_response_methods(scorer)
 
-    if "predict_interval" in methods and forecaster_type == "point":
+    if "predict_interval" in methods and forecaster_type is not None and "interval" not in forecaster_type:
         raise ValueError(
             "Scorer requires interval predictions but forecaster "
-            f"(type='{forecaster_type}') does not support predict_interval. "
-            "Use an interval or 'both'-type forecaster."
+            f"(type={forecaster_type!r}) does not support predict_interval. "
+            "Use an interval forecaster or one that supports both point and interval."
         )
 
-    if methods == {"predict"} and forecaster_type == "interval":
+    if methods == {"predict"} and forecaster_type is not None and "point" not in forecaster_type:
         raise ValueError(
-            "Forecaster (type='interval') does not support observe_predict "
+            f"Forecaster (type={forecaster_type!r}) does not support observe_predict "
             "required by point-only scorers. "
-            "Use a 'both'-type forecaster or interval scorers."
+            "Use a forecaster that supports point predictions or interval scorers."
         )
 
-    if "predict_class_proba" in methods and forecaster_type != "class_proba":
+    if "predict_class_proba" in methods and (forecaster_type is None or "class_proba" not in forecaster_type):
         raise ValueError(
             "Scorer requires class-probability predictions but forecaster "
-            f"(type='{forecaster_type}') does not support predict_class_proba. "
+            f"(type={forecaster_type!r}) does not support predict_class_proba. "
             "Use a class_proba-type forecaster."
         )
 
-    if forecaster_type == "class_proba" and (methods - {"predict_class_proba"}):
+    if forecaster_type is not None and "class_proba" in forecaster_type and (methods - {"predict_class_proba"}):
         raise ValueError(
-            "Forecaster (type='class_proba') does not support point or interval "
+            f"Forecaster (type={forecaster_type!r}) does not support point or interval "
             "predictions required by the scorer. Use class-probability scorers."
         )
 

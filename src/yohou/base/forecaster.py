@@ -144,6 +144,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         tags.forecaster_tags.stateful = stateful
 
         # forecaster_type is set by subclasses in their __sklearn_tags__() method
+        # as a frozenset (e.g., POINT, INTERVAL, POINT_INTERVAL, CLASS_PROBA)
 
         return tags
 

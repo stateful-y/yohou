@@ -15,7 +15,7 @@ class TestIntervalReductionPanelChecks:
         [
             (
                 IntervalReductionForecaster(),
-                {"forecaster_type": "interval", "uses_reduction": True, "supports_panel_data": True},
+                {"forecaster_type": frozenset({"interval"}), "uses_reduction": True, "supports_panel_data": True},
                 [],
             ),
         ],

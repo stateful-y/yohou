@@ -368,7 +368,7 @@ def _yield_yohou_forecaster_checks(
         Test features
     tags : dict, optional
         Forecaster metadata tags (if None, auto-detected from __sklearn_tags__):
-        - forecaster_type: "point" | "interval" | "both"
+        - forecaster_type: frozenset of str (e.g., frozenset({"point"}))
         - uses_reduction: bool
         - supports_panel_data: bool
         - uses_target_transformer: bool
@@ -512,7 +512,8 @@ def _yield_yohou_forecaster_checks(
         )
 
     # Point forecaster checks
-    if tags.get("forecaster_type") == "point":
+    forecaster_type = tags.get("forecaster_type")
+    if forecaster_type is not None and "point" in forecaster_type:
         yield (
             "check_point_prediction_structure",
             check_point_prediction_structure,
@@ -521,7 +522,7 @@ def _yield_yohou_forecaster_checks(
         yield "check_point_prediction_types", check_point_prediction_types, {}
 
     # Interval forecaster checks
-    if tags.get("forecaster_type") == "interval":
+    if forecaster_type is not None and "interval" in forecaster_type:
         yield (
             "check_interval_prediction_columns",
             check_interval_prediction_columns,
@@ -541,7 +542,7 @@ def _yield_yohou_forecaster_checks(
         )
 
     # Class-probability forecaster checks
-    if tags.get("forecaster_type") == "class_proba":
+    if forecaster_type is not None and "class_proba" in forecaster_type:
         yield (
             "check_class_proba_prediction_structure",
             check_class_proba_prediction_structure,

@@ -30,7 +30,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | Name | Description |
 | --- | --- |
 | [`check_point_prediction_structure`](generated/yohou.testing.point.check_point_prediction_structure.md) | Check point predictions have correct column structure. |
-| [`check_point_prediction_types`](generated/yohou.testing.point.check_point_prediction_types.md) | Check point forecaster has forecaster_type='point' in tags. |
+| [`check_point_prediction_types`](generated/yohou.testing.point.check_point_prediction_types.md) | Check point forecaster has 'point' in forecaster_type tag. |
 
 ### Interval forecaster checks
 
@@ -40,7 +40,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_coverage_rates_validation`](generated/yohou.testing.interval.check_coverage_rates_validation.md) | Check invalid coverage_rates raise ValueError during fit and predict. |
 | [`check_interval_bounds`](generated/yohou.testing.interval.check_interval_bounds.md) | Check upper >= lower for all coverage rates and time steps. |
 | [`check_interval_prediction_columns`](generated/yohou.testing.interval.check_interval_prediction_columns.md) | Check interval predictions have {col}_lower_{rate} and {col}_upper_{rate} format. |
-| [`check_interval_prediction_types`](generated/yohou.testing.interval.check_interval_prediction_types.md) | Check interval forecaster has forecaster_type='interval' or 'both' in tags. |
+| [`check_interval_prediction_types`](generated/yohou.testing.interval.check_interval_prediction_types.md) | Check interval forecaster has 'interval' in forecaster_type tag. |
 
 ### Reduction forecaster checks
 

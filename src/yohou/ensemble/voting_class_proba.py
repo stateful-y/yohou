@@ -17,7 +17,7 @@ from sklearn.utils.metadata_routing import (
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.class_proba import BaseClassProbaForecaster
-from yohou.utils import Tags
+from yohou.utils import CLASS_PROBA, Tags
 from yohou.utils._compat import StrOptions, _BaseComposition, _fit_context, _raise_for_params
 
 from ._base import _BaseEnsembleForecaster
@@ -158,7 +158,7 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
 
-        tags.forecaster_tags.forecaster_type = "class_proba"
+        tags.forecaster_tags.forecaster_type = CLASS_PROBA
         tags.forecaster_tags.tracks_observations = False
         tags.forecaster_tags.supports_panel_data = True
 

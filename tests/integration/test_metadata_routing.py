@@ -256,7 +256,7 @@ class ConsumingForecaster(BasePointForecaster):
     """
 
     _tags = {
-        "forecaster_type": "point",
+        "forecaster_type": frozenset({"point"}),
         "uses_reduction": False,
         "ignores_exogenous_X": True,
     }

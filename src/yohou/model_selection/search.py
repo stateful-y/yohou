@@ -122,9 +122,9 @@ def _search_forecaster_has(attr):
         if attr in {"point", "interval", "class_proba"}:
             tags = self.best_forecaster_.__sklearn_tags__()
             forecaster_type = getattr(tags.forecaster_tags, "forecaster_type", None)
-            if forecaster_type == "both":
-                return True
-            return forecaster_type == attr
+            if forecaster_type is None:
+                return False
+            return attr in forecaster_type
 
         # Otherwise check attribute existence
         return hasattr(self.best_forecaster_, attr)

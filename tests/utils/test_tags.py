@@ -140,8 +140,8 @@ class TestTagMutability:
         """ForecasterTags fields can be set after creation."""
         tags = Tags(estimator_type="forecaster")
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.forecaster_type = "point"
-        assert tags.forecaster_tags.forecaster_type == "point"
+        tags.forecaster_tags.forecaster_type = frozenset({"point"})
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
     def test_transformer_tags_mutable(self):
         """TransformerTags fields can be set after creation."""
@@ -180,7 +180,7 @@ class TestEstimatorTags:
         tags = SeasonalNaive().__sklearn_tags__()
         assert tags.estimator_type == "forecaster"
         assert tags.forecaster_tags is not None
-        assert tags.forecaster_tags.forecaster_type == "point"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
         assert tags.forecaster_tags.supports_panel_data is True
 
     def test_reduction_forecaster_tags(self):
@@ -193,12 +193,12 @@ class TestEstimatorTags:
         assert tags.forecaster_tags.supports_time_weight is True
 
     def test_interval_forecaster_tags(self):
-        """Interval forecasters have forecaster_type='interval' or 'both'."""
+        """Interval forecasters have forecaster_type containing 'interval'."""
         from yohou.interval import SplitConformalForecaster
 
         tags = SplitConformalForecaster().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        assert tags.forecaster_tags.forecaster_type in ("interval", "both")
+        assert "interval" in tags.forecaster_tags.forecaster_type
 
     def test_transformer_tags(self):
         """Transformers have correct type and stateful detection."""

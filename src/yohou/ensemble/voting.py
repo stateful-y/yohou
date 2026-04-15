@@ -159,18 +159,14 @@ class VotingForecaster(BaseForecaster, _BaseEnsembleForecaster, _BaseComposition
         )
 
         if forecasters_to_check:
-            all_types = set()
+            all_types: frozenset[str] = frozenset()
             for f in forecasters_to_check:
                 f_tags = f.__sklearn_tags__()
                 if f_tags.forecaster_tags and f_tags.forecaster_tags.forecaster_type:
-                    all_types.add(f_tags.forecaster_tags.forecaster_type)
+                    all_types = all_types | f_tags.forecaster_tags.forecaster_type
 
-            if "both" in all_types or all_types == {"point", "interval"}:
-                tags.forecaster_tags.forecaster_type = "both"
-            elif "interval" in all_types:
-                tags.forecaster_tags.forecaster_type = "interval"
-            elif "point" in all_types:
-                tags.forecaster_tags.forecaster_type = "point"
+            if all_types:
+                tags.forecaster_tags.forecaster_type = all_types
 
             tags.forecaster_tags.stateful = any(
                 getattr(f.__sklearn_tags__().forecaster_tags, "stateful", False) for f in forecasters_to_check
@@ -219,13 +215,13 @@ class VotingForecaster(BaseForecaster, _BaseEnsembleForecaster, _BaseComposition
             If forecasters have mixed types.
 
         """
-        types = set()
+        types: set[frozenset[str]] = set()
         for _name, forecaster in self.forecasters:
             f_tags = forecaster.__sklearn_tags__()
             if f_tags.forecaster_tags and f_tags.forecaster_tags.forecaster_type:
                 types.add(f_tags.forecaster_tags.forecaster_type)
 
-        if len(types) > 1 and types != {"both"}:
+        if len(types) > 1:
             raise ValueError(f"All base forecasters must have the same forecaster_type, got types: {types}")
 
     def _validate_schemas_match(self) -> None:

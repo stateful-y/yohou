@@ -47,7 +47,7 @@ def check_point_prediction_structure(forecaster, y_test: pl.DataFrame, X_test: p
 
 
 def check_point_prediction_types(forecaster) -> None:
-    """Check point forecaster has forecaster_type='point' in tags.
+    """Check point forecaster has 'point' in forecaster_type tag.
 
     Parameters
     ----------
@@ -63,6 +63,6 @@ def check_point_prediction_types(forecaster) -> None:
     tags = forecaster.__sklearn_tags__()
     forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    assert forecaster_type == "point", (
-        f"Point forecaster should have forecaster_type='point' in tags, got {forecaster_type}"
+    assert forecaster_type is not None and "point" in forecaster_type, (
+        f"Point forecaster should have 'point' in forecaster_type tag, got {forecaster_type}"
     )

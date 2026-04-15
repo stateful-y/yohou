@@ -68,7 +68,7 @@ class TestSplitConformalInit:
         scf = SplitConformalForecaster()
         tags = scf.__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        assert tags.forecaster_tags.forecaster_type == "both"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point", "interval"})
 
 
 class TestSplitConformalFitPredict:

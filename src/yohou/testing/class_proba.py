@@ -141,7 +141,7 @@ def check_class_proba_prediction_sums(forecaster, y_test: pl.DataFrame, X_test: 
 
 
 def check_class_proba_prediction_types(forecaster) -> None:
-    """Check class-proba forecaster has forecaster_type='class_proba' in tags.
+    """Check class-proba forecaster has 'class_proba' in forecaster_type tag.
 
     Parameters
     ----------
@@ -157,8 +157,8 @@ def check_class_proba_prediction_types(forecaster) -> None:
     tags = forecaster.__sklearn_tags__()
     forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    assert forecaster_type == "class_proba", (
-        f"Class-proba forecaster should have forecaster_type='class_proba', got {forecaster_type}"
+    assert forecaster_type is not None and "class_proba" in forecaster_type, (
+        f"Class-proba forecaster should have 'class_proba' in forecaster_type tag, got {forecaster_type}"
     )
 
 

@@ -7,7 +7,7 @@ from pydantic import StrictInt
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
-from yohou.utils import Tags, select_panel_columns, validate_forecaster_data
+from yohou.utils import CLASS_PROBA, Tags, select_panel_columns, validate_forecaster_data
 
 __all__ = ["BaseClassProbaForecaster"]
 
@@ -36,7 +36,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     -----
     Subclasses must implement ``_predict_class_proba_one`` to produce
     probability forecasts for a single forecast step. The ``forecaster_type``
-    tag is set to ``"class_proba"``.
+    tag is set to ``CLASS_PROBA``.
 
     See Also
     --------
@@ -60,7 +60,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.forecaster_type = "class_proba"
+        tags.forecaster_tags.forecaster_type = CLASS_PROBA
         return tags
 
     def fit(

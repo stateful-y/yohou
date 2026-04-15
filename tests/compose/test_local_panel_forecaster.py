@@ -232,7 +232,7 @@ class TestTags:
         """Should inherit forecaster_type from wrapped point forecaster."""
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
         tags = f.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == "point"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
     def test_inherits_forecaster_type_interval(self):
         """Should inherit forecaster_type from wrapped interval forecaster."""
@@ -242,7 +242,7 @@ class TestTags:
             ),
         )
         tags = f.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type in ("interval", "both")
+        assert "interval" in tags.forecaster_tags.forecaster_type
 
     def test_supports_panel_data(self):
         """Should declare panel data support."""

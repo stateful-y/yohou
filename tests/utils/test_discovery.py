@@ -192,17 +192,17 @@ class TestAllFunctionsContent:
             assert not name.startswith("_"), f"{name} starts with underscore"
 
 
-class TestAllEstimatorsBothForecasterType:
-    """Tests for type_filter capturing forecaster_type 'both'."""
+class TestAllEstimatorsMultiTypeForecaster:
+    """Tests for type_filter capturing forecasters with multiple capabilities."""
 
-    def test_point_filter_includes_both_type(self):
-        """Point filter includes forecasters with forecaster_type='both'."""
+    def test_point_filter_includes_point_interval_type(self):
+        """Point filter includes forecasters with 'point' in forecaster_type."""
         point = all_estimators(type_filter="point")
         point_names = {name for name, _ in point}
         assert "SplitConformalForecaster" in point_names
 
-    def test_interval_filter_includes_both_type(self):
-        """Interval filter includes forecasters with forecaster_type='both'."""
+    def test_interval_filter_includes_point_interval_type(self):
+        """Interval filter includes forecasters with 'interval' in forecaster_type."""
         interval = all_estimators(type_filter="interval")
         interval_names = {name for name, _ in interval}
         assert "SplitConformalForecaster" in interval_names

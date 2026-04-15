@@ -148,7 +148,7 @@ class TestForecasterGeneratorConditions:
                 X[:50],
                 y[50:60],
                 X[50:60],
-                tags={"forecaster_type": "point"},
+                tags={"forecaster_type": frozenset({"point"})},
             )
         )
         assert "check_point_prediction_structure" in names
@@ -173,7 +173,7 @@ class TestForecasterGeneratorConditions:
                 X[:140],
                 y[140:150],
                 X[140:150],
-                tags={"forecaster_type": "interval"},
+                tags={"forecaster_type": frozenset({"interval"})},
             )
         )
         interval_checks = {
@@ -201,7 +201,7 @@ class TestForecasterGeneratorConditions:
                 X[:50],
                 y[50:60],
                 X[50:60],
-                tags={"forecaster_type": "point", "uses_reduction": True},
+                tags={"forecaster_type": frozenset({"point"}), "uses_reduction": True},
             )
         )
         assert "check_estimator_parameter" in names
@@ -220,7 +220,7 @@ class TestForecasterGeneratorConditions:
                 X[:50],
                 y[50:60],
                 X[50:60],
-                tags={"forecaster_type": "point", "uses_reduction": False},
+                tags={"forecaster_type": frozenset({"point"}), "uses_reduction": False},
             )
         )
         assert "check_estimator_parameter" not in names
@@ -240,7 +240,7 @@ class TestForecasterGeneratorConditions:
                 X[:50],
                 y[50:55],
                 X[50:55],
-                tags={"forecaster_type": "point", "tracks_observations": True},
+                tags={"forecaster_type": frozenset({"point"}), "tracks_observations": True},
             )
         )
         assert "check_observe_extends_observations" not in names
@@ -260,7 +260,7 @@ class TestForecasterGeneratorConditions:
                 X[:50],
                 y[50:65],
                 X[50:65],
-                tags={"forecaster_type": "point", "tracks_observations": True},
+                tags={"forecaster_type": frozenset({"point"}), "tracks_observations": True},
             )
         )
         assert "check_observe_extends_observations" in names
@@ -279,7 +279,7 @@ class TestForecasterGeneratorConditions:
                 X[:50],
                 y[50:65],
                 X[50:65],
-                tags={"forecaster_type": "point", "tracks_observations": False},
+                tags={"forecaster_type": frozenset({"point"}), "tracks_observations": False},
             )
         )
         assert "check_observe_extends_observations" not in names
@@ -298,7 +298,7 @@ class TestForecasterGeneratorConditions:
                 X[:50],
                 y[50:60],
                 X[50:60],
-                tags={"forecaster_type": "point", "supports_panel_data": True},
+                tags={"forecaster_type": frozenset({"point"}), "supports_panel_data": True},
             )
         )
         assert "check_panel_data" in names
@@ -317,7 +317,7 @@ class TestForecasterGeneratorConditions:
                 X[:50],
                 y[50:60],
                 X[50:60],
-                tags={"forecaster_type": "point", "supports_panel_data": True},
+                tags={"forecaster_type": frozenset({"point"}), "supports_panel_data": True},
             )
         )
         assert "check_panel_data" not in names
