@@ -16,7 +16,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.point import BasePointForecaster
-from yohou.utils import Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
+from yohou.utils import POINT, Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
 from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
 
 __all__ = ["DecompositionPipeline"]
@@ -242,9 +242,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         if self.forecasters:
             _, last_forecaster = self.forecasters[-1]
             last_tags = last_forecaster.__sklearn_tags__()
-            tags.forecaster_tags.forecaster_type = "point"
-            if last_tags.forecaster_tags and last_tags.forecaster_tags.forecaster_type == "both":
-                tags.forecaster_tags.forecaster_type = "both"
+            tags.forecaster_tags.forecaster_type = POINT
+            if (
+                last_tags.forecaster_tags
+                and last_tags.forecaster_tags.forecaster_type
+                and "point" in last_tags.forecaster_tags.forecaster_type
+                and "interval" in last_tags.forecaster_tags.forecaster_type
+            ):
+                tags.forecaster_tags.forecaster_type = last_tags.forecaster_tags.forecaster_type
 
         # Aggregate other tags
         tags.forecaster_tags.uses_reduction = any(

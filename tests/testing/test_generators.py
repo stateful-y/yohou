@@ -52,7 +52,7 @@ class TestGeneratorChecks:
                 X_train=X[:30],
                 y_test=y[30:40],
                 X_test=X[30:40],
-                tags={"forecaster_type": "point", "uses_reduction": False},
+                tags={"forecaster_type": frozenset({"point"}), "uses_reduction": False},
             )
         )
 
@@ -101,7 +101,7 @@ class TestGeneratorChecks:
                 X_train=X[:30],
                 y_test=y[30:40],
                 X_test=X[30:40],
-                tags={"forecaster_type": "point", "uses_reduction": False},
+                tags={"forecaster_type": frozenset({"point"}), "uses_reduction": False},
             )
         )
 

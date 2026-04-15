@@ -40,7 +40,7 @@ from yohou.testing import _yield_yohou_forecaster_checks
 
 for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
     forecaster_fitted, y_train, X_train, y_test, X_test,
-    tags={"forecaster_type": "point", "uses_reduction": False}
+    tags={"forecaster_type": frozenset({"point"}), "uses_reduction": False}
 ):
     check_func(forecaster_fitted, **check_kwargs)
 ```

@@ -9,8 +9,12 @@ from dataclasses import dataclass
 from typing import Literal
 
 __all__ = [
+    "CLASS_PROBA",
     "ForecasterTags",
+    "INTERVAL",
     "InputTags",
+    "POINT",
+    "POINT_INTERVAL",
     "ScorerTags",
     "SimilarityTags",
     "SplitterTags",
@@ -18,6 +22,12 @@ __all__ = [
     "TargetTags",
     "TransformerTags",
 ]
+
+# Forecaster type constants
+POINT: frozenset[str] = frozenset({"point"})
+INTERVAL: frozenset[str] = frozenset({"interval"})
+CLASS_PROBA: frozenset[str] = frozenset({"class_proba"})
+POINT_INTERVAL: frozenset[str] = frozenset({"point", "interval"})
 
 
 @dataclass
@@ -92,13 +102,12 @@ class ForecasterTags:
 
     Parameters
     ----------
-    forecaster_type : {"point", "interval", "class_proba", "both"} or None, default=None
-        Type of forecaster output:
-        - "point": Produces point forecasts only
-        - "interval": Produces prediction intervals only
-        - "class_proba": Produces class-probability forecasts
-        - "both": Produces both point forecasts and intervals
-        - None: Not determined or not applicable
+    forecaster_type : frozenset of str or None, default=None
+        Set of forecaster capabilities. Valid elements are ``"point"``,
+        ``"interval"``, and ``"class_proba"``. Use the module-level
+        constants ``POINT``, ``INTERVAL``, ``CLASS_PROBA``, and
+        ``POINT_INTERVAL`` for convenience. ``None`` means not
+        determined or not applicable.
     stateful : bool, default=False
         Whether the forecaster maintains state across observations.
         True if the forecaster uses an observation horizon mechanism.
@@ -130,7 +139,7 @@ class ForecasterTags:
 
     """
 
-    forecaster_type: Literal["point", "interval", "class_proba", "both"] | None = None
+    forecaster_type: frozenset[str] | None = None
     stateful: bool = False
     uses_reduction: bool = False
     uses_target_transformer: bool = False
@@ -139,6 +148,22 @@ class ForecasterTags:
     supports_time_weight: bool = False
     ignores_exogenous: bool = False
     tracks_observations: bool = True
+
+    _VALID_FORECASTER_TYPE_ELEMENTS: frozenset[str] = frozenset({"point", "interval", "class_proba"})
+
+    def __post_init__(self) -> None:
+        """Validate forecaster_type contains only valid elements."""
+        if self.forecaster_type is not None:
+            if not isinstance(self.forecaster_type, frozenset):
+                raise TypeError(
+                    f"forecaster_type must be a frozenset or None, got {type(self.forecaster_type).__name__}"
+                )
+            invalid = self.forecaster_type - self._VALID_FORECASTER_TYPE_ELEMENTS
+            if invalid:
+                raise ValueError(
+                    f"forecaster_type contains invalid elements {invalid}. "
+                    f"Valid elements are {self._VALID_FORECASTER_TYPE_ELEMENTS}"
+                )
 
 
 @dataclass

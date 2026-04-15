@@ -140,7 +140,7 @@ def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame
 
 
 def check_interval_prediction_types(forecaster) -> None:
-    """Check interval forecaster has forecaster_type='interval' or 'both' in tags.
+    """Check interval forecaster has 'interval' in forecaster_type tag.
 
     Parameters
     ----------
@@ -156,8 +156,8 @@ def check_interval_prediction_types(forecaster) -> None:
     tags = forecaster.__sklearn_tags__()
     forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    assert forecaster_type in {"interval", "both"}, (
-        f"Interval forecaster should have forecaster_type='interval' or 'both', got {forecaster_type}"
+    assert forecaster_type is not None and "interval" in forecaster_type, (
+        f"Interval forecaster should have 'interval' in forecaster_type tag, got {forecaster_type}"
     )
 
 

@@ -241,7 +241,7 @@ class TestTags:
         """forecaster_type should be 'class_proba'."""
         forecaster = ClassProbaReductionForecaster()
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == "class_proba"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"class_proba"})
 
     def test_uses_reduction_tag(self):
         """uses_reduction should be True."""

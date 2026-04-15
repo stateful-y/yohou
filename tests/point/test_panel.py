@@ -18,7 +18,7 @@ class TestPointReductionPanelChecks:
         [
             (
                 PointReductionForecaster(estimator=LinearRegression(), feature_transformer=LagTransformer(lag=[1, 2])),
-                {"forecaster_type": "point", "uses_reduction": True, "supports_panel_data": True},
+                {"forecaster_type": frozenset({"point"}), "uses_reduction": True, "supports_panel_data": True},
                 [],
             ),
         ],

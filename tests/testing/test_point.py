@@ -38,12 +38,12 @@ class TestPointChecks:
         check_point_prediction_types(forecaster)
 
     def test_check_point_prediction_types_fails_for_wrong_type(self):
-        """Test check fails if prediction_types is incorrect."""
-        from yohou.interval.split_conformal import SplitConformalForecaster
+        """Test check fails if forecaster_type doesn't include 'point'."""
+        from yohou.class_proba import ClassProbaReductionForecaster
 
-        # Interval forecaster has both point and interval
-        forecaster = SplitConformalForecaster()
+        # Class-proba forecaster has no point capability
+        forecaster = ClassProbaReductionForecaster()
 
-        # Should raise AssertionError - not pure point forecaster
-        with pytest.raises(AssertionError, match="forecaster_type='point'"):
+        # Should raise AssertionError - no 'point' in forecaster_type
+        with pytest.raises(AssertionError, match="point"):
             check_point_prediction_types(forecaster)

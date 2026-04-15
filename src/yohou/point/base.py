@@ -7,7 +7,7 @@ from pydantic import StrictInt
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
-from yohou.utils import Tags, select_panel_columns, validate_forecaster_data
+from yohou.utils import POINT, Tags, select_panel_columns, validate_forecaster_data
 
 __all__ = ["BasePointForecaster"]
 
@@ -32,7 +32,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     -----
     Subclasses must implement ``_predict_one`` to produce point
     predictions for a single forecast step.  The ``forecaster_type``
-    tag is set to ``"point"``.
+    tag is set to ``POINT``.
 
     See Also
     --------
@@ -53,7 +53,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.forecaster_type = "point"
+        tags.forecaster_tags.forecaster_type = POINT
         return tags
 
     def fit(

@@ -188,17 +188,15 @@ def check_scorer_prediction_type_compatibility(
     # Get predictions based on scorer type
     if scorer_tags.scorer_tags.prediction_type == "point":
         # Point scorer needs point predictions
-        assert (
-            "point" in forecaster_tags.forecaster_tags.forecaster_type
-            or forecaster_tags.forecaster_tags.forecaster_type == "both"
-        ), f"Point scorer requires point forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
+        assert "point" in forecaster_tags.forecaster_tags.forecaster_type, (
+            f"Point scorer requires point forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
+        )
         y_pred = forecaster.predict(forecasting_horizon=3, X=X)
     elif scorer_tags.scorer_tags.prediction_type == "interval":
         # Interval scorer needs interval predictions
-        assert (
-            "interval" in forecaster_tags.forecaster_tags.forecaster_type
-            or forecaster_tags.forecaster_tags.forecaster_type == "both"
-        ), f"Interval scorer requires interval forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
+        assert "interval" in forecaster_tags.forecaster_tags.forecaster_type, (
+            f"Interval scorer requires interval forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
+        )
         y_pred = forecaster.predict_interval(forecasting_horizon=3, X=X, coverage_rates=[0.9])
     elif scorer_tags.scorer_tags.prediction_type == "class_proba":
         # Class-probability scorer needs class_proba predictions

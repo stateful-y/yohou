@@ -549,8 +549,14 @@ def check_prediction_types_property(forecaster) -> None:
     tags = forecaster.__sklearn_tags__()
     forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else None
 
-    valid_types = {"point", "interval", "both", "class_proba", None}
-    assert forecaster_type in valid_types, f"forecaster_type tag should be one of {valid_types}, got {forecaster_type}"
+    valid_elements = {"point", "interval", "class_proba"}
+    if forecaster_type is not None:
+        assert isinstance(forecaster_type, frozenset), (
+            f"forecaster_type tag should be a frozenset or None, got {type(forecaster_type).__name__}"
+        )
+        assert forecaster_type.issubset(valid_elements), (
+            f"forecaster_type tag should only contain {valid_elements}, got {forecaster_type}"
+        )
 
 
 def check_clone_preserves_forecaster_params(forecaster) -> None:
@@ -814,14 +820,15 @@ def check_forecaster_tags_match_capabilities(
         pred_types = forecaster.prediction_types
         forecaster_type = tags.forecaster_tags.forecaster_type
 
-        if "point" in pred_types and "interval" in pred_types:
-            assert forecaster_type in ["point", "interval"], (
-                f"forecaster_type should be 'point' or 'interval' for dual forecaster, got {forecaster_type}"
-            )
-        elif "point" in pred_types:
-            assert forecaster_type == "point", f"forecaster_type should be 'point', got {forecaster_type}"
-        elif "interval" in pred_types:
-            assert forecaster_type == "interval", f"forecaster_type should be 'interval', got {forecaster_type}"
+        if forecaster_type is not None:
+            if "point" in pred_types:
+                assert "point" in forecaster_type, (
+                    f"forecaster_type should contain 'point' for forecaster with point predictions, got {forecaster_type}"
+                )
+            if "interval" in pred_types:
+                assert "interval" in forecaster_type, (
+                    f"forecaster_type should contain 'interval' for forecaster with interval predictions, got {forecaster_type}"
+                )
 
     # Check uses_reduction matches estimator attribute
     # Note: Some forecasters have estimator for internal use but don't follow reduction pattern

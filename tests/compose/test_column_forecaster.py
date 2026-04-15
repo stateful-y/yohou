@@ -751,7 +751,7 @@ class TestSklearnTags:
         ])
 
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == "point"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
     def test_tags_accessible_before_fit(self):
         """Test tags accessible before fitting."""
@@ -771,7 +771,7 @@ class TestSklearnTags:
         )
 
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == "point"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
 
 class TestExogenousFeatures:
@@ -994,8 +994,8 @@ class TestIntervalForecasterComposition:
         ])
 
         tags = forecaster.__sklearn_tags__()
-        # Mixed should be "both"
-        assert tags.forecaster_tags.forecaster_type == "both"
+        # Mixed should be frozenset({"point", "interval"})
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point", "interval"})
 
 
 class TestConditionalMethodAvailability:
@@ -1250,7 +1250,7 @@ class TestColumnForecasterTagsBeforeFit:
         )
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        assert tags.forecaster_tags.forecaster_type == "point"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
     def test_tags_before_fit_without_remainder(self):
         """Tags before fit without remainder forecaster."""
@@ -1259,7 +1259,7 @@ class TestColumnForecasterTagsBeforeFit:
         )
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        assert tags.forecaster_tags.forecaster_type == "point"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
 
 class TestColumnForecasterRewindWithRemainder:
@@ -1353,7 +1353,7 @@ class TestColumnForecasterMixedTags:
             ],
         )
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == "both"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point", "interval"})
 
 
 class TestClassProbaColumnForecaster:

@@ -12,7 +12,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.metrics import AbsoluteResidual, BaseConformityScorer, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
-from yohou.utils import Tags, validate_forecaster_data
+from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
 from yohou.utils._compat import Interval, _fit_context
 
 from .base import BaseIntervalForecaster, BaseSimilarity
@@ -76,14 +76,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Returns
         -------
         Tags
-            Estimator tags with forecaster_type set to "both" since this
+            Estimator tags with forecaster_type set to POINT_INTERVAL since this
             forecaster produces both point predictions and intervals.
 
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
         # SplitConformal wraps a point forecaster and adds intervals
-        tags.forecaster_tags.forecaster_type = "both"
+        tags.forecaster_tags.forecaster_type = POINT_INTERVAL
         return tags
 
     def __init__(

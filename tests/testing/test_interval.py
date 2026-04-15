@@ -66,7 +66,7 @@ class TestIntervalChecks:
         forecaster = SeasonalNaive(seasonality=12)
 
         # Should raise AssertionError
-        with pytest.raises(AssertionError, match="forecaster_type='interval'"):
+        with pytest.raises(AssertionError, match="interval"):
             check_interval_prediction_types(forecaster)
 
     def test_check_coverage_rates_parameter(self, y_X_factory):

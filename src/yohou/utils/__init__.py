@@ -13,7 +13,18 @@ from .panel import (
 )
 from .polars import cast, get_numeric_columns
 from .tabularization import tabularize
-from .tags import ForecasterTags, InputTags, SplitterTags, Tags, TargetTags, TransformerTags
+from .tags import (
+    CLASS_PROBA,
+    INTERVAL,
+    POINT,
+    POINT_INTERVAL,
+    ForecasterTags,
+    InputTags,
+    SplitterTags,
+    Tags,
+    TargetTags,
+    TransformerTags,
+)
 from .validate_data import (
     validate_forecaster_data,
     validate_plotting_data,
@@ -52,8 +63,12 @@ from .weighting import (
 )
 
 __all__ = [
+    "CLASS_PROBA",
     "ForecasterTags",
+    "INTERVAL",
     "InputTags",
+    "POINT",
+    "POINT_INTERVAL",
     "SplitterTags",
     "Tags",
     "TargetTags",

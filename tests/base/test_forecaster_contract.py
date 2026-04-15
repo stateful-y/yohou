@@ -149,7 +149,7 @@ class TestBaseForecasterTags:
         """PointReductionForecaster has forecaster_type=point tag."""
         f = PointReductionForecaster()
         tags = f.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == "point"
+        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
 
 class TestBaseForecasterWithExogenous:

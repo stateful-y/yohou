@@ -11,7 +11,7 @@ from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, BaseTransformer
-from yohou.utils import Tags, cast, select_panel_columns, validate_forecaster_data
+from yohou.utils import INTERVAL, Tags, cast, select_panel_columns, validate_forecaster_data
 
 __all__ = ["BaseIntervalForecaster", "BaseSimilarity"]
 
@@ -165,8 +165,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     Notes
     -----
     Interval forecasters produce prediction intervals at specified
-    coverage rates.  The ``forecaster_type`` tag is ``"interval"``
-    (or ``"both"`` if point predictions are also available).
+    coverage rates.  The ``forecaster_type`` tag is ``INTERVAL``
+    (or ``POINT_INTERVAL`` if point predictions are also available).
 
     See Also
     --------
@@ -191,7 +191,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.forecaster_type = "interval"
+        tags.forecaster_tags.forecaster_type = INTERVAL
         return tags
 
     def __init__(

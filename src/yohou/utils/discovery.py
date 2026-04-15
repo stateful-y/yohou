@@ -152,18 +152,8 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
                 # Check forecaster sub-types
                 if est_type == "forecaster" and hasattr(tags, "forecaster_tags"):
                     forecaster_type = tags.forecaster_tags.forecaster_type
-                    if (
-                        forecaster_type == "point"
-                        and "point" in type_filter
-                        or forecaster_type == "interval"
-                        and "interval" in type_filter
-                        or forecaster_type == "class_proba"
-                        and "class_proba" in type_filter
-                    ):
+                    if forecaster_type is not None and forecaster_type & frozenset(type_filter):
                         filtered_estimators.append((name, est_cls))
-                    elif forecaster_type == "both":
-                        if "point" in type_filter or "interval" in type_filter:
-                            filtered_estimators.append((name, est_cls))
                     elif "forecaster" in type_filter:
                         # Generic forecaster filter matches all forecasters
                         filtered_estimators.append((name, est_cls))

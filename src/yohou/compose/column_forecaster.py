@@ -393,19 +393,15 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             )
 
             # Determine forecaster_type from nested forecasters' tags
-            all_types = set()
+            all_types: frozenset[str] = frozenset()
             for f in forecasters_to_check:
                 f_tags = f.__sklearn_tags__()
                 if f_tags.forecaster_tags and f_tags.forecaster_tags.forecaster_type:
-                    all_types.add(f_tags.forecaster_tags.forecaster_type)
+                    all_types = all_types | f_tags.forecaster_tags.forecaster_type
 
             # Aggregate types
-            if "both" in all_types or all_types == {"point", "interval"}:
-                tags.forecaster_tags.forecaster_type = "both"
-            elif "point" in all_types:
-                tags.forecaster_tags.forecaster_type = "point"
-            elif "interval" in all_types:
-                tags.forecaster_tags.forecaster_type = "interval"
+            if all_types:
+                tags.forecaster_tags.forecaster_type = all_types
 
             # Aggregate other tags
             tags.forecaster_tags.uses_reduction = any(
