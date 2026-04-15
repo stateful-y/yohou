@@ -112,6 +112,25 @@ class TestBasicFitPredict:
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
+    def test_prediction_types_propagates_interval(self):
+        """If last forecaster supports point+interval, both propagate."""
+        from yohou.utils.tags import POINT_INTERVAL
+
+        class _DualForecaster(SeasonalNaive):
+            def __sklearn_tags__(self):
+                tags = super().__sklearn_tags__()
+                tags.forecaster_tags.forecaster_type = POINT_INTERVAL
+                return tags
+
+        forecaster = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            ("dual", _DualForecaster(seasonality=7)),
+        ])
+
+        tags = forecaster.__sklearn_tags__()
+        assert "point" in tags.forecaster_tags.forecaster_type
+        assert "interval" in tags.forecaster_tags.forecaster_type
+
 
 class TestResiduals:
     """Tests for residual storage functionality."""

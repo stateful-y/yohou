@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from numbers import Integral
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 import polars as pl
@@ -25,7 +25,7 @@ from ._base import _BaseEnsembleForecaster
 __all__ = ["VotingClassProbaForecaster"]
 
 
-class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecaster, _BaseComposition):
+class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecaster, _BaseComposition):
     """Combines class-probability forecasters via voting.
 
     Aggregates predictions from multiple ``BaseClassProbaForecaster``
@@ -42,17 +42,17 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         Named base class-probability forecasters to combine. Each entry
         is a ``(name, forecaster)`` tuple where *name* is a unique string
         and *forecaster* is a `BaseClassProbaForecaster` instance.
-    voting : {"soft", "hard"}, default="soft"
-        Voting strategy:
+    method : {"soft", "hard"}, default="soft"
+        Aggregation strategy:
 
         - ``"soft"``: weighted average of class probabilities.
         - ``"hard"``: majority vote of argmax predictions. Ties are
           broken deterministically by choosing the first class in sorted
-          order (via ``numpy.argmax``), matching sklearn convention.
+          order (via ``numpy.argmax``).
     weights : list of float or None, default=None
         Per-forecaster weights. Raw values are passed to
         ``numpy.average`` which normalizes internally. Only used with
-        ``voting="soft"``. Silently ignored with ``voting="hard"``.
+        ``method="soft"``. Silently ignored with ``method="hard"``.
     n_jobs : int or None, default=None
         Number of parallel jobs for fitting base forecasters.
         ``None`` means 1 unless in a ``joblib.parallel_backend`` context.
@@ -103,7 +103,7 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
     ...             ),
     ...         ),
     ...     ],
-    ...     voting="soft",
+    ...     method="soft",
     ... )
     >>> forecaster.fit(y, forecasting_horizon=3)  # doctest: +ELLIPSIS
     VotingClassProbaForecaster(...)
@@ -113,21 +113,22 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
 
     See Also
     --------
-    `VotingForecaster` : Ensemble for point and interval forecasters.
+    `VotingPointForecaster` : Ensemble for point forecasters.
+    `VotingIntervalForecaster` : Ensemble for interval forecasters.
     `BaseClassProbaForecaster` : Base class for class-probability forecasters.
 
     Notes
     -----
     - All base forecasters must discover the same classes at fit time.
       A ``ValueError`` is raised if class sets differ.
-    - Weights are only used with ``voting="soft"``; they are silently
-      ignored with ``voting="hard"``.
+    - Weights are only used with ``method="soft"``; they are silently
+      ignored with ``method="hard"``.
 
     """
 
     _parameter_constraints: dict = {
         "forecasters": [list],
-        "voting": [StrOptions({"soft", "hard"})],
+        "method": [StrOptions({"soft", "hard"})],
         "weights": [list, None],
         "n_jobs": [Integral, None],
     }
@@ -136,13 +137,13 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         self,
         forecasters: list[tuple[str, BaseClassProbaForecaster]],
         *,
-        voting: Literal["soft", "hard"] = "soft",
+        method: Literal["soft", "hard"] = "soft",
         weights: list[float] | None = None,
         n_jobs: int | None = None,
     ):
         super().__init__()
         self.forecasters = forecasters
-        self.voting = voting
+        self.method = method
         self.weights = weights
         self.n_jobs = n_jobs
 
@@ -163,38 +164,6 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         tags.forecaster_tags.supports_panel_data = True
 
         return tags
-
-    def get_params(self, deep: bool = True) -> dict[str, Any]:
-        """Get parameters for this estimator.
-
-        Parameters
-        ----------
-        deep : bool, default=True
-            If True, returns parameters for contained sub-estimators.
-
-        Returns
-        -------
-        dict
-            Parameter names mapped to their values.
-
-        """
-        return self._get_params("_forecasters", deep=deep)
-
-    def set_params(self, **params: Any) -> VotingClassProbaForecaster:
-        """Set the parameters of this estimator.
-
-        Parameters
-        ----------
-        **params : dict
-            Estimator parameters.
-
-        Returns
-        -------
-        self
-
-        """
-        self._set_params("_forecasters", **params)
-        return self
 
     def _validate_classes_consistent(self) -> None:
         """Check that all surviving forecasters discovered the same classes.
@@ -278,30 +247,14 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
 
         # Derive fitted attributes from first surviving forecaster
         _first_name, first_forecaster = self.forecasters_[0]
-        self.fit_forecasting_horizon_ = forecasting_horizon
-        self.interval_ = first_forecaster.interval_
-        self.panel_group_names_ = first_forecaster.panel_group_names_
-        self.local_y_schema_ = dict(first_forecaster.local_y_schema_)
-        self.local_X_schema_ = getattr(first_forecaster, "local_X_schema_", None)
-        self.shared_X_schema_ = getattr(first_forecaster, "shared_X_schema_", None)
-        self.local_y_t_schema_ = self.local_y_schema_
-        self.local_X_t_schema_ = self.local_X_schema_
-        self._y_observed = y
-        self._X_observed = X
-        self._X_t_observed = X
+        self._derive_fitted_attributes(first_forecaster, forecasting_horizon, y, X)
 
         self.classes_ = dict(first_forecaster.classes_)  # ty: ignore[unresolved-attribute]
         self.n_classes_ = dict(first_forecaster.n_classes_)  # ty: ignore[unresolved-attribute]
         self.label_to_code_ = dict(first_forecaster.label_to_code_)  # ty: ignore[unresolved-attribute]
 
         # Compute effective weights for surviving forecasters
-        if self.weights is not None:
-            fitted_names = {name for name, _ in self.forecasters_}
-            self.weights_ = [
-                w for (name, _), w in zip(self.forecasters, self.weights, strict=True) if name in fitted_names
-            ]
-        else:
-            self.weights_ = None
+        self._compute_effective_weights()
 
         return self
 
@@ -336,7 +289,7 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         time_df = predictions[0].select(["observed_time", "time"])
         proba_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
 
-        if self.voting == "soft":
+        if self.method == "soft":
             agg_exprs = []
             for col in proba_cols:
                 values = np.column_stack([pred[col].to_numpy() for pred in predictions])
@@ -405,7 +358,7 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         """
         check_is_fitted(self, ["forecasters_", "classes_"])
 
-        if self.voting == "soft":
+        if self.method == "soft":
             return self._soft_vote_predict_class_proba(
                 X=X,
                 forecasting_horizon=forecasting_horizon,
@@ -559,7 +512,7 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
         """
         check_is_fitted(self, ["forecasters_", "classes_"])
 
-        if self.voting == "hard":
+        if self.method == "hard":
             return self._hard_vote_predict(
                 X=X,
                 forecasting_horizon=forecasting_horizon,
@@ -670,66 +623,6 @@ class VotingClassProbaForecaster(BaseClassProbaForecaster, _BaseEnsembleForecast
             result = result.with_columns(pl.Series(name=target_col, values=winners))
 
         return result
-
-    def observe(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
-        **params,
-    ) -> VotingClassProbaForecaster:
-        """Observe new data on all surviving base forecasters.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            New target observations.
-        X : pl.DataFrame or None, default=None
-            New exogenous observations.
-        panel_group_names : list of str or None, default=None
-            Panel group prefixes.
-        **params : dict
-            Metadata routing parameters.
-
-        Returns
-        -------
-        self
-
-        """
-        check_is_fitted(self, ["forecasters_"])
-        for _name, forecaster in self.forecasters_:
-            forecaster.observe(y=y, X=X, panel_group_names=panel_group_names, **params)
-        return self
-
-    def rewind(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
-        **params,
-    ) -> VotingClassProbaForecaster:
-        """Rewind all surviving base forecasters.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target data to rewind to.
-        X : pl.DataFrame or None, default=None
-            Exogenous data to rewind to.
-        panel_group_names : list of str or None, default=None
-            Panel group prefixes.
-        **params : dict
-            Metadata routing parameters.
-
-        Returns
-        -------
-        self
-
-        """
-        check_is_fitted(self, ["forecasters_"])
-        for _name, forecaster in self.forecasters_:
-            forecaster.rewind(y=y, X=X, panel_group_names=panel_group_names, **params)
-        return self
 
     def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing configuration.

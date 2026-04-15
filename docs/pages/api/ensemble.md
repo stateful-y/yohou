@@ -10,5 +10,6 @@ Ensemble forecasters for combining predictions from multiple base forecasters.
 
 | Name | Description |
 | --- | --- |
-| [`VotingForecaster`](generated/yohou.ensemble.voting.VotingForecaster.md) | Combines predictions via mean, median, or weighted averaging. |
+| [`VotingPointForecaster`](generated/yohou.ensemble.voting_point.VotingPointForecaster.md) | Combines point predictions via mean, median, or weighted averaging. |
+| [`VotingIntervalForecaster`](generated/yohou.ensemble.voting_interval.VotingIntervalForecaster.md) | Combines interval predictions via mean, median, envelope, or weighted averaging. |
 | [`VotingClassProbaForecaster`](generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster.md) | Combines class-probability forecasters via soft or hard voting. |

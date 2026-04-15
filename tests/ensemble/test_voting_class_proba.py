@@ -46,7 +46,7 @@ class TestVotingClassProbaSystematicChecks:
                         ),
                     ),
                 ],
-                voting="soft",
+                method="soft",
             ),
             VotingClassProbaForecaster(
                 forecasters=[
@@ -58,7 +58,7 @@ class TestVotingClassProbaSystematicChecks:
                         ),
                     ),
                 ],
-                voting="hard",
+                method="hard",
             ),
             VotingClassProbaForecaster(
                 forecasters=[
@@ -70,7 +70,7 @@ class TestVotingClassProbaSystematicChecks:
                         ),
                     ),
                 ],
-                voting="soft",
+                method="soft",
                 weights=[0.3, 0.7],
             ),
         ],
@@ -109,7 +109,7 @@ class TestVotingClassProbaFitPredict:
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[("dt_1", base_1), ("dt_2", base_2)],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
@@ -139,7 +139,7 @@ class TestVotingClassProbaFitPredict:
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[("dt_1", base_1), ("dt_2", base_2)],
-            voting="soft",
+            method="soft",
             weights=weights,
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
@@ -173,7 +173,7 @@ class TestVotingClassProbaFitPredict:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
@@ -198,7 +198,7 @@ class TestVotingClassProbaFitPredict:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
@@ -231,7 +231,7 @@ class TestVotingClassProbaFitPredict:
                     ),
                 ),
             ],
-            voting="hard",
+            method="hard",
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
@@ -266,7 +266,7 @@ class TestVotingClassProbaFitPredict:
                     ),
                 ),
             ],
-            voting="hard",
+            method="hard",
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
@@ -296,7 +296,7 @@ class TestVotingClassProbaFitPredict:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
@@ -328,7 +328,7 @@ class TestVotingClassProbaFitPredict:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
 
@@ -339,7 +339,7 @@ class TestVotingClassProbaFitPredict:
             assert labels == sorted(labels), "classes_ should be sorted"
 
     def test_weights_ignored_with_hard_voting(self, class_proba_y_X_factory):
-        """Test that weights are silently ignored with voting='hard'."""
+        """Test that weights are silently ignored with method='hard'."""
         y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
         X_train = X[:80]
@@ -362,11 +362,11 @@ class TestVotingClassProbaFitPredict:
 
         f_no_w = VotingClassProbaForecaster(
             forecasters=forecasters,
-            voting="hard",
+            method="hard",
         )
         f_w = VotingClassProbaForecaster(
             forecasters=forecasters,
-            voting="hard",
+            method="hard",
             weights=[0.1, 0.2, 0.7],
         )
 
@@ -407,7 +407,7 @@ class TestVotingClassProbaPanelData:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
@@ -455,7 +455,7 @@ class TestVotingClassProbaErrorHandling:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
 
         with pytest.warns(UserWarning, match="failed during fit"):
@@ -487,7 +487,7 @@ class TestVotingClassProbaErrorHandling:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
 
         with pytest.raises((RuntimeError, ValueError)):
@@ -508,7 +508,7 @@ class TestVotingClassProbaErrorHandling:
                 ),
             ],
             weights=[0.5],
-            voting="soft",
+            method="soft",
         )
 
         with pytest.raises(ValueError, match="Number of weights"):
@@ -528,7 +528,7 @@ class TestVotingClassProbaErrorHandling:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
 
         with pytest.raises(ValueError, match="Duplicate forecaster names"):
@@ -582,7 +582,7 @@ class TestVotingClassProbaConsistency:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
 
         # Directly test _validate_classes_consistent by simulating the state
@@ -608,7 +608,7 @@ class TestVotingClassProbaObserveRewind:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
         forecaster.observe(y=y[80:100], X=X[80:100])
@@ -629,7 +629,7 @@ class TestVotingClassProbaObserveRewind:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y[:90], X[:90], forecasting_horizon=3)
         forecaster.observe(y=y[90:100], X=X[90:100])
@@ -651,7 +651,7 @@ class TestVotingClassProbaObserveRewind:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
         y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X=X[80:90], forecasting_horizon=3)
@@ -679,7 +679,7 @@ class TestVotingClassProbaObserveRewind:
                     ),
                 ),
             ],
-            voting="hard",
+            method="hard",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
         y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X=X[80:90], forecasting_horizon=3)
@@ -701,8 +701,31 @@ class TestVotingClassProbaObserveRewind:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
             weights=[1.0, 3.0],
+        )
+        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+
+        y_proba = forecaster._predict_class_proba_one(panel_group_names=None)
+        proba_cols = [c for c in y_proba.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
+        assert "time" in y_proba.columns
+
+    def test_predict_class_proba_one_soft_unweighted(self, class_proba_y_X_factory):
+        """Test _predict_class_proba_one for soft voting without weights."""
+        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("dt_1", _make_class_proba_forecaster()),
+                (
+                    "dt_2",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=123),
+                    ),
+                ),
+            ],
+            method="soft",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
@@ -731,7 +754,7 @@ class TestVotingClassProbaObserveRewind:
                     ),
                 ),
             ],
-            voting="hard",
+            method="hard",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
@@ -761,7 +784,7 @@ class TestVotingClassProbaSklearn:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
@@ -781,11 +804,11 @@ class TestVotingClassProbaSklearn:
                     ),
                 ),
             ],
-            voting="soft",
+            method="soft",
         )
 
         params = forecaster.get_params(deep=True)
-        assert params["voting"] == "soft"
+        assert params["method"] == "soft"
         assert params["dt_1__estimator__random_state"] == 42
         assert params["dt_2__estimator__random_state"] == 123
 
@@ -798,7 +821,7 @@ class TestVotingClassProbaSklearn:
             forecasters=[
                 ("dt_1", _make_class_proba_forecaster()),
             ],
-            voting="soft",
+            method="soft",
         )
 
         with pytest.raises(NotFittedError):

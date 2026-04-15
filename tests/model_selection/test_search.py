@@ -1018,3 +1018,28 @@ class TestClassProbaSearch:
         y_pred2 = search_cv.observe_predict_class_proba(y=y_test[:3])
         proba_cols2 = [c for c in y_pred2.columns if "_proba_" in c]
         assert len(proba_cols2) == 3
+
+
+class TestSearchForecasterHas:
+    """Tests for the _search_forecaster_has helper."""
+
+    def test_returns_false_when_forecaster_type_is_none(self):
+        """Check returns False for point/interval/class_proba when type is None."""
+        from yohou.model_selection.search import _search_forecaster_has
+
+        class _NoneTypeForecaster(SeasonalNaive):
+            def __sklearn_tags__(self):
+                tags = super().__sklearn_tags__()
+                tags.forecaster_tags.forecaster_type = None
+                return tags
+
+        check_fn = _search_forecaster_has("point")
+        mock_search = type(
+            "MockSearch",
+            (),
+            {
+                "refit": True,
+                "best_forecaster_": _NoneTypeForecaster(),
+            },
+        )()
+        assert check_fn(mock_search) is False

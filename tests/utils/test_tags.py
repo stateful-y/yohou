@@ -74,6 +74,30 @@ class TestTagsPostInit:
         assert tags.splitter_tags is None
 
 
+class TestForecasterTagsPostInit:
+    """Tests for ForecasterTags.__post_init__ validation."""
+
+    def test_non_frozenset_raises_type_error(self):
+        """Non-frozenset forecaster_type raises TypeError."""
+        with pytest.raises(TypeError, match="must be a frozenset"):
+            ForecasterTags(forecaster_type={"point"})  # set, not frozenset
+
+    def test_string_raises_type_error(self):
+        """A plain string forecaster_type raises TypeError."""
+        with pytest.raises(TypeError, match="must be a frozenset"):
+            ForecasterTags(forecaster_type="point")
+
+    def test_invalid_element_raises_value_error(self):
+        """Unknown elements in forecaster_type raise ValueError."""
+        with pytest.raises(ValueError, match="invalid elements"):
+            ForecasterTags(forecaster_type=frozenset({"point", "bogus"}))
+
+    def test_valid_frozenset_accepted(self):
+        """Valid frozenset values are accepted."""
+        t = ForecasterTags(forecaster_type=frozenset({"point", "interval"}))
+        assert t.forecaster_type == frozenset({"point", "interval"})
+
+
 class TestTagDefaults:
     """Tests for default values of all tag dataclasses."""
 
