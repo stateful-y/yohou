@@ -432,3 +432,126 @@ class TestVintageWeight:
         np.testing.assert_allclose(result_vintage, result_default, atol=1e-10)
         # step_weight should change the result
         assert not np.isclose(result_step, result_default, atol=1e-10)
+
+
+class TestComponentWeightComponentwise:
+    """component_weight with componentwise reduction paths."""
+
+    def test_componentwise_stepwise_panel_with_weight(self):
+        """Panel data with componentwise + component_weight produces weighted groups."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "g1__a": [10.0, 20.0, 30.0],
+            "g1__b": [100.0, 200.0, 300.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2024, 1, 1)] * 3,
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "g1__a": [12.0, 18.0, 33.0],
+            "g1__b": [110.0, 190.0, 280.0],
+        })
+        mae = MeanAbsoluteError(
+            aggregation_method=["componentwise", "vintagewise"],
+            component_weight={"a": 2.0, "b": 1.0},
+        )
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "forecasting_step" in result.columns
+
+    def test_componentwise_non_panel_with_weight(self):
+        """Non-panel data with componentwise + component_weight uses weighted reduce."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "a": [10.0, 20.0, 30.0],
+            "b": [100.0, 200.0, 300.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2024, 1, 1)] * 3,
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "a": [12.0, 18.0, 33.0],
+            "b": [110.0, 190.0, 280.0],
+        })
+        mae = MeanAbsoluteError(
+            aggregation_method=["componentwise", "vintagewise"],
+            component_weight={"a": 2.0, "b": 1.0},
+        )
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "forecasting_step" in result.columns
+
+
+class TestGroupwiseComponentWeight:
+    """Groupwise aggregation with component_weight."""
+
+    def test_groupwise_with_component_weight(self):
+        """Groupwise + component_weight applies weights within groups."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 6)],
+            "region__east": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "region__west": [15.0, 25.0, 35.0, 45.0, 55.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2024, 1, 1)] * 5,
+            "time": [datetime(2024, 1, i) for i in range(1, 6)],
+            "region__east": [12.0, 18.0, 33.0, 38.0, 52.0],
+            "region__west": [14.0, 26.0, 33.0, 46.0, 53.0],
+        })
+        mae = MeanAbsoluteError(
+            aggregation_method="all",
+            component_weight={"east": 2.0, "west": 1.0},
+        )
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+        assert isinstance(result, float)
+        # Should differ from equal weights
+        mae_equal = MeanAbsoluteError(aggregation_method="all")
+        mae_equal.fit(y_true)
+        result_equal = mae_equal.score(y_true, y_pred)
+        assert not np.isclose(result, result_equal, atol=1e-10)
+
+
+class TestNoContextDimFallback:
+    """Tests for weight helpers when context dimensions are missing."""
+
+    def test_step_weight_no_context_steps(self):
+        """step_weight is ignored when context has no forecasting_step."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "value": [12.0, 18.0, 33.0],
+        })
+        # No observed_time -> no forecasting_step in context
+        mae = MeanAbsoluteError(step_weight={1: 3.0, 2: 1.0})
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+        # Should still produce a valid scalar
+        assert isinstance(result, float)
+        # Same as default since weights can't be applied
+        mae_default = MeanAbsoluteError()
+        mae_default.fit(y_true)
+        np.testing.assert_allclose(result, mae_default.score(y_true, y_pred), atol=1e-10)
+
+    def test_vintage_weight_no_context_vintages(self):
+        """vintage_weight is ignored when context has no observed_time."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "value": [12.0, 18.0, 33.0],
+        })
+        mae = MeanAbsoluteError(
+            vintage_weight={datetime(2024, 1, 1): 3.0, datetime(2024, 1, 2): 1.0},
+        )
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+        assert isinstance(result, float)
+        mae_default = MeanAbsoluteError()
+        mae_default.fit(y_true)
+        np.testing.assert_allclose(result, mae_default.score(y_true, y_pred), atol=1e-10)

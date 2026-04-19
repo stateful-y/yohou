@@ -976,3 +976,44 @@ class TestCoverageWeightAggregation:
         # Both should be floats
         assert isinstance(score_equal, float)
         assert isinstance(score_weighted, float)
+
+    def test_single_rate_no_coveragewise_returns_scalar(self):
+        """Single rate without coveragewise returns scalar directly."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+        y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "time": times,
+            "val_lower_0.9": [8.0, 18.0],
+            "val_upper_0.9": [12.0, 22.0],
+        })
+        cov = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
+        cov.fit(y_true)
+        result = cov.score(y_true, y_pred)
+        assert isinstance(result, float)
+
+    def test_coverage_weight_with_stepwise_dataframe(self):
+        """coverage_weight with stepwise returns weighted DataFrame."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0, 30.0]})
+        rows = []
+        for ot in [datetime(2019, 12, 30), datetime(2019, 12, 31)]:
+            for i, t in enumerate(times):
+                rows.append({
+                    "observed_time": ot,
+                    "time": t,
+                    "val_lower_0.9": [10.0, 20.0, 30.0][i] - 2.0,
+                    "val_upper_0.9": [10.0, 20.0, 30.0][i] + 2.0,
+                    "val_lower_0.95": [10.0, 20.0, 30.0][i] - 3.0,
+                    "val_upper_0.95": [10.0, 20.0, 30.0][i] + 3.0,
+                })
+        y_pred = pl.DataFrame(rows).sort("time", "observed_time")
+        # Stepwise without coveragewise -> DataFrame with coverage_rate and observed_time
+        cov = EmpiricalCoverage(
+            aggregation_method=["componentwise", "vintagewise", "coveragewise"],
+            coverage_weight={0.9: 2.0, 0.95: 1.0},
+        )
+        cov.fit(y_true)
+        result = cov.score(y_true, y_pred)
+        # Should collapse coverage dimension, returning DataFrame with time or scalar
+        assert isinstance(result, (float, pl.DataFrame))
