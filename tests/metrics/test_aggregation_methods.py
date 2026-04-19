@@ -343,7 +343,7 @@ class TestPanelAggregation:
 
         # Custom weights
         weights = {"groupA": 0.9, "groupB": 0.1}
-        scorer_weighted = MeanAbsoluteError(aggregation_method="all", group_weight=weights)
+        scorer_weighted = MeanAbsoluteError(aggregation_method="all", groups=weights)
         scorer.fit(y_true)
         scorer_weighted.fit(y_true)
         result_weighted = scorer_weighted.score(y_true, y_pred)
@@ -643,7 +643,7 @@ class TestGroupwiseAggregation:
         y_true, y_pred = panel_multivariate
         mae = MeanAbsoluteError(
             aggregation_method="groupwise",
-            group_weight={"g1": 3.0, "g2": 1.0},
+            groups={"g1": 3.0, "g2": 1.0},
         )
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
@@ -855,7 +855,7 @@ class TestIntervalScorerComponentwiseAggregation:
         assert "coverage_rate" in result.columns
 
     def test_no_spatial_without_coveragewise_returns_float(self):
-        """No spatial aggregation + coveragewise returns scalar."""
+        """coveragewise alone collapses coverage, spatial dims stay; returns DataFrame with time."""
         times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
         y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
         y_pred = pl.DataFrame({
@@ -867,7 +867,9 @@ class TestIntervalScorerComponentwiseAggregation:
         scorer = EmpiricalCoverage(aggregation_method="coveragewise")
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
-        assert isinstance(result, float)
+        # Single rate, coveragewise collapses it, but spatial dims not collapsed → DataFrame
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
 
     def test_all_stepwise_vintagewise_componentwise_groupwise_coveragewise(self, interval_panel_data):
         """All aggregation returns scalar for interval panel data."""
@@ -968,7 +970,7 @@ class TestCoverageWeightAggregation:
         # Weighted: emphasize 0.9 rate
         cov_weighted = EmpiricalCoverage(
             aggregation_method="all",
-            coverage_weight={0.9: 10.0, 0.95: 1.0},
+            coverage={0.9: 10.0, 0.95: 1.0},
         )
         cov_weighted.fit(y_true)
         score_weighted = cov_weighted.score(y_true, y_pred)
@@ -1011,7 +1013,7 @@ class TestCoverageWeightAggregation:
         # Stepwise without coveragewise -> DataFrame with coverage_rate and observed_time
         cov = EmpiricalCoverage(
             aggregation_method=["componentwise", "vintagewise", "coveragewise"],
-            coverage_weight={0.9: 2.0, 0.95: 1.0},
+            coverage={0.9: 2.0, 0.95: 1.0},
         )
         cov.fit(y_true)
         result = cov.score(y_true, y_pred)

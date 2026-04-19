@@ -292,14 +292,12 @@ class GammaResidual(BaseConformityScorer):
     def __init__(
         self,
         epsilon: float = 1e-8,
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
+            components=components,
         )
         self.epsilon = epsilon
 

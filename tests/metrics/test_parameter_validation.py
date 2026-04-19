@@ -45,7 +45,7 @@ class TestPanelGroupNames:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         scorer = MeanAbsoluteError(groups="invalid")
-        with pytest.raises(ValueError, match=r"groups.*must be an instance of 'list' or None"):
+        with pytest.raises(ValueError, match=r"groups.*must be an instance of 'list'.*or None"):
             scorer.fit(y)
 
     def test_groups_elements_must_be_strings(self, y_X_factory):
@@ -53,7 +53,7 @@ class TestPanelGroupNames:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         scorer = MeanAbsoluteError(groups=[1, 2, 3])
-        with pytest.raises(ValueError, match="All elements in groups must be strings"):
+        with pytest.raises(ValueError, match="All group names must be strings"):
             scorer.fit(y)
 
     def test_groups_cannot_be_empty_list(self, y_X_factory):
@@ -61,7 +61,7 @@ class TestPanelGroupNames:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         scorer = MeanAbsoluteError(groups=[])
-        with pytest.raises(ValueError, match="groups cannot be an empty list"):
+        with pytest.raises(ValueError, match="groups cannot be empty"):
             scorer.fit(y)
 
     def test_groups_validated_against_data(self, panel_data_factory):
@@ -96,7 +96,7 @@ class TestPanelGroupNames:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         scorer = MeanAbsoluteError(groups=["store1", 123, "store2"])
-        with pytest.raises(ValueError, match="All elements in groups must be strings"):
+        with pytest.raises(ValueError, match="All group names must be strings"):
             scorer.fit(y)
 
     def test_groups_edge_case_multiple_valid_groups(self, panel_data_factory):
@@ -151,32 +151,32 @@ class TestComponentNames:
         """component_names must be a list or None."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = MeanAbsoluteError(component_names="invalid")
-        with pytest.raises(ValueError, match=r"(must be a list or None|must be an instance of 'list' or None)"):
+        scorer = MeanAbsoluteError(components="invalid")
+        with pytest.raises(ValueError, match=r"components.*must be an instance of 'list'.*or None"):
             scorer.fit(y)
 
     def test_component_names_elements_must_be_strings(self, y_X_factory):
         """All elements in component_names must be strings."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = MeanAbsoluteError(component_names=[1, 2, 3])
-        with pytest.raises(ValueError, match="All elements in component_names must be strings"):
+        scorer = MeanAbsoluteError(components=[1, 2, 3])
+        with pytest.raises(ValueError, match="All component names must be strings"):
             scorer.fit(y)
 
     def test_component_names_cannot_be_empty_list(self, y_X_factory):
         """component_names cannot be an empty list."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = MeanAbsoluteError(component_names=[])
-        with pytest.raises(ValueError, match="component_names cannot be an empty list"):
+        scorer = MeanAbsoluteError(components=[])
+        with pytest.raises(ValueError, match="components cannot be empty"):
             scorer.fit(y)
 
     def test_component_names_validated_against_global_data(self, y_X_factory):
         """Requested components must exist in global data."""
         y, _ = y_X_factory(length=50, n_targets=2, seed=42)  # Creates 'y' and 'y_1'
 
-        scorer = MeanAbsoluteError(component_names=["y", "y_nonexistent"])
-        with pytest.raises(ValueError, match="Requested component_names.*not found in data"):
+        scorer = MeanAbsoluteError(components=["y", "y_nonexistent"])
+        with pytest.raises(ValueError, match="Requested components.*not found in data"):
             scorer.fit(y)
 
     def test_component_names_validated_against_panel_data(self, panel_data_factory):
@@ -189,15 +189,15 @@ class TestComponentNames:
         )
 
         # Request non-existent component (unprefixed name)
-        scorer = MeanAbsoluteError(component_names=["y", "y_nonexistent"])
-        with pytest.raises(ValueError, match="Requested component_names.*not found in data"):
+        scorer = MeanAbsoluteError(components=["y", "y_nonexistent"])
+        with pytest.raises(ValueError, match="Requested components.*not found in data"):
             scorer.fit(y)
 
     def test_valid_component_names_accepted_global(self, y_X_factory):
         """Valid component_names should be accepted for global data."""
         y, _ = y_X_factory(length=50, n_targets=2, seed=42)
 
-        scorer = MeanAbsoluteError(component_names=["y_0"])
+        scorer = MeanAbsoluteError(components=["y_0"])
         scorer.fit(y)  # Should not raise
 
     def test_valid_component_names_accepted_panel(self, panel_data_factory):
@@ -209,37 +209,37 @@ class TestComponentNames:
             seed=42,
         )
 
-        scorer = MeanAbsoluteError(component_names=["y_0"])
+        scorer = MeanAbsoluteError(components=["y_0"])
         scorer.fit(y)  # Should not raise
 
     def test_component_names_edge_case_with_mixed_types(self, y_X_factory):
         """component_names with mixed string and non-string types should fail."""
         y, _ = y_X_factory(length=50, n_targets=2, seed=42)
 
-        scorer = MeanAbsoluteError(component_names=["y", 123, "y_1"])
-        with pytest.raises(ValueError, match="All elements in component_names must be strings"):
+        scorer = MeanAbsoluteError(components=["y", 123, "y_1"])
+        with pytest.raises(ValueError, match="All component names must be strings"):
             scorer.fit(y)
 
     def test_component_names_edge_case_multiple_valid_components(self, y_X_factory):
         """Multiple valid component names should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=3, seed=42)  # Creates y, y_1, y_2
 
-        scorer = MeanAbsoluteError(component_names=["y_0", "y_2"])
+        scorer = MeanAbsoluteError(components=["y_0", "y_2"])
         scorer.fit(y)  # Should not raise
 
     def test_component_names_edge_case_all_components(self, y_X_factory):
         """All component names should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=2, seed=42)
 
-        scorer = MeanAbsoluteError(component_names=["y_0", "y_1"])
+        scorer = MeanAbsoluteError(components=["y_0", "y_1"])
         scorer.fit(y)  # Should not raise
 
     def test_component_names_edge_case_single_missing_global(self, y_X_factory):
         """Single missing component name in global data should be reported."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = MeanAbsoluteError(component_names=["y_nonexistent"])
-        with pytest.raises(ValueError, match="Requested component_names.*y_nonexistent"):
+        scorer = MeanAbsoluteError(components=["y_nonexistent"])
+        with pytest.raises(ValueError, match="Requested components.*y_nonexistent"):
             scorer.fit(y)
 
     def test_component_names_edge_case_partial_match_panel(self, panel_data_factory):
@@ -251,8 +251,8 @@ class TestComponentNames:
             seed=42,
         )
 
-        scorer = MeanAbsoluteError(component_names=["y", "y_1", "y_2"])
-        with pytest.raises(ValueError, match="Requested component_names.*y_2.*not found"):
+        scorer = MeanAbsoluteError(components=["y", "y_1", "y_2"])
+        with pytest.raises(ValueError, match="Requested components.*y_2.*not found"):
             scorer.fit(y)
 
     def test_component_names_edge_case_unprefixed_in_panel_data(self, panel_data_factory):
@@ -265,12 +265,12 @@ class TestComponentNames:
         )
 
         # Should use unprefixed names, not prefixed ones like "store1__y_0"
-        scorer = MeanAbsoluteError(component_names=["y_0"])
+        scorer = MeanAbsoluteError(components=["y_0"])
         scorer.fit(y)  # Should not raise
 
         # Prefixed names should not work
-        scorer_invalid = MeanAbsoluteError(component_names=["store1__y_0"])
-        with pytest.raises(ValueError, match="Requested component_names.*store1__y_0.*not found"):
+        scorer_invalid = MeanAbsoluteError(components=["store1__y_0"])
+        with pytest.raises(ValueError, match="Requested components.*store1__y_0.*not found"):
             scorer_invalid.fit(y)
 
 
@@ -279,24 +279,24 @@ class TestCoverageRates:
         """coverage_rates must be a list or None."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates="invalid")
-        with pytest.raises(ValueError, match=r"coverage_rates.*must be an instance of 'list' or None"):
+        scorer = EmpiricalCoverage(coverage="invalid")
+        with pytest.raises(ValueError, match=r"coverage.*must be an instance of 'list'.*or None"):
             scorer.fit(y)
 
     def test_coverage_rates_elements_must_be_numeric(self, y_X_factory):
         """All elements in coverage_rates must be numeric."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates=["0.9", "0.95"])
-        with pytest.raises(ValueError, match="All elements in coverage_rates must be numeric"):
+        scorer = EmpiricalCoverage(coverage=["0.9", "0.95"])
+        with pytest.raises(ValueError, match="All elements in coverage must be numeric"):
             scorer.fit(y)
 
     def test_coverage_rates_cannot_be_empty_list(self, y_X_factory):
         """coverage_rates cannot be an empty list."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates=[])
-        with pytest.raises(ValueError, match="coverage_rates cannot be an empty list"):
+        scorer = EmpiricalCoverage(coverage=[])
+        with pytest.raises(ValueError, match="coverage cannot be empty"):
             scorer.fit(y)
 
     def test_coverage_rates_must_be_between_zero_and_one(self, y_X_factory):
@@ -304,37 +304,37 @@ class TestCoverageRates:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         # Test zero
-        scorer = EmpiricalCoverage(coverage_rates=[0.0, 0.9])
-        with pytest.raises(ValueError, match="All coverage_rates must be between 0 and 1.*got 0.0"):
+        scorer = EmpiricalCoverage(coverage=[0.0, 0.9])
+        with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got 0.0"):
             scorer.fit(y)
 
         # Test one
-        scorer = EmpiricalCoverage(coverage_rates=[0.9, 1.0])
-        with pytest.raises(ValueError, match="All coverage_rates must be between 0 and 1.*got 1.0"):
+        scorer = EmpiricalCoverage(coverage=[0.9, 1.0])
+        with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got 1.0"):
             scorer.fit(y)
 
         # Test negative
-        scorer = EmpiricalCoverage(coverage_rates=[-0.1, 0.9])
-        with pytest.raises(ValueError, match="All coverage_rates must be between 0 and 1.*got -0.1"):
+        scorer = EmpiricalCoverage(coverage=[-0.1, 0.9])
+        with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got -0.1"):
             scorer.fit(y)
 
         # Test greater than one
-        scorer = EmpiricalCoverage(coverage_rates=[0.9, 1.5])
-        with pytest.raises(ValueError, match="All coverage_rates must be between 0 and 1.*got 1.5"):
+        scorer = EmpiricalCoverage(coverage=[0.9, 1.5])
+        with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got 1.5"):
             scorer.fit(y)
 
     def test_valid_coverage_rates_accepted(self, y_X_factory):
         """Valid coverage_rates should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates=[0.5, 0.9, 0.95])
+        scorer = EmpiricalCoverage(coverage=[0.5, 0.9, 0.95])
         scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_with_mixed_numeric_types(self, y_X_factory):
         """coverage_rates with mixed int and float should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates=[0.5, 0.9])  # float
+        scorer = EmpiricalCoverage(coverage=[0.5, 0.9])  # float
         scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_boundary_values_excluded(self, y_X_factory):
@@ -342,12 +342,12 @@ class TestCoverageRates:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         # Test 0.0
-        scorer = EmpiricalCoverage(coverage_rates=[0.0])
+        scorer = EmpiricalCoverage(coverage=[0.0])
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 0.0"):
             scorer.fit(y)
 
         # Test 1.0
-        scorer = EmpiricalCoverage(coverage_rates=[1.0])
+        scorer = EmpiricalCoverage(coverage=[1.0])
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 1.0"):
             scorer.fit(y)
 
@@ -355,29 +355,29 @@ class TestCoverageRates:
         """Very small valid coverage rates should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates=[0.01, 0.05])
+        scorer = EmpiricalCoverage(coverage=[0.01, 0.05])
         scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_very_large_value(self, y_X_factory):
         """Very large valid coverage rates should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates=[0.95, 0.99])
+        scorer = EmpiricalCoverage(coverage=[0.95, 0.99])
         scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_multiple_invalid(self, y_X_factory):
         """First invalid coverage rate should be reported."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates=[0.5, 1.5, 2.0])
+        scorer = EmpiricalCoverage(coverage=[0.5, 1.5, 2.0])
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 1.5"):
             scorer.fit(y)
 
     def test_coverage_rates_edge_case_none_accepted(self, y_X_factory):
-        """coverage_rates=None should be accepted."""
+        """coverage=None should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage_rates=None)
+        scorer = EmpiricalCoverage(coverage=None)
         scorer.fit(y)  # Should not raise
 
 
@@ -386,24 +386,24 @@ class TestTypeValidation:
         """Type validation should work even without training data."""
         # Test invalid type for groups
         scorer = MeanAbsoluteError(groups="invalid")
-        with pytest.raises(ValueError, match=r"groups.*must be an instance of 'list' or None"):
+        with pytest.raises(ValueError, match=r"groups.*must be an instance of 'list'.*or None"):
             scorer.fit(None)
 
         # Test invalid type for component_names
-        scorer = MeanAbsoluteError(component_names="invalid")
-        with pytest.raises(ValueError, match=r"component_names.*must be an instance of 'list' or None"):
+        scorer = MeanAbsoluteError(components="invalid")
+        with pytest.raises(ValueError, match=r"components.*must be an instance of 'list'.*or None"):
             scorer.fit(None)
 
         # Test invalid coverage_rates
-        scorer = EmpiricalCoverage(coverage_rates=[1.5])
-        with pytest.raises(ValueError, match="All coverage_rates must be between 0 and 1"):
+        scorer = EmpiricalCoverage(coverage=[1.5])
+        with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1"):
             scorer.fit(None)
 
     def test_data_validation_requires_training_data(self):
         """fit() should always require y_train, even for stateless scorers."""
         scorer = MeanAbsoluteError(
             groups=["nonexistent"],
-            component_names=["also_nonexistent"],
+            components=["also_nonexistent"],
         )
         # Should raise even for stateless scorers - y_train always required
         with pytest.raises(ValueError, match="`y_train` is required for scorer.fit"):
@@ -423,12 +423,12 @@ class TestCombinedValidation:
         # Invalid groups should fail first
         scorer = EmpiricalCoverage(
             groups="invalid",  # Invalid type
-            component_names="invalid",  # Also invalid
-            coverage_rates="invalid",  # Also invalid
+            components="invalid",  # Also invalid
+            coverage="invalid",  # Also invalid
         )
         with pytest.raises(
             ValueError,
-            match=r"(coverage_rates|component_names).*must be an instance of 'list' or None",
+            match=r"(coverage|components).*must be an instance of 'list'.*or None",
         ):
             # coverage_rates validated first in BaseIntervalScorer.fit()
             scorer.fit(y)
@@ -444,8 +444,8 @@ class TestCombinedValidation:
 
         scorer = EmpiricalCoverage(
             groups=["store1"],
-            component_names=["y_0"],
-            coverage_rates=[0.9],
+            components=["y_0"],
+            coverage=[0.9],
         )
         scorer.fit(y)  # Should not raise
 
@@ -479,7 +479,7 @@ class TestValidationOrdering:
 
         # Invalid coverage_rates should be caught before groups
         scorer = EmpiricalCoverage(
-            coverage_rates=[1.5],
+            coverage=[1.5],
             groups=["nonexistent"],
         )
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 1.5"):
@@ -512,7 +512,7 @@ class TestValidationWithScore:
         y, _ = y_X_factory(length=50, n_targets=2, seed=42)
 
         # Fit with component_names filter
-        scorer = MeanAbsoluteError(component_names=["y_0"])
+        scorer = MeanAbsoluteError(components=["y_0"])
         scorer.fit(y)
 
         # Create predictions for both components
@@ -527,12 +527,12 @@ class TestValidationWithScore:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         # Fit with coverage_rates filter
-        scorer = EmpiricalCoverage(coverage_rates=[0.9])
+        scorer = EmpiricalCoverage(coverage=[0.9])
         scorer.fit(y)
 
         # This validation is tested in test_column_subselection.py
         # Just verify fit succeeds
-        assert scorer.coverage_rates == [0.9]
+        assert scorer.coverage == [0.9]
 
 
 class TestGroupWeight:
@@ -541,14 +541,14 @@ class TestGroupWeight:
     def test_group_weight_must_be_dict_or_none(self, y_X_factory):
         """group_weight must be a dict or None."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
-        scorer = MeanAbsoluteError(group_weight="invalid")
-        with pytest.raises(ValueError, match=r"group_weight.*must be an instance of 'dict' or None"):
+        scorer = MeanAbsoluteError(groups="invalid")
+        with pytest.raises(ValueError, match=r"groups.*must be an instance of 'list'.*or None"):
             scorer.fit(y)
 
     def test_group_weight_none_is_default(self):
         """Default group_weight is None."""
         scorer = MeanAbsoluteError()
-        assert scorer.group_weight is None
+        assert scorer.groups is None
 
 
 class TestCoverageWeight:
@@ -557,19 +557,19 @@ class TestCoverageWeight:
     def test_coverage_weight_must_be_dict_or_none(self, y_X_factory):
         """coverage_weight must be a dict or None."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
-        scorer = EmpiricalCoverage(coverage_weight="invalid")
-        with pytest.raises(ValueError, match=r"coverage_weight.*must be an instance of 'dict' or None"):
+        scorer = EmpiricalCoverage(coverage="invalid")
+        with pytest.raises(ValueError, match=r"coverage.*must be an instance of 'list'.*or None"):
             scorer.fit(y)
 
     def test_coverage_weight_none_is_default(self):
         """Default coverage_weight is None."""
         scorer = EmpiricalCoverage()
-        assert scorer.coverage_weight is None
+        assert scorer.coverage is None
 
     def test_coverage_weight_accepted_as_dict(self):
         """coverage_weight accepts dict."""
-        scorer = EmpiricalCoverage(coverage_weight={0.9: 2.0, 0.95: 1.0})
-        assert scorer.coverage_weight == {0.9: 2.0, 0.95: 1.0}
+        scorer = EmpiricalCoverage(coverage={0.9: 2.0, 0.95: 1.0})
+        assert scorer.coverage == {0.9: 2.0, 0.95: 1.0}
 
 
 class TestLowerIsBetter:
@@ -625,9 +625,9 @@ class TestMakeScorerGetScorer:
         """make_scorer works for interval scorers with factory params."""
         from yohou.metrics import make_scorer
 
-        scorer = make_scorer("coverage", coverage_rates=[0.9])
+        scorer = make_scorer("coverage", coverage=[0.9])
         assert isinstance(scorer, EmpiricalCoverage)
-        assert scorer.coverage_rates == [0.9]
+        assert scorer.coverage == [0.9]
 
     def test_make_scorer_invalid_name_raises(self):
         """make_scorer raises ValueError for unknown names."""

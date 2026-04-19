@@ -90,7 +90,7 @@ def check_scorer_column_selection(
     Parameters
     ----------
     scorer : BaseScorer
-        Scorer instance with groups and component_names attributes.
+        Scorer instance with groups and components attributes.
     y_true : pl.DataFrame
         True values DataFrame.
     y_pred : pl.DataFrame
@@ -110,7 +110,7 @@ def check_scorer_column_selection(
     Raises
     ------
     ValueError
-        If groups or component_names are invalid.
+        If groups or components are invalid.
 
     See Also
     --------
@@ -119,7 +119,7 @@ def check_scorer_column_selection(
 
     """
     has_panel_specs = hasattr(scorer, "groups") and scorer.groups is not None
-    has_component_specs = hasattr(scorer, "component_names") and scorer.component_names is not None
+    has_component_specs = hasattr(scorer, "components") and scorer.components is not None
 
     if not (has_panel_specs or has_component_specs or coverage_rates is not None):
         return y_true, y_pred
@@ -156,7 +156,7 @@ def check_scorer_column_selection(
     is_panel = len(y_groups) > 0
 
     if is_panel:
-        # Panel data: filter by groups and/or component_names
+        # Panel data: filter by groups and/or components
         selected_cols = []
 
         # Determine which groups to include
@@ -168,11 +168,11 @@ def check_scorer_column_selection(
             if group_name in y_groups:
                 group_cols = y_groups[group_name]
 
-                # Filter by component_names if specified
+                # Filter by components if specified
                 if has_component_specs:
-                    assert scorer.component_names is not None
-                    # Extract unprefixed column names and check against component_names
-                    filtered_cols = [col for col in group_cols if col.split("__", 1)[1] in scorer.component_names]
+                    assert scorer.components is not None
+                    # Extract unprefixed column names and check against components
+                    filtered_cols = [col for col in group_cols if col.split("__", 1)[1] in scorer.components]
                     selected_cols.extend(filtered_cols)
                 else:
                     selected_cols.extend(group_cols)
@@ -226,19 +226,19 @@ def check_scorer_column_selection(
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(valid_y_pred_cols)
 
-    # Global data: filter by component_names only
+    # Global data: filter by components only
     elif has_component_specs:
-        assert scorer.component_names is not None
+        assert scorer.components is not None
         # Validate component names exist in data
         available_components = [col for col in y_true.columns if col != "time"]
-        missing_components = set(scorer.component_names) - set(available_components)
+        missing_components = set(scorer.components) - set(available_components)
         if missing_components:
             raise ValueError(
-                f"Invalid component_names: {sorted(missing_components)} not found in data. "
+                f"Invalid components: {sorted(missing_components)} not found in data. "
                 f"Available components: {sorted(available_components)}"
             )
 
-        selected_cols = [col for col in y_true.columns if col in scorer.component_names]
+        selected_cols = [col for col in y_true.columns if col in scorer.components]
         if selected_cols:
             # Always preserve time column during subselection
             if "time" not in selected_cols:

@@ -60,15 +60,10 @@ class MeanAbsoluteError(BasePointScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -119,23 +114,13 @@ class MeanAbsoluteError(BasePointScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
@@ -172,15 +157,10 @@ class MeanSquaredError(BasePointScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data. Validated at fit time.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-        Validated at fit time.
-    group_weight : dict or None, default=None
-        Weights for panel groups. See BaseScorer for details.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -230,23 +210,13 @@ class MeanSquaredError(BasePointScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
@@ -284,15 +254,10 @@ class RootMeanSquaredError(BasePointScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -342,23 +307,13 @@ class RootMeanSquaredError(BasePointScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
@@ -411,15 +366,10 @@ class RootMeanSquaredScaledError(BasePointScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -482,23 +432,13 @@ class RootMeanSquaredScaledError(BasePointScorer):
         self,
         seasonality: int = 1,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
         self.seasonality = seasonality
 
@@ -620,15 +560,10 @@ class MeanAbsolutePercentageError(BasePointScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -681,23 +616,13 @@ class MeanAbsolutePercentageError(BasePointScorer):
         self,
         epsilon: float = 1e-8,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
         self.epsilon = epsilon
 
@@ -744,15 +669,10 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -805,23 +725,13 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
         self,
         epsilon: float = 1e-8,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
         self.epsilon = epsilon
 
@@ -873,15 +783,10 @@ class MeanAbsoluteScaledError(BasePointScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -945,23 +850,13 @@ class MeanAbsoluteScaledError(BasePointScorer):
         self,
         seasonality: int = 1,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
         self.seasonality = seasonality
 
@@ -1072,15 +967,10 @@ class MedianAbsoluteError(BasePointScorer):
         - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
         - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
         - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -1130,23 +1020,13 @@ class MedianAbsoluteError(BasePointScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:

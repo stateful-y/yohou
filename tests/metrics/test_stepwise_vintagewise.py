@@ -175,9 +175,9 @@ class TestForecastingStepsFilter:
 
     def test_filter_single_step(self, y_train, multi_vintage_data):
         y_true, y_pred = multi_vintage_data
-        mae = MeanAbsoluteError(forecasting_steps=[1])
+        mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, forecasting_steps=[1])
 
         # Only step-1 errors: 1, 1, 1 → mean=1.0
         assert isinstance(result, float)
@@ -185,9 +185,9 @@ class TestForecastingStepsFilter:
 
     def test_filter_step_2_only(self, y_train, multi_vintage_data):
         y_true, y_pred = multi_vintage_data
-        mae = MeanAbsoluteError(forecasting_steps=[2])
+        mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, forecasting_steps=[2])
 
         # Only step-2 errors: 2, 2, 2 → mean=2.0
         assert isinstance(result, float)
@@ -200,9 +200,9 @@ class TestForecastingStepsFilter:
         mae_all.fit(y_train)
         result_all = mae_all.score(y_true, y_pred)
 
-        mae_filtered = MeanAbsoluteError(forecasting_steps=[1, 2])
+        mae_filtered = MeanAbsoluteError()
         mae_filtered.fit(y_train)
-        result_filtered = mae_filtered.score(y_true, y_pred)
+        result_filtered = mae_filtered.score(y_true, y_pred, forecasting_steps=[1, 2])
 
         np.testing.assert_allclose(result_all, result_filtered, atol=1e-10)
 
@@ -216,9 +216,9 @@ class TestForecastingStepsFilter:
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "value": [11.0, 22.0, 28.0],
         })
-        mae = MeanAbsoluteError(forecasting_steps=[1])
+        mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, forecasting_steps=[1])
         # No forecasting_step -> filter ignored -> scores all rows
         assert isinstance(result, float)
         np.testing.assert_allclose(result, (1.0 + 2.0 + 2.0) / 3, atol=1e-10)
@@ -226,9 +226,9 @@ class TestForecastingStepsFilter:
     def test_filter_with_vintagewise(self, y_train, multi_vintage_data):
         """Filter + vintagewise: only step-1, collapse vintage → per-step DF."""
         y_true, y_pred = multi_vintage_data
-        mae = MeanAbsoluteError(aggregation_method="vintagewise", forecasting_steps=[1])
+        mae = MeanAbsoluteError(aggregation_method="vintagewise")
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, forecasting_steps=[1])
 
         assert isinstance(result, pl.DataFrame)
         assert "forecasting_step" in result.columns
@@ -236,18 +236,13 @@ class TestForecastingStepsFilter:
         assert len(result) == 1
         np.testing.assert_allclose(result["value"][0], 1.0, atol=1e-10)
 
-    def test_get_params_includes_forecasting_steps(self):
-        mae = MeanAbsoluteError(forecasting_steps=[1, 3])
-        params = mae.get_params()
-        assert "forecasting_steps" in params
-        assert params["forecasting_steps"] == [1, 3]
-
-    def test_clone_preserves_forecasting_steps(self):
-        from sklearn.base import clone
-
-        mae = MeanAbsoluteError(forecasting_steps=[2])
-        cloned = clone(mae)
-        assert cloned.forecasting_steps == [2]
+    def test_forecasting_steps_passed_to_score(self, y_train, multi_vintage_data):
+        """forecasting_steps is now a score() parameter."""
+        y_true, y_pred = multi_vintage_data
+        mae = MeanAbsoluteError()
+        mae.fit(y_train)
+        result = mae.score(y_true, y_pred, forecasting_steps=[1])
+        np.testing.assert_allclose(result, 1.0, atol=1e-10)
 
 
 class TestMultivariateStepwise:

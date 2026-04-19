@@ -46,18 +46,12 @@ class EmpiricalCoverage(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average coverage).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage_rates : list of float or None, default=None
-        List of coverage rates to include in scoring. If None, all coverage rates
-        are included. Rates are validated against actual prediction columns during scoring.
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    coverage : list of float, dict of float to float, or None, default=None
+        Coverage rate filter (list) or filter with weights (dict).
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -109,15 +103,9 @@ class EmpiricalCoverage(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        coverage_rates: list[float] | None = None,
-        group_weight: dict[str, float] | None = None,
-        coverage_weight: dict[float, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        coverage: list[float] | dict[float, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -125,15 +113,9 @@ class EmpiricalCoverage(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
+            coverage=coverage,
             groups=groups,
-            component_names=component_names,
-            coverage_rates=coverage_rates,
-            group_weight=group_weight,
-            coverage_weight=coverage_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
@@ -173,18 +155,12 @@ class MeanIntervalWidth(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average coverage).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage_rates : list of float or None, default=None
-        List of coverage rates to include in scoring. If None, all coverage rates
-        are included. Rates are validated against actual prediction columns during scoring.
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    coverage : list of float, dict of float to float, or None, default=None
+        Coverage rate filter (list) or filter with weights (dict).
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -232,15 +208,9 @@ class MeanIntervalWidth(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        coverage_rates: list[float] | None = None,
-        group_weight: dict[str, float] | None = None,
-        coverage_weight: dict[float, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        coverage: list[float] | dict[float, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -248,15 +218,9 @@ class MeanIntervalWidth(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
+            coverage=coverage,
             groups=groups,
-            component_names=component_names,
-            coverage_rates=coverage_rates,
-            group_weight=group_weight,
-            coverage_weight=coverage_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
@@ -298,18 +262,12 @@ class IntervalScore(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average interval score).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage_rates : list of float or None, default=None
-        List of coverage rates to include in scoring. If None, all coverage rates
-        are included. Rates are validated against actual prediction columns during scoring.
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    coverage : list of float, dict of float to float, or None, default=None
+        Coverage rate filter (list) or filter with weights (dict).
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -358,15 +316,9 @@ class IntervalScore(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        coverage_rates: list[float] | None = None,
-        group_weight: dict[str, float] | None = None,
-        coverage_weight: dict[float, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        coverage: list[float] | dict[float, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -374,15 +326,9 @@ class IntervalScore(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
+            coverage=coverage,
             groups=groups,
-            component_names=component_names,
-            coverage_rates=coverage_rates,
-            group_weight=group_weight,
-            coverage_weight=coverage_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
@@ -445,18 +391,12 @@ class PinballLoss(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average pinball loss).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage_rates : list of float or None, default=None
-        List of coverage rates to include in scoring. If None, all coverage rates
-        are included. Rates are validated against actual prediction columns during scoring.
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    coverage : list of float, dict of float to float, or None, default=None
+        Coverage rate filter (list) or filter with weights (dict).
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -507,15 +447,9 @@ class PinballLoss(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        coverage_rates: list[float] | None = None,
-        group_weight: dict[str, float] | None = None,
-        coverage_weight: dict[float, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        coverage: list[float] | dict[float, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -523,15 +457,9 @@ class PinballLoss(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
+            coverage=coverage,
             groups=groups,
-            component_names=component_names,
-            coverage_rates=coverage_rates,
-            group_weight=group_weight,
-            coverage_weight=coverage_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _pinball(self, tau: float, y: pl.Series | float, q: pl.Series | float) -> pl.Expr | pl.Series | float:
@@ -606,18 +534,12 @@ class CalibrationError(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average calibration error).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage_rates : list of float or None, default=None
-        List of coverage rates to include in scoring. If None, all coverage rates
-        are included. Rates are validated against actual prediction columns during scoring.
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    coverage : list of float, dict of float to float, or None, default=None
+        Coverage rate filter (list) or filter with weights (dict).
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
@@ -667,15 +589,9 @@ class CalibrationError(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        coverage_rates: list[float] | None = None,
-        group_weight: dict[str, float] | None = None,
-        coverage_weight: dict[float, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        coverage: list[float] | dict[float, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -683,15 +599,9 @@ class CalibrationError(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
+            coverage=coverage,
             groups=groups,
-            component_names=component_names,
-            coverage_rates=coverage_rates,
-            group_weight=group_weight,
-            coverage_weight=coverage_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):

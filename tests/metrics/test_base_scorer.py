@@ -321,7 +321,7 @@ class TestPanelGroupWeights:
         scorer_equal.fit(y_true)
         score_equal = scorer_equal.score(y_true, y_pred)
 
-        scorer_weighted = MeanAbsoluteError(group_weight={"A": 10.0, "B": 0.1})
+        scorer_weighted = MeanAbsoluteError(groups={"A": 10.0, "B": 0.1})
         scorer_weighted.fit(y_true)
         score_weighted = scorer_weighted.score(y_true, y_pred)
 
@@ -335,7 +335,7 @@ class TestPanelGroupWeights:
         scorer_default.fit(y_true)
         score_default = scorer_default.score(y_true, y_pred)
 
-        scorer_explicit = MeanAbsoluteError(group_weight={"A": 1.0, "B": 1.0})
+        scorer_explicit = MeanAbsoluteError(groups={"A": 1.0, "B": 1.0})
         scorer_explicit.fit(y_true)
         score_explicit = scorer_explicit.score(y_true, y_pred)
 
@@ -397,7 +397,7 @@ class TestPanelGroupWeightsZero:
             "B__value": [110.0, 190.0, 310.0, 390.0, 510.0],
         })
         scorer = MeanAbsoluteError(
-            group_weight={"A": 0.0, "B": 0.0},
+            groups={"A": 0.0, "B": 0.0},
         )
         scorer.fit(y_true)
         with pytest.raises(ValueError, match="Total panel group weight is zero"):
@@ -487,18 +487,16 @@ class TestValidateParametersEdgeCases:
             scorer._validate_parameters(aggregation_method=42, valid_aggregation_methods={"stepwise"})
 
     def test_groups_non_list_raises(self):
-        """Non-list groups raises ValueError."""
-        scorer = MeanAbsoluteError()
-        scorer.groups = "not_a_list"
-        with pytest.raises(ValueError, match="groups must be a list"):
-            scorer._validate_parameters()
+        """Non-list/dict groups raises ValueError."""
+        scorer = MeanAbsoluteError(groups="not_a_list")
+        with pytest.raises(ValueError, match="groups.*must be an instance of 'list'"):
+            scorer.fit(None)
 
     def test_component_names_non_list_raises(self):
-        """Non-list component_names raises ValueError."""
-        scorer = MeanAbsoluteError()
-        scorer.component_names = "not_a_list"
-        with pytest.raises(ValueError, match="component_names must be a list"):
-            scorer._validate_parameters()
+        """Non-list/dict components raises ValueError."""
+        scorer = MeanAbsoluteError(components="not_a_list")
+        with pytest.raises(ValueError, match="components.*must be an instance of 'list'"):
+            scorer.fit(None)
 
 
 class TestProcessTimeWeightsCallable:
@@ -661,7 +659,7 @@ class TestAggregationMethodCombinations:
         y_truth, y_pred = panel_data
         scorer = MeanAbsoluteError(
             aggregation_method="all",
-            group_weight={"g1": 2.0, "g2": 1.0},
+            groups={"g1": 2.0, "g2": 1.0},
         )
         scorer.fit(y_truth)
         result = scorer.score(y_truth, y_pred)
@@ -796,7 +794,7 @@ class TestPanelGroupWeight:
 
         scorer_weighted = MeanAbsoluteError(
             aggregation_method="all",
-            group_weight={"g1": 10.0, "g2": 0.0001},
+            groups={"g1": 10.0, "g2": 0.0001},
         )
         scorer_weighted.fit(y_truth)
         score_weighted = scorer_weighted.score(y_truth, y_pred)
@@ -865,8 +863,8 @@ class TestIntervalScorerAggregation:
         from yohou.metrics import IntervalScore
 
         y_truth, _ = interval_data
-        scorer = IntervalScore(coverage_rates=0.9)
-        with pytest.raises((ValueError, TypeError), match="coverage_rates"):
+        scorer = IntervalScore(coverage=0.9)
+        with pytest.raises((ValueError, TypeError), match="coverage"):
             scorer.fit(y_truth)
 
 

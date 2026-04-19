@@ -823,19 +823,19 @@ def _yield_yohou_scorer_checks(
     scorer_class = type(scorer)
     validation_test_cases: list[tuple[str, list, str]] = [
         ("groups", ["nonexistent_group"], "groups"),
-        ("component_names", ["nonexistent_component"], "component_names"),
+        ("components", ["nonexistent_component"], "components"),
     ]
 
     # Aggregation method validation
     if hasattr(scorer, "aggregation_method"):
         validation_test_cases.append(("aggregation_method", ["invalid_method"], "aggregation_method"))
 
-    # Add coverage_rates validation for interval scorers
+    # Add coverage validation for interval scorers
     if tags.get("prediction_type") == "interval":
         validation_test_cases.extend([
-            ("coverage_rates", [1.5], "coverage_rates"),  # Out of range
-            ("coverage_rates", [0.0], "coverage_rates"),  # Out of range
-            ("coverage_rates", [[]], "coverage_rates"),  # Invalid type (nested list)
+            ("coverage", [1.5], "coverage"),  # Out of range
+            ("coverage", [0.0], "coverage"),  # Out of range
+            ("coverage", [[]], "coverage"),  # Invalid type (nested list)
         ])
 
     for param_name, invalid_value, error_match in validation_test_cases:

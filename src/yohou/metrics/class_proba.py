@@ -94,23 +94,13 @@ class LogLoss(BaseClassProbaScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_errors(self, y_truth, y_pred):
@@ -212,23 +202,13 @@ class BrierScore(BaseClassProbaScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_errors(self, y_truth, y_pred):
@@ -326,23 +306,13 @@ class Accuracy(BaseClassProbaScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
 
     def _compute_raw_errors(self, y_truth, y_pred):

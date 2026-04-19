@@ -89,7 +89,7 @@ class TestComponentWeight:
         mae_default.fit(y_train_mv)
         result_default = mae_default.score(y_true, y_pred)
 
-        mae_equal = MeanAbsoluteError(component_weight={"a": 1.0, "b": 1.0})
+        mae_equal = MeanAbsoluteError(components={"a": 1.0, "b": 1.0})
         mae_equal.fit(y_train_mv)
         result_equal = mae_equal.score(y_true, y_pred)
 
@@ -107,27 +107,28 @@ class TestComponentWeight:
         #   row 2: (3*3 + 20*1)/4 = 29/4 = 7.25
         #   mean: (4.0 + 4.0 + 7.25)/3 = 15.25/3
 
-        mae = MeanAbsoluteError(component_weight={"a": 3.0, "b": 1.0})
+        mae = MeanAbsoluteError(components={"a": 3.0, "b": 1.0})
         mae.fit(y_train_mv)
         result = mae.score(y_true, y_pred)
 
         expected = (4.0 + 4.0 + 7.25) / 3
         np.testing.assert_allclose(result, expected, atol=1e-10)
 
-    def test_component_weight_missing_key_defaults_to_1(self, y_train_mv, multivariate_data):
-        """Components not in weight dict get weight 1.0."""
+    def test_component_weight_filters_to_specified_keys(self, y_train_mv, multivariate_data):
+        """components dict filters to only specified keys."""
         y_true, y_pred = multivariate_data
 
-        # Only specify weight for "a", "b" gets default 1.0
-        mae = MeanAbsoluteError(component_weight={"a": 1.0})
-        mae.fit(y_train_mv)
-        result = mae.score(y_true, y_pred)
+        # Only specify "a" → filters to component "a" only
+        mae_a = MeanAbsoluteError(components={"a": 1.0})
+        mae_a.fit(y_train_mv)
+        result_a = mae_a.score(y_true, y_pred)
 
-        mae_explicit = MeanAbsoluteError(component_weight={"a": 1.0, "b": 1.0})
-        mae_explicit.fit(y_train_mv)
-        result_explicit = mae_explicit.score(y_true, y_pred)
+        mae_both = MeanAbsoluteError(components={"a": 1.0, "b": 1.0})
+        mae_both.fit(y_train_mv)
+        result_both = mae_both.score(y_true, y_pred)
 
-        np.testing.assert_allclose(result, result_explicit, atol=1e-10)
+        # Results differ because mae_a only scores component "a"
+        assert not np.isclose(result_a, result_both, atol=1e-10)
 
     def test_component_weight_with_componentwise(self, y_train_mv, multivariate_data):
         """component_weight with componentwise aggregation uses weighted reduce."""
@@ -135,7 +136,7 @@ class TestComponentWeight:
 
         mae = MeanAbsoluteError(
             aggregation_method=["componentwise", "stepwise", "vintagewise"],
-            component_weight={"a": 2.0, "b": 1.0},
+            components={"a": 2.0, "b": 1.0},
         )
         mae.fit(y_train_mv)
         result = mae.score(y_true, y_pred)
@@ -144,13 +145,13 @@ class TestComponentWeight:
         assert isinstance(result, float)
 
     def test_get_params_includes_component_weight(self):
-        mae = MeanAbsoluteError(component_weight={"a": 2.0})
+        mae = MeanAbsoluteError(components={"a": 2.0})
         params = mae.get_params()
-        assert params["component_weight"] == {"a": 2.0}
+        assert params["components"] == {"a": 2.0}
 
     def test_none_component_weight_default(self):
         mae = MeanAbsoluteError()
-        assert mae.component_weight is None
+        assert mae.components is None
 
 
 class TestStepWeight:
@@ -164,9 +165,9 @@ class TestStepWeight:
         mae_default.fit(y_train)
         result_default = mae_default.score(y_true, y_pred)
 
-        mae_equal = MeanAbsoluteError(step_weight={1: 1.0, 2: 1.0})
+        mae_equal = MeanAbsoluteError()
         mae_equal.fit(y_train)
-        result_equal = mae_equal.score(y_true, y_pred)
+        result_equal = mae_equal.score(y_true, y_pred, step_weight={1: 1.0, 2: 1.0})
 
         np.testing.assert_allclose(result_default, result_equal, atol=1e-10)
 
@@ -180,9 +181,9 @@ class TestStepWeight:
         # weighted mean = (1*3 + 2*1 + 1*3 + 2*1 + 1*3 + 2*1) / (3+1+3+1+3+1)
         #               = (3+2+3+2+3+2) / 12 = 15/12 = 1.25
 
-        mae = MeanAbsoluteError(step_weight={1: 3.0, 2: 1.0})
+        mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
 
         np.testing.assert_allclose(result, 1.25, atol=1e-10)
 
@@ -201,9 +202,9 @@ class TestStepWeight:
         mae_default.fit(y_train)
         result_default = mae_default.score(y_true, y_pred)
 
-        mae_weighted = MeanAbsoluteError(step_weight={1: 10.0})
+        mae_weighted = MeanAbsoluteError()
         mae_weighted.fit(y_train)
-        result_weighted = mae_weighted.score(y_true, y_pred)
+        result_weighted = mae_weighted.score(y_true, y_pred, step_weight={1: 10.0})
 
         # Without observed_time, step_weight is a no-op
         np.testing.assert_allclose(result_default, result_weighted, atol=1e-10)
@@ -214,23 +215,22 @@ class TestStepWeight:
 
         mae = MeanAbsoluteError(
             aggregation_method=["stepwise", "vintagewise"],
-            step_weight={1: 1.0, 2: 0.0},
         )
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, step_weight={1: 1.0, 2: 0.0})
 
         # step_weight 0 for step 2 means only step 1 counts
         # stepwise+vintagewise collapses all rows, result is a 1-row DataFrame
         assert isinstance(result, pl.DataFrame)
 
-    def test_get_params_includes_step_weight(self):
-        mae = MeanAbsoluteError(step_weight={1: 2.0, 2: 1.0})
-        params = mae.get_params()
-        assert params["step_weight"] == {1: 2.0, 2: 1.0}
-
-    def test_none_step_weight_default(self):
+    def test_step_weight_is_score_param(self, y_train, multi_vintage_data):
+        """step_weight is now a score() parameter, not an __init__ param."""
+        y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
-        assert mae.step_weight is None
+        mae.fit(y_train)
+        # Should accept step_weight in score()
+        result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
+        np.testing.assert_allclose(result, 1.25, atol=1e-10)
 
 
 class TestCombinedWeights:
@@ -260,11 +260,10 @@ class TestCombinedWeights:
         })
 
         mae = MeanAbsoluteError(
-            component_weight={"a": 2.0, "b": 1.0},
-            step_weight={1: 3.0, 2: 1.0},
+            components={"a": 2.0, "b": 1.0},
         )
         mae.fit(y_train_mv)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
 
         # a errors: 2, 2; b errors: 10, 10
         # Col-weighted per row: (2*2 + 10*1)/3 = 14/3, (2*2 + 10*1)/3 = 14/3
@@ -273,18 +272,14 @@ class TestCombinedWeights:
         expected = 14.0 / 3.0
         np.testing.assert_allclose(result, expected, atol=1e-10)
 
-    def test_clone_preserves_weights(self):
+    def test_clone_preserves_components(self):
         from sklearn.base import clone
 
         mae = MeanAbsoluteError(
-            component_weight={"a": 2.0},
-            step_weight={1: 3.0},
-            vintage_weight={datetime(2024, 1, 10): 2.0},
+            components={"a": 2.0},
         )
         cloned = clone(mae)
-        assert cloned.component_weight == {"a": 2.0}
-        assert cloned.step_weight == {1: 3.0}
-        assert cloned.vintage_weight == {datetime(2024, 1, 10): 2.0}
+        assert cloned.components == {"a": 2.0}
 
 
 class TestVintageWeight:
@@ -299,15 +294,13 @@ class TestVintageWeight:
         mae_default.fit(y_train)
         result_default = mae_default.score(y_true, y_pred)
 
-        mae_equal = MeanAbsoluteError(
-            vintage_weight={
+        mae_equal = MeanAbsoluteError()
+        mae_equal.fit(y_train)
+        result_equal = mae_equal.score(y_true, y_pred, vintage_weight={
                 base: 1.0,
                 base + timedelta(days=1): 1.0,
                 base + timedelta(days=2): 1.0,
-            }
-        )
-        mae_equal.fit(y_train)
-        result_equal = mae_equal.score(y_true, y_pred)
+            })
 
         np.testing.assert_allclose(result_default, result_equal, atol=1e-10)
 
@@ -360,15 +353,13 @@ class TestVintageWeight:
         # vintage_weight {base: 0, base+1: 1, base+2: 1} -> row weights [0,0,1,1,1,1]
         # weighted = (5*0 + 5*0 + 1*1 + 2*1 + 1*1 + 2*1) / (0+0+1+1+1+1) = 6/4 = 1.5
 
-        mae = MeanAbsoluteError(
-            vintage_weight={
+        mae = MeanAbsoluteError()
+        mae.fit(y_train)
+        result = mae.score(y_true_diff, y_pred_diff, vintage_weight={
                 base: 0.0,
                 base + timedelta(days=1): 1.0,
                 base + timedelta(days=2): 1.0,
-            }
-        )
-        mae.fit(y_train)
-        result = mae.score(y_true_diff, y_pred_diff)
+            })
 
         np.testing.assert_allclose(result, 1.5, atol=1e-10)
 
@@ -387,21 +378,23 @@ class TestVintageWeight:
         mae_default.fit(y_train)
         result_default = mae_default.score(y_true, y_pred)
 
-        mae_weighted = MeanAbsoluteError(vintage_weight={datetime(2024, 1, 1): 10.0})
+        mae_weighted = MeanAbsoluteError()
         mae_weighted.fit(y_train)
-        result_weighted = mae_weighted.score(y_true, y_pred)
+        result_weighted = mae_weighted.score(y_true, y_pred, vintage_weight={datetime(2024, 1, 1): 10.0})
 
         np.testing.assert_allclose(result_default, result_weighted, atol=1e-10)
 
-    def test_get_params_includes_vintage_weight(self):
-        vw = {datetime(2024, 1, 10): 2.0}
-        mae = MeanAbsoluteError(vintage_weight=vw)
-        params = mae.get_params()
-        assert params["vintage_weight"] == vw
-
-    def test_none_vintage_weight_default(self):
+    def test_vintage_weight_is_score_param(self, y_train, multi_vintage_data):
+        """vintage_weight is now a score() parameter."""
+        y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
-        assert mae.vintage_weight is None
+        mae.fit(y_train)
+        result = mae.score(y_true, y_pred, vintage_weight={
+            datetime(2024, 1, 10): 1.0,
+            datetime(2024, 1, 11): 1.0,
+            datetime(2024, 1, 12): 1.0,
+        })
+        assert isinstance(result, float)
 
     def test_step_and_vintage_weight_combined(self, y_train, multi_vintage_data):
         """step_weight and vintage_weight are multiplicative."""
@@ -409,20 +402,18 @@ class TestVintageWeight:
         base = datetime(2024, 1, 10)
 
         # Use only step_weight
-        mae_step = MeanAbsoluteError(step_weight={1: 3.0, 2: 1.0})
+        mae_step = MeanAbsoluteError()
         mae_step.fit(y_train)
-        result_step = mae_step.score(y_true, y_pred)
+        result_step = mae_step.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
 
         # Use only vintage_weight (equal)
-        mae_vintage = MeanAbsoluteError(
-            vintage_weight={
+        mae_vintage = MeanAbsoluteError()
+        mae_vintage.fit(y_train)
+        result_vintage = mae_vintage.score(y_true, y_pred, vintage_weight={
                 base: 1.0,
                 base + timedelta(days=1): 1.0,
                 base + timedelta(days=2): 1.0,
-            }
-        )
-        mae_vintage.fit(y_train)
-        result_vintage = mae_vintage.score(y_true, y_pred)
+            })
 
         # Equal vintage weights shouldn't change from default
         mae_default = MeanAbsoluteError()
@@ -452,12 +443,13 @@ class TestComponentWeightComponentwise:
         })
         mae = MeanAbsoluteError(
             aggregation_method=["componentwise", "vintagewise"],
-            component_weight={"a": 2.0, "b": 1.0},
+            components={"a": 2.0, "b": 1.0},
         )
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
-        assert "forecasting_step" in result.columns
+        # Without stepwise in aggregation_method, forecasting_step is collapsed
+        assert "g1__mae" in result.columns
 
     def test_componentwise_non_panel_with_weight(self):
         """Non-panel data with componentwise + component_weight uses weighted reduce."""
@@ -474,12 +466,13 @@ class TestComponentWeightComponentwise:
         })
         mae = MeanAbsoluteError(
             aggregation_method=["componentwise", "vintagewise"],
-            component_weight={"a": 2.0, "b": 1.0},
+            components={"a": 2.0, "b": 1.0},
         )
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
-        assert "forecasting_step" in result.columns
+        # Without stepwise in aggregation_method, forecasting_step is collapsed
+        assert "mae" in result.columns
 
 
 class TestGroupwiseComponentWeight:
@@ -500,7 +493,7 @@ class TestGroupwiseComponentWeight:
         })
         mae = MeanAbsoluteError(
             aggregation_method="all",
-            component_weight={"east": 2.0, "west": 1.0},
+            components={"east": 2.0, "west": 1.0},
         )
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
@@ -526,9 +519,9 @@ class TestNoContextDimFallback:
             "value": [12.0, 18.0, 33.0],
         })
         # No observed_time -> no forecasting_step in context
-        mae = MeanAbsoluteError(step_weight={1: 3.0, 2: 1.0})
+        mae = MeanAbsoluteError()
         mae.fit(y_true)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
         # Should still produce a valid scalar
         assert isinstance(result, float)
         # Same as default since weights can't be applied
@@ -546,30 +539,31 @@ class TestNoContextDimFallback:
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "value": [12.0, 18.0, 33.0],
         })
-        mae = MeanAbsoluteError(
-            vintage_weight={datetime(2024, 1, 1): 3.0, datetime(2024, 1, 2): 1.0},
-        )
+        mae = MeanAbsoluteError()
         mae.fit(y_true)
-        result = mae.score(y_true, y_pred)
+        result = mae.score(y_true, y_pred, vintage_weight={datetime(2024, 1, 1): 3.0, datetime(2024, 1, 2): 1.0})
         assert isinstance(result, float)
         mae_default = MeanAbsoluteError()
         mae_default.fit(y_true)
         np.testing.assert_allclose(result, mae_default.score(y_true, y_pred), atol=1e-10)
 
 
-class TestWeightedColMeanDirect:
-    """Test _weighted_col_mean static method directly."""
+class TestCollapseComponentsDirect:
+    """Test _collapse_components method directly."""
 
-    def test_weighted_col_mean(self):
-        """Weighted column mean applies proper weights."""
-        from yohou.metrics.base import BasePointScorer
+    def test_weighted_component_collapse(self):
+        """Weighted component collapse applies proper weights."""
+        from yohou.metrics import MeanAbsoluteError
 
+        scorer = MeanAbsoluteError(components={"a": 2.0, "b": 1.0})
         df = pl.DataFrame({"a": [2.0, 3.0], "b": [10.0, 20.0]})
-        # weight a=2, b=1 => per-row: row0=(2*2+10*1)/3=14/3, row1=(3*2+20*1)/3=26/3
-        # mean = (14/3 + 26/3)/2 = 40/6
-        result = BasePointScorer._weighted_col_mean(df, {"a": 2.0, "b": 1.0})
-        expected = ((2 * 2 + 10 * 1) / 3 + (3 * 2 + 20 * 1) / 3) / 2
-        np.testing.assert_allclose(result, expected, atol=1e-10)
+        result = scorer._collapse_components(df)
+        # weight a=2, b=1 => per-row: row0=(2*2/3+10*1/3)=14/3, row1=(3*2/3+20*1/3)=26/3
+        assert "score" in result.columns
+        expected_row0 = (2 * 2 + 10 * 1) / 3
+        expected_row1 = (3 * 2 + 20 * 1) / 3
+        np.testing.assert_allclose(result["score"][0], expected_row0, atol=1e-10)
+        np.testing.assert_allclose(result["score"][1], expected_row1, atol=1e-10)
 
 
 class TestCombineRowWeightsBranches:
@@ -602,24 +596,24 @@ class TestCombineRowWeightsBranches:
             "value": [float(i) for i in range(10)],
         })
 
-        mae_both = MeanAbsoluteError(
+        mae_both = MeanAbsoluteError()
+        mae_both.fit(y_train)
+        result_both = mae_both.score(y_true, y_pred,
             step_weight={1: 2.0, 2: 1.0},
             vintage_weight={base: 3.0, base + timedelta(days=1): 1.0},
         )
-        mae_both.fit(y_train)
-        result_both = mae_both.score(y_true, y_pred)
         assert isinstance(result_both, float)
 
         # Should differ from step-only and vintage-only
-        mae_step = MeanAbsoluteError(step_weight={1: 2.0, 2: 1.0})
+        mae_step = MeanAbsoluteError()
         mae_step.fit(y_train)
-        result_step = mae_step.score(y_true, y_pred)
+        result_step = mae_step.score(y_true, y_pred, step_weight={1: 2.0, 2: 1.0})
 
-        mae_vin = MeanAbsoluteError(
+        mae_vin = MeanAbsoluteError()
+        mae_vin.fit(y_train)
+        result_vin = mae_vin.score(y_true, y_pred,
             vintage_weight={base: 3.0, base + timedelta(days=1): 1.0},
         )
-        mae_vin.fit(y_train)
-        result_vin = mae_vin.score(y_true, y_pred)
 
         # Combined should differ from each individual
         assert not np.isclose(result_both, result_step, atol=1e-10)

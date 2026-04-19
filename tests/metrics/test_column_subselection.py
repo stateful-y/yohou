@@ -106,7 +106,7 @@ class TestPointScorerPanelGroupFiltering:
         y_true, y_pred = panel_point_data
 
         # Score only store_1 components
-        mae_store1 = MeanAbsoluteError(component_names=["store_1"])
+        mae_store1 = MeanAbsoluteError(components=["store_1"])
         mae_store1.fit(y_true)
         score_store1 = mae_store1.score(y_true, y_pred)
 
@@ -123,7 +123,7 @@ class TestPointScorerPanelGroupFiltering:
         y_true, y_pred = panel_point_data
 
         # Score only sales group, store_1 component
-        mae_filtered = MeanAbsoluteError(groups=["sales"], component_names=["store_1"])
+        mae_filtered = MeanAbsoluteError(groups=["sales"], components=["store_1"])
         mae_filtered.fit(y_true)
         score_filtered = mae_filtered.score(y_true, y_pred)
 
@@ -143,12 +143,12 @@ class TestPointScorerComponentNameFiltering:
         y_true, y_pred = global_multi_component_data
 
         # Score only sales component
-        mae_sales = MeanAbsoluteError(component_names=["sales"])
+        mae_sales = MeanAbsoluteError(components=["sales"])
         mae_sales.fit(y_true)
         score_sales = mae_sales.score(y_true, y_pred)
 
         # Score only demand component
-        mae_demand = MeanAbsoluteError(component_names=["demand"])
+        mae_demand = MeanAbsoluteError(components=["demand"])
         mae_demand.fit(y_true)
         score_demand = mae_demand.score(y_true, y_pred)
 
@@ -169,12 +169,12 @@ class TestIntervalScorerFiltering:
         y_true, y_pred = panel_interval_data
 
         # Score only 0.9 coverage
-        cov_09 = EmpiricalCoverage(coverage_rates=[0.9])
+        cov_09 = EmpiricalCoverage(coverage=[0.9])
         cov_09.fit(y_true)
         score_09 = cov_09.score(y_true, y_pred)
 
         # Score only 0.95 coverage
-        cov_095 = EmpiricalCoverage(coverage_rates=[0.95])
+        cov_095 = EmpiricalCoverage(coverage=[0.95])
         cov_095.fit(y_true)
         score_095 = cov_095.score(y_true, y_pred)
 
@@ -217,12 +217,12 @@ class TestIntervalScorerFiltering:
         y_true, y_pred = panel_interval_data
 
         # Score only store_1
-        cov_store1 = EmpiricalCoverage(component_names=["store_1"])
+        cov_store1 = EmpiricalCoverage(components=["store_1"])
         cov_store1.fit(y_true)
         score_store1 = cov_store1.score(y_true, y_pred)
 
         # Score only store_2
-        cov_store2 = EmpiricalCoverage(component_names=["store_2"])
+        cov_store2 = EmpiricalCoverage(components=["store_2"])
         cov_store2.fit(y_true)
         score_store2 = cov_store2.score(y_true, y_pred)
 
@@ -237,8 +237,8 @@ class TestIntervalScorerFiltering:
         # Filter by all three parameters
         cov_filtered = EmpiricalCoverage(
             groups=["sales"],
-            component_names=["store_1"],
-            coverage_rates=[0.9],
+            components=["store_1"],
+            coverage=[0.9],
         )
         cov_filtered.fit(y_true)
         score_filtered = cov_filtered.score(y_true, y_pred)
@@ -253,7 +253,7 @@ class TestEdgeCases:
         y_true, y_pred = panel_point_data
 
         # Explicit None parameters
-        mae_none = MeanAbsoluteError(groups=None, component_names=None)
+        mae_none = MeanAbsoluteError(groups=None, components=None)
         mae_none.fit(y_true)
         score_none = mae_none.score(y_true, y_pred)
 
@@ -281,9 +281,9 @@ class TestEdgeCases:
         y_true, y_pred = global_multi_component_data
 
         # Filter for non-existent component
-        mae_invalid = MeanAbsoluteError(component_names=["nonexistent"])
+        mae_invalid = MeanAbsoluteError(components=["nonexistent"])
 
-        with pytest.raises(ValueError, match="(Invalid|Requested) component_names.*not found"):
+        with pytest.raises(ValueError, match="(Invalid|Requested) components.*not found"):
             mae_invalid.fit(y_true)
             mae_invalid.score(y_true, y_pred)
 
@@ -292,7 +292,7 @@ class TestEdgeCases:
         y_true, y_pred = panel_interval_data
 
         # Request coverage rate that doesn't exist in predictions
-        cov_invalid = EmpiricalCoverage(coverage_rates=[0.99])
+        cov_invalid = EmpiricalCoverage(coverage=[0.99])
 
         # Should raise ValueError about missing rate
         import pytest

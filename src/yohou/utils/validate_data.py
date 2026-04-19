@@ -667,7 +667,10 @@ def validate_scorer_data(
     y_true = y_pred.select("time").join(y_true_filtered, on="time", how="left")
 
     # Subselect columns based on scorer configuration
-    coverage_rates = getattr(scorer, "coverage_rates", None)
+    coverage_rates = getattr(scorer, "coverage", None)
+    # Extract filter keys from polymorphic param (list or dict)
+    if isinstance(coverage_rates, dict):
+        coverage_rates = list(coverage_rates.keys())
     interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
 
     y_true, y_pred = check_scorer_column_selection(

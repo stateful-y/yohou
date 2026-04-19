@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import abc
+import functools
 import inspect
+import operator
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
@@ -34,15 +36,12 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict). If None,
+        all panel groups are included with equal weight.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict). If None,
+        all components are included with equal weight.
 
     Notes
     -----
@@ -62,32 +61,31 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
     _lower_is_better: bool = True
 
     _parameter_constraints: dict = {
-        "groups": [list, None],
-        "component_names": [list, None],
-        "group_weight": [dict, None],
-        "forecasting_steps": [list, None],
-        "component_weight": [dict, None],
-        "step_weight": [dict, None],
-        "vintage_weight": [dict, None],
+        "groups": [list, dict, None],
+        "components": [list, dict, None],
     }
 
     def __init__(
         self,
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ):
         self.groups = groups
-        self.component_names = component_names
-        self.group_weight = group_weight
-        self.forecasting_steps = forecasting_steps
-        self.component_weight = component_weight
-        self.step_weight = step_weight
-        self.vintage_weight = vintage_weight
+        self.components = components
+
+    @staticmethod
+    def _filter_keys(param: list | dict | None) -> list | None:
+        """Extract filter list from a polymorphic param."""
+        if isinstance(param, dict):
+            return list(param.keys())
+        return param
+
+    @staticmethod
+    def _weight_dict(param: list | dict | None) -> dict | None:
+        """Extract weight dict from a polymorphic param."""
+        if isinstance(param, dict):
+            return param
+        return None
 
     @property
     def lower_is_better(self) -> bool:
@@ -172,41 +170,254 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return self
 
-    def _apply_panel_weights(self, scores: dict[str, float], groups: list[str]) -> float:
-        """Apply panel group weights to aggregate scores.
+    def _collapse_groups(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Collapse panel groups via weighted average.
 
-        Parameters
-        ----------
-        scores : dict[str, float]
-            Mapping of panel group names to their scores.
-
-        groups : list[str]
-            List of panel group names present in data.
-
-        Returns
-        -------
-        float
-            Weighted average score.
+        For each component (suffix after ``__``), computes a weighted average
+        across all panel groups containing that component. Non-panel data
+        is returned unchanged.
 
         """
-        if self.group_weight is None:
-            # Equal weighting
-            return float(np.mean(list(scores.values())))
+        # Identify metadata columns (coverage_rate, context dims) to preserve
+        meta_names = {"coverage_rate", "forecasting_step", "observed_time", "time"}
+        meta_cols = [c for c in df.columns if c in meta_names]
+        value_df = df.select([c for c in df.columns if c not in meta_names])
 
-        # Apply custom weights
-        weighted_sum = 0.0
-        total_weight = 0.0
+        _, panel_groups = inspect_panel(value_df)
+        if len(panel_groups) == 0:
+            return df
 
-        for group in groups:
-            if group in scores:
-                weight = self.group_weight.get(group, 1.0)
-                weighted_sum += scores[group] * weight
-                total_weight += weight
+        # component -> [(group_name, column_name)]
+        components: dict[str, list[tuple[str, str]]] = {}
+        for group_name, group_cols in panel_groups.items():
+            for col in group_cols:
+                component = col.split("__", 1)[1]
+                if component not in components:
+                    components[component] = []
+                components[component].append((group_name, col))
 
-        if total_weight == 0:
-            raise ValueError("Total panel group weight is zero")
+        weights: dict[str, float] = {}
+        for group_name in panel_groups:
+            gw = self._weight_dict(self.groups)
+            weights[group_name] = gw.get(group_name, 1.0) if gw else 1.0
 
-        return weighted_sum / total_weight
+        exprs: list[pl.Expr] = [pl.col(c) for c in meta_cols]
+        for component, group_cols in components.items():
+            total_weight = sum(weights[gn] for gn, _ in group_cols)
+            if total_weight == 0:
+                raise ValueError("Total panel group weight is zero")
+            weighted_terms = [pl.col(col_name) * (weights[gn] / total_weight) for gn, col_name in group_cols]
+            exprs.append(pl.sum_horizontal(weighted_terms).alias(component))
+
+        return df.select(exprs)
+
+    def _collapse_coverage(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Collapse coverage_rate dimension via weighted average.
+
+        Rows within each coverage rate block are assumed to be in the same
+        order (one row per timestep). Collapsing averages across rates for
+        each timestep, preserving row dimension.
+        """
+        if "coverage_rate" not in df.columns:
+            return df
+
+        meta_names = {"forecasting_step", "observed_time", "time"}
+        meta_cols = [c for c in df.columns if c in meta_names]
+        val_cols = [c for c in df.columns if c not in meta_names and c != "coverage_rate"]
+
+        n_rates = df["coverage_rate"].n_unique()
+        n_rows_per_rate = len(df) // n_rates
+
+        # Add row index to identify timesteps across rate blocks
+        row_idx = list(range(n_rows_per_rate)) * n_rates
+        df = df.with_columns(pl.Series("_row_idx", row_idx))
+        group_cols = ["_row_idx"] + meta_cols
+
+        cw = self._weight_dict(getattr(self, "coverage", None))
+
+        if cw is not None:
+            df = df.with_columns(
+                pl.col("coverage_rate")
+                .replace_strict(
+                    {r: cw.get(r, 1.0) for r in df["coverage_rate"].unique().to_list()},
+                    default=1.0,
+                )
+                .alias("_cw")
+            )
+            result = df.group_by(group_cols, maintain_order=True).agg(
+                [(pl.col(c) * pl.col("_cw")).sum() / pl.col("_cw").sum() for c in val_cols]
+            )
+        else:
+            result = df.group_by(group_cols, maintain_order=True).agg(
+                [pl.col(c).mean() for c in val_cols]
+            )
+
+        return result.sort("_row_idx").drop("_row_idx")
+
+    def _collapse_rows(
+        self,
+        df: pl.DataFrame,
+        context: ScoringContext | None,
+        dims: set[str],
+    ) -> pl.DataFrame:
+        """Collapse row dimensions (stepwise and/or vintagewise).
+
+        When both stepwise and vintagewise are in *dims*, all rows are
+        averaged (within each coverage_rate group if present). For partial
+        collapse, rows are grouped by the non-collapsed dimension.
+        """
+        collapse_steps = "stepwise" in dims
+        collapse_vintages = "vintagewise" in dims
+
+        if not collapse_steps and not collapse_vintages:
+            return df
+
+        meta_names = {"coverage_rate"}
+        meta_cols = [c for c in df.columns if c in meta_names]
+        val_cols = [c for c in df.columns if c not in meta_names]
+
+        if collapse_steps and collapse_vintages:
+            if meta_cols:
+                return df.group_by(meta_cols, maintain_order=True).agg(
+                    [pl.col(c).mean() for c in val_cols]
+                )
+            return df.select(pl.all().mean())
+
+        # Partial collapse: keep one dimension, collapse the other
+        keep_dim = "forecasting_step" if collapse_vintages else "observed_time"
+        dim_values = getattr(context, keep_dim, None) if context is not None else None
+
+        if dim_values is None:
+            if meta_cols:
+                return df.group_by(meta_cols, maintain_order=True).agg(
+                    [pl.col(c).mean() for c in val_cols]
+                )
+            return df.select(pl.all().mean())
+
+        # Tile context values for interval data (coverage_rate repeats rows)
+        dim_list = dim_values.to_list()
+        if "coverage_rate" in df.columns:
+            n_rates = df["coverage_rate"].n_unique()
+            dim_list = dim_list * n_rates
+
+        group_cols = [keep_dim] + meta_cols
+
+        return (
+            df.with_columns(pl.Series(keep_dim, dim_list))
+            .group_by(group_cols, maintain_order=True)
+            .agg([pl.col(c).mean() for c in val_cols])
+            .sort(keep_dim)
+        )
+
+    def _collapse_components(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Collapse component columns into a single score via weighted average.
+
+        Metadata columns (coverage_rate, forecasting_step, etc.) are preserved.
+        For panel data (``__`` prefixed columns), each group is collapsed
+        separately into ``{group}__score``.
+        """
+        meta_names = {"coverage_rate", "forecasting_step", "observed_time", "time"}
+        meta_cols = [c for c in df.columns if c in meta_names]
+        value_df = df.select([c for c in df.columns if c not in meta_names])
+
+        if len(value_df.columns) == 0:
+            return df
+
+        _, panel_groups = inspect_panel(value_df)
+        cw = self._weight_dict(self.components)
+
+        keep = [pl.col(c) for c in meta_cols]
+
+        if len(panel_groups) > 0:
+            new_cols = []
+            for group_name, group_cols in panel_groups.items():
+                if cw is not None:
+                    unprefixed = [c.split("__", 1)[1] for c in group_cols]
+                    weights = [cw.get(n, 1.0) for n in unprefixed]
+                    total = sum(weights)
+                    weighted = pl.sum_horizontal([pl.col(c) * (w / total) for c, w in zip(group_cols, weights, strict=True)])
+                else:
+                    weighted = pl.sum_horizontal([pl.col(c) for c in group_cols]) / len(group_cols)
+                new_cols.append(weighted.alias(f"{group_name}__score"))
+            return df.select(keep + new_cols)
+
+        val_cols = value_df.columns
+        if cw is not None:
+            weights = [cw.get(c, 1.0) for c in val_cols]
+            total = sum(weights)
+            score = pl.sum_horizontal([pl.col(c) * (w / total) for c, w in zip(val_cols, weights, strict=True)])
+        else:
+            score = pl.sum_horizontal([pl.col(c) for c in val_cols]) / len(val_cols)
+
+        return df.select(keep + [score.alias("score")])
+
+    def _finalize(
+        self,
+        result: pl.DataFrame,
+        context: ScoringContext | None,
+        dims: set[str],
+    ) -> float | pl.DataFrame:
+        """Attach remaining row labels and convert 1x1 results to scalar.
+
+        After all collapse steps, determines whether to return a scalar
+        (when all dimensions are collapsed) or a labelled DataFrame.
+        """
+        meta_names = {"coverage_rate", "forecasting_step", "observed_time", "time"}
+        existing_labels = [c for c in result.columns if c in meta_names]
+        value_cols = [c for c in result.columns if c not in meta_names]
+
+        collapse_steps = "stepwise" in dims
+        collapse_vintages = "vintagewise" in dims
+        rows_collapsed = collapse_steps and collapse_vintages
+
+        # Add time labels if rows are NOT fully collapsed and no row label exists yet
+        has_row_label = any(c in existing_labels for c in ("forecasting_step", "observed_time", "time"))
+        if not rows_collapsed and not has_row_label:
+            if context is not None and context.time_values is not None:
+                time_values = context.time_values
+                if "coverage_rate" in result.columns:
+                    # Tile time values for each coverage rate
+                    n_rates = result["coverage_rate"].n_unique()
+                    if len(time_values) * n_rates == len(result):
+                        tiled_times = time_values * n_rates
+                        result = result.with_columns(
+                            pl.Series("time", tiled_times).cast(pl.Datetime)
+                        )
+                        # Reorder: time first, then all others
+                        cols = ["time"] + [c for c in result.columns if c != "time"]
+                        result = result.select(cols)
+                elif len(time_values) == len(result):
+                    result = pl.concat([
+                        pl.DataFrame({"time": time_values}).cast({"time": pl.Datetime}),
+                        result,
+                    ], how="horizontal")
+
+        # Re-check for labels after potential time label addition
+        existing_labels = [c for c in result.columns if c in meta_names]
+        value_cols = [c for c in result.columns if c not in meta_names]
+
+        # Scalar: only when ALL spatial dimensions are collapsed
+        # (i.e., stepwise+vintagewise+componentwise+groupwise all in dims, and no remaining labels)
+        all_spatial_collapsed = (
+            "stepwise" in dims
+            and "vintagewise" in dims
+            and "componentwise" in dims
+        )
+        # A single-value coverage_rate is trivial metadata when all other dims are collapsed
+        if (
+            all_spatial_collapsed
+            and existing_labels == ["coverage_rate"]
+            and len(result) == 1
+        ):
+            existing_labels = []
+            result = result.drop("coverage_rate")
+            value_cols = [c for c in result.columns if c not in meta_names]
+        if len(result) == 1 and len(value_cols) <= 1 and not existing_labels and all_spatial_collapsed:
+            if len(value_cols) == 0:
+                return float("nan")
+            return float(result[value_cols[0]][0])
+
+        return result
 
     def _process_time_weights(
         self,
@@ -338,60 +549,6 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return weighted_scores
 
-    def _aggregate_groupwise(self, raw_scores: pl.DataFrame) -> pl.DataFrame:
-        """Aggregate across panel groups, returning per-component columns.
-
-        For each component (suffix after ``__``), computes a weighted average
-        of the per-timestep scores across all panel groups that contain that
-        component.  When ``group_weight`` is ``None``, all groups are
-        weighted equally.
-
-        For non-panel data the DataFrame is returned unchanged.
-
-        Parameters
-        ----------
-        raw_scores : pl.DataFrame
-            Per-timestep per-component scores (no ``"time"`` column).
-
-        Returns
-        -------
-        pl.DataFrame
-            DataFrame with panel prefixes removed and groups collapsed.
-
-        """
-        _, panel_groups = inspect_panel(raw_scores)
-        if len(panel_groups) == 0:
-            return raw_scores
-
-        # component -> [(group_name, column_name)]
-        components: dict[str, list[tuple[str, str]]] = {}
-        for group_name, group_cols in panel_groups.items():
-            for col in group_cols:
-                component = col.split("__", 1)[1]
-                if component not in components:
-                    components[component] = []
-                components[component].append((group_name, col))
-
-        # Get weight per group
-        weights: dict[str, float] = {}
-        for group_name in panel_groups:
-            w = 1.0
-            if self.group_weight is not None:
-                w = self.group_weight.get(group_name, 1.0)
-            weights[group_name] = w
-
-        # Weighted average across groups for each component
-        exprs: list[pl.Expr] = []
-        for component, group_cols in components.items():
-            total_weight = sum(weights[gn] for gn, _ in group_cols)
-            if total_weight == 0:
-                msg = "Total panel group weight is zero"
-                raise ValueError(msg)
-            weighted_terms = [pl.col(col_name) * (weights[gn] / total_weight) for gn, col_name in group_cols]
-            exprs.append(pl.sum_horizontal(weighted_terms).alias(component))
-
-        return raw_scores.select(exprs)
-
     def _validate_parameters(
         self,
         y_train: pl.DataFrame | None = None,
@@ -449,23 +606,21 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     f"aggregation_method must be a string or list of strings, got {type(aggregation_method)}"
                 )
 
-        # Validate groups type
-        if self.groups is not None:
-            if not isinstance(self.groups, list):
-                raise ValueError(f"groups must be a list or None, got {type(self.groups)}")
-            if not all(isinstance(name, str) for name in self.groups):
-                raise ValueError("All elements in groups must be strings")
-            if len(self.groups) == 0:
-                raise ValueError("groups cannot be an empty list")
+        # Validate groups type (list or dict)
+        group_filter = self._filter_keys(self.groups)
+        if group_filter is not None:
+            if not all(isinstance(name, str) for name in group_filter):
+                raise ValueError("All group names must be strings")
+            if len(group_filter) == 0:
+                raise ValueError("groups cannot be empty")
 
-        # Validate component_names type
-        if self.component_names is not None:
-            if not isinstance(self.component_names, list):
-                raise ValueError(f"component_names must be a list or None, got {type(self.component_names)}")
-            if not all(isinstance(name, str) for name in self.component_names):
-                raise ValueError("All elements in component_names must be strings")
-            if len(self.component_names) == 0:
-                raise ValueError("component_names cannot be an empty list")
+        # Validate components type (list or dict)
+        comp_filter = self._filter_keys(self.components)
+        if comp_filter is not None:
+            if not all(isinstance(name, str) for name in comp_filter):
+                raise ValueError("All component names must be strings")
+            if len(comp_filter) == 0:
+                raise ValueError("components cannot be empty")
 
         # If y_train is provided, validate against actual data
         if y_train is not None:
@@ -473,14 +628,14 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             available_groups = set(panel_groups.keys())
 
             # Validate groups exist in data
-            if self.groups is not None:
+            if group_filter is not None:
                 if len(available_groups) == 0:
                     # No panel data, but user specified groups
                     raise ValueError(
                         f"groups specified but data contains no panel groups. "
                         f"Data has only global columns: {sorted(set(y_train.columns) - {'time'})}"
                     )
-                requested_groups = set(self.groups)
+                requested_groups = set(group_filter)
                 missing_groups = requested_groups - available_groups
                 if missing_groups:
                     raise ValueError(
@@ -488,8 +643,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                         f"Available groups: {sorted(available_groups)}"
                     )
 
-            # Validate component_names exist in data
-            if self.component_names is not None:
+            # Validate components exist in data
+            if comp_filter is not None:
                 if len(panel_groups) > 0:
                     # Panel data: check unprefixed column names
                     available_components = set()
@@ -501,11 +656,11 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     # Global data: check column names directly
                     available_components = set(y_train.columns) - {"time"}
 
-                requested_components = set(self.component_names)
+                requested_components = set(comp_filter)
                 missing_components = requested_components - available_components
                 if missing_components:
                     raise ValueError(
-                        f"Requested component_names {sorted(missing_components)} "
+                        f"Requested components {sorted(missing_components)} "
                         f"not found in data. Available components: {sorted(available_components)}"
                     )
 
@@ -547,18 +702,19 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         context: ScoringContext,
+        forecasting_steps: list[int] | None = None,
     ) -> tuple[pl.DataFrame, pl.DataFrame, ScoringContext]:
         """Filter rows to the requested ``forecasting_steps``.
 
-        When ``self.forecasting_steps`` is ``None`` or
+        When ``forecasting_steps`` is ``None`` or
         ``context.forecasting_step`` is unavailable, returns the inputs
         unchanged.
 
         """
-        if self.forecasting_steps is None or context.forecasting_step is None:
+        if forecasting_steps is None or context.forecasting_step is None:
             return y_truth, y_pred, context
 
-        mask = context.forecasting_step.is_in(self.forecasting_steps)
+        mask = context.forecasting_step.is_in(forecasting_steps)
 
         from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
 
@@ -572,237 +728,51 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             ),
         )
 
-    def _group_by_context_dim(
-        self,
-        raw_scores: pl.DataFrame,
-        context: ScoringContext | None,
-        dim_name: str,
-    ) -> tuple[pl.DataFrame, str | None]:
-        """Group rows by a ScoringContext dimension and average within groups.
-
-        When collapsing the *grouped* dimension into a scalar, applies
-        ``self.step_weight`` (for ``forecasting_step``) as a weighted mean.
-
-        Parameters
-        ----------
-        raw_scores : pl.DataFrame
-            Per-row per-component scores.
-        context : ScoringContext or None
-            Scoring context carrying dimension values.
-        dim_name : str
-            Attribute name on context (``"forecasting_step"`` or ``"observed_time"``).
-
-        Returns
-        -------
-        tuple of (pl.DataFrame, str or None)
-            Grouped DataFrame (with *dim_name* column) and the label column
-            name, or ``(collapsed, None)`` when the dimension is unavailable
-            (fallback: collapse all rows).
-
-        """
-        if context is None:
-            return raw_scores.select(pl.all().mean()), None
-
-        dim_values = getattr(context, dim_name, None)
-        if dim_values is None:
-            # Dimension unavailable -> collapse all rows
-            return raw_scores.select(pl.all().mean()), None
-
-        grouped = (
-            raw_scores
-            .with_columns(pl.Series(dim_name, dim_values))
-            .group_by(dim_name, maintain_order=True)
-            .agg(pl.all().mean())
-            .sort(dim_name)
-        )
-        return grouped, dim_name
-
-    @staticmethod
-    def _weighted_col_mean(df: pl.DataFrame, weights: dict[str, float]) -> float:
-        """Weighted mean across columns of *df*.
-
-        Parameters
-        ----------
-        df : pl.DataFrame
-            Single-row or multi-row DataFrame whose columns are components.
-        weights : dict[str, float]
-            Maps column names to weights.  Missing columns get weight 1.0.
-
-        Returns
-        -------
-        float
-
-        """
-        cols = df.columns
-        w = np.array([weights.get(c, 1.0) for c in cols])
-        total = w.sum()
-        arr = df.to_numpy()  # shape (n_rows, n_cols)
-        return float(np.nanmean(np.average(arr, axis=1, weights=w / total)))
-
-    def _row_weights_from_steps(
+    def _build_row_weights(
         self,
         context: ScoringContext | None,
         n_rows: int,
+        step_weight: dict[int, float] | None = None,
+        vintage_weight: dict[datetime, float] | None = None,
     ) -> np.ndarray | None:
-        """Build per-row weight array from ``step_weight`` and context.
+        """Build combined per-row weight array from step_weight and vintage_weight.
 
-        Returns ``None`` when ``step_weight`` is ``None`` or when
-        ``context.forecasting_step`` is unavailable, meaning equal weights.
+        Resolves both weight dicts into per-row arrays and combines them
+        multiplicatively. The combined product is normalized once so that
+        weights sum to ``n_rows`` (preserving score scale).
+
+        Returns ``None`` when neither weight applies, meaning equal weights.
         """
-        sw = self.step_weight
-        if sw is None or context is None:
-            return None
-        steps = getattr(context, "forecasting_step", None)
-        if steps is None:
-            return None
-        rw = np.array([sw.get(int(s), 1.0) for s in steps.to_list()])
-        if rw.sum() == 0:
-            return None
-        return rw
+        weights: list[np.ndarray] = []
 
-    def _row_weights_from_vintages(
-        self,
-        context: ScoringContext | None,
-        n_rows: int,
-    ) -> np.ndarray | None:
-        """Build per-row weight array from ``vintage_weight`` and context.
+        if step_weight is not None and context is not None:
+            steps = getattr(context, "forecasting_step", None)
+            if steps is not None:
+                weights.append(np.array([step_weight.get(int(s), 1.0) for s in steps.to_list()]))
 
-        Returns ``None`` when ``vintage_weight`` is ``None`` or when
-        ``context.observed_time`` is unavailable, meaning equal weights.
-        """
-        vw = self.vintage_weight
-        if vw is None or context is None:
-            return None
-        obs = getattr(context, "observed_time", None)
-        if obs is None:
-            return None
-        rw = np.array([vw.get(v, 1.0) for v in obs.to_list()])
-        if rw.sum() == 0:
-            return None
-        return rw
+        if vintage_weight is not None and context is not None:
+            obs = getattr(context, "observed_time", None)
+            if obs is not None:
+                weights.append(np.array([vintage_weight.get(v, 1.0) for v in obs.to_list()]))
 
-    def _combine_row_weights(
-        self,
-        context: ScoringContext | None,
-        n_rows: int,
-    ) -> np.ndarray | None:
-        """Combine step_weight and vintage_weight into a single per-row array.
-
-        Multiplicative combination: if both are set, element-wise product.
-        """
-        sw = self._row_weights_from_steps(context, n_rows)
-        vw = self._row_weights_from_vintages(context, n_rows)
-        if sw is None and vw is None:
+        if not weights:
             return None
-        if sw is None:
-            return vw
-        if vw is None:
-            return sw
-        combined = sw * vw
+
+        combined = functools.reduce(operator.mul, weights)
         if combined.sum() == 0:
             return None
+
+        # Normalize: preserves scale by making weights sum to n_rows
+        combined = combined * (n_rows / combined.sum())
         return combined
-
-    def _scalar_from_df(
-        self,
-        df: pl.DataFrame,
-        cw: dict[str, float] | None,
-        rw: np.ndarray | None,
-    ) -> float:
-        """Compute a single scalar from a DataFrame using optional weights."""
-        arr = df.to_numpy()
-        if cw is not None:
-            col_w = np.array([cw.get(c, 1.0) for c in df.columns])
-            row_means = np.average(arr, axis=1, weights=col_w)
-        else:
-            row_means = np.nanmean(arr, axis=1)
-        if rw is not None:
-            return float(np.average(row_means, weights=rw))
-        return float(np.nanmean(row_means))
-
-    def _componentwise_reduce(
-        self,
-        raw_scores: pl.DataFrame,
-        row_label: str | None = None,
-        time_values: list | None = None,
-    ) -> float | pl.DataFrame:
-        """Collapse component columns, keeping rows indexed by *row_label*.
-
-        Uses ``self.component_weight`` (if set) for a weighted mean across
-        components instead of equal weighting.
-
-        Parameters
-        ----------
-        raw_scores : pl.DataFrame
-            Score DataFrame whose columns are components (plus optionally a
-            label column such as ``"forecasting_step"`` or ``"observed_time"``).
-        row_label : str or None
-            Name of the row-label column already present in *raw_scores*,
-            or ``None`` when all rows were already collapsed.
-        time_values : list or None
-            Original time values to use as row label when *row_label* is
-            ``None`` and the data still has multiple rows.
-
-        Returns
-        -------
-        float or pl.DataFrame
-
-        """
-        cw = self.component_weight
-
-        # Separate label from value columns
-        if row_label is not None and row_label in raw_scores.columns:
-            labels = raw_scores[row_label].to_list()
-            value_df = raw_scores.drop(row_label)
-        elif time_values is not None:
-            labels = time_values
-            row_label = "time"
-            value_df = raw_scores
-        else:
-            # No label -> scalar
-            if cw is not None:
-                return self._weighted_col_mean(raw_scores, cw)
-            return float(np.nanmean(raw_scores.to_numpy()))
-
-        _, panel_groups = inspect_panel(value_df)
-
-        if len(panel_groups) > 0:
-            step_data: dict[str, list] = {row_label: labels}
-            for group_name, group_cols in panel_groups.items():
-                group_scores = []
-                for i in range(len(value_df)):
-                    step_errors = [float(value_df[col][i]) for col in group_cols]
-                    if cw is not None:
-                        unprefixed = [col.split("__", 1)[1] for col in group_cols]
-                        weights = [cw.get(n, 1.0) for n in unprefixed]
-                        total = sum(weights)
-                        group_scores.append(sum(e * w for e, w in zip(step_errors, weights, strict=True)) / total)
-                    else:
-                        group_scores.append(float(np.mean(step_errors)))
-                step_data[f"{group_name}__score"] = group_scores
-            return pl.DataFrame(step_data)
-        else:
-            step_scores = []
-            cols = value_df.columns
-            if cw is not None:
-                weights = [cw.get(c, 1.0) for c in cols]
-                total = sum(weights)
-                for i in range(len(value_df)):
-                    vals = [float(value_df[c][i]) for c in cols]
-                    step_scores.append(sum(v * w for v, w in zip(vals, weights, strict=True)) / total)
-            else:
-                for i in range(len(value_df)):
-                    step_errors = [float(value_df[col][i]) for col in cols]
-                    step_scores.append(float(np.mean(step_errors)))
-            return pl.DataFrame({row_label: labels, "score": step_scores})
 
     def _aggregate_scores(
         self, raw_scores: pl.DataFrame, context: ScoringContext | None = None
     ) -> float | pl.DataFrame:
-        """Apply aggregation strategy to raw per-timestep per-component scores.
+        """Apply sequential aggregation pipeline to raw scores.
 
-        Handles both spatial dimensions (steps, vintages, components, groups)
-        and the interval-specific coverage-rate dimension.
+        Collapses dimensions one at a time in order: groups → coverage →
+        rows (steps/vintages) → components → finalize.
 
         Parameters
         ----------
@@ -819,216 +789,30 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         """
         has_coverage_rate = "coverage_rate" in raw_scores.columns
-        agg_methods = self._normalize_agg_methods(
+        dims = self._normalize_agg_methods(
             self.aggregation_method,  # ty: ignore[unresolved-attribute]
             include_coveragewise=has_coverage_rate,
         )
 
-        if has_coverage_rate:
-            return self._aggregate_with_rates(raw_scores, context, agg_methods)
+        result = raw_scores
 
-        return self._aggregate_spatial(raw_scores, context, agg_methods)
+        # 1. Collapse coverage rates (interval only)
+        if "coveragewise" in dims:
+            result = self._collapse_coverage(result)
 
-    def _aggregate_spatial(
-        self,
-        raw_scores: pl.DataFrame,
-        context: ScoringContext | None,
-        agg_methods: set[str],
-    ) -> float | pl.DataFrame:
-        """Apply spatial aggregation modes (all except coveragewise).
+        # 2. Collapse row dimensions (steps and/or vintages)
+        result = self._collapse_rows(result, context, dims)
 
-        Parameters
-        ----------
-        raw_scores : pl.DataFrame
-            Per-timestep per-component score DataFrame.
-        context : ScoringContext or None
-            Scoring context with time values and metadata.
-        agg_methods : set of str
-            Normalized set of aggregation modes to apply.
+        # 3. Collapse components
+        if "componentwise" in dims:
+            result = self._collapse_components(result)
 
-        Returns
-        -------
-        float or pl.DataFrame
+        # 4. Collapse panel groups
+        if "groupwise" in dims:
+            result = self._collapse_groups(result)
 
-        """
-        time_values = context.time_values if context is not None else None
-
-        collapse_steps = "stepwise" in agg_methods
-        collapse_vintages = "vintagewise" in agg_methods
-        collapse_cols = "componentwise" in agg_methods
-        collapse_groups = "groupwise" in agg_methods
-
-        # Both time-dimensions collapsed -> all rows merge.
-        collapse_all_rows = collapse_steps and collapse_vintages
-
-        # Full scalar: all rows + all cols (+ groups)
-        if collapse_all_rows and collapse_cols:
-            if collapse_groups:
-                _, panel_groups = inspect_panel(raw_scores)
-
-                if len(panel_groups) > 0:
-                    col_means = raw_scores.mean()
-                    cw = self.component_weight
-                    group_scores = {}
-                    for group_name, group_cols in panel_groups.items():
-                        vals = [float(col_means[col][0]) for col in group_cols]
-                        if cw is not None:
-                            unprefixed = [c.split("__", 1)[1] for c in group_cols]
-                            weights = [cw.get(n, 1.0) for n in unprefixed]
-                            total = sum(weights)
-                            group_scores[group_name] = sum(v * w for v, w in zip(vals, weights, strict=True)) / total
-                        else:
-                            group_scores[group_name] = float(np.mean(vals))
-                    return self._apply_panel_weights(group_scores, list(panel_groups.keys()))
-
-            cw = self.component_weight
-            rw = self._combine_row_weights(context, len(raw_scores))
-            return self._scalar_from_df(raw_scores, cw, rw)
-
-        # Groupwise pre-processing
-        if collapse_groups:
-            raw_scores = self._aggregate_groupwise(raw_scores)
-
-        # Row reduction
-        if collapse_all_rows:
-            # All rows -> single mean row (per-component)
-            rw = self._combine_row_weights(context, len(raw_scores))
-            if rw is not None:
-                arr = raw_scores.to_numpy()
-                weighted = np.average(arr, axis=0, weights=rw)
-                return pl.DataFrame([weighted.tolist()], schema=raw_scores.schema, orient="row")
-            return raw_scores.select(pl.all().mean())
-
-        # Partial row reduction: collapse ONE time dimension, keep the other.
-        row_label: str | None = None
-        if collapse_vintages and not collapse_steps:
-            # Collapse vintages -> per-step output
-            raw_scores, row_label = self._group_by_context_dim(raw_scores, context, "forecasting_step")
-        elif collapse_steps and not collapse_vintages:
-            # Collapse steps -> per-vintage output
-            raw_scores, row_label = self._group_by_context_dim(raw_scores, context, "observed_time")
-
-        # Column reduction (componentwise)
-        if collapse_cols:
-            return self._componentwise_reduce(raw_scores, row_label=row_label, time_values=time_values)
-
-        # Groups only (no row/col reduction)
-        if collapse_groups and row_label is None:
-            result_data: dict[str, list] = {"time": time_values} if time_values is not None else {}
-            for col in raw_scores.columns:
-                result_data[col] = raw_scores[col].to_list()
-            return pl.DataFrame(result_data)
-
-        # Partial row reduction only (no componentwise)
-        if row_label is not None:
-            return raw_scores
-
-        # No aggregation
-        return raw_scores
-
-    def _aggregate_with_rates(
-        self,
-        raw_scores: pl.DataFrame,
-        context: ScoringContext | None,
-        agg_methods: set[str],
-    ) -> float | pl.DataFrame:
-        """Handle coverage_rate dimension then delegate spatial aggregation.
-
-        Splits the DataFrame by ``coverage_rate``, applies spatial aggregation
-        to each rate slice, then optionally collapses the rate dimension.
-
-        Parameters
-        ----------
-        raw_scores : pl.DataFrame
-            Flat DataFrame with component columns plus ``coverage_rate``.
-        context : ScoringContext or None
-            Scoring context with time values and metadata.
-        agg_methods : set of str
-            Normalized set of aggregation modes including possibly ``"coveragewise"``.
-
-        Returns
-        -------
-        float or pl.DataFrame
-
-        """
-        aggregate_rates = "coveragewise" in agg_methods
-        spatial_modes = agg_methods - {"coveragewise"}
-
-        coverage_rates = raw_scores["coverage_rate"].unique().sort().to_list()
-        value_cols = [c for c in raw_scores.columns if c != "coverage_rate"]
-
-        if len(coverage_rates) == 0:
-            return float("nan")
-
-        # Apply spatial aggregation per rate
-        per_rate_results: dict[float, float | pl.DataFrame] = {}
-        effective_spatial = (
-            spatial_modes if spatial_modes else {"stepwise", "vintagewise", "componentwise", "groupwise"}
-        )
-        for rate in coverage_rates:
-            rate_df = raw_scores.filter(pl.col("coverage_rate") == rate).select(value_cols)
-            per_rate_results[rate] = self._aggregate_spatial(rate_df, context, effective_spatial)
-
-        # All rates produced scalars -> collapse or return per-rate
-        first_result = next(iter(per_rate_results.values()))
-        if isinstance(first_result, float):
-            if aggregate_rates:
-                cw = getattr(self, "coverage_weight", None)
-                values = list(per_rate_results.values())
-                if cw is not None:
-                    weights = [cw.get(r, 1.0) for r in per_rate_results]
-                    return float(np.average(values, weights=weights))  # type: ignore
-                return float(np.mean(values))  # type: ignore
-            # Single rate: just return the scalar
-            if len(per_rate_results) == 1:
-                return next(iter(per_rate_results.values()))
-            # Multiple rates without coveragewise: return DataFrame with per-rate rows
-            return pl.DataFrame({
-                "coverage_rate": list(per_rate_results.keys()),
-                "score": list(per_rate_results.values()),
-            })
-
-        # Results are DataFrames - stack with coverage_rate column
-        frames = []
-        for rate, result_df in per_rate_results.items():
-            frames.append(result_df.with_columns(pl.lit(rate).alias("coverage_rate")))  # type: ignore
-        combined = pl.concat(frames)
-
-        if aggregate_rates:
-            # Collapse coverage_rate dimension: weighted average across rates
-            rate_col = "coverage_rate"
-            other_cols = [c for c in combined.columns if c != rate_col]
-            # Find dimension columns (non-numeric) vs value columns
-            dim_cols = [c for c in other_cols if combined[c].dtype not in (pl.Float64, pl.Float32, pl.Int64, pl.Int32)]
-            val_cols = [c for c in other_cols if c not in dim_cols]
-
-            cw = getattr(self, "coverage_weight", None)
-            if cw is not None:
-                # Add weight column based on coverage_weight dict
-                combined = combined.with_columns(
-                    pl
-                    .col("coverage_rate")
-                    .replace_strict(
-                        {r: cw.get(r, 1.0) for r in combined["coverage_rate"].unique().to_list()},
-                        default=1.0,
-                    )
-                    .alias("_cw")
-                )
-                # Weighted mean per group
-                if dim_cols:
-                    combined = combined.group_by(dim_cols, maintain_order=True).agg([
-                        (pl.col(c) * pl.col("_cw")).sum() / pl.col("_cw").sum() for c in val_cols
-                    ])
-                else:
-                    total_w = combined["_cw"].sum()
-                    combined = combined.select([(pl.col(c) * pl.col("_cw")).sum() / total_w for c in val_cols])
-            elif dim_cols:
-                combined = combined.group_by(dim_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
-            else:
-                combined = combined.select([pl.col(c).mean() for c in val_cols])
-            return combined
-
-        return combined
+        # 5. Finalize: attach labels, convert to scalar
+        return self._finalize(result, context, dims)
 
     @abc.abstractmethod
     def score(
@@ -1141,22 +925,12 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         - "groupwise": Aggregate across panel groups (panel data only)
         - "all": Aggregate across all dimensions (returns scalar). Same as
           ["stepwise", "vintagewise", "componentwise", "groupwise"].
-        Example outputs:
-        - ["stepwise", "vintagewise"]: Per-component (and per-group) DataFrame.
-        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
-        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
-        - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
-        - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data. Validated at fit time.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-        Validated at fit time.
-    group_weight : dict or None, default=None
-        Dictionary mapping panel group names to weights for weighted aggregation.
-        If None, all panel groups weighted equally. Only applicable for panel data.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict). If None,
+        all panel groups are included with equal weight.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict). If None,
+        all components are included with equal weight.
 
     See Also
     --------
@@ -1179,22 +953,12 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ):
         super().__init__(
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
         self.aggregation_method = aggregation_method
 
@@ -1285,6 +1049,9 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_pred: pl.DataFrame,
         /,
         time_weight: Callable | pl.DataFrame | None = None,
+        step_weight: dict[int, float] | None = None,
+        vintage_weight: dict[datetime, float] | None = None,
+        forecasting_steps: list[int] | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute the point metric score.
@@ -1300,6 +1067,12 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
             Predicted values with ``"time"`` column.
         time_weight : callable, pl.DataFrame, or None, default=None
             Time-based evaluation weights.
+        step_weight : dict or None, default=None
+            Per-step weights ({step_index: weight}).
+        vintage_weight : dict or None, default=None
+            Per-vintage weights ({datetime: weight}).
+        forecasting_steps : list of int or None, default=None
+            Subset of forecasting steps to score.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1318,7 +1091,7 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         )
 
         # 0. Apply forecasting_steps filter
-        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context)
+        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context, forecasting_steps)
 
         # 1. Compute raw per-timestep per-component errors
         scores = self._compute_raw_errors(y_truth, y_pred)
@@ -1337,6 +1110,13 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
                 scores = pl.concat(weighted_parts, how="horizontal")
             else:
                 scores = self._process_time_weights(scores, time_weight, time_values, group_name=None)
+
+        # 2b. Apply step/vintage row weights (pre-aggregation)
+        row_weights = self._build_row_weights(context, len(scores), step_weight, vintage_weight)
+        if row_weights is not None:
+            scores = scores.with_columns(
+                [(pl.col(col) * row_weights).alias(col) for col in scores.columns]
+            )
 
         # 3. Aggregate
         result = self._aggregate_scores(scores, context=context)
@@ -1386,30 +1166,15 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         - "coveragewise": Collapse coverage rates (return average across rates).
         - "all": Collapse all dimensions (returns scalar). Same as
           ``["stepwise", "vintagewise", "componentwise", "groupwise", "coveragewise"]``.
-
-        Example outputs:
-
-        - ``["stepwise", "vintagewise"]``: Per-component (and per-group) DataFrame.
-        - ``"componentwise"`` or ``["componentwise"]``: Per-timestep (and per-group) DataFrame.
-        - ``"groupwise"`` or ``["groupwise"]``: Per-component per-timestep DataFrame (panel aggregated).
-        - ``["stepwise", "vintagewise", "componentwise"]``: Scalar (global) or per-group DataFrame (panel).
-        - ``"all"``: Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data. Validated at fit time.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-        Validated at fit time.
-    coverage_rates : list of float or None, default=None
-        List of coverage rates to include in scoring. If None, all coverage rates
-        are included. Rates are validated against actual prediction columns during scoring.
-    group_weight : dict or None, default=None
-        Weights for panel groups. See BaseScorer for details.
-    coverage_weight : dict or None, default=None
-        Dictionary mapping coverage rates (float) to weights for weighted
-        aggregation when collapsing the coverage dimension. If None, all
-        rates are weighted equally. Missing keys default to weight 1.0.
+    coverage : list of float, dict of float to float, or None, default=None
+        Coverage rate filter (list) or filter with weights (dict). If None,
+        all coverage rates are included with equal weight.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict). If None,
+        all panel groups are included with equal weight.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict). If None,
+        all components are included with equal weight.
 
     See Also
     --------
@@ -1427,74 +1192,60 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             list,
             StrOptions({"all", "stepwise", "vintagewise", "componentwise", "groupwise", "coveragewise"}),
         ],
-        "coverage_rates": [list, None],
-        "coverage_weight": [dict, None],
+        "coverage": [list, dict, None],
     }
 
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        coverage_rates: list[float] | None = None,
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        coverage_weight: dict[float, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        coverage: list[float] | dict[float, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ):
         super().__init__(
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
         self.aggregation_method = aggregation_method
-        self.coverage_rates = coverage_rates
-        self.coverage_weight = coverage_weight
+        self.coverage = coverage
 
     def _validate_coverage_rates(self) -> None:
-        """Validate coverage_rates parameter.
+        """Validate coverage parameter.
 
         Raises
         ------
         ValueError
-            If coverage_rates validation fails.
+            If coverage validation fails.
         TypeError
-            If coverage_rates contains non-hashable types.
+            If coverage contains non-hashable types.
 
         """
-        if self.coverage_rates is not None:
-            if not isinstance(self.coverage_rates, list):
-                raise ValueError(f"coverage_rates must be a list or None, got {type(self.coverage_rates)}")
-            if len(self.coverage_rates) == 0:
-                raise ValueError("coverage_rates cannot be an empty list")
+        coverage_filter = self._filter_keys(self.coverage)
+        if coverage_filter is not None:
+            if len(coverage_filter) == 0:
+                raise ValueError("coverage cannot be empty")
 
             # Check for hashable types (catch lists, dicts, etc.)
-            for i, rate in enumerate(self.coverage_rates):
+            for i, rate in enumerate(coverage_filter):
                 try:
                     hash(rate)
                 except TypeError:
                     raise TypeError(
-                        f"coverage_rates[{i}] is not hashable (got {type(rate).__name__}). "
+                        f"coverage[{i}] is not hashable (got {type(rate).__name__}). "
                         f"All elements must be numeric (int or float)."
                     ) from None
 
             # Check all elements are numeric
-            if not all(isinstance(rate, int | float) for rate in self.coverage_rates):
+            if not all(isinstance(rate, int | float) for rate in coverage_filter):
                 raise ValueError(
-                    f"All elements in coverage_rates must be numeric (int or float), "
-                    f"got types: {[type(r).__name__ for r in self.coverage_rates]}"
+                    f"All elements in coverage must be numeric (int or float), "
+                    f"got types: {[type(r).__name__ for r in coverage_filter]}"
                 )
 
             # Check range
-            for rate in self.coverage_rates:
+            for rate in coverage_filter:
                 if not 0 < rate < 1:
-                    raise ValueError(f"All coverage_rates must be between 0 and 1 (exclusive), got {rate}")
+                    raise ValueError(f"All coverage rates must be between 0 and 1 (exclusive), got {rate}")
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, y_train: pl.DataFrame, *, forecaster=None, **params) -> BaseIntervalScorer:
@@ -1590,6 +1341,9 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         /,
+        step_weight: dict[int, float] | None = None,
+        vintage_weight: dict[datetime, float] | None = None,
+        forecasting_steps: list[int] | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute the interval metric score.
@@ -1603,6 +1357,12 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             True values with ``"time"`` column.
         y_pred : pl.DataFrame
             Predicted intervals with ``"time"`` column.
+        step_weight : dict or None, default=None
+            Per-step weights ({step_index: weight}).
+        vintage_weight : dict or None, default=None
+            Per-vintage weights ({datetime: weight}).
+        forecasting_steps : list of int or None, default=None
+            Subset of forecasting steps to score.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1621,13 +1381,26 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         )
 
         # 0. Apply forecasting_steps filter
-        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context)
+        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context, forecasting_steps)
 
         coverage_rates = self._extract_coverage_rates(y_pred)
         target_columns = self._extract_target_columns(y_truth)
 
         # 1. Compute raw per-timestep per-component per-rate scores (flat DataFrame)
         raw_scores = self._compute_raw_scores(y_truth, y_pred, coverage_rates, target_columns)
+
+        # 1b. Apply step/vintage row weights (pre-aggregation)
+        # For interval data, raw_scores has a coverage_rate column; weights apply to all value columns
+        row_weights = self._build_row_weights(context, len(raw_scores), step_weight, vintage_weight)
+        if row_weights is not None:
+            value_cols = [c for c in raw_scores.columns if c != "coverage_rate"]
+            # coverage_rate repeats rows for each rate; weights must tile accordingly
+            n_rates = raw_scores["coverage_rate"].n_unique() if "coverage_rate" in raw_scores.columns else 1
+            if n_rates > 1 and len(row_weights) * n_rates == len(raw_scores):
+                row_weights = np.tile(row_weights, n_rates)
+            raw_scores = raw_scores.with_columns(
+                [(pl.col(col) * row_weights).alias(col) for col in value_cols]
+            )
 
         # 2. Aggregate
         result = self._aggregate_scores(raw_scores, context=context)
@@ -1710,21 +1483,12 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         - "groupwise": Aggregate across panel groups (panel data only)
         - "all": Aggregate across all dimensions (returns scalar). Same as
           ["stepwise", "vintagewise", "componentwise", "groupwise"].
-        Example outputs:
-        - ["stepwise", "vintagewise"]: Per-component (and per-group) DataFrame.
-        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
-        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
-        - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
-        - "all": Scalar float (hierarchically aggregated for panel data).
-    groups : list of str or None, default=None
-        List of panel group names to include in scoring. If None, all panel groups
-        are included. Only applicable for panel data. Validated at fit time.
-    component_names : list of str or None, default=None
-        List of component (target column) names to include in scoring. If None, all
-        components are included. For panel data, these are unprefixed column names.
-        Validated at fit time.
-    group_weight : dict or None, default=None
-        Weights for panel groups. See `BaseScorer` for details.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict). If None,
+        all panel groups are included with equal weight.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict). If None,
+        all components are included with equal weight.
 
     See Also
     --------
@@ -1748,22 +1512,12 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        groups: list[str] | None = None,
-        component_names: list[str] | None = None,
-        group_weight: dict[str, float] | None = None,
-        forecasting_steps: list[int] | None = None,
-        component_weight: dict[str, float] | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ):
         super().__init__(
             groups=groups,
-            component_names=component_names,
-            group_weight=group_weight,
-            forecasting_steps=forecasting_steps,
-            component_weight=component_weight,
-            step_weight=step_weight,
-            vintage_weight=vintage_weight,
+            components=components,
         )
         self.aggregation_method = aggregation_method
 
@@ -1927,6 +1681,9 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_pred: pl.DataFrame,
         /,
         time_weight: Callable | pl.DataFrame | None = None,
+        step_weight: dict[int, float] | None = None,
+        vintage_weight: dict[datetime, float] | None = None,
+        forecasting_steps: list[int] | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute the class-probability metric score.
@@ -1942,6 +1699,12 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
             Predicted probabilities with ``"time"`` column.
         time_weight : callable, pl.DataFrame, or None, default=None
             Time-based evaluation weights.
+        step_weight : dict or None, default=None
+            Per-step weights ({step_index: weight}).
+        vintage_weight : dict or None, default=None
+            Per-vintage weights ({datetime: weight}).
+        forecasting_steps : list of int or None, default=None
+            Subset of forecasting steps to score.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1956,7 +1719,7 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_truth, y_pred, context = validate_scorer_data(self, y_truth, y_pred)
 
         # 0. Apply forecasting_steps filter
-        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context)
+        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context, forecasting_steps)
 
         # 0b. Validate probability columns are finite and in [0, 1]
         self._validate_probabilities(y_truth, y_pred)
@@ -1978,6 +1741,13 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
                 scores = pl.concat(weighted_parts, how="horizontal")
             else:
                 scores = self._process_time_weights(scores, time_weight, time_values, group_name=None)
+
+        # 2b. Apply step/vintage row weights (pre-aggregation)
+        row_weights = self._build_row_weights(context, len(scores), step_weight, vintage_weight)
+        if row_weights is not None:
+            scores = scores.with_columns(
+                [(pl.col(col) * row_weights).alias(col) for col in scores.columns]
+            )
 
         # 3. Aggregate
         result = self._aggregate_scores(scores, context=context)
