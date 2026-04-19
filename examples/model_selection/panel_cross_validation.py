@@ -34,7 +34,7 @@ def _(mo):
     ## What You'll Learn
 
     - Running [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) on panel data to find optimal hyperparameters
-    - Using `observe` and `predict` with `panel_group_names` on the best
+    - Using `observe` and `predict` with `groups` on the best
       model returned by the search
     - Using `rewind` to reset the forecast origin for specific groups
     - Visualising how observation shifts the forecast origin per group
@@ -166,7 +166,7 @@ def _(mo):
 
     After `refit=True`, the search object delegates `predict`, `observe`,
     and `rewind` to its `best_forecaster_`. All three accept
-    `panel_group_names` for selective group operations.
+    `groups` for selective group operations.
 
     We demonstrate three steps on groups **T5** and **T8**:
 
@@ -184,37 +184,37 @@ def _(deepcopy, fh, mo, plot_forecast, search, y_test, y_train):
     _search = deepcopy(search)
 
     # 1) Predict from training window
-    _y_pred_baseline = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _y_pred_baseline = _search.predict(forecasting_horizon=fh, groups=_groups)
     _fig_baseline = plot_forecast(
         y_test,
         _y_pred_baseline,
         y_train=y_train,
-        panel_group_names=_groups,
+        groups=_groups,
         n_history=16,
         title="Step 1 - Predict from training window",
     )
 
     # 2) Observe first half of test data for those groups, then predict
     _y_obs = y_test.head(fh // 2)
-    _search.observe(_y_obs, panel_group_names=_groups)
-    _y_pred_observed = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _search.observe(_y_obs, groups=_groups)
+    _y_pred_observed = _search.predict(forecasting_horizon=fh, groups=_groups)
     _fig_observed = plot_forecast(
         y_test,
         _y_pred_observed,
         y_train=y_train,
-        panel_group_names=_groups,
+        groups=_groups,
         n_history=16,
         title="Step 2 - After observing first half of test (origin moves forward)",
     )
 
     # 3) Rewind back and predict again
-    _search.rewind(y_train, panel_group_names=_groups)
-    _y_pred_rewound = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _search.rewind(y_train, groups=_groups)
+    _y_pred_rewound = _search.predict(forecasting_horizon=fh, groups=_groups)
     _fig_rewound = plot_forecast(
         y_test,
         _y_pred_rewound,
         y_train=y_train,
-        panel_group_names=_groups,
+        groups=_groups,
         n_history=16,
         title="Step 3 - After rewind (origin returns)",
     )
@@ -237,11 +237,11 @@ def _(mo):
       boundaries; [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates them together
     - **`refit=True`**: The best model is fitted on all training data after
       search, ready for `predict` / `observe` / `rewind`
-    - **`observe` with `panel_group_names`**: Feed new data to specific
+    - **`observe` with `groups`**: Feed new data to specific
       groups, shifting their forecast origin forward
-    - **`rewind` with `panel_group_names`**: Reset specific groups back to
+    - **`rewind` with `groups`**: Reset specific groups back to
       a previous observation window without refitting
-    - **`predict` with `panel_group_names`**: Generate forecasts for a
+    - **`predict` with `groups`**: Generate forecasts for a
       subset of groups only
 
     ## Next Steps

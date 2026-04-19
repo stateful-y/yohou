@@ -1,7 +1,7 @@
 """Dedicated panel-data tests for the plotting module.
 
 Tests deeper panel scenarios not covered by per-module tests:
-- Multi-group filtering via ``panel_group_names``
+- Multi-group filtering via ``groups``
 - Three-group panels
 - DataFrames with null values
 - Subplot count validation
@@ -38,13 +38,13 @@ class TestPanelTimeSeries:
 
     def test_two_groups(self, panel_daily_df):
         """Two-group panel produces figure with data for both groups."""
-        fig = plot_time_series(panel_daily_df, panel_group_names=["y"])
+        fig = plot_time_series(panel_daily_df, groups=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 2
 
     def test_three_groups(self, panel_monthly_3groups):
         """Three-group panel produces traces for all groups."""
-        fig = plot_time_series(panel_monthly_3groups, panel_group_names=["sales"])
+        fig = plot_time_series(panel_monthly_3groups, groups=["sales"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 3
 
@@ -52,7 +52,7 @@ class TestPanelTimeSeries:
         """Columns filter selects specific members within a panel group."""
         fig = plot_time_series(
             panel_monthly_3groups,
-            panel_group_names=["sales"],
+            groups=["sales"],
             columns=["a"],
         )
         assert isinstance(fig, go.Figure)
@@ -62,7 +62,7 @@ class TestPanelTimeSeries:
         """Columns filter with multiple members."""
         fig = plot_time_series(
             panel_monthly_3groups,
-            panel_group_names=["sales"],
+            groups=["sales"],
             columns=["a", "c"],
         )
         assert isinstance(fig, go.Figure)
@@ -78,7 +78,7 @@ class TestPanelRollingStatistics:
             panel_monthly_3groups,
             window_size=3,
             statistics="mean",
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 3
@@ -89,13 +89,13 @@ class TestPanelRollingStatistics:
             panel_two_groups_df,
             window_size=3,
             statistics="mean",
-            panel_group_names=["temp"],
+            groups=["temp"],
         )
         fig_wind = plot_rolling_statistics(
             panel_two_groups_df,
             window_size=3,
             statistics="mean",
-            panel_group_names=["wind"],
+            groups=["wind"],
         )
         assert isinstance(fig_temp, go.Figure)
         assert isinstance(fig_wind, go.Figure)
@@ -109,7 +109,7 @@ class TestPanelRollingStatistics:
             panel_two_groups_df,
             window_size=3,
             statistics="mean",
-            panel_group_names=["temp"],
+            groups=["temp"],
             columns=["city_a"],
         )
         assert isinstance(fig, go.Figure)
@@ -124,7 +124,7 @@ class TestPanelBoxplot:
         fig = plot_boxplot(
             panel_daily_df,
             period="1mo",
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -134,7 +134,7 @@ class TestPanelBoxplot:
         fig = plot_boxplot(
             panel_monthly_3groups,
             period="1mo",
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -148,7 +148,7 @@ class TestPanelMissingData:
         fig = plot_missing_data(
             panel_with_nulls,
             kind="heatmap",
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -158,7 +158,7 @@ class TestPanelMissingData:
         fig = plot_missing_data(
             panel_with_nulls,
             kind="bars",
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -168,7 +168,7 @@ class TestPanelMissingData:
         fig = plot_missing_data(
             panel_with_nulls,
             kind="matrix",
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -182,7 +182,7 @@ class TestPanelACF:
         fig = plot_autocorrelation(
             panel_monthly_3groups,
             max_lags=5,
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -192,7 +192,7 @@ class TestPanelACF:
         fig = plot_autocorrelation(
             panel_two_groups_df,
             max_lags=10,
-            panel_group_names=["temp"],
+            groups=["temp"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -202,12 +202,12 @@ class TestPanelACF:
         fig_all = plot_autocorrelation(
             panel_monthly_3groups,
             max_lags=5,
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         fig_one = plot_autocorrelation(
             panel_monthly_3groups,
             max_lags=5,
-            panel_group_names=["sales"],
+            groups=["sales"],
             columns=["a"],
         )
         # Fewer traces when filtering to one member
@@ -222,7 +222,7 @@ class TestPanelPACF:
         fig = plot_partial_autocorrelation(
             panel_daily_df,
             max_lags=10,
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -236,7 +236,7 @@ class TestPanelSeasonality:
         fig = plot_seasonality(
             panel_monthly_3groups,
             seasonality="month",
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -246,7 +246,7 @@ class TestPanelSeasonality:
         fig = plot_seasonality(
             panel_two_groups_df,
             seasonality="month",
-            panel_group_names=["wind"],
+            groups=["wind"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -260,7 +260,7 @@ class TestPanelLagScatter:
         result = plot_lag_scatter(
             panel_daily_df,
             lags=[1, 7],
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(result, dict)
         for fig in result.values():
@@ -272,7 +272,7 @@ class TestPanelLagScatter:
         result = plot_lag_scatter(
             panel_monthly_3groups,
             lags=1,
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         assert isinstance(result, dict)
         assert len(result) == 3
@@ -288,7 +288,7 @@ class TestPanelSpectrum:
         """Two-group spectrum panel."""
         fig = plot_spectrum(
             panel_daily_df,
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -298,7 +298,7 @@ class TestPanelSpectrum:
         fig = plot_spectrum(
             panel_daily_df,
             log_scale=True,
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -307,7 +307,7 @@ class TestPanelSpectrum:
         """Columns filter selects specific member within spectrum panel."""
         fig = plot_spectrum(
             panel_daily_df,
-            panel_group_names=["y"],
+            groups=["y"],
             columns=["a"],
         )
         assert isinstance(fig, go.Figure)
@@ -321,7 +321,7 @@ class TestPanelForecast:
         """Panel forecast with y_test and y_pred both having panel columns."""
         y_test = panel_monthly_df.head(6)
         y_pred = panel_monthly_df.tail(6)
-        fig = plot_forecast(y_test, y_pred, panel_group_names=["y"])
+        fig = plot_forecast(y_test, y_pred, groups=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
@@ -330,7 +330,7 @@ class TestPanelForecast:
         y_train = panel_monthly_df.head(6)
         y_test = panel_monthly_df.tail(6)
         y_pred = panel_monthly_df.tail(6)
-        fig = plot_forecast(y_test, y_pred, y_train=y_train, panel_group_names=["y"])
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, groups=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
@@ -374,11 +374,11 @@ class TestPanelTimeWeight:
         assert len(fig.data) >= 2
 
 
-# Cross-module: invalid panel_group_names
+# Cross-module: invalid groups
 
 
 class TestPanelInvalidGroups:
-    """Verify ValueError for non-existent panel_group_names."""
+    """Verify ValueError for non-existent groups."""
 
     def test_rolling_statistics_invalid_group(self, panel_daily_df):
         """Rolling statistics with non-existent group raises ValueError."""
@@ -387,7 +387,7 @@ class TestPanelInvalidGroups:
                 panel_daily_df,
                 window_size=3,
                 statistics="mean",
-                panel_group_names=["nonexistent"],
+                groups=["nonexistent"],
             )
 
     def test_acf_invalid_group(self, panel_daily_df):
@@ -396,7 +396,7 @@ class TestPanelInvalidGroups:
             plot_autocorrelation(
                 panel_daily_df,
                 max_lags=5,
-                panel_group_names=["nonexistent"],
+                groups=["nonexistent"],
             )
 
     def test_invalid_member(self, panel_daily_df):
@@ -404,7 +404,7 @@ class TestPanelInvalidGroups:
         with pytest.raises(ValueError, match="No panel columns found"):
             plot_time_series(
                 panel_daily_df,
-                panel_group_names=["y"],
+                groups=["y"],
                 columns=["nonexistent"],
             )
 
@@ -457,12 +457,12 @@ class TestPanelPhase:
 
     def test_two_groups(self, panel_daily_df):
         """Two-group panel phase plot produces a valid figure."""
-        fig = plot_phase(panel_daily_df, panel_group_names=["y"])
+        fig = plot_phase(panel_daily_df, groups=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 2
 
     def test_columns_filter_member(self, panel_daily_df):
         """Columns filter selects specific member within phase panel."""
-        fig = plot_phase(panel_daily_df, panel_group_names=["y"], columns=["a"])
+        fig = plot_phase(panel_daily_df, groups=["y"], columns=["a"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1

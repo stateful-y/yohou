@@ -116,7 +116,7 @@ def _(mo):
     ## 1. Raw Time Series
 
     [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders one or more numeric columns against the `"time"` axis.
-    Varying **columns**, **panel_group_names**, and styling parameters shows how the same
+    Varying **columns**, **groups**, and styling parameters shows how the same
     function adapts to different data shapes.
     """)
 
@@ -139,7 +139,7 @@ def _(plot_time_series, vic):
 def _(plot_time_series, tourism_quarterly):
     plot_time_series(
         tourism_quarterly,
-        panel_group_names=["T1", "T2"],
+        groups=["T1", "T2"],
         title="Tourism Quarterly - Panel Faceting (T1 & T2)",
     )
 
@@ -214,7 +214,7 @@ def _(mo):
 
     [`plot_boxplot`](/pages/api/generated/yohou.plotting.exploration.plot_boxplot/) groups values by a time **period** and shows the distribution
     within each group. Vary the period, toggle **show_points**, or pass
-    **panel_group_names** for panel data.
+    **groups** for panel data.
     """)
 
 
@@ -243,7 +243,7 @@ def _(plot_boxplot, tourism_quarterly):
     plot_boxplot(
         tourism_quarterly,
         period="1y",
-        panel_group_names=["T1", "T2"],
+        groups=["T1", "T2"],
         title="Yearly Boxplot - Tourism Quarterly Panel (T1 & T2)",
     )
 
@@ -423,7 +423,7 @@ def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **plot_time_series** adapts to single-column, multi-column, and panel data via `columns` and `panel_group_names`
+    - **plot_time_series** adapts to single-column, multi-column, and panel data via `columns` and `groups`
     - **Rolling statistics** reveal trends (`"mean"`), variability (`"std"`), and range (`"min"/"max"`)
     - **Boxplots** aggregate at different time granularities (`period`); `show_points="all"` shows every observation
     - **Missing data** visualizations come in three forms: `"heatmap"` for patterns over time, `"bars"` for column-level counts, `"matrix"` for a compact binary view

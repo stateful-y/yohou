@@ -497,7 +497,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         # Set attributes from first forecaster
         first_name, first_forecaster, _ = self.forecasters_[0]
         self.interval_ = first_forecaster.interval_
-        self.panel_group_names_ = first_forecaster.panel_group_names_
+        self.groups_ = first_forecaster.groups_
 
         # Combine schemas from all forecasters
         self.local_y_schema_ = {}
@@ -522,7 +522,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         self,
         forecasting_horizon: int | None = None,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -534,7 +534,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Forecasting horizon. If None, uses horizon from fit.
         X : pl.DataFrame, optional
             Exogenous features with "time" column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         predict_transformed : bool, default=False
             Return transformed predictions.
@@ -564,7 +564,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_pred = forecaster.predict(
                 forecasting_horizon=forecasting_horizon,
                 X=X,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **forecaster_params.predict,
             )
@@ -582,7 +582,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_pred_remainder = self.remainder_forecaster_.predict(
                 forecasting_horizon=forecasting_horizon,
                 X=X,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **remainder_params.predict,
             )
@@ -598,7 +598,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "ColumnForecaster":
         """Observe all forecasters with new observations.
 
@@ -608,7 +608,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             New target data with "time" column.
         X : pl.DataFrame, optional
             New exogenous features with "time" column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
 
         Returns
@@ -621,12 +621,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         # Observe each forecaster with its column subset
         for _name, forecaster, cols in self.forecasters_:
             y_subset = y.select(["time"] + cols)
-            forecaster.observe(y_subset, X, panel_group_names)
+            forecaster.observe(y_subset, X, groups)
 
         # Observe remainder forecaster if present
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
             y_remainder = y.select(["time"] + self.remainder_cols_)
-            self.remainder_forecaster_.observe(y_remainder, X, panel_group_names)
+            self.remainder_forecaster_.observe(y_remainder, X, groups)
 
         # Observe observed data
         assert isinstance(self._y_observed, pl.DataFrame)
@@ -640,7 +640,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "ColumnForecaster":
         """Rewind all forecasters to new observation window.
 
@@ -650,7 +650,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             New target data with "time" column.
         X : pl.DataFrame, optional
             New exogenous features with "time" column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
 
         Returns
@@ -663,12 +663,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         # Rewind each forecaster with its column subset
         for _name, forecaster, cols in self.forecasters_:
             y_subset = y.select(["time"] + cols)
-            forecaster.rewind(y_subset, X, panel_group_names)
+            forecaster.rewind(y_subset, X, groups)
 
         # Rewind remainder forecaster if present
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
             y_remainder = y.select(["time"] + self.remainder_cols_)
-            self.remainder_forecaster_.rewind(y_remainder, X, panel_group_names)
+            self.remainder_forecaster_.rewind(y_remainder, X, groups)
 
         self._y_observed = y
         self._X_observed = X
@@ -681,7 +681,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: int | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: int | None = None,
         predict_transformed: bool = False,
         **params,
@@ -696,7 +696,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Feature time series for predictions.
         forecasting_horizon : int or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         stride : int or None, default=None
             Number of observations per update step. If None, uses
@@ -722,7 +722,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         y_pred = self.predict(
             forecasting_horizon=fh,
             X=X,
-            panel_group_names=panel_group_names,
+            groups=groups,
             predict_transformed=predict_transformed,
             **params,
         )
@@ -734,7 +734,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             if X is not None:
                 X_slice = X.join(y_slice.select("time"), on="time", how="semi")
 
-            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+            self.observe(y=y_slice, X=X_slice, groups=groups)
 
             X_future = None
             if X is not None:
@@ -744,7 +744,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_pred_i = self.predict(
                 forecasting_horizon=fh,
                 X=X_future,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **params,
             )
@@ -759,7 +759,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         forecasting_horizon: int | None = None,
         X: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -773,7 +773,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Exogenous features with "time" column.
         coverage_rates : list of float, optional
             Coverage rates for prediction intervals.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         predict_transformed : bool, default=False
             Return transformed predictions.
@@ -807,7 +807,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 forecasting_horizon=forecasting_horizon,
                 X=X,
                 coverage_rates=coverage_rates,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **forecaster_params.predict_interval,
             )
@@ -827,7 +827,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 forecasting_horizon=forecasting_horizon,
                 X=X,
                 coverage_rates=coverage_rates,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **remainder_params.predict_interval,
             )
@@ -846,7 +846,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         X: pl.DataFrame | None = None,
         forecasting_horizon: int | None = None,
         coverage_rates: list[float] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: int | None = None,
         predict_transformed: bool = False,
         **params,
@@ -863,7 +863,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         stride : int or None, default=None
             Number of observations per update step. If None, uses
@@ -890,7 +890,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             forecasting_horizon=fh,
             X=X,
             coverage_rates=coverage_rates,
-            panel_group_names=panel_group_names,
+            groups=groups,
             predict_transformed=predict_transformed,
             **params,
         )
@@ -902,7 +902,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             if X is not None:
                 X_slice = X.join(y_slice.select("time"), on="time", how="semi")
 
-            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+            self.observe(y=y_slice, X=X_slice, groups=groups)
 
             X_future = None
             if X is not None:
@@ -913,7 +913,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 forecasting_horizon=fh,
                 X=X_future,
                 coverage_rates=coverage_rates,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **params,
             )
@@ -927,7 +927,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         self,
         forecasting_horizon: int | None = None,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Predict class probabilities using all forecasters and concatenate results.
@@ -938,7 +938,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Forecasting horizon. If None, uses horizon from fit.
         X : pl.DataFrame, optional
             Exogenous features with "time" column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         **params : dict
             Metadata to route to nested estimators.
@@ -963,7 +963,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_pred = forecaster.predict_class_proba(
                 forecasting_horizon=forecasting_horizon,
                 X=X,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **forecaster_params.predict_class_proba,
             )
 
@@ -979,7 +979,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_pred_remainder = self.remainder_forecaster_.predict_class_proba(
                 forecasting_horizon=forecasting_horizon,
                 X=X,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **remainder_params.predict_class_proba,
             )
             predictions.append(y_pred_remainder.select(~cs.by_name(*time_col_names)))
@@ -993,7 +993,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: int | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: int | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -1007,7 +1007,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Feature time series for predictions.
         forecasting_horizon : int or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         stride : int or None, default=None
             Number of observations per update step. If None, uses
@@ -1030,7 +1030,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         y_pred = self.predict_class_proba(
             forecasting_horizon=fh,
             X=X,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **params,
         )
 
@@ -1041,7 +1041,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             if X is not None:
                 X_slice = X.join(y_slice.select("time"), on="time", how="semi")
 
-            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+            self.observe(y=y_slice, X=X_slice, groups=groups)
 
             X_future = None
             if X is not None:
@@ -1051,7 +1051,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_pred_i = self.predict_class_proba(
                 forecasting_horizon=fh,
                 X=X_future,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **params,
             )
 

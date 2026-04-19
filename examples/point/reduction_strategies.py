@@ -52,7 +52,7 @@ def _():
 
     from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_model_comparison_bar, plot_time_series
+    from yohou.plotting import plot_forecast, plot_score_per_horizon, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -64,7 +64,7 @@ def _():
         fetch_sunspot,
         pl,
         plot_forecast,
-        plot_model_comparison_bar,
+        plot_score_per_horizon,
         plot_time_series,
         train_test_split,
     )
@@ -264,22 +264,26 @@ def _(mo):
 @app.cell
 def _(
     MeanAbsoluteError,
-    plot_model_comparison_bar,
+    plot_score_per_horizon,
     y_pred_direct,
     y_pred_dirrec,
     y_pred_multi,
     y_test,
-    y_train,
 ):
-    mae = MeanAbsoluteError()
-    mae.fit(y_train)
+    _n = min(len(y_pred_multi), len(y_pred_direct), len(y_pred_dirrec))
+    _y_test_trimmed = y_test.head(_n)
 
-    scores = {}
-    for _name, _pred in [("Multi-Output", y_pred_multi), ("Direct", y_pred_direct), ("Dir-Rec", y_pred_dirrec)]:
-        _y_test_trimmed = y_test.head(len(_pred))
-        scores[_name] = {"MAE": mae.score(_y_test_trimmed, _pred)}
-
-    plot_model_comparison_bar(scores, title="MAE by Reduction Strategy")
+    plot_score_per_horizon(
+        MeanAbsoluteError(),
+        _y_test_trimmed,
+        {
+            "Multi-Output": y_pred_multi.head(_n),
+            "Direct": y_pred_direct.head(_n),
+            "Dir-Rec": y_pred_dirrec.head(_n),
+        },
+        kind="summary",
+        title="MAE by Reduction Strategy",
+    )
     return
 
 

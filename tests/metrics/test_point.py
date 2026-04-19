@@ -480,14 +480,14 @@ class TestComponentwise:
         expected_errors = [2.0, 1.0, 2.0]  # |12-10|, |19-20|, |28-30|
         assert np.allclose(result["mae"].to_numpy(), expected_errors, atol=1e-5), "Per-step MAE values incorrect"
 
-        # Verify aggregated mean matches aggregation_method=['timewise']
+        # Verify aggregated mean matches 'all' aggregation
         mae_default = MeanAbsoluteError()
         mae_default.fit(y_true)
         default_score = mae_default.score(y_true, y_pred)
         componentwise_mean = result["mae"].mean()
 
         assert np.isclose(default_score, componentwise_mean, atol=1e-5), (
-            f"Aggregated componentwise mean ({componentwise_mean}) should match timewise ({default_score})"
+            f"Aggregated componentwise mean ({componentwise_mean}) should match 'all' ({default_score})"
         )
 
     def test_mse_per_step(self, y_true_y_pred):
@@ -513,14 +513,14 @@ class TestComponentwise:
             "Per-step MeanSquaredError values incorrect"
         )
 
-        # Verify aggregated mean matches aggregation_method=['timewise']
+        # Verify aggregated mean matches 'all' aggregation
         mse_default = MeanSquaredError()
         mse_default.fit(y_true)
         default_score = mse_default.score(y_true, y_pred)
         componentwise_mean = result["mse"].mean()
 
         assert np.isclose(default_score, componentwise_mean, atol=1e-5), (
-            f"Aggregated componentwise mean ({componentwise_mean}) should match timewise ({default_score})"
+            f"Aggregated componentwise mean ({componentwise_mean}) should match 'all' ({default_score})"
         )
 
     def test_rmse_per_step(self, y_true_y_pred):
@@ -629,9 +629,9 @@ class TestComponentwise:
 
     def test_aggregate_parameter_validation(self):
         """aggregation_method parameter should accept valid list or string values."""
-        # Valid: aggregation_method=['timewise']
-        mae_timewise = MeanAbsoluteError(aggregation_method=["timewise"])
-        assert mae_timewise.aggregation_method == ["timewise"]
+        # Valid: aggregation_method=['stepwise', 'vintagewise']
+        mae_sv = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+        assert mae_sv.aggregation_method == ["stepwise", "vintagewise"]
 
         # Valid: aggregation_method=['componentwise']
         mae_componentwise = MeanAbsoluteError(aggregation_method=["componentwise"])
@@ -650,8 +650,8 @@ class TestComponentwise:
         assert mae_default.aggregation_method == "all"
 
         # Valid: multiple aggregation methods
-        mae_multi = MeanAbsoluteError(aggregation_method=["timewise", "componentwise"])
-        assert mae_multi.aggregation_method == ["timewise", "componentwise"]
+        mae_multi = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
+        assert mae_multi.aggregation_method == ["stepwise", "vintagewise", "componentwise"]
 
 
 class TestMAPE:
@@ -940,18 +940,18 @@ class TestMedianAbsoluteError:
         assert score_median < score_mean
 
 
-class TestRMSETimewise:
-    """Tests for RMSE with timewise aggregation and sqrt."""
+class TestRMSEStepwiseVintagewise:
+    """Tests for RMSE with stepwise+vintagewise aggregation and sqrt."""
 
-    def test_rmse_timewise_returns_per_component(self, scorer_data_factory):
-        """RMSE with timewise agg returns per-component DataFrame with sqrt applied."""
+    def test_rmse_stepwise_vintagewise_returns_per_component(self, scorer_data_factory):
+        """RMSE with stepwise+vintagewise agg returns per-component DataFrame with sqrt applied."""
         y, _ = scorer_data_factory(length=20, n_targets=3, n_features=0, seed=42)
         y_test = y[15:]
         y_pred = y_test.with_columns([(pl.col(c) + 2.0).alias(c) for c in y_test.columns if c != "time"]).with_columns(
             observed_time=pl.lit(y["time"][14])
         )
 
-        rmse = RootMeanSquaredError(aggregation_method=["timewise"])
+        rmse = RootMeanSquaredError(aggregation_method=["stepwise", "vintagewise"])
         rmse.fit(y[:15])
         result = rmse.score(y_test, y_pred)
 
@@ -960,8 +960,8 @@ class TestRMSETimewise:
         for col in result.columns:
             assert result[col][0] == pytest.approx(2.0, abs=1e-5)
 
-    def test_rmsse_timewise_returns_per_component(self):
-        """RMSSE with timewise agg returns per-component DataFrame with sqrt applied."""
+    def test_rmsse_stepwise_vintagewise_returns_per_component(self):
+        """RMSSE with stepwise+vintagewise agg returns per-component DataFrame with sqrt applied."""
         y_train = pl.DataFrame({
             "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
             "value": [10.0, 12.0, 11.0, 13.0, 12.0, 14.0, 13.0, 15.0, 14.0, 16.0],
@@ -976,7 +976,7 @@ class TestRMSETimewise:
             "value": [15.5, 16.5],
         })
 
-        rmsse = RootMeanSquaredScaledError(seasonality=2, aggregation_method=["timewise"])
+        rmsse = RootMeanSquaredScaledError(seasonality=2, aggregation_method=["stepwise", "vintagewise"])
         rmsse.fit(y_train)
         result = rmsse.score(y_test, y_pred)
 

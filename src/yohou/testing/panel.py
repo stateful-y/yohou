@@ -11,23 +11,21 @@ from yohou.utils import inspect_panel
 __all__ = ["check_panel_data", "check_panel_invalid_group_raises", "check_panel_single_group"]
 
 
-def _call_predict(forecaster, X, forecasting_horizon, panel_group=None, panel_group_names=None):
+def _call_predict(forecaster, X, forecasting_horizon, panel_group=None, groups=None):
     """Call appropriate predict method based on forecaster type."""
     # Interval forecasters use predict_interval, point forecasters use predict
     if hasattr(forecaster, "predict"):
         if panel_group is not None:
             return forecaster.predict(X=X, forecasting_horizon=forecasting_horizon, panel_group=panel_group)
-        elif panel_group_names is not None:
-            return forecaster.predict(X=X, forecasting_horizon=forecasting_horizon, panel_group_names=panel_group_names)
+        elif groups is not None:
+            return forecaster.predict(X=X, forecasting_horizon=forecasting_horizon, groups=groups)
         else:
             return forecaster.predict(X=X, forecasting_horizon=forecasting_horizon)
     # Interval forecaster
     elif panel_group is not None:
         return forecaster.predict_interval(X=X, forecasting_horizon=forecasting_horizon, panel_group=panel_group)
-    elif panel_group_names is not None:
-        return forecaster.predict_interval(
-            X=X, forecasting_horizon=forecasting_horizon, panel_group_names=panel_group_names
-        )
+    elif groups is not None:
+        return forecaster.predict_interval(X=X, forecasting_horizon=forecasting_horizon, groups=groups)
     else:
         return forecaster.predict_interval(X=X, forecasting_horizon=forecasting_horizon)
 
@@ -144,7 +142,7 @@ def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel:
     if len(y_panel_groups) > 0:
         # Try to predict with invalid group name
         try:
-            _call_predict(forecaster, X=X_panel, forecasting_horizon=3, panel_group_names=["invalid_group"])
+            _call_predict(forecaster, X=X_panel, forecasting_horizon=3, groups=["invalid_group"])
             raise AssertionError("predict() should raise ValueError for invalid panel_group, but didn't")
         except ValueError as e:
             # Expected - check error message mentions the invalid group

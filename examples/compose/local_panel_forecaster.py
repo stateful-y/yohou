@@ -167,7 +167,7 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         y_pred_local,
         y_train=y_train,
         n_history=12,
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         title="LocalPanelForecaster: Top 3 Series",
     )
 
@@ -197,7 +197,7 @@ def _(mo):
     mo.md(r"""
     ## 4. Selective Group Operations
 
-    Use `panel_group_names` to predict, observe, or rewind only a subset
+    Use `groups` to predict, observe, or rewind only a subset
     of groups.  This is useful when new data arrives for specific groups
     or you want group-specific analysis.
     """)
@@ -207,7 +207,7 @@ def _(mo):
 def _(fc_local, horizon, mo):
     y_pred_top3 = fc_local.predict(
         forecasting_horizon=horizon,
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
     )
     mo.md(
         f"**Selective prediction columns**: {sorted(y_pred_top3.columns)}\n\n"
@@ -298,7 +298,7 @@ def _(plot_forecast, y_pred_global, y_pred_local2, y_test2, y_train2):
         {"Global": y_pred_global, "Local": y_pred_local2},
         y_train=y_train2,
         n_history=12,
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         title="Local vs Global: Forecast Comparison",
     )
 
@@ -311,7 +311,7 @@ def _(MeanAbsoluteError, plot_score_time_series, y_pred_global, y_pred_local2, y
         _scorer,
         y_test2,
         {"Global": y_pred_global, "Local": y_pred_local2},
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         title="Local vs Global: MAE Over Time",
     )
 
@@ -357,7 +357,7 @@ def _(mo):
     | **Transformers** | Per-group (automatic) | Per-group (inside each clone) |
     | **Cross-group learning** | Pooled estimator | None |
     | **Parallel fitting** | Sequential | `n_jobs` parameter |
-    | **Selective operations** | `panel_group_names` on all methods | `panel_group_names` on all methods |
+    | **Selective operations** | `groups` on all methods | `groups` on all methods |
     | **Best for** | Homogeneous groups | Heterogeneous groups |
 
     ## Next Steps

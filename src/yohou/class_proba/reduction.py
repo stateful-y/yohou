@@ -243,14 +243,14 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
     def _predict_class_proba_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **params,
     ) -> pl.DataFrame:
         """Produce probability forecasts for one fit-horizon block.
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         **params : dict
             Metadata to route to nested estimators.
@@ -264,7 +264,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         """
         y_proba = self._estimator_predict_proba_one(
             self.estimator_,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
         y_proba = self._add_time_columns(y_proba)
         return y_proba
@@ -272,7 +272,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     def _estimator_predict_proba_one(
         self,
         estimator: BaseEstimator | list[BaseEstimator],
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> pl.DataFrame:
         """Dispatch estimator probability prediction to the strategy-specific method.
 
@@ -280,7 +280,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ----------
         estimator : BaseEstimator or list[BaseEstimator]
             Fitted estimator(s).
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
 
         Returns
@@ -291,14 +291,14 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         """
         if self.reduction_strategy == "direct":
             assert isinstance(estimator, list)
-            return self._estimator_predict_proba_direct(cast(list[BaseEstimator], estimator), panel_group_names)
+            return self._estimator_predict_proba_direct(cast(list[BaseEstimator], estimator), groups)
         assert isinstance(estimator, BaseEstimator)
-        return self._estimator_predict_proba_multi_output(estimator, panel_group_names)
+        return self._estimator_predict_proba_multi_output(estimator, groups)
 
     def _estimator_predict_proba_multi_output(
         self,
         estimator: BaseEstimator,
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> pl.DataFrame:
         """Generate probability predictions using a fitted multi-output estimator.
 
@@ -306,7 +306,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ----------
         estimator : BaseEstimator
             Fitted sklearn classifier.
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
 
         Returns
@@ -315,12 +315,12 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             Probability predictions.
 
         """
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             X_tab = self._get_predict_features()
             return self._predict_proba_and_reshape(estimator, X_tab)
 
         y_pred_dict: dict[str, pl.DataFrame] = {}
-        for panel_group_name in panel_group_names:
+        for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
             y_pred_dict[panel_group_name] = self._predict_proba_and_reshape(estimator, X_tab, panel_group_name)
         return pl.concat(list(y_pred_dict.values()), how="horizontal")
@@ -328,7 +328,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     def _estimator_predict_proba_direct(
         self,
         estimators: list[BaseEstimator],
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> pl.DataFrame:
         """Generate probability predictions using H independent direct estimators.
 
@@ -336,7 +336,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ----------
         estimators : list[BaseEstimator]
             H fitted estimators, one per horizon step.
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
 
         Returns
@@ -345,15 +345,15 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             Probability predictions.
 
         """
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             X_tab = self._get_predict_features()
             frames = []
             for estimator in estimators:
                 frames.append(self._predict_proba_and_reshape_single_step(estimator, X_tab))
             return pl.concat(frames)
 
-        y_pred_dict: dict[str, list[pl.DataFrame]] = {g: [] for g in panel_group_names}
-        for panel_group_name in panel_group_names:
+        y_pred_dict: dict[str, list[pl.DataFrame]] = {g: [] for g in groups}
+        for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
             for estimator in estimators:
                 y_pred_dict[panel_group_name].append(

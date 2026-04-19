@@ -355,7 +355,7 @@ def _(
         _y_pred_panel,
         y_train=_y_train_p,
         n_history=8,
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         title="Panel Decomposition: Trend + Residual",
     )
 

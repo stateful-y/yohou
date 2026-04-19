@@ -109,7 +109,7 @@ def _(mo):
 def _(df, plot_time_series):
     plot_time_series(
         df,
-        panel_group_names=["beijing_aotizhongxin_aq"],
+        groups=["beijing_aotizhongxin_aq"],
         title="Beijing Aotizhongxin - All 6 Pollutants",
         y_label="Concentration",
     )
@@ -129,7 +129,7 @@ def _(mo):
 def _(df, plot_time_series):
     plot_time_series(
         df,
-        panel_group_names=[],
+        groups=[],
         columns=["pm2.5"],
         title="PM2.5 Across All Stations",
         y_label="PM2.5 (µg/m³)",

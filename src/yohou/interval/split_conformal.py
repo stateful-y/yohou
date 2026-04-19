@@ -189,7 +189,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             y_pred_calib_step = y_pred_calib[step - 1 :: forecasting_horizon]
             y_truth_step = y_calib
 
-            conformity_scorer_step = clone(self.conformity_scorer).fit(y_calib)
+            conformity_scorer_step = clone(self.conformity_scorer).fit(y_calib, forecaster=self.point_forecaster_)
             conformity_scores_step = conformity_scorer_step.score(y_truth_step, y_pred_calib_step)
 
             conformity_scores_step = conformity_scores_step.with_columns(step=step)
@@ -228,7 +228,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "SplitConformalForecaster":
         """Observe new data and update the wrapped point forecaster.
 
@@ -243,7 +243,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -256,19 +256,19 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         """
         check_is_fitted(
             self,
-            ["point_forecaster_", "local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["point_forecaster_", "local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
-        y, X, panel_group_names = validate_forecaster_data(self, y, X, reset=False, panel_group_names=panel_group_names)
+        y, X, groups = validate_forecaster_data(self, y, X, reset=False, groups=groups)
 
-        self.point_forecaster_.observe(y=y, X=X, panel_group_names=panel_group_names)
+        self.point_forecaster_.observe(y=y, X=X, groups=groups)
         return self
 
     def rewind(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "SplitConformalForecaster":
         """Rewind the wrapped point forecaster's observation buffers.
 
@@ -282,7 +282,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -295,19 +295,19 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         """
         check_is_fitted(
             self,
-            ["point_forecaster_", "local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["point_forecaster_", "local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
-        y, X, panel_group_names = validate_forecaster_data(self, y, X, reset=False, panel_group_names=panel_group_names)
+        y, X, groups = validate_forecaster_data(self, y, X, reset=False, groups=groups)
 
-        self.point_forecaster_.rewind(y=y, X=X, panel_group_names=panel_group_names)
+        self.point_forecaster_.rewind(y=y, X=X, groups=groups)
         return self
 
     def predict(
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -323,7 +323,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -342,21 +342,21 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
-        _, X, panel_group_names = validate_forecaster_data(
+        _, X, groups = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         return self.point_forecaster_.predict(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             predict_transformed=predict_transformed,
         )
 
@@ -365,7 +365,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
         predict_transformed: bool = False,
         **params,
@@ -386,7 +386,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -410,21 +410,21 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure or ``panel_group_names``
+            If ``y`` / ``X`` have invalid structure or ``groups``
             contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
-        y, X, panel_group_names = validate_forecaster_data(
+        y, X, groups = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon, _ = self._validate_predict_params(forecasting_horizon)
@@ -435,7 +435,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y_pred_i = self.predict(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             predict_transformed=predict_transformed,
             **params,
         )
@@ -448,7 +448,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             if X is not None:
                 X_slice = X.join(y_slice.select("time"), on="time", how="semi")
 
-            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+            self.observe(y=y_slice, X=X_slice, groups=groups)
 
             X_future = None
             if X is not None:
@@ -458,7 +458,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             y_pred_i = self.predict(
                 X=X_future,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **params,
             )
@@ -548,7 +548,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate interval forecasts.
@@ -572,7 +572,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Strategy for deriving point predictions from prediction intervals
             during recursive multi-step forecasting.  If ``None``, defaults
             to ``"mean"``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -588,15 +588,15 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
-        _, X, panel_group_names = validate_forecaster_data(
+        _, X, groups = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(forecasting_horizon, coverage_rates)

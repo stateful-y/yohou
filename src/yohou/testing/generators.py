@@ -803,7 +803,7 @@ def _yield_yohou_scorer_checks(
 
     # Aggregation methods check (if scorer has aggregation_method parameter)
     if hasattr(scorer, "aggregation_method"):
-        aggregation_methods = ["timewise", "componentwise"]
+        aggregation_methods = ["stepwise", "vintagewise", "componentwise"]
         yield (
             "check_scorer_aggregation_methods",
             check_scorer_aggregation_methods,
@@ -822,7 +822,7 @@ def _yield_yohou_scorer_checks(
     # Parameter validation checks
     scorer_class = type(scorer)
     validation_test_cases: list[tuple[str, list, str]] = [
-        ("panel_group_names", ["nonexistent_group"], "panel_group_names"),
+        ("groups", ["nonexistent_group"], "groups"),
         ("component_names", ["nonexistent_component"], "component_names"),
     ]
 
@@ -1053,7 +1053,7 @@ def _yield_yohou_search_checks(
         _, y_panel_groups = inspect_panel(y_train)
         if len(y_panel_groups) > 0:
             # Extract first group name for testing
-            panel_group_names = list(y_panel_groups.keys())[:1]
+            groups = list(y_panel_groups.keys())[:1]
             yield (
                 "check_search_panel_data",
                 check_search_panel_data,
@@ -1062,6 +1062,6 @@ def _yield_yohou_search_checks(
                     "y_test": y_test,
                     "X_train": X_train,
                     "X_test": X_test,
-                    "panel_group_names": panel_group_names,
+                    "groups": groups,
                 },
             )

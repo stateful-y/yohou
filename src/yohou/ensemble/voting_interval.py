@@ -268,7 +268,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
 
     def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         coverage_rates: list[float] | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -276,7 +276,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group prefixes.
         coverage_rates : list of float or None
             Coverage rates.
@@ -299,7 +299,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate aggregated interval predictions.
@@ -314,7 +314,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Coverage rates for prediction intervals.
         strategy : {"mean", "median", "point"} or None, default=None
             Ignored for ensemble forecasters.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to predict.
         **params : dict
             Metadata routing parameters.
@@ -341,7 +341,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
                 X=X,
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **forecaster_params,
             )
             predictions.append(y_pred)
@@ -354,7 +354,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -368,7 +368,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Exogenous features for the forecast period.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to predict.
         predict_transformed : bool, default=False
             If ``True``, return predictions in transformed space.
@@ -392,7 +392,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **forecaster_params,
             )
@@ -407,7 +407,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
         predict_transformed: bool = False,
         **params,
@@ -426,7 +426,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes.
         stride : int or None, default=None
             Step size for rolling update-predict.
@@ -452,7 +452,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
                 y=y,
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 stride=stride,
                 predict_transformed=predict_transformed,
                 **forecaster_params,
@@ -469,7 +469,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -491,7 +491,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         strategy : {"mean", "median", "point"} or None, default=None
             Strategy for deriving point predictions during recursive
             multi-step forecasting.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes.
         stride : int or None, default=None
             Step size for rolling update-predict.
@@ -521,7 +521,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
                 strategy=strategy,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 stride=stride,
                 **forecaster_params,
             )

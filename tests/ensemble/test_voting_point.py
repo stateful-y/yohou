@@ -188,7 +188,7 @@ class TestVotingPointForecasterPanelData:
         forecaster.fit(y[:80], forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
-        assert forecaster.panel_group_names_ is not None
+        assert forecaster.groups_ is not None
         assert len(y_pred) == 3
         target_cols = [c for c in y_pred.columns if c not in ("observed_time", "time")]
         assert len(target_cols) > 0

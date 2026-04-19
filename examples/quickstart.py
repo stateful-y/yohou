@@ -650,7 +650,7 @@ def _(mo):
 
     - **`score(y_truth, y_pred)`** returns a float (default `aggregation_method="all"`)
     - Change `aggregation_method` for richer output:
-      - `"timewise" -> per-compotent scores (DataFrame)
+      - `["stepwise", "vintagewise"]` -> per-component scores (DataFrame)
       - `"componentwise"` → per-timestep scores (DataFrame)
       - `"all"` → single scalar across all columns and timesteps
     """)

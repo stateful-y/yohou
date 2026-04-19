@@ -184,7 +184,7 @@ class TestValidatePlottingData:
             "sales__a": [10, 20],
             "sales__b": [30, 40],
         })
-        result = validate_plotting_data(df, panel_group_names=["sales"])
+        result = validate_plotting_data(df, groups=["sales"])
         assert set(result) == {"sales__a", "sales__b"}
 
     def test_panel_columns_with_member(self):
@@ -194,7 +194,7 @@ class TestValidatePlottingData:
             "sales__a": [10, 20],
             "sales__b": [30, 40],
         })
-        result = validate_plotting_data(df, panel_group_names=["sales"], columns="a")
+        result = validate_plotting_data(df, groups=["sales"], columns="a")
         assert result == ["sales__a"]
 
     def test_min_rows(self):
@@ -225,18 +225,18 @@ class TestResolvePanelColumns:
 
     def test_panel_group_with_member_filter(self, panel_df):
         """Panel group and member filter together resolve correctly."""
-        result = resolve_panel_columns(panel_df, panel_group_names=["sales"], columns=["b"])
+        result = resolve_panel_columns(panel_df, groups=["sales"], columns=["b"])
         assert result == ["sales__b"]
 
     def test_nonexistent_group_raises(self, panel_df):
         """Nonexistent panel group name raises ValueError."""
         with pytest.raises(ValueError, match="No panel columns found for groups"):
-            resolve_panel_columns(panel_df, panel_group_names=["nonexistent"])
+            resolve_panel_columns(panel_df, groups=["nonexistent"])
 
     def test_nonexistent_member_raises(self, panel_df):
         """Nonexistent member with valid group raises ValueError."""
         with pytest.raises(ValueError, match="No panel columns found for groups"):
-            resolve_panel_columns(panel_df, panel_group_names=["sales"], columns=["z"])
+            resolve_panel_columns(panel_df, groups=["sales"], columns=["z"])
 
 
 class TestGroupPanelColumns:

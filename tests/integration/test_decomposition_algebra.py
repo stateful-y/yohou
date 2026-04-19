@@ -1144,8 +1144,8 @@ class TestObserveRewindStateManagement:
             pred_values, expected_values, atol=0.1, err_msg="Multiple observes should accumulate correctly"
         )
 
-    def test_rewind_with_panel_group_names(self):
-        """Verify rewind() works with panel_group_names parameter (if supported).
+    def test_rewind_with_groups(self):
+        """Verify rewind() works with groups parameter (if supported).
 
         Note: This test may need adjustment based on actual panel data support in DecompositionPipeline.
         """
@@ -1172,14 +1172,14 @@ class TestObserveRewindStateManagement:
 
         pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
 
-        # Update and reset with panel_group_names=None (should work as normal reset)
+        # Update and reset with groups=None (should work as normal reset)
         y_update = y[80:90]
         X_update = X[80:90]
 
-        pipeline.observe(y_update, X_update, panel_group_names=None)
-        pipeline.rewind(y_update, X_update, panel_group_names=None)
+        pipeline.observe(y_update, X_update, groups=None)
+        pipeline.rewind(y_update, X_update, groups=None)
 
         # Verify prediction still works
-        y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon, panel_group_names=None)
+        y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon, groups=None)
 
-        assert len(y_pred) == forecasting_horizon, "Rewind with panel_group_names should work"
+        assert len(y_pred) == forecasting_horizon, "Rewind with groups should work"

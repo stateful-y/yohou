@@ -44,7 +44,10 @@ def _():
     import polars as pl
 
     from yohou.datasets import fetch_tourism_monthly
-    from yohou.plotting import plot_model_comparison_bar, plot_time_series
+    import plotly.graph_objects as go
+
+    from yohou.datasets import fetch_tourism_monthly
+    from yohou.plotting import plot_time_series
     from yohou.preprocessing import SeasonalImputer, SimpleImputer, SimpleTimeImputer, TransformedSpaceKNNImputer
 
     return (
@@ -53,8 +56,8 @@ def _():
         SimpleTimeImputer,
         TransformedSpaceKNNImputer,
         fetch_tourism_monthly,
+        go,
         pl,
-        plot_model_comparison_bar,
         plot_time_series,
     )
 
@@ -304,8 +307,7 @@ def _(mo):
     mo.md(r"""
     Next we compute the Mean Absolute Error (MAE) between the imputed
     values and the original (pre-gap) values at the nine gap positions.
-    [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/) turns the scores into an interactive bar
-    chart so the ranking is immediately visible.
+    A grouped bar chart makes the ranking immediately visible.
     """)
 
 
@@ -316,7 +318,7 @@ def _(
     filled_linear,
     filled_mean,
     filled_seasonal,
-    plot_model_comparison_bar,
+    go,
     tourism,
 ):
     _gap_indices = list(range(30, 35)) + [50, 70, 90, 110]
@@ -330,19 +332,25 @@ def _(
         "KNN (5)": filled_knn,
     }
 
-    _results = {}
+    _scores = {}
     for _name, _filled in _methods.items():
         _filled_vals = _filled["tourists"].gather(_gap_indices)
-        _mae = float((_filled_vals - _true_vals).abs().mean())
-        _results[_name] = {"MAE": round(_mae, 2)}
+        _scores[_name] = round(float((_filled_vals - _true_vals).abs().mean()), 2)
 
-    plot_model_comparison_bar(
-        _results,
-        sort_by="MAE",
-        ascending=True,
-        title="Imputation MAE at Gap Positions",
-        y_label="MAE",
+    _sorted = sorted(_scores.items(), key=lambda x: x[1])
+    _names = [s[0] for s in _sorted]
+    _values = [s[1] for s in _sorted]
+
+    fig = go.Figure(
+        go.Bar(
+            x=_names,
+            y=_values,
+            text=[f"{v:.2f}" for v in _values],
+            textposition="outside",
+        )
     )
+    fig.update_layout(title="Imputation MAE at Gap Positions", yaxis_title="MAE")
+    fig
 
 
 @app.cell(hide_code=True)

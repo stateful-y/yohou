@@ -364,7 +364,7 @@ def _(
         _y_pred_p,
         y_train=_y_train_p,
         n_history=20,
-        panel_group_names=["T7", "T11"],
+        groups=["T7", "T11"],
         title="Panel Forecast with Per-Group StandardScaler",
     )
 

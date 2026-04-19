@@ -78,7 +78,7 @@ class TestMultimetricScorer:
         ms = _MultimetricScorer(scorers={"s": scorer})
         y = pl.DataFrame({"time": [1], "a": [1.0]})
         ms.fit(y)
-        scorer.fit.assert_called_once_with(y)
+        scorer.fit.assert_called_once_with(y, forecaster=None)
 
     def test_get_metadata_routing(self):
         """get_metadata_routing returns a MetadataRouter."""

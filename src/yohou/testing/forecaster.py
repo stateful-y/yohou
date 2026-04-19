@@ -33,7 +33,7 @@ def check_fit_sets_forecaster_attributes(
     """Check fit() sets required forecaster attributes.
 
     Validates that fit() creates all required attributes for forecasters including
-    fit_forecasting_horizon_, interval_, panel_group_names_, local_y_schema_,
+    fit_forecasting_horizon_, interval_, groups_, local_y_schema_,
     observation buffers, and transformer references.
 
     Parameters
@@ -64,7 +64,7 @@ def check_fit_sets_forecaster_attributes(
 
     assert hasattr(forecaster_clone, "interval_"), "fit() must set interval_ attribute (timedelta)"
 
-    assert hasattr(forecaster_clone, "panel_group_names_"), "fit() must set panel_group_names_ attribute (None or list)"
+    assert hasattr(forecaster_clone, "groups_"), "fit() must set groups_ attribute (None or list)"
     assert hasattr(forecaster_clone, "local_y_schema_"), (
         "fit() must set local_y_schema_ attribute (dict[str, pl.DataType])"
     )

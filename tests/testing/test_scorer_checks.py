@@ -104,7 +104,9 @@ class TestScorerCheckFunctions:
     def test_check_aggregation_methods(self, scorer_panel_data):
         """check_scorer_aggregation_methods validates each method."""
         scorer, y_truth, y_pred = scorer_panel_data
-        check_scorer_aggregation_methods(scorer, y_truth, y_pred, aggregation_methods=["timewise", "componentwise"])
+        check_scorer_aggregation_methods(
+            scorer, y_truth, y_pred, aggregation_methods=["stepwise", "vintagewise", "componentwise"]
+        )
 
     def test_check_panel_subselection(self, scorer_panel_data):
         """check_scorer_panel_subselection clones internally (exposes unfitted clone bug)."""
@@ -112,7 +114,7 @@ class TestScorerCheckFunctions:
         scorer_copy = MeanAbsoluteError()
         scorer_copy.fit(y_truth)
         with pytest.raises(AssertionError, match="filtering failed"):
-            check_scorer_panel_subselection(scorer_copy, y_truth, y_pred, panel_group_names=["g1"])
+            check_scorer_panel_subselection(scorer_copy, y_truth, y_pred, groups=["g1"])
 
     def test_check_component_subselection(self, scorer_panel_data):
         """check_scorer_component_subselection clones internally (exposes unfitted clone bug)."""
@@ -188,7 +190,7 @@ class TestScorerCheckFunctionsInterval:
         check_scorer_prediction_type_compatibility(scorer, forecaster, y)
 
     def test_interval_aggregation_methods(self):
-        """Point scorer timewise aggregation returns DataFrame (covers DataFrame branch)."""
+        """Point scorer stepwise+vintagewise aggregation returns DataFrame (covers DataFrame branch)."""
         n = 10
         times = pl.datetime_range(
             start=datetime(2020, 1, 1),
@@ -213,7 +215,7 @@ class TestScorerCheckFunctionsInterval:
             scorer,
             y_truth,
             y_pred,
-            aggregation_methods=["timewise"],
+            aggregation_methods=["stepwise", "vintagewise"],
         )
 
 

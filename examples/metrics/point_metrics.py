@@ -35,9 +35,9 @@ def _(mo):
     ## What You'll Learn
 
     - All 8 point scorers: MAE, MSE, RMSE, MedianAE, MAPE, sMAPE, RMSSE, MASE
-    - Aggregation methods: `"timewise"`, `"componentwise"`, `"groupwise"`, `"all"`
+    - Aggregation methods: `["stepwise", "vintagewise"]`, `"componentwise"`, `"groupwise"`, `"all"`
     - Scaled metrics that require training data for normalization
-    - Visualizing scores with [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) and [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/)
+    - Visualizing scores with [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) and [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/)
 
     ## Prerequisites
 
@@ -61,7 +61,7 @@ def _():
         RootMeanSquaredScaledError,
         SymmetricMeanAbsolutePercentageError,
     )
-    from yohou.plotting import plot_forecast, plot_model_comparison_bar, plot_score_time_series, plot_time_series
+    from yohou.plotting import plot_forecast, plot_score_per_horizon, plot_score_time_series, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
 
@@ -80,7 +80,7 @@ def _():
         SymmetricMeanAbsolutePercentageError,
         fetch_tourism_monthly,
         plot_forecast,
-        plot_model_comparison_bar,
+        plot_score_per_horizon,
         plot_score_time_series,
         plot_time_series,
         train_test_split,
@@ -356,16 +356,16 @@ def _(mo):
     ## 7. Aggregation Methods
 
     By default `aggregation_method="all"` returns a single scalar.
-    Choose `"timewise"` or `"componentwise"` for more granular results.
+    Choose `["stepwise", "vintagewise"]` or `"componentwise"` for more granular results.
     """)
 
 
 @app.cell
 def _(MeanAbsoluteError, y_pred_ridge, y_test, y_train):
-    mae_tw = MeanAbsoluteError(aggregation_method="timewise")
-    mae_tw.fit(y_train)
-    scores_tw = mae_tw.score(y_test, y_pred_ridge)
-    print("Timewise MAE (first 5 steps):")
+    mae_sv = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+    mae_sv.fit(y_train)
+    scores_tw = mae_sv.score(y_test, y_pred_ridge)
+    print("Stepwise+vintagewise MAE (first 5 steps):")
     print(scores_tw.head())
 
 
@@ -380,10 +380,10 @@ def _(MeanAbsoluteError, y_pred_ridge, y_test, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 8. Model Comparison Bar Chart
+    ## 8. Model Comparison Summary
 
-    [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/) takes a nested dictionary of
-    `{model_name: {metric_name: score}}` and renders a grouped bar chart,
+    [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/) with `kind="summary"` takes
+    scorer(s), ground truth, and a dict of predictions, then renders a grouped bar chart
     making it easy to spot which model performs best on each metric.
     """)
 
@@ -393,26 +393,18 @@ def _(
     MeanAbsoluteError,
     MeanAbsolutePercentageError,
     RootMeanSquaredError,
-    plot_model_comparison_bar,
+    plot_score_per_horizon,
     y_pred_naive,
     y_pred_ridge,
     y_test,
-    y_train,
 ):
-    results = {}
-    for _model_name, _y_pred in [("Naive", y_pred_naive), ("Ridge", y_pred_ridge)]:
-        _model_scores = {}
-        for _scorer_name, _scorer_cls in [
-            ("MAE", MeanAbsoluteError),
-            ("RMSE", RootMeanSquaredError),
-            ("MAPE", MeanAbsolutePercentageError),
-        ]:
-            _s = _scorer_cls()
-            _s.fit(y_train)
-            _model_scores[_scorer_name] = _s.score(y_test, _y_pred)
-        results[_model_name] = _model_scores
-
-    plot_model_comparison_bar(results, title="Model Comparison")
+    plot_score_per_horizon(
+        {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError(), "MAPE": MeanAbsolutePercentageError()},
+        y_test,
+        {"Naive": y_pred_naive, "Ridge": y_pred_ridge},
+        kind="summary",
+        title="Model Comparison",
+    )
 
 
 @app.cell(hide_code=True)
@@ -563,11 +555,11 @@ def _(Accuracy, cls_y_proba, cls_y_test):
     acc_all.fit(cls_y_truth)
     print(f"Accuracy (scalar): {acc_all.score(cls_y_truth, cls_y_proba):.4f}")
 
-    # Timewise: see which time steps were correct
-    acc_tw = Accuracy(aggregation_method="timewise")
-    acc_tw.fit(cls_y_truth)
+    # Stepwise+vintagewise: aggregate across time dimensions
+    acc_sv = Accuracy(aggregation_method=["stepwise", "vintagewise"])
+    acc_sv.fit(cls_y_truth)
     print("\nPer-timestep accuracy:")
-    print(acc_tw.score(cls_y_truth, cls_y_proba))
+    print(acc_sv.score(cls_y_truth, cls_y_proba))
     return (cls_y_truth,)
 
 
@@ -611,10 +603,10 @@ def _(mo):
     - All point scorers follow `fit()` → `score()` pattern
     - Basic metrics (MAE, MSE, RMSE, MAPE, sMAPE, MedianAE) need no training data
     - Scaled metrics (MASE, RMSSE) fit on **training data** for normalization
-    - `aggregation_method` controls granularity: `"all"`, `"timewise"`, `"componentwise"`
+    - `aggregation_method` controls granularity: `"all"`, `["stepwise", "vintagewise"]`, `"componentwise"`
     - [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/) evaluates hard classification correctness (use with care on imbalanced data)
     - Use [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) for temporal error analysis
-    - Use [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/) for multi-model comparison
+    - Use [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/) with `kind="summary"` for multi-model comparison
     """)
 
 

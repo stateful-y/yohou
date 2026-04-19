@@ -175,7 +175,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) with `panel_group_names` shows predictions for selected
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) with `groups` shows predictions for selected
     groups in a faceted layout, with training history trimmed to the last 48 steps.
     """)
     return
@@ -189,7 +189,7 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=48,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="Global Strategy: One Model, Per-Group State",
     )
     return
@@ -241,7 +241,7 @@ def _(plot_forecast, y_pred_multivariate, y_test, y_train):
         y_pred_multivariate,
         y_train=y_train,
         n_history=48,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="Multivariate Strategy: Cross-Group Features",
     )
     return
@@ -297,7 +297,7 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         y_pred_local,
         y_train=y_train,
         n_history=48,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="Local Strategy: Independent Per-Group Clones",
     )
     return
@@ -308,7 +308,7 @@ def _(mo):
     mo.md(r"""
     ## 5. Strategy Comparison
 
-    Compare all three strategies using per-group MAE (timewise aggregation
+    Compare all three strategies using per-group MAE (stepwise+vintagewise aggregation
     produces one score per group, averaged across timesteps).
     """)
     return
@@ -326,12 +326,12 @@ def _(
     y_test,
     y_train,
 ):
-    _scorer_timewise = MeanAbsoluteError(aggregation_method="timewise")
-    _scorer_timewise.fit(y_train)
+    _scorer_sv = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+    _scorer_sv.fit(y_train)
 
-    _scores_global = _scorer_timewise.score(y_test, y_pred_global)
-    _scores_multi = _scorer_timewise.score(y_test, y_pred_multivariate)
-    _scores_local = _scorer_timewise.score(y_test, y_pred_local)
+    _scores_global = _scorer_sv.score(y_test, y_pred_global)
+    _scores_multi = _scorer_sv.score(y_test, y_pred_multivariate)
+    _scores_local = _scorer_sv.score(y_test, y_pred_local)
 
     _rows = []
     for _group in sorted(panel_groups.keys()):

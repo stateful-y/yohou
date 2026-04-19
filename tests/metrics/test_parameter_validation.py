@@ -40,31 +40,31 @@ def panel_data_factory():
 
 
 class TestPanelGroupNames:
-    def test_panel_group_names_must_be_list_or_none(self, y_X_factory):
-        """panel_group_names must be a list or None."""
+    def test_groups_must_be_list_or_none(self, y_X_factory):
+        """groups must be a list or None."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = MeanAbsoluteError(panel_group_names="invalid")
-        with pytest.raises(ValueError, match=r"panel_group_names.*must be an instance of 'list' or None"):
+        scorer = MeanAbsoluteError(groups="invalid")
+        with pytest.raises(ValueError, match=r"groups.*must be an instance of 'list' or None"):
             scorer.fit(y)
 
-    def test_panel_group_names_elements_must_be_strings(self, y_X_factory):
-        """All elements in panel_group_names must be strings."""
+    def test_groups_elements_must_be_strings(self, y_X_factory):
+        """All elements in groups must be strings."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = MeanAbsoluteError(panel_group_names=[1, 2, 3])
-        with pytest.raises(ValueError, match="All elements in panel_group_names must be strings"):
+        scorer = MeanAbsoluteError(groups=[1, 2, 3])
+        with pytest.raises(ValueError, match="All elements in groups must be strings"):
             scorer.fit(y)
 
-    def test_panel_group_names_cannot_be_empty_list(self, y_X_factory):
-        """panel_group_names cannot be an empty list."""
+    def test_groups_cannot_be_empty_list(self, y_X_factory):
+        """groups cannot be an empty list."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = MeanAbsoluteError(panel_group_names=[])
-        with pytest.raises(ValueError, match="panel_group_names cannot be an empty list"):
+        scorer = MeanAbsoluteError(groups=[])
+        with pytest.raises(ValueError, match="groups cannot be an empty list"):
             scorer.fit(y)
 
-    def test_panel_group_names_validated_against_data(self, panel_data_factory):
+    def test_groups_validated_against_data(self, panel_data_factory):
         """Requested panel groups must exist in the data."""
         # Create panel data with known groups
         y, _, _ = panel_data_factory(
@@ -75,12 +75,12 @@ class TestPanelGroupNames:
         )
 
         # Request non-existent groups
-        scorer = MeanAbsoluteError(panel_group_names=["store1", "store3"])
-        with pytest.raises(ValueError, match="Requested panel_group_names.*not found in data"):
+        scorer = MeanAbsoluteError(groups=["store1", "store3"])
+        with pytest.raises(ValueError, match="Requested groups.*not found in data"):
             scorer.fit(y)
 
-    def test_valid_panel_group_names_accepted(self, panel_data_factory):
-        """Valid panel_group_names should be accepted."""
+    def test_valid_groups_accepted(self, panel_data_factory):
+        """Valid groups should be accepted."""
         y, _, _ = panel_data_factory(
             group_names=["store1", "store2"],
             length=50,
@@ -88,18 +88,18 @@ class TestPanelGroupNames:
             seed=42,
         )
 
-        scorer = MeanAbsoluteError(panel_group_names=["store1"])
+        scorer = MeanAbsoluteError(groups=["store1"])
         scorer.fit(y)  # Should not raise
 
-    def test_panel_group_names_edge_case_with_mixed_types(self, y_X_factory):
-        """panel_group_names with mixed string and non-string types should fail."""
+    def test_groups_edge_case_with_mixed_types(self, y_X_factory):
+        """groups with mixed string and non-string types should fail."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = MeanAbsoluteError(panel_group_names=["store1", 123, "store2"])
-        with pytest.raises(ValueError, match="All elements in panel_group_names must be strings"):
+        scorer = MeanAbsoluteError(groups=["store1", 123, "store2"])
+        with pytest.raises(ValueError, match="All elements in groups must be strings"):
             scorer.fit(y)
 
-    def test_panel_group_names_edge_case_multiple_valid_groups(self, panel_data_factory):
+    def test_groups_edge_case_multiple_valid_groups(self, panel_data_factory):
         """Multiple valid panel group names should be accepted."""
         y, _, _ = panel_data_factory(
             group_names=["store1", "store2", "store3"],
@@ -108,10 +108,10 @@ class TestPanelGroupNames:
             seed=42,
         )
 
-        scorer = MeanAbsoluteError(panel_group_names=["store1", "store3"])
+        scorer = MeanAbsoluteError(groups=["store1", "store3"])
         scorer.fit(y)  # Should not raise
 
-    def test_panel_group_names_edge_case_all_groups(self, panel_data_factory):
+    def test_groups_edge_case_all_groups(self, panel_data_factory):
         """All panel group names should be accepted."""
         y, _, _ = panel_data_factory(
             group_names=["store1", "store2"],
@@ -120,10 +120,10 @@ class TestPanelGroupNames:
             seed=42,
         )
 
-        scorer = MeanAbsoluteError(panel_group_names=["store1", "store2"])
+        scorer = MeanAbsoluteError(groups=["store1", "store2"])
         scorer.fit(y)  # Should not raise
 
-    def test_panel_group_names_edge_case_single_missing(self, panel_data_factory):
+    def test_groups_edge_case_single_missing(self, panel_data_factory):
         """Single missing panel group name should be reported."""
         y, _, _ = panel_data_factory(
             group_names=["store1", "store2"],
@@ -132,17 +132,17 @@ class TestPanelGroupNames:
             seed=42,
         )
 
-        scorer = MeanAbsoluteError(panel_group_names=["store99"])
-        with pytest.raises(ValueError, match="Requested panel_group_names.*store99.*not found"):
+        scorer = MeanAbsoluteError(groups=["store99"])
+        with pytest.raises(ValueError, match="Requested groups.*store99.*not found"):
             scorer.fit(y)
 
-    def test_panel_group_names_edge_case_on_global_data_ignored(self, y_X_factory):
-        """panel_group_names on global (non-panel) data should raise ValueError."""
+    def test_groups_edge_case_on_global_data_ignored(self, y_X_factory):
+        """groups on global (non-panel) data should raise ValueError."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         # Should raise because requested groups are not found
-        scorer = MeanAbsoluteError(panel_group_names=["store1"])
-        with pytest.raises(ValueError, match="panel_group_names specified but data contains no panel groups"):
+        scorer = MeanAbsoluteError(groups=["store1"])
+        with pytest.raises(ValueError, match="groups specified but data contains no panel groups"):
             scorer.fit(y)
 
 
@@ -384,9 +384,9 @@ class TestCoverageRates:
 class TestTypeValidation:
     def test_type_validation_without_training_data(self):
         """Type validation should work even without training data."""
-        # Test invalid type for panel_group_names
-        scorer = MeanAbsoluteError(panel_group_names="invalid")
-        with pytest.raises(ValueError, match=r"panel_group_names.*must be an instance of 'list' or None"):
+        # Test invalid type for groups
+        scorer = MeanAbsoluteError(groups="invalid")
+        with pytest.raises(ValueError, match=r"groups.*must be an instance of 'list' or None"):
             scorer.fit(None)
 
         # Test invalid type for component_names
@@ -402,7 +402,7 @@ class TestTypeValidation:
     def test_data_validation_requires_training_data(self):
         """fit() should always require y_train, even for stateless scorers."""
         scorer = MeanAbsoluteError(
-            panel_group_names=["nonexistent"],
+            groups=["nonexistent"],
             component_names=["also_nonexistent"],
         )
         # Should raise even for stateless scorers - y_train always required
@@ -420,9 +420,9 @@ class TestCombinedValidation:
             seed=42,
         )
 
-        # Invalid panel_group_names should fail first
+        # Invalid groups should fail first
         scorer = EmpiricalCoverage(
-            panel_group_names="invalid",  # Invalid type
+            groups="invalid",  # Invalid type
             component_names="invalid",  # Also invalid
             coverage_rates="invalid",  # Also invalid
         )
@@ -443,7 +443,7 @@ class TestCombinedValidation:
         )
 
         scorer = EmpiricalCoverage(
-            panel_group_names=["store1"],
+            groups=["store1"],
             component_names=["y_0"],
             coverage_rates=[0.9],
         )
@@ -463,7 +463,7 @@ class TestValidationOrdering:
         # Invalid aggregation_method should be caught first (by sklearn)
         scorer = MeanAbsoluteError(
             aggregation_method="invalid",
-            panel_group_names="also_invalid",
+            groups="also_invalid",
         )
         with pytest.raises(ValueError, match="aggregation_method"):
             scorer.fit(y)
@@ -477,10 +477,10 @@ class TestValidationOrdering:
             seed=42,
         )
 
-        # Invalid coverage_rates should be caught before panel_group_names
+        # Invalid coverage_rates should be caught before groups
         scorer = EmpiricalCoverage(
             coverage_rates=[1.5],
-            panel_group_names=["nonexistent"],
+            groups=["nonexistent"],
         )
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 1.5"):
             scorer.fit(y)
@@ -488,7 +488,7 @@ class TestValidationOrdering:
 
 class TestValidationWithScore:
     def test_validation_with_score_method_validated_panel_groups_filter_in_score(self, panel_data_factory):
-        """Validated panel_group_names should filter predictions in score()."""
+        """Validated groups should filter predictions in score()."""
         y, _, _ = panel_data_factory(
             group_names=["store1", "store2"],
             length=50,
@@ -496,8 +496,8 @@ class TestValidationWithScore:
             seed=42,
         )
 
-        # Fit with panel_group_names filter
-        scorer = MeanAbsoluteError(panel_group_names=["store1"])
+        # Fit with groups filter
+        scorer = MeanAbsoluteError(groups=["store1"])
         scorer.fit(y)
 
         # Create predictions for both groups
@@ -533,3 +533,104 @@ class TestValidationWithScore:
         # This validation is tested in test_column_subselection.py
         # Just verify fit succeeds
         assert scorer.coverage_rates == [0.9]
+
+
+class TestGroupWeight:
+    """Tests for group_weight parameter (renamed from panel_group_weight)."""
+
+    def test_group_weight_must_be_dict_or_none(self, y_X_factory):
+        """group_weight must be a dict or None."""
+        y, _ = y_X_factory(length=50, n_targets=1, seed=42)
+        scorer = MeanAbsoluteError(group_weight="invalid")
+        with pytest.raises(ValueError, match=r"group_weight.*must be an instance of 'dict' or None"):
+            scorer.fit(y)
+
+    def test_group_weight_none_is_default(self):
+        """Default group_weight is None."""
+        scorer = MeanAbsoluteError()
+        assert scorer.group_weight is None
+
+
+class TestCoverageWeight:
+    """Tests for coverage_weight parameter on interval scorers."""
+
+    def test_coverage_weight_must_be_dict_or_none(self, y_X_factory):
+        """coverage_weight must be a dict or None."""
+        y, _ = y_X_factory(length=50, n_targets=1, seed=42)
+        scorer = EmpiricalCoverage(coverage_weight="invalid")
+        with pytest.raises(ValueError, match=r"coverage_weight.*must be an instance of 'dict' or None"):
+            scorer.fit(y)
+
+    def test_coverage_weight_none_is_default(self):
+        """Default coverage_weight is None."""
+        scorer = EmpiricalCoverage()
+        assert scorer.coverage_weight is None
+
+    def test_coverage_weight_accepted_as_dict(self):
+        """coverage_weight accepts dict."""
+        scorer = EmpiricalCoverage(coverage_weight={0.9: 2.0, 0.95: 1.0})
+        assert scorer.coverage_weight == {0.9: 2.0, 0.95: 1.0}
+
+
+class TestLowerIsBetter:
+    """Tests for lower_is_better property."""
+
+    def test_point_scorers_lower_is_better(self):
+        """All point scorers have lower_is_better=True."""
+        scorer = MeanAbsoluteError()
+        assert scorer.lower_is_better is True
+
+    def test_coverage_lower_is_better_false(self):
+        """EmpiricalCoverage has lower_is_better=False."""
+        scorer = EmpiricalCoverage()
+        assert scorer.lower_is_better is False
+
+    def test_lower_is_better_in_sklearn_tags(self):
+        """lower_is_better is reflected in sklearn tags."""
+        mae = MeanAbsoluteError()
+        tags = mae.__sklearn_tags__()
+        assert tags.scorer_tags.lower_is_better is True
+
+        cov = EmpiricalCoverage()
+        tags = cov.__sklearn_tags__()
+        assert tags.scorer_tags.lower_is_better is False
+
+
+class TestMakeScorerGetScorer:
+    """Tests for make_scorer and get_scorer factory functions."""
+
+    def test_get_scorer_returns_default_instance(self):
+        """get_scorer returns a default-configured instance."""
+        from yohou.metrics import get_scorer
+
+        scorer = get_scorer("mae")
+        assert isinstance(scorer, MeanAbsoluteError)
+        assert scorer.aggregation_method == "all"
+
+    def test_get_scorer_invalid_name_raises(self):
+        """get_scorer raises ValueError for unknown names."""
+        from yohou.metrics import get_scorer
+
+        with pytest.raises(ValueError, match="Unknown scorer"):
+            get_scorer("nonexistent")
+
+    def test_make_scorer_with_params(self):
+        """make_scorer passes params to constructor."""
+        from yohou.metrics import make_scorer
+
+        scorer = make_scorer("mae", aggregation_method=["stepwise", "vintagewise"])
+        assert scorer.aggregation_method == ["stepwise", "vintagewise"]
+
+    def test_make_scorer_interval(self):
+        """make_scorer works for interval scorers with factory params."""
+        from yohou.metrics import make_scorer
+
+        scorer = make_scorer("coverage", coverage_rates=[0.9])
+        assert isinstance(scorer, EmpiricalCoverage)
+        assert scorer.coverage_rates == [0.9]
+
+    def test_registry_has_16_scorers(self):
+        """Registry contains exactly 16 scoring scorers."""
+        from yohou.metrics import _SCORER_REGISTRY
+
+        assert len(_SCORER_REGISTRY) == 16

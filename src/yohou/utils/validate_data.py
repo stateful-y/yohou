@@ -13,15 +13,17 @@ from yohou.utils.panel import inspect_panel
 from yohou.utils.polars import get_numeric_columns, is_categorical_dtype
 from yohou.utils.validation import (
     check_continuity,
+    check_groups,
     check_inputs,
     check_interval_consistency,
-    check_panel_group_names,
     check_panel_groups_match,
     check_panel_internal_consistency,
     check_schema,
     check_scorer_column_selection,
     check_sufficient_rows,
     check_time_column,
+    interval_to_timedelta,
+    parse_interval,
 )
 
 __all__ = [
@@ -39,7 +41,7 @@ def validate_plotting_data(
     df: pl.DataFrame,
     *,
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     min_rows: int = 1,
     exclude: list[str] | None = None,
     include_categorical: bool = False,
@@ -54,17 +56,17 @@ def validate_plotting_data(
     df : pl.DataFrame
         Input DataFrame to validate.
     columns : str, list of str, or None, default=None
-        Column specification.  When ``panel_group_names`` is ``None`` this
+        Column specification.  When ``groups`` is ``None`` this
         selects standard columns (``None`` means all numeric).  For panel
         data this selects *member postfixes* within the requested groups.
-    panel_group_names : list of str or None, default=None
+    groups : list of str or None, default=None
         When not ``None``, resolve panel columns
         (``group__member`` pattern) instead of plain columns.
     min_rows : int, default=1
         Minimum number of rows required.
     exclude : list of str or None, default=None
         Column names to exclude when ``columns=None`` and
-        ``panel_group_names`` is ``None``.
+        ``groups`` is ``None``.
     include_categorical : bool, default=False
         When ``True`` and ``columns=None``, also include
         ``pl.String``, ``pl.Categorical``, and ``pl.Enum`` columns
@@ -96,7 +98,7 @@ def validate_plotting_data(
     ...     "sales__a": [10, 20],
     ...     "sales__b": [30, 40],
     ... })
-    >>> validate_plotting_data(df_panel, panel_group_names=["sales"], columns="a")
+    >>> validate_plotting_data(df_panel, groups=["sales"], columns="a")
     ['sales__a']
 
     See Also
@@ -119,14 +121,14 @@ def validate_plotting_data(
         check_time_column(df)
 
     # Panel column resolution
-    if panel_group_names is not None:
+    if groups is not None:
         if isinstance(columns, str):
             columns = [columns]
 
         _, panels = inspect_panel(df)
         cols: list[str] = []
         for prefix, members in panels.items():
-            if prefix not in panel_group_names:
+            if prefix not in groups:
                 continue
             if columns is not None:
                 for member in members:
@@ -138,9 +140,9 @@ def validate_plotting_data(
 
         if not cols:
             if columns is not None:
-                msg = f"No panel columns found for groups={panel_group_names} with members={columns}"
+                msg = f"No panel columns found for groups={groups} with members={columns}"
             else:
-                msg = f"No panel columns found for groups: {panel_group_names}"
+                msg = f"No panel columns found for groups: {groups}"
             raise ValueError(msg)
         return cols
 
@@ -226,6 +228,7 @@ def validate_plotting_params(
 
 if TYPE_CHECKING:
     from yohou.base import BaseForecaster, BaseTransformer
+    from yohou.metrics._context import ScoringContext
     from yohou.metrics.base import BaseScorer
     from yohou.model_selection import BaseSplitter
 
@@ -233,7 +236,7 @@ if TYPE_CHECKING:
 def validate_time_weight(
     time_weight: Callable | pl.DataFrame | None,
     y: pl.DataFrame,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> None:
     """Validate time_weight parameter for forecasters and scorers.
 
@@ -243,7 +246,7 @@ def validate_time_weight(
         Time weighting specification to validate.
     y : pl.DataFrame
         Target time series with "time" column.
-    panel_group_names : list of str or None
+    groups : list of str or None
         Panel group names if panel data.
 
     Raises
@@ -282,14 +285,14 @@ def validate_time_weight(
         )
 
     # Validate weight column naming
-    if panel_group_names is None:
+    if groups is None:
         # Global data: must have "weight" column
         if "weight" not in time_weight.columns:
             raise ValueError("time_weight DataFrame for global data must have 'weight' column")
         weight_cols_to_check = ["weight"]
     else:
         # Panel data: check for group-specific or global weight columns
-        expected_group_cols = {f"{group}_weight" for group in panel_group_names}
+        expected_group_cols = {f"{group}_weight" for group in groups}
         has_group_specific = any(col in time_weight.columns for col in expected_group_cols)
         has_global = "weight" in time_weight.columns
 
@@ -327,6 +330,94 @@ def validate_time_weight(
             raise ValueError(f"Weight column '{col}' sums to zero")
 
 
+def _compute_forecasting_step(
+    time: pl.Series,
+    observed_time: pl.Series,
+    interval: str,
+) -> pl.Series:
+    """Compute integer forecasting step from time, observed_time, and interval.
+
+    For fixed-length intervals (daily, hourly, etc.), divides the duration
+    between ``time`` and ``observed_time`` by the interval timedelta.
+
+    For variable-length intervals (monthly, quarterly, yearly), uses
+    calendar-unit arithmetic instead.
+
+    Parameters
+    ----------
+    time : pl.Series
+        Prediction time points.
+    observed_time : pl.Series
+        Observation origin time points.
+    interval : str
+        Interval string (e.g. ``"1d"``, ``"1mo"``, ``"1q"``, ``"1y"``).
+
+    Returns
+    -------
+    pl.Series
+        Integer forecasting steps (1-indexed).
+
+    """
+    td = interval_to_timedelta(interval)
+
+    if td is not None:
+        # Fixed-length interval: fast duration division
+        step_durations = time - observed_time
+        return (step_durations / td).round(0).cast(pl.Int64)
+
+    # Variable-length interval: calendar-unit arithmetic
+    multiplier, unit = parse_interval(interval)
+
+    time_expr = time.to_frame("t")
+    obs_expr = observed_time.to_frame("o")
+    combined = pl.concat([time_expr, obs_expr], how="horizontal")
+
+    if unit in ("mo", "q"):
+        months_per_unit = multiplier if unit == "mo" else multiplier * 3
+        month_diff = (combined["t"].dt.year() - combined["o"].dt.year()) * 12 + (
+            combined["t"].dt.month() - combined["o"].dt.month()
+        )
+        return (month_diff // months_per_unit).cast(pl.Int64)
+
+    if unit == "y":
+        year_diff = combined["t"].dt.year() - combined["o"].dt.year()
+        return (year_diff // multiplier).cast(pl.Int64)
+
+    msg = f"Unsupported variable-length interval unit: {unit!r}"
+    raise ValueError(msg)
+
+
+def _truncate_partial_vintage(
+    y_true: pl.DataFrame,
+    y_pred: pl.DataFrame,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Remove the last vintage if it came from a partial observation window.
+
+    When ``observe_predict`` runs with ``len(y) % stride != 0``, the last
+    observe call consumes fewer rows than ``stride``, producing a partial
+    vintage.  This function detects that case by comparing consecutive
+    ``observed_time`` gaps and drops the partial vintage.
+
+    Requires at least 3 unique ``observed_time`` values to infer the
+    regular stride; otherwise returns data unchanged.
+    """
+    unique_times = y_pred["observed_time"].unique().sort()
+    if len(unique_times) < 3:
+        return y_true, y_pred
+
+    diffs = unique_times.diff().drop_nulls()
+    regular_diff = diffs.mode()[0]
+    last_diff = diffs[-1]
+
+    if last_diff < regular_diff:
+        partial_time = unique_times[-1]
+        mask = y_pred["observed_time"] != partial_time
+        y_pred = y_pred.filter(mask)
+        y_true = y_true.filter(mask)
+
+    return y_true, y_pred
+
+
 @overload
 def validate_scorer_data(
     scorer: BaseScorer,
@@ -348,7 +439,7 @@ def validate_scorer_data(
     scores: pl.DataFrame = ...,
     reset: bool = False,
     inverse: bool = True,
-) -> tuple[pl.DataFrame, pl.DataFrame, list]: ...
+) -> tuple[pl.DataFrame, pl.DataFrame, ScoringContext]: ...
 
 
 @overload
@@ -360,7 +451,7 @@ def validate_scorer_data(
     scores: None = None,
     reset: bool = False,
     inverse: bool = False,
-) -> tuple[pl.DataFrame, pl.DataFrame, list]: ...
+) -> tuple[pl.DataFrame, pl.DataFrame, ScoringContext]: ...
 
 
 def validate_scorer_data(
@@ -371,7 +462,7 @@ def validate_scorer_data(
     scores: pl.DataFrame | None = None,
     reset: bool = False,
     inverse: bool = False,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, list | None]:
+) -> tuple[pl.DataFrame, pl.DataFrame | None, ScoringContext | None]:
     """Validate and prepare scorer input data.
 
     Parameters
@@ -395,10 +486,10 @@ def validate_scorer_data(
 
     Returns
     -------
-    tuple[pl.DataFrame, pl.DataFrame, list | None]
-        Validated and prepared DataFrames and time values:
-        - Normal context: (y_true, y_pred, time_values)
-        - Inverse context: (y_pred, scores, time_values)
+    tuple[pl.DataFrame, pl.DataFrame | None, ScoringContext | None]
+        Validated and prepared DataFrames and scoring context:
+        - Normal context: (y_true, y_pred, ScoringContext)
+        - Inverse context: (y_pred, scores, ScoringContext)
         - Fit context (reset=True): (y_train, None, None)
 
     Notes
@@ -446,8 +537,14 @@ def validate_scorer_data(
                 f"y_pred has {sorted(y_pred_cols)}, conformity_scores has {sorted(score_cols)}."
             )
 
-        # Drop observed_time if present in y_pred
+        # Extract observed_time before dropping (used by multi-vintage aggregation)
+        observed_time = None
+        forecasting_step = None
         if "observed_time" in y_pred.columns:
+            observed_time = y_pred["observed_time"]
+            # Compute forecasting step if scorer has interval_ attribute
+            if hasattr(scorer, "interval_") and scorer.interval_ is not None:
+                forecasting_step = _compute_forecasting_step(y_pred["time"], y_pred["observed_time"], scorer.interval_)
             y_pred = y_pred.drop("observed_time")
 
         # Extract time values before dropping (always present after validation)
@@ -457,7 +554,17 @@ def validate_scorer_data(
         y_pred = y_pred.drop("time")
         scores = scores.drop("time")
 
-        return y_pred, scores, time_values
+        from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
+
+        return (
+            y_pred,
+            scores,
+            _ScoringContext(
+                time_values=time_values,
+                observed_time=observed_time,
+                forecasting_step=forecasting_step,
+            ),
+        )
 
     if reset:
         # At fit time, y_true is y_train (always required), y_pred is always None
@@ -546,13 +653,18 @@ def validate_scorer_data(
                 if not y_pred.schema[pc].is_numeric():
                     raise ValueError(f"Probability column '{pc}' must be numeric, got {y_pred.schema[pc]}.")
 
-    # Align by time (inner join on time column)
-    time_truth = y_true.select("time")
-    time_pred = y_pred.select("time")
-    common_times = time_truth.join(time_pred, on="time", how="inner")
+    # Align by time.
+    # Use semi-joins so that duplicate times in y_pred (multi-vintage data
+    # from observe_predict) are preserved rather than cross-producted.
+    unique_truth_times = y_true.select("time").unique()
+    unique_pred_times = y_pred.select("time").unique()
 
-    y_true = y_true.join(common_times.select("time"), on="time", how="inner")
-    y_pred = y_pred.join(common_times.select("time"), on="time", how="inner")
+    y_pred = y_pred.join(unique_truth_times, on="time", how="semi")
+    y_true_filtered = y_true.join(unique_pred_times, on="time", how="semi")
+
+    # Replicate y_true rows to match y_pred (1:1 for single-vintage,
+    # 1:N when y_pred has multiple vintages per time point).
+    y_true = y_pred.select("time").join(y_true_filtered, on="time", how="left")
 
     # Subselect columns based on scorer configuration
     coverage_rates = getattr(scorer, "coverage_rates", None)
@@ -567,14 +679,31 @@ def validate_scorer_data(
         interval_pattern=interval_pattern,
     )
 
+    # Truncate partial vintage: if the last observe_predict window was
+    # shorter than the regular stride, drop that vintage before scoring.
+    if "observed_time" in y_pred.columns:
+        y_true, y_pred = _truncate_partial_vintage(y_true, y_pred)
+
     # Extract time values before dropping (all scorers get time-less DataFrames)
     time_values = y_true["time"].to_list() if "time" in y_true.columns else None
+
+    # Extract observed_time and compute forecasting_step before dropping
+    observed_time: pl.Series | None = None
+    forecasting_step: pl.Series | None = None
+
+    if "observed_time" in y_pred.columns:
+        observed_time = y_pred["observed_time"]
+
+        # Compute forecasting_step if scorer has interval_ from fit()
+        interval_ = getattr(scorer, "interval_", None)
+        if interval_ is not None and time_values is not None:
+            forecasting_step = _compute_forecasting_step(y_pred["time"], observed_time, interval_)
+
+        y_pred = y_pred.drop("observed_time")
 
     # Drop time columns for all scorers (conformity scorers can reconstruct from time_values)
     y_true = y_true.drop("time")
 
-    if "observed_time" in y_pred.columns:
-        y_pred = y_pred.drop("observed_time")
     if "time" in y_pred.columns:
         y_pred = y_pred.drop("time")
 
@@ -585,7 +714,15 @@ def validate_scorer_data(
         if extra_cols:
             y_pred = y_pred.drop(extra_cols)
 
-    return y_true, y_pred, time_values
+    from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
+
+    context = _ScoringContext(
+        time_values=time_values,
+        observed_time=observed_time,
+        forecasting_step=forecasting_step,
+    )
+
+    return y_true, y_pred, context
 
 
 @overload
@@ -662,7 +799,7 @@ def validate_forecaster_data(
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[True] = True,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, None]: ...
 
 
@@ -673,7 +810,7 @@ def validate_forecaster_data(
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[True] = True,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> tuple[None, pl.DataFrame | None, None]: ...
 
 
@@ -684,7 +821,7 @@ def validate_forecaster_data(
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, list[str] | None]: ...
 
 
@@ -695,7 +832,7 @@ def validate_forecaster_data(
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> tuple[None, pl.DataFrame | None, list[str] | None]: ...
 
 
@@ -705,7 +842,7 @@ def validate_forecaster_data(
     X: pl.DataFrame | None = None,
     *,
     reset: bool = True,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> tuple[pl.DataFrame | None, pl.DataFrame | None, list[str] | None]:
     """Validate and prepare input data for forecasters.
 
@@ -726,14 +863,14 @@ def validate_forecaster_data(
     reset : bool, default=True
         If ``True``, validate in fit context (infer interval, set schemas).
         If ``False``, validate in predict/update context (check schemas).
-    panel_group_names : list of str or None, default=None
+    groups : list of str or None, default=None
         Panel groups to validate. Normalized against the fitted groups
         when ``reset=False``.
 
     Returns
     -------
     tuple of (pl.DataFrame or None, pl.DataFrame or None, list of str or None)
-        Validated ``(y, X, panel_group_names)``.  ``panel_group_names`` is
+        Validated ``(y, X, groups)``.  ``groups`` is
         ``None`` in fit context.
 
     Raises
@@ -765,10 +902,10 @@ def validate_forecaster_data(
     if X is not None:
         check_time_column(X)
 
-    # Validate and normalize panel_group_names parameter
-    panel_group_names = check_panel_group_names(
-        fitted_panel_groups=forecaster.panel_group_names_,
-        requested_panel_groups=panel_group_names,
+    # Validate and normalize groups parameter
+    groups = check_groups(
+        fitted_panel_groups=forecaster.groups_,
+        requested_panel_groups=groups,
     )
 
     # Validate schema and enforce column order
@@ -776,18 +913,18 @@ def validate_forecaster_data(
         y = check_schema(
             y,
             forecaster.local_y_schema_,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
     if X is not None:
         # Handle panel data X (local + global schemas)
-        if forecaster.panel_group_names_ is not None:
+        if forecaster.groups_ is not None:
             # Validate local X columns (with panel prefixes)
             if hasattr(forecaster, "local_X_schema_") and forecaster.local_X_schema_:
                 X_local = check_schema(
                     X,
                     forecaster.local_X_schema_,
-                    panel_group_names=forecaster.panel_group_names_,
+                    groups=forecaster.groups_,
                 )
 
             # Validate shared X columns (no prefixes)
@@ -815,7 +952,7 @@ def validate_forecaster_data(
         elif X is not None and hasattr(forecaster, "local_X_schema_") and forecaster.local_X_schema_:
             X = check_schema(X, forecaster.local_X_schema_)
 
-    return y, X, panel_group_names
+    return y, X, groups
 
 
 @overload

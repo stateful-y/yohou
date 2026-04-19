@@ -61,7 +61,7 @@ def _():
 
     from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_model_comparison_bar, plot_time_weight
+    from yohou.plotting import plot_forecast, plot_score_per_horizon, plot_time_weight
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.utils.weighting import (
@@ -81,7 +81,7 @@ def _():
         linear_decay_weight,
         pl,
         plot_forecast,
-        plot_model_comparison_bar,
+        plot_score_per_horizon,
         plot_time_weight,
         seasonal_emphasis_weight,
         train_test_split,
@@ -325,7 +325,7 @@ def _(
     exponential_decay_weight,
     forecasting_horizon,
     linear_decay_weight,
-    plot_model_comparison_bar,
+    plot_score_per_horizon,
     seasonal_emphasis_weight,
     y_test,
     y_train,
@@ -337,10 +337,7 @@ def _(
         "Seasonal (12)": seasonal_emphasis_weight(seasonality=12, emphasis=3.0),
     }
 
-    _mae = MeanAbsoluteError()
-    _mae.fit(y_train)
-
-    _results = {}
+    _y_preds = {}
     for _label, _wfn in _weight_configs.items():
         _fc = PointReductionForecaster(
             estimator=Ridge(),
@@ -350,12 +347,13 @@ def _(
         if _wfn is not None:
             _fit_kwargs["time_weight"] = _wfn
         _fc.fit(y_train, **_fit_kwargs)
-        _pred = _fc.predict(forecasting_horizon=forecasting_horizon)
-        _results[_label] = {"MAE": _mae.score(y_test, _pred)}
+        _y_preds[_label] = _fc.predict(forecasting_horizon=forecasting_horizon)
 
-    plot_model_comparison_bar(
-        _results,
-        group_by="scorer",
+    plot_score_per_horizon(
+        MeanAbsoluteError(),
+        y_test,
+        _y_preds,
+        kind="summary",
         title="Weight Function Comparison (MAE)",
     )
 

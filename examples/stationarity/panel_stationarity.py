@@ -185,7 +185,7 @@ def _(plot_forecast, y_pred_decomp, y_test, y_train):
         y_test,
         y_pred_decomp,
         y_train=y_train,
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         title="DecompositionPipeline: Trend + Residual (Panel)",
     )
 
@@ -233,7 +233,7 @@ def _(
         y_test,
         _y_pred_three,
         y_train=y_train,
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         title="Trend + Seasonality + Residual (Panel)",
     )
 
@@ -267,7 +267,7 @@ def _(
         _scorer,
         y_test,
         {"SeasonalNaive": _y_pred_naive, "Decomposition": y_pred_decomp},
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         title="MAE over Time per Panel Group",
     )
 

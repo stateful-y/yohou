@@ -326,7 +326,7 @@ def _(
         _y_pred_panel,
         y_train=y_train_panel,
         n_history=30,
-        panel_group_names=["T7", "T11", "T12"],
+        groups=["T7", "T11", "T12"],
         title="Panel Forecast: First 3 Groups",
     )
 

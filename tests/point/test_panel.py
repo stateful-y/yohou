@@ -95,7 +95,7 @@ class TestPointReductionPanelBehavior:
 
         # Try to predict with invalid group name
         with pytest.raises(ValueError, match="not found in fitted forecaster"):
-            forecaster.predict(X=None, forecasting_horizon=3, panel_group_names=["invalid_group"])
+            forecaster.predict(X=None, forecasting_horizon=3, groups=["invalid_group"])
 
     def test_panel_global_data_no_groups(self, time_series_factory):
         """Test that panel_group has no effect on global data."""

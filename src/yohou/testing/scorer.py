@@ -269,7 +269,7 @@ def check_scorer_aggregation_methods(
 
     Notes
     -----
-    Single aggregation methods (e.g., ['timewise']) may return DataFrames.
+    Single aggregation methods (e.g., ['stepwise']) may return DataFrames.
     Only when using all available methods together does it return a scalar.
 
     """
@@ -285,7 +285,7 @@ def check_scorer_aggregation_methods(
 
             # Validate return type - can be scalar or DataFrame depending on aggregation
             if isinstance(score, pl.DataFrame):
-                # DataFrame is valid for partial aggregations (e.g., timewise only)
+                # DataFrame is valid for partial aggregations (e.g., stepwise only)
                 assert len(score) > 0, f"aggregation_method={agg_method}: returned empty DataFrame"
                 assert not score.null_count().sum_horizontal()[0] > 0, (
                     f"aggregation_method={agg_method}: DataFrame contains null values"
@@ -305,9 +305,9 @@ def check_scorer_panel_subselection(
     scorer,
     y_truth_panel: pl.DataFrame,
     y_pred_panel: pl.DataFrame,
-    panel_group_names: list[str],
+    groups: list[str],
 ) -> None:
-    """Check panel_group_names filtering works correctly.
+    """Check groups filtering works correctly.
 
     Parameters
     ----------
@@ -317,7 +317,7 @@ def check_scorer_panel_subselection(
         Panel ground truth
     y_pred_panel : pl.DataFrame
         Panel predictions
-    panel_group_names : list of str
+    groups : list of str
         Panel group names to filter
 
     Raises
@@ -327,13 +327,13 @@ def check_scorer_panel_subselection(
 
     """
     scorer_filtered = clone(scorer)
-    scorer_filtered.set_params(panel_group_names=panel_group_names)
+    scorer_filtered.set_params(groups=groups)
 
     try:
         score = scorer_filtered.score(y_truth_panel, y_pred_panel)
         assert isinstance(score, int | float | np.number), "Panel-filtered score should be numeric"
     except Exception as e:
-        raise AssertionError(f"panel_group_names={panel_group_names} filtering failed: {e}") from e
+        raise AssertionError(f"groups={groups} filtering failed: {e}") from e
 
 
 def check_scorer_component_subselection(

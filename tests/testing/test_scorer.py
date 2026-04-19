@@ -79,12 +79,14 @@ class TestScorerChecks:
     def test_aggregation_methods(self, scorers, y_truth, y_pred):
         """Test that aggregation methods work."""
         for scorer in scorers:
-            check_scorer_aggregation_methods(scorer, y_truth, y_pred, aggregation_methods=["timewise", "componentwise"])
+            check_scorer_aggregation_methods(
+                scorer, y_truth, y_pred, aggregation_methods=["stepwise", "vintagewise", "componentwise"]
+            )
 
     @pytest.mark.parametrize(
         "scorer_class,param_name,invalid_value,error_match",
         [
-            (MeanAbsoluteError, "panel_group_names", ["nonexistent"], "panel_group_names"),
+            (MeanAbsoluteError, "groups", ["nonexistent"], "groups"),
             (MeanAbsoluteError, "component_names", ["nonexistent"], "component_names"),
             (MeanAbsoluteError, "aggregation_method", [["invalid"]], "aggregation_method"),
         ],

@@ -54,7 +54,7 @@ def plot_autocorrelation(
     max_lags: int | None = None,
     confidence_level: float = 0.95,
     show_confidence: bool = True,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -83,7 +83,7 @@ def plot_autocorrelation(
         Confidence level for confidence bands (e.g. ``0.95`` for 95%).
     show_confidence : bool, default=True
         Whether to show confidence bands.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -138,11 +138,11 @@ def plot_autocorrelation(
     validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
-    if _auto_detect_panel(df) and panel_group_names is None and columns is None:
-        panel_group_names = []
+    if _auto_detect_panel(df) and groups is None and columns is None:
+        groups = []
 
-    if panel_group_names is not None:
-        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    if groups is not None:
+        _panel_cols = resolve_panel_columns(df, groups, columns)
         _color_mgr = PanelColorManager(color_palette)
         _acf_legend = LegendTracker()
 
@@ -178,7 +178,7 @@ def plot_autocorrelation(
         fig = facet_figure(
             df,
             _render_acf,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -341,7 +341,7 @@ def plot_partial_autocorrelation(
     method: str = "yw",
     confidence_level: float = 0.95,
     show_confidence: bool = True,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -379,7 +379,7 @@ def plot_partial_autocorrelation(
         Confidence level for confidence bands (e.g. ``0.95`` for 95%).
     show_confidence : bool, default=True
         Whether to show confidence bands.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -433,11 +433,11 @@ def plot_partial_autocorrelation(
     validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
-    if _auto_detect_panel(df) and panel_group_names is None and columns is None:
-        panel_group_names = []
+    if _auto_detect_panel(df) and groups is None and columns is None:
+        groups = []
 
-    if panel_group_names is not None:
-        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    if groups is not None:
+        _panel_cols = resolve_panel_columns(df, groups, columns)
         _pacf_color_mgr = PanelColorManager(color_palette)
         _pacf_legend = LegendTracker()
 
@@ -478,7 +478,7 @@ def plot_partial_autocorrelation(
         fig = facet_figure(
             df,
             _render_pacf,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -695,7 +695,7 @@ def plot_correlation_heatmap(
     df: pl.DataFrame,
     *,
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "group",
     show_legend: bool = True,
     title: str | None = None,
@@ -717,7 +717,7 @@ def plot_correlation_heatmap(
         Input DataFrame with 'time' column and numeric columns.
     columns : str | list[str] | None, default=None
         Column(s) to include. If None, uses all numeric columns except 'time'.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.  When panel data is detected
         and this is ``None``, all groups are included.
     facet_by : Literal["group", "member"] | None, default="group"
@@ -776,27 +776,27 @@ def plot_correlation_heatmap(
 
     # Auto-detect panel data
     _, panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and panel_groups:
-        panel_group_names = []
+    if groups is None and columns is None and panel_groups:
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
         # Normalize columns to list for member filtering
         col_filter = [columns] if isinstance(columns, str) else columns
 
         # Filter to requested groups and optionally by member postfix
-        groups: dict[str, list[str]] = {}
+        group_map: dict[str, list[str]] = {}
         for g, gcols in panel_groups.items():
-            if not panel_group_names or g in panel_group_names:
+            if not groups or g in groups:
                 filtered = [c for c in gcols if c.split("__", 1)[1] in col_filter] if col_filter is not None else gcols
                 if filtered:
-                    groups[g] = filtered
-        if not groups:
-            msg = f"No panel groups found for {panel_group_names}. Available groups: {list(panel_groups.keys())}"
+                    group_map[g] = filtered
+        if not group_map:
+            msg = f"No panel groups found for {groups}. Available groups: {list(panel_groups.keys())}"
             raise ValueError(msg)
 
-        all_panel_cols = [c for gcols in groups.values() for c in gcols]
+        all_panel_cols = [c for gcols in group_map.values() for c in gcols]
         _, all_members = _group_panel_columns(all_panel_cols)
 
         _layout_kwargs = {
@@ -814,13 +814,13 @@ def plot_correlation_heatmap(
             return _correlation_heatmap_single(df, all_panel_cols, **_layout_kwargs)
 
         if facet_by == "group":
-            return _correlation_heatmap_separate(df, groups, **_layout_kwargs)
+            return _correlation_heatmap_separate(df, group_map, **_layout_kwargs)
 
         # facet_by == "member"
         member_groups: dict[str, list[str]] = {}
         for member in all_members:
             member_cols = []
-            for _gname, gcols in groups.items():
+            for _gname, gcols in group_map.items():
                 col = next((c for c in gcols if _member_name(c) == member), None)
                 if col:
                     member_cols.append(col)
@@ -888,7 +888,7 @@ def plot_seasonality(
     columns: str | list[str] | None = None,
     seasonality: str = "month",
     highlight: int | list[int] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -922,7 +922,7 @@ def plot_seasonality(
     highlight : int | list[int] | None, default=None
         Cycle(s) to emphasise (e.g. specific years). Highlighted cycles get a
         thicker line; others are faded. If None, all cycles are equally visible.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -1002,10 +1002,10 @@ def plot_seasonality(
     validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
         _color_mgr = PanelColorManager(color_palette)
         _legend_tracker = LegendTracker(show_legend=show_legend)
 
@@ -1109,7 +1109,7 @@ def plot_seasonality(
         fig = facet_figure(
             df,
             _render_season,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -1282,7 +1282,7 @@ def plot_subseasonality(
     seasonality: str = "month",
     kind: Literal["mean", "lines", "box", "violin"] = "mean",
     show_mean: bool = True,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_n_cols: int = 4,
     color_palette: list[str] | None = None,
     title: str | None = None,
@@ -1330,7 +1330,7 @@ def plot_subseasonality(
         - ``"violin"`` - one violin per cycle showing value distribution.
     show_mean : bool, default=True
         Show a horizontal mean line within each season subplot.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_n_cols : int, default=4
         Number of columns in the subplot grid.
@@ -1402,11 +1402,11 @@ def plot_subseasonality(
         height=height,
     )
 
-    if _auto_detect_panel(df) and panel_group_names is None and columns is None:
-        panel_group_names = []
+    if _auto_detect_panel(df) and groups is None and columns is None:
+        groups = []
 
-    if panel_group_names is not None:
-        plot_columns = resolve_panel_columns(df, panel_group_names, columns)
+    if groups is not None:
+        plot_columns = resolve_panel_columns(df, groups, columns)
     else:
         plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     df_aug = _add_season_and_cycle(df, seasonality)
@@ -1424,7 +1424,7 @@ def plot_subseasonality(
         else:
             subplot_titles.append(str(s))
 
-    if panel_group_names is not None:
+    if groups is not None:
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
         groups, all_members = _group_panel_columns(plot_columns)
@@ -1662,7 +1662,7 @@ def plot_lag_scatter(
     seasonality: str | None = None,
     show_diagonal: bool = True,
     show_regression: bool = False,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_n_cols: int = 3,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -1705,7 +1705,7 @@ def plot_lag_scatter(
         Show a diagonal reference line (y = x).
     show_regression : bool, default=False
         Show a linear regression line fitted to the data.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_n_cols : int, default=3
         Number of columns in the subplot grid.
@@ -1766,12 +1766,12 @@ def plot_lag_scatter(
 
     # Auto-detect panel data
     _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
-        panel_group_names = []
+    if groups is None and columns is None and _panel_groups:
+        groups = []
 
     # Panel path
-    if panel_group_names is not None:
-        panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    if groups is not None:
+        panel_cols = resolve_panel_columns(df, groups, columns)
         groups, all_members = _group_panel_columns(panel_cols)
 
         n_lags = len(lags)
@@ -2166,7 +2166,7 @@ def plot_cross_correlation(
     columns: list[str] | None = None,
     max_lags: int | None = None,
     confidence_level: float = 0.95,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -2200,7 +2200,7 @@ def plot_cross_correlation(
         If None, uses ``min(len(df) // 2, 40)``.
     confidence_level : float, default=0.95
         Confidence level for confidence bands (e.g. ``0.95`` for 95%).
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes.  When set (or auto-detected), CCF is
         computed between members within each group using an
         upper-triangle matrix layout.
@@ -2304,11 +2304,11 @@ def plot_cross_correlation(
         fig.add_hline(y=0, line={"color": "#64748B", "width": 1}, **hline_kw)
 
     # Auto-detect panel data
-    if panel_group_names is None and _auto_detect_panel(df) and columns is None:
-        panel_group_names = []
+    if groups is None and _auto_detect_panel(df) and columns is None:
+        groups = []
 
-    if panel_group_names is not None:
-        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    if groups is not None:
+        _panel_cols = resolve_panel_columns(df, groups, columns)
         groups, _all_members = _group_panel_columns(_panel_cols)
         color_mgr = PanelColorManager(color_palette)
 
@@ -2838,7 +2838,7 @@ def plot_scatter_matrix(
     diagonal: str | None = "kde",
     show_correlation: bool = True,
     max_points: int | None = 10_000,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "group",
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -2880,7 +2880,7 @@ def plot_scatter_matrix(
         subplots share the same consistent subset.  When ``seasonality``
         is set, sampling is stratified per season to preserve relative
         proportions.  Set to ``None`` to disable subsampling.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.  When ``None`` and the DataFrame
         contains panel data, all groups are plotted automatically.
     facet_by : Literal["group", "member"] | None, default="group"
@@ -2944,24 +2944,24 @@ def plot_scatter_matrix(
     validate_plotting_params(width=width, height=height)
 
     _, _panel_groups = inspect_panel(df)
-    if panel_group_names is None and columns is None and _panel_groups:
-        panel_group_names = []
+    if groups is None and columns is None and _panel_groups:
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
         # Normalize columns to list for member filtering
         col_filter = [columns] if isinstance(columns, str) else columns
 
         # Filter to requested groups and optionally by member postfix
-        groups: dict[str, list[str]] = {}
+        group_map: dict[str, list[str]] = {}
         for g, gcols in _panel_groups.items():
-            if not panel_group_names or g in panel_group_names:
+            if not groups or g in groups:
                 filtered = [c for c in gcols if c.split("__", 1)[1] in col_filter] if col_filter is not None else gcols
                 if filtered:
-                    groups[g] = filtered
-        if not groups:
-            msg = f"No panel groups found for {panel_group_names}. Available groups: {list(_panel_groups.keys())}"
+                    group_map[g] = filtered
+        if not group_map:
+            msg = f"No panel groups found for {groups}. Available groups: {list(_panel_groups.keys())}"
             raise ValueError(msg)
 
         _scatter_kwargs = {
@@ -2981,16 +2981,16 @@ def plot_scatter_matrix(
 
         if facet_by is None:
             # Flatten all panel columns into a single scatter matrix
-            all_panel_cols = [c for gcols in groups.values() for c in gcols]
+            all_panel_cols = [c for gcols in group_map.values() for c in gcols]
             plot_columns = all_panel_cols
             # Fall through to the non-panel path below
         elif facet_by == "member":
-            all_panel_cols = [c for gcols in groups.values() for c in gcols]
+            all_panel_cols = [c for gcols in group_map.values() for c in gcols]
             _, all_members = _group_panel_columns(all_panel_cols)
             member_groups: dict[str, list[str]] = {}
             for member in all_members:
                 member_cols = []
-                for _gname, gcols in groups.items():
+                for _gname, gcols in group_map.items():
                     col = next((c for c in gcols if _member_name(c) == member), None)
                     if col:
                         member_cols.append(col)
@@ -2999,7 +2999,7 @@ def plot_scatter_matrix(
             return _scatter_matrix_by_member(df=df, member_groups=member_groups, **_scatter_kwargs)
         else:
             # facet_by == "group"
-            return _scatter_matrix_facet(df=df, groups=groups, **_scatter_kwargs)
+            return _scatter_matrix_facet(df=df, groups=group_map, **_scatter_kwargs)
     else:
         plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     n = len(plot_columns)
@@ -3268,7 +3268,7 @@ def plot_seasonal_heatmap(
     x_period: str = "hour",
     y_period: str = "month",
     agg: str = "mean",
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "group",
     facet_n_cols: int = 2,
     show_legend: bool = True,
@@ -3303,7 +3303,7 @@ def plot_seasonal_heatmap(
     agg : str, default="mean"
         Aggregation function: "mean", "median", "sum", "count",
         "std", "min", or "max".
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes.  When panel data is detected the *columns*
         are resolved as member postfixes within each group.  When
         ``None`` and panel columns are present, auto-detects all groups.
@@ -3431,13 +3431,13 @@ def plot_seasonal_heatmap(
         )
 
     # Auto-detect panel data
-    if panel_group_names is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
-        panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+        panel_cols = resolve_panel_columns(df, groups, columns)
         groups, _all_members = _group_panel_columns(panel_cols)
 
         # Build flat list of (group_name, member_col, display_name) tuples

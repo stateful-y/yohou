@@ -157,7 +157,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def _predict_class_proba_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **params,
     ) -> pl.DataFrame:
         """Produce probability forecasts for one fit-horizon block.
@@ -168,7 +168,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         **params : dict
             Metadata to route to nested estimators.
@@ -185,7 +185,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate class-probability forecasts.
@@ -198,7 +198,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups
             are used. Ignored when the forecaster was not fitted on panel
             data.
@@ -216,36 +216,36 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``X`` has invalid structure or ``panel_group_names`` contains
+            If ``X`` has invalid structure or ``groups`` contains
             names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
-        _, X, panel_group_names = validate_forecaster_data(
+        _, X, groups = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
 
-        if panel_group_names is not None and X is not None:
+        if groups is not None and X is not None:
             X = select_panel_columns(
                 X,
-                panel_group_names,
+                groups,
                 include_global=True,
             )
 
         def step_fn(forecaster, groups):
             """Produce one class-probability prediction block."""
             y_pred_step = forecaster._predict_class_proba_one(
-                panel_group_names=groups,
+                groups=groups,
                 **params,
             )
             return y_pred_step, y_pred_step
@@ -271,7 +271,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         return self._recursive_predict(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             step_fn=step_fn,
             derive_observation_fn=derive_observation_fn,
         )
@@ -280,7 +280,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate argmax class forecasts from class probabilities.
@@ -296,7 +296,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups
             are used. Ignored when the forecaster was not fitted on panel
             data.
@@ -318,7 +318,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_proba = self.predict_class_proba(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **params,
         )
         return self._argmax_from_proba(y_proba)
@@ -428,7 +428,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "BaseClassProbaForecaster":
         """Observe new data, encoding categorical targets before validation.
 
@@ -443,7 +443,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups
             are used.
 
@@ -454,13 +454,13 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y = self._encode_y_input(y)
-        return super().observe(y, X, panel_group_names=panel_group_names)  # ty: ignore[invalid-return-type]
+        return super().observe(y, X, groups=groups)  # ty: ignore[invalid-return-type]
 
     def rewind(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "BaseClassProbaForecaster":
         """Rewind memory, encoding categorical targets before validation.
 
@@ -475,7 +475,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups
             are used.
 
@@ -486,14 +486,14 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y = self._encode_y_input(y)
-        return super().rewind(y, X, panel_group_names=panel_group_names)  # ty: ignore[invalid-return-type]
+        return super().rewind(y, X, groups=groups)  # ty: ignore[invalid-return-type]
 
     def observe_predict_class_proba(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -513,7 +513,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups
             are used. Ignored when the forecaster was not fitted on panel
             data.
@@ -534,23 +534,23 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure or ``panel_group_names``
+            If ``y`` / ``X`` have invalid structure or ``groups``
             contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
         y = self._encode_y_input(y)
 
-        y, X, panel_group_names = validate_forecaster_data(
+        y, X, groups = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
@@ -561,7 +561,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             predict_fn=self.predict_class_proba,
             y=y,
             X=X,
-            panel_group_names=panel_group_names,
+            groups=groups,
             stride=stride,
             forecasting_horizon=forecasting_horizon,
             **params,
@@ -572,7 +572,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -592,7 +592,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups
             are used. Ignored when the forecaster was not fitted on panel
             data.
@@ -613,23 +613,23 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure or ``panel_group_names``
+            If ``y`` / ``X`` have invalid structure or ``groups``
             contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
         y = self._encode_y_input(y)
 
-        y, X, panel_group_names = validate_forecaster_data(
+        y, X, groups = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
@@ -640,7 +640,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             predict_fn=self.predict,
             y=y,
             X=X,
-            panel_group_names=panel_group_names,
+            groups=groups,
             stride=stride,
             forecasting_horizon=forecasting_horizon,
             **params,

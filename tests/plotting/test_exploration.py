@@ -86,7 +86,7 @@ class TestPlotTimeSeries:
     def test_panel_support(self, monthly_2col_df):
         """Test that panel grouping is handled by plot_time_series."""
         df = monthly_2col_df.with_columns(pl.lit("A").alias("group"))
-        fig = plot_time_series(df, columns="y", panel_group_names=["group"])
+        fig = plot_time_series(df, columns="y", groups=["group"])
         assert len(fig.data) >= 0
 
 
@@ -133,7 +133,7 @@ class TestPlotRollingStatistics:
             "y__a": monthly_2col_df["y"],
             "y__b": monthly_2col_df["y"] * 2,
         })
-        fig = plot_rolling_statistics(df, window_size=3, statistics="mean", panel_group_names=["y"])
+        fig = plot_rolling_statistics(df, window_size=3, statistics="mean", groups=["y"])
         assert len(fig.data) > 0
 
     def test_multi_column(self, monthly_2col_df):
@@ -201,7 +201,7 @@ class TestPlotBoxplot:
             "y__a": monthly_2col_df["y"],
             "y__b": monthly_2col_df["y"] * 2,
         })
-        fig = plot_boxplot(df, period="1mo", panel_group_names=["y"])
+        fig = plot_boxplot(df, period="1mo", groups=["y"])
         assert len(fig.data) > 0
 
     def test_multi_column(self, monthly_2col_df):
@@ -261,7 +261,7 @@ class TestPlotMissingData:
             "y__a": df_with_nulls["y"],
             "y__b": df_with_nulls["z"],
         })
-        fig = plot_missing_data(df, kind="bars", panel_group_names=["y"])
+        fig = plot_missing_data(df, kind="bars", groups=["y"])
         assert len(fig.data) > 0
 
 
@@ -313,7 +313,7 @@ class TestPlotTimeSeriesPanelAutoDetect:
     """Tests for panel auto-detect in plot_time_series."""
 
     def test_auto_detect_panel_no_columns(self):
-        """Auto-detect panel mode when columns and panel_group_names are both None."""
+        """Auto-detect panel mode when columns and groups are both None."""
         df = pl.DataFrame({
             "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True),
             "sales__store_1": [100.0, 110.0, 120.0, 130.0, 140.0, 150.0],
@@ -450,7 +450,7 @@ class TestPlotDistribution:
             "y__a": [100, 120, 115, 130, 140, 135, 150, 160, 155, 170, 180, 175],
             "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
         })
-        fig = plot_distribution(df, panel_group_names=["y"])
+        fig = plot_distribution(df, groups=["y"])
         assert_figure_valid(fig)
 
     def test_auto_detect_panel(self):
@@ -524,7 +524,7 @@ class TestPlotOutlierDetection:
             "y__a": [100, 120, 115, 130, 140, 135, 150, 160, 155, 170, 180, 175],
             "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
         })
-        fig = plot_outliers(df, method="zscore", panel_group_names=["y"])
+        fig = plot_outliers(df, method="zscore", groups=["y"])
         assert_figure_valid(fig)
 
     def test_custom_styling(self, monthly_2col_df):
@@ -857,7 +857,7 @@ class TestDistributionPanelKde:
             "y__a": rng.normal(100, 10, 12).tolist(),
             "y__b": rng.normal(200, 15, 12).tolist(),
         })
-        fig = plot_distribution(df, panel_group_names=["y"], show_kde=True)
+        fig = plot_distribution(df, groups=["y"], show_kde=True)
         assert isinstance(fig, go.Figure)
         # Each member: 1 histogram + 1 KDE = 2 traces × 2 members = 4
         assert len(fig.data) >= 4
@@ -917,26 +917,26 @@ class TestPlotMissingDataPanelBarsLegend:
 
     def test_panel_bars_trace_names(self, panel_df):
         """Panel bar traces carry display names (not 'trace 0')."""
-        fig = plot_missing_data(panel_df, kind="bars", panel_group_names=["T3", "T4"])
+        fig = plot_missing_data(panel_df, kind="bars", groups=["T3", "T4"])
         names = {t.name for t in fig.data}
         assert "trace 0" not in names
         assert len(names) > 0
 
     def test_panel_bars_legendgroup(self, panel_df):
         """Each trace has a legendgroup matching its display name."""
-        fig = plot_missing_data(panel_df, kind="bars", panel_group_names=["T3", "T4"])
+        fig = plot_missing_data(panel_df, kind="bars", groups=["T3", "T4"])
         for t in fig.data:
             assert t.legendgroup == t.name
 
     def test_panel_bars_legend_dedup(self, panel_df):
         """LegendTracker shows each name only once in the legend."""
-        fig = plot_missing_data(panel_df, kind="bars", panel_group_names=["T3", "T4"])
+        fig = plot_missing_data(panel_df, kind="bars", groups=["T3", "T4"])
         shown_names = [t.name for t in fig.data if t.showlegend is True]
         assert len(shown_names) == len(set(shown_names))
 
     def test_panel_bars_consistent_color(self, panel_df):
         """Same display name has the same colour across facets."""
-        fig = plot_missing_data(panel_df, kind="bars", panel_group_names=["T3", "T4"])
+        fig = plot_missing_data(panel_df, kind="bars", groups=["T3", "T4"])
         color_map: dict[str, str] = {}
         for t in fig.data:
             if t.name in color_map:
@@ -949,7 +949,7 @@ class TestPlotMissingDataPanelBarsLegend:
         fig = plot_missing_data(
             panel_df,
             kind="bars",
-            panel_group_names=["T3", "T4"],
+            groups=["T3", "T4"],
             color_palette=["#AA0000", "#00BB00"],
         )
         colors = {t.marker.color for t in fig.data}
@@ -976,7 +976,7 @@ class TestPlotMissingDataPanelKinds:
         fig = plot_missing_data(
             panel_df,
             kind="heatmap",
-            panel_group_names=["T3", "T4"],
+            groups=["T3", "T4"],
             facet_by="member",
         )
         assert isinstance(fig, go.Figure)
@@ -989,7 +989,7 @@ class TestPlotMissingDataPanelKinds:
         fig = plot_missing_data(
             panel_df,
             kind="heatmap",
-            panel_group_names=["T3", "T4"],
+            groups=["T3", "T4"],
             facet_by="group",
         )
         heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
@@ -1001,7 +1001,7 @@ class TestPlotMissingDataPanelKinds:
         fig = plot_missing_data(
             panel_df,
             kind="heatmap",
-            panel_group_names=["T3", "T4"],
+            groups=["T3", "T4"],
             facet_by="member",
         )
         heatmap = fig.data[0]
@@ -1013,7 +1013,7 @@ class TestPlotMissingDataPanelKinds:
         fig = plot_missing_data(
             panel_df,
             kind="matrix",
-            panel_group_names=["T3", "T4"],
+            groups=["T3", "T4"],
             facet_by="group",
         )
         heatmaps = [t for t in fig.data if isinstance(t, go.Heatmap)]
@@ -1024,7 +1024,7 @@ class TestPlotMissingDataPanelKinds:
         fig = plot_missing_data(
             panel_df,
             kind="heatmap",
-            panel_group_names=["T3", "T4"],
+            groups=["T3", "T4"],
             facet_by="group",
             time_aggregation="3mo",
         )
@@ -1034,7 +1034,7 @@ class TestPlotMissingDataPanelKinds:
     def test_panel_invalid_kind_raises(self, panel_df):
         """Invalid kind in panel mode raises ValueError."""
         with pytest.raises(ValueError, match="Unknown kind"):
-            plot_missing_data(panel_df, kind="scatter", panel_group_names=["T3"])  # type: ignore
+            plot_missing_data(panel_df, kind="scatter", groups=["T3"])  # type: ignore
 
     def test_panel_auto_detect_heatmap(self):
         """Auto-detected panel data works with heatmap kind."""
@@ -1058,7 +1058,7 @@ class TestOutlierMethodBranches:
             "y__a": [100, 120, 115, 130, 140, 135, 150, 500, 155, 170, 180, 175],
             "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
         })
-        fig = plot_outliers(df, method="iqr", panel_group_names=["y"])
+        fig = plot_outliers(df, method="iqr", groups=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
@@ -1069,7 +1069,7 @@ class TestOutlierMethodBranches:
             "y__a": [100, 120, 115, 130, 140, 135, 150, 500, 155, 170, 180, 175],
             "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
         })
-        fig = plot_outliers(df, method="percentile", threshold=90.0, panel_group_names=["y"])
+        fig = plot_outliers(df, method="percentile", threshold=90.0, groups=["y"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
@@ -1096,7 +1096,7 @@ class TestResamplingComparisonPanel:
         fig = plot_resampling_comparison(
             hourly,
             daily,
-            panel_group_names=["temp"],
+            groups=["temp"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -1112,7 +1112,7 @@ class TestOutlierShowBoundsPanel:
             "y__a": [100, 120, 115, 130, 140, 135, 150, 500, 155, 170, 180, 175],
             "y__b": [200, 210, 205, 220, 230, 225, 240, 250, 245, 260, 270, 265],
         })
-        fig = plot_outliers(df, method="iqr", show_bounds=True, panel_group_names=["y"])
+        fig = plot_outliers(df, method="iqr", show_bounds=True, groups=["y"])
         assert isinstance(fig, go.Figure)
         # Bounds add horizontal line traces (dashed or solid)
         assert len(fig.data) >= 4  # series lines + bound lines
@@ -1122,7 +1122,7 @@ class TestResamplingComparisonAutoDetect:
     """Cover auto-detect panel path for resampling comparison (exploration.py L1657)."""
 
     def test_auto_detect_panel(self):
-        """Panel data without explicit panel_group_names triggers auto-detect."""
+        """Panel data without explicit groups triggers auto-detect."""
         hourly = pl.DataFrame({
             "time": pl.datetime_range(
                 pl.datetime(2020, 1, 1),
@@ -1137,7 +1137,7 @@ class TestResamplingComparisonAutoDetect:
             pl.col("temp__a").mean(),
             pl.col("temp__b").mean(),
         )
-        # No columns= and no panel_group_names= → auto-detect
+        # No columns= and no groups= → auto-detect
         fig = plot_resampling_comparison(hourly, daily)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -1156,7 +1156,7 @@ class TestMissingDataAsymmetricPanel:
             "g2__a": [1.0, 2.0, None, 4.0, 5.0, None, 7.0, 8.0, 9.0, None],
             # g2__b is missing - asymmetric panel
         })
-        fig = plot_missing_data(df, kind="heatmap", panel_group_names=["g1", "g2"])
+        fig = plot_missing_data(df, kind="heatmap", groups=["g1", "g2"])
         assert isinstance(fig, go.Figure)
 
 
@@ -1171,7 +1171,7 @@ class TestOutlierNullSeries:
             "y__a": pl.Series([None] * 10, dtype=pl.Float64),
             "y__b": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 100.0],
         })
-        fig = plot_outliers(df, method="iqr", panel_group_names=["y"])
+        fig = plot_outliers(df, method="iqr", groups=["y"])
         assert isinstance(fig, go.Figure)
 
     def test_percentile_all_null_series(self):
@@ -1182,7 +1182,7 @@ class TestOutlierNullSeries:
             "y__a": pl.Series([None] * 10, dtype=pl.Float64),
             "y__b": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 100.0],
         })
-        fig = plot_outliers(df, method="percentile", threshold=90.0, panel_group_names=["y"])
+        fig = plot_outliers(df, method="percentile", threshold=90.0, groups=["y"])
         assert isinstance(fig, go.Figure)
 
 
@@ -1203,7 +1203,7 @@ class TestPanelFacetFigureAsymmetricWarning:
         })
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            fig = plot_time_series(df, panel_group_names=["g1", "g2"], facet_by="member")
+            fig = plot_time_series(df, groups=["g1", "g2"], facet_by="member")
         assert isinstance(fig, go.Figure)
         assert any("Asymmetric panel" in str(m.message) for m in w)
 
@@ -1230,7 +1230,7 @@ class TestResamplingComparisonFacetByGroup:
         fig = plot_resampling_comparison(
             hourly,
             daily,
-            panel_group_names=["temp"],
+            groups=["temp"],
             facet_by="group",
         )
         assert isinstance(fig, go.Figure)

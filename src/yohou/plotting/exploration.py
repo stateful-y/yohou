@@ -50,7 +50,7 @@ def plot_time_series(
     df: pl.DataFrame,
     *,
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -76,7 +76,7 @@ def plot_time_series(
     columns : str | list[str] | None, default=None
         Column(s) to plot. If None, plots all numeric columns except 'time'.
         If str, plots single column. If list, plots multiple columns.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot. Creates separate subplots per group.
         If None and panel data is detected, plots all groups.
     facet_by : Literal["group", "member"] | None, default="member"
@@ -155,12 +155,12 @@ def plot_time_series(
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None and _auto_detect_panel(df, panel_group_names):
+    if groups is not None and _auto_detect_panel(df, groups):
         # Pre-compute palette for consistent colouring across the overlaid dimension
-        pn_cols = resolve_panel_columns(df, panel_group_names, columns if panel_group_names is not None else None)
+        pn_cols = resolve_panel_columns(df, groups, columns if groups is not None else None)
         groups, all_members = _group_panel_columns(pn_cols)
         effective_facet_by = facet_by or "member"
         n_overlay = len(list(groups.keys())) if effective_facet_by == "member" else len(all_members)
@@ -219,8 +219,8 @@ def plot_time_series(
         fig = facet_figure(
             df,
             _render_ts,
-            panel_group_names=panel_group_names,
-            columns=columns if panel_group_names is not None else None,
+            groups=groups,
+            columns=columns if groups is not None else None,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
             title=title,
@@ -314,7 +314,7 @@ def plot_rolling_statistics(
     window_size: int | dict[str, int] = 7,
     statistics: str | list[str] = "mean",
     show_original: bool = True,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -348,7 +348,7 @@ def plot_rolling_statistics(
         "q25" (25th percentile), "q75" (75th percentile), "sum".
     show_original : bool, default=True
         Whether to show the original series alongside the statistics.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -419,10 +419,10 @@ def plot_rolling_statistics(
     validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
         _color_mgr = PanelColorManager(color_palette)
         legend_tracker = LegendTracker(show_legend=show_legend)
 
@@ -481,7 +481,7 @@ def plot_rolling_statistics(
         fig = facet_figure(
             df,
             _render_rolling,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -565,7 +565,7 @@ def plot_boxplot(
     *,
     columns: str | list[str] | None = None,
     period: str = "1mo",
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -591,7 +591,7 @@ def plot_boxplot(
     period : str, default="1mo"
         Time period for grouping. Polars duration string.
         Options: "1d" (daily), "1w" (weekly), "1mo" (monthly), "1q" (quarterly), "1y" (yearly).
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -650,10 +650,10 @@ def plot_boxplot(
     validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
         _color_mgr = PanelColorManager(color_palette)
         _legend_tracker = LegendTracker(show_legend=show_legend)
 
@@ -690,7 +690,7 @@ def plot_boxplot(
         fig = facet_figure(
             df,
             _render_boxplot,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -763,7 +763,7 @@ def _panel_heatmap_missing(
     df: pl.DataFrame,
     *,
     kind: Literal["heatmap", "matrix"],
-    panel_group_names: list[str],
+    groups: list[str],
     columns: str | list[str] | None,
     facet_by: Literal["group", "member"],
     facet_n_cols: int,
@@ -778,7 +778,7 @@ def _panel_heatmap_missing(
     row_height: int = 300,
 ) -> go.Figure:
     """Build a faceted heatmap/matrix of missing data for panel columns."""
-    panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    panel_cols = resolve_panel_columns(df, groups, columns)
     groups, all_members = _group_panel_columns(panel_cols)
     all_group_names = list(groups.keys())
 
@@ -889,7 +889,7 @@ def plot_missing_data(
     *,
     columns: str | list[str] | None = None,
     kind: Literal["heatmap", "bars", "matrix"] = "heatmap",
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -919,7 +919,7 @@ def plot_missing_data(
         - "heatmap": time x columns grid showing missing/present
         - "bars": bar chart of missing percentage per column
         - "matrix": binary matrix (missingno-style, time on x-axis)
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -1010,10 +1010,10 @@ def plot_missing_data(
         })
         df = full_range.join(df, on="time", how="left")
 
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
         effective_facet_by = facet_by or "member"
 
         if kind == "bars":
@@ -1046,7 +1046,7 @@ def plot_missing_data(
             return facet_figure(
                 df,
                 _render_missing,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 columns=columns,
                 facet_by=effective_facet_by,
                 facet_n_cols=facet_n_cols,
@@ -1065,7 +1065,7 @@ def plot_missing_data(
         return _panel_heatmap_missing(
             df,
             kind=kind,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -1217,7 +1217,7 @@ def plot_distribution(
     columns: str | list[str] | None = None,
     n_bins: int = 50,
     show_kde: bool = True,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -1245,7 +1245,7 @@ def plot_distribution(
         Number of histogram bins.
     show_kde : bool, default=True
         Whether to overlay a kernel density estimate curve.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot. Creates separate subplots per group.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -1310,11 +1310,11 @@ def plot_distribution(
     validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
-        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    if groups is not None:
+        _panel_cols = resolve_panel_columns(df, groups, columns)
         _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
         _legend_tracker = LegendTracker(show_legend=show_legend)
 
@@ -1367,7 +1367,7 @@ def plot_distribution(
         fig = facet_figure(
             df,
             _render_distribution,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -1463,7 +1463,7 @@ def plot_outliers(
     columns: str | list[str] | None = None,
     method: Literal["zscore", "iqr", "percentile"] = "zscore",
     threshold: float = 3.0,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -1502,7 +1502,7 @@ def plot_outliers(
           the (100-threshold)-th percentile (default 95.0, flags outer 5%)
     threshold : float, default=3.0
         Detection threshold. Interpretation depends on *method*.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -1610,10 +1610,10 @@ def plot_outliers(
             mask = (series < lower) | (series > upper)
         return mask.fill_null(False), lower, upper
 
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
         _color_mgr = PanelColorManager(color_palette)
         _legend_tracker = LegendTracker(show_legend=show_legend)
 
@@ -1674,7 +1674,7 @@ def plot_outliers(
         fig = facet_figure(
             df,
             _render_outlier,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -1771,7 +1771,7 @@ def plot_resampling_comparison(
     columns: str | list[str] | None = None,
     original_label: str = "Original",
     resampled_label: str = "Resampled",
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -1809,7 +1809,7 @@ def plot_resampling_comparison(
         Legend label for the original series.
     resampled_label : str, default="Resampled"
         Legend label for the resampled series.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -1899,10 +1899,10 @@ def plot_resampling_comparison(
     resampled_opacity = resampled_line_opacity
     resampled_dash = resampled_line_dash
 
-    if panel_group_names is None and columns is None and _auto_detect_panel(df_resampled):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df_resampled):
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
 
         def _render_resampling(ctx: RenderContext) -> None:
             """Render original and resampled traces for a single panel."""
@@ -1944,7 +1944,7 @@ def plot_resampling_comparison(
         fig = facet_figure(
             df_resampled,
             _render_resampling,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,

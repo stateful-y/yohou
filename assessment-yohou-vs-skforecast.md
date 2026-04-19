@@ -78,7 +78,7 @@
 
 ### 7. Metrics / Scoring
 
-**Yohou**: 21 scorer classes. Point (8): MAE, MSE, RMSE, RMSSE, MAPE, SMAPE, MASE, MdAE. Interval (5): EmpiricalCoverage, MeanIntervalWidth, IntervalScore, PinballLoss, CalibrationError. Conformity (6): Residual, AbsoluteResidual, GammaResidual, AbsoluteGammaResidual, QuantileResidual, AbsoluteQuantileResidual. All support `time_weight` via metadata routing. 5 aggregation modes (timewise, componentwise, groupwise, coveragewise, all). Panel-aware scoring.
+**Yohou**: 21 scorer classes. Point (8): MAE, MSE, RMSE, RMSSE, MAPE, SMAPE, MASE, MdAE. Interval (5): EmpiricalCoverage, MeanIntervalWidth, IntervalScore, PinballLoss, CalibrationError. Conformity (6): Residual, AbsoluteResidual, GammaResidual, AbsoluteGammaResidual, QuantileResidual, AbsoluteQuantileResidual. All support `time_weight` via metadata routing. 6 aggregation modes (stepwise, vintagewise, componentwise, groupwise, coveragewise, all). Panel-aware scoring.
 
 **Skforecast**: Functions (not classes): MASE, RMSSE, SMAPE, `create_mean_pinball_loss`, `add_y_train_argument`. Distribution: `crps_from_predictions`, `crps_from_quantiles`. Coverage: `calculate_coverage`.
 
@@ -114,7 +114,7 @@
 
 ### 10. Panel / Multi-Series Data
 
-**Yohou**: Native via `__` column prefix convention. `inspect_panel()`, `get_group_df()`, `select_panel_columns()` utilities. `panel_group_names` parameter on all forecaster/transformer methods. `LocalPanelForecaster` for per-group models. `ColumnForecaster` for per-column forecasters. `panel_strategy` on `BaseForecaster`. All transformers and metrics are panel-aware. Panel support is architectural (every method, every class).
+**Yohou**: Native via `__` column prefix convention. `inspect_panel()`, `get_group_df()`, `select_panel_columns()` utilities. `groups` parameter on all forecaster/transformer methods. `LocalPanelForecaster` for per-group models. `ColumnForecaster` for per-column forecasters. `panel_strategy` on `BaseForecaster`. All transformers and metrics are panel-aware. Panel support is architectural (every method, every class).
 
 **Skforecast**: `ForecasterRecursiveMultiSeries` (global model, encoding options: ordinal/ordinal_category/onehot/None). Per-series transformers, weights, differentiation. Wide/dict/long input formats with reshaping utilities. `ForecasterDirectMultiVariate` (all series as features for one target, per-series lags). `series_weights` for relative importance.
 
@@ -162,7 +162,7 @@
 
 ### 14. Streaming / Online Learning
 
-**Yohou**: Core architectural feature. `observe(y, X, panel_group_names)` adds data without refitting. `rewind(y, X, panel_group_names)` truncates memory to `observation_horizon`. `observe_predict(y, X)` and `observe_predict_interval(y, X, coverage_rates)` are atomic combined operations. All transformers have `observe`/`rewind`/`observe_transform`/`rewind_transform`. Memory management is bounded. Panel-selective observation (`panel_group_names` param).
+**Yohou**: Core architectural feature. `observe(y, X, groups)` adds data without refitting. `rewind(y, X, groups)` truncates memory to `observation_horizon`. `observe_predict(y, X)` and `observe_predict_interval(y, X, coverage_rates)` are atomic combined operations. All transformers have `observe`/`rewind`/`observe_transform`/`rewind_transform`. Memory management is bounded. Panel-selective observation (`groups` param).
 
 **Skforecast**: No equivalent. `refit=int` in backtesting controls re-training frequency. `last_window` on some forecasters stores recent data. No incremental update API.
 
@@ -243,7 +243,7 @@
 
 2. **observe/rewind streaming**: Core architectural pattern for production forecasting without refitting. Bounded memory. Panel-selective updates. No equivalent in skforecast.
 
-3. **sklearn metadata routing**: Native `time_weight` propagation, `panel_group_names` routing. First-class sklearn citizen with `_parameter_constraints`, tags system.
+3. **sklearn metadata routing**: Native `time_weight` propagation, `groups` routing. First-class sklearn citizen with `_parameter_constraints`, tags system.
 
 4. **Stateful transformers with memory**: Every transformer supports observe/rewind. Memory is bounded to `observation_horizon`. Enables streaming preprocessing.
 

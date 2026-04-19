@@ -38,7 +38,7 @@ class BaseStandardForecaster:
     target_transformer: "BaseTransformer | None"
     feature_transformer: "BaseTransformer | None"
     target_as_feature: str | None
-    panel_group_names_: None
+    groups_: None
     local_y_schema_: dict[str, pl.DataType]
     local_X_schema_: dict[str, pl.DataType] | None
     shared_X_schema_: None
@@ -57,7 +57,7 @@ class BaseStandardForecaster:
             Feature time series (standard data).
 
         """
-        self.panel_group_names_ = None
+        self.groups_ = None
         self.local_y_schema_ = dict(y.select(~cs.by_name("time")).schema)
         self.shared_X_schema_ = None
 

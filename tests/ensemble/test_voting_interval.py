@@ -382,7 +382,7 @@ class TestVotingIntervalForecasterPanelData:
         forecaster.fit(y[:80], forecasting_horizon=3)
         y_pred = forecaster.predict_interval(forecasting_horizon=3)
 
-        assert forecaster.panel_group_names_ is not None
+        assert forecaster.groups_ is not None
         assert len(y_pred) == 3
 
 

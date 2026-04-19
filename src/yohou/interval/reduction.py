@@ -394,7 +394,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         coverage_rates: list[StrictFloat] | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -402,7 +402,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         coverage_rates : list of float
             Coverage rates for the prediction intervals.
@@ -419,7 +419,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             coverage_rates = self.fit_coverage_rates_
 
         if "_multiquantile" in self.estimator_:
-            return self._predict_one_multiquantile(panel_group_names, coverage_rates)
+            return self._predict_one_multiquantile(groups, coverage_rates)
 
         y_pred = pl.DataFrame()
         for coverage_rate in coverage_rates:
@@ -427,8 +427,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             estimator_upper = self.estimator_[f"coverage_rate_{coverage_rate}_upper"]
 
             # Predict lower and upper bounds
-            y_pred_lower = self._estimator_predict_one(estimator_lower, panel_group_names=panel_group_names)
-            y_pred_upper = self._estimator_predict_one(estimator_upper, panel_group_names=panel_group_names)
+            y_pred_lower = self._estimator_predict_one(estimator_lower, groups=groups)
+            y_pred_upper = self._estimator_predict_one(estimator_upper, groups=groups)
 
             # Enforce monotonic bounds (lower <= upper) by column-wise min/max
             # This handles cases where QuantileRegressor predictions cross
@@ -466,7 +466,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     def _predict_one_multiquantile(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         coverage_rates: list[StrictFloat],
     ) -> pl.DataFrame:
         """Predict intervals from a multi-quantile estimator.
@@ -478,7 +478,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         coverage_rates : list of float
             Coverage rates for the prediction intervals.
@@ -492,7 +492,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         estimator = self.estimator_["_multiquantile"]
         target_cols = list(self.local_y_t_schema_.keys())
 
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             # Global data
             assert isinstance(self._X_t_observed, pl.DataFrame)
             X_t = self._X_t_observed[[-1]].select(~cs.by_name("time"))
@@ -515,7 +515,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         else:
             # Panel data
             panel_frames: list[pl.DataFrame] = []
-            for group_name in panel_group_names:
+            for group_name in groups:
                 assert isinstance(self._X_t_observed, dict)
                 X_t_group = self._X_t_observed[group_name][[-1]].select(~cs.by_name("time"))
                 X_tab = X_t_group.select(list(self.local_X_t_schema_.keys())).to_numpy()

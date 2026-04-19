@@ -839,9 +839,9 @@ def check_search_panel_data(
     y_test: pl.DataFrame,
     X_train: pl.DataFrame | None = None,
     X_test: pl.DataFrame | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> None:
-    """Check panel_group_names parameter propagates correctly.
+    """Check groups parameter propagates correctly.
 
     Parameters
     ----------
@@ -855,29 +855,29 @@ def check_search_panel_data(
         Training features with panel groups
     X_test : pl.DataFrame, optional
         Test features with panel groups
-    panel_group_names : list of str, optional
+    groups : list of str, optional
         Panel group names to test
 
     Raises
     ------
     AssertionError
-        If panel_group_names doesn't propagate correctly
+        If groups doesn't propagate correctly
 
     """
     forecasting_horizon = min(3, len(y_test))
 
-    # Test predict with panel_group_names
-    y_pred = search_cv.predict(forecasting_horizon=forecasting_horizon, X=X_test, panel_group_names=panel_group_names)
+    # Test predict with groups
+    y_pred = search_cv.predict(forecasting_horizon=forecasting_horizon, X=X_test, groups=groups)
 
     # Check that predictions have panel structure if expected
-    if panel_group_names is not None:
+    if groups is not None:
         # Predictions should only include specified groups
 
         _, panel_groups = inspect_panel(y_pred)
 
         # Check that all requested groups are present
         pred_group_prefixes = set(panel_groups.keys())
-        for group_name in panel_group_names:
+        for group_name in groups:
             # Group name might be a prefix
             assert any(group_name in prefix for prefix in pred_group_prefixes), (
                 f"Requested panel group '{group_name}' not found in predictions"

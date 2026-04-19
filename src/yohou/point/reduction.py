@@ -269,14 +269,14 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 
     def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **params,
     ) -> pl.DataFrame:
         """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         **params : dict
             Metadata to route to nested estimators.
@@ -287,7 +287,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             Predicted time series.
 
         """
-        y_pred = self._estimator_predict_one(self.estimator_, panel_group_names=panel_group_names)
+        y_pred = self._estimator_predict_one(self.estimator_, groups=groups)
         y_pred = self._add_time_columns(y_pred)
 
         return y_pred

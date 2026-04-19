@@ -38,7 +38,7 @@ class BasePanelForecaster:
     target_transformer: "BaseTransformer | None"
     feature_transformer: "BaseTransformer | None"
     target_as_feature: str | None
-    panel_group_names_: list[str]
+    groups_: list[str]
     local_y_schema_: dict[str, pl.DataType]
     local_X_schema_: dict[str, pl.DataType] | None
     shared_X_schema_: dict[str, pl.DataType] | None
@@ -67,20 +67,20 @@ class BasePanelForecaster:
             Panel groups from X.
 
         """
-        self.panel_group_names_ = list(y_panel_groups.keys())
+        self.groups_ = list(y_panel_groups.keys())
 
         # Extract suffixes from first group to validate consistency
-        first_group_cols = y_panel_groups[self.panel_group_names_[0]]
+        first_group_cols = y_panel_groups[self.groups_[0]]
         first_group_suffixes = [col.split("__", 1)[1] for col in first_group_cols]
 
         # Validate all groups have the same suffixes
-        for group_name in self.panel_group_names_[1:]:
+        for group_name in self.groups_[1:]:
             group_cols = y_panel_groups[group_name]
             group_suffixes = [col.split("__", 1)[1] for col in group_cols]
             if sorted(group_suffixes) != sorted(first_group_suffixes):
                 raise ValueError(
                     f"The local groups in `y` do not have the same column suffixes. "
-                    f"Group '{self.panel_group_names_[0]}': {sorted(first_group_suffixes)}, "
+                    f"Group '{self.groups_[0]}': {sorted(first_group_suffixes)}, "
                     f"Group '{group_name}': {sorted(group_suffixes)}"
                 )
 
@@ -94,16 +94,16 @@ class BasePanelForecaster:
             X_shared_names, _ = inspect_panel(X)
 
             # Validate X groups have same suffixes
-            first_X_group_cols = X_panel_groups[self.panel_group_names_[0]]
+            first_X_group_cols = X_panel_groups[self.groups_[0]]
             first_X_suffixes = [col.split("__", 1)[1] for col in first_X_group_cols]
 
-            for group_name in self.panel_group_names_[1:]:
+            for group_name in self.groups_[1:]:
                 group_cols = X_panel_groups[group_name]
                 group_suffixes = [col.split("__", 1)[1] for col in group_cols]
                 if sorted(group_suffixes) != sorted(first_X_suffixes):
                     raise ValueError(
                         f"The local groups in `X` do not have the same column suffixes. "
-                        f"Group '{self.panel_group_names_[0]}': {sorted(first_X_suffixes)}, "
+                        f"Group '{self.groups_[0]}': {sorted(first_X_suffixes)}, "
                         f"Group '{group_name}': {sorted(group_suffixes)}"
                     )
 
@@ -137,7 +137,7 @@ class BasePanelForecaster:
         target_transformer: dict[str, BaseTransformer | None] = {}
         feature_transformer: dict[str, BaseTransformer | None] = {}
 
-        for group_name in self.panel_group_names_:
+        for group_name in self.groups_:
             # Extract group data using get_group_df
             y_local = get_group_df(df=y, group_name=group_name, schema=self.local_y_schema_)
 
@@ -215,7 +215,7 @@ class BasePanelForecaster:
         self,
         y: pl.DataFrame,
         X_t: dict[str, pl.DataFrame] | None,
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> None:
         """Update stored observed data for panel data.
 
@@ -228,14 +228,14 @@ class BasePanelForecaster:
             Target time series with panel columns (original format).
         X_t : dict[str, pl.DataFrame] or None
             Transformed features per group.
-        panel_group_names : list[str]
+        groups : list[str]
             Panel group names to update.
 
         """
         y_dict: dict[str, pl.DataFrame] = {}
-        for panel_group_name in panel_group_names:
+        for panel_group_name in groups:
             y_dict[panel_group_name] = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
-        self._update_y_X_t_observed_from_dicts(y_dict, X_t, panel_group_names)
+        self._update_y_X_t_observed_from_dicts(y_dict, X_t, groups)
 
     def _pre_fit_panel(
         self,
@@ -271,7 +271,7 @@ class BasePanelForecaster:
         self._set_input_attributes_panel(y, X, y_panel_groups, X_panel_groups)
         y_t, X_t = self._fit_transform_inputs_panel(y, X)
         self._set_transformed_attributes_panel(y_t, X_t)
-        self._update_y_X_t_observed_panel(y, X_t, self.panel_group_names_)
+        self._update_y_X_t_observed_panel(y, X_t, self.groups_)
 
         return y_t, X_t
 
@@ -279,7 +279,7 @@ class BasePanelForecaster:
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None,
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> "BasePanelForecaster":
         """Reset state for panel data.
 
@@ -289,7 +289,7 @@ class BasePanelForecaster:
             Target time series with panel columns.
         X : pl.DataFrame or None
             Feature time series with panel columns.
-        panel_group_names : list[str]
+        groups : list[str]
             Panel group names to reset.
 
         Returns
@@ -299,7 +299,7 @@ class BasePanelForecaster:
         """
         X_t: dict[str, pl.DataFrame | None] = {}
 
-        for panel_group_name in panel_group_names:
+        for panel_group_name in groups:
             # Extract group data using get_group_df
             y_local = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
 
@@ -335,14 +335,14 @@ class BasePanelForecaster:
         if any(v is not None for v in X_t.values()):
             X_t_filtered = {k: v for k, v in X_t.items() if v is not None}
 
-        self._update_y_X_t_observed_panel(y, X_t_filtered, panel_group_names)
+        self._update_y_X_t_observed_panel(y, X_t_filtered, groups)
         return self
 
     def _observe_panel(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None,
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> "BasePanelForecaster":
         """Update state with new observations for panel data.
 
@@ -352,7 +352,7 @@ class BasePanelForecaster:
             New target observations with panel columns.
         X : pl.DataFrame or None
             New feature observations with panel columns.
-        panel_group_names : list[str]
+        groups : list[str]
             Panel group names to update.
 
         Returns
@@ -363,7 +363,7 @@ class BasePanelForecaster:
         X_t_updated: dict[str, pl.DataFrame | None] = {}
         y_updated: dict[str, pl.DataFrame] = {}
 
-        for panel_group_name in panel_group_names:
+        for panel_group_name in groups:
             # Extract group data for new observations only
             y_local = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
 
@@ -409,7 +409,7 @@ class BasePanelForecaster:
         # Update observed state - pass the concatenated y_updated dict
         # The panel mixin's _update_y_X_t_observed_panel expects original format DataFrame
         # but we have pre-extracted dicts here. We need to use the dict-based update.
-        self._update_y_X_t_observed_from_dicts(y_updated, X_t_filtered, panel_group_names)
+        self._update_y_X_t_observed_from_dicts(y_updated, X_t_filtered, groups)
 
         return self
 
@@ -417,7 +417,7 @@ class BasePanelForecaster:
         self,
         y: dict[str, pl.DataFrame],
         X_t: dict[str, pl.DataFrame] | None,
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> None:
         """Update stored observed data from pre-split dicts.
 
@@ -430,7 +430,7 @@ class BasePanelForecaster:
             Target time series per group (already extracted).
         X_t : dict[str, pl.DataFrame] or None
             Transformed features per group.
-        panel_group_names : list[str]
+        groups : list[str]
             Panel group names to update.
 
         """
@@ -441,7 +441,7 @@ class BasePanelForecaster:
             X_t_observed = {}
 
         y_observed: dict[str, pl.DataFrame | None] = {}
-        for panel_group_name in panel_group_names:
+        for panel_group_name in groups:
             y_group = y[panel_group_name]
 
             if self.observation_horizon > len(y_group):

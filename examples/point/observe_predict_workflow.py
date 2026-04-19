@@ -42,7 +42,7 @@ def _(mo):
     - `observe_predict_class_proba(y, X)`: observe + predict class probabilities
     - `observe_predict(y, X)` on a class-proba forecaster: observe + predict hard labels
     - `rewind(y, X)`: reset state to a specific window without refitting
-    - Panel data: selective group observation with `panel_group_names`
+    - Panel data: selective group observation with `groups`
 
     > **Note**: The observe/predict API is **independent of `reduction_strategy`**.
     > Whether you use `"multi-output"`, `"direct"`, or `"dir-rec"`, the observe,
@@ -460,7 +460,7 @@ def _(mo):
     ## 10. Panel Data: Selective Observation
 
     With panel data, you can observe and predict for **specific groups only**
-    using `panel_group_names`. This is useful when different groups receive
+    using `groups`. This is useful when different groups receive
     new data at different times.
     """)
 
@@ -501,13 +501,13 @@ def _(
     # Observe ONLY T7-T12 groups (simulate partial data arrival)
     _fc_panel.observe(
         _y_cal_p.head(4),
-        panel_group_names=["T7", "T11", "T12"],
+        groups=["T7", "T11", "T12"],
     )
 
     # Predict for T7-T12 only (other groups still at old position)
     _y_pred_s1 = _fc_panel.predict(
         forecasting_horizon=_horizon_p,
-        panel_group_names=["T7", "T11", "T12"],
+        groups=["T7", "T11", "T12"],
     )
 
     mo.md(
@@ -534,7 +534,7 @@ def _(mo):
     - **`observe_predict_interval(y, X)`** returns prediction intervals with `coverage_rates`
     - **`observe_predict_class_proba(y, X)`** returns full probability distributions over classes
     - **`rewind(y, X)`** resets state to a specific window without refitting (useful for backtesting)
-    - **Panel selective observation**: Use `panel_group_names` to observe/predict subsets of groups independently
+    - **Panel selective observation**: Use `groups` to observe/predict subsets of groups independently
     - Observations update transformer state (buffers) but **do not refit the model**
 
     ## Next Steps

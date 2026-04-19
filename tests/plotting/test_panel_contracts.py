@@ -19,7 +19,6 @@ from yohou.plotting import (
     plot_distribution,
     plot_lag_scatter,
     plot_missing_data,
-    plot_model_comparison_bar,
     plot_outliers,
     plot_partial_autocorrelation,
     plot_phase,
@@ -414,13 +413,13 @@ _TITLE_CASES: list[tuple[str, object, dict, str]] = [
     (
         "seasonality",
         plot_seasonality,
-        {"df": _make_3year_daily(), "columns": "y__a", "panel_group_names": None},
+        {"df": _make_3year_daily(), "columns": "y__a", "groups": None},
         "Seasonal Pattern",
     ),
     (
         "subseasonality",
         plot_subseasonality,
-        {"df": _make_3year_daily(), "columns": "y__a", "panel_group_names": None},
+        {"df": _make_3year_daily(), "columns": "y__a", "groups": None},
         "Seasonal Subseries",
     ),
     ("seasonal_heatmap", plot_seasonal_heatmap, {"df": _make_hourly_panel()}, "Seasonal Heatmap"),
@@ -439,12 +438,6 @@ _TITLE_CASES: list[tuple[str, object, dict, str]] = [
     ),
     ("correlation_heatmap", plot_correlation_heatmap, {"df": _make_short_2col()}, "Correlation Heatmap"),
     ("scatter_matrix", plot_scatter_matrix, {"df": _make_short_2col()}, "Scatter Matrix"),
-    (
-        "model_comparison_bar",
-        plot_model_comparison_bar,
-        {"results": {"A": {"MAE": 0.5}, "B": {"MAE": 0.3}}},
-        "Model Comparison",
-    ),
     ("time_weight", plot_time_weight, {"df": _make_weight_df()}, "Time Weights"),
     ("phase", plot_phase, {"df": _make_simple()}, "Phase Spectrum"),
     ("spectrum", plot_spectrum, {"df": _make_simple()}, "Periodogram"),
@@ -652,9 +645,9 @@ class TestSeasonalityLegend:
         """Higher opacity_power makes intermediate cycles ramp to opaque faster."""
         df = _make_3year_daily()
         # Linear ramp
-        fig_linear = plot_seasonality(df, columns="y__a", panel_group_names=None, opacity_power=1.0)
+        fig_linear = plot_seasonality(df, columns="y__a", groups=None, opacity_power=1.0)
         # Fast ramp - cycles get opaque sooner
-        fig_fast = plot_seasonality(df, columns="y__a", panel_group_names=None, opacity_power=3.0)
+        fig_fast = plot_seasonality(df, columns="y__a", groups=None, opacity_power=3.0)
         op_linear = trace_opacities(fig_linear, "y__a")
         op_fast = trace_opacities(fig_fast, "y__a")
         assert op_linear and op_fast, "Expected opacity values"

@@ -78,7 +78,7 @@ def plot_forecast(
     columns: str | list[str] | None = None,
     coverage_rates: list[float] | None = None,
     n_history: int | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -131,7 +131,7 @@ def plot_forecast(
         Looks for ``{col}_lower_{rate}`` / ``{col}_upper_{rate}`` in y_pred.
     n_history : int | None, default=None
         Number of historical observations to show from y_train. If None, shows all.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot. If None and panel data is detected,
         plots all groups. Creates faceted subplots.
     facet_by : Literal["group", "member"] | None, default="member"
@@ -216,7 +216,7 @@ def plot_forecast(
     See Also
     --------
     [`plot_residuals`][yohou.plotting.plot_residuals] : Plot residual diagnostics.
-    [`plot_model_comparison_bar`][yohou.plotting.plot_model_comparison_bar] : Grouped bar chart for scorer comparison.
+    [`plot_score_per_horizon`][yohou.plotting.plot_score_per_horizon] : Score by horizon step with summary mode.
     """
     # Validate inputs
     validate_plotting_data(y_test)
@@ -251,7 +251,7 @@ def plot_forecast(
             y_train=y_train,
             coverage_rates=coverage_rates,
             n_history=n_history,
-            panel_group_names=panel_group_names,
+            groups=groups,
             facet_by=facet_by,
             facet_n_cols=facet_n_cols,
             color_palette=color_palette,
@@ -1353,7 +1353,7 @@ def _plot_forecast_panel_typed(
     prediction_mode: str,
     y_train: pl.DataFrame | None,
     n_history: int | None,
-    panel_group_names: list[str] | None,
+    groups: list[str] | None,
     facet_n_cols: int,
     color_palette: list[str] | None,
     title: str | None,
@@ -1378,7 +1378,7 @@ def _plot_forecast_panel_typed(
         Historical training data.
     n_history : int or None
         Number of training rows to show.
-    panel_group_names : list of str or None
+    groups : list of str or None
         Panel group prefixes to include.
     facet_n_cols : int
         Columns in facet grid.
@@ -1428,9 +1428,9 @@ def _plot_forecast_panel_typed(
         if sep:
             suffix_by_prefix.setdefault(prefix, set()).add(member)
 
-    # Apply panel_group_names filter (filters by prefix)
-    if panel_group_names is not None:
-        suffix_by_prefix = {k: v for k, v in suffix_by_prefix.items() if k in panel_group_names}
+    # Apply groups filter (filters by prefix)
+    if groups is not None:
+        suffix_by_prefix = {k: v for k, v in suffix_by_prefix.items() if k in groups}
 
     all_suffixes: set[str] = set()
     for members in suffix_by_prefix.values():
@@ -1438,7 +1438,7 @@ def _plot_forecast_panel_typed(
     suffixes_list = sorted(all_suffixes)
 
     if not suffixes_list:
-        msg = f"No panel members found for groups: {panel_group_names}"
+        msg = f"No panel members found for groups: {groups}"
         raise ValueError(msg)
 
     # Create subplots
@@ -1588,7 +1588,7 @@ def _plot_forecast_panel(
     y_train: pl.DataFrame | None,
     coverage_rates: list[float] | None,
     n_history: int | None,
-    panel_group_names: list[str] | None,
+    groups: list[str] | None,
     facet_by: Literal["group", "member"] | None,
     facet_n_cols: int,
     color_palette: list[str] | None,
@@ -1628,7 +1628,7 @@ def _plot_forecast_panel(
         Coverage rates for intervals.
     n_history : int | None
         Number of history points to show.
-    panel_group_names : list[str] | None
+    groups : list[str] | None
         Groups to plot.
     facet_by : Literal["group", "member"] | None
         Controls subplot organisation.
@@ -1668,7 +1668,7 @@ def _plot_forecast_panel(
             prediction_mode=prediction_mode,
             y_train=y_train,
             n_history=n_history,
-            panel_group_names=panel_group_names,
+            groups=groups,
             facet_n_cols=facet_n_cols,
             color_palette=color_palette,
             title=title,
@@ -1688,18 +1688,18 @@ def _plot_forecast_panel(
     _, test_panels = inspect_panel(y_test)
 
     # Group panel columns by group prefix
-    groups: dict[str, list[str]] = {}
+    group_map: dict[str, list[str]] = {}
     for prefix, cols in test_panels.items():
-        if panel_group_names is None or prefix in panel_group_names:
-            groups.setdefault(prefix, []).extend(cols)
+        if groups is None or prefix in groups:
+            group_map.setdefault(prefix, []).extend(cols)
 
-    if not groups:
-        msg = f"No panel columns found for groups: {panel_group_names}"
+    if not group_map:
+        msg = f"No panel columns found for groups: {groups}"
         raise ValueError(msg)
 
-    all_flat_cols = [c for cols in groups.values() for c in cols]
+    all_flat_cols = [c for cols in group_map.values() for c in cols]
     _, all_members = _group_panel_columns(all_flat_cols)
-    all_group_names = list(groups.keys())
+    all_group_names = list(group_map.keys())
 
     # Build faceting structure
     # facets: dict from subplot label -> list of columns in that subplot
@@ -1709,7 +1709,7 @@ def _plot_forecast_panel(
         facets: dict[str, list[str]] = {}
         for member in all_members:
             cols_for_member = []
-            for gcols in groups.values():
+            for gcols in group_map.values():
                 col = next((c for c in gcols if _member_name(c) == member), None)
                 if col:
                     cols_for_member.append(col)
@@ -1745,7 +1745,7 @@ def _plot_forecast_panel(
 
     else:
         # facet_by == "group" (default)
-        facets = groups
+        facets = group_map
         sub_names = all_members
         sub_palette = resolve_color_palette(_model_pal, len(sub_names))
 
@@ -1912,7 +1912,7 @@ def plot_time_weight(
     df: pl.DataFrame,
     *,
     weight_column: str = "time_weight",
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -1942,7 +1942,7 @@ def plot_time_weight(
     weight_column : str, default="time_weight"
         Name of the column containing weight values. For panel data,
         this is the base name (without the group prefix).
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         List of panel group prefixes to plot. If None, plots all groups.
         Creates subplots for each group.
     facet_by : Literal["group", "member"] | None, default="member"
@@ -2041,11 +2041,11 @@ def plot_time_weight(
     # If we found panel weight columns
     if weight_panel_cols:
         # Filter to requested groups if specified
-        if panel_group_names is not None:
-            weight_panel_cols = {k: v for k, v in weight_panel_cols.items() if k in panel_group_names}
+        if groups is not None:
+            weight_panel_cols = {k: v for k, v in weight_panel_cols.items() if k in groups}
 
         if not weight_panel_cols:
-            msg = f"No weight columns found for panel groups: {panel_group_names}"
+            msg = f"No weight columns found for panel groups: {groups}"
             raise ValueError(msg)
 
         # Collect unique member names for consistent colouring
@@ -2654,7 +2654,7 @@ def plot_decomposition(
     *,
     method: Literal["stl", "mstl", "classical"] | None = None,
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     show_original: bool = True,
     period: int | str = "auto",
     periods: list[int] | str | None = None,
@@ -2710,7 +2710,7 @@ def plot_decomposition(
         ``None`` means pre-computed dict mode.
     columns : str | list[str] | None
         Value columns to plot.  ``None`` uses all numeric non-time columns.
-    panel_group_names : list[str] | None
+    groups : list[str] | None
         Panel group prefixes to include.  For panel data, returns one
         figure per member with groups overlaid by colour.
     show_original : bool
@@ -2937,17 +2937,17 @@ def plot_decomposition(
     is_panel = bool(panel_groups)
 
     # Auto-enter panel mode when panel columns are detected
-    if is_panel and panel_group_names is None and columns is None:
-        panel_group_names = []
+    if is_panel and groups is None and columns is None:
+        groups = []
 
-    if is_panel and panel_group_names is not None:
+    if is_panel and groups is not None:
         return _plot_decomposition_panel(
             y=y,
             components=components,
             value_cols=value_cols,
             decomp_mode=decomp_mode,
             show_original=show_original,
-            panel_group_names=panel_group_names,
+            groups=groups,
             color_palette=color_palette,
             title=title,
             x_label=x_label,
@@ -3074,7 +3074,7 @@ def _plot_decomposition_panel(
     value_cols: list[str],
     decomp_mode: bool,
     show_original: bool,
-    panel_group_names: list[str],
+    groups: list[str],
     color_palette: list[str] | None,
     title: str | None,
     x_label: str | None,
@@ -3092,8 +3092,8 @@ def _plot_decomposition_panel(
     Returns one figure per member with groups overlaid by colour.
     When there is only one member, returns a single ``go.Figure``.
     """
-    panel_cols = resolve_panel_columns(y, panel_group_names or None, None)
-    groups, all_members = _group_panel_columns(panel_cols)
+    panel_cols = resolve_panel_columns(y, groups or None, None)
+    group_map, all_members = _group_panel_columns(panel_cols)
 
     # Component row labels
     comp_labels: list[str] = []
@@ -3126,7 +3126,7 @@ def _plot_decomposition_panel(
             _legend_tracker: LegendTracker = legend_tracker,
         ) -> None:
             """Add component traces for a single member to the figure."""
-            for gname, group_cols in groups.items():
+            for gname, group_cols in group_map.items():
                 col_name = next(
                     (c for c in group_cols if _member_name(c) == _member),
                     None,

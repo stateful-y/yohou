@@ -99,9 +99,9 @@ class _BaseTrendForecaster(BasePointForecaster):
         y_t, X_t = super()._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
 
         # Panel data
-        if self.panel_group_names_ is not None:
+        if self.groups_ is not None:
             assert isinstance(y_t, dict)
-            self._first_observed_time = {group: y_t[group]["time"][0] for group in self.panel_group_names_}
+            self._first_observed_time = {group: y_t[group]["time"][0] for group in self.groups_}
 
         # Non-panel data
         else:
@@ -114,7 +114,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "_BaseTrendForecaster":
         """Rewinds the forecaster by rewinding the observation horizon.
 
@@ -124,7 +124,7 @@ class _BaseTrendForecaster(BasePointForecaster):
             Target time series.
         X : pl.DataFrame or None
             Feature time series.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data:
             - If None: predict for all groups
             - If list of str: predict only for the specified panel groups
@@ -135,10 +135,10 @@ class _BaseTrendForecaster(BasePointForecaster):
         self
 
         """
-        super().rewind(y=y, X=X, panel_group_names=panel_group_names)
+        super().rewind(y=y, X=X, groups=groups)
 
-        if panel_group_names is None:
-            panel_group_names = self.panel_group_names_
+        if groups is None:
+            groups = self.groups_
 
         target_observation_horizon = 0
         if self.target_transformer_ is not None:
@@ -155,8 +155,8 @@ class _BaseTrendForecaster(BasePointForecaster):
                 target_observation_horizon = self.target_transformer_.observation_horizon
 
         # Panel data
-        if panel_group_names is not None:
-            first_observed_time = dict.fromkeys(panel_group_names, y["time"][target_observation_horizon])
+        if groups is not None:
+            first_observed_time = dict.fromkeys(groups, y["time"][target_observation_horizon])
             self._first_observed_time |= first_observed_time
 
         # Non-panel data
@@ -260,7 +260,7 @@ class _BaseTrendForecaster(BasePointForecaster):
 
         """
         # Non-panel data
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             X_time_indices, y_array = self._prepare_data(y_t)
             self.estimator_ = clone(estimator)
             self.estimator_.fit(X_time_indices, y_array)
@@ -268,7 +268,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         # Panel data: pooled estimator (global strategy)
         else:
             X_time_indices, y_array = [], []
-            for panel_group_name in self.panel_group_names_:
+            for panel_group_name in self.groups_:
                 X_time_indices_group, y_array_group = self._prepare_data(y_t, panel_group_name=panel_group_name)
                 X_time_indices.append(X_time_indices_group)
                 y_array.append(y_array_group)
@@ -282,14 +282,14 @@ class _BaseTrendForecaster(BasePointForecaster):
 
     def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **params,
     ) -> pl.DataFrame:
         """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
 
         **params : dict
@@ -304,7 +304,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         y_t_columns = list(self.local_y_t_schema_.keys())
 
         # Non-panel data
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             X_time_indices_pred = self._get_time_indices(self.fit_forecasting_horizon_).to_numpy().reshape(-1, 1)
             y_pred_array = self.estimator_.predict(X_time_indices_pred)
             y_pred_array = y_pred_array.reshape(-1, len(y_t_columns))
@@ -315,7 +315,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         # Panel data
         else:
             y_pred = []
-            for panel_group_name in panel_group_names:
+            for panel_group_name in groups:
                 X_time_indices_pred = (
                     self
                     ._get_time_indices(self.fit_forecasting_horizon_, panel_group_name=panel_group_name)

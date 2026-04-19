@@ -110,7 +110,7 @@ class LocalPanelForecaster(BaseForecaster):
     ----------
     forecasters_ : dict of str to BaseForecaster
         Mapping from group name to fitted forecaster clone.
-    panel_group_names_ : list of str
+    groups_ : list of str
         Names of panel groups discovered at fit time.
     local_y_schema_ : dict of str to DataType
         Schema of unprefixed target columns (shared across all groups).
@@ -154,7 +154,7 @@ class LocalPanelForecaster(BaseForecaster):
     - Raises ``ValueError`` if the input data is not panel data (no ``__``
       separator detected).
     - Each group clone is completely independent (no parameter sharing).
-    - ``panel_group_names`` argument on ``predict``, ``observe``, and
+    - ``groups`` argument on ``predict``, ``observe``, and
       ``rewind`` allows operating on a subset of groups.
 
     """
@@ -245,11 +245,11 @@ class LocalPanelForecaster(BaseForecaster):
                 "Got only global columns. Use the wrapped forecaster directly for non-panel data."
             )
 
-        panel_group_names_: list[str] = sorted(y_panel_groups.keys())
-        self.panel_group_names_ = panel_group_names_  # ty: ignore[invalid-assignment]
+        groups_: list[str] = sorted(y_panel_groups.keys())
+        self.groups_ = groups_  # ty: ignore[invalid-assignment]
 
         # Derive local schemas (unprefixed column names + dtypes)
-        first_group = panel_group_names_[0]
+        first_group = groups_[0]
         self.local_y_schema_ = {col.split("__", 1)[1]: y[col].dtype for col in y_panel_groups[first_group]}
 
         # Handle X panel structure
@@ -270,7 +270,7 @@ class LocalPanelForecaster(BaseForecaster):
 
         # Extract per-group DataFrames and fit in parallel
         group_data = []
-        for group_name in panel_group_names_:
+        for group_name in groups_:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
             X_group = (
                 get_group_df(X, group_name, schema=self.local_X_schema_)
@@ -299,7 +299,7 @@ class LocalPanelForecaster(BaseForecaster):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Predict from each per-group forecaster and reassemble.
@@ -310,7 +310,7 @@ class LocalPanelForecaster(BaseForecaster):
             Exogenous features (panel format).
         forecasting_horizon : int or None, default=None
             Number of steps ahead.  If ``None``, uses the value from ``fit``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Subset of groups to predict.  ``None`` predicts all groups.
         **params : dict
             Metadata routing parameters.
@@ -325,7 +325,7 @@ class LocalPanelForecaster(BaseForecaster):
         _raise_for_params(params, self, "predict")
         routed_params = process_routing(self, "predict", **params)
 
-        groups: list[str] = panel_group_names if panel_group_names is not None else (self.panel_group_names_ or [])
+        groups: list[str] = groups if groups is not None else (self.groups_ or [])
         horizon = forecasting_horizon or self.fit_forecasting_horizon_
 
         return self._predict_groups(groups, X, horizon, routed_params, method="predict")
@@ -336,7 +336,7 @@ class LocalPanelForecaster(BaseForecaster):
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Predict intervals from each per-group forecaster and reassemble.
@@ -349,7 +349,7 @@ class LocalPanelForecaster(BaseForecaster):
             Number of steps ahead.  If ``None``, uses the value from ``fit``.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Subset of groups to predict.  ``None`` predicts all groups.
         **params : dict
             Metadata routing parameters.
@@ -364,7 +364,7 @@ class LocalPanelForecaster(BaseForecaster):
         _raise_for_params(params, self, "predict_interval")
         routed_params = process_routing(self, "predict_interval", **params)
 
-        groups: list[str] = panel_group_names if panel_group_names is not None else (self.panel_group_names_ or [])
+        groups: list[str] = groups if groups is not None else (self.groups_ or [])
         horizon = forecasting_horizon or self.fit_forecasting_horizon_
 
         return self._predict_groups(
@@ -375,7 +375,7 @@ class LocalPanelForecaster(BaseForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> LocalPanelForecaster:
         """Observe new data per group without refitting.
@@ -386,7 +386,7 @@ class LocalPanelForecaster(BaseForecaster):
             New panel target observations.
         X : pl.DataFrame or None, default=None
             New panel exogenous observations.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Subset of groups to observe.  ``None`` observes all groups.
         **params : dict
             Metadata routing parameters.
@@ -398,7 +398,7 @@ class LocalPanelForecaster(BaseForecaster):
         """
         check_is_fitted(self, ["forecasters_"])
 
-        groups: list[str] = panel_group_names if panel_group_names is not None else (self.panel_group_names_ or [])
+        groups: list[str] = groups if groups is not None else (self.groups_ or [])
 
         for group_name in groups:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
@@ -415,7 +415,7 @@ class LocalPanelForecaster(BaseForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> LocalPanelForecaster:
         """Rewind each per-group forecaster's observation window.
@@ -426,7 +426,7 @@ class LocalPanelForecaster(BaseForecaster):
             Panel target data to rewind to.
         X : pl.DataFrame or None, default=None
             Panel exogenous data to rewind to.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Subset of groups to rewind.  ``None`` rewinds all groups.
         **params : dict
             Metadata routing parameters.
@@ -438,7 +438,7 @@ class LocalPanelForecaster(BaseForecaster):
         """
         check_is_fitted(self, ["forecasters_"])
 
-        groups: list[str] = panel_group_names if panel_group_names is not None else (self.panel_group_names_ or [])
+        groups: list[str] = groups if groups is not None else (self.groups_ or [])
 
         for group_name in groups:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
@@ -456,7 +456,7 @@ class LocalPanelForecaster(BaseForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data then predict for each group.
@@ -467,7 +467,7 @@ class LocalPanelForecaster(BaseForecaster):
             New panel target observations.
         X : pl.DataFrame or None, default=None
             Panel exogenous features.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Subset of groups.  ``None`` means all groups.
         **params : dict
             Metadata routing parameters.
@@ -478,8 +478,8 @@ class LocalPanelForecaster(BaseForecaster):
             Predictions with prefixed panel columns.
 
         """
-        self.observe(y=y, X=X, panel_group_names=panel_group_names, **params)
-        return self.predict(X=X, panel_group_names=panel_group_names, **params)
+        self.observe(y=y, X=X, groups=groups, **params)
+        return self.predict(X=X, groups=groups, **params)
 
     @available_if(_forecaster_has("predict_interval"))
     def observe_predict_interval(
@@ -487,7 +487,7 @@ class LocalPanelForecaster(BaseForecaster):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data then predict intervals for each group.
@@ -500,7 +500,7 @@ class LocalPanelForecaster(BaseForecaster):
             Panel exogenous features.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Subset of groups.  ``None`` means all groups.
         **params : dict
             Metadata routing parameters.
@@ -511,11 +511,11 @@ class LocalPanelForecaster(BaseForecaster):
             Interval predictions with prefixed panel columns.
 
         """
-        self.observe(y=y, X=X, panel_group_names=panel_group_names, **params)
+        self.observe(y=y, X=X, groups=groups, **params)
         return self.predict_interval(
             X=X,
             coverage_rates=coverage_rates,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **params,
         )
 

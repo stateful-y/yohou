@@ -122,17 +122,21 @@ class TestEmpiricalCoverage:
         assert score == 0.0
 
     def test_empirical_coverage_per_rate_via_aggregation(self, multi_rate_predictions):
-        """Test aggregation without "coveragewise" returns dict with rate keys."""
+        """Test aggregation without 'coveragewise' returns DataFrame with coverage_rate."""
         y_true, y_pred = multi_rate_predictions
-        # Exclude "coveragewise" to get per-rate results
-        coverage = EmpiricalCoverage(aggregation_method=["timewise", "componentwise", "groupwise"])
+        # Exclude "coveragewise" to get per-rate scores
+        coverage = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
         coverage.fit(y_true)
         scores = coverage.score(y_true, y_pred)
 
-        assert isinstance(scores, dict)
-        assert set(scores.keys()) == {0.9, 0.95}
-        assert all(isinstance(v, float) for v in scores.values())
-        assert all(0 <= v <= 1 for v in scores.values())
+        assert isinstance(scores, pl.DataFrame)
+        assert "coverage_rate" in scores.columns
+        value_cols = [c for c in scores.columns if c != "coverage_rate"]
+        assert len(value_cols) == 1
+        rates = set(scores["coverage_rate"].to_list())
+        assert rates == {0.9, 0.95}
+        for val in scores[value_cols[0]].to_list():
+            assert 0 <= val <= 1
 
     def test_empirical_coverage_per_step(self, perfect_interval_predictions):
         """Test aggregation_method=['componentwise', 'coveragewise'] returns DataFrame with time column."""
@@ -148,7 +152,7 @@ class TestEmpiricalCoverage:
         assert df["time"].dtype == pl.Datetime
 
     def test_empirical_coverage_per_step_and_per_rate(self, multi_rate_predictions):
-        """Test aggregation_method=['componentwise'] returns DataFrame with rate columns."""
+        """Test aggregation_method=['componentwise'] returns DataFrame with coverage_rate rows."""
         y_true, y_pred = multi_rate_predictions
         coverage = EmpiricalCoverage(aggregation_method=["componentwise"])
         coverage.fit(y_true)
@@ -156,10 +160,9 @@ class TestEmpiricalCoverage:
 
         assert isinstance(scores, pl.DataFrame)
         assert "time" in scores.columns
-        # Without coveragewise aggregation, returns one column per rate (BaseIntervalScorer logic)
-        # Columns will be named rate_0.9, rate_0.95 (or similar, depending on BaseIntervalScorer)
-        assert any("rate_0.9" in col for col in scores.columns)
-        assert any("rate_0.95" in col for col in scores.columns)
+        assert "coverage_rate" in scores.columns
+        rates = set(scores["coverage_rate"].to_list())
+        assert rates == {0.9, 0.95}
 
     def test_empirical_coverage_sklearn_tags(self):
         """Test scorer has correct sklearn tags."""
@@ -205,15 +208,21 @@ class TestMeanIntervalWidth:
         assert score == 4.0  # abs(8 - 12) = 4
 
     def test_mean_interval_width_per_rate_via_aggregation(self, multi_rate_predictions):
-        """Test aggregation without "coveragewise" returns dict with rate keys."""
+        """Test aggregation without 'coveragewise' returns DataFrame with coverage_rate."""
         y_true, y_pred = multi_rate_predictions
-        width = MeanIntervalWidth(aggregation_method=["timewise", "componentwise", "groupwise"])
+        width = MeanIntervalWidth(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
         width.fit(y_true)
         scores = width.score(y_true, y_pred)
 
-        assert isinstance(scores, dict)
-        assert set(scores.keys()) == {0.9, 0.95}
-        assert scores[0.95] > scores[0.9]  # Wider interval at higher coverage
+        assert isinstance(scores, pl.DataFrame)
+        assert "coverage_rate" in scores.columns
+        value_cols = [c for c in scores.columns if c != "coverage_rate"]
+        assert len(value_cols) == 1
+        rates = set(scores["coverage_rate"].to_list())
+        assert rates == {0.9, 0.95}
+        score_09 = scores.filter(pl.col("coverage_rate") == 0.9)[value_cols[0]][0]
+        score_095 = scores.filter(pl.col("coverage_rate") == 0.95)[value_cols[0]][0]
+        assert score_095 > score_09  # Wider interval at higher coverage
 
     def test_mean_interval_width_per_step(self):
         """Test aggregation_method=['componentwise', 'coveragewise'] returns DataFrame."""

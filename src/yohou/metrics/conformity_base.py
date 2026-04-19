@@ -42,11 +42,11 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         return tags
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, y_train: pl.DataFrame, **params) -> "BaseConformityScorer":
+    def fit(self, y_train: pl.DataFrame, *, forecaster=None, **params) -> "BaseConformityScorer":
         """Fit the scorer on training data if needed."""
         # Conformity scorers typically don't aggregate results in the same way,
         # so they don't use aggregation_method, but they must implement fit.
-        return super().fit(y_train, **params)
+        return super().fit(y_train, forecaster=forecaster, **params)
 
     @staticmethod
     def _compute_assymetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> tuple[float, float]:

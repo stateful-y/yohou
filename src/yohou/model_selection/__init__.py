@@ -8,6 +8,7 @@ from .split import (
     BaseSplitter,
     ExpandingWindowSplitter,
     SlidingWindowSplitter,
+    check_cv_alignment,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "GridSearchCV",
     "RandomizedSearchCV",
     "SlidingWindowSplitter",
+    "check_cv_alignment",
 ]

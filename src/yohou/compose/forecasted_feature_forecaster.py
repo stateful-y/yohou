@@ -94,7 +94,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Forecasting horizon used during fit.
     interval_ : timedelta
         Time interval between observations.
-    panel_group_names_ : list of str or None
+    groups_ : list of str or None
         Panel group names if fitted on panel data.
 
     Examples
@@ -362,7 +362,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # Store standard fitted attributes
         self.fit_forecasting_horizon_ = forecasting_horizon
         self.interval_ = self.target_forecaster_.interval_
-        self.panel_group_names_ = self.target_forecaster_.panel_group_names_
+        self.groups_ = self.target_forecaster_.groups_
         if hasattr(self.target_forecaster_, "local_y_schema_"):
             self.local_y_schema_ = self.target_forecaster_.local_y_schema_
         if hasattr(self.target_forecaster_, "local_X_schema_"):
@@ -387,7 +387,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self,
         forecasting_horizon: StrictInt | None = None,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -404,7 +404,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Known-ahead exogenous features (e.g., holidays, promotions) that don't
             need forecasting. These will be merged with the forecasted features.
             Must have "time" column matching the forecast period.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data prediction.
         predict_transformed : bool, default=False
             If True, return predictions in the transformed space without
@@ -432,7 +432,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # Forecast X using feature forecaster
         X_pred = self.feature_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **routed_params.feature_forecaster.predict,
         )
 
@@ -454,7 +454,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         return self.target_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
             X=X_for_target,
-            panel_group_names=panel_group_names,
+            groups=groups,
             predict_transformed=predict_transformed,
             **routed_params.target_forecaster.predict,
         )
@@ -465,7 +465,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         forecasting_horizon: StrictInt | None = None,
         X: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate interval forecasts.
@@ -483,7 +483,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Must have "time" column matching the forecast period.
         coverage_rates : list of float, optional
             Coverage levels for prediction intervals (e.g., [0.9, 0.95]).
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data prediction.
         **params : dict
             Metadata routing parameters.
@@ -508,7 +508,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # Forecast X using feature forecaster (always point predictions)
         X_pred = self.feature_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **routed_params.feature_forecaster.predict,
         )
 
@@ -531,7 +531,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             forecasting_horizon=forecasting_horizon,
             X=X_for_target,
             coverage_rates=coverage_rates,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **routed_params.target_forecaster.predict_interval,
         )
 
@@ -539,7 +539,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> ForecastedFeatureForecaster:
         """Observe new data for both forecasters.
 
@@ -549,7 +549,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             New target observations with "time" column.
         X : pl.DataFrame, optional
             New exogenous feature observations with "time" column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
 
         Returns
@@ -565,14 +565,14 @@ class ForecastedFeatureForecaster(BaseForecaster):
             self.feature_forecaster_.observe(
                 y=X,
                 X=None,
-                panel_group_names=panel_group_names,
+                groups=groups,
             )
 
         # Observe new y and X for target forecaster
         self.target_forecaster_.observe(
             y=y,
             X=X,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         return self
@@ -581,7 +581,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> ForecastedFeatureForecaster:
         """Rewind both forecasters to last observation_horizon rows.
 
@@ -591,7 +591,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Target data to rewind to (last observation_horizon rows kept).
         X : pl.DataFrame, optional
             Exogenous features to rewind to.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
 
         Returns
@@ -607,14 +607,14 @@ class ForecastedFeatureForecaster(BaseForecaster):
             self.feature_forecaster_.rewind(
                 y=X,
                 X=None,
-                panel_group_names=panel_group_names,
+                groups=groups,
             )
 
         # Rewind target forecaster
         self.target_forecaster_.rewind(
             y=y,
             X=X,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         return self
@@ -624,7 +624,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data and generate point forecasts.
@@ -635,7 +635,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             New target observations with "time" column.
         X : pl.DataFrame, optional
             New exogenous feature observations with "time" column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         **params : dict
             Metadata routing parameters.
@@ -646,8 +646,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Point predictions with "observed_time", "time", and target columns.
 
         """
-        self.observe(y=y, X=X, panel_group_names=panel_group_names)
-        return self.predict(panel_group_names=panel_group_names, **params)
+        self.observe(y=y, X=X, groups=groups)
+        return self.predict(groups=groups, **params)
 
     @available_if(_target_forecaster_has("predict_interval"))
     def observe_predict_interval(
@@ -655,7 +655,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data and generate interval forecasts.
@@ -668,7 +668,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             New exogenous feature observations with "time" column.
         coverage_rates : list of float, optional
             Coverage levels for prediction intervals.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         **params : dict
             Metadata routing parameters.
@@ -679,10 +679,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Interval predictions with lower/upper bounds.
 
         """
-        self.observe(y=y, X=X, panel_group_names=panel_group_names)
+        self.observe(y=y, X=X, groups=groups)
         return self.predict_interval(
             coverage_rates=coverage_rates,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **params,
         )
 
@@ -691,7 +691,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self,
         forecasting_horizon: StrictInt | None = None,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate class-probability forecasts.
@@ -706,7 +706,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         X : pl.DataFrame, optional
             Known-ahead exogenous features that don't need forecasting.
             Must have "time" column matching the forecast period.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data prediction.
         **params : dict
             Metadata routing parameters.
@@ -728,7 +728,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
 
         X_pred = self.feature_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **routed_params.feature_forecaster.predict,
         )
 
@@ -746,7 +746,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         return self.target_forecaster_.predict_class_proba(
             forecasting_horizon=forecasting_horizon,
             X=X_for_target,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **routed_params.target_forecaster.predict_class_proba,
         )
 
@@ -755,7 +755,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data and generate class-probability forecasts.
@@ -766,7 +766,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             New target observations with "time" column.
         X : pl.DataFrame, optional
             New exogenous feature observations with "time" column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.
         **params : dict
             Metadata routing parameters.
@@ -777,9 +777,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Class-probability predictions.
 
         """
-        self.observe(y=y, X=X, panel_group_names=panel_group_names)
+        self.observe(y=y, X=X, groups=groups)
         return self.predict_class_proba(
-            panel_group_names=panel_group_names,
+            groups=groups,
             **params,
         )
 

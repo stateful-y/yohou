@@ -26,10 +26,12 @@ from yohou.plotting.diagnostics import (
 )
 from yohou.plotting.evaluation import (
     plot_calibration,
-    plot_model_comparison_bar,
+    plot_group_scores,
     plot_residuals,
     plot_score_distribution,
+    plot_score_heatmap,
     plot_score_per_horizon,
+    plot_score_per_vintage,
     plot_score_time_series,
 )
 from yohou.plotting.exploration import (
@@ -69,9 +71,9 @@ __all__ = [
     "plot_decomposition",
     "plot_distribution",
     "plot_forecast",
+    "plot_group_scores",
     "plot_lag_scatter",
     "plot_missing_data",
-    "plot_model_comparison_bar",
     "plot_outliers",
     "plot_partial_autocorrelation",
     "plot_phase",
@@ -80,7 +82,9 @@ __all__ = [
     "plot_rolling_statistics",
     "plot_scatter_matrix",
     "plot_score_distribution",
+    "plot_score_heatmap",
     "plot_score_per_horizon",
+    "plot_score_per_vintage",
     "plot_score_time_series",
     "plot_seasonal_heatmap",
     "plot_seasonality",

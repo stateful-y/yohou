@@ -137,7 +137,7 @@ def _(
 def _(mo):
     mo.md(r"""
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) renders per-group prediction intervals. Use
-    `panel_group_names` to select which groups to display.
+    `groups` to select which groups to display.
     """)
 
 
@@ -150,7 +150,7 @@ def _(coverage_rates, plot_forecast, y_pred_conf, y_test, y_train):
         y_train=y_train,
         n_history=48,
         coverage_rates=coverage_rates,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="Split Conformal: Panel (90% Interval)",
     )
 
@@ -191,7 +191,7 @@ def _(coverage_rates, plot_forecast, y_pred_interval, y_test, y_train):
         y_train=y_train,
         n_history=48,
         coverage_rates=coverage_rates,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="Interval Reduction: Panel (90% Interval)",
     )
 
@@ -226,10 +226,10 @@ def _(
 
     _rows = []
     for _state in sorted(groups.keys()):
-        _cov_c = float(_cov_scorer.score(y_test, y_pred_conf, panel_group_names=[_state]))
-        _cov_i = float(_cov_scorer.score(y_test, y_pred_interval, panel_group_names=[_state]))
-        _w_c = float(_width_scorer.score(y_test, y_pred_conf, panel_group_names=[_state]))
-        _w_i = float(_width_scorer.score(y_test, y_pred_interval, panel_group_names=[_state]))
+        _cov_c = float(_cov_scorer.score(y_test, y_pred_conf, groups=[_state]))
+        _cov_i = float(_cov_scorer.score(y_test, y_pred_interval, groups=[_state]))
+        _w_c = float(_width_scorer.score(y_test, y_pred_conf, groups=[_state]))
+        _w_i = float(_width_scorer.score(y_test, y_pred_interval, groups=[_state]))
 
         _rows.append({
             "Station": _state,

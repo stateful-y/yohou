@@ -73,7 +73,7 @@ def panel_with_nulls():
 def panel_two_groups_df():
     """Create a panel DataFrame with two group prefixes (temp and wind).
 
-    Used for testing panel_group_names filtering.
+    Used for testing groups filtering.
     """
     dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
     n = len(dates)

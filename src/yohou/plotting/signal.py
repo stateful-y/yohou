@@ -34,7 +34,7 @@ def plot_phase(
     columns: str | list[str] | None = None,
     unwrap: bool = True,
     angle_unit: Literal["degree", "radian"] = "radian",
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -62,7 +62,7 @@ def plot_phase(
         Unwrap phase angles to avoid discontinuities at :math:`\\pm\\pi`.
     angle_unit : Literal["degree", "radian"], default="radian"
         Unit for the phase angle axis.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -121,11 +121,11 @@ def plot_phase(
     validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
-        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    if groups is not None:
+        _panel_cols = resolve_panel_columns(df, groups, columns)
         _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
         _legend_tracker = LegendTracker()
 
@@ -159,7 +159,7 @@ def plot_phase(
         fig = facet_figure(
             df,
             _render_phase,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_n_cols=facet_n_cols,
             facet_by=effective_facet_by,
@@ -232,7 +232,7 @@ def plot_spectrum(
     *,
     columns: str | list[str] | None = None,
     log_scale: bool = False,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -262,7 +262,7 @@ def plot_spectrum(
         Column(s) to analyze. If None, uses all numeric columns except 'time'.
     log_scale : bool, default=False
         Use logarithmic scale for PSD axis.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
@@ -326,11 +326,11 @@ def plot_spectrum(
     validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
-    if panel_group_names is None and columns is None and _auto_detect_panel(df):
-        panel_group_names = []
+    if groups is None and columns is None and _auto_detect_panel(df):
+        groups = []
 
-    if panel_group_names is not None:
-        _panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    if groups is not None:
+        _panel_cols = resolve_panel_columns(df, groups, columns)
         _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
         _legend_tracker = LegendTracker()
 
@@ -360,7 +360,7 @@ def plot_spectrum(
         fig = facet_figure(
             df,
             _render_periodogram,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_n_cols=facet_n_cols,
             facet_by=effective_facet_by,

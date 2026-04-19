@@ -260,14 +260,14 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
     def _predict_class_proba_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **params,
     ) -> pl.DataFrame:
         """Produce aggregated probability forecasts for one step.
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         **params : dict
             Metadata routing parameters.
@@ -281,7 +281,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         predictions = []
         for _name, forecaster in self.forecasters_:
             y_proba = forecaster.predict_class_proba(  # ty: ignore[unresolved-attribute]
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **params,
             )
             predictions.append(y_proba)
@@ -305,7 +305,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         hard_predictions = []
         for _name, forecaster in self.forecasters_:
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **params,
             )
             hard_predictions.append(y_pred)
@@ -333,7 +333,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate aggregated class-probability forecasts.
@@ -344,7 +344,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to predict.
         **params : dict
             Metadata routing parameters.
@@ -362,13 +362,13 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             return self._soft_vote_predict_class_proba(
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **params,
             )
         return self._hard_vote_predict_class_proba(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **params,
         )
 
@@ -376,7 +376,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Soft vote: weighted average of class probabilities.
@@ -387,7 +387,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Forecasting horizon.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes.
         **params : dict
             Routing parameters.
@@ -403,7 +403,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             y_proba = forecaster.predict_class_proba(  # ty: ignore[unresolved-attribute]
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **params,
             )
             predictions.append(y_proba)
@@ -428,7 +428,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Hard vote: majority vote converted to one-hot probabilities.
@@ -439,7 +439,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Forecasting horizon.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes.
         **params : dict
             Routing parameters.
@@ -455,7 +455,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **params,
             )
             predictions.append(y_pred)
@@ -487,7 +487,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate argmax class predictions from the ensemble.
@@ -498,7 +498,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes.
         **params : dict
             Metadata routing parameters.
@@ -516,14 +516,14 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             return self._hard_vote_predict(
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **params,
             )
 
         y_proba = self.predict_class_proba(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             **params,
         )
         return self._ensemble_argmax_from_proba(y_proba)
@@ -548,7 +548,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         time_cols = [c for c in ("observed_time", "time") if c in y_proba.columns]
         result = y_proba.select(time_cols)
 
-        groups = self.panel_group_names_ or [None]
+        groups = self.groups_ or [None]
 
         for group in groups:
             for target_col, class_labels in self.classes_.items():
@@ -574,7 +574,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Hard vote: majority vote of argmax predictions.
@@ -585,7 +585,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Forecasting horizon.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes.
         **params : dict
             Routing parameters.
@@ -601,7 +601,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 **params,
             )
             predictions.append(y_pred)

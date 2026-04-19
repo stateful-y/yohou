@@ -413,7 +413,7 @@ class TestVotingClassProbaPanelData:
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
-        assert forecaster.panel_group_names_ is not None
+        assert forecaster.groups_ is not None
         assert len(y_proba) == 3
         assert len(y_pred) == 3
         # Panel proba columns should include group prefixes
@@ -706,7 +706,7 @@ class TestVotingClassProbaObserveRewind:
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
-        y_proba = forecaster._predict_class_proba_one(panel_group_names=None)
+        y_proba = forecaster._predict_class_proba_one(groups=None)
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
         assert len(proba_cols) > 0
         assert "time" in y_proba.columns
@@ -729,7 +729,7 @@ class TestVotingClassProbaObserveRewind:
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
-        y_proba = forecaster._predict_class_proba_one(panel_group_names=None)
+        y_proba = forecaster._predict_class_proba_one(groups=None)
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
         assert len(proba_cols) > 0
         assert "time" in y_proba.columns
@@ -758,7 +758,7 @@ class TestVotingClassProbaObserveRewind:
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
-        y_proba = forecaster._predict_class_proba_one(panel_group_names=None)
+        y_proba = forecaster._predict_class_proba_one(groups=None)
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
         assert len(proba_cols) > 0
         # Hard voting should produce one-hot probabilities

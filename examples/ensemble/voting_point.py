@@ -32,7 +32,7 @@ def _(mo):
 
     - Defining named base forecasters for ensemble composition
     - Aggregating with `method="mean"`, `"median"`, or weighted averaging
-    - Comparing ensemble strategies with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/)
+    - Comparing ensemble strategies with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/)
     - Running ensembles on panel data
 
     ## Prerequisites
@@ -53,7 +53,7 @@ def _():
     from yohou.datasets import fetch_sunspot, fetch_tourism_monthly
     from yohou.ensemble import VotingPointForecaster
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_model_comparison_bar
+    from yohou.plotting import plot_forecast, plot_score_per_horizon, plot_score_per_vintage
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
 
@@ -71,7 +71,8 @@ def _():
         fetch_tourism_monthly,
         pl,
         plot_forecast,
-        plot_model_comparison_bar,
+        plot_score_per_horizon,
+        plot_score_per_vintage,
         train_test_split,
     )
 
@@ -259,27 +260,43 @@ def _(
     ensemble_median,
     ensemble_weighted,
     forecasting_horizon,
-    plot_model_comparison_bar,
+    plot_score_per_horizon,
     y_test,
     y_train,
 ):
-    scorer = MeanAbsoluteError()
-    scorer.fit(y_train)
-
     models = {
         "Mean Ensemble": ensemble_mean,
         "Weighted Ensemble": ensemble_weighted,
         "Median Ensemble": ensemble_median,
     }
 
-    results = {}
+    y_preds = {}
     for name, model in models.items():
-        y_pred = deepcopy(model).observe_predict(y_test, forecasting_horizon=forecasting_horizon)
-        results[name] = {"MAE": scorer.score(y_test, y_pred)}
+        y_preds[name] = deepcopy(model).observe_predict(y_test, forecasting_horizon=forecasting_horizon)
 
-    plot_model_comparison_bar(
-        results,
+    plot_score_per_horizon(
+        MeanAbsoluteError(),
+        y_test,
+        y_preds,
+        kind="summary",
         title="Ensemble Method Comparison",
+    )
+
+
+@app.cell
+def _(
+    MeanAbsoluteError,
+    plot_score_per_vintage,
+    y_preds,
+    y_test,
+):
+    plot_score_per_vintage(
+        MeanAbsoluteError(),
+        y_test,
+        y_preds,
+        kind="line",
+        show_trend=True,
+        title="Ensemble MAE per Vintage",
     )
 
 
@@ -313,10 +330,10 @@ def _(
     )
     panel_ensemble.fit(tourism_train, forecasting_horizon=12)
     y_pred_panel = panel_ensemble.observe_predict(
-        tourism_test, forecasting_horizon=12, panel_group_names=["T3", "T4", "T5"]
+        tourism_test, forecasting_horizon=12, groups=["T3", "T4", "T5"]
     )
 
-    print(f"Panel groups: {panel_ensemble.panel_group_names_}")
+    print(f"Panel groups: {panel_ensemble.groups_}")
     print(f"Prediction shape: {y_pred_panel.shape}")
     return tourism_test, tourism_train, y_pred_panel
 
@@ -327,7 +344,7 @@ def _(plot_forecast, tourism_test, tourism_train, y_pred_panel):
         tourism_test,
         y_pred_panel,
         y_train=tourism_train,
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         n_history=400,
         title="Panel Data Ensemble (5 Tourism Series)",
     )

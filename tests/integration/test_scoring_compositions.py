@@ -440,7 +440,7 @@ class TestScorerAggregation:
 
     @pytest.mark.parametrize(
         "aggregation_method",
-        ["all", "timewise", "componentwise", "groupwise"],
+        ["all", ["stepwise", "vintagewise"], "componentwise", "groupwise"],
     )
     def test_point_scorer_aggregation_on_panel(self, linear_series, panel_analytical, aggregation_method):
         """Test that aggregation methods produce correct output shapes on panel data."""
@@ -487,9 +487,9 @@ class TestScorerAggregation:
         if aggregation_method == "all":
             assert isinstance(score, float), f"'all' should return scalar, got {type(score)}"
             assert np.isfinite(score)
-        elif aggregation_method == "timewise":
-            # Timewise aggregates over time, returns per-component-per-group scores
-            assert isinstance(score, pl.DataFrame), f"'timewise' should return DataFrame, got {type(score)}"
+        elif aggregation_method == ["stepwise", "vintagewise"]:
+            # Stepwise+vintagewise aggregates over time, returns per-component-per-group scores
+            assert isinstance(score, pl.DataFrame), f"stepwise+vintagewise should return DataFrame, got {type(score)}"
             # Columns are component-group pairs (target__group_0, target__group_1, ...)
             assert len(score.columns) == 6  # 2 targets × 3 groups
             assert len(score) == 1  # Single row with aggregated scores
@@ -517,7 +517,7 @@ class TestScorerAggregation:
     )
     @pytest.mark.parametrize(
         "aggregation_method",
-        ["all", "timewise", "componentwise"],
+        ["all", ["stepwise", "vintagewise"], "componentwise"],
     )
     def test_scorer_aggregation_output_shapes(self, linear_series, _scorer_cls, aggregation_method):
         """Test aggregation output shapes for different scorers."""
@@ -548,8 +548,8 @@ class TestScorerAggregation:
         if aggregation_method == "all":
             assert isinstance(score, float)
             assert np.isfinite(score)
-        elif aggregation_method == "timewise":
-            # Timewise aggregates over time, returns per-component scores
+        elif aggregation_method == ["stepwise", "vintagewise"]:
+            # Stepwise+vintagewise aggregates over time, returns per-component scores
             assert isinstance(score, pl.DataFrame)
             # Component names are columns (col_a, col_b)
             assert "col_a" in score.columns or len(score.columns) == 2
