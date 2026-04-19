@@ -708,7 +708,7 @@ class CalibrationError(BaseIntervalScorer):
             frames.append(pl.DataFrame(rate_data).with_columns(pl.lit(rate).alias("coverage_rate")))
         return pl.concat(frames)
 
-    def score(
+    def score(  # type: ignore
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params
     ) -> pl.DataFrame | float | dict[str | float, float | pl.DataFrame]:
         """Compute calibration error.

@@ -66,7 +66,7 @@ def _normalize_scorers(
 
     """
     if isinstance(scorer, dict):
-        return scorer
+        return scorer  # type: ignore
     return {scorer.__class__.__name__: scorer}
 
 
@@ -902,16 +902,16 @@ def plot_calibration(
         panel_cols = resolve_panel_columns(y_truth, groups, columns)
 
         # Group columns by panel prefix, collect unique members
-        groups, all_members = _group_panel_columns(panel_cols)
+        grouped, all_members = _group_panel_columns(panel_cols)
 
-        n_groups = len(groups)
+        n_groups = len(grouped)
         n_cols_grid = min(n_groups, facet_n_cols)
         n_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
 
         fig = make_subplots(
             rows=n_rows,
             cols=n_cols_grid,
-            subplot_titles=list(groups.keys()),
+            subplot_titles=list(grouped.keys()),
             shared_xaxes=True,
             shared_yaxes=True,
             vertical_spacing=_subplot_spacing(n_rows),
@@ -920,7 +920,7 @@ def plot_calibration(
 
         palette = resolve_color_palette(color_palette, len(all_members))
         legend_tracker = LegendTracker(show_legend=show_legend)
-        for group_idx, (_, group_cols) in enumerate(groups.items()):
+        for group_idx, (_, group_cols) in enumerate(grouped.items()):
             row = group_idx // n_cols_grid + 1
             col_idx = group_idx % n_cols_grid + 1
 
@@ -2236,8 +2236,8 @@ def plot_score_per_horizon(
                 if isinstance(score_val, pl.DataFrame):
                     # Aggregate to scalar
                     score_cols = [c for c in score_val.columns if c != "time"]
-                    score_val = float(score_val.select(score_cols).mean_horizontal().mean())
-                model_scores[s_name] = float(score_val)
+                    score_val = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
+                model_scores[s_name] = float(score_val)  # type: ignore
             results[m_name] = model_scores
 
         # Determine grouping: group by scorer, series by model
@@ -3219,7 +3219,7 @@ def plot_group_scores(
                     for gname in group_names:
                         gcols = [c for c in scores_result.columns if c.startswith(f"{gname}__")]
                         if gcols:
-                            group_score = float(scores_result.select(gcols).mean_horizontal().mean())
+                            group_score = float(scores_result.select(gcols).mean_horizontal().mean())  # type: ignore
                             all_entries.append((s_name, m_name, gname, group_score))
                 elif isinstance(scores_result, (int, float)):
                     # Scalar - same for all groups
@@ -3321,7 +3321,7 @@ def plot_group_scores(
                     for gname in group_names:
                         gcols = [c for c in scores_result.columns if c.startswith(f"{gname}__")]
                         if gcols:
-                            group_score = float(scores_result.select(gcols).mean_horizontal().mean())
+                            group_score = float(scores_result.select(gcols).mean_horizontal().mean())  # type: ignore
                             all_entries.append((s_name, m_name, gname, group_score))
                 elif isinstance(scores_result, (int, float)):
                     for gname in group_names:

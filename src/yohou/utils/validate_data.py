@@ -717,7 +717,7 @@ def validate_scorer_data(
     from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
 
     context = _ScoringContext(
-        time_values=time_values,
+        time_values=time_values,  # type: ignore
         observed_time=observed_time,
         forecasting_step=forecasting_step,
     )

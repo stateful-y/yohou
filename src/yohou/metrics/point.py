@@ -1153,7 +1153,7 @@ class MedianAbsoluteError(BasePointScorer):
         """Compute per-row absolute errors for median aggregation."""
         return (y_truth - y_pred).select(pl.all().abs())
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:  # type: ignore
         """Compute median absolute error.
 
         Parameters

@@ -161,9 +161,9 @@ def plot_time_series(
     if groups is not None and _auto_detect_panel(df, groups):
         # Pre-compute palette for consistent colouring across the overlaid dimension
         pn_cols = resolve_panel_columns(df, groups, columns if groups is not None else None)
-        groups, all_members = _group_panel_columns(pn_cols)
+        grouped, all_members = _group_panel_columns(pn_cols)
         effective_facet_by = facet_by or "member"
-        n_overlay = len(list(groups.keys())) if effective_facet_by == "member" else len(all_members)
+        n_overlay = len(list(grouped.keys())) if effective_facet_by == "member" else len(all_members)
         color_palette = resolve_color_palette(color_palette, n_overlay)
         legend_tracker = LegendTracker(show_legend=show_legend)
 
@@ -779,17 +779,17 @@ def _panel_heatmap_missing(
 ) -> go.Figure:
     """Build a faceted heatmap/matrix of missing data for panel columns."""
     panel_cols = resolve_panel_columns(df, groups, columns)
-    groups, all_members = _group_panel_columns(panel_cols)
-    all_group_names = list(groups.keys())
+    grouped, all_members = _group_panel_columns(panel_cols)
+    all_group_names = list(grouped.keys())
 
     if facet_by == "member":
         facet_keys = all_members
         overlay_keys_per_facet: dict[str, list[str]] = {
-            m: [g for g, cols in groups.items() if any(_member_name(c) == m for c in cols)] for m in all_members
+            m: [g for g, cols in grouped.items() if any(_member_name(c) == m for c in cols)] for m in all_members
         }
     else:
         facet_keys = all_group_names
-        overlay_keys_per_facet = {g: [_member_name(c) for c in cols] for g, cols in groups.items()}
+        overlay_keys_per_facet = {g: [_member_name(c) for c in cols] for g, cols in grouped.items()}
 
     n_facets = len(facet_keys)
     n_cols_grid = min(n_facets, facet_n_cols)
@@ -819,7 +819,7 @@ def _panel_heatmap_missing(
                 group_name = overlay_key
                 member_name = facet_key
                 col_name = next(
-                    (c for c in groups[group_name] if _member_name(c) == member_name),
+                    (c for c in grouped[group_name] if _member_name(c) == member_name),
                     None,
                 )
                 y_label_entry = group_name
@@ -827,7 +827,7 @@ def _panel_heatmap_missing(
                 group_name = facet_key
                 member_name = overlay_key
                 col_name = next(
-                    (c for c in groups[group_name] if _member_name(c) == member_name),
+                    (c for c in grouped[group_name] if _member_name(c) == member_name),
                     None,
                 )
                 y_label_entry = member_name

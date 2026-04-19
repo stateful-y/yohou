@@ -596,7 +596,9 @@ def _(mo):
 
 @app.cell
 def _(MeanAbsoluteError, PointReductionForecaster, SeasonalNaive, fetch_tourism_monthly):
-    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.impute import SimpleImputer
+    from sklearn.linear_model import Ridge
+    from sklearn.pipeline import make_pipeline
 
     tourism_panel = fetch_tourism_monthly(n_series=4).frame
     fh_panel = 12
@@ -607,7 +609,7 @@ def _(MeanAbsoluteError, PointReductionForecaster, SeasonalNaive, fetch_tourism_
     naive_panel.fit(y_train_panel, forecasting_horizon=fh_panel)
     y_pred_panel_naive = naive_panel.predict(forecasting_horizon=fh_panel)
 
-    red_panel = PointReductionForecaster(estimator=HistGradientBoostingRegressor())
+    red_panel = PointReductionForecaster(estimator=make_pipeline(SimpleImputer(), Ridge()))
     red_panel.fit(y_train_panel, forecasting_horizon=fh_panel)
     y_pred_panel_red = red_panel.predict(forecasting_horizon=fh_panel)
     return y_pred_panel_naive, y_pred_panel_red, y_test_panel

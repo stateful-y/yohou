@@ -1427,7 +1427,7 @@ def plot_subseasonality(
     if groups is not None:
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
-        groups, all_members = _group_panel_columns(plot_columns)
+        grouped, all_members = _group_panel_columns(plot_columns)
 
         # Build one figure per member, groups overlaid by colour.
         figures: dict[str, go.Figure] = {}
@@ -1450,7 +1450,7 @@ def plot_subseasonality(
                 c_pos = si % facet_n_cols + 1
                 season_df = df_aug.filter(pl.col("season") == season_val)
 
-                for gname, group_cols in groups.items():
+                for gname, group_cols in grouped.items():
                     # Find this member's column within the group.
                     col_name = next(
                         (c for c in group_cols if _member_name(c) == member),
@@ -1772,7 +1772,7 @@ def plot_lag_scatter(
     # Panel path
     if groups is not None:
         panel_cols = resolve_panel_columns(df, groups, columns)
-        groups, all_members = _group_panel_columns(panel_cols)
+        grouped, all_members = _group_panel_columns(panel_cols)
 
         n_lags = len(lags)
         figures: dict[str, go.Figure] = {}
@@ -1798,7 +1798,7 @@ def plot_lag_scatter(
                 c = li % ncols_grid + 1
                 all_vals: list[float] = []
 
-                for gname, group_cols in groups.items():
+                for gname, group_cols in grouped.items():
                     col_name = next(
                         (col for col in group_cols if _member_name(col) == member),
                         None,
@@ -2309,19 +2309,19 @@ def plot_cross_correlation(
 
     if groups is not None:
         _panel_cols = resolve_panel_columns(df, groups, columns)
-        groups, _all_members = _group_panel_columns(_panel_cols)
+        grouped, _all_members = _group_panel_columns(_panel_cols)
         color_mgr = PanelColorManager(color_palette)
 
         # Build per-group pair lists
         group_pairs: list[tuple[str, list[tuple[str, str]]]] = []
-        for gname, gcols in groups.items():
+        for gname, gcols in grouped.items():
             member_names = [_member_name(c) for c in gcols]
             pairs = _upper_triangle_pairs(member_names)
             if pairs:
                 group_pairs.append((gname, pairs))
 
         if not group_pairs:
-            msg = f"Need at least 2 members per group for cross-correlation. Groups: {list(groups.keys())}"
+            msg = f"Need at least 2 members per group for cross-correlation. Groups: {list(grouped.keys())}"
             raise ValueError(msg)
 
         # All groups + pairs in one figure
@@ -3438,11 +3438,11 @@ def plot_seasonal_heatmap(
         from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
 
         panel_cols = resolve_panel_columns(df, groups, columns)
-        groups, _all_members = _group_panel_columns(panel_cols)
+        grouped, _all_members = _group_panel_columns(panel_cols)
 
         # Build flat list of (group_name, member_col, display_name) tuples
         all_cells: list[tuple[str, str, str]] = []
-        for gname, gcols in groups.items():
+        for gname, gcols in grouped.items():
             for col in gcols:
                 mname = _member_name(col)
                 all_cells.append((gname, col, f"{gname}: {mname}"))

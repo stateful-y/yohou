@@ -977,8 +977,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                 values = list(per_rate_results.values())
                 if cw is not None:
                     weights = [cw.get(r, 1.0) for r in per_rate_results]
-                    return float(np.average(values, weights=weights))
-                return float(np.mean(values))
+                    return float(np.average(values, weights=weights))  # type: ignore
+                return float(np.mean(values))  # type: ignore
             # Single rate: just return the scalar
             if len(per_rate_results) == 1:
                 return next(iter(per_rate_results.values()))
@@ -991,7 +991,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         # Results are DataFrames - stack with coverage_rate column
         frames = []
         for rate, result_df in per_rate_results.items():
-            frames.append(result_df.with_columns(pl.lit(rate).alias("coverage_rate")))
+            frames.append(result_df.with_columns(pl.lit(rate).alias("coverage_rate")))  # type: ignore
         combined = pl.concat(frames)
 
         if aggregate_rates:
