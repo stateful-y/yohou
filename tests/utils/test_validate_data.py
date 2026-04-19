@@ -1374,3 +1374,59 @@ class TestComputeForecastingStep:
         ])
         result = _compute_forecasting_step(time, observed, "1w")
         assert result.to_list() == [1, 2]
+
+
+class TestResolveColumnsGroupFilter:
+    """Tests for validate_plotting_data with groups + columns filter."""
+
+    def test_groups_with_columns_filter(self):
+        """Groups + columns filter returns matching panel columns."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        df = pl.DataFrame({
+            "time": [1, 2, 3],
+            "sales__east": [10.0, 20.0, 30.0],
+            "sales__west": [15.0, 25.0, 35.0],
+            "returns__east": [1.0, 2.0, 3.0],
+        })
+        result = validate_plotting_data(df, groups=["sales"], columns=["east"])
+        assert result == ["sales__east"]
+
+    def test_groups_with_columns_no_match_raises(self):
+        """Groups + columns with no match raises ValueError."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        df = pl.DataFrame({
+            "time": [1, 2, 3],
+            "sales__east": [10.0, 20.0, 30.0],
+        })
+        with pytest.raises(ValueError, match="No panel columns found"):
+            validate_plotting_data(df, groups=["sales"], columns=["nonexistent"])
+
+
+class TestTruncatePartialVintage:
+    """Tests for _truncate_partial_vintage."""
+
+    def test_partial_vintage_truncated(self):
+        """Last vintage with shorter gap is removed."""
+        from yohou.utils.validate_data import _truncate_partial_vintage
+
+        # y_true must have the same rows as y_pred (aligned/expanded)
+        rows_true = []
+        rows_pred = []
+        for ot in [datetime(2020, 1, 1), datetime(2020, 1, 8), datetime(2020, 1, 15), datetime(2020, 1, 19)]:
+            for i in range(1, 4):
+                rows_true.append({"time": datetime(2020, 1, i), "value": float(i)})
+                rows_pred.append({
+                    "observed_time": ot,
+                    "time": datetime(2020, 1, i),
+                    "value": float(i) + 0.5,
+                })
+        y_true = pl.DataFrame(rows_true)
+        y_pred = pl.DataFrame(rows_pred)
+        y_true_out, y_pred_out = _truncate_partial_vintage(y_true, y_pred)
+        # Last vintage (Jan 19) should be removed
+        remaining = y_pred_out["observed_time"].unique().sort()
+        assert len(remaining) == 3
+        assert datetime(2020, 1, 19) not in remaining.to_list()
+        assert len(y_true_out) == 9  # 3 vintages × 3 time points

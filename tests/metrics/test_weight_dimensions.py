@@ -555,3 +555,94 @@ class TestNoContextDimFallback:
         mae_default = MeanAbsoluteError()
         mae_default.fit(y_true)
         np.testing.assert_allclose(result, mae_default.score(y_true, y_pred), atol=1e-10)
+
+
+class TestWeightedColMeanDirect:
+    """Test _weighted_col_mean static method directly."""
+
+    def test_weighted_col_mean(self):
+        """Weighted column mean applies proper weights."""
+        from yohou.metrics.base import BasePointScorer
+
+        df = pl.DataFrame({"a": [2.0, 3.0], "b": [10.0, 20.0]})
+        # weight a=2, b=1 => per-row: row0=(2*2+10*1)/3=14/3, row1=(3*2+20*1)/3=26/3
+        # mean = (14/3 + 26/3)/2 = 40/6
+        result = BasePointScorer._weighted_col_mean(df, {"a": 2.0, "b": 1.0})
+        expected = ((2 * 2 + 10 * 1) / 3 + (3 * 2 + 20 * 1) / 3) / 2
+        np.testing.assert_allclose(result, expected, atol=1e-10)
+
+
+class TestCombineRowWeightsBranches:
+    """Test weight combination paths through scoring with both weights set."""
+
+    def test_both_step_and_vintage_weight_combined(self):
+        """Both step_weight and vintage_weight produce multiplicative weights."""
+        base = datetime(2024, 1, 10)
+        y_true = pl.DataFrame({
+            "time": [base + timedelta(days=i) for i in range(1, 5)],
+            "value": [10.0, 20.0, 30.0, 40.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [
+                base,
+                base,
+                base + timedelta(days=1),
+                base + timedelta(days=1),
+            ],
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+            ],
+            "value": [11.0, 22.0, 25.0, 45.0],
+        })
+        y_train = pl.DataFrame({
+            "time": [base - timedelta(days=i) for i in range(9, -1, -1)],
+            "value": [float(i) for i in range(10)],
+        })
+
+        mae_both = MeanAbsoluteError(
+            step_weight={1: 2.0, 2: 1.0},
+            vintage_weight={base: 3.0, base + timedelta(days=1): 1.0},
+        )
+        mae_both.fit(y_train)
+        result_both = mae_both.score(y_true, y_pred)
+        assert isinstance(result_both, float)
+
+        # Should differ from step-only and vintage-only
+        mae_step = MeanAbsoluteError(step_weight={1: 2.0, 2: 1.0})
+        mae_step.fit(y_train)
+        result_step = mae_step.score(y_true, y_pred)
+
+        mae_vin = MeanAbsoluteError(
+            vintage_weight={base: 3.0, base + timedelta(days=1): 1.0},
+        )
+        mae_vin.fit(y_train)
+        result_vin = mae_vin.score(y_true, y_pred)
+
+        # Combined should differ from each individual
+        assert not np.isclose(result_both, result_step, atol=1e-10)
+        assert not np.isclose(result_both, result_vin, atol=1e-10)
+
+
+class TestNormalizeAggMethodsAll:
+    """Test that aggregation_method='all' produces correct modes."""
+
+    def test_all_includes_groupwise(self):
+        """aggregation_method='all' includes groupwise."""
+        from yohou.metrics.base import BasePointScorer
+
+        modes = BasePointScorer._normalize_agg_methods("all")
+        assert "groupwise" in modes
+        assert "stepwise" in modes
+        assert "vintagewise" in modes
+        assert "componentwise" in modes
+        assert "coveragewise" not in modes
+
+    def test_all_with_coveragewise(self):
+        """aggregation_method='all' with include_coveragewise adds coveragewise."""
+        from yohou.metrics.base import BasePointScorer
+
+        modes = BasePointScorer._normalize_agg_methods("all", include_coveragewise=True)
+        assert "coveragewise" in modes

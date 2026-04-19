@@ -629,6 +629,13 @@ class TestMakeScorerGetScorer:
         assert isinstance(scorer, EmpiricalCoverage)
         assert scorer.coverage_rates == [0.9]
 
+    def test_make_scorer_invalid_name_raises(self):
+        """make_scorer raises ValueError for unknown names."""
+        from yohou.metrics import make_scorer
+
+        with pytest.raises(ValueError, match="Unknown scorer"):
+            make_scorer("nonexistent")
+
     def test_registry_has_16_scorers(self):
         """Registry contains exactly 16 scoring scorers."""
         from yohou.metrics import _SCORER_REGISTRY

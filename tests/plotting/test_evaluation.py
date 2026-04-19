@@ -2912,25 +2912,25 @@ class TestPlotGroupScores:
 class TestMultiScorerMultiModelFaceted:
     """Tests for multi-scorer + multi-model faceted subplot paths."""
 
-    def test_distribution_compare_by_scorer(self, multi_scorer_data):
-        """Distribution with compare_by='scorer' uses model-based facets."""
+    def test_distribution_compare_by_model(self, multi_scorer_data):
+        """Distribution with compare_by='model' facets by scorer."""
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
         fig = plot_score_distribution(
             scorers,
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_preds"],
-            compare_by="scorer",
+            compare_by="model",
         )
         assert_figure_valid(fig)
 
-    def test_horizon_compare_by_scorer(self, multi_scorer_data):
-        """Per-horizon with compare_by='scorer' uses model-based facets."""
+    def test_horizon_compare_by_model(self, multi_scorer_data):
+        """Per-horizon with compare_by='model' facets by scorer."""
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
         fig = plot_score_per_horizon(
             scorers,
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_preds"],
-            compare_by="scorer",
+            compare_by="model",
         )
         assert_figure_valid(fig)
 
@@ -2977,17 +2977,29 @@ class TestPlotScorePerVintageFaceted:
         # Should have at least 2 * 2 = 4 traces (2 models overlay in each facet)
         assert len(fig.data) >= 4
 
-    def test_multi_scorer_multi_model_compare_by_scorer(self, multi_vintage_multi_model_data):
-        """compare_by='scorer' facets by model, overlays scorers."""
+    def test_multi_scorer_multi_model_compare_by_model(self, multi_vintage_multi_model_data):
+        """compare_by='model' facets by scorer, overlays models."""
         d = multi_vintage_multi_model_data
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
         fig = plot_score_per_vintage(
             scorers,
             d["y_truth"],
             d["y_preds"],
-            compare_by="scorer",
+            compare_by="model",
         )
         assert_figure_valid(fig)
+
+    def test_multi_scorer_single_model(self, multi_vintage_multi_model_data):
+        """Multi-scorer with single model overlays scorers."""
+        d = multi_vintage_multi_model_data
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_vintage(
+            scorers,
+            d["y_truth"],
+            d["y_pred_a"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) == 2
 
     def test_multi_scorer_multi_model_bar(self, multi_vintage_multi_model_data):
         """Multi-scorer + multi-model bar mode faceted."""
@@ -3087,3 +3099,98 @@ class TestPanelMultiScorerErrors:
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
         with pytest.raises(ValueError, match="Multi-scorer is not supported with panel data"):
             plot_score_per_horizon(scorers, y_truth, y_pred)
+
+
+class TestWarnLargeGrid:
+    """Tests for _warn_large_grid warning."""
+
+    def test_large_grid_warns(self, multi_scorer_data):
+        """Many scorers x many models triggers UserWarning."""
+        # 13 scorers x 2 models = 26 > 12
+        scorers = {f"scorer_{i}": MeanAbsoluteError() for i in range(7)}
+        with pytest.warns(UserWarning, match="Large facet grid"):
+            plot_score_distribution(
+                scorers,
+                multi_scorer_data["y_truth"],
+                multi_scorer_data["y_preds"],
+            )
+
+
+class TestSummaryKindDataFrame:
+    """Tests for kind='summary' when scorer returns DataFrame."""
+
+    def test_summary_with_multivariate_scorer(self):
+        """kind='summary' handles scorer that returns DataFrame."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "a": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "b": [15.0, 25.0, 35.0, 45.0, 55.0],
+        })
+        y_pred_a = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "a": [12.0, 19.0, 28.0, 42.0, 48.0],
+            "b": [14.0, 26.0, 33.0, 46.0, 53.0],
+        })
+        y_pred_b = pl.DataFrame({
+            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "a": [11.0, 21.0, 29.0, 41.0, 49.0],
+            "b": [16.0, 24.0, 34.0, 44.0, 54.0],
+        })
+        # aggregation_method="componentwise" so score returns DataFrame, not scalar
+        scorer = MeanAbsoluteError(aggregation_method="componentwise")
+        fig = plot_score_per_horizon(
+            scorer,
+            y_truth,
+            {"Model A": y_pred_a, "Model B": y_pred_b},
+            kind="summary",
+        )
+        assert_figure_valid(fig)
+
+
+class TestGroupScoresBoxKind:
+    """Tests for plot_group_scores kind='box' with panel data."""
+
+    def test_box_with_multi_vintage(self):
+        """Box plot with panel data and multiple vintages."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "region__east": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "region__west": [15.0, 25.0, 35.0, 45.0, 55.0],
+        })
+        rows = []
+        for ot in [datetime(2019, 12, 30), datetime(2019, 12, 31)]:
+            for i in range(5):
+                rows.append({
+                    "observed_time": ot,
+                    "time": times[i],
+                    "region__east": [10.0, 20.0, 30.0, 40.0, 50.0][i] + 2.0,
+                    "region__west": [15.0, 25.0, 35.0, 45.0, 55.0][i] + 1.0,
+                })
+        y_pred = pl.DataFrame(rows).sort("time", "observed_time")
+        fig = plot_group_scores(
+            MeanAbsoluteError(),
+            y_truth,
+            y_pred,
+            kind="box",
+        )
+        assert_figure_valid(fig)
+        assert any(isinstance(t, go.Box) for t in fig.data)
+
+    def test_box_distribute_by_vintage(self, panel_group_data):
+        """Box plot with distribute_by='vintage'."""
+        fig = plot_group_scores(
+            MeanAbsoluteError(),
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+            kind="box",
+            distribute_by="vintage",
+        )
+        assert_figure_valid(fig)
