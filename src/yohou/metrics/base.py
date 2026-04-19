@@ -419,84 +419,71 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return result
 
-    def _process_time_weights(
+    def _compute_time_weight_vector(
         self,
-        raw_scores: pl.DataFrame,
         time_weight: Callable | pl.DataFrame | None,
         time_values: list | None,
+        n_rows: int,
         group_name: str | None = None,
-    ) -> pl.DataFrame:
-        """Apply time-based weights to raw per-timestep scores.
+    ) -> np.ndarray | None:
+        """Build a normalized time weight vector.
 
         Parameters
         ----------
-        raw_scores : pl.DataFrame
-            Per-timestep per-component scores without "time" column.
         time_weight : callable, pl.DataFrame, or None
             Time weighting specification.
         time_values : list or None
-            Time values corresponding to raw_scores rows.
+            Time values for each row.
+        n_rows : int
+            Expected number of rows.
         group_name : str or None
-            Panel group name for 2-parameter callables. None for global data.
+            Panel group name for 2-parameter callables.
 
         Returns
         -------
-        pl.DataFrame
-            Weighted scores with same shape as raw_scores.
+        numpy.ndarray or None
+            Normalized weight vector of length ``n_rows``, or None if
+            ``time_weight`` is None.
 
         """
         if time_weight is None:
-            return raw_scores
+            return None
 
         if callable(time_weight):
-            # Validate signature (1 or 2 parameters)
             validate_callable_signature(time_weight)
 
             if time_values is None:
                 raise ValueError("time_values cannot be None when time_weight is callable")
 
-            # Reconstruct time Series for callable
             time_series = pl.Series("time", time_values)
-
-            # Call weight function
             tw = cast("Callable[..., pl.Series]", time_weight)
             sig = inspect.signature(time_weight)
             if len(sig.parameters) == 1:
-                # Global weight function
                 weights_series = tw(time_series)
             elif len(sig.parameters) == 2:
-                # Panel-aware weight function
                 weights_series = tw(time_series, group_name)
             else:
                 raise ValueError(f"time_weight callable must have 1 or 2 parameters, got {len(sig.parameters)}")
 
-            # Validate weights
             if not isinstance(weights_series, pl.Series):
                 raise ValueError(f"time_weight callable must return pl.Series, got {type(weights_series).__name__}")
 
-            if len(weights_series) != len(raw_scores):
+            if len(weights_series) != n_rows:
                 raise ValueError(
                     f"time_weight callable returned {len(weights_series)} weights, "
-                    f"but raw_scores has {len(raw_scores)} rows"
+                    f"but expected {n_rows} rows"
                 )
 
-            # Convert to numpy array for multiplication
             weights_np = weights_series.to_numpy()
 
         elif isinstance(time_weight, pl.DataFrame):
-            # DataFrame: join on time and extract weight column
             if time_values is None:
                 raise ValueError("time_values cannot be None when time_weight is DataFrame")
 
-            # Create DataFrame with time column for joining
             time_df = pl.DataFrame({"time": time_values})
-
-            # Join on time
             joined = time_df.join(time_weight, on="time", how="left")
 
-            # Determine which weight column to use
             if group_name is not None:
-                # Panel data: try group-specific column first, fallback to global
                 group_col = f"{group_name}_weight"
                 if group_col in joined.columns:
                     weights_series = joined[group_col]
@@ -505,12 +492,10 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                 else:
                     raise ValueError(f"time_weight DataFrame missing both '{group_col}' and 'weight' columns")
             else:
-                # Global data: use "weight" column
                 if "weight" not in joined.columns:
                     raise ValueError("time_weight DataFrame must have 'weight' column for global data")
                 weights_series = joined["weight"]
 
-            # Convert to numpy array
             weights_np = weights_series.to_numpy()
 
         else:
@@ -542,12 +527,39 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             )
 
         # Normalize weights to sum to number of samples (preserves scale)
-        weights_np = weights_np * (len(weights_np) / np.sum(weights_np))
+        return weights_np * (len(weights_np) / np.sum(weights_np))
 
-        # Apply weights to each column (multiply each row by its weight)
-        weighted_scores = raw_scores.with_columns([(pl.col(col) * weights_np).alias(col) for col in raw_scores.columns])
+    def _process_time_weights(
+        self,
+        raw_scores: pl.DataFrame,
+        time_weight: Callable | pl.DataFrame | None,
+        time_values: list | None,
+        group_name: str | None = None,
+    ) -> pl.DataFrame:
+        """Apply time-based weights to raw per-timestep scores.
 
-        return weighted_scores
+        Parameters
+        ----------
+        raw_scores : pl.DataFrame
+            Per-timestep per-component scores without "time" column.
+        time_weight : callable, pl.DataFrame, or None
+            Time weighting specification.
+        time_values : list or None
+            Time values corresponding to raw_scores rows.
+        group_name : str or None
+            Panel group name for 2-parameter callables. None for global data.
+
+        Returns
+        -------
+        pl.DataFrame
+            Weighted scores with same shape as raw_scores.
+
+        """
+        weights_np = self._compute_time_weight_vector(time_weight, time_values, len(raw_scores), group_name)
+        if weights_np is None:
+            return raw_scores
+
+        return raw_scores.with_columns([(pl.col(col) * weights_np).alias(col) for col in raw_scores.columns])
 
     def _validate_parameters(
         self,
@@ -1341,6 +1353,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         /,
+        time_weight: Callable | pl.DataFrame | None = None,
         step_weight: dict[int, float] | None = None,
         vintage_weight: dict[datetime, float] | None = None,
         forecasting_steps: list[int] | None = None,
@@ -1357,6 +1370,8 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             True values with ``"time"`` column.
         y_pred : pl.DataFrame
             Predicted intervals with ``"time"`` column.
+        time_weight : callable, pl.DataFrame, or None, default=None
+            Time-based evaluation weights.
         step_weight : dict or None, default=None
             Per-step weights ({step_index: weight}).
         vintage_weight : dict or None, default=None
@@ -1389,7 +1404,38 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         # 1. Compute raw per-timestep per-component per-rate scores (flat DataFrame)
         raw_scores = self._compute_raw_scores(y_truth, y_pred, coverage_rates, target_columns)
 
-        # 1b. Apply step/vintage row weights (pre-aggregation)
+        # 1b. Apply time weights (pre-aggregation, tiled across coverage rates)
+        if time_weight is not None:
+            value_cols = [c for c in raw_scores.columns if c != "coverage_rate"]
+            n_rates = raw_scores["coverage_rate"].n_unique() if "coverage_rate" in raw_scores.columns else 1
+            n_rows_per_rate = len(raw_scores) // max(n_rates, 1)
+
+            _, panel_groups = inspect_panel(
+                raw_scores.select(value_cols)
+            )
+            time_values = context.time_values
+
+            if len(panel_groups) > 0:
+                for group_name, group_cols in panel_groups.items():
+                    tw_vec = self._compute_time_weight_vector(
+                        time_weight, time_values, n_rows_per_rate, group_name
+                    )
+                    if tw_vec is not None:
+                        tiled = np.tile(tw_vec, n_rates) if n_rates > 1 else tw_vec
+                        raw_scores = raw_scores.with_columns(
+                            [(pl.col(col) * tiled).alias(col) for col in group_cols]
+                        )
+            else:
+                tw_vec = self._compute_time_weight_vector(
+                    time_weight, time_values, n_rows_per_rate
+                )
+                if tw_vec is not None:
+                    tiled = np.tile(tw_vec, n_rates) if n_rates > 1 else tw_vec
+                    raw_scores = raw_scores.with_columns(
+                        [(pl.col(col) * tiled).alias(col) for col in value_cols]
+                    )
+
+        # 1c. Apply step/vintage row weights (pre-aggregation)
         # For interval data, raw_scores has a coverage_rate column; weights apply to all value columns
         row_weights = self._build_row_weights(context, len(raw_scores), step_weight, vintage_weight)
         if row_weights is not None:
