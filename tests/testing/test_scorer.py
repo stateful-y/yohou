@@ -87,7 +87,7 @@ class TestScorerChecks:
         "scorer_class,param_name,invalid_value,error_match",
         [
             (MeanAbsoluteError, "groups", ["nonexistent"], "groups"),
-            (MeanAbsoluteError, "component_names", ["nonexistent"], "component_names"),
+            (MeanAbsoluteError, "components", ["nonexistent"], "components"),
             (MeanAbsoluteError, "aggregation_method", [["invalid"]], "aggregation_method"),
         ],
     )

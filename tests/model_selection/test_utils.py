@@ -137,14 +137,14 @@ class TestGetResponseMethods:
         from yohou.metrics.interval import IntervalScore
         from yohou.model_selection.utils import _get_response_methods
 
-        assert _get_response_methods(IntervalScore(coverage_rates=[0.9])) == {"predict_interval"}
+        assert _get_response_methods(IntervalScore(coverage=[0.9])) == {"predict_interval"}
 
     def test_multimetric_mixed(self):
         """Multimetric with mixed scorers returns both methods."""
         from yohou.metrics.interval import IntervalScore
         from yohou.model_selection.utils import _get_response_methods
 
-        ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "is": IntervalScore(coverage_rates=[0.9])})
+        ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "is": IntervalScore(coverage=[0.9])})
         assert _get_response_methods(ms) == {"predict", "predict_interval"}
 
     def test_multimetric_only_interval_scorers(self):
@@ -152,7 +152,7 @@ class TestGetResponseMethods:
         from yohou.metrics.interval import IntervalScore
         from yohou.model_selection.utils import _get_response_methods
 
-        ms = _MultimetricScorer(scorers={"is": IntervalScore(coverage_rates=[0.9])})
+        ms = _MultimetricScorer(scorers={"is": IntervalScore(coverage=[0.9])})
         assert _get_response_methods(ms) == {"predict_interval"}
 
 
@@ -170,14 +170,14 @@ class TestResolveResponseMethod:
         from yohou.metrics.interval import IntervalScore
         from yohou.model_selection.utils import _resolve_response_method
 
-        assert _resolve_response_method(IntervalScore(coverage_rates=[0.9])) == "predict_interval"
+        assert _resolve_response_method(IntervalScore(coverage=[0.9])) == "predict_interval"
 
     def test_multimetric_mixed_picks_richest(self):
         """Multimetric with mixed scorers resolves to the richest method."""
         from yohou.metrics.interval import IntervalScore
         from yohou.model_selection.utils import _resolve_response_method
 
-        ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "is": IntervalScore(coverage_rates=[0.9])})
+        ms = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "is": IntervalScore(coverage=[0.9])})
         assert _resolve_response_method(ms) == "predict_interval"
 
     def test_multimetric_only_point_scorers(self):
@@ -197,7 +197,7 @@ class TestValidateForecasterScorerCompatibility:
         from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
 
         forecaster = SeasonalNaive()
-        scorer = IntervalScore(coverage_rates=[0.9])
+        scorer = IntervalScore(coverage=[0.9])
         with pytest.raises(ValueError, match="does not support predict_interval"):
             _validate_forecaster_scorer_compatibility(forecaster, scorer)
 
@@ -230,7 +230,7 @@ class TestValidateForecasterScorerCompatibility:
         from yohou.model_selection.utils import _validate_forecaster_scorer_compatibility
 
         forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=10)
-        _validate_forecaster_scorer_compatibility(forecaster, IntervalScore(coverage_rates=[0.9]))
+        _validate_forecaster_scorer_compatibility(forecaster, IntervalScore(coverage=[0.9]))
 
     def test_class_proba_scorer_with_point_forecaster_raises(self):
         """Class-proba scorer + point forecaster raises ValueError."""

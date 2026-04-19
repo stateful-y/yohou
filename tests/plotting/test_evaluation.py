@@ -1354,7 +1354,7 @@ class TestPlotScoreTimeSeriesIntervalScorer:
             "y_upper_0.9": vals + 5,
             "y_lower_0.9": vals - 5,
         })
-        scorer = IntervalScore(coverage_rates=[0.9])
+        scorer = IntervalScore(coverage=[0.9])
         fig = plot_score_time_series(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 
@@ -1374,7 +1374,7 @@ class TestPlotScoreDistributionIntervalScorer:
             "y_upper_0.9": vals + 5,
             "y_lower_0.9": vals - 5,
         })
-        scorer = IntervalScore(coverage_rates=[0.9])
+        scorer = IntervalScore(coverage=[0.9])
         fig = plot_score_distribution(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 
@@ -1396,7 +1396,7 @@ class TestPlotScorePerHorizonIntervalScorer:
             "y_upper_0.9": vals + 5,
             "y_lower_0.9": vals - 5,
         })
-        scorer = IntervalScore(coverage_rates=[0.9])
+        scorer = IntervalScore(coverage=[0.9])
         fig = plot_score_per_horizon(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 

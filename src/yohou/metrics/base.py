@@ -221,6 +221,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         if "coverage_rate" not in df.columns:
             return df
 
+        if len(df) == 0:
+            return df.drop("coverage_rate")
+
         meta_names = {"forecasting_step", "observed_time", "time"}
         meta_cols = [c for c in df.columns if c in meta_names]
         val_cols = [c for c in df.columns if c not in meta_names and c != "coverage_rate"]

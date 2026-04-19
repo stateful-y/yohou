@@ -10,7 +10,7 @@ import polars as pl
 from .base import BaseClassProbaScorer
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    pass
 
 __all__ = [
     "BrierScore",

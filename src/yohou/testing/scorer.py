@@ -207,9 +207,20 @@ def check_scorer_prediction_type_compatibility(
     else:
         raise AssertionError(f"Unknown prediction_type: {scorer_tags.scorer_tags.prediction_type}")
 
+    # Build y_truth that overlaps with predicted times (predictions may be
+    # for future timestamps beyond the training data).
+    pred_times = y_pred["time"].unique()
+    y_truth = y.filter(pl.col("time").is_in(pred_times.to_list()))
+    if len(y_truth) == 0:
+        value_cols = [c for c in y.columns if c != "time"]
+        y_truth = pl.DataFrame({
+            "time": pred_times,
+            **{col: [float(y[col].mean()) if y[col].dtype.is_numeric() else y[col][0]] * len(pred_times) for col in value_cols},
+        })
+
     # Score should work
     try:
-        score = scorer.score(y, y_pred)
+        score = scorer.score(y_truth, y_pred)
         assert isinstance(score, int | float | np.number), f"score() should return numeric value, got {type(score)}"
     except Exception as e:
         raise AssertionError(f"Compatible scorer/forecaster types failed: {e}") from e
@@ -340,9 +351,9 @@ def check_scorer_component_subselection(
     scorer,
     y_truth: pl.DataFrame,
     y_pred: pl.DataFrame,
-    component_names: list[str],
+    components: list[str],
 ) -> None:
-    """Check component_names filtering works correctly.
+    """Check components filtering works correctly.
 
     Parameters
     ----------
@@ -352,7 +363,7 @@ def check_scorer_component_subselection(
         Ground truth
     y_pred : pl.DataFrame
         Predictions
-    component_names : list of str
+    components : list of str
         Component names to filter
 
     Raises
@@ -362,22 +373,22 @@ def check_scorer_component_subselection(
 
     """
     scorer_filtered = clone(scorer)
-    scorer_filtered.set_params(component_names=component_names)
+    scorer_filtered.set_params(components=components)
 
     try:
         score = scorer_filtered.score(y_truth, y_pred)
         assert isinstance(score, int | float | np.number), "Component-filtered score should be numeric"
     except Exception as e:
-        raise AssertionError(f"component_names={component_names} filtering failed: {e}") from e
+        raise AssertionError(f"components={components} filtering failed: {e}") from e
 
 
 def check_scorer_coverage_rate_subselection(
     scorer,
     y_truth: pl.DataFrame,
     y_pred_interval: pl.DataFrame,
-    coverage_rates: list[float],
+    coverage: list[float],
 ) -> None:
-    """Check coverage_rates parameter filters interval predictions correctly.
+    """Check coverage parameter filters interval predictions correctly.
 
     Only applicable for interval scorers.
 
@@ -389,13 +400,13 @@ def check_scorer_coverage_rate_subselection(
         Ground truth
     y_pred_interval : pl.DataFrame
         Interval predictions with coverage_rate column
-    coverage_rates : list of float
+    coverage : list of float
         Coverage rates to filter
 
     Raises
     ------
     AssertionError
-        If coverage_rates filtering fails
+        If coverage filtering fails
 
     """
     tags = scorer.__sklearn_tags__()
@@ -404,7 +415,7 @@ def check_scorer_coverage_rate_subselection(
         return
 
     scorer_filtered = clone(scorer)
-    scorer_filtered.set_params(coverage_rates=coverage_rates)
+    scorer_filtered.set_params(coverage=coverage)
 
     # Always fit scorer before scoring
     scorer_filtered.fit(y_truth)
@@ -413,7 +424,7 @@ def check_scorer_coverage_rate_subselection(
         score = scorer_filtered.score(y_truth, y_pred_interval)
         assert isinstance(score, int | float | np.number), "Coverage-filtered score should be numeric"
     except Exception as e:
-        raise AssertionError(f"coverage_rates={coverage_rates} filtering failed: {e}") from e
+        raise AssertionError(f"coverage={coverage} filtering failed: {e}") from e
 
 
 def check_scorer_parameter_validation(

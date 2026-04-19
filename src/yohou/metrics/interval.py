@@ -9,7 +9,7 @@ import polars as pl
 from .base import BaseIntervalScorer
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    pass
 
 __all__ = [
     "CalibrationError",

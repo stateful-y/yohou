@@ -1149,7 +1149,7 @@ class TestCheckScorerColumnSelection:
             "revenue__store_2": range(115, 120),
         })
 
-        scorer = MeanAbsoluteError(component_names=["store_1"])
+        scorer = MeanAbsoluteError(components=["store_1"])
 
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1184,7 +1184,7 @@ class TestCheckScorerColumnSelection:
             "revenue__store_2": range(115, 120),
         })
 
-        scorer = MeanAbsoluteError(groups=["sales"], component_names=["store_1"])
+        scorer = MeanAbsoluteError(groups=["sales"], components=["store_1"])
 
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1207,7 +1207,7 @@ class TestCheckScorerColumnSelection:
         y_true = pl.DataFrame({"time": times, "sales": range(5), "revenue": range(5, 10)})
         y_pred = pl.DataFrame({"time": times, "sales": range(100, 105), "revenue": range(105, 110)})
 
-        scorer = MeanAbsoluteError(component_names=["sales"])
+        scorer = MeanAbsoluteError(components=["sales"])
 
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1238,7 +1238,7 @@ class TestCheckScorerColumnSelection:
             "value_upper_0.95": range(17, 22),
         })
 
-        scorer = IntervalScore(coverage_rates=[0.9])
+        scorer = IntervalScore(coverage=[0.9])
 
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
@@ -1278,7 +1278,7 @@ class TestCheckScorerColumnSelection:
             "sales__store_2_upper_0.95": range(25, 28),
         })
 
-        scorer = IntervalScore(groups=["sales"], component_names=["store_1"], coverage_rates=[0.95])
+        scorer = IntervalScore(groups=["sales"], components=["store_1"], coverage=[0.95])
 
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
@@ -1326,9 +1326,9 @@ class TestCheckScorerColumnSelection:
         y_true = pl.DataFrame({"time": times, "sales": range(5)})
         y_pred = pl.DataFrame({"time": times, "sales": range(5)})
 
-        scorer = MeanAbsoluteError(component_names=["revenue"])
+        scorer = MeanAbsoluteError(components=["revenue"])
 
-        with pytest.raises(ValueError, match="Invalid component_names.*revenue.*not found"):
+        with pytest.raises(ValueError, match="Invalid components.*revenue.*not found"):
             check_scorer_column_selection(
                 scorer=scorer,
                 y_true=y_true,
@@ -1356,7 +1356,7 @@ class TestCheckScorerColumnSelection:
             "b_upper_0.9": [20.0] * 5,
         })
 
-        scorer = IntervalScore(component_names=["a"], coverage_rates=[0.9])
+        scorer = IntervalScore(components=["a"], coverage=[0.9])
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1384,7 +1384,7 @@ class TestCheckScorerColumnSelection:
             "value_lower_0.95": [0.0] * 5,
             "value_upper_0.95": [10.0] * 5,
         })
-        scorer = IntervalScore(coverage_rates=[0.95])
+        scorer = IntervalScore(coverage=[0.95])
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1447,7 +1447,7 @@ class TestCheckScorerColumnSelection:
             "mood_proba_happy": [0.8, 0.2, 0.9],
             "mood_proba_sad": [0.2, 0.8, 0.1],
         })
-        scorer = LogLoss(component_names=["weather"])
+        scorer = LogLoss(components=["weather"])
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
             y_true=y_true,
