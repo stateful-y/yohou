@@ -15,11 +15,13 @@ __gallery__ = {
 }
 app = marimo.App(width="medium")
 
+
 @app.cell(hide_code=True)
 def _():
     import marimo as mo
 
     return (mo,)
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -41,6 +43,7 @@ def _(mo):
 
     Basic understanding of prediction intervals and [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
     """)
+
 
 @app.cell(hide_code=True)
 def _():
@@ -80,6 +83,7 @@ def _():
         train_test_split,
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -87,6 +91,7 @@ def _(mo):
 
     We load the Monthly Tourism dataset and split it into training and test sets for calibrating and evaluating conformal intervals.
     """)
+
 
 @app.cell
 def _(fetch_tourism_monthly, train_test_split):
@@ -99,6 +104,7 @@ def _(fetch_tourism_monthly, train_test_split):
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
     return forecasting_horizon, y_test, y_train
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -108,6 +114,7 @@ def _(mo):
     `calibration_size` controls how many of the most recent training observations
     are used for calibration.
     """)
+
 
 @app.cell
 def _(
@@ -140,12 +147,14 @@ def _(
     y_pred_int.head()
     return coverage_rates, y_pred_int
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) renders the prediction intervals as shaded bands around
     the point forecast, with separate bands for each coverage rate.
     """)
+
 
 @app.cell
 def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
@@ -157,6 +166,7 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
         title="Split Conformal Prediction Intervals",
     )
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -166,6 +176,7 @@ def _(mo):
     - [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/): Penalizes wide intervals and miscoverage
     - [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/): Average interval width (narrower = better, given coverage)
     """)
+
 
 @app.cell
 def _(
@@ -183,6 +194,7 @@ def _(
         _score = _scorer.score(y_test, y_pred_int)
         print(f"{_scorer_cls.__name__}: {_score}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -194,6 +206,7 @@ def _(mo):
     - `AbsoluteResidual()`: $|y - \hat{y}|$: default, symmetric
     - `GammaResidual()`: $|y - \hat{y}| / \hat{y}$: scale-adaptive, wider intervals where predictions are larger
     """)
+
 
 @app.cell
 def _(
@@ -241,6 +254,7 @@ def _(
         scorer_results[_name] = {"pred": _pred, "coverage": _coverage, "width": _avg_width}
         print(f"{_name:>20s}  coverage={_coverage}  width={_avg_width}")
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -248,6 +262,7 @@ def _(mo):
 
     Conformal intervals work with **any** point forecaster, including [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/).
     """)
+
 
 @app.cell
 def _(SeasonalNaive, SplitConformalForecaster, forecasting_horizon, y_train):
@@ -266,12 +281,14 @@ def _(SeasonalNaive, SplitConformalForecaster, forecasting_horizon, y_train):
     y_pred_naive_int.head()
     return (y_pred_naive_int,)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) shows how [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/)-based conformal intervals
     compare visually to the Ridge-based intervals above.
     """)
+
 
 @app.cell
 def _(plot_forecast, y_pred_naive_int, y_test, y_train):
@@ -282,6 +299,7 @@ def _(plot_forecast, y_pred_naive_int, y_test, y_train):
         coverage_rates=[0.9],
         title="Conformal Intervals on SeasonalNaive",
     )
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -295,6 +313,7 @@ def _(mo):
     - Evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
     """)
 
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -304,6 +323,7 @@ def _(mo):
     - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval evaluation
     - **Calibration plots**: See [Plotting](/examples/#plotting) for [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
     """)
+
 
 if __name__ == "__main__":
     app.run()

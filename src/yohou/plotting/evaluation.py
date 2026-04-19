@@ -2650,7 +2650,7 @@ def plot_score_per_vintage(
     ...     "observed_time": ([datetime(2019, 12, 30)] * 5 + [datetime(2019, 12, 31)] * 5),
     ...     "time": [datetime(2020, 1, i) for i in range(1, 6)] * 2,
     ...     "value": [12.0, 19.0, 28.0, 42.0, 48.0, 11.0, 21.0, 29.0, 41.0, 49.0],
-    ... })
+    ... }).sort("time")
 
     >>> fig = plot_score_per_vintage(MeanAbsoluteError(), y_truth, y_pred)
     >>> len(fig.data) >= 1
@@ -2953,7 +2953,7 @@ def plot_score_heatmap(
     ...     "observed_time": [datetime(2019, 12, 30)] * 3 + [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, i) for i in range(1, 4)] * 2,
     ...     "value": [12.0, 19.0, 28.0, 11.0, 21.0, 29.0],
-    ... })
+    ... }).sort("time")
 
     >>> fig = plot_score_heatmap(MeanAbsoluteError(), y_truth, y_pred)
     >>> len(fig.data)

@@ -42,14 +42,20 @@ def multi_vintage_data():
     })
     y_pred = pl.DataFrame({
         "observed_time": [
-            base, base,
-            base + timedelta(days=1), base + timedelta(days=1),
-            base + timedelta(days=2), base + timedelta(days=2),
+            base,
+            base,
+            base + timedelta(days=1),
+            base + timedelta(days=1),
+            base + timedelta(days=2),
+            base + timedelta(days=2),
         ],
         "time": [
-            base + timedelta(days=1), base + timedelta(days=2),
-            base + timedelta(days=2), base + timedelta(days=3),
-            base + timedelta(days=3), base + timedelta(days=4),
+            base + timedelta(days=1),
+            base + timedelta(days=2),
+            base + timedelta(days=2),
+            base + timedelta(days=3),
+            base + timedelta(days=3),
+            base + timedelta(days=4),
         ],
         "value": [11.0, 22.0, 19.0, 28.0, 31.0, 38.0],
     })
@@ -108,9 +114,7 @@ class TestComponentWeight:
         expected = (4.0 + 4.0 + 7.25) / 3
         np.testing.assert_allclose(result, expected, atol=1e-10)
 
-    def test_component_weight_missing_key_defaults_to_1(
-        self, y_train_mv, multivariate_data
-    ):
+    def test_component_weight_missing_key_defaults_to_1(self, y_train_mv, multivariate_data):
         """Components not in weight dict get weight 1.0."""
         y_true, y_pred = multivariate_data
 
@@ -125,9 +129,7 @@ class TestComponentWeight:
 
         np.testing.assert_allclose(result, result_explicit, atol=1e-10)
 
-    def test_component_weight_with_componentwise(
-        self, y_train_mv, multivariate_data
-    ):
+    def test_component_weight_with_componentwise(self, y_train_mv, multivariate_data):
         """component_weight with componentwise aggregation uses weighted reduce."""
         y_true, y_pred = multivariate_data
 
@@ -154,9 +156,7 @@ class TestComponentWeight:
 class TestStepWeight:
     """step_weight produces weighted mean across forecasting steps."""
 
-    def test_equal_step_weights_matches_default(
-        self, y_train, multi_vintage_data
-    ):
+    def test_equal_step_weights_matches_default(self, y_train, multi_vintage_data):
         """Equal step weights reproduce unweighted result."""
         y_true, y_pred = multi_vintage_data
 
@@ -208,9 +208,7 @@ class TestStepWeight:
         # Without observed_time, step_weight is a no-op
         np.testing.assert_allclose(result_default, result_weighted, atol=1e-10)
 
-    def test_step_weight_with_stepwise_vintagewise_row_reduction(
-        self, y_train, multi_vintage_data
-    ):
+    def test_step_weight_with_stepwise_vintagewise_row_reduction(self, y_train, multi_vintage_data):
         """step_weight applies during row reduction with stepwise+vintagewise."""
         y_true, y_pred = multi_vintage_data
 
@@ -301,11 +299,13 @@ class TestVintageWeight:
         mae_default.fit(y_train)
         result_default = mae_default.score(y_true, y_pred)
 
-        mae_equal = MeanAbsoluteError(vintage_weight={
-            base: 1.0,
-            base + timedelta(days=1): 1.0,
-            base + timedelta(days=2): 1.0,
-        })
+        mae_equal = MeanAbsoluteError(
+            vintage_weight={
+                base: 1.0,
+                base + timedelta(days=1): 1.0,
+                base + timedelta(days=2): 1.0,
+            }
+        )
         mae_equal.fit(y_train)
         result_equal = mae_equal.score(y_true, y_pred)
 
@@ -335,14 +335,20 @@ class TestVintageWeight:
         })
         y_pred_diff = pl.DataFrame({
             "observed_time": [
-                base, base,
-                base + timedelta(days=1), base + timedelta(days=1),
-                base + timedelta(days=2), base + timedelta(days=2),
+                base,
+                base,
+                base + timedelta(days=1),
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
             ],
             "time": [
-                base + timedelta(days=1), base + timedelta(days=2),
-                base + timedelta(days=2), base + timedelta(days=3),
-                base + timedelta(days=3), base + timedelta(days=4),
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+                base + timedelta(days=3),
+                base + timedelta(days=4),
             ],
             "value": [15.0, 25.0, 19.0, 28.0, 31.0, 38.0],
         })
@@ -354,11 +360,13 @@ class TestVintageWeight:
         # vintage_weight {base: 0, base+1: 1, base+2: 1} -> row weights [0,0,1,1,1,1]
         # weighted = (5*0 + 5*0 + 1*1 + 2*1 + 1*1 + 2*1) / (0+0+1+1+1+1) = 6/4 = 1.5
 
-        mae = MeanAbsoluteError(vintage_weight={
-            base: 0.0,
-            base + timedelta(days=1): 1.0,
-            base + timedelta(days=2): 1.0,
-        })
+        mae = MeanAbsoluteError(
+            vintage_weight={
+                base: 0.0,
+                base + timedelta(days=1): 1.0,
+                base + timedelta(days=2): 1.0,
+            }
+        )
         mae.fit(y_train)
         result = mae.score(y_true_diff, y_pred_diff)
 
@@ -406,9 +414,13 @@ class TestVintageWeight:
         result_step = mae_step.score(y_true, y_pred)
 
         # Use only vintage_weight (equal)
-        mae_vintage = MeanAbsoluteError(vintage_weight={
-            base: 1.0, base + timedelta(days=1): 1.0, base + timedelta(days=2): 1.0,
-        })
+        mae_vintage = MeanAbsoluteError(
+            vintage_weight={
+                base: 1.0,
+                base + timedelta(days=1): 1.0,
+                base + timedelta(days=2): 1.0,
+            }
+        )
         mae_vintage.fit(y_train)
         result_vintage = mae_vintage.score(y_true, y_pred)
 

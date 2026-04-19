@@ -43,14 +43,20 @@ def multi_vintage_data():
     })
     y_pred = pl.DataFrame({
         "observed_time": [
-            base, base,
-            base + timedelta(days=1), base + timedelta(days=1),
-            base + timedelta(days=2), base + timedelta(days=2),
+            base,
+            base,
+            base + timedelta(days=1),
+            base + timedelta(days=1),
+            base + timedelta(days=2),
+            base + timedelta(days=2),
         ],
         "time": [
-            base + timedelta(days=1), base + timedelta(days=2),
-            base + timedelta(days=2), base + timedelta(days=3),
-            base + timedelta(days=3), base + timedelta(days=4),
+            base + timedelta(days=1),
+            base + timedelta(days=2),
+            base + timedelta(days=2),
+            base + timedelta(days=3),
+            base + timedelta(days=3),
+            base + timedelta(days=4),
         ],
         "value": [11.0, 22.0, 19.0, 28.0, 31.0, 38.0],
     })
@@ -82,17 +88,11 @@ class TestVintagewiseAggregation:
         # Step 1 errors: |10-11|=1, |20-19|=1, |30-31|=1 → mean=1.0
         # Step 2 errors: |20-22|=2, |30-28|=2, |40-38|=2 → mean=2.0
         assert result_sorted["forecasting_step"].to_list() == [1, 2]
-        np.testing.assert_allclose(
-            result_sorted["value"].to_list(), [1.0, 2.0], atol=1e-10
-        )
+        np.testing.assert_allclose(result_sorted["value"].to_list(), [1.0, 2.0], atol=1e-10)
 
-    def test_vintagewise_componentwise_returns_per_step_scalar(
-        self, y_train, multi_vintage_data
-    ):
+    def test_vintagewise_componentwise_returns_per_step_scalar(self, y_train, multi_vintage_data):
         y_true, y_pred = multi_vintage_data
-        mae = MeanAbsoluteError(
-            aggregation_method=["vintagewise", "componentwise"]
-        )
+        mae = MeanAbsoluteError(aggregation_method=["vintagewise", "componentwise"])
         mae.fit(y_train)
         result = mae.score(y_true, y_pred)
 
@@ -155,7 +155,6 @@ class TestStepwiseAggregation:
         assert len(result_sorted) == 3
         # All vintages should produce some numeric result
         assert all(v > 0 for v in result_sorted["value"].to_list())
-
 
 
 class TestAllAggregation:
@@ -227,9 +226,7 @@ class TestForecastingStepsFilter:
     def test_filter_with_vintagewise(self, y_train, multi_vintage_data):
         """Filter + vintagewise: only step-1, collapse vintage → per-step DF."""
         y_true, y_pred = multi_vintage_data
-        mae = MeanAbsoluteError(
-            aggregation_method="vintagewise", forecasting_steps=[1]
-        )
+        mae = MeanAbsoluteError(aggregation_method="vintagewise", forecasting_steps=[1])
         mae.fit(y_train)
         result = mae.score(y_true, y_pred)
 
@@ -264,16 +261,18 @@ class TestMultivariateStepwise:
             "b": [float(i) * 2 for i in range(10)],
         })
         y_true = pl.DataFrame({
-            "time": [base + timedelta(days=1), base + timedelta(days=2),
-                     base + timedelta(days=3)],
+            "time": [base + timedelta(days=1), base + timedelta(days=2), base + timedelta(days=3)],
             "a": [10.0, 20.0, 30.0],
             "b": [100.0, 200.0, 300.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [base, base,
-                              base + timedelta(days=1), base + timedelta(days=1)],
-            "time": [base + timedelta(days=1), base + timedelta(days=2),
-                     base + timedelta(days=2), base + timedelta(days=3)],
+            "observed_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+            ],
             "a": [11.0, 22.0, 19.0, 28.0],
             "b": [101.0, 202.0, 199.0, 298.0],
         })
@@ -312,10 +311,13 @@ class TestMultiVintageAlignment:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [base, base,
-                              base + timedelta(days=1), base + timedelta(days=1)],
-            "time": [base + timedelta(days=1), base + timedelta(days=2),
-                     base + timedelta(days=2), base + timedelta(days=3)],
+            "observed_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+            ],
             "value": [11.0, 22.0, 19.0, 28.0],
         })
         mae = MeanAbsoluteError()

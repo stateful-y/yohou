@@ -209,10 +209,14 @@ def _(mo):
 
 @app.cell
 def _(Downsampler, fetch_electricity_demand, pl, plot_time_series):
-    _elec_mv = fetch_electricity_demand().frame.head(48 * 14).select(
-        "time",
-        pl.col("vic__demand").alias("demand"),
-        pl.col("nsw__demand").alias("nsw_demand"),
+    _elec_mv = (
+        fetch_electricity_demand()
+        .frame.head(48 * 14)
+        .select(
+            "time",
+            pl.col("vic__demand").alias("demand"),
+            pl.col("nsw__demand").alias("nsw_demand"),
+        )
     )
     _ds_mv = Downsampler(interval="1d", aggregation="mean")
     _ds_mv.fit(_elec_mv)

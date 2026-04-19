@@ -329,9 +329,7 @@ def _(
         method="mean",
     )
     panel_ensemble.fit(tourism_train, forecasting_horizon=12)
-    y_pred_panel = panel_ensemble.observe_predict(
-        tourism_test, forecasting_horizon=12, groups=["T3", "T4", "T5"]
-    )
+    y_pred_panel = panel_ensemble.observe_predict(tourism_test, forecasting_horizon=12, groups=["T3", "T4", "T5"])
 
     print(f"Panel groups: {panel_ensemble.groups_}")
     print(f"Prediction shape: {y_pred_panel.shape}")
