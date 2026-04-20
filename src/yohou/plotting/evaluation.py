@@ -3344,22 +3344,23 @@ def plot_group_scores(
 
         for s_name, s_orig in scorer_dict.items():
             for m_name, y_pm in y_pred_dict.items():
-                s_group = copy.deepcopy(s_orig)
-                s_group.set_params(aggregation_method="groupwise")
-                s_group.fit(y_truth)
-                scores_result = s_group.score(y_truth, y_pm)
+                validate_plotting_data(y_pm)
+                for gname in group_names:
+                    g_truth_cols = ["time"] + [c for c in y_truth.columns if c.startswith(f"{gname}__")]
+                    g_pred_cols = [c for c in y_pm.columns if c in ("time", "observed_time") or c.startswith(f"{gname}__")]
+                    y_truth_g = y_truth.select(g_truth_cols)
+                    y_pm_g = y_pm.select(g_pred_cols)
 
-                if isinstance(scores_result, pl.DataFrame):
-                    # Should have group columns
-                    for gname in group_names:
-                        gcols = [c for c in scores_result.columns if c.startswith(f"{gname}__")]
-                        if gcols:
-                            group_score = float(scores_result.select(gcols).mean_horizontal().mean())  # type: ignore
-                            all_entries.append((s_name, m_name, gname, group_score))
-                elif isinstance(scores_result, (int, float)):
-                    # Scalar - same for all groups
-                    for gname in group_names:
-                        all_entries.append((s_name, m_name, gname, float(scores_result)))
+                    s_agg = copy.deepcopy(s_orig)
+                    s_agg.fit(y_truth_g)
+                    score_val = s_agg.score(y_truth_g, y_pm_g)
+
+                    if isinstance(score_val, pl.DataFrame):
+                        score_cols = [c for c in score_val.columns if c not in ("time", "observed_time", "forecasting_step")]
+                        group_score = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
+                    else:
+                        group_score = float(score_val)  # type: ignore
+                    all_entries.append((s_name, m_name, gname, group_score))
 
         # Build grouped bar chart
         n_scorers = len(scorer_dict)
@@ -3447,20 +3448,23 @@ def plot_group_scores(
 
         for s_name, s_orig in scorer_dict.items():
             for m_name, y_pm in y_pred_dict.items():
-                s_group = copy.deepcopy(s_orig)
-                s_group.set_params(aggregation_method="groupwise")
-                s_group.fit(y_truth)
-                scores_result = s_group.score(y_truth, y_pm)
+                validate_plotting_data(y_pm)
+                for gname in group_names:
+                    g_truth_cols = ["time"] + [c for c in y_truth.columns if c.startswith(f"{gname}__")]
+                    g_pred_cols = [c for c in y_pm.columns if c in ("time", "observed_time") or c.startswith(f"{gname}__")]
+                    y_truth_g = y_truth.select(g_truth_cols)
+                    y_pm_g = y_pm.select(g_pred_cols)
 
-                if isinstance(scores_result, pl.DataFrame):
-                    for gname in group_names:
-                        gcols = [c for c in scores_result.columns if c.startswith(f"{gname}__")]
-                        if gcols:
-                            group_score = float(scores_result.select(gcols).mean_horizontal().mean())  # type: ignore
-                            all_entries.append((s_name, m_name, gname, group_score))
-                elif isinstance(scores_result, (int, float)):
-                    for gname in group_names:
-                        all_entries.append((s_name, m_name, gname, float(scores_result)))
+                    s_agg = copy.deepcopy(s_orig)
+                    s_agg.fit(y_truth_g)
+                    score_val = s_agg.score(y_truth_g, y_pm_g)
+
+                    if isinstance(score_val, pl.DataFrame):
+                        score_cols = [c for c in score_val.columns if c not in ("time", "observed_time", "forecasting_step")]
+                        group_score = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
+                    else:
+                        group_score = float(score_val)  # type: ignore
+                    all_entries.append((s_name, m_name, gname, group_score))
 
         n_scorers = len(scorer_dict)
         multi_scorer = n_scorers > 1
