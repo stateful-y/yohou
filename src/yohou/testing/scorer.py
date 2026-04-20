@@ -387,7 +387,7 @@ def check_scorer_coverage_rate_subselection(
     scorer,
     y_truth: pl.DataFrame,
     y_pred_interval: pl.DataFrame,
-    coverage: list[float],
+    coverage_rates: list[float],
 ) -> None:
     """Check coverage parameter filters interval predictions correctly.
 
@@ -401,7 +401,7 @@ def check_scorer_coverage_rate_subselection(
         Ground truth
     y_pred_interval : pl.DataFrame
         Interval predictions with coverage_rate column
-    coverage : list of float
+    coverage_rates : list of float
         Coverage rates to filter
 
     Raises
@@ -416,7 +416,7 @@ def check_scorer_coverage_rate_subselection(
         return
 
     scorer_filtered = clone(scorer)
-    scorer_filtered.set_params(coverage=coverage)
+    scorer_filtered.set_params(coverage_rates=coverage_rates)
 
     # Always fit scorer before scoring
     scorer_filtered.fit(y_truth)
@@ -425,7 +425,7 @@ def check_scorer_coverage_rate_subselection(
         score = scorer_filtered.score(y_truth, y_pred_interval)
         assert isinstance(score, int | float | np.number), "Coverage-filtered score should be numeric"
     except Exception as e:
-        raise AssertionError(f"coverage={coverage} filtering failed: {e}") from e
+        raise AssertionError(f"coverage_rates={coverage_rates} filtering failed: {e}") from e
 
 
 def check_scorer_parameter_validation(

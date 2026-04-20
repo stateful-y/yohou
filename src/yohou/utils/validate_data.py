@@ -667,7 +667,7 @@ def validate_scorer_data(
     y_true = y_pred.select("time").join(y_true_filtered, on="time", how="left")
 
     # Subselect columns based on scorer configuration
-    coverage_rates: list[float] | None = getattr(scorer, "coverage", None)
+    coverage_rates: list[float] | None = getattr(scorer, "coverage_rates", None)
     # Extract filter keys from polymorphic param (list or dict)
     if isinstance(coverage_rates, dict):
         coverage_rates = [float(k) for k in coverage_rates]

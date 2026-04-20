@@ -236,7 +236,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         df = df.with_columns(pl.Series("_row_idx", row_idx))
         group_cols = ["_row_idx"] + meta_cols
 
-        cw = self._weight_dict(getattr(self, "coverage", None))
+        cw = self._weight_dict(getattr(self, "coverage_rates", None))
 
         if cw is not None:
             df = df.with_columns(
@@ -1168,7 +1168,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         - "coveragewise": Collapse coverage rates (return average across rates).
         - "all": Collapse all dimensions (returns scalar). Same as
           ``["stepwise", "vintagewise", "componentwise", "groupwise", "coveragewise"]``.
-    coverage : list of float, dict of float to float, or None, default=None
+    coverage_rates : list of float, dict of float to float, or None, default=None
         Coverage rate filter (list) or filter with weights (dict). If None,
         all coverage rates are included with equal weight.
     groups : list of str, dict of str to float, or None, default=None
@@ -1194,13 +1194,13 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             list,
             StrOptions({"all", "stepwise", "vintagewise", "componentwise", "groupwise", "coveragewise"}),
         ],
-        "coverage": [list, dict, None],
+        "coverage_rates": [list, dict, None],
     }
 
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        coverage: list[float] | dict[float, float] | None = None,
+        coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
     ):
@@ -1209,7 +1209,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             components=components,
         )
         self.aggregation_method = aggregation_method
-        self.coverage = coverage
+        self.coverage_rates = coverage_rates
 
     def _validate_coverage_rates(self) -> None:
         """Validate coverage parameter.
@@ -1222,10 +1222,10 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             If coverage contains non-hashable types.
 
         """
-        coverage_filter = self._filter_keys(self.coverage)
+        coverage_filter = self._filter_keys(self.coverage_rates)
         if coverage_filter is not None:
             if len(coverage_filter) == 0:
-                raise ValueError("coverage cannot be empty")
+                raise ValueError("coverage_rates cannot be empty")
 
             # Check for hashable types (catch lists, dicts, etc.)
             for i, rate in enumerate(coverage_filter):
@@ -1233,14 +1233,14 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
                     hash(rate)
                 except TypeError:
                     raise TypeError(
-                        f"coverage[{i}] is not hashable (got {type(rate).__name__}). "
+                        f"coverage_rates[{i}] is not hashable (got {type(rate).__name__}). "
                         f"All elements must be numeric (int or float)."
                     ) from None
 
             # Check all elements are numeric
             if not all(isinstance(rate, int | float) for rate in coverage_filter):
                 raise ValueError(
-                    f"All elements in coverage must be numeric (int or float), "
+                    f"All elements in coverage_rates must be numeric (int or float), "
                     f"got types: {[type(r).__name__ for r in coverage_filter]}"
                 )
 

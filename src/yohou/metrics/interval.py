@@ -46,7 +46,7 @@ class EmpiricalCoverage(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average coverage).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage : list of float, dict of float to float, or None, default=None
+    coverage_rates : list of float, dict of float to float, or None, default=None
         Coverage rate filter (list) or filter with weights (dict).
     groups : list of str, dict of str to float, or None, default=None
         Panel group filter (list) or filter with weights (dict).
@@ -103,7 +103,7 @@ class EmpiricalCoverage(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        coverage: list[float] | dict[float, float] | None = None,
+        coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
     ) -> None:
@@ -113,7 +113,7 @@ class EmpiricalCoverage(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
-            coverage=coverage,
+            coverage_rates=coverage_rates,
             groups=groups,
             components=components,
         )
@@ -155,7 +155,7 @@ class MeanIntervalWidth(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average coverage).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage : list of float, dict of float to float, or None, default=None
+    coverage_rates : list of float, dict of float to float, or None, default=None
         Coverage rate filter (list) or filter with weights (dict).
     groups : list of str, dict of str to float, or None, default=None
         Panel group filter (list) or filter with weights (dict).
@@ -208,7 +208,7 @@ class MeanIntervalWidth(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        coverage: list[float] | dict[float, float] | None = None,
+        coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
     ) -> None:
@@ -218,7 +218,7 @@ class MeanIntervalWidth(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
-            coverage=coverage,
+            coverage_rates=coverage_rates,
             groups=groups,
             components=components,
         )
@@ -262,7 +262,7 @@ class IntervalScore(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average interval score).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage : list of float, dict of float to float, or None, default=None
+    coverage_rates : list of float, dict of float to float, or None, default=None
         Coverage rate filter (list) or filter with weights (dict).
     groups : list of str, dict of str to float, or None, default=None
         Panel group filter (list) or filter with weights (dict).
@@ -316,7 +316,7 @@ class IntervalScore(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        coverage: list[float] | dict[float, float] | None = None,
+        coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
     ) -> None:
@@ -326,7 +326,7 @@ class IntervalScore(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
-            coverage=coverage,
+            coverage_rates=coverage_rates,
             groups=groups,
             components=components,
         )
@@ -391,7 +391,7 @@ class PinballLoss(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average pinball loss).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage : list of float, dict of float to float, or None, default=None
+    coverage_rates : list of float, dict of float to float, or None, default=None
         Coverage rate filter (list) or filter with weights (dict).
     groups : list of str, dict of str to float, or None, default=None
         Panel group filter (list) or filter with weights (dict).
@@ -447,7 +447,7 @@ class PinballLoss(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        coverage: list[float] | dict[float, float] | None = None,
+        coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
     ) -> None:
@@ -457,7 +457,7 @@ class PinballLoss(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
-            coverage=coverage,
+            coverage_rates=coverage_rates,
             groups=groups,
             components=components,
         )
@@ -534,7 +534,7 @@ class CalibrationError(BaseIntervalScorer):
         - "coveragewise": Collapse coverage rates (return average calibration error).
 
         - "all": Collapse all dimensions (returns scalar).
-    coverage : list of float, dict of float to float, or None, default=None
+    coverage_rates : list of float, dict of float to float, or None, default=None
         Coverage rate filter (list) or filter with weights (dict).
     groups : list of str, dict of str to float, or None, default=None
         Panel group filter (list) or filter with weights (dict).
@@ -589,7 +589,7 @@ class CalibrationError(BaseIntervalScorer):
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
-        coverage: list[float] | dict[float, float] | None = None,
+        coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
     ) -> None:
@@ -599,7 +599,7 @@ class CalibrationError(BaseIntervalScorer):
 
         super().__init__(
             aggregation_method=agg_list,
-            coverage=coverage,
+            coverage_rates=coverage_rates,
             groups=groups,
             components=components,
         )

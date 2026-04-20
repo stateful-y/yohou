@@ -970,7 +970,7 @@ class TestCoverageWeightAggregation:
         # Weighted: emphasize 0.9 rate
         cov_weighted = EmpiricalCoverage(
             aggregation_method="all",
-            coverage={0.9: 10.0, 0.95: 1.0},
+            coverage_rates={0.9: 10.0, 0.95: 1.0},
         )
         cov_weighted.fit(y_true)
         score_weighted = cov_weighted.score(y_true, y_pred)
@@ -1013,7 +1013,7 @@ class TestCoverageWeightAggregation:
         # Stepwise without coveragewise -> DataFrame with coverage_rate and observed_time
         cov = EmpiricalCoverage(
             aggregation_method=["componentwise", "vintagewise", "coveragewise"],
-            coverage={0.9: 2.0, 0.95: 1.0},
+            coverage_rates={0.9: 2.0, 0.95: 1.0},
         )
         cov.fit(y_true)
         result = cov.score(y_true, y_pred)

@@ -279,7 +279,7 @@ class TestCoverageRates:
         """coverage_rates must be a list or None."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage="invalid")
+        scorer = EmpiricalCoverage(coverage_rates="invalid")
         with pytest.raises(ValueError, match=r"coverage.*must be an instance of 'list'.*or None"):
             scorer.fit(y)
 
@@ -287,16 +287,16 @@ class TestCoverageRates:
         """All elements in coverage_rates must be numeric."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage=["0.9", "0.95"])
-        with pytest.raises(ValueError, match="All elements in coverage must be numeric"):
+        scorer = EmpiricalCoverage(coverage_rates=["0.9", "0.95"])
+        with pytest.raises(ValueError, match="All elements in coverage_rates must be numeric"):
             scorer.fit(y)
 
     def test_coverage_rates_cannot_be_empty_list(self, y_X_factory):
         """coverage_rates cannot be an empty list."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage=[])
-        with pytest.raises(ValueError, match="coverage cannot be empty"):
+        scorer = EmpiricalCoverage(coverage_rates=[])
+        with pytest.raises(ValueError, match="coverage_rates cannot be empty"):
             scorer.fit(y)
 
     def test_coverage_rates_must_be_between_zero_and_one(self, y_X_factory):
@@ -304,22 +304,22 @@ class TestCoverageRates:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         # Test zero
-        scorer = EmpiricalCoverage(coverage=[0.0, 0.9])
+        scorer = EmpiricalCoverage(coverage_rates=[0.0, 0.9])
         with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got 0.0"):
             scorer.fit(y)
 
         # Test one
-        scorer = EmpiricalCoverage(coverage=[0.9, 1.0])
+        scorer = EmpiricalCoverage(coverage_rates=[0.9, 1.0])
         with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got 1.0"):
             scorer.fit(y)
 
         # Test negative
-        scorer = EmpiricalCoverage(coverage=[-0.1, 0.9])
+        scorer = EmpiricalCoverage(coverage_rates=[-0.1, 0.9])
         with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got -0.1"):
             scorer.fit(y)
 
         # Test greater than one
-        scorer = EmpiricalCoverage(coverage=[0.9, 1.5])
+        scorer = EmpiricalCoverage(coverage_rates=[0.9, 1.5])
         with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got 1.5"):
             scorer.fit(y)
 
@@ -327,14 +327,14 @@ class TestCoverageRates:
         """Valid coverage_rates should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage=[0.5, 0.9, 0.95])
+        scorer = EmpiricalCoverage(coverage_rates=[0.5, 0.9, 0.95])
         scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_with_mixed_numeric_types(self, y_X_factory):
         """coverage_rates with mixed int and float should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage=[0.5, 0.9])  # float
+        scorer = EmpiricalCoverage(coverage_rates=[0.5, 0.9])  # float
         scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_boundary_values_excluded(self, y_X_factory):
@@ -342,12 +342,12 @@ class TestCoverageRates:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         # Test 0.0
-        scorer = EmpiricalCoverage(coverage=[0.0])
+        scorer = EmpiricalCoverage(coverage_rates=[0.0])
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 0.0"):
             scorer.fit(y)
 
         # Test 1.0
-        scorer = EmpiricalCoverage(coverage=[1.0])
+        scorer = EmpiricalCoverage(coverage_rates=[1.0])
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 1.0"):
             scorer.fit(y)
 
@@ -355,29 +355,29 @@ class TestCoverageRates:
         """Very small valid coverage rates should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage=[0.01, 0.05])
+        scorer = EmpiricalCoverage(coverage_rates=[0.01, 0.05])
         scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_very_large_value(self, y_X_factory):
         """Very large valid coverage rates should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage=[0.95, 0.99])
+        scorer = EmpiricalCoverage(coverage_rates=[0.95, 0.99])
         scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_multiple_invalid(self, y_X_factory):
         """First invalid coverage rate should be reported."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage=[0.5, 1.5, 2.0])
+        scorer = EmpiricalCoverage(coverage_rates=[0.5, 1.5, 2.0])
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 1.5"):
             scorer.fit(y)
 
     def test_coverage_rates_edge_case_none_accepted(self, y_X_factory):
-        """coverage=None should be accepted."""
+        """coverage_rates=None should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
-        scorer = EmpiricalCoverage(coverage=None)
+        scorer = EmpiricalCoverage(coverage_rates=None)
         scorer.fit(y)  # Should not raise
 
 
@@ -395,7 +395,7 @@ class TestTypeValidation:
             scorer.fit(None)
 
         # Test invalid coverage_rates
-        scorer = EmpiricalCoverage(coverage=[1.5])
+        scorer = EmpiricalCoverage(coverage_rates=[1.5])
         with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1"):
             scorer.fit(None)
 
@@ -424,7 +424,7 @@ class TestCombinedValidation:
         scorer = EmpiricalCoverage(
             groups="invalid",  # Invalid type
             components="invalid",  # Also invalid
-            coverage="invalid",  # Also invalid
+            coverage_rates="invalid",  # Also invalid
         )
         with pytest.raises(
             ValueError,
@@ -445,7 +445,7 @@ class TestCombinedValidation:
         scorer = EmpiricalCoverage(
             groups=["store1"],
             components=["y_0"],
-            coverage=[0.9],
+            coverage_rates=[0.9],
         )
         scorer.fit(y)  # Should not raise
 
@@ -479,7 +479,7 @@ class TestValidationOrdering:
 
         # Invalid coverage_rates should be caught before groups
         scorer = EmpiricalCoverage(
-            coverage=[1.5],
+            coverage_rates=[1.5],
             groups=["nonexistent"],
         )
         with pytest.raises(ValueError, match="must be between 0 and 1.*got 1.5"):
@@ -527,12 +527,12 @@ class TestValidationWithScore:
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         # Fit with coverage_rates filter
-        scorer = EmpiricalCoverage(coverage=[0.9])
+        scorer = EmpiricalCoverage(coverage_rates=[0.9])
         scorer.fit(y)
 
         # This validation is tested in test_column_subselection.py
         # Just verify fit succeeds
-        assert scorer.coverage == [0.9]
+        assert scorer.coverage_rates == [0.9]
 
 
 class TestGroupWeight:
@@ -557,19 +557,19 @@ class TestCoverageWeight:
     def test_coverage_weight_must_be_dict_or_none(self, y_X_factory):
         """coverage_weight must be a dict or None."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
-        scorer = EmpiricalCoverage(coverage="invalid")
+        scorer = EmpiricalCoverage(coverage_rates="invalid")
         with pytest.raises(ValueError, match=r"coverage.*must be an instance of 'list'.*or None"):
             scorer.fit(y)
 
     def test_coverage_weight_none_is_default(self):
         """Default coverage_weight is None."""
         scorer = EmpiricalCoverage()
-        assert scorer.coverage is None
+        assert scorer.coverage_rates is None
 
     def test_coverage_weight_accepted_as_dict(self):
         """coverage_weight accepts dict."""
-        scorer = EmpiricalCoverage(coverage={0.9: 2.0, 0.95: 1.0})
-        assert scorer.coverage == {0.9: 2.0, 0.95: 1.0}
+        scorer = EmpiricalCoverage(coverage_rates={0.9: 2.0, 0.95: 1.0})
+        assert scorer.coverage_rates == {0.9: 2.0, 0.95: 1.0}
 
 
 class TestLowerIsBetter:
@@ -625,9 +625,9 @@ class TestMakeScorerGetScorer:
         """make_scorer works for interval scorers with factory params."""
         from yohou.metrics import make_scorer
 
-        scorer = make_scorer("coverage", coverage=[0.9])
+        scorer = make_scorer("coverage", coverage_rates=[0.9])
         assert isinstance(scorer, EmpiricalCoverage)
-        assert scorer.coverage == [0.9]
+        assert scorer.coverage_rates == [0.9]
 
     def test_make_scorer_invalid_name_raises(self):
         """make_scorer raises ValueError for unknown names."""

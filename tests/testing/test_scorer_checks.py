@@ -127,7 +127,7 @@ class TestScorerCheckFunctions:
     def test_check_coverage_rate_subselection(self, interval_scorer_data):
         """check_scorer_coverage_rate_subselection filters interval predictions."""
         scorer, y_truth, y_pred_interval = interval_scorer_data
-        check_scorer_coverage_rate_subselection(scorer, y_truth, y_pred_interval, coverage=[0.9])
+        check_scorer_coverage_rate_subselection(scorer, y_truth, y_pred_interval, coverage_rates=[0.9])
 
     def test_check_coverage_rate_subselection_point_scorer_skips(self):
         """Point scorer skips coverage rate subselection check entirely."""
@@ -147,7 +147,7 @@ class TestScorerCheckFunctions:
         scorer = MeanAbsoluteError()
         scorer.fit(y_truth)
         # For a point scorer, prediction_type != "interval" so the check returns early
-        check_scorer_coverage_rate_subselection(scorer, y_truth, y_pred, coverage=[0.9])
+        check_scorer_coverage_rate_subselection(scorer, y_truth, y_pred, coverage_rates=[0.9])
 
     def test_check_prediction_type_compatibility(self, fitted_point_forecaster):
         """check_scorer_prediction_type_compatibility pairs scorer with forecaster."""

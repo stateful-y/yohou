@@ -169,12 +169,12 @@ class TestIntervalScorerFiltering:
         y_true, y_pred = panel_interval_data
 
         # Score only 0.9 coverage
-        cov_09 = EmpiricalCoverage(coverage=[0.9])
+        cov_09 = EmpiricalCoverage(coverage_rates=[0.9])
         cov_09.fit(y_true)
         score_09 = cov_09.score(y_true, y_pred)
 
         # Score only 0.95 coverage
-        cov_095 = EmpiricalCoverage(coverage=[0.95])
+        cov_095 = EmpiricalCoverage(coverage_rates=[0.95])
         cov_095.fit(y_true)
         score_095 = cov_095.score(y_true, y_pred)
 
@@ -238,7 +238,7 @@ class TestIntervalScorerFiltering:
         cov_filtered = EmpiricalCoverage(
             groups=["sales"],
             components=["store_1"],
-            coverage=[0.9],
+            coverage_rates=[0.9],
         )
         cov_filtered.fit(y_true)
         score_filtered = cov_filtered.score(y_true, y_pred)
@@ -292,7 +292,7 @@ class TestEdgeCases:
         y_true, y_pred = panel_interval_data
 
         # Request coverage rate that doesn't exist in predictions
-        cov_invalid = EmpiricalCoverage(coverage=[0.99])
+        cov_invalid = EmpiricalCoverage(coverage_rates=[0.99])
 
         # Should raise ValueError about missing rate
         import pytest

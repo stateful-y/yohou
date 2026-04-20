@@ -1238,7 +1238,7 @@ class TestCheckScorerColumnSelection:
             "value_upper_0.95": range(17, 22),
         })
 
-        scorer = IntervalScore(coverage=[0.9])
+        scorer = IntervalScore(coverage_rates=[0.9])
 
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
@@ -1278,7 +1278,7 @@ class TestCheckScorerColumnSelection:
             "sales__store_2_upper_0.95": range(25, 28),
         })
 
-        scorer = IntervalScore(groups=["sales"], components=["store_1"], coverage=[0.95])
+        scorer = IntervalScore(groups=["sales"], components=["store_1"], coverage_rates=[0.95])
 
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
@@ -1356,7 +1356,7 @@ class TestCheckScorerColumnSelection:
             "b_upper_0.9": [20.0] * 5,
         })
 
-        scorer = IntervalScore(components=["a"], coverage=[0.9])
+        scorer = IntervalScore(components=["a"], coverage_rates=[0.9])
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1384,7 +1384,7 @@ class TestCheckScorerColumnSelection:
             "value_lower_0.95": [0.0] * 5,
             "value_upper_0.95": [10.0] * 5,
         })
-        scorer = IntervalScore(coverage=[0.95])
+        scorer = IntervalScore(coverage_rates=[0.95])
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,

@@ -339,7 +339,7 @@ def _(
 
     mo.vstack([
         plot_score_time_series(
-            IntervalScore(coverage=[0.9]),
+            IntervalScore(coverage_rates=[0.9]),
             y_test,
             _preds,
             title="Interval Score per Timestep",

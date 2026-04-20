@@ -258,7 +258,7 @@ def _(
     rows = []
     for label, y_pred in [("MultiQuantile", y_pred_mq), ("Standard", y_pred_std)]:
         for scorer_cls in [EmpiricalCoverage, IntervalScore, MeanIntervalWidth]:
-            scorer = scorer_cls(coverage=coverage_rates)
+            scorer = scorer_cls(coverage_rates=coverage_rates)
             scorer.fit(y_train)
             score = scorer.score(y_test, y_pred)
             rows.append(f"| {label} | {scorer_cls.__name__} | {score:.4f} |")

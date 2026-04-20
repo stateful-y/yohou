@@ -109,7 +109,7 @@ class TestSystematicChecks:
                 GridSearchCV,
                 {
                     "param_grid": {"point_forecaster__seasonality": [1, 5]},
-                    "scoring": IntervalScore(coverage=[0.9]),
+                    "scoring": IntervalScore(coverage_rates=[0.9]),
                     "cv": 2,
                     "refit": True,
                 },
@@ -614,7 +614,7 @@ class TestIntervalSearch:
                 calibration_size=20,
             ),
             param_grid={"point_forecaster__seasonality": [1, 5, 10]},
-            scoring=IntervalScore(coverage=[0.9]),
+            scoring=IntervalScore(coverage_rates=[0.9]),
             cv=2,
         )
         search.fit(y_train, X=None, forecasting_horizon=3)
@@ -641,7 +641,7 @@ class TestIntervalSearch:
                 calibration_size=20,
             ),
             param_grid={"point_forecaster__seasonality": [1, 5]},
-            scoring=EmpiricalCoverage(coverage=[0.9]),
+            scoring=EmpiricalCoverage(coverage_rates=[0.9]),
             cv=2,
         )
         search.fit(y_train, X=None, forecasting_horizon=3)
@@ -663,7 +663,7 @@ class TestIntervalSearch:
             ),
             param_distributions={"point_forecaster__seasonality": [1, 5, 10, 15]},
             n_iter=3,
-            scoring=IntervalScore(coverage=[0.9]),
+            scoring=IntervalScore(coverage_rates=[0.9]),
             cv=2,
             random_state=42,
         )
@@ -683,7 +683,7 @@ class TestIntervalSearch:
                 calibration_size=20,
             ),
             param_grid={"point_forecaster__seasonality": [1, 5]},
-            scoring=IntervalScore(coverage=[0.9, 0.95]),
+            scoring=IntervalScore(coverage_rates=[0.9, 0.95]),
             cv=2,
         )
         search.fit(y_train, X=None, forecasting_horizon=3)
@@ -713,7 +713,7 @@ class TestMixedMultimetric:
             param_grid={"point_forecaster__seasonality": [1, 5]},
             scoring={
                 "mae": MeanAbsoluteError(),
-                "interval_score": IntervalScore(coverage=[0.9]),
+                "interval_score": IntervalScore(coverage_rates=[0.9]),
             },
             cv=2,
             refit="mae",
@@ -738,7 +738,7 @@ class TestMixedMultimetric:
             param_grid={"point_forecaster__seasonality": [1, 5]},
             scoring={
                 "mae": MeanAbsoluteError(),
-                "interval_score": IntervalScore(coverage=[0.9]),
+                "interval_score": IntervalScore(coverage_rates=[0.9]),
             },
             cv=2,
             refit="interval_score",
@@ -760,7 +760,7 @@ class TestIncompatibleForecasterScorer:
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
             param_grid={"seasonality": [1, 5]},
-            scoring=IntervalScore(coverage=[0.9]),
+            scoring=IntervalScore(coverage_rates=[0.9]),
             cv=2,
         )
         with pytest.raises(ValueError, match="does not support predict_interval"):
@@ -776,7 +776,7 @@ class TestIncompatibleForecasterScorer:
             param_grid={"seasonality": [1, 5]},
             scoring={
                 "mae": MeanAbsoluteError(),
-                "interval_score": IntervalScore(coverage=[0.9]),
+                "interval_score": IntervalScore(coverage_rates=[0.9]),
             },
             cv=2,
             refit="mae",

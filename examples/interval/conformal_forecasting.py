@@ -189,7 +189,7 @@ def _(
     y_train,
 ):
     for _scorer_cls in [EmpiricalCoverage, IntervalScore, MeanIntervalWidth]:
-        _scorer = _scorer_cls(coverage=coverage_rates)
+        _scorer = _scorer_cls(coverage_rates=coverage_rates)
         _scorer.fit(y_train)
         _score = _scorer.score(y_test, y_pred_int)
         print(f"{_scorer_cls.__name__}: {_score}")
@@ -243,16 +243,16 @@ def _(
             coverage_rates=[0.9],
         )
 
-        _cov = EmpiricalCoverage(coverage=[0.9])
+        _cov = EmpiricalCoverage(coverage_rates=[0.9])
         _cov.fit(y_train)
         _coverage = _cov.score(y_test, _pred)
 
-        _width = MeanIntervalWidth(coverage=[0.9])
+        _width = MeanIntervalWidth(coverage_rates=[0.9])
         _width.fit(y_train)
         _avg_width = _width.score(y_test, _pred)
 
         scorer_results[_name] = {"pred": _pred, "coverage": _coverage, "width": _avg_width}
-        print(f"{_name:>20s}  coverage={_coverage}  width={_avg_width}")
+        print(f"{_name:>20s}  coverage_rates={_coverage}  width={_avg_width}")
 
 
 @app.cell(hide_code=True)

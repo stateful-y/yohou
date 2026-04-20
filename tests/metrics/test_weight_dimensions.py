@@ -848,7 +848,7 @@ class TestIntervalCoverageWeight:
         scorer.fit(interval_train)
         default = scorer.score(y_true, y_pred)
 
-        scorer_cw = IntervalScore(coverage={0.9: 1.0, 0.95: 1.0})
+        scorer_cw = IntervalScore(coverage_rates={0.9: 1.0, 0.95: 1.0})
         scorer_cw.fit(interval_train)
         weighted = scorer_cw.score(y_true, y_pred)
 
@@ -858,11 +858,11 @@ class TestIntervalCoverageWeight:
         """Unequal coverage weights shift the score toward the heavier rate."""
         y_true, y_pred = interval_multi_rate
 
-        scorer_heavy_90 = IntervalScore(coverage={0.9: 10.0, 0.95: 1.0})
+        scorer_heavy_90 = IntervalScore(coverage_rates={0.9: 10.0, 0.95: 1.0})
         scorer_heavy_90.fit(interval_train)
         heavy_90 = scorer_heavy_90.score(y_true, y_pred)
 
-        scorer_heavy_95 = IntervalScore(coverage={0.9: 1.0, 0.95: 10.0})
+        scorer_heavy_95 = IntervalScore(coverage_rates={0.9: 1.0, 0.95: 10.0})
         scorer_heavy_95.fit(interval_train)
         heavy_95 = scorer_heavy_95.score(y_true, y_pred)
 

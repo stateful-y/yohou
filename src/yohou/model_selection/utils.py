@@ -443,8 +443,8 @@ def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[flo
     scorers: list[BaseScorer] = list(scorer._scorers.values()) if isinstance(scorer, _MultimetricScorer) else [scorer]
     all_rates: set[float] = set()
     for s in scorers:
-        if isinstance(s, BaseIntervalScorer) and s.coverage is not None:
-            rates = list(s.coverage.keys()) if isinstance(s.coverage, dict) else s.coverage
+        if isinstance(s, BaseIntervalScorer) and s.coverage_rates is not None:
+            rates = list(s.coverage_rates.keys()) if isinstance(s.coverage_rates, dict) else s.coverage_rates
             all_rates.update(rates)
     return sorted(all_rates) if all_rates else None
 

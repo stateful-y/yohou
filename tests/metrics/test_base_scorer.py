@@ -863,7 +863,7 @@ class TestIntervalScorerAggregation:
         from yohou.metrics import IntervalScore
 
         y_truth, _ = interval_data
-        scorer = IntervalScore(coverage=0.9)
+        scorer = IntervalScore(coverage_rates=0.9)
         with pytest.raises((ValueError, TypeError), match="coverage"):
             scorer.fit(y_truth)
 

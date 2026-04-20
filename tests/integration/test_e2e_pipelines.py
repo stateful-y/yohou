@@ -650,12 +650,12 @@ class TestDecompositionConformalPipeline:
         y_pred = forecaster.predict_interval(coverage_rates=[0.9], forecasting_horizon=12)
 
         # Score with interval metrics
-        interval_scorer = IntervalScore(coverage=[0.9])
+        interval_scorer = IntervalScore(coverage_rates=[0.9])
         interval_scorer.fit(y_train)
         interval_score = interval_scorer.score(y_test, y_pred)
         assert np.isfinite(interval_score)
 
-        coverage_scorer = EmpiricalCoverage(coverage=[0.9])
+        coverage_scorer = EmpiricalCoverage(coverage_rates=[0.9])
         coverage_scorer.fit(y_train)
         coverage = coverage_scorer.score(y_test, y_pred)
         # EmpiricalCoverage with default aggregation_method="all" returns a scalar float
@@ -1666,13 +1666,13 @@ class TestMaxNestingPipeline:
 
         # Interval predictions and scoring
         y_pred_interval = forecaster.predict_interval(X=X_train, coverage_rates=[0.9], forecasting_horizon=7)
-        interval_scorer = IntervalScore(coverage=[0.9])
+        interval_scorer = IntervalScore(coverage_rates=[0.9])
         interval_scorer.fit(y_train)
         interval_score = interval_scorer.score(y_test, y_pred_interval)
         assert np.isfinite(interval_score)
 
         # Coverage scoring
-        coverage_scorer = EmpiricalCoverage(coverage=[0.9])
+        coverage_scorer = EmpiricalCoverage(coverage_rates=[0.9])
         coverage_scorer.fit(y_train)
         coverage = coverage_scorer.score(y_test, y_pred_interval)
         # EmpiricalCoverage with default aggregation_method="all" returns a scalar float
