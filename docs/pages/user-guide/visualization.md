@@ -284,17 +284,16 @@ from yohou.plotting import plot_score_time_series
 fig = plot_score_time_series(MeanAbsoluteError(), y_truth, y_pred)
 ```
 
-### plot_score_per_horizon (summary mode)
+### plot_score_summary
 
-Grouped bar chart comparing multiple models across multiple scorers. Pass `kind="summary"` to collapse the horizon dimension into a single aggregate score.
+Grouped bar chart comparing multiple models across multiple scorers.
 
 ```python
-from yohou.plotting import plot_score_per_horizon
-fig = plot_score_per_horizon(
+from yohou.plotting import plot_score_summary
+fig = plot_score_summary(
     {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()},
     y_truth,
     {"Model A": y_pred_a, "Model B": y_pred_b},
-    kind="summary",
 )
 ```
 
@@ -307,13 +306,13 @@ from yohou.plotting import plot_score_distribution
 fig = plot_score_distribution(scorer, y_truth, y_pred, kind="both")
 ```
 
-### plot_score_per_horizon
+### plot_score_per_step
 
 Score degradation by forecast horizon step - shows how accuracy changes as predictions extend further into the future.
 
 ```python
-from yohou.plotting import plot_score_per_horizon
-fig = plot_score_per_horizon(scorer, y_truth, y_pred)
+from yohou.plotting import plot_score_per_step
+fig = plot_score_per_step(scorer, y_truth, y_pred)
 ```
 
 ## Model Selection Plots

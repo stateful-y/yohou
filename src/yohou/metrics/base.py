@@ -211,7 +211,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return df.select(exprs)
 
-    def _collapse_coverage(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _collapse_coverage_rates(self, df: pl.DataFrame) -> pl.DataFrame:
         """Collapse coverage_rate dimension via weighted average.
 
         Rows within each coverage rate block are assumed to be in the same
@@ -802,7 +802,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         # 1. Collapse coverage rates (interval only)
         if "coveragewise" in dims:
-            result = self._collapse_coverage(result)
+            result = self._collapse_coverage_rates(result)
 
         # 2. Collapse row dimensions (steps and/or vintages)
         result = self._collapse_rows(result, context, dims)

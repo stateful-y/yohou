@@ -17,8 +17,9 @@ from yohou.plotting import (
     plot_residuals,
     plot_score_distribution,
     plot_score_heatmap,
-    plot_score_per_horizon,
+    plot_score_per_step,
     plot_score_per_vintage,
+    plot_score_summary,
     plot_score_time_series,
 )
 
@@ -693,11 +694,11 @@ class TestPlotScoreDistribution:
 
 
 class TestPlotScorePerHorizon:
-    """Tests for plot_score_per_horizon function."""
+    """Tests for plot_score_per_step function."""
 
     def test_line(self, sample_forecast_data):
         """Test line chart mode."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -708,7 +709,7 @@ class TestPlotScorePerHorizon:
 
     def test_bar(self, sample_forecast_data):
         """Test bar chart mode."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -719,7 +720,7 @@ class TestPlotScorePerHorizon:
 
     def test_multi_model(self, multi_model_forecast_data):
         """Test multi-model comparison."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             multi_model_forecast_data["y_truth"],
             multi_model_forecast_data["y_preds"],
@@ -729,7 +730,7 @@ class TestPlotScorePerHorizon:
 
     def test_show_trend(self, sample_forecast_data):
         """Test trend line overlay."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -752,13 +753,13 @@ class TestPlotScorePerHorizon:
             "time": [datetime(2020, 1, 1)],
             "value": [12.0],
         })
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred)
         assert_figure_valid(fig)
 
     def test_invalid_kind(self, sample_forecast_data):
         """Test that invalid kind raises ValueError."""
         with pytest.raises(ValueError, match="kind must be one of"):
-            plot_score_per_horizon(
+            plot_score_per_step(
                 MeanAbsoluteError(),
                 sample_forecast_data["y_truth"],
                 sample_forecast_data["y_pred"],
@@ -767,7 +768,7 @@ class TestPlotScorePerHorizon:
 
     def test_default_title(self, sample_forecast_data):
         """Test default title uses scorer name."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -776,7 +777,7 @@ class TestPlotScorePerHorizon:
 
     def test_custom_palette(self, sample_forecast_data):
         """Test custom color palette."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -865,7 +866,7 @@ class TestPlotScoreDistributionPanel:
 
 
 class TestPlotScorePerHorizonPanel:
-    """Panel data tests for plot_score_per_horizon."""
+    """Panel data tests for plot_score_per_step."""
 
     @pytest.fixture
     def panel_forecast(self):
@@ -889,7 +890,7 @@ class TestPlotScorePerHorizonPanel:
     def test_panel_produces_figure(self, panel_forecast):
         """Panel data produces a valid score per horizon figure."""
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             scorer,
             panel_forecast["y_truth"],
             panel_forecast["y_pred"],
@@ -1149,7 +1150,7 @@ class TestPlotResidualsAutoPanel:
 
 
 class TestPlotScorePerHorizonBarMultiModel:
-    """Tests for plot_score_per_horizon bar mode with multiple models."""
+    """Tests for plot_score_per_step bar mode with multiple models."""
 
     def test_bar_multi_model_grouped(self):
         """Bar mode with multiple models sets barmode=group."""
@@ -1171,7 +1172,7 @@ class TestPlotScorePerHorizonBarMultiModel:
             "value": [11.0 + i for i in range(10)],
         })
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             scorer,
             y_truth,
             {"A": y_pred_a, "B": y_pred_b},
@@ -1198,7 +1199,7 @@ class TestPlotScorePerHorizonBarMultiModel:
             "b": [19.0 + i for i in range(10)],
         })
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred, kind="bar")
+        fig = plot_score_per_step(scorer, y_truth, y_pred, kind="bar")
         assert_figure_valid(fig)
         assert any(isinstance(t, go.Bar) for t in fig.data)
 
@@ -1380,10 +1381,10 @@ class TestPlotScoreDistributionIntervalScorer:
 
 
 class TestPlotScorePerHorizonIntervalScorer:
-    """Tests for plot_score_per_horizon with interval scorer (L1716)."""
+    """Tests for plot_score_per_step with interval scorer (L1716)."""
 
     def test_interval_scorer_per_horizon(self):
-        """IntervalScorer with plot_score_per_horizon triggers coveragewise branch."""
+        """IntervalScorer with plot_score_per_step triggers coveragewise branch."""
         from datetime import datetime
 
         times = [datetime(2020, 1, 1 + i) for i in range(20)]
@@ -1397,12 +1398,12 @@ class TestPlotScorePerHorizonIntervalScorer:
             "y_lower_0.9": vals - 5,
         })
         scorer = IntervalScore(coverage_rates=[0.9])
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred)
+        fig = plot_score_per_step(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 
 
 class TestPlotScorePerHorizonShowTrend:
-    """Tests for plot_score_per_horizon show_trend branch (L1799-L1809)."""
+    """Tests for plot_score_per_step show_trend branch (L1799-L1809)."""
 
     def test_trend_line_overlay(self):
         """show_trend=True adds a linear trend trace."""
@@ -1419,7 +1420,7 @@ class TestPlotScorePerHorizonShowTrend:
             "value": [12.0 + i for i in range(10)],
         })
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred, show_trend=True)
+        fig = plot_score_per_step(scorer, y_truth, y_pred, show_trend=True)
         assert_figure_valid(fig)
         trace_names = [t.name for t in fig.data if t.name is not None]
         assert any("trend" in name.lower() for name in trace_names)
@@ -1890,7 +1891,7 @@ class TestPlotScoreDistributionPanelAutoDetect:
 
 
 class TestPlotScorePerHorizonMultiColumn:
-    """Cover plot_score_per_horizon multi-column paths (lines 1858-1867)."""
+    """Cover plot_score_per_step multi-column paths (lines 1858-1867)."""
 
     @pytest.fixture
     def multi_col_data(self):
@@ -1914,27 +1915,27 @@ class TestPlotScorePerHorizonMultiColumn:
     def test_multi_column_scores(self, multi_col_data):
         """Multi-column data averages scores across columns per horizon step."""
         y_truth, y_pred = multi_col_data
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
     def test_columns_filter(self, multi_col_data):
         """Non-panel with columns filter selects specific column."""
         y_truth, y_pred = multi_col_data
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred, columns="a")
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred, columns="a")
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
     def test_columns_filter_list(self, multi_col_data):
         """Non-panel with columns filter as list."""
         y_truth, y_pred = multi_col_data
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred, columns=["a", "b"])
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred, columns=["a", "b"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
 
 class TestPlotScorePerHorizonPanelAutoDetect:
-    """Cover plot_score_per_horizon panel auto-detect and column filter (lines 1917-1963)."""
+    """Cover plot_score_per_step panel auto-detect and column filter (lines 1917-1963)."""
 
     def test_auto_detect_panel(self):
         """Panel-formatted data auto-detects panel groups for per-horizon."""
@@ -1952,7 +1953,7 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "grp__x": [11.0 + i for i in range(10)],
             "grp__y": [21.0 + i for i in range(10)],
         })
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
@@ -1972,7 +1973,7 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "grp__x": [11.0 + i for i in range(10)],
             "grp__y": [21.0 + i for i in range(10)],
         })
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             y_truth,
             y_pred,
@@ -1998,7 +1999,7 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "val1": [11.0 + i for i in range(10)],
             "val2": [21.0 + i for i in range(10)],
         })
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred, columns="val1")
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred, columns="val1")
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
@@ -2069,7 +2070,7 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
 
 
 class TestPlotScorePerHorizonPanelBarMultiModel:
-    """Cover bar + multi-model panel path in plot_score_per_horizon (line 1954)."""
+    """Cover bar + multi-model panel path in plot_score_per_step (line 1954)."""
 
     def test_panel_bar_multi_model(self):
         """Panel bar chart with multiple models triggers barmode='group'."""
@@ -2090,7 +2091,7 @@ class TestPlotScorePerHorizonPanelBarMultiModel:
             "time": times,
             "grp__x": [12.0 + i for i in range(8)],
         })
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             y_truth,
             {"M1": y_pred_a, "M2": y_pred_b},
@@ -2143,7 +2144,7 @@ class TestMultiComponentScoreBranches:
         """Multiple score columns trigger mean_horizontal in score_per_horizon."""
         y_truth, y_pred = multi_col_data
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred)
+        fig = plot_score_per_step(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 
 
@@ -2242,7 +2243,7 @@ class TestScorerReturnValidation:
             plot_score_distribution(scorer, y_truth, y_pred)
 
     def test_per_horizon_non_dataframe_raises(self, simple_data):
-        """plot_score_per_horizon raises TypeError when scorer.score returns non-DataFrame."""
+        """plot_score_per_step raises TypeError when scorer.score returns non-DataFrame."""
         from unittest.mock import patch
 
         y_truth, y_pred = simple_data
@@ -2251,7 +2252,7 @@ class TestScorerReturnValidation:
             patch.object(MeanAbsoluteError, "score", return_value=42.0),
             pytest.raises(TypeError, match="Scorer must return DataFrame"),
         ):
-            plot_score_per_horizon(scorer, y_truth, y_pred)
+            plot_score_per_step(scorer, y_truth, y_pred)
 
 
 class TestPanelMultiMemberScoring:
@@ -2286,7 +2287,7 @@ class TestPanelMultiMemberScoring:
         """Per-horizon multi-member panel triggers multi-column mean_horizontal."""
         y_truth, y_pred = panel_multi_member
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred, groups=["sales"])
+        fig = plot_score_per_step(scorer, y_truth, y_pred, groups=["sales"])
         assert_figure_valid(fig)
 
     def test_panel_score_time_series_filtered_empty_group(self, panel_multi_member):
@@ -2576,12 +2577,12 @@ class TestMultiScorerDistribution:
 
 
 class TestMultiScorerPerHorizon:
-    """Tests for multi-scorer support in plot_score_per_horizon."""
+    """Tests for multi-scorer support in plot_score_per_step."""
 
     def test_dict_scorer_single_model(self, multi_scorer_data):
         """Dict scorer with single model overlays scorers."""
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             scorers,
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_pred"],
@@ -2592,7 +2593,7 @@ class TestMultiScorerPerHorizon:
     def test_dict_scorer_dict_model(self, multi_scorer_data):
         """Dict scorer with dict y_pred creates faceted subplots."""
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             scorers,
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_preds"],
@@ -2602,7 +2603,7 @@ class TestMultiScorerPerHorizon:
     def test_bar_mode(self, multi_scorer_data):
         """Multi-scorer with bar mode."""
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             scorers,
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_pred"],
@@ -2611,51 +2612,47 @@ class TestMultiScorerPerHorizon:
         assert_figure_valid(fig)
 
 
-class TestKindSummary:
-    """Tests for plot_score_per_horizon kind='summary'."""
+class TestPlotScoreSummary:
+    """Tests for plot_score_summary function."""
 
     def test_summary_single_scorer(self, multi_scorer_data):
-        """kind='summary' with single scorer and dict y_pred."""
-        fig = plot_score_per_horizon(
+        """plot_score_summary with single scorer and dict y_pred."""
+        fig = plot_score_summary(
             MeanAbsoluteError(),
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_preds"],
-            kind="summary",
         )
         assert_figure_valid(fig)
         assert any(isinstance(t, go.Bar) for t in fig.data)
 
     def test_summary_multi_scorer(self, multi_scorer_data):
-        """kind='summary' with dict scorers and dict y_pred."""
+        """plot_score_summary with dict scorers and dict y_pred."""
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
-        fig = plot_score_per_horizon(
+        fig = plot_score_summary(
             scorers,
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_preds"],
-            kind="summary",
         )
         assert_figure_valid(fig)
         # 2 models
         assert len(fig.data) == 2
 
     def test_summary_default_title(self, multi_scorer_data):
-        """kind='summary' uses 'Model Comparison' as default title."""
-        fig = plot_score_per_horizon(
+        """plot_score_summary uses 'Model Comparison' as default title."""
+        fig = plot_score_summary(
             MeanAbsoluteError(),
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_preds"],
-            kind="summary",
         )
         assert_layout(fig, title="Model Comparison")
 
     def test_summary_sort_ascending(self, multi_scorer_data):
-        """kind='summary' with sort_ascending."""
+        """plot_score_summary with sort_ascending."""
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
-        fig = plot_score_per_horizon(
+        fig = plot_score_summary(
             scorers,
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_pred"],
-            kind="summary",
             sort_ascending=True,
         )
         assert_figure_valid(fig)
@@ -2926,7 +2923,7 @@ class TestMultiScorerMultiModelFaceted:
     def test_horizon_compare_by_model(self, multi_scorer_data):
         """Per-horizon with compare_by='model' facets by scorer."""
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             scorers,
             multi_scorer_data["y_truth"],
             multi_scorer_data["y_preds"],
@@ -3098,7 +3095,7 @@ class TestPanelMultiScorerErrors:
         y_truth, y_pred = panel_forecast
         scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
         with pytest.raises(ValueError, match="Multi-scorer is not supported with panel data"):
-            plot_score_per_horizon(scorers, y_truth, y_pred)
+            plot_score_per_step(scorers, y_truth, y_pred)
 
 
 class TestWarnLargeGrid:
@@ -3117,10 +3114,10 @@ class TestWarnLargeGrid:
 
 
 class TestSummaryKindDataFrame:
-    """Tests for kind='summary' when scorer returns DataFrame."""
+    """Tests for plot_score_summary when scorer returns DataFrame."""
 
     def test_summary_with_multivariate_scorer(self):
-        """kind='summary' handles scorer that returns DataFrame."""
+        """plot_score_summary handles scorer that returns DataFrame."""
         from datetime import datetime
 
         times = [datetime(2020, 1, 1 + i) for i in range(5)]
@@ -3143,11 +3140,10 @@ class TestSummaryKindDataFrame:
         })
         # aggregation_method="componentwise" so score returns DataFrame, not scalar
         scorer = MeanAbsoluteError(aggregation_method="componentwise")
-        fig = plot_score_per_horizon(
+        fig = plot_score_summary(
             scorer,
             y_truth,
             {"Model A": y_pred_a, "Model B": y_pred_b},
-            kind="summary",
         )
         assert_figure_valid(fig)
 

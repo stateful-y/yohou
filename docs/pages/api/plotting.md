@@ -43,8 +43,9 @@ Interactive time series visualization functions using Plotly. All plotting funct
 | [`plot_forecast`](generated/yohou.plotting.forecasting.plot_forecast.md) | Plot forecasts with historical data and optional prediction intervals. |
 | [`plot_score_time_series`](generated/yohou.plotting.evaluation.plot_score_time_series.md) | Plot scorer values over time for one or more forecasts. |
 | [`plot_score_distribution`](generated/yohou.plotting.evaluation.plot_score_distribution.md) | Plot the distribution of per-timestep scorer values. |
-| [`plot_score_per_horizon`](generated/yohou.plotting.evaluation.plot_score_per_horizon.md) | Plot scorer value by forecast horizon step. |
+| [`plot_score_per_step`](generated/yohou.plotting.evaluation.plot_score_per_step.md) | Plot scorer value by forecast horizon step. |
 | [`plot_score_per_vintage`](generated/yohou.plotting.evaluation.plot_score_per_vintage.md) | Plot scores across forecast vintages. |
+| [`plot_score_summary`](generated/yohou.plotting.evaluation.plot_score_summary.md) | Grouped bar chart comparing aggregate scores across models and scorers. |
 | [`plot_score_heatmap`](generated/yohou.plotting.evaluation.plot_score_heatmap.md) | Plot a 2D heatmap of scores across two forecast dimensions. |
 | [`plot_group_scores`](generated/yohou.plotting.evaluation.plot_group_scores.md) | Plot scores broken down by panel group. |
 

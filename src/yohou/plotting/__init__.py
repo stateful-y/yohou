@@ -30,8 +30,9 @@ from yohou.plotting.evaluation import (
     plot_residuals,
     plot_score_distribution,
     plot_score_heatmap,
-    plot_score_per_horizon,
+    plot_score_per_step,
     plot_score_per_vintage,
+    plot_score_summary,
     plot_score_time_series,
 )
 from yohou.plotting.exploration import (
@@ -83,8 +84,9 @@ __all__ = [
     "plot_scatter_matrix",
     "plot_score_distribution",
     "plot_score_heatmap",
-    "plot_score_per_horizon",
+    "plot_score_per_step",
     "plot_score_per_vintage",
+    "plot_score_summary",
     "plot_score_time_series",
     "plot_seasonal_heatmap",
     "plot_seasonality",

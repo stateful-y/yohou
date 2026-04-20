@@ -7,11 +7,7 @@
 
 import marimo
 
-__generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Evaluation Plots",
-    "description": "Residual diagnostics, per-timestep score tracking, model comparison bar charts, calibration plots, and score distribution analysis for forecast evaluation.",
-}
+__generated_with = "0.23.1"
 app = marimo.App(width="medium")
 
 
@@ -38,8 +34,9 @@ def _():
         plot_residuals,
         plot_score_distribution,
         plot_score_heatmap,
-        plot_score_per_horizon,
+        plot_score_per_step,
         plot_score_per_vintage,
+        plot_score_summary,
         plot_score_time_series,
     )
     from yohou.point import PointReductionForecaster, SeasonalNaive
@@ -57,7 +54,7 @@ def _():
         plot_residuals,
         plot_score_distribution,
         plot_score_heatmap,
-        plot_score_per_horizon,
+        plot_score_per_step,
         plot_score_per_vintage,
         plot_score_time_series,
     )
@@ -73,8 +70,8 @@ def _(mo):
     - Diagnosing residual patterns with [`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
     - Tracking per-timestep errors with [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/)
     - Examining error distributions with [`plot_score_distribution`](/pages/api/generated/yohou.plotting.evaluation.plot_score_distribution/)
-    - Analysing horizon degradation with [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/)
-    - Comparing models with [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/) using `kind="summary"`
+    - Analysing horizon degradation with [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/)
+    - Comparing models with [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/)
     - Tracking accuracy across vintages with [`plot_score_per_vintage`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_vintage/)
     - Inspecting step-vintage interactions with [`plot_score_heatmap`](/pages/api/generated/yohou.plotting.evaluation.plot_score_heatmap/)
     - Per-group panel scoring with [`plot_group_scores`](/pages/api/generated/yohou.plotting.evaluation.plot_group_scores/)
@@ -85,6 +82,7 @@ def _(mo):
     Familiarity with yohou's fit/predict API and scoring system (see
     `examples/quickstart.py` and `examples/scoring.py`).
     """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -97,6 +95,7 @@ def _(mo):
     [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) (uses an sklearn regressor with lag features).
     Their predictions on the held-out test set are used throughout this notebook.
     """)
+    return
 
 
 @app.cell
@@ -115,7 +114,7 @@ def _(PointReductionForecaster, SeasonalNaive, fetch_tourism_monthly):
     reduction = PointReductionForecaster()
     reduction.fit(y_train, forecasting_horizon=fh)
     y_pred_reduction = reduction.predict(forecasting_horizon=fh)
-    return y_pred_naive, y_pred_reduction, y_test, y_train
+    return y_pred_naive, y_pred_reduction, y_test
 
 
 @app.cell(hide_code=True)
@@ -127,6 +126,7 @@ def _(mo):
     residuals vs fitted, histogram, and Q-Q plot. Residuals are computed
     internally as `y_truth - y_pred`.
     """)
+    return
 
 
 @app.cell
@@ -136,6 +136,7 @@ def _(plot_residuals, y_pred_naive, y_test):
         y_test,
         title="Seasonal Naive - Residual Diagnostics",
     )
+    return
 
 
 @app.cell
@@ -145,6 +146,7 @@ def _(plot_residuals, y_pred_reduction, y_test):
         y_test,
         title="Reduction Forecaster - Residual Diagnostics",
     )
+    return
 
 
 @app.cell
@@ -155,6 +157,7 @@ def _(plot_residuals, y_pred_naive, y_test):
         columns="tourists",
         title="Naive Residuals - Single Column",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -166,6 +169,7 @@ def _(mo):
     single and multi-model comparisons, different scorers, and extensive
     styling parameters.
     """)
+    return
 
 
 @app.cell
@@ -176,6 +180,7 @@ def _(MeanAbsoluteError, plot_score_time_series, y_pred_naive, y_test):
         y_pred_naive,
         title="MAE Over Time - Seasonal Naive",
     )
+    return
 
 
 @app.cell
@@ -192,6 +197,7 @@ def _(
         {"Naive": y_pred_naive, "Reduction": y_pred_reduction},
         title="MAE Over Time - Model Comparison",
     )
+    return
 
 
 @app.cell
@@ -210,6 +216,7 @@ def _(
         show_markers=True,
         title="RMSE Over Time - With Markers",
     )
+    return
 
 
 @app.cell
@@ -226,6 +233,7 @@ def _(
         y_pred_naive,
         title="Multi-Scorer Over Time - Naive",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -236,6 +244,7 @@ def _(mo):
     [`plot_score_distribution`](/pages/api/generated/yohou.plotting.evaluation.plot_score_distribution/) renders histograms (or KDE) of per-timestep
     scores. Toggle **kind**, **show_mean**, **show_zero**, and **n_bins**.
     """)
+    return
 
 
 @app.cell
@@ -248,6 +257,7 @@ def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
         n_bins=10,
         title="MAE Distribution - Histogram (default)",
     )
+    return
 
 
 @app.cell
@@ -259,6 +269,7 @@ def _(MeanAbsoluteError, plot_score_distribution, y_pred_naive, y_test):
         kind="kde",
         title="MAE Distribution - KDE",
     )
+    return
 
 
 @app.cell
@@ -279,6 +290,7 @@ def _(
         show_zero=False,
         title="MAE Distribution - Both, Custom Bins, No Zero Line",
     )
+    return
 
 
 @app.cell
@@ -297,6 +309,7 @@ def _(
         n_bins=20,
         title="RMSE Distribution - 20 Bins",
     )
+    return
 
 
 @app.cell
@@ -314,6 +327,7 @@ def _(
         kind="histogram",
         title="Multi-Scorer Distribution",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -321,43 +335,46 @@ def _(mo):
     mo.md(r"""
     ## 4. Score per Horizon
 
-    [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/) shows how forecast quality degrades at each
+    [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/) shows how forecast quality degrades at each
     step of the prediction window. Switch between **line** and **bar**
     kind, and overlay a **trend** line.
     """)
+    return
 
 
 @app.cell
-def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
-    plot_score_per_horizon(
+def _(MeanAbsoluteError, plot_score_per_step, y_pred_naive, y_test):
+    plot_score_per_step(
         MeanAbsoluteError(),
         y_test,
         y_pred_naive,
         kind="line",
         title="MAE by Horizon - Line",
     )
+    return
 
 
 @app.cell
-def _(MeanAbsoluteError, plot_score_per_horizon, y_pred_naive, y_test):
-    plot_score_per_horizon(
+def _(MeanAbsoluteError, plot_score_per_step, y_pred_naive, y_test):
+    plot_score_per_step(
         MeanAbsoluteError(),
         y_test,
         y_pred_naive,
         kind="bar",
         title="MAE by Horizon - Bar",
     )
+    return
 
 
 @app.cell
 def _(
     MeanAbsoluteError,
-    plot_score_per_horizon,
+    plot_score_per_step,
     y_pred_naive,
     y_pred_reduction,
     y_test,
 ):
-    plot_score_per_horizon(
+    plot_score_per_step(
         MeanAbsoluteError(),
         y_test,
         {"Naive": y_pred_naive, "Reduction": y_pred_reduction},
@@ -365,23 +382,25 @@ def _(
         show_trend=True,
         title="MAE by Horizon - Multi-Model with Trend",
     )
+    return
 
 
 @app.cell
 def _(
     RootMeanSquaredError,
-    plot_score_per_horizon,
+    plot_score_per_step,
     y_pred_naive,
     y_pred_reduction,
     y_test,
 ):
-    plot_score_per_horizon(
+    plot_score_per_step(
         RootMeanSquaredError(),
         y_test,
         {"Naive": y_pred_naive, "Reduction": y_pred_reduction},
         kind="bar",
         title="RMSE by Horizon - Bar Comparison",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -389,10 +408,11 @@ def _(mo):
     mo.md(r"""
     ## 5. Model Comparison Summary
 
-    [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/) with `kind="summary"` produces a
+    [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) produces a
     grouped bar chart that collapses horizon steps into a single aggregate
     score per model per scorer.
     """)
+    return
 
 
 @app.cell
@@ -400,18 +420,18 @@ def _(
     MeanAbsoluteError,
     MeanAbsolutePercentageError,
     RootMeanSquaredError,
-    plot_score_per_horizon,
+    plot_score_summary,
     y_pred_naive,
     y_pred_reduction,
     y_test,
 ):
-    plot_score_per_horizon(
+    plot_score_summary(
         {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError(), "MAPE": MeanAbsolutePercentageError()},
         y_test,
         {"Naive": y_pred_naive, "Reduction": y_pred_reduction},
-        kind="summary",
         title="Model Comparison",
     )
+    return
 
 
 @app.cell
@@ -419,19 +439,19 @@ def _(
     MeanAbsoluteError,
     MeanAbsolutePercentageError,
     RootMeanSquaredError,
-    plot_score_per_horizon,
+    plot_score_summary,
     y_pred_naive,
     y_pred_reduction,
     y_test,
 ):
-    plot_score_per_horizon(
+    plot_score_summary(
         {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError(), "MAPE": MeanAbsolutePercentageError()},
         y_test,
         {"Naive": y_pred_naive, "Reduction": y_pred_reduction},
-        kind="summary",
         sort_ascending=True,
         title="Model Comparison - Sorted Ascending",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -446,6 +466,7 @@ def _(mo):
     [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) wrapping [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) generates the
     prediction intervals used here.
     """)
+    return
 
 
 @app.cell
@@ -479,6 +500,7 @@ def _(coverage_rates, plot_calibration, y_pred_calib, y_test_calib):
         columns="tourists",
         title="Calibration - Multiple Coverage Rates",
     )
+    return
 
 
 @app.cell
@@ -492,6 +514,7 @@ def _(plot_calibration, y_pred_calib, y_test_calib):
         y_label="Empirical",
         title="Calibration - Custom Axis Labels",
     )
+    return
 
 
 @app.cell
@@ -505,6 +528,7 @@ def _(plot_calibration, y_pred_calib, y_test_calib):
         reference_color="#6366f1",
         title="Calibration - Custom Reference Line",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -516,6 +540,7 @@ def _(mo):
     successive forecast origins (vintages). This requires multi-vintage predictions
     produced by [`observe_predict`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster.observe_predict/).
     """)
+    return
 
 
 @app.cell
@@ -531,8 +556,8 @@ def _(SeasonalNaive, fetch_tourism_monthly):
 
     naive_v = SeasonalNaive(seasonality=12)
     naive_v.fit(y_train_v, forecasting_horizon=fh_v)
-    y_pred_v = deepcopy(naive_v).observe_predict(y_test_v, forecasting_horizon=fh_v)
-    return y_pred_v, y_test_v, y_train_v
+    y_pred_v = deepcopy(naive_v).observe_predict(y_test_v, forecasting_horizon=fh_v, stride=1)
+    return y_pred_v, y_test_v
 
 
 @app.cell
@@ -545,6 +570,7 @@ def _(MeanAbsoluteError, plot_score_per_vintage, y_pred_v, y_test_v):
         show_trend=True,
         title="MAE per Vintage - Line with Trend",
     )
+    return
 
 
 @app.cell
@@ -556,6 +582,7 @@ def _(MeanAbsoluteError, plot_score_per_vintage, y_pred_v, y_test_v):
         kind="bar",
         title="MAE per Vintage - Bar",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -568,6 +595,7 @@ def _(mo):
     the score for that specific combination, revealing patterns such as
     accuracy degrading at longer horizons or later vintages.
     """)
+    return
 
 
 @app.cell
@@ -580,6 +608,7 @@ def _(MeanAbsoluteError, plot_score_heatmap, y_pred_v, y_test_v):
         y_dim="vintage",
         title="MAE Heatmap - Step vs Vintage",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -592,10 +621,11 @@ def _(mo):
     aggregate comparisons, `kind="box"` for score distributions, and
     `kind="heatmap"` for a 2D overview.
     """)
+    return
 
 
 @app.cell
-def _(MeanAbsoluteError, PointReductionForecaster, SeasonalNaive, fetch_tourism_monthly):
+def _(PointReductionForecaster, SeasonalNaive, fetch_tourism_monthly):
     tourism_panel = fetch_tourism_monthly(n_series=4).frame.drop_nulls()
     fh_panel = 12
     y_train_panel = tourism_panel.head(len(tourism_panel) - fh_panel)
@@ -626,15 +656,11 @@ def _(
         kind="bar",
         title="Groupwise MAE - Bar",
     )
+    return
 
 
 @app.cell
-def _(
-    MeanAbsoluteError,
-    plot_group_scores,
-    y_pred_panel_naive,
-    y_test_panel,
-):
+def _(MeanAbsoluteError, plot_group_scores, y_pred_panel_naive, y_test_panel):
     plot_group_scores(
         MeanAbsoluteError(),
         y_test_panel,
@@ -642,6 +668,7 @@ def _(
         kind="box",
         title="Groupwise MAE Distribution - Box",
     )
+    return
 
 
 @app.cell
@@ -659,6 +686,7 @@ def _(
         kind="heatmap",
         title="Groupwise MAE - Heatmap",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -669,7 +697,8 @@ def _(mo):
     - **plot_residuals** takes `y_pred` and `y_truth`, computing residuals internally; produces a 4-panel diagnostic layout for single columns or faceted residuals for multiple
     - **plot_score_time_series** reveals temporal patterns in forecast errors; pass a dict for multi-model comparison; pass a dict of scorers for multi-scorer overlay
     - **plot_score_distribution** supports `kind="histogram"`, `"kde"`, or `"both"`; `show_mean` and `show_zero` add reference lines
-    - **plot_score_per_horizon** shows error degradation as horizon increases; `show_trend=True` overlays a linear fit; `kind="summary"` produces a grouped bar chart for multi-model comparison
+    - **plot_score_per_step** shows error degradation as horizon increases; `show_trend=True` overlays a linear fit
+    - **plot_score_summary** produces a grouped bar chart for multi-model comparison
     - **plot_score_per_vintage** tracks accuracy across forecast origins; requires multi-vintage predictions from `observe_predict`
     - **plot_score_heatmap** reveals step-vintage interactions in a 2D heatmap
     - **plot_group_scores** breaks down scores by panel group; supports `kind="bar"`, `"box"`, and `"heatmap"`
@@ -682,6 +711,7 @@ def _(mo):
     - **Similarity**: See `examples/plotting/similarity_heatmap.py` for distance-based interval weights
     - **Signal processing**: See [`examples/plotting/signal_processing.py`](/examples/plotting/signal_processing/) for spectrum and phase analysis
     """)
+    return
 
 
 if __name__ == "__main__":

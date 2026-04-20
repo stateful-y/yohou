@@ -8,11 +8,7 @@
 
 import marimo
 
-__generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Panel Point Forecasting",
-    "description": "Global models, per-group specialisation with ColumnForecaster, selective group operations, and groupwise scoring on multi-series panel time series.",
-}
+__generated_with = "0.23.1"
 app = marimo.App(width="medium")
 
 
@@ -35,11 +31,12 @@ def _(mo):
 
     ## What You'll Learn
 
-    - Global model: one shared model for all groups
+    - Panel reduction model: one reduction model per group, all sharing the same hyperparameters
     - [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/): assign different models per group
     - Selective `predict`, `observe`, and `rewind` with `groups`
     - Groupwise scoring to identify weak groups
     """)
+    return
 
 
 @app.cell(hide_code=True)
@@ -63,7 +60,6 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        RootMeanSquaredError,
         SeasonalNaive,
         fetch_kdd_cup,
         inspect_panel,
@@ -85,6 +81,7 @@ def _(mo):
     groups from the `__` separator in column names. The data is split
     85/15 into train and test sets.
     """)
+    return
 
 
 @app.cell
@@ -113,12 +110,13 @@ def _(fetch_kdd_cup, inspect_panel, mo, plot_time_series, train_test_split):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Global Model
+    ## 2. Panel Reduction Forecasting
 
     A single [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) applies the same model template
     to every group. Each group gets its own fitted parameters, but shares
     the same hyperparameters.
     """)
+    return
 
 
 @app.cell
@@ -138,6 +136,7 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) with `groups` and `n_history` shows predictions
     for selected groups in a faceted layout, trimmed to the last 48 time steps.
     """)
+    return
 
 
 @app.cell
@@ -151,6 +150,7 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         groups=_groups[:2],
         title="Global Ridge Model: Selected Stations",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -160,6 +160,7 @@ def _(mo):
 
     Assign different model families to different station groups.
     """)
+    return
 
 
 @app.cell
@@ -211,6 +212,7 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) for the [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) lets you visually compare how
     per-group model specialisation affects predictions for the same groups.
     """)
+    return
 
 
 @app.cell
@@ -224,6 +226,7 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         groups=_groups[:2],
         title="ColumnForecaster: Per-Group Specialisation",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -242,6 +245,7 @@ def _(mo):
     forecast origin moves forward), and finally rewind back and predict
     once more (the origin returns to where it was).
     """)
+    return
 
 
 @app.cell
@@ -296,6 +300,7 @@ def _(fc_global, groups, mo, plot_forecast, y_test, y_train):
             title=f"{_group_name}: Predict After Rewind",
         ),
     ])
+    return
 
 
 @app.cell(hide_code=True)
@@ -311,6 +316,7 @@ def _(mo):
     [`plot_group_scores`](/pages/api/generated/yohou.plotting.evaluation.plot_group_scores/) summarises the MAE per model
     broken down by group as a bar chart, box distribution, or heatmap.
     """)
+    return
 
 
 @app.cell
@@ -332,6 +338,7 @@ def _(
         groups=_groups[:2],
         title="MAE Over Time by Station",
     )
+    return
 
 
 @app.cell
@@ -349,15 +356,11 @@ def _(
         title="Groupwise MAE: Global vs ColumnForecaster",
         y_label="MAE",
     )
+    return
 
 
 @app.cell
-def _(
-    MeanAbsoluteError,
-    plot_group_scores,
-    y_pred_global,
-    y_test,
-):
+def _(MeanAbsoluteError, plot_group_scores, y_pred_global, y_test):
     plot_group_scores(
         MeanAbsoluteError(),
         y_test,
@@ -365,6 +368,7 @@ def _(
         kind="box",
         title="Global Ridge - MAE Distribution by Group",
     )
+    return
 
 
 @app.cell
@@ -382,6 +386,7 @@ def _(
         kind="heatmap",
         title="Groupwise MAE - Heatmap",
     )
+    return
 
 
 @app.cell(hide_code=True)
@@ -389,7 +394,7 @@ def _(mo):
     mo.md(r"""
     ## Key Takeaways
 
-    - **Global models** apply the same hyperparameters across all groups (each group still fitted independently)
+    - **Panel reduction models** apply the same hyperparameters across all groups (each group still fitted independently)
     - **ColumnForecaster** enables per-group model specialisation (different algorithms, different hyperparameters)
     - **`groups`** is accepted by `predict`, `observe`, `rewind`, and scoring enabling the update or query a subset of groups without touching the rest
     - **Groupwise scoring** reveals which groups benefit from specialised models
@@ -401,6 +406,7 @@ def _(mo):
     - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/)
     - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
     """)
+    return
 
 
 if __name__ == "__main__":

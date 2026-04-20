@@ -43,8 +43,9 @@ __all__ = [
     "plot_residuals",
     "plot_score_distribution",
     "plot_score_heatmap",
-    "plot_score_per_horizon",
+    "plot_score_per_step",
     "plot_score_per_vintage",
+    "plot_score_summary",
     "plot_score_time_series",
 ]
 
@@ -241,6 +242,11 @@ def _render_residual_diagnostics(
         row=2,
         col=2,
     )
+
+    # Force equal x/y range on Q-Q plot so the reference line is at 45 degrees
+    pad = (max_val - min_val) * 0.05
+    fig.update_xaxes(range=[min_val - pad, max_val + pad], row=2, col=2)
+    fig.update_yaxes(range=[min_val - pad, max_val + pad], row=2, col=2)
 
     # Axis labels
     fig.update_xaxes(title_text="Time", row=1, col=1)
@@ -1749,7 +1755,7 @@ def plot_score_distribution(
     See Also
     --------
     [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score values over time.
-    [`plot_score_per_horizon`][yohou.plotting.plot_score_per_horizon] : Score by forecast step.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by forecast step.
     """
     from scipy.stats import gaussian_kde  # noqa: PLC0415
 
@@ -2043,12 +2049,171 @@ def plot_score_distribution(
     return fig
 
 
-def plot_score_per_horizon(
+def plot_score_summary(
     scorer: BaseScorer | dict[str, BaseScorer],
     y_truth: pl.DataFrame,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
-    kind: Literal["line", "bar", "summary"] = "line",
+    color_palette: list[str] | None = None,
+    show_legend: bool = True,
+    title: str | None = None,
+    x_label: str | None = None,
+    y_label: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    bar_opacity: float = 0.85,
+    sort_ascending: bool | None = None,
+    text_auto: bool = True,
+) -> go.Figure:
+    """Grouped bar chart comparing aggregate scores across models and scorers.
+
+    For each combination of scorer and model, compute a single aggregate
+    score and display the results as a grouped bar chart. This is useful
+    for quick model comparison without the per-step detail.
+
+    Parameters
+    ----------
+    scorer : BaseScorer or dict[str, BaseScorer]
+        Yohou scorer instance.
+
+        - If BaseScorer: single scorer to evaluate.
+        - If dict: keys are scorer names, values are scorer instances.
+    y_truth : pl.DataFrame
+        Ground truth with ``"time"`` column.
+    y_pred : pl.DataFrame or dict[str, pl.DataFrame]
+        Predictions with ``"observed_time"`` and ``"time"`` columns.
+
+        - If DataFrame: single forecast.
+        - If dict: keys are model names, values are prediction DataFrames.
+    color_palette : list[str] | None, default=None
+        Custom colour palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
+    title : str | None, default=None
+        Plot title. Defaults to ``"Model Comparison"``.
+    x_label : str | None, default=None
+        X-axis label. Defaults to ``""``.
+    y_label : str | None, default=None
+        Y-axis label. Defaults to ``"Score"``.
+    width : int | None, default=None
+        Plot width in pixels.
+    height : int | None, default=None
+        Plot height in pixels.
+    bar_opacity : float, default=0.85
+        Opacity of bars.
+    sort_ascending : bool or None, default=None
+        Sort bars by score value. ``True`` for ascending, ``False`` for
+        descending, ``None`` to keep insertion order.
+    text_auto : bool, default=True
+        Annotate bars with their values.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure object.
+
+    Raises
+    ------
+    TypeError
+        If *y_truth* or *y_pred* is not a Polars DataFrame.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MeanAbsoluteError
+    >>> from yohou.plotting import plot_score_summary
+
+    >>> y_truth = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
+    ...     "value": [10.0, 20.0, 30.0, 40.0, 50.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "observed_time": [datetime(2019, 12, 31)] * 5,
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
+    ...     "value": [12.0, 19.0, 28.0, 42.0, 48.0],
+    ... })
+
+    >>> fig = plot_score_summary(MeanAbsoluteError(), y_truth, y_pred)
+    >>> len(fig.data) >= 1
+    True
+
+    See Also
+    --------
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Per-step score line/bar chart.
+    [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score values over time.
+    """
+    validate_plotting_data(y_truth)
+    validate_plotting_params(width=width, height=height)
+
+    y_pred_dict: dict[str, pl.DataFrame] = _normalize_y_pred(y_pred)
+    scorer_dict = _normalize_scorers(scorer)
+
+    scorer_names = list(scorer_dict.keys())
+    model_names = list(y_pred_dict.keys())
+
+    results: dict[str, dict[str, float]] = {}
+    for m_name, y_pred_m in y_pred_dict.items():
+        validate_plotting_data(y_pred_m)
+        model_scores: dict[str, float] = {}
+        for s_name, s_orig in scorer_dict.items():
+            s_agg = copy.deepcopy(s_orig)
+            s_agg.fit(y_truth)
+            score_val = s_agg.score(y_truth, y_pred_m)
+            if isinstance(score_val, pl.DataFrame):
+                score_cols = [c for c in score_val.columns if c != "time"]
+                score_val = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
+            model_scores[s_name] = float(score_val)  # type: ignore
+        results[m_name] = model_scores
+
+    categories = scorer_names
+    series_names = model_names
+    series_values = [[results[m].get(s, 0.0) for s in categories] for m in series_names]
+
+    if sort_ascending is not None and series_values:
+        order = sorted(
+            range(len(categories)),
+            key=lambda k: series_values[0][k],
+            reverse=not sort_ascending,
+        )
+        categories = [categories[k] for k in order]
+        series_values = [[sv[k] for k in order] for sv in series_values]
+
+    colors = resolve_color_palette(color_palette, len(series_names))
+    fig = go.Figure()
+
+    for i, (name, values) in enumerate(zip(series_names, series_values, strict=True)):
+        bar_kwargs: dict = {
+            "name": name,
+            "marker_color": colors[i % len(colors)],
+            "opacity": bar_opacity,
+            "x": categories,
+            "y": values,
+        }
+        if text_auto:
+            bar_kwargs["text"] = [f"{v:.3g}" for v in values]
+            bar_kwargs["textposition"] = "outside"
+        fig.add_trace(go.Bar(**bar_kwargs))
+
+    fig.update_layout(barmode="group")
+    fig = apply_default_layout(
+        fig,
+        title=title or "Model Comparison",
+        x_label=x_label or "",
+        y_label=y_label or "Score",
+        width=width,
+        height=height,
+    )
+    fig.update_layout(showlegend=show_legend)
+    return fig
+
+
+def plot_score_per_step(
+    scorer: BaseScorer | dict[str, BaseScorer],
+    y_truth: pl.DataFrame,
+    y_pred: pl.DataFrame | dict[str, pl.DataFrame],
+    *,
+    kind: Literal["line", "bar"] = "line",
     compare_by: Literal["scorer", "model"] = "scorer",
     show_trend: bool = False,
     columns: str | list[str] | None = None,
@@ -2066,18 +2231,12 @@ def plot_score_per_horizon(
     marker_size: float = 8.0,
     marker_opacity: float = 0.8,
     bar_opacity: float = 0.85,
-    sort_ascending: bool | None = None,
-    text_auto: bool = True,
 ) -> go.Figure:
     """Plot scorer value by forecast horizon step.
 
     For each step *h* in the forecast window, compute the scorer between
     ``y_truth`` and ``y_pred`` at row *h* and plot the result. This
     reveals how forecast accuracy degrades as the horizon increases.
-
-    When ``kind="summary"``, the horizon dimension is collapsed and a
-    grouped bar chart of aggregate scores is produced instead (one bar
-    per model per scorer).
 
     Parameters
     ----------
@@ -2097,12 +2256,10 @@ def plot_score_per_horizon(
         - If DataFrame: single forecast.
         - If dict: keys are model names, values are prediction DataFrames.
     kind : str, default="line"
-        Plot kind: ``"line"``, ``"bar"`` or ``"summary"``.
+        Plot kind: ``"line"`` or ``"bar"``.
 
         - ``"line"``: per-step line chart with markers.
         - ``"bar"``: per-step bar chart.
-        - ``"summary"``: grouped bar chart of aggregate scores
-          (replaces the horizon dimension with a single value).
     compare_by : str, default="scorer"
         When both ``scorer`` and ``y_pred`` are dicts, controls which
         dimension is overlaid (colored traces) vs faceted (subplots):
@@ -2110,11 +2267,9 @@ def plot_score_per_horizon(
         - ``"scorer"``: overlay scorers, facet by model.
         - ``"model"``: overlay models, facet by scorer.
 
-        Ignored when either ``scorer`` or ``y_pred`` is not a dict,
-        or when ``kind="summary"``.
+        Ignored when either ``scorer`` or ``y_pred`` is not a dict.
     show_trend : bool, default=False
         Overlay a linear trend line (``np.polyfit`` degree 1).
-        Ignored for ``kind="summary"``.
     columns : str | list[str] | None, default=None
         Target column name(s) to score.  When *groups* is set
         this acts as a member postfix filter.  ``None`` uses all columns.
@@ -2131,14 +2286,11 @@ def plot_score_per_horizon(
     show_legend : bool, default=True
         Whether to show the legend.
     title : str | None, default=None
-        Plot title. Defaults to ``"<ScorerName> by Horizon Step"``
-        (or ``"Model Comparison"`` for ``kind="summary"``).
+        Plot title. Defaults to ``"<ScorerName> by Horizon Step"``.
     x_label : str | None, default=None
-        X-axis label. Defaults to ``"Horizon Step"``
-        (or ``""`` for ``kind="summary"``).
+        X-axis label. Defaults to ``"Horizon Step"``.
     y_label : str | None, default=None
-        Y-axis label. Defaults to the scorer class name
-        (or ``"Score"`` for ``kind="summary"``).
+        Y-axis label. Defaults to the scorer class name.
     width : int | None, default=None
         Plot width in pixels.
     height : int | None, default=None
@@ -2150,14 +2302,7 @@ def plot_score_per_horizon(
     marker_opacity : float, default=0.8
         Opacity of scatter markers.
     bar_opacity : float, default=0.85
-        Opacity of bars when ``kind="bar"`` or ``kind="summary"``.
-    sort_ascending : bool or None, default=None
-        Sort bars in ``kind="summary"`` by score value. ``True`` for
-        ascending, ``False`` for descending, ``None`` to keep insertion
-        order. Ignored for other kinds.
-    text_auto : bool, default=True
-        Annotate bars with their values when ``kind="summary"``.
-        Ignored for other kinds.
+        Opacity of bars when ``kind="bar"``.
 
     Returns
     -------
@@ -2169,14 +2314,14 @@ def plot_score_per_horizon(
     TypeError
         If *y_truth* or *y_pred* is not a Polars DataFrame.
     ValueError
-        If *kind* is not ``"line"``, ``"bar"`` or ``"summary"``.
+        If *kind* is not ``"line"`` or ``"bar"``.
 
     Examples
     --------
     >>> import polars as pl
     >>> from datetime import datetime
     >>> from yohou.metrics import MeanAbsoluteError
-    >>> from yohou.plotting import plot_score_per_horizon
+    >>> from yohou.plotting import plot_score_per_step
 
     >>> y_truth = pl.DataFrame({
     ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
@@ -2188,18 +2333,19 @@ def plot_score_per_horizon(
     ...     "value": [12.0, 19.0, 28.0, 42.0, 48.0],
     ... })
 
-    >>> fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
+    >>> fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred)
     >>> len(fig.data) >= 1
     True
 
     See Also
     --------
+    [`plot_score_summary`][yohou.plotting.plot_score_summary] : Grouped bar chart of aggregate scores.
     [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score values over time.
     [`plot_score_distribution`][yohou.plotting.plot_score_distribution] : Score distribution histogram/KDE.
     """
     validate_plotting_data(y_truth)
 
-    validate_plotting_params(kind=kind, valid_kinds={"line", "bar", "summary"}, width=width, height=height)
+    validate_plotting_params(kind=kind, valid_kinds={"line", "bar"}, width=width, height=height)
 
     y_pred_dict: dict[str, pl.DataFrame] = _normalize_y_pred(y_pred)
     scorer_dict = _normalize_scorers(scorer)
@@ -2214,79 +2360,6 @@ def plot_score_per_horizon(
     n_scorers = len(scorer_cw_dict)
     n_models = len(y_pred_dict)
     multi_scorer = n_scorers > 1
-
-    # -----------------------------------------------------------
-    # kind="summary": grouped bar chart of aggregate scores
-    # -----------------------------------------------------------
-    if kind == "summary":
-        validate_plotting_params(width=width, height=height)
-
-        # Compute aggregate score for each scorer x model
-        scorer_names = list(scorer_dict.keys())
-        model_names = list(y_pred_dict.keys())
-
-        results: dict[str, dict[str, float]] = {}
-        for m_name, y_pred_m in y_pred_dict.items():
-            validate_plotting_data(y_pred_m)
-            model_scores: dict[str, float] = {}
-            for s_name, s_orig in scorer_dict.items():
-                s_agg = copy.deepcopy(s_orig)
-                s_agg.fit(y_truth)
-                score_val = s_agg.score(y_truth, y_pred_m)
-                if isinstance(score_val, pl.DataFrame):
-                    # Aggregate to scalar
-                    score_cols = [c for c in score_val.columns if c != "time"]
-                    score_val = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
-                model_scores[s_name] = float(score_val)  # type: ignore
-            results[m_name] = model_scores
-
-        # Determine grouping: group by scorer, series by model
-        categories = scorer_names
-        series_names = model_names
-        series_values = [[results[m].get(s, 0.0) for s in categories] for m in series_names]
-
-        # Optional sorting
-        if sort_ascending is not None and series_values:
-            # Sort by first series
-            order = sorted(
-                range(len(categories)),
-                key=lambda k: series_values[0][k],
-                reverse=not sort_ascending,
-            )
-            categories = [categories[k] for k in order]
-            series_values = [[sv[k] for k in order] for sv in series_values]
-
-        colors = resolve_color_palette(color_palette, len(series_names))
-        fig = go.Figure()
-
-        for i, (name, values) in enumerate(zip(series_names, series_values, strict=True)):
-            bar_kwargs: dict = {
-                "name": name,
-                "marker_color": colors[i % len(colors)],
-                "opacity": bar_opacity,
-                "x": categories,
-                "y": values,
-            }
-            if text_auto:
-                bar_kwargs["text"] = [f"{v:.3g}" for v in values]
-                bar_kwargs["textposition"] = "outside"
-            fig.add_trace(go.Bar(**bar_kwargs))
-
-        fig.update_layout(barmode="group")
-        fig = apply_default_layout(
-            fig,
-            title=title or "Model Comparison",
-            x_label=x_label or "",
-            y_label=y_label or "Score",
-            width=width,
-            height=height,
-        )
-        fig.update_layout(showlegend=show_legend)
-        return fig
-
-    # -----------------------------------------------------------
-    # kind="line" / "bar": per-horizon step plots
-    # -----------------------------------------------------------
     def _render_horizon(
         fig: go.Figure,
         y_truth_sub: pl.DataFrame,
@@ -2297,6 +2370,7 @@ def plot_score_per_horizon(
         *,
         row: int | None = None,
         col: int | None = None,
+        legendgroup: str | None = None,
     ) -> None:
         """Render per-horizon score traces onto *fig*."""
         for idx, (mname, y_pred_m) in enumerate(y_pred_dict_sub.items()):
@@ -2318,6 +2392,10 @@ def plot_score_per_horizon(
             steps = np.arange(1, n_steps + 1)
             c = _colors[idx % len(_colors)]
 
+            lg_kwargs: dict = {}
+            if legendgroup is not None:
+                lg_kwargs["legendgroup"] = legendgroup
+
             if kind == "line":
                 fig.add_trace(
                     go.Scatter(
@@ -2325,8 +2403,10 @@ def plot_score_per_horizon(
                         y=score_vals,
                         mode="lines+markers",
                         name=mname,
+                        showlegend=_show_legend,
                         line={"color": c, "width": line_width},
                         marker={"size": marker_size, "color": c, "opacity": marker_opacity},
+                        **lg_kwargs,
                     ),
                     row=row,
                     col=col,
@@ -2337,8 +2417,10 @@ def plot_score_per_horizon(
                         x=steps,
                         y=score_vals,
                         name=mname,
+                        showlegend=_show_legend,
                         marker_color=c,
                         opacity=bar_opacity,
+                        **lg_kwargs,
                     ),
                     row=row,
                     col=col,
@@ -2355,6 +2437,7 @@ def plot_score_per_horizon(
                         name=f"{mname} trend",
                         line={"color": c, "width": 1.5, "dash": "dash"},
                         showlegend=_show_legend,
+                        **lg_kwargs,
                     ),
                     row=row,
                     col=col,
@@ -2374,7 +2457,7 @@ def plot_score_per_horizon(
     if _effective_groups:
         if multi_scorer:
             msg = (
-                "Multi-scorer is not supported with panel data in plot_score_per_horizon. Pass a single scorer instead."
+                "Multi-scorer is not supported with panel data in plot_score_per_step. Pass a single scorer instead."
             )
             raise ValueError(msg)
 
@@ -2493,44 +2576,96 @@ def plot_score_per_horizon(
         return pfig
 
     # Non-panel single figure
-    fig = go.Figure()
+
+    # Determine effective truth/pred for column filtering
+    if _col_filter is not None:
+        _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
+        _yt_eff = y_truth.select(_keep_truth)
+        _ypd_eff = {
+            k: v.select([c for c in v.columns if c in ("time", "observed_time") or c in _col_filter])
+            for k, v in y_pred_dict.items()
+        }
+    else:
+        _yt_eff = y_truth
+        _ypd_eff = y_pred_dict
+
+    # Detect number of score components
+    _score_cols = [c for c in _yt_eff.columns if c != "time"]
 
     if multi_scorer:
         # Overlay scorers (single model)
         colors = resolve_color_palette(color_palette, n_scorers)
-        y_pred_single = next(iter(y_pred_dict.values()))
+        y_pred_single = next(iter(_ypd_eff.values()))
+        fig = go.Figure()
         for idx, (s_name, s_cw) in enumerate(scorer_cw_dict.items()):
             _render_horizon(
                 fig,
-                y_truth,
+                _yt_eff,
                 {s_name: y_pred_single},
                 [colors[idx]],
                 s_cw,
                 _show_legend=show_legend,
             )
-    else:
-        # Overlay models (single scorer - original behavior)
+    elif len(_score_cols) > 1:
+        # Multi-component: create subplots per component, group legend per model
         first_cw = next(iter(scorer_cw_dict.values()))
         colors = resolve_color_palette(color_palette, n_models)
-        if _col_filter is not None:
-            _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
-            y_truth_filt = y_truth.select(_keep_truth)
-            y_pred_dict_filt = {
-                k: v.select([c for c in v.columns if c in ("time", "observed_time") or c in _col_filter])
-                for k, v in y_pred_dict.items()
+        n_comps = len(_score_cols)
+        n_cols_c = min(facet_n_cols, n_comps)
+        n_rows_c = (n_comps + n_cols_c - 1) // n_cols_c
+
+        fig = make_subplots(
+            rows=n_rows_c,
+            cols=n_cols_c,
+            subplot_titles=_score_cols,
+            vertical_spacing=_subplot_spacing(n_rows_c),
+        )
+
+        legend_tracker = LegendTracker()
+        for comp_idx, comp_col in enumerate(_score_cols):
+            r = comp_idx // n_cols_c + 1
+            c_i = comp_idx % n_cols_c + 1
+            yt_comp = _yt_eff.select(["time", comp_col])
+            ypd_comp = {
+                k: v.select([c for c in v.columns if c in ("time", "observed_time", comp_col)])
+                for k, v in _ypd_eff.items()
             }
-            _render_horizon(fig, y_truth_filt, y_pred_dict_filt, colors, first_cw, show_legend)
-        else:
-            _render_horizon(fig, y_truth, y_pred_dict, colors, first_cw, show_legend)
+            for m_idx, (mname, y_pred_m) in enumerate(ypd_comp.items()):
+                _render_horizon(
+                    fig,
+                    yt_comp,
+                    {mname: y_pred_m},
+                    [colors[m_idx]],
+                    first_cw,
+                    legend_tracker.should_show(mname),
+                    row=r,
+                    col=c_i,
+                    legendgroup=mname,
+                )
+    else:
+        # Single component, overlay models (original behavior)
+        first_cw = next(iter(scorer_cw_dict.values()))
+        colors = resolve_color_palette(color_palette, n_models)
+        fig = go.Figure()
+        _render_horizon(fig, _yt_eff, _ypd_eff, colors, first_cw, show_legend)
 
     if multi_scorer:
         default_title = title or "Score by Horizon Step"
         default_y = y_label or "Score"
+        default_height = height
+    elif len(_score_cols) > 1:
+        first_scorer = next(iter(scorer_dict.values()))
+        scorer_name = first_scorer.__class__.__name__
+        default_title = title or f"{scorer_name} by Horizon Step"
+        default_y = y_label or scorer_name
+        n_rows_c = (len(_score_cols) + min(facet_n_cols, len(_score_cols)) - 1) // min(facet_n_cols, len(_score_cols))
+        default_height = height or max(300 * n_rows_c, 400)
     else:
         first_scorer = next(iter(scorer_dict.values()))
         scorer_name = first_scorer.__class__.__name__
         default_title = title or f"{scorer_name} by Horizon Step"
         default_y = y_label or scorer_name
+        default_height = height
 
     fig = apply_default_layout(
         fig,
@@ -2538,7 +2673,7 @@ def plot_score_per_horizon(
         x_label=x_label or "Horizon Step",
         y_label=default_y,
         width=width,
-        height=height,
+        height=default_height,
     )
 
     if kind == "bar" and (n_models > 1 or multi_scorer):
@@ -2658,7 +2793,7 @@ def plot_score_per_vintage(
 
     See Also
     --------
-    [`plot_score_per_horizon`][yohou.plotting.plot_score_per_horizon] : Score by horizon step.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
     [`plot_score_heatmap`][yohou.plotting.plot_score_heatmap] : 2D heatmap of scores.
     """
     validate_plotting_data(y_truth)
@@ -2708,7 +2843,7 @@ def plot_score_per_vintage(
             msg = (
                 "y_pred has only a single vintage (observed_time). "
                 "plot_score_per_vintage requires at least 2 vintages. "
-                "Use plot_score_per_horizon for single-vintage data."
+                "Use plot_score_per_step for single-vintage data."
             )
             raise ValueError(msg)
 
@@ -2961,7 +3096,7 @@ def plot_score_heatmap(
 
     See Also
     --------
-    [`plot_score_per_horizon`][yohou.plotting.plot_score_per_horizon] : Score by horizon step.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
     [`plot_score_per_vintage`][yohou.plotting.plot_score_per_vintage] : Score by vintage.
     """
     validate_plotting_data(y_truth)
@@ -3180,7 +3315,7 @@ def plot_group_scores(
     See Also
     --------
     [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score over time.
-    [`plot_score_per_horizon`][yohou.plotting.plot_score_per_horizon] : Score by horizon step.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
     """
     validate_plotting_data(y_truth)
     validate_plotting_params(kind=kind, valid_kinds={"bar", "box", "heatmap"}, width=width, height=height)

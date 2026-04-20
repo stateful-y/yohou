@@ -52,7 +52,7 @@ def _():
 
     from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_score_per_horizon, plot_time_series
+    from yohou.plotting import plot_forecast, plot_score_per_step, plot_score_summary, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -64,7 +64,8 @@ def _():
         fetch_sunspot,
         pl,
         plot_forecast,
-        plot_score_per_horizon,
+        plot_score_per_step,
+        plot_score_summary,
         plot_time_series,
         train_test_split,
     )
@@ -264,7 +265,7 @@ def _(mo):
 @app.cell
 def _(
     MeanAbsoluteError,
-    plot_score_per_horizon,
+    plot_score_summary,
     y_pred_direct,
     y_pred_dirrec,
     y_pred_multi,
@@ -273,7 +274,7 @@ def _(
     _n = min(len(y_pred_multi), len(y_pred_direct), len(y_pred_dirrec))
     _y_test_trimmed = y_test.head(_n)
 
-    plot_score_per_horizon(
+    plot_score_summary(
         MeanAbsoluteError(),
         _y_test_trimmed,
         {
@@ -281,7 +282,6 @@ def _(
             "Direct": y_pred_direct.head(_n),
             "Dir-Rec": y_pred_dirrec.head(_n),
         },
-        kind="summary",
         title="MAE by Reduction Strategy",
     )
     return

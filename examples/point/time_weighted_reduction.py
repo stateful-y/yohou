@@ -61,7 +61,7 @@ def _():
 
     from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_score_per_horizon, plot_time_weight
+    from yohou.plotting import plot_forecast, plot_score_per_step, plot_score_summary, plot_time_weight
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.utils.weighting import (
@@ -81,7 +81,8 @@ def _():
         linear_decay_weight,
         pl,
         plot_forecast,
-        plot_score_per_horizon,
+        plot_score_per_step,
+        plot_score_summary,
         plot_time_weight,
         seasonal_emphasis_weight,
         train_test_split,
@@ -325,7 +326,7 @@ def _(
     exponential_decay_weight,
     forecasting_horizon,
     linear_decay_weight,
-    plot_score_per_horizon,
+    plot_score_summary,
     seasonal_emphasis_weight,
     y_test,
     y_train,
@@ -349,11 +350,10 @@ def _(
         _fc.fit(y_train, **_fit_kwargs)
         _y_preds[_label] = _fc.predict(forecasting_horizon=forecasting_horizon)
 
-    plot_score_per_horizon(
+    plot_score_summary(
         MeanAbsoluteError(),
         y_test,
         _y_preds,
-        kind="summary",
         title="Weight Function Comparison (MAE)",
     )
 

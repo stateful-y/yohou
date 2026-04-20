@@ -60,7 +60,7 @@ def _():
         IntervalScore,
         MeanIntervalWidth,
     )
-    from yohou.plotting import plot_calibration, plot_forecast, plot_score_per_horizon
+    from yohou.plotting import plot_calibration, plot_forecast, plot_score_per_step
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -76,7 +76,7 @@ def _():
         fetch_tourism_monthly,
         plot_calibration,
         plot_forecast,
-        plot_score_per_horizon,
+        plot_score_per_step,
         train_test_split,
     )
 
@@ -351,7 +351,7 @@ def _(mo):
     mo.md(r"""
     ## 6. Horizon Degradation
 
-    Prediction intervals typically widen at longer horizons. [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/)
+    Prediction intervals typically widen at longer horizons. [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/)
     shows how interval scores change across forecast steps.
     """)
 
@@ -359,12 +359,12 @@ def _(mo):
 @app.cell
 def _(
     IntervalScore,
-    plot_score_per_horizon,
+    plot_score_per_step,
     y_pred_euclidean,
     y_pred_standard,
     y_test,
 ):
-    plot_score_per_horizon(
+    plot_score_per_step(
         IntervalScore(coverage_rates=[0.90]),
         y_test,
         {"standard": y_pred_standard, "euclidean": y_pred_euclidean},

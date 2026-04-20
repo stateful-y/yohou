@@ -216,7 +216,7 @@ def plot_forecast(
     See Also
     --------
     [`plot_residuals`][yohou.plotting.plot_residuals] : Plot residual diagnostics.
-    [`plot_score_per_horizon`][yohou.plotting.plot_score_per_horizon] : Score by horizon step with summary mode.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
     """
     # Validate inputs
     validate_plotting_data(y_test)

@@ -33,7 +33,7 @@ def _(mo):
     - All 8 point scorers: MAE, MSE, RMSE, MedianAE, MAPE, sMAPE, RMSSE, MASE
     - Aggregation methods: `["stepwise", "vintagewise"]`, `"componentwise"`, `"groupwise"`, `"all"`
     - Scaled metrics that require training data for normalization
-    - Visualizing scores with [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) and [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/)
+    - Visualizing scores with [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) and [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/)
 
     ## Prerequisites
 
@@ -58,7 +58,7 @@ def _():
         RootMeanSquaredScaledError,
         SymmetricMeanAbsolutePercentageError,
     )
-    from yohou.plotting import plot_forecast, plot_score_per_horizon, plot_score_time_series, plot_time_series
+    from yohou.plotting import plot_forecast, plot_score_per_step, plot_score_summary, plot_score_time_series, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
 
@@ -77,7 +77,8 @@ def _():
         SymmetricMeanAbsolutePercentageError,
         fetch_tourism_monthly,
         plot_forecast,
-        plot_score_per_horizon,
+        plot_score_per_step,
+        plot_score_summary,
         plot_score_time_series,
         plot_time_series,
         train_test_split,
@@ -400,7 +401,7 @@ def _(mo):
     mo.md(r"""
     ## 8. Model Comparison Summary
 
-    [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/) with `kind="summary"` takes
+    [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) takes
     scorer(s), ground truth, and a dict of predictions, then renders a grouped bar chart
     making it easy to spot which model performs best on each metric.
     """)
@@ -412,16 +413,15 @@ def _(
     MeanAbsoluteError,
     MeanAbsolutePercentageError,
     RootMeanSquaredError,
-    plot_score_per_horizon,
+    plot_score_summary,
     y_pred_naive,
     y_pred_ridge,
     y_test,
 ):
-    plot_score_per_horizon(
+    plot_score_summary(
         {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError(), "MAPE": MeanAbsolutePercentageError()},
         y_test,
         {"Naive": y_pred_naive, "Ridge": y_pred_ridge},
-        kind="summary",
         title="Model Comparison",
     )
     return
@@ -632,7 +632,7 @@ def _(mo):
     - `aggregation_method` controls granularity: `"all"`, `["stepwise", "vintagewise"]`, `"componentwise"`
     - [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/) evaluates hard classification correctness (use with care on imbalanced data)
     - Use [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) for temporal error analysis
-    - Use [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/) with `kind="summary"` for multi-model comparison
+    - Use [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) for multi-model comparison
     """)
     return
 

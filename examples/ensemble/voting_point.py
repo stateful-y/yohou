@@ -32,7 +32,7 @@ def _(mo):
 
     - Defining named base forecasters for ensemble composition
     - Aggregating with `method="mean"`, `"median"`, or weighted averaging
-    - Comparing ensemble strategies with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/)
+    - Comparing ensemble strategies with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/)
     - Running ensembles on panel data
 
     ## Prerequisites
@@ -53,7 +53,7 @@ def _():
     from yohou.datasets import fetch_sunspot, fetch_tourism_monthly
     from yohou.ensemble import VotingPointForecaster
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_score_per_horizon, plot_score_per_vintage
+    from yohou.plotting import plot_forecast, plot_score_per_step, plot_score_per_vintage, plot_score_summary
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
 
@@ -71,8 +71,9 @@ def _():
         fetch_tourism_monthly,
         pl,
         plot_forecast,
-        plot_score_per_horizon,
+        plot_score_per_step,
         plot_score_per_vintage,
+        plot_score_summary,
         train_test_split,
     )
 
@@ -260,7 +261,7 @@ def _(
     ensemble_median,
     ensemble_weighted,
     forecasting_horizon,
-    plot_score_per_horizon,
+    plot_score_summary,
     y_test,
     y_train,
 ):
@@ -274,11 +275,10 @@ def _(
     for name, model in models.items():
         y_preds[name] = deepcopy(model).observe_predict(y_test, forecasting_horizon=forecasting_horizon)
 
-    plot_score_per_horizon(
+    plot_score_summary(
         MeanAbsoluteError(),
         y_test,
         y_preds,
-        kind="summary",
         title="Ensemble Method Comparison",
     )
 
