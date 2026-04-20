@@ -128,7 +128,7 @@ def check_scorer_column_selection(
     if coverage_rates is not None and pred_type == "interval" and interval_pattern is not None:
         available_rates = set()
         for col in y_pred.columns:
-            if col in ("time", "observed_time"):
+            if col in ("time", "vintage_time"):
                 continue
             match = interval_pattern.match(col)
             if match:
@@ -286,7 +286,7 @@ def check_scorer_column_selection(
 
         # Filter y_pred columns to only those matching requested rates
         for col in y_pred.columns:
-            if col in ("time", "observed_time"):
+            if col in ("time", "vintage_time"):
                 continue
             match = interval_pattern.match(col)
             if match and float(match.group(3)) in coverage_rates:

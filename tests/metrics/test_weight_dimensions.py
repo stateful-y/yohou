@@ -41,7 +41,7 @@ def multi_vintage_data():
         "value": [10.0, 20.0, 30.0, 40.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [
+        "vintage_time": [
             base,
             base,
             base + timedelta(days=1),
@@ -187,7 +187,7 @@ class TestStepWeight:
 
         np.testing.assert_allclose(result, 1.25, atol=1e-10)
 
-    def test_step_weight_without_observed_time_ignored(self, y_train):
+    def test_step_weight_without_vintage_time_ignored(self, y_train):
         """step_weight is ignored when forecasting_step is unavailable."""
         y_true = pl.DataFrame({
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
@@ -206,7 +206,7 @@ class TestStepWeight:
         mae_weighted.fit(y_train)
         result_weighted = mae_weighted.score(y_true, y_pred, step_weight={1: 10.0})
 
-        # Without observed_time, step_weight is a no-op
+        # Without vintage_time, step_weight is a no-op
         np.testing.assert_allclose(result_default, result_weighted, atol=1e-10)
 
     def test_step_weight_with_stepwise_vintagewise_row_reduction(self, y_train, multi_vintage_data):
@@ -253,7 +253,7 @@ class TestCombinedWeights:
             "b": [100.0, 200.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [base, base],
+            "vintage_time": [base, base],
             "time": [base + timedelta(days=1), base + timedelta(days=2)],
             "a": [12.0, 18.0],
             "b": [110.0, 190.0],
@@ -331,7 +331,7 @@ class TestVintageWeight:
             "value": [10.0, 20.0, 30.0, 40.0],
         })
         y_pred_diff = pl.DataFrame({
-            "observed_time": [
+            "vintage_time": [
                 base,
                 base,
                 base + timedelta(days=1),
@@ -371,8 +371,8 @@ class TestVintageWeight:
 
         np.testing.assert_allclose(result, 1.5, atol=1e-10)
 
-    def test_vintage_weight_without_observed_time_ignored(self, y_train):
-        """vintage_weight is ignored when observed_time is unavailable."""
+    def test_vintage_weight_without_vintage_time_ignored(self, y_train):
+        """vintage_weight is ignored when vintage_time is unavailable."""
         y_true = pl.DataFrame({
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "value": [10.0, 20.0, 30.0],
@@ -452,7 +452,7 @@ class TestComponentWeightComponentwise:
             "g1__b": [100.0, 200.0, 300.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2024, 1, 1)] * 3,
+            "vintage_time": [datetime(2024, 1, 1)] * 3,
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "g1__a": [12.0, 18.0, 33.0],
             "g1__b": [110.0, 190.0, 280.0],
@@ -475,7 +475,7 @@ class TestComponentWeightComponentwise:
             "b": [100.0, 200.0, 300.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2024, 1, 1)] * 3,
+            "vintage_time": [datetime(2024, 1, 1)] * 3,
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "a": [12.0, 18.0, 33.0],
             "b": [110.0, 190.0, 280.0],
@@ -502,7 +502,7 @@ class TestGroupwiseComponentWeight:
             "region__west": [15.0, 25.0, 35.0, 45.0, 55.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2024, 1, 1)] * 5,
+            "vintage_time": [datetime(2024, 1, 1)] * 5,
             "time": [datetime(2024, 1, i) for i in range(1, 6)],
             "region__east": [12.0, 18.0, 33.0, 38.0, 52.0],
             "region__west": [14.0, 26.0, 33.0, 46.0, 53.0],
@@ -534,7 +534,7 @@ class TestNoContextDimFallback:
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "value": [12.0, 18.0, 33.0],
         })
-        # No observed_time -> no forecasting_step in context
+        # No vintage_time -> no forecasting_step in context
         mae = MeanAbsoluteError()
         mae.fit(y_true)
         result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
@@ -546,7 +546,7 @@ class TestNoContextDimFallback:
         np.testing.assert_allclose(result, mae_default.score(y_true, y_pred), atol=1e-10)
 
     def test_vintage_weight_no_context_vintages(self):
-        """vintage_weight is ignored when context has no observed_time."""
+        """vintage_weight is ignored when context has no vintage_time."""
         y_true = pl.DataFrame({
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "value": [10.0, 20.0, 30.0],
@@ -593,7 +593,7 @@ class TestCombineRowWeightsBranches:
             "value": [10.0, 20.0, 30.0, 40.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [
+            "vintage_time": [
                 base,
                 base,
                 base + timedelta(days=1),
@@ -685,7 +685,7 @@ def interval_multi_rate():
         "value": [10.0, 20.0, 30.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2024, 1, 10)] * 3,
+        "vintage_time": [datetime(2024, 1, 10)] * 3,
         "time": times,
         "value_lower_0.9": [8.0, 18.0, 28.0],
         "value_upper_0.9": [12.0, 22.0, 32.0],
@@ -704,7 +704,7 @@ def interval_multi_vintage():
         "value": [10.0, 20.0, 30.0, 40.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [
+        "vintage_time": [
             base,
             base,
             base + timedelta(days=1),
@@ -750,7 +750,7 @@ class TestIntervalTimeWeight:
         times = [datetime(2024, 1, 11), datetime(2024, 1, 12), datetime(2024, 1, 13)]
         y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2024, 1, 10)] * 3,
+            "vintage_time": [datetime(2024, 1, 10)] * 3,
             "time": times,
             "value_lower_0.9": [8.0, 15.0, 28.0],  # 2nd point outside interval
             "value_upper_0.9": [12.0, 18.0, 32.0],
@@ -785,7 +785,7 @@ class TestIntervalStepWeight:
         })
         # Asymmetric: step 1 has tight intervals, step 2 has wide intervals
         y_pred = pl.DataFrame({
-            "observed_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "vintage_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
             "time": [
                 base + timedelta(days=1),
                 base + timedelta(days=2),
@@ -886,7 +886,7 @@ class TestIntervalPanelTimeWeight:
             "g2__val": [20.0, 40.0, 60.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2024, 1, 10)] * 3,
+            "vintage_time": [datetime(2024, 1, 10)] * 3,
             "time": times,
             "g1__val_lower_0.9": [8.0, 15.0, 28.0],
             "g1__val_upper_0.9": [12.0, 18.0, 32.0],
@@ -927,7 +927,7 @@ class TestIntervalMultiRateStepWeight:
         })
         # 2 vintages x 2 steps, with 2 coverage rates
         y_pred = pl.DataFrame({
-            "observed_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "vintage_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
             "time": [
                 base + timedelta(days=1),
                 base + timedelta(days=2),

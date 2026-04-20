@@ -50,10 +50,16 @@ def _():
 
     import plotly.graph_objects as go
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
-    from yohou.plotting import plot_forecast
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_heatmap,
+        plot_score_per_vintage,
+    )
     from yohou.preprocessing import LagTransformer
 
     return (
@@ -62,9 +68,12 @@ def _():
         IntervalScore,
         LagTransformer,
         MeanIntervalWidth,
+        deepcopy,
         fetch_tourism_monthly,
         go,
         plot_forecast,
+        plot_score_heatmap,
+        plot_score_per_vintage,
         train_test_split,
     )
 
@@ -301,6 +310,65 @@ def _(mo):
     """)
     return
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict_interval` method with `stride=1` produces one
+    interval forecast per observation point, creating multiple *vintages*.
+    Each vintage represents a different forecast origin, so you can analyse
+    how interval quality evolves as the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(coverage_rates, deepcopy, forecasting_horizon, interval_fc, y_test):
+    _vintage_model = deepcopy(interval_fc)
+    y_pred_vintages = _vintage_model.observe_predict_interval(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=forecasting_horizon,
+        coverage_rates=coverage_rates,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(IntervalScore, y_train):
+    vintage_scorer = IntervalScore()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Interval Score per Vintage",
+        y_label="Interval Score",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
+    plot_score_heatmap(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Score Heatmap (Step x Vintage)",
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

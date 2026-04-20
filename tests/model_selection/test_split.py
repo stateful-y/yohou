@@ -344,7 +344,7 @@ class TestSplitterIntegration:
             y_pred = forecaster.predict(forecasting_horizon=len(test_idx), X=X_test)
 
             y_test_cols = [c for c in y_test.columns if c != "time"]
-            y_pred_cols = [c for c in y_pred.columns if c not in ("time", "observed_time")]
+            y_pred_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time")]
             error = np.abs(y_test.select(y_test_cols).to_numpy() - y_pred.select(y_pred_cols).to_numpy())
             scores.append(np.mean(error))
 
@@ -369,7 +369,7 @@ class TestSplitterIntegration:
             y_pred = forecaster.predict(forecasting_horizon=len(test_idx), X=X_test)
 
             y_test_cols = [c for c in y_test.columns if c != "time"]
-            y_pred_cols = [c for c in y_pred.columns if c not in ("time", "observed_time")]
+            y_pred_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time")]
             error = np.abs(y_test.select(y_test_cols).to_numpy() - y_pred.select(y_pred_cols).to_numpy())
             scores.append(np.mean(error))
 

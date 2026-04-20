@@ -179,7 +179,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         """
         # Identify metadata columns (coverage_rate, context dims) to preserve
-        meta_names = {"coverage_rate", "forecasting_step", "observed_time", "time"}
+        meta_names = {"coverage_rate", "forecasting_step", "vintage_time", "time"}
         meta_cols = [c for c in df.columns if c in meta_names]
         value_df = df.select([c for c in df.columns if c not in meta_names])
 
@@ -224,7 +224,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         if len(df) == 0:
             return df.drop("coverage_rate")
 
-        meta_names = {"forecasting_step", "observed_time", "time"}
+        meta_names = {"forecasting_step", "vintage_time", "time"}
         meta_cols = [c for c in df.columns if c in meta_names]
         val_cols = [c for c in df.columns if c not in meta_names and c != "coverage_rate"]
 
@@ -284,7 +284,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             return df.select(pl.all().mean())
 
         # Partial collapse: keep one dimension, collapse the other
-        keep_dim = "forecasting_step" if collapse_vintages else "observed_time"
+        keep_dim = "forecasting_step" if collapse_vintages else "vintage_time"
         dim_values = getattr(context, keep_dim, None) if context is not None else None
 
         if dim_values is None:
@@ -315,7 +315,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         For panel data (``__`` prefixed columns), each group is collapsed
         separately into ``{group}__score``.
         """
-        meta_names = {"coverage_rate", "forecasting_step", "observed_time", "time"}
+        meta_names = {"coverage_rate", "forecasting_step", "vintage_time", "time"}
         meta_cols = [c for c in df.columns if c in meta_names]
         value_df = df.select([c for c in df.columns if c not in meta_names])
 
@@ -363,7 +363,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         After all collapse steps, determines whether to return a scalar
         (when all dimensions are collapsed) or a labelled DataFrame.
         """
-        meta_names = {"coverage_rate", "forecasting_step", "observed_time", "time"}
+        meta_names = {"coverage_rate", "forecasting_step", "vintage_time", "time"}
         existing_labels = [c for c in result.columns if c in meta_names]
         value_cols = [c for c in result.columns if c not in meta_names]
 
@@ -372,7 +372,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         rows_collapsed = collapse_steps and collapse_vintages
 
         # Add time labels if rows are NOT fully collapsed and no row label exists yet
-        has_row_label = any(c in existing_labels for c in ("forecasting_step", "observed_time", "time"))
+        has_row_label = any(c in existing_labels for c in ("forecasting_step", "vintage_time", "time"))
         if not rows_collapsed and not has_row_label and context is not None and context.time_values is not None:
             time_values = context.time_values
             if "coverage_rate" in result.columns:
@@ -393,7 +393,28 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     how="horizontal",
                 )
 
-        # Re-check for labels after potential time label addition
+        # Attach vintage_time if available and rows are not collapsed
+        if (
+            not rows_collapsed
+            and "vintage_time" not in result.columns
+            and context is not None
+            and context.vintage_time is not None
+        ):
+            ot_values = context.vintage_time.to_list()
+            if "coverage_rate" in result.columns:
+                n_rates = result["coverage_rate"].n_unique()
+                # Each vintage_time repeats n_rates times (once per coverage_rate)
+                if len(ot_values) * n_rates == len(result):
+                    ot_values = ot_values * n_rates
+            if len(ot_values) == len(result):
+                # Insert after time if present, otherwise at position 0
+                insert_pos = result.columns.index("time") + 1 if "time" in result.columns else 0
+                ot_series = pl.Series("vintage_time", ot_values).cast(pl.Datetime)
+                cols = list(result.columns)
+                cols.insert(insert_pos, "vintage_time")
+                result = result.with_columns(ot_series).select(cols)
+
+        # Re-check for labels after potential time/vintage_time label addition
         existing_labels = [c for c in result.columns if c in meta_names]
         value_cols = [c for c in result.columns if c not in meta_names]
 
@@ -727,7 +748,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             y_pred.filter(mask),
             _ScoringContext(
                 time_values=[t for t, m in zip(context.time_values, mask.to_list(), strict=True) if m],
-                observed_time=(context.observed_time.filter(mask) if context.observed_time is not None else None),
+                vintage_time=(context.vintage_time.filter(mask) if context.vintage_time is not None else None),
                 forecasting_step=context.forecasting_step.filter(mask),
             ),
         )
@@ -755,7 +776,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                 weights.append(np.array([step_weight.get(int(s), 1.0) for s in steps.to_list()]))
 
         if vintage_weight is not None and context is not None:
-            obs = getattr(context, "observed_time", None)
+            obs = getattr(context, "vintage_time", None)
             if obs is not None:
                 weights.append(np.array([vintage_weight.get(v, 1.0) for v in obs.to_list()]))
 
@@ -830,7 +851,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             Ground truth time series to score against.  Must have a
             ``"time"`` column and one or more numeric value columns.
         y_pred : pl.DataFrame
-            Predicted time series to evaluate.  Must have ``"observed_time"``
+            Predicted time series to evaluate.  Must have ``"vintage_time"``
             and ``"time"`` columns and columns matching ``y_truth``.
         **params : dict
             Metadata to route to nested estimators.

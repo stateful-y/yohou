@@ -71,7 +71,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     >>> len(y_pred)
     1
     >>> sorted(y_pred.columns)
-    ['observed_time', 'time', 'value']
+    ['time', 'value', 'vintage_time']
 
     Notes
     -----

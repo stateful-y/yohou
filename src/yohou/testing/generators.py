@@ -743,7 +743,7 @@ def _yield_yohou_scorer_checks(
     y_truth : pl.DataFrame
         Ground truth with "time" column
     y_pred : pl.DataFrame
-        Predictions with "observed_time" and "time" columns
+        Predictions with "vintage_time" and "time" columns
     tags : dict, optional
         Scorer metadata tags (if None, auto-detected from __sklearn_tags__):
         - prediction_type: str | None

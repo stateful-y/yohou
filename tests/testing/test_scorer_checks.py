@@ -35,7 +35,7 @@ def scorer_panel_data():
         "g2__val": [float(i) * 2 for i in range(n)],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [times[0]] * n,
+        "vintage_time": [times[0]] * n,
         "time": times,
         "g1__val": [float(i) + 0.5 for i in range(n)],
         "g2__val": [float(i) * 2 + 0.5 for i in range(n)],
@@ -60,7 +60,7 @@ def interval_scorer_data():
         "val": [float(i) for i in range(n)],
     })
     y_pred_interval = pl.DataFrame({
-        "observed_time": [times[-1]] * 5,
+        "vintage_time": [times[-1]] * 5,
         "time": pl.datetime_range(
             start=datetime(2020, 1, 1) + timedelta(days=n),
             end=datetime(2020, 1, 1) + timedelta(days=n + 4),
@@ -140,7 +140,7 @@ class TestScorerCheckFunctions:
         )
         y_truth = pl.DataFrame({"time": times, "val": [float(i) for i in range(n)]})
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "val": [float(i) + 0.5 for i in range(n)],
         })
@@ -204,7 +204,7 @@ class TestScorerCheckFunctionsInterval:
             "b": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "a": [float(i) + 0.5 for i in range(n)],
             "b": [float(i) * 2 + 0.5 for i in range(n)],

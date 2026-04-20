@@ -118,7 +118,7 @@ class TestPredictLifecycle:
         y_pred = forecaster.predict(X[:80], forecasting_horizon=5)
 
         # Columns should include the prefixed names
-        pred_cols = set(y_pred.columns) - {"time", "observed_time"}
+        pred_cols = set(y_pred.columns) - {"time", "vintage_time"}
         y_cols = set(y.columns) - {"time"}
         assert pred_cols == y_cols
 
@@ -129,7 +129,7 @@ class TestPredictLifecycle:
         forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
         y_pred = forecaster.predict(X[:80], forecasting_horizon=5)
 
-        pred_cols = set(y_pred.columns) - {"time", "observed_time"}
+        pred_cols = set(y_pred.columns) - {"time", "vintage_time"}
         y_cols = set(y.columns) - {"time"}
         assert pred_cols == y_cols
 
@@ -175,7 +175,7 @@ class TestDifferentBehavior:
         # Both should have same columns, but different values
         assert set(p_global.columns) == set(p_multi.columns)
         # Values differ because global pools per-group, multivariate sees cross-group features
-        value_cols = [c for c in p_global.columns if c not in {"time", "observed_time"}]
+        value_cols = [c for c in p_global.columns if c not in {"time", "vintage_time"}]
         any_different = False
         for col in value_cols:
             if p_global[col].to_list() != p_multi[col].to_list():
@@ -206,8 +206,8 @@ class TestPanelInverseTransform:
         y_pred = forecaster.predict(X[:60], forecasting_horizon=3)
 
         assert len(y_pred) == 3
-        assert "observed_time" in y_pred.columns
-        target_cols = [c for c in y_pred.columns if c not in {"time", "observed_time"}]
+        assert "vintage_time" in y_pred.columns
+        target_cols = [c for c in y_pred.columns if c not in {"time", "vintage_time"}]
         assert len(target_cols) == 2
         assert all("__" in c for c in target_cols)
 
@@ -243,6 +243,6 @@ class TestPanelInverseTransform:
         forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
         y_pred = forecaster.predict(X[:60], forecasting_horizon=3)
 
-        target_cols = [c for c in y_pred.columns if c not in {"time", "observed_time"}]
+        target_cols = [c for c in y_pred.columns if c not in {"time", "vintage_time"}]
         for col in target_cols:
             assert y_pred[col].dtype.is_float()

@@ -25,7 +25,7 @@ def perfect_interval_predictions():
         "value": [10.0, 20.0, 30.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "value_lower_0.9": [8.0, 18.0, 28.0],
         "value_upper_0.9": [12.0, 22.0, 32.0],
@@ -41,7 +41,7 @@ def zero_coverage_predictions():
         "value": [10.0, 20.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "value_lower_0.9": [15.0, 25.0],  # All actuals below lower bound
         "value_upper_0.9": [18.0, 28.0],
@@ -57,7 +57,7 @@ def multi_rate_predictions():
         "value": [10.0, 20.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "value_lower_0.9": [8.0, 18.0],
         "value_upper_0.9": [12.0, 22.0],
@@ -179,7 +179,7 @@ class TestMeanIntervalWidth:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [8.0, 18.0],
             "value_upper_0.9": [12.0, 22.0],
@@ -197,7 +197,7 @@ class TestMeanIntervalWidth:
         })
         # Inverted bounds: upper < lower
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [12.0],
             "value_upper_0.9": [8.0],
@@ -231,7 +231,7 @@ class TestMeanIntervalWidth:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [8.0, 17.0],
             "value_upper_0.9": [12.0, 23.0],
@@ -267,7 +267,7 @@ class TestIntervalScore:
         })
         # Actual below lower bound
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [15.0],
             "value_upper_0.9": [20.0],
@@ -287,7 +287,7 @@ class TestIntervalScore:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [8.0, 18.0],
             "value_upper_0.9": [12.0, 22.0],
@@ -312,7 +312,7 @@ class TestPinballLoss:
         })
         # Actuals exactly at bounds (quantiles)
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [10.0, 20.0],
             "value_upper_0.9": [10.0, 20.0],
@@ -331,7 +331,7 @@ class TestPinballLoss:
 
         # Under-prediction
         y_pred_under = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [8.0],
             "value_upper_0.9": [9.0],  # Below actual
@@ -339,7 +339,7 @@ class TestPinballLoss:
 
         # Over-prediction
         y_pred_over = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [11.0],  # Above actual
             "value_upper_0.9": [12.0],
@@ -360,7 +360,7 @@ class TestPinballLoss:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [8.0, 18.0],
             "value_upper_0.9": [12.0, 22.0],
@@ -382,7 +382,7 @@ class TestCalibrationError:
             "value": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [8.0],
             "value_upper_0.9": [12.0],
@@ -426,7 +426,7 @@ class TestPanelData:
             "sales__store_2": [15.0, 25.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "sales__store_1_lower_0.9": [8.0, 18.0],
             "sales__store_1_upper_0.9": [12.0, 22.0],
@@ -449,7 +449,7 @@ class TestEdgeCases:
             "value": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [8.0],
             "value_upper_0.9": [12.0],
@@ -471,7 +471,7 @@ class TestEdgeCases:
             "col2": [15.0, 25.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "col1_lower_0.9": [8.0, 18.0],
             "col1_upper_0.9": [12.0, 22.0],

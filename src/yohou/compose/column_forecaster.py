@@ -571,10 +571,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
             # Store time columns from first prediction
             if time_columns is None:
-                time_columns = y_pred.select(["observed_time", "time"])
-                predictions.append(y_pred.select(~cs.by_name("observed_time", "time")))
+                time_columns = y_pred.select(["vintage_time", "time"])
+                predictions.append(y_pred.select(~cs.by_name("vintage_time", "time")))
             else:
-                predictions.append(y_pred.select(~cs.by_name("observed_time", "time")))
+                predictions.append(y_pred.select(~cs.by_name("vintage_time", "time")))
 
         # Predict with remainder forecaster if present
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
@@ -586,7 +586,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 predict_transformed=predict_transformed,
                 **remainder_params.predict,
             )
-            predictions.append(y_pred_remainder.select(~cs.by_name("observed_time", "time")))
+            predictions.append(y_pred_remainder.select(~cs.by_name("vintage_time", "time")))
 
         # Concatenate all predictions with time columns
         assert time_columns is not None
@@ -797,7 +797,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         predictions: list[pl.DataFrame] = []
         time_columns: pl.DataFrame | None = None
 
-        # Determine which time columns are present (predict_interval may not have observed_time)
+        # Determine which time columns are present (predict_interval may not have vintage_time)
         time_col_names: list[str] = []
 
         # Predict with each forecaster
@@ -814,7 +814,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
             # Store time columns from first prediction
             if time_columns is None:
-                time_col_names = [c for c in ["observed_time", "time"] if c in y_pred.columns]
+                time_col_names = [c for c in ["vintage_time", "time"] if c in y_pred.columns]
                 time_columns = y_pred.select(time_col_names)
                 predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
             else:
@@ -968,7 +968,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             )
 
             if time_columns is None:
-                time_col_names = [c for c in ["observed_time", "time"] if c in y_pred.columns]
+                time_col_names = [c for c in ["vintage_time", "time"] if c in y_pred.columns]
                 time_columns = y_pred.select(time_col_names)
                 predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
             else:

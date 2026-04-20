@@ -117,6 +117,8 @@ def validate_plotting_data(
     # Non-datetime time columns (e.g. integer indices) only need existence check
     if "time" in df.columns and not isinstance(df["time"].dtype, pl.Datetime | pl.Date):
         pass  # integer time is acceptable for plotting
+    elif "vintage_time" in df.columns:
+        _check_multi_vintage_time(df)
     else:
         check_time_column(df)
 
@@ -332,13 +334,13 @@ def validate_time_weight(
 
 def _compute_forecasting_step(
     time: pl.Series,
-    observed_time: pl.Series,
+    vintage_time: pl.Series,
     interval: str,
 ) -> pl.Series:
-    """Compute integer forecasting step from time, observed_time, and interval.
+    """Compute integer forecasting step from time, vintage_time, and interval.
 
     For fixed-length intervals (daily, hourly, etc.), divides the duration
-    between ``time`` and ``observed_time`` by the interval timedelta.
+    between ``time`` and ``vintage_time`` by the interval timedelta.
 
     For variable-length intervals (monthly, quarterly, yearly), uses
     calendar-unit arithmetic instead.
@@ -347,7 +349,7 @@ def _compute_forecasting_step(
     ----------
     time : pl.Series
         Prediction time points.
-    observed_time : pl.Series
+    vintage_time : pl.Series
         Observation origin time points.
     interval : str
         Interval string (e.g. ``"1d"``, ``"1mo"``, ``"1q"``, ``"1y"``).
@@ -362,14 +364,14 @@ def _compute_forecasting_step(
 
     if td is not None:
         # Fixed-length interval: fast duration division
-        step_durations = time - observed_time
+        step_durations = time - vintage_time
         return (step_durations / td).round(0).cast(pl.Int64)
 
     # Variable-length interval: calendar-unit arithmetic
     multiplier, unit = parse_interval(interval)
 
     time_expr = time.to_frame("t")
-    obs_expr = observed_time.to_frame("o")
+    obs_expr = vintage_time.to_frame("o")
     combined = pl.concat([time_expr, obs_expr], how="horizontal")
 
     if unit in ("mo", "q"):
@@ -387,6 +389,33 @@ def _compute_forecasting_step(
     raise ValueError(msg)
 
 
+def _check_multi_vintage_time(y_pred: pl.DataFrame) -> None:
+    """Validate time column for multi-vintage predictions.
+
+    Multi-vintage predictions have an ``vintage_time`` column that groups
+    rows by forecast origin.  The global ``time`` column is not
+    monotonically sorted, but time *within each vintage* must be.
+
+    """
+    if "time" not in y_pred.columns:
+        raise ValueError("y_pred must contain a 'time' column.")
+
+    time_col = y_pred["time"]
+    if not isinstance(time_col.dtype, pl.Datetime | pl.Date):
+        raise ValueError(f"'time' column in y_pred must have dtype pl.Datetime or pl.Date, but got {time_col.dtype}")
+    if time_col.null_count() > 0:
+        raise ValueError(
+            f"'time' column in y_pred contains {time_col.null_count()} null values. "
+            "'time' column must not have missing values."
+        )
+
+    # Check sorting within each vintage
+    for ot in y_pred["vintage_time"].unique().sort():
+        vintage = y_pred.filter(pl.col("vintage_time") == ot)
+        if not vintage["time"].is_sorted():
+            raise ValueError(f"'time' column within vintage_time={ot} is not sorted in ascending order.")
+
+
 def _truncate_partial_vintage(
     y_true: pl.DataFrame,
     y_pred: pl.DataFrame,
@@ -396,12 +425,12 @@ def _truncate_partial_vintage(
     When ``observe_predict`` runs with ``len(y) % stride != 0``, the last
     observe call consumes fewer rows than ``stride``, producing a partial
     vintage.  This function detects that case by comparing consecutive
-    ``observed_time`` gaps and drops the partial vintage.
+    ``vintage_time`` gaps and drops the partial vintage.
 
-    Requires at least 3 unique ``observed_time`` values to infer the
+    Requires at least 3 unique ``vintage_time`` values to infer the
     regular stride; otherwise returns data unchanged.
     """
-    unique_times = y_pred["observed_time"].unique().sort()
+    unique_times = y_pred["vintage_time"].unique().sort()
     if len(unique_times) < 3:
         return y_true, y_pred
 
@@ -411,7 +440,7 @@ def _truncate_partial_vintage(
 
     if last_diff < regular_diff:
         partial_time = unique_times[-1]
-        mask = y_pred["observed_time"] != partial_time
+        mask = y_pred["vintage_time"] != partial_time
         y_pred = y_pred.filter(mask)
         y_true = y_true.filter(mask)
 
@@ -521,12 +550,12 @@ def validate_scorer_data(
         check_time_column(y_pred)
         check_time_column(scores)
 
-        # Check column schema compatibility (exclude time/observed_time columns)
+        # Check column schema compatibility (exclude time/vintage_time columns)
         exclude_cols_pred = ["time"]
         exclude_cols_scores = ["time"]
 
-        if "observed_time" in y_pred.columns:
-            exclude_cols_pred.append("observed_time")
+        if "vintage_time" in y_pred.columns:
+            exclude_cols_pred.append("vintage_time")
 
         y_pred_cols = set(y_pred.select(~cs.by_name(*exclude_cols_pred)).columns)
         score_cols = set(scores.select(~cs.by_name(*exclude_cols_scores)).columns)
@@ -537,15 +566,15 @@ def validate_scorer_data(
                 f"y_pred has {sorted(y_pred_cols)}, conformity_scores has {sorted(score_cols)}."
             )
 
-        # Extract observed_time before dropping (used by multi-vintage aggregation)
-        observed_time = None
+        # Extract vintage_time before dropping (used by multi-vintage aggregation)
+        vintage_time = None
         forecasting_step = None
-        if "observed_time" in y_pred.columns:
-            observed_time = y_pred["observed_time"]
+        if "vintage_time" in y_pred.columns:
+            vintage_time = y_pred["vintage_time"]
             # Compute forecasting step if scorer has interval_ attribute
             if hasattr(scorer, "interval_") and scorer.interval_ is not None:
-                forecasting_step = _compute_forecasting_step(y_pred["time"], y_pred["observed_time"], scorer.interval_)
-            y_pred = y_pred.drop("observed_time")
+                forecasting_step = _compute_forecasting_step(y_pred["time"], y_pred["vintage_time"], scorer.interval_)
+            y_pred = y_pred.drop("vintage_time")
 
         # Extract time values before dropping (always present after validation)
         time_values = y_pred["time"].to_list()
@@ -561,7 +590,7 @@ def validate_scorer_data(
             scores,
             _ScoringContext(
                 time_values=time_values,
-                observed_time=observed_time,
+                vintage_time=vintage_time,
                 forecasting_step=forecasting_step,
             ),
         )
@@ -597,7 +626,13 @@ def validate_scorer_data(
 
     # Validate time columns
     check_time_column(y_true)
-    check_time_column(y_pred)
+    # Multi-vintage predictions (from observe_predict with stride) have
+    # repeating time values across vintages, so the global time column is
+    # not monotonically sorted.  Validate per-vintage sorting instead.
+    if "vintage_time" in y_pred.columns:
+        _check_multi_vintage_time(y_pred)
+    else:
+        check_time_column(y_pred)
 
     tags = scorer.__sklearn_tags__()
     scorer_tags = getattr(tags, "scorer_tags", None)
@@ -684,25 +719,25 @@ def validate_scorer_data(
 
     # Truncate partial vintage: if the last observe_predict window was
     # shorter than the regular stride, drop that vintage before scoring.
-    if "observed_time" in y_pred.columns:
+    if "vintage_time" in y_pred.columns:
         y_true, y_pred = _truncate_partial_vintage(y_true, y_pred)
 
     # Extract time values before dropping (all scorers get time-less DataFrames)
     time_values = y_true["time"].to_list() if "time" in y_true.columns else None
 
-    # Extract observed_time and compute forecasting_step before dropping
-    observed_time: pl.Series | None = None
+    # Extract vintage_time and compute forecasting_step before dropping
+    vintage_time: pl.Series | None = None
     forecasting_step: pl.Series | None = None
 
-    if "observed_time" in y_pred.columns:
-        observed_time = y_pred["observed_time"]
+    if "vintage_time" in y_pred.columns:
+        vintage_time = y_pred["vintage_time"]
 
         # Compute forecasting_step if scorer has interval_ from fit()
         interval_ = getattr(scorer, "interval_", None)
         if interval_ is not None and time_values is not None:
-            forecasting_step = _compute_forecasting_step(y_pred["time"], observed_time, interval_)
+            forecasting_step = _compute_forecasting_step(y_pred["time"], vintage_time, interval_)
 
-        y_pred = y_pred.drop("observed_time")
+        y_pred = y_pred.drop("vintage_time")
 
     # Drop time columns for all scorers (conformity scorers can reconstruct from time_values)
     y_true = y_true.drop("time")
@@ -721,7 +756,7 @@ def validate_scorer_data(
 
     context = _ScoringContext(
         time_values=time_values,  # type: ignore
-        observed_time=observed_time,
+        vintage_time=vintage_time,
         forecasting_step=forecasting_step,
     )
 

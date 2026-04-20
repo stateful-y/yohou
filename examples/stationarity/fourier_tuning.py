@@ -54,11 +54,16 @@ def _():
     from sklearn.linear_model import ElasticNet, Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
-    from yohou.plotting import plot_forecast
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_per_vintage,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.stationarity import (
@@ -78,9 +83,11 @@ def _():
         PointReductionForecaster,
         Ridge,
         clone,
+        deepcopy,
         fetch_electricity_demand,
         pl,
         plot_forecast,
+        plot_score_per_vintage,
         train_test_split,
     )
 
@@ -393,6 +400,55 @@ def _(
         ),
     ])
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict` method with `stride=1` produces one forecast per
+    observation point, creating multiple *vintages*. Each vintage represents
+    a different forecast origin, so you can analyse how accuracy evolves as
+    the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(FourierSeasonalityForecaster, Ridge, deepcopy, horizon, y_test, y_train):
+    _fc_v = FourierSeasonalityForecaster(estimator=Ridge(alpha=1e-5), seasonality=365, harmonics=[1, 2, 52])
+    _fc_v.fit(y_train, forecasting_horizon=horizon)
+    _vintage_model = deepcopy(_fc_v)
+    y_pred_vintages = _vintage_model.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=horizon,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="MAE per Forecast Vintage",
+        y_label="MAE",
+        height=380,
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

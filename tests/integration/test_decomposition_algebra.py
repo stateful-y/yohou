@@ -75,7 +75,7 @@ class TestTwoComponentAdditiveIdentity:
 
         # Verify additive identity: y_pred = trend_pred + residual_pred
         # Extract the target column (first non-time column)
-        target_col = [c for c in y_pred.columns if c not in {"time", "observed_time"}][0]
+        target_col = [c for c in y_pred.columns if c not in {"time", "vintage_time"}][0]
 
         pred_values = y_pred[target_col].to_numpy()
         trend_values = trend_pred[target_col].to_numpy()
@@ -135,7 +135,7 @@ class TestTwoComponentAdditiveIdentity:
         trend_pred = trend_forecaster.predict(forecasting_horizon=forecasting_horizon)
         residual_pred = residual_forecaster.predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         pred_values = y_pred[target_col].to_numpy()
         trend_values = trend_pred[target_col].to_numpy()
@@ -206,7 +206,7 @@ class TestMultiplicativeDecomposition:
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Verify prediction is in original scale (not log scale)
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
         pred_values = y_pred[target_col].to_numpy()
 
         # Predictions should be positive (exp of log-domain sum)
@@ -265,7 +265,7 @@ class TestMultiplicativeDecomposition:
         pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
         pred_values = y_pred[target_col].to_numpy()
 
         # Verify predictions are positive (multiplicative nature preserved)
@@ -325,7 +325,7 @@ class TestThreeComponentDecomposition:
         seasonal_pred = seasonal_forecaster.predict(forecasting_horizon=forecasting_horizon)
         residual_pred = residual_forecaster.predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         pred_values = y_pred[target_col].to_numpy()
         trend_values = trend_pred[target_col].to_numpy()
@@ -392,7 +392,7 @@ class TestThreeComponentDecomposition:
         seasonal_pred = seasonal_forecaster.predict(forecasting_horizon=forecasting_horizon)
         residual_pred = residual_forecaster.predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         # Verify additive identity
         np.testing.assert_allclose(
@@ -445,7 +445,7 @@ class TestThreeComponentDecomposition:
         seasonal_pred = seasonal_forecaster.predict(forecasting_horizon=forecasting_horizon)
         residual_pred = residual_forecaster.predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         # Verify additive identity
         np.testing.assert_allclose(
@@ -510,7 +510,7 @@ class TestFourComponentDecomposition:
         weekly_pred = weekly_forecaster.predict(forecasting_horizon=forecasting_horizon)
         residual_pred = residual_forecaster.predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         pred_values = y_pred[target_col].to_numpy()
         component_sum = (
@@ -581,7 +581,7 @@ class TestFourComponentDecomposition:
         short_pred = forecasters_dict["short_cycle"].predict(forecasting_horizon=forecasting_horizon)
         residual_pred = forecasters_dict["residual"].predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         np.testing.assert_allclose(
             y_pred[target_col].to_numpy(),
@@ -644,9 +644,9 @@ class TestComponentSpecificTransformers:
             forecasting_horizon=forecasting_horizon, predict_transformed=True
         )
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
         # Component predictions in transformed space share column names
-        comp_col = [c for c in trend_pred.columns if c not in ["time", "observed_time"]][0]
+        comp_col = [c for c in trend_pred.columns if c not in ["time", "vintage_time"]][0]
 
         # Verify additive identity in transformed space (pipeline sums transformed predictions)
         np.testing.assert_allclose(
@@ -696,9 +696,9 @@ class TestComponentSpecificTransformers:
             forecasting_horizon=forecasting_horizon, predict_transformed=True
         )
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
         # Component predictions in transformed space may have different column names
-        comp_col = [c for c in trend_pred.columns if c not in ["time", "observed_time"]][0]
+        comp_col = [c for c in trend_pred.columns if c not in ["time", "vintage_time"]][0]
 
         # Verify additive identity in transformed space
         np.testing.assert_allclose(
@@ -741,7 +741,7 @@ class TestComponentSpecificTransformers:
         forecasters_dict = dict(pipeline.forecasters_)
         seasonal_pred = forecasters_dict["seasonal"].predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         # Verify additive identity (simplest case)
         np.testing.assert_allclose(
@@ -788,7 +788,7 @@ class TestDifferentForecastingHorizons:
         trend_pred = forecasters_dict["trend"].predict(forecasting_horizon=forecasting_horizon)
         residual_pred = forecasters_dict["residual"].predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         # Verify additive identity for all 10 steps
         np.testing.assert_allclose(
@@ -846,7 +846,7 @@ class TestDifferentForecastingHorizons:
         forecasters_dict = dict(pipeline.forecasters_)
         seasonal_pred = forecasters_dict["seasonal"].predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         np.testing.assert_allclose(
             y_pred[target_col].to_numpy(),
@@ -891,7 +891,7 @@ class TestDifferentForecastingHorizons:
         seasonal_pred = forecasters_dict["seasonal"].predict(forecasting_horizon=forecasting_horizon)
         residual_pred = forecasters_dict["residual"].predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
 
         np.testing.assert_allclose(
             y_pred[target_col].to_numpy(),
@@ -938,7 +938,7 @@ class TestObserveRewindStateManagement:
         y_pred_after = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Verify predictions shifted forward in time
-        target_col = [c for c in y_pred_before.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred_before.columns if c not in ["time", "vintage_time"]][0]
 
         pred_before_values = y_pred_before[target_col].to_numpy()
         pred_after_values = y_pred_after[target_col].to_numpy()
@@ -992,7 +992,7 @@ class TestObserveRewindStateManagement:
         # Verify it runs without error and produces correct shape
         assert len(y_pred_reset) == forecasting_horizon, "Reset should still predict correct horizon"
 
-        target_col = [c for c in y_pred_reset.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred_reset.columns if c not in ["time", "vintage_time"]][0]
         pred_values = y_pred_reset[target_col].to_numpy()
 
         # After reset, predictions should still follow a linear trend pattern
@@ -1039,7 +1039,7 @@ class TestObserveRewindStateManagement:
         # Verify prediction has correct length
         assert len(y_pred_atomic) == forecasting_horizon
 
-        target_col = [c for c in y_pred_atomic.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred_atomic.columns if c not in ["time", "vintage_time"]][0]
         pred_values = y_pred_atomic[target_col].to_numpy()
 
         # Should predict for t=90..94 (allow boundary offset from polynomial fit)
@@ -1133,7 +1133,7 @@ class TestObserveRewindStateManagement:
         # Final prediction should be from t=80
         y_pred_final = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
-        target_col = [c for c in y_pred_final.columns if c not in ["time", "observed_time"]][0]
+        target_col = [c for c in y_pred_final.columns if c not in ["time", "vintage_time"]][0]
         pred_values = y_pred_final[target_col].to_numpy()
 
         # Should predict for t=80..84

@@ -275,11 +275,11 @@ class BaseStandardForecaster:
         Returns
         -------
         pl.DataFrame
-            Predictions with observed_time and time columns.
+            Predictions with vintage_time and time columns.
 
         """
         predicted_times = [add_interval(self.observed_time_, self.interval_, n=n) for n in range(1, len(y_pred) + 1)]
 
-        time = pl.DataFrame({"observed_time": [self.observed_time_] * len(y_pred), "time": predicted_times})
+        time = pl.DataFrame({"vintage_time": [self.observed_time_] * len(y_pred), "time": predicted_times})
 
         return pl.concat([time, y_pred], how="horizontal")

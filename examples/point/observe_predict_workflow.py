@@ -307,7 +307,7 @@ def _(mo):
     the forecaster's memory and the next prediction produces lower/upper
     bounds at the requested coverage rate.
 
-    The output DataFrame contains `"time"`, `"observed_time"`, and a pair
+    The output DataFrame contains `"time"`, `"vintage_time"`, and a pair
     of columns per coverage level:
     `{target}_upper_{rate}` / `{target}_lower_{rate}`.
     """)
@@ -359,7 +359,7 @@ def _(mo):
     memory with newly arrived categorical observations and returns the full
     **probability distribution** over classes for the next horizon.
 
-    The output DataFrame contains `"time"`, `"observed_time"`, and one
+    The output DataFrame contains `"time"`, `"vintage_time"`, and one
     column per class: `{target}_proba_{class_label}` (float values summing
     to 1.0 at each time step).  [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
     auto-detects these `_proba_` columns and renders a stacked area chart.
@@ -428,7 +428,7 @@ def _(mo):
     returns the **argmax class** at each time step instead of the full
     probability distribution.  This is the hard-label counterpart.
 
-    The output DataFrame contains `"time"`, `"observed_time"`, and one
+    The output DataFrame contains `"time"`, `"vintage_time"`, and one
     `String`-typed column per target with the most-likely class name.
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) auto-detects the categorical dtype
     and renders a step chart.
@@ -511,7 +511,7 @@ def _(
     )
 
     mo.md(
-        f"**Predicted columns**: {[c for c in _y_pred_s1.columns if c != 'time' and c != 'observed_time']}\n\n"
+        f"**Predicted columns**: {[c for c in _y_pred_s1.columns if c != 'time' and c != 'vintage_time']}\n\n"
         f"Only T7, T11, T12 groups were observed and predicted, other groups remain at their previous state."
     )
 

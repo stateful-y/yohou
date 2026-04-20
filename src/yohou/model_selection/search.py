@@ -961,7 +961,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable.
 
         """
@@ -1006,7 +1006,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"observed_time"``, ``"time"``, and
+            Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         """
@@ -1113,7 +1113,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable.
 
         """
@@ -1158,7 +1158,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"observed_time"``, ``"time"``, and
+            Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         """
@@ -1193,7 +1193,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Class-probability predictions with ``"observed_time"``,
+            Class-probability predictions with ``"vintage_time"``,
             ``"time"``, and probability columns for each target.
 
         """
@@ -1236,7 +1236,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Class-probability predictions with ``"observed_time"``,
+            Class-probability predictions with ``"vintage_time"``,
             ``"time"``, and probability columns for each target.
 
         """

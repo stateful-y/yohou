@@ -25,7 +25,7 @@ def point_data():
         "value2": [15.0, 25.0, 35.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "value1": [12.0, 18.0, 32.0],
         "value2": [14.0, 26.0, 36.0],
@@ -42,7 +42,7 @@ def interval_data():
         "value2": [15.0, 25.0, 35.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "value1_lower_0.9": [8.0, 18.0, 28.0],
         "value1_upper_0.9": [12.0, 22.0, 32.0],
@@ -60,7 +60,7 @@ def multi_rate_interval_data():
         "value": [10.0, 20.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "value_lower_0.9": [8.0, 18.0],
         "value_upper_0.9": [12.0, 22.0],
@@ -79,7 +79,7 @@ def panel_point_data():
         "sales__store_2": [15.0, 25.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "sales__store_1": [12.0, 18.0],
         "sales__store_2": [14.0, 26.0],
@@ -106,7 +106,7 @@ def equivalence_simple_data():
         "value2": [15.0, 25.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "value1": [11.0, 19.0],
         "value2": [14.0, 26.0],
@@ -142,8 +142,9 @@ class TestPointScorerAggregation:
         result = mae.score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame), "Should return DataFrame"
-        assert result.shape == (3, 2), "Should have 3 rows and 2 columns (time + metric)"
+        assert result.shape[0] == 3, "Should have 3 rows"
         assert "time" in result.columns, "Should have time column"
+        assert "vintage_time" in result.columns, "Should have vintage_time column"
         assert "mae" in result.columns, "Should have mae column"
 
     def test_pointscorer_aggregation_stepwise_vintagewise_componentwise_returns_scalar(self, point_data):
@@ -193,7 +194,7 @@ class TestPanelAggregation:
             "g2__val": [100.0, 200.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "g1__val": [12.0, 18.0],  # Errors: 2, 2 -> MAE=2
             "g2__val": [110.0, 190.0],  # Errors: 10, 10 -> MAE=10
@@ -219,7 +220,7 @@ class TestPanelAggregation:
             "g1__val": [0.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val": [4.0],  # Error 4, SqError 16, MeanSqError 16, RMSE 4
         })
@@ -235,7 +236,7 @@ class TestPanelAggregation:
         # Setup panel data
         y_true = pl.DataFrame({"time": [datetime(2020, 1, 1)], "g1__val": [10.0], "g2__val": [100.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val_lower_0.9": [8.0],
             "g1__val_upper_0.9": [12.0],  # Width 4
@@ -263,7 +264,7 @@ class TestPanelAggregation:
             "g1__val": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val_lower_0.9": [8.0],
             "g1__val_upper_0.9": [12.0],  # Width 4
@@ -294,7 +295,7 @@ class TestPanelAggregation:
             "g1__val": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val_lower_0.9": [8.0],
             "g1__val_upper_0.9": [12.0],  # Width 4, in interval
@@ -319,7 +320,7 @@ class TestPanelAggregation:
         # Group mean: (1.0 + 100.0)/2 = 50.5
 
         y_true_data = {"time": [datetime(2020, 1, 1)]}
-        y_pred_data = {"observed_time": [datetime(2019, 12, 31)], "time": [datetime(2020, 1, 1)]}
+        y_pred_data = {"vintage_time": [datetime(2019, 12, 31)], "time": [datetime(2020, 1, 1)]}
 
         # Group A
         for i in range(10):
@@ -598,7 +599,7 @@ class TestGroupwiseAggregation:
             "g2__val_b": [110.0, 210.0, 310.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
             # g1__val_a errors: |10-11|=1, |20-19|=1, |30-31|=1 → all 1.0
             "g1__val_a": [11.0, 19.0, 31.0],
@@ -619,11 +620,11 @@ class TestGroupwiseAggregation:
         result = mae.score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame)
-        # Columns: time + unprefixed component names
+        # Columns: time + vintage_time + unprefixed component names
         assert "time" in result.columns
+        assert "vintage_time" in result.columns
         assert "val_a" in result.columns
         assert "val_b" in result.columns
-        assert len(result.columns) == 3
         assert len(result) == 3  # 3 timesteps
 
     def test_groupwise_only_values_are_group_means(self, panel_multivariate):
@@ -689,7 +690,7 @@ class TestGroupwiseAggregation:
             "g2__val_a": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val_a": [11.0],  # error 1
             "g1__val_b": [103.0],  # error 3
@@ -718,7 +719,7 @@ class TestGroupwiseAggregation:
             "g2__val": [15.0, 25.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "g1__val_lower_0.9": [8.0, 18.0],
             "g1__val_upper_0.9": [12.0, 22.0],
@@ -785,7 +786,7 @@ class TestIntervalScorerComponentwiseAggregation:
             "g2__val": [15.0, 25.0, 35.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": times,
             "g1__val_lower_0.9": [8.0, 18.0, 28.0],
             "g1__val_upper_0.9": [12.0, 22.0, 32.0],
@@ -859,7 +860,7 @@ class TestIntervalScorerComponentwiseAggregation:
         times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
         y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": times,
             "val_lower_0.9": [8.0, 18.0],
             "val_upper_0.9": [12.0, 22.0],
@@ -892,7 +893,7 @@ class TestIndividualModes:
             "val_b": [15.0, 25.0, 35.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [
+            "vintage_time": [
                 datetime(2019, 12, 30),
                 datetime(2019, 12, 30),
                 datetime(2019, 12, 31),
@@ -936,7 +937,7 @@ class TestIndividualModes:
             "val": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "val": [11.0, 19.0],
         })
@@ -954,7 +955,7 @@ class TestCoverageWeightAggregation:
         times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
         y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": times,
             "val_lower_0.9": [8.0, 18.0],
             "val_upper_0.9": [12.0, 22.0],
@@ -984,7 +985,7 @@ class TestCoverageWeightAggregation:
         times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
         y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": times,
             "val_lower_0.9": [8.0, 18.0],
             "val_upper_0.9": [12.0, 22.0],
@@ -1002,15 +1003,15 @@ class TestCoverageWeightAggregation:
         for ot in [datetime(2019, 12, 30), datetime(2019, 12, 31)]:
             for i, t in enumerate(times):
                 rows.append({
-                    "observed_time": ot,
+                    "vintage_time": ot,
                     "time": t,
                     "val_lower_0.9": [10.0, 20.0, 30.0][i] - 2.0,
                     "val_upper_0.9": [10.0, 20.0, 30.0][i] + 2.0,
                     "val_lower_0.95": [10.0, 20.0, 30.0][i] - 3.0,
                     "val_upper_0.95": [10.0, 20.0, 30.0][i] + 3.0,
                 })
-        y_pred = pl.DataFrame(rows).sort("time", "observed_time")
-        # Stepwise without coveragewise -> DataFrame with coverage_rate and observed_time
+        y_pred = pl.DataFrame(rows).sort("time", "vintage_time")
+        # Stepwise without coveragewise -> DataFrame with coverage_rate and vintage_time
         cov = EmpiricalCoverage(
             aggregation_method=["componentwise", "vintagewise", "coveragewise"],
             coverage_rates={0.9: 2.0, 0.95: 1.0},

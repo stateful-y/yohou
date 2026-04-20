@@ -47,6 +47,8 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import (
         MeanAbsoluteError,
@@ -58,7 +60,14 @@ def _():
         RootMeanSquaredScaledError,
         SymmetricMeanAbsolutePercentageError,
     )
-    from yohou.plotting import plot_forecast, plot_score_per_step, plot_score_summary, plot_score_time_series, plot_time_series
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_per_step,
+        plot_score_per_vintage,
+        plot_score_summary,
+        plot_score_time_series,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
 
@@ -75,9 +84,10 @@ def _():
         RootMeanSquaredScaledError,
         SeasonalNaive,
         SymmetricMeanAbsolutePercentageError,
+        deepcopy,
         fetch_tourism_monthly,
         plot_forecast,
-        plot_score_per_step,
+        plot_score_per_vintage,
         plot_score_summary,
         plot_score_time_series,
         plot_time_series,
@@ -124,7 +134,7 @@ def _(
     y_pred_ridge = ridge_fc.predict(forecasting_horizon=fh)
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
-    return y, y_pred_naive, y_pred_ridge, y_test, y_train
+    return fh, ridge_fc, y, y_pred_naive, y_pred_ridge, y_test, y_train
 
 
 @app.cell
@@ -634,6 +644,66 @@ def _(mo):
     - Use [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) for temporal error analysis
     - Use [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) for multi-model comparison
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict` method with `stride=1` produces one forecast per
+    observation point, creating multiple *vintages*. Each vintage represents
+    a different forecast origin, so you can analyse how accuracy evolves as
+    the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(deepcopy, fh, ridge_fc, y_test):
+    _vintage_model = deepcopy(ridge_fc)
+    y_pred_vintages = _vintage_model.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=fh,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(plot_score_per_vintage, vintage_scorer, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="MAE per Forecast Vintage",
+        y_label="MAE",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(plot_score_time_series, vintage_scorer, y_pred_vintages, y_test):
+    plot_score_time_series(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Per-timestep MAE across Vintages",
+        y_label="MAE",
+        height=500,
+        facet_by="member",
+    )
     return
 
 

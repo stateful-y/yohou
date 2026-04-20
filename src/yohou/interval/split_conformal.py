@@ -200,7 +200,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             # Fit similarity on the same scored subset to ensure length alignment
             if self.similarity is not None:
                 scored_times_df = conformity_scores_step.drop("step").select("time")
-                y_pred_for_sim = y_pred_calib_step.drop("observed_time", strict=False).join(
+                y_pred_for_sim = y_pred_calib_step.drop("vintage_time", strict=False).join(
                     scored_times_df, on="time", how="semi"
                 )
 
@@ -336,7 +336,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable.
 
         """
@@ -402,7 +402,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable.
 
         Raises
@@ -582,7 +582,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"observed_time"``, ``"time"``, and
+            Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         """
@@ -601,7 +601,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(forecasting_horizon, coverage_rates)
 
-        y_pred = self.point_forecaster_.predict(X=X).drop("observed_time")
+        y_pred_full = self.point_forecaster_.predict(X=X)
+        has_vintage_time = "vintage_time" in y_pred_full.columns
+        if has_vintage_time:
+            vintage_time_col = y_pred_full["vintage_time"]
+            y_pred = y_pred_full.drop("vintage_time")
+        else:
+            y_pred = y_pred_full
 
         # Extract time for later reconstruction
         y_pred_time = y_pred.select("time")
@@ -650,4 +656,6 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
             y_pred_intervals = pl.concat([y_pred_intervals, y_pred_intervals_step])
 
+        if has_vintage_time:
+            return y_pred_intervals.insert_column(0, vintage_time_col.head(len(y_pred_intervals)))
         return y_pred_intervals

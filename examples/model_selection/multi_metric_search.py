@@ -45,6 +45,8 @@ def _():
     from scipy.stats import loguniform
     from sklearn.linear_model import ElasticNet, Ridge
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import (
         MeanAbsoluteError,
@@ -53,7 +55,12 @@ def _():
     )
     from yohou.model_selection import GridSearchCV, RandomizedSearchCV
     from yohou.model_selection.split import ExpandingWindowSplitter
-    from yohou.plotting import plot_cv_results_scatter, plot_forecast, plot_time_series
+    from yohou.plotting import (
+        plot_cv_results_scatter,
+        plot_forecast,
+        plot_score_summary,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -68,11 +75,13 @@ def _():
         RandomizedSearchCV,
         Ridge,
         RootMeanSquaredError,
+        deepcopy,
         fetch_tourism_monthly,
         loguniform,
         pl,
         plot_cv_results_scatter,
         plot_forecast,
+        plot_score_summary,
         plot_time_series,
     )
 
@@ -301,6 +310,51 @@ def _(horizon, plot_forecast, rand_search, y_test, y_train):
         title="Best Forecaster (RandomizedSearchCV, multi-metric)",
     )
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict` method with `stride=1` produces one forecast per
+    observation point, creating multiple *vintages*. Each vintage represents
+    a different forecast origin, so you can analyse how accuracy evolves as
+    the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(deepcopy, horizon, multi_gs, y_test):
+    _vintage_model = deepcopy(multi_gs.best_forecaster_)
+    y_pred_vintages = _vintage_model.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=horizon,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_summary, y_pred_vintages, y_test):
+    plot_score_summary(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Model Score Summary",
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

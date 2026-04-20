@@ -21,7 +21,7 @@ def class_proba_data():
         "target": ["cat_a", "cat_b", "cat_c", "cat_a", "cat_b"],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 5,
+        "vintage_time": [datetime(2019, 12, 31)] * 5,
         "time": dates,
         "target_proba_cat_a": [0.7, 0.1, 0.1, 0.8, 0.2],
         "target_proba_cat_b": [0.2, 0.8, 0.2, 0.1, 0.6],
@@ -39,7 +39,7 @@ def perfect_proba_data():
         "target": ["cat_a", "cat_b", "cat_c"],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": dates,
         "target_proba_cat_a": [1.0, 0.0, 0.0],
         "target_proba_cat_b": [0.0, 1.0, 0.0],
@@ -57,7 +57,7 @@ def uniform_proba_data():
         "target": ["cat_a", "cat_b", "cat_c"],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": dates,
         "target_proba_cat_a": [1.0 / 3, 1.0 / 3, 1.0 / 3],
         "target_proba_cat_b": [1.0 / 3, 1.0 / 3, 1.0 / 3],
@@ -232,7 +232,7 @@ class TestAccuracy:
             "target": ["cat_a", "cat_b", "cat_c"],
         })
         y_pred_bad = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": dates,
             "target_proba_cat_a": [0.1, 0.5, 0.5],  # wrong for cat_a
             "target_proba_cat_b": [0.5, 0.1, 0.1],  # wrong for cat_b
@@ -313,7 +313,7 @@ class TestTimeWeight:
             "target": ["cat_a", "cat_b", "cat_c", "cat_a", "cat_b"],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": dates,
             # Rows 1,2,3 correct; rows 4,5 wrong (argmax != true class)
             "target_proba_cat_a": [0.7, 0.1, 0.1, 0.1, 0.5],
@@ -342,7 +342,7 @@ class TestTimeWeight:
             "grpB__weather": ["cloudy", "sunny", "rainy"],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": dates,
             "grpA__weather_proba_sunny": [0.7, 0.1, 0.2],
             "grpA__weather_proba_rainy": [0.2, 0.8, 0.1],
@@ -405,7 +405,7 @@ class TestComponentwiseRename:
             "mood": ["happy", "sad", "happy"],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": dates,
             "weather_proba_sunny": [0.7, 0.1, 0.2],
             "weather_proba_rainy": [0.2, 0.8, 0.1],
@@ -481,7 +481,7 @@ class TestUnknownLabel:
             "target": ["cat_a", "cat_d"],  # cat_d is unknown
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": dates,
             "target_proba_cat_a": [0.7, 0.2],
             "target_proba_cat_b": [0.2, 0.5],
@@ -507,7 +507,7 @@ class TestMultiTarget:
             "mood": ["happy", "sad", "happy"],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": dates,
             "weather_proba_sunny": [0.7, 0.1, 0.2],
             "weather_proba_rainy": [0.2, 0.8, 0.1],

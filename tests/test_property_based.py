@@ -89,7 +89,7 @@ class TestForecasterInvariants:
         forecaster.fit(y, forecasting_horizon=horizon)
         pred = forecaster.predict()
 
-        # Predictions have observed_time and time columns
+        # Predictions have vintage_time and time columns
         assert len(pred) == horizon
 
     @given(
@@ -97,7 +97,7 @@ class TestForecasterInvariants:
         horizon=st_forecasting_horizon(min_value=1, max_value=10),
     )
     @settings(max_examples=20, deadline=10000)
-    def test_predict_has_time_and_observed_time(self, data, horizon):
+    def test_predict_has_time_and_vintage_time(self, data, horizon):
         """All forecasters produce predictions with both time columns."""
         from yohou.point import SeasonalNaive
 
@@ -107,7 +107,7 @@ class TestForecasterInvariants:
         pred = forecaster.predict()
 
         assert "time" in pred.columns
-        assert "observed_time" in pred.columns
+        assert "vintage_time" in pred.columns
 
     @given(
         data=st_y_X(min_length=30, max_length=100, max_targets=1, min_features=0, max_features=0),

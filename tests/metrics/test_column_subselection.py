@@ -23,7 +23,7 @@ def panel_point_data():
         "demand__store_2": [6.0, 8.0, 10.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         # Sales predictions have error of 1.0
         "sales__store_1": [11.0, 14.0, 19.0],
@@ -44,7 +44,7 @@ def panel_interval_data():
         "sales__store_2": [12.0, 18.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "sales__store_1_lower_0.9": [8.0, 13.0],
         "sales__store_1_upper_0.9": [12.0, 17.0],
@@ -67,7 +67,7 @@ def global_multi_component_data():
         "demand": [5.0, 7.0, 9.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "sales": [11.0, 14.0, 19.0],  # Error of 1.0
         "demand": [7.0, 9.0, 11.0],  # Error of 2.0

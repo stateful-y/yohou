@@ -294,8 +294,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
                 forecasting_horizon=len(X) - rewind_size,
             )
 
-            # Prepare X for target forecaster (drop observed_time, keep time)
-            X_for_target = X_pred.drop(["observed_time"], strict=False)
+            # Prepare X for target forecaster (drop vintage_time, keep time)
+            X_for_target = X_pred.drop(["vintage_time"], strict=False)
 
             # Fit target forecaster with predicted X
             self.target_forecaster_.fit(
@@ -337,7 +337,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             )
 
             # Prepare X for target forecaster (drop time columns)
-            X_for_target = X_pred.drop(["observed_time"], strict=False)
+            X_for_target = X_pred.drop(["vintage_time"], strict=False)
 
             # Fit target forecaster on second portion with predicted X
             self.target_forecaster_.fit(
@@ -415,7 +415,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Returns
         -------
         pl.DataFrame
-            Predictions with "observed_time", "time", and target columns.
+            Predictions with "vintage_time", "time", and target columns.
 
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
@@ -436,8 +436,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
             **routed_params.feature_forecaster.predict,
         )
 
-        # Prepare X for target forecaster (drop observed_time, keep time)
-        X_for_target = X_pred.drop(["observed_time"], strict=False)
+        # Prepare X for target forecaster (drop vintage_time, keep time)
+        X_for_target = X_pred.drop(["vintage_time"], strict=False)
 
         # Merge with known-ahead features from X if provided
         if X is not None:
@@ -513,7 +513,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         )
 
         # Prepare X for target forecaster
-        X_for_target = X_pred.drop(["observed_time"], strict=False)
+        X_for_target = X_pred.drop(["vintage_time"], strict=False)
 
         # Merge with known-ahead features from X if provided
         if X is not None:
@@ -643,7 +643,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Returns
         -------
         pl.DataFrame
-            Point predictions with "observed_time", "time", and target columns.
+            Point predictions with "vintage_time", "time", and target columns.
 
         """
         self.observe(y=y, X=X, groups=groups)
@@ -714,7 +714,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Returns
         -------
         pl.DataFrame
-            Class-probability predictions with "observed_time", "time", and
+            Class-probability predictions with "vintage_time", "time", and
             probability columns.
 
         """
@@ -732,7 +732,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             **routed_params.feature_forecaster.predict,
         )
 
-        X_for_target = X_pred.drop(["observed_time"], strict=False)
+        X_for_target = X_pred.drop(["vintage_time"], strict=False)
 
         if X is not None:
             known_ahead_cols = [c for c in X.columns if c != "time" and c not in X_for_target.columns]

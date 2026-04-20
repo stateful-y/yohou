@@ -341,20 +341,19 @@ class TestPanelForecast:
         y_train = panel_two_groups_df.head(61)
         fig = plot_forecast(y_test, y_pred, y_train=y_train)
         assert isinstance(fig, go.Figure)
-        # Each group has 2 members → distinct colours per member.
-        names = [tr.name for tr in fig.data if tr.showlegend]
-        # Legend entries should be deduplicated across subplots.
-        assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
+        # Each (legendgroup, name) pair should appear at most once with showlegend.
+        shown_pairs = [(tr.legendgroup, tr.name) for tr in fig.data if tr.showlegend]
+        assert len(shown_pairs) == len(set(shown_pairs)), f"Duplicate legend entries: {shown_pairs}"
 
     def test_multivariate_panel_member_names_in_legend(self, panel_two_groups_df):
-        """Group names appear in legend labels for multivariate panels (facet_by=member)."""
+        """Group names appear in legend groups for multivariate panels (facet_by=member)."""
         y_test = panel_two_groups_df.tail(30)
         y_pred = panel_two_groups_df.tail(30)
         fig = plot_forecast(y_test, y_pred)
-        names = [tr.name for tr in fig.data if tr.name]
-        # With facet_by="member", groups (temp, wind) are overlaid per member subplot
-        assert any("temp" in n for n in names)
-        assert any("wind" in n for n in names)
+        # With facet_by="member", groups (temp, wind) appear as legend groups
+        legend_groups = {tr.legendgroup for tr in fig.data if tr.legendgroup}
+        assert "temp" in legend_groups
+        assert "wind" in legend_groups
 
 
 class TestPanelTimeWeight:

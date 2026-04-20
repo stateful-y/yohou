@@ -64,7 +64,7 @@ def sample_scorer_data():
     )
     y_true = pl.DataFrame({"time": time, "target": range(10)})
     y_pred = pl.DataFrame({
-        "observed_time": time[:10],
+        "vintage_time": time[:10],
         "time": time[:10],
         "target": range(10),  # Use int to match y_true type
     })
@@ -416,7 +416,7 @@ class TestValidateScorerData:
         })
         # Predictions missing one store
         y_pred = pl.DataFrame({
-            "observed_time": time,
+            "vintage_time": time,
             "time": time,
             "sales__store_1": range(10),
             # Missing sales__store_2
@@ -460,7 +460,7 @@ class TestValidateScorerData:
         })
         # y_pred with extra interval columns (as in mixed multimetric scenarios)
         y_pred = pl.DataFrame({
-            "observed_time": time,
+            "vintage_time": time,
             "time": time,
             "target": [float(x) for x in range(10)],
             "target_lower_0.9": [float(x - 1) for x in range(10)],
@@ -486,7 +486,7 @@ class TestValidateScorerData:
             "target": list(range(10)),
         })
         y_pred = pl.DataFrame({
-            "observed_time": time,
+            "vintage_time": time,
             "time": time,
             "target": [float(x) for x in range(10)],
         })
@@ -937,7 +937,7 @@ class TestValidateScorerDataPanelEdgeCases:
         times = [datetime(2024, 1, i) for i in range(1, 4)]
         y_true = pl.DataFrame({"time": times, "val": [1.0, 2.0, 3.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "vintage_time": [datetime(2023, 12, 31)] * 3,
             "time": times,
             "val": [1.1, 2.1, 3.1],
         })
@@ -1014,10 +1014,10 @@ class TestValidateScorerDataResetNone:
 
 
 class TestValidateScorerDataInverseObservedTime:
-    """Tests for inverse scorer path with observed_time in y_pred."""
+    """Tests for inverse scorer path with vintage_time in y_pred."""
 
-    def test_inverse_observed_time_dropped(self):
-        """observed_time column in y_pred is dropped during inverse scoring."""
+    def test_inverse_vintage_time_dropped(self):
+        """vintage_time column in y_pred is dropped during inverse scoring."""
         from yohou.utils.validate_data import validate_scorer_data
 
         times = [datetime(2024, 1, i) for i in range(1, 4)]
@@ -1025,7 +1025,7 @@ class TestValidateScorerDataInverseObservedTime:
         scorer.fit(pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]}))
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "vintage_time": [datetime(2023, 12, 31)] * 3,
             "time": times,
             "value": [1.1, 2.1, 3.1],
         })
@@ -1036,7 +1036,7 @@ class TestValidateScorerDataInverseObservedTime:
             scores=scores,
             inverse=True,
         )
-        assert "observed_time" not in result_pred.columns
+        assert "vintage_time" not in result_pred.columns
         assert "time" not in result_pred.columns
         assert len(context.time_values) == 3
 
@@ -1067,7 +1067,7 @@ class TestValidateScorerDataPointStripExtra:
         scorer.fit(y_true)
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "vintage_time": [datetime(2023, 12, 31)] * 3,
             "time": times,
             "val": [1.1, 2.1, 3.1],
             "val_lower_0.9": [0.1, 0.1, 0.1],
@@ -1418,7 +1418,7 @@ class TestTruncatePartialVintage:
             for i in range(1, 4):
                 rows_true.append({"time": datetime(2020, 1, i), "value": float(i)})
                 rows_pred.append({
-                    "observed_time": ot,
+                    "vintage_time": ot,
                     "time": datetime(2020, 1, i),
                     "value": float(i) + 0.5,
                 })
@@ -1426,7 +1426,7 @@ class TestTruncatePartialVintage:
         y_pred = pl.DataFrame(rows_pred)
         y_true_out, y_pred_out = _truncate_partial_vintage(y_true, y_pred)
         # Last vintage (Jan 19) should be removed
-        remaining = y_pred_out["observed_time"].unique().sort()
+        remaining = y_pred_out["vintage_time"].unique().sort()
         assert len(remaining) == 3
         assert datetime(2020, 1, 19) not in remaining.to_list()
         assert len(y_true_out) == 9  # 3 vintages × 3 time points

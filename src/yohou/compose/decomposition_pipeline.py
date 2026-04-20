@@ -395,7 +395,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
             # Align predictions with current residuals on time
             aligned = residuals.join(
-                y_pred_train.select(~cs.by_name("observed_time")),
+                y_pred_train.select(~cs.by_name("vintage_time")),
                 on="time",
                 how="inner",
                 suffix="_pred",
@@ -442,7 +442,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Returns
         -------
         pl.DataFrame
-            Predictions with columns: "observed_time", "time", <target_columns>
+            Predictions with columns: "vintage_time", "time", <target_columns>
 
         Raises
         ------
@@ -487,8 +487,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         )
 
         # Initialize with first prediction
-        time_cols = y_pred_first.select("observed_time", "time")
-        y_pred_sum = y_pred_first.select(~cs.by_name("observed_time", "time"))
+        time_cols = y_pred_first.select("vintage_time", "time")
+        y_pred_sum = y_pred_first.select(~cs.by_name("vintage_time", "time"))
 
         # Process remaining forecasters and accumulate predictions
         for name, forecaster in self.forecasters_[1:]:
@@ -503,7 +503,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             )
 
             # Extract values (without time columns) and sum
-            y_pred_values = y_pred.select(~cs.by_name("observed_time", "time"))
+            y_pred_values = y_pred.select(~cs.by_name("vintage_time", "time"))
             y_pred_sum = y_pred_sum + y_pred_values
 
         # Combine time columns with summed values
@@ -512,9 +512,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         if not predict_transformed and self.target_transformer is not None:
             # Apply inverse target transform
 
-            # Remove observed_time before inverse transform
-            observed_time = y_pred.select("observed_time")
-            y_pred_no_obs = y_pred.select(~cs.by_name("observed_time"))
+            # Remove vintage_time before inverse transform
+            vintage_time = y_pred.select("vintage_time")
+            y_pred_no_obs = y_pred.select(~cs.by_name("vintage_time"))
 
             # Handle panel data (target_transformer_ and _y_observed are dicts)
             if self.groups_ is None:
@@ -583,8 +583,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 y_pred_inv_cols = pl.concat(list(y_pred_inv_dict.values()), how="horizontal")
                 y_pred_inv = pl.concat([times, y_pred_inv_cols], how="horizontal")
 
-            # Add observed_time back
-            y_pred = pl.concat([observed_time, y_pred_inv], how="horizontal")
+            # Add vintage_time back
+            y_pred = pl.concat([vintage_time, y_pred_inv], how="horizontal")
 
         return y_pred
 
@@ -657,7 +657,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             )
             # Align predictions with current residuals on time
             aligned = residuals.join(
-                y_pred.select(~cs.by_name("observed_time")),
+                y_pred.select(~cs.by_name("vintage_time")),
                 on="time",
                 how="inner",
                 suffix="_pred",

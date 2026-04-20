@@ -182,7 +182,7 @@ class TestObservePredictGlobal:
         # Check that upper bounds >= lower bounds for columns with __ separator
         # Columns are like group1__a_lower_0.1, group1__a_upper_0.1, etc.
         for col in y_pred.columns:
-            if col in ["time", "observed_time"]:
+            if col in ["time", "vintage_time"]:
                 continue
             if "_upper_" in col:
                 # Extract coverage rate and find corresponding lower bound

@@ -23,7 +23,7 @@ def multi_vintage_data():
     y_true has unique times (ground truth). y_pred has duplicate times
     (one row per vintage per predicted time point).
 
-    vintage (observed_time)  |  time          |  step
+    vintage (vintage_time)  |  time          |  step
     2024-01-10               |  2024-01-11    |  1
     2024-01-10               |  2024-01-12    |  2
     2024-01-11               |  2024-01-12    |  1
@@ -42,7 +42,7 @@ def multi_vintage_data():
         "value": [10.0, 20.0, 30.0, 40.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [
+        "vintage_time": [
             base,
             base,
             base + timedelta(days=1),
@@ -102,7 +102,7 @@ class TestVintagewiseAggregation:
         assert len(result) == 2
 
     def test_vintagewise_without_context_falls_back(self, y_train):
-        """When observed_time is absent, vintagewise is a no-op."""
+        """When vintage_time is absent, vintagewise is a no-op."""
         y_true = pl.DataFrame({
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "value": [10.0, 20.0, 30.0],
@@ -114,7 +114,7 @@ class TestVintagewiseAggregation:
         mae = MeanAbsoluteError(aggregation_method="vintagewise")
         mae.fit(y_train)
         result = mae.score(y_true, y_pred)
-        # Without observed_time, no forecasting_step -> returns raw scores
+        # Without vintage_time, no forecasting_step -> returns raw scores
         assert isinstance(result, pl.DataFrame)
 
 
@@ -128,7 +128,7 @@ class TestStepwiseAggregation:
         result = mae.score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame)
-        assert "observed_time" in result.columns
+        assert "vintage_time" in result.columns
         assert "value" in result.columns
         # 3 unique vintages
         assert len(result) == 3
@@ -139,7 +139,7 @@ class TestStepwiseAggregation:
         mae.fit(y_train)
         result = mae.score(y_true, y_pred)
 
-        result_sorted = result.sort("observed_time")
+        result_sorted = result.sort("vintage_time")
         # Vintage 2024-01-10: predictions for jan-11 and jan-12
         #   y_true rows joined by time: jan-11→10.0, jan-12→20.0
         #   y_pred: 11.0, 22.0 → errors: 1, 2 → mean=1.5
@@ -206,8 +206,8 @@ class TestForecastingStepsFilter:
 
         np.testing.assert_allclose(result_all, result_filtered, atol=1e-10)
 
-    def test_filter_without_observed_time_is_noop(self, y_train):
-        """When y_pred has no observed_time, filter is silently skipped."""
+    def test_filter_without_vintage_time_is_noop(self, y_train):
+        """When y_pred has no vintage_time, filter is silently skipped."""
         y_true = pl.DataFrame({
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "value": [10.0, 20.0, 30.0],
@@ -261,7 +261,7 @@ class TestMultivariateStepwise:
             "b": [100.0, 200.0, 300.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "vintage_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
             "time": [
                 base + timedelta(days=1),
                 base + timedelta(days=2),
@@ -306,7 +306,7 @@ class TestMultiVintageAlignment:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "vintage_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
             "time": [
                 base + timedelta(days=1),
                 base + timedelta(days=2),
@@ -344,8 +344,8 @@ class TestMultiVintageAlignment:
         assert isinstance(result, float)
         np.testing.assert_allclose(result, (1.0 + 2.0 + 2.0) / 3, atol=1e-10)
 
-    def test_context_observed_time_preserved(self, y_train, multi_vintage_data):
-        """ScoringContext.observed_time is populated from multi-vintage y_pred."""
+    def test_context_vintage_time_preserved(self, y_train, multi_vintage_data):
+        """ScoringContext.vintage_time is populated from multi-vintage y_pred."""
         from yohou.utils.validate_data import validate_scorer_data
 
         y_true, y_pred = multi_vintage_data
@@ -354,9 +354,9 @@ class TestMultiVintageAlignment:
 
         _, _, ctx = validate_scorer_data(mae, y_true=y_true, y_pred=y_pred)
 
-        assert ctx.observed_time is not None
-        assert len(ctx.observed_time) == 6
-        assert ctx.observed_time.n_unique() == 3  # 3 vintages
+        assert ctx.vintage_time is not None
+        assert len(ctx.vintage_time) == 6
+        assert ctx.vintage_time.n_unique() == 3  # 3 vintages
 
     def test_context_forecasting_step_computed(self, y_train, multi_vintage_data):
         """ScoringContext.forecasting_step is computed for multi-vintage data."""

@@ -23,7 +23,7 @@ def check_class_proba_prediction_structure(
 ) -> None:
     """Check class-probability predictions have correct column structure.
 
-    Validates that ``predict_class_proba`` output contains ``"observed_time"``
+    Validates that ``predict_class_proba`` output contains ``"vintage_time"``
     and ``"time"`` columns, plus ``{target}_proba_{class}`` columns for every
     target and class.
 
@@ -45,7 +45,7 @@ def check_class_proba_prediction_structure(
     forecasting_horizon = min(3, len(y_test))
     y_pred = forecaster.predict_class_proba(forecasting_horizon=forecasting_horizon, X=X_test)
 
-    assert "observed_time" in y_pred.columns, "Class-proba predictions must have 'observed_time'"
+    assert "vintage_time" in y_pred.columns, "Class-proba predictions must have 'vintage_time'"
     assert "time" in y_pred.columns, "Class-proba predictions must have 'time'"
 
     # Should NOT have interval columns
@@ -237,7 +237,7 @@ def check_class_proba_predict_returns_labels(
     forecasting_horizon = min(3, len(y_test))
     y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
-    assert "observed_time" in y_pred.columns, "predict() must have 'observed_time'"
+    assert "vintage_time" in y_pred.columns, "predict() must have 'vintage_time'"
     assert "time" in y_pred.columns, "predict() must have 'time'"
 
     # Should NOT have _proba_ columns
@@ -245,7 +245,7 @@ def check_class_proba_predict_returns_labels(
     assert len(proba_cols) == 0, f"predict() should not have _proba_ columns, found: {proba_cols}"
 
     # Should have target columns with string/categorical labels
-    target_cols = [col for col in y_pred.columns if col not in ("observed_time", "time")]
+    target_cols = [col for col in y_pred.columns if col not in ("vintage_time", "time")]
     assert len(target_cols) > 0, "predict() must have at least one target column"
 
     for col in target_cols:

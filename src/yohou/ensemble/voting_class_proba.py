@@ -286,8 +286,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             )
             predictions.append(y_proba)
 
-        time_df = predictions[0].select(["observed_time", "time"])
-        proba_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        time_df = predictions[0].select(["vintage_time", "time"])
+        proba_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
 
         if self.method == "soft":
             agg_exprs = []
@@ -310,7 +310,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             )
             hard_predictions.append(y_pred)
 
-        target_cols = [c for c in hard_predictions[0].columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in hard_predictions[0].columns if c not in ("vintage_time", "time")]
         result = time_df.clone()
         for target_col in target_cols:
             class_labels = self.classes_[target_col]
@@ -352,7 +352,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         Returns
         -------
         pl.DataFrame
-            Probability predictions with ``"observed_time"``,
+            Probability predictions with ``"vintage_time"``,
             ``"time"``, and ``{target}_proba_{class}`` columns.
 
         """
@@ -408,8 +408,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             )
             predictions.append(y_proba)
 
-        time_df = predictions[0].select(["observed_time", "time"])
-        proba_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        time_df = predictions[0].select(["vintage_time", "time"])
+        proba_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
 
         agg_exprs = []
         for col in proba_cols:
@@ -460,8 +460,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             )
             predictions.append(y_pred)
 
-        time_df = predictions[0].select(["observed_time", "time"])
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        time_df = predictions[0].select(["vintage_time", "time"])
+        target_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
 
         result = time_df.clone()
         for target_col in target_cols:
@@ -506,7 +506,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         Returns
         -------
         pl.DataFrame
-            Predictions with ``"observed_time"``, ``"time"``, and one
+            Predictions with ``"vintage_time"``, ``"time"``, and one
             column per target with the most likely class label.
 
         """
@@ -545,7 +545,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             DataFrame with argmax class labels.
 
         """
-        time_cols = [c for c in ("observed_time", "time") if c in y_proba.columns]
+        time_cols = [c for c in ("vintage_time", "time") if c in y_proba.columns]
         result = y_proba.select(time_cols)
 
         groups = self.groups_ or [None]
@@ -606,8 +606,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             )
             predictions.append(y_pred)
 
-        time_df = predictions[0].select(["observed_time", "time"])
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        time_df = predictions[0].select(["vintage_time", "time"])
+        target_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
 
         result = time_df.clone()
         for target_col in target_cols:

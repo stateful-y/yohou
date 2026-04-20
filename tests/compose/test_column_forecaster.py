@@ -95,7 +95,7 @@ class TestBasicFitPredict:
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         assert "sales" in y_pred.columns
         assert "inventory" in y_pred.columns
@@ -527,7 +527,7 @@ class TestUpdateReset:
 
         # Initial predict + n_new/stride updates = 1 + 10/5 = 3 predictions of size 5
         assert len(y_pred) == fit_fh * (1 + n_new // fit_fh)
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
 
     def test_rewind(self):
         """Test rewind method."""
@@ -637,7 +637,7 @@ class TestPanelData:
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         for col in panel_cols:
             assert col in y_pred.columns

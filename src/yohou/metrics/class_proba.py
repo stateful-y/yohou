@@ -59,7 +59,7 @@ class LogLoss(BaseClassProbaScorer):
     ...     "weather": ["sunny", "rainy", "cloudy"],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "weather_proba_sunny": [0.7, 0.1, 0.2],
     ...     "weather_proba_rainy": [0.2, 0.8, 0.1],
@@ -169,7 +169,7 @@ class BrierScore(BaseClassProbaScorer):
     ...     "weather": ["sunny", "rainy", "cloudy"],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "weather_proba_sunny": [0.7, 0.1, 0.2],
     ...     "weather_proba_rainy": [0.2, 0.8, 0.1],
@@ -271,7 +271,7 @@ class Accuracy(BaseClassProbaScorer):
     ...     "weather": ["sunny", "rainy", "cloudy"],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "weather_proba_sunny": [0.7, 0.1, 0.2],
     ...     "weather_proba_rainy": [0.2, 0.8, 0.1],

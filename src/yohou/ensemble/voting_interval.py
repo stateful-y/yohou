@@ -322,7 +322,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         Returns
         -------
         pl.DataFrame
-            Aggregated interval predictions with ``"observed_time"``,
+            Aggregated interval predictions with ``"vintage_time"``,
             ``"time"``, and lower/upper bound columns.
 
         """
@@ -346,7 +346,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             )
             predictions.append(y_pred)
 
-        interval_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        interval_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
         return self._aggregate_interval_values(predictions, interval_cols, self.method, self.weights_)
 
     @available_if(_ensemble_has("predict"))
@@ -378,7 +378,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         Returns
         -------
         pl.DataFrame
-            Aggregated predictions with ``"observed_time"``, ``"time"``,
+            Aggregated predictions with ``"vintage_time"``, ``"time"``,
             and target columns.
 
         """
@@ -398,7 +398,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             )
             predictions.append(y_pred)
 
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
         return self._aggregate_values(predictions, target_cols, self.point_method, self.weights_)
 
     @available_if(_ensemble_has("predict"))
@@ -459,7 +459,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             )
             predictions.append(y_pred)
 
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
         return self._aggregate_values(predictions, target_cols, self.point_method, self.weights_)
 
     def observe_predict_interval(
@@ -527,7 +527,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             )
             predictions.append(y_pred)
 
-        interval_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        interval_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
         return self._aggregate_interval_values(predictions, interval_cols, self.method, self.weights_)
 
     def get_metadata_routing(self) -> MetadataRouter:

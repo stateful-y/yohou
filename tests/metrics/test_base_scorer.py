@@ -24,7 +24,7 @@ def y_true_pred_pair():
     times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
     y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 5,
+        "vintage_time": [datetime(2019, 12, 31)] * 5,
         "time": times,
         "value": [12.0, 18.0, 33.0, 38.0, 55.0],
     })
@@ -41,7 +41,7 @@ def panel_y_true_pred_pair():
         "B__value": [100.0, 200.0, 300.0, 400.0, 500.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 5,
+        "vintage_time": [datetime(2019, 12, 31)] * 5,
         "time": times,
         "A__value": [12.0, 18.0, 33.0, 38.0, 55.0],
         "B__value": [110.0, 190.0, 310.0, 390.0, 510.0],
@@ -391,7 +391,7 @@ class TestPanelGroupWeightsZero:
             "B__value": [100.0, 200.0, 300.0, 400.0, 500.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "A__value": [12.0, 18.0, 33.0, 38.0, 55.0],
             "B__value": [110.0, 190.0, 310.0, 390.0, 510.0],
@@ -585,7 +585,7 @@ class TestAggregationMethodCombinations:
             "b": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "a": [float(i) + 0.5 for i in range(n)],
             "b": [float(i) * 2 + 0.5 for i in range(n)],
@@ -605,7 +605,7 @@ class TestAggregationMethodCombinations:
             "g2__val": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "g1__val": [float(i) + 0.5 for i in range(n)],
             "g2__val": [float(i) * 2 + 0.5 for i in range(n)],
@@ -682,7 +682,7 @@ class TestGroupwiseAggregation:
             "g2__val": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "g1__val": [float(i) + 0.5 for i in range(n)],
             "g2__val": [float(i) * 2 + 0.5 for i in range(n)],
@@ -728,7 +728,7 @@ class TestPanelComponentwiseRename:
             "g2__val": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "g1__val": [float(i) + 0.5 for i in range(n)],
             "g2__val": [float(i) * 2 + 0.5 for i in range(n)],
@@ -783,7 +783,7 @@ class TestPanelGroupWeight:
             "g2__val": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "g1__val": [float(i) + 1.0 for i in range(n)],
             "g2__val": [float(i) * 2 + 2.0 for i in range(n)],
@@ -818,7 +818,7 @@ class TestIntervalScorerAggregation:
             "value": [10.0 + i for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "value_lower_0.9": [8.0 + i for i in range(n)],
             "value_upper_0.9": [12.0 + i for i in range(n)],
@@ -884,7 +884,7 @@ class TestIntervalScorerGroupwise:
             "sales__store_2": [20.0 + i for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "sales__store_1_lower_0.9": [8.0 + i for i in range(n)],
             "sales__store_1_upper_0.9": [12.0 + i for i in range(n)],

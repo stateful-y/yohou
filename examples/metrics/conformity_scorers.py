@@ -61,6 +61,8 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import DistanceSimilarity, SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
@@ -70,7 +72,12 @@ def _():
         GammaResidual,
         Residual,
     )
-    from yohou.plotting import plot_forecast, plot_score_time_series, plot_time_series
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_per_step,
+        plot_score_time_series,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -87,9 +94,11 @@ def _():
         Residual,
         Ridge,
         SplitConformalForecaster,
+        deepcopy,
         fetch_tourism_monthly,
         pl,
         plot_forecast,
+        plot_score_per_step,
         plot_score_time_series,
         plot_time_series,
         train_test_split,
@@ -170,7 +179,7 @@ def _(
     fc_residual.fit(y_train, forecasting_horizon=_horizon)
     y_pred_residual = fc_residual.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
     _y_point = fc_residual.predict(forecasting_horizon=_horizon)
-    y_pred_residual = y_pred_residual.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_residual = y_pred_residual.hstack(_y_point.drop("time", "vintage_time"))
 
     plot_forecast(
         y_test,
@@ -212,7 +221,7 @@ def _(
     fc_abs.fit(y_train, forecasting_horizon=_horizon)
     y_pred_abs = fc_abs.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
     _y_point = fc_abs.predict(forecasting_horizon=_horizon)
-    y_pred_abs = y_pred_abs.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_abs = y_pred_abs.hstack(_y_point.drop("time", "vintage_time"))
 
     plot_forecast(
         y_test,
@@ -255,7 +264,7 @@ def _(
     fc_gamma.fit(y_train, forecasting_horizon=_horizon)
     y_pred_gamma = fc_gamma.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
     _y_point = fc_gamma.predict(forecasting_horizon=_horizon)
-    y_pred_gamma = y_pred_gamma.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_gamma = y_pred_gamma.hstack(_y_point.drop("time", "vintage_time"))
 
     plot_forecast(
         y_test,
@@ -295,7 +304,7 @@ def _(
     fc_abs_gamma.fit(y_train, forecasting_horizon=_horizon)
     y_pred_abs_gamma = fc_abs_gamma.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
     _y_point = fc_abs_gamma.predict(forecasting_horizon=_horizon)
-    y_pred_abs_gamma = y_pred_abs_gamma.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_abs_gamma = y_pred_abs_gamma.hstack(_y_point.drop("time", "vintage_time"))
 
     plot_forecast(
         y_test,
@@ -450,7 +459,7 @@ def _(
     fc_sim.fit(y_train, forecasting_horizon=_horizon)
     _y_pred_sim = fc_sim.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
     _y_point = fc_sim.predict(forecasting_horizon=_horizon)
-    _y_pred_sim = _y_pred_sim.hstack(_y_point.drop("time", "observed_time"))
+    _y_pred_sim = _y_pred_sim.hstack(_y_point.drop("time", "vintage_time"))
     plot_forecast(
         y_test,
         _y_pred_sim,
@@ -461,6 +470,54 @@ def _(
     )
     return (fc_sim,)
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict_interval` method with `stride=1` produces one
+    interval forecast per observation point, creating multiple *vintages*.
+    Each vintage represents a different forecast origin, so you can analyse
+    how interval quality evolves as the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(deepcopy, fc_residual, y_test):
+    _vintage_model = deepcopy(fc_residual)
+    y_pred_vintages = _vintage_model.observe_predict_interval(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=len(y_test),
+        coverage_rates=[0.9],
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(IntervalScore, y_train):
+    vintage_scorer = IntervalScore()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_step, y_pred_vintages, y_test):
+    plot_score_per_step(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Interval Score per Step",
+        y_label="Interval Score",
+        height=380,
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

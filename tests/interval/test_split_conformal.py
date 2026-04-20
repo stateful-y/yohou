@@ -327,8 +327,6 @@ class TestSplitConformalSystematicChecks:
             forecaster,
             _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
             expected_failures={
-                # predict_interval() output omits 'observed_time' column
-                "check_predict_time_columns",
                 # observation_horizon=0 means rewind does not update observed_time_
                 "check_rewind_replaces_observations",
             },

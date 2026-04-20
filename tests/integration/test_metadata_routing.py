@@ -880,7 +880,7 @@ class TestColumnForecasterPanelRouting:
         # Predict all groups (groups=None)
         y_pred = cf.predict(forecasting_horizon=3)
 
-        pred_cols = [c for c in y_pred.columns if c not in {"time", "observed_time"}]
+        pred_cols = [c for c in y_pred.columns if c not in {"time", "vintage_time"}]
         assert len(pred_cols) == 3, f"Expected 3 prediction columns, got {pred_cols}"
 
     def test_column_forecaster_observe_passes_data_to_children(self):
@@ -1007,7 +1007,7 @@ class TestCoverageRatesRouting:
             expected_cols.add(f"target_lower_{rate}")
             expected_cols.add(f"target_upper_{rate}")
 
-        pred_cols = {c for c in y_pred.columns if c not in ["time", "observed_time"]}
+        pred_cols = {c for c in y_pred.columns if c not in ["time", "vintage_time"]}
         assert expected_cols.issubset(pred_cols), f"Missing coverage columns: {expected_cols - pred_cols}"
 
     def test_predict_interval_routes_coverage_rates_directly(self):

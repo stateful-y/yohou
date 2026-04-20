@@ -49,10 +49,15 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_kdd_cup
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, MeanAbsoluteError
-    from yohou.plotting import plot_time_series
+    from yohou.plotting import (
+        plot_score_heatmap,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.utils.panel import inspect_panel
@@ -64,9 +69,11 @@ def _():
         PointReductionForecaster,
         Ridge,
         SplitConformalForecaster,
+        deepcopy,
         fetch_kdd_cup,
         inspect_panel,
         pl,
+        plot_score_heatmap,
         plot_time_series,
         train_test_split,
     )
@@ -354,6 +361,54 @@ def _(
         "averages across rates into a single number."
     )
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    Using `observe_predict` with `stride=1`, we create multiple vintages and
+    visualise the score matrix as a heatmap. Each cell shows the error for a
+    specific (step, vintage) combination.
+    """)
+    return
+
+
+@app.cell
+def _(LagTransformer, PointReductionForecaster, Ridge, deepcopy, fh, y_test, y_train):
+    _fc_v = PointReductionForecaster(
+        estimator=Ridge(alpha=1.0),
+        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+    )
+    _fc_v.fit(y_train, forecasting_horizon=fh)
+    _fc_v2 = deepcopy(_fc_v)
+    y_pred_vintages = _fc_v2.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=fh,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(plot_score_heatmap, vintage_scorer, y_pred_vintages, y_test):
+    plot_score_heatmap(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Score Heatmap (Step x Vintage)",
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

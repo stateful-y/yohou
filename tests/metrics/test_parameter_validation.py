@@ -501,7 +501,7 @@ class TestValidationWithScore:
         scorer.fit(y)
 
         # Create predictions for both groups
-        y_pred = y.with_columns(pl.col("time").alias("observed_time"))
+        y_pred = y.with_columns(pl.col("time").alias("vintage_time"))
 
         # Score should work and only include store1
         score = scorer.score(y, y_pred)
@@ -516,7 +516,7 @@ class TestValidationWithScore:
         scorer.fit(y)
 
         # Create predictions for both components
-        y_pred = y.with_columns(pl.col("time").alias("observed_time"))
+        y_pred = y.with_columns(pl.col("time").alias("vintage_time"))
 
         # Score should work and only include y
         score = scorer.score(y, y_pred)

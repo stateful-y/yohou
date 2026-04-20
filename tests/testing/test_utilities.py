@@ -135,7 +135,7 @@ class TestAssertionHelpers:
         )
         y_pred = pl.DataFrame({
             "time": time,
-            "observed_time": [datetime(2020, 12, 31)] * 5,
+            "vintage_time": [datetime(2020, 12, 31)] * 5,
             "target": [1.0, 2.0, 3.0, 4.0, 5.0],
         })
 
@@ -152,7 +152,7 @@ class TestAssertionHelpers:
         )
         y_pred = pl.DataFrame({
             "time": time,
-            "observed_time": [datetime(2020, 12, 31)] * 3,
+            "vintage_time": [datetime(2020, 12, 31)] * 3,
             "y_0": [1.0, 2.0, 3.0],
             "y_1": [4.0, 5.0, 6.0],
         })

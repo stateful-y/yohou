@@ -130,7 +130,7 @@ class TestGroupSubsetting:
 
         y_pred = f.predict(forecasting_horizon=5, groups=["store_a"])
 
-        non_time = [c for c in y_pred.columns if c not in ("time", "observed_time")]
+        non_time = [c for c in y_pred.columns if c not in ("time", "vintage_time")]
         assert all(c.startswith("store_a__") for c in non_time)
 
     def test_observe_subset_groups(self, panel_y):

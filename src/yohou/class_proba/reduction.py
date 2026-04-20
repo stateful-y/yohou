@@ -258,7 +258,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         Returns
         -------
         pl.DataFrame
-            Probability predictions with ``"observed_time"``, ``"time"``,
+            Probability predictions with ``"vintage_time"``, ``"time"``,
             and columns ``{target}_proba_{class_label}`` for each class.
 
         """

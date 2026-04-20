@@ -57,10 +57,18 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.compose import LocalPanelForecaster
     from yohou.datasets import fetch_kdd_cup
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_forecast, plot_score_time_series, plot_time_series
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_heatmap,
+        plot_score_per_vintage,
+        plot_score_time_series,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.utils.panel import inspect_panel
@@ -71,10 +79,13 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
+        deepcopy,
         fetch_kdd_cup,
         inspect_panel,
         pl,
         plot_forecast,
+        plot_score_heatmap,
+        plot_score_per_vintage,
         plot_score_time_series,
         plot_time_series,
         train_test_split,
@@ -447,6 +458,64 @@ def _(mo):
     - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/)
     - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
     """)
+    return
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict` method with `stride=1` produces one forecast per
+    observation point, creating multiple *vintages*. Each vintage represents
+    a different forecast origin, so you can analyse how accuracy evolves as
+    the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(deepcopy, fc_global, horizon, y_test):
+    _vintage_model = deepcopy(fc_global)
+    y_pred_vintages = _vintage_model.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=horizon,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="MAE per Forecast Vintage",
+        y_label="MAE",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
+    plot_score_heatmap(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Score Heatmap (Step x Vintage)",
+    )
     return
 
 

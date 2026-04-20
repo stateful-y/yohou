@@ -51,6 +51,8 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import (
@@ -61,7 +63,11 @@ def _():
         MeanIntervalWidth,
         Residual,
     )
-    from yohou.plotting import plot_forecast
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_per_vintage,
+        plot_score_time_series,
+    )
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
 
@@ -77,9 +83,12 @@ def _():
         Ridge,
         SeasonalNaive,
         SplitConformalForecaster,
+        deepcopy,
         fetch_tourism_monthly,
         pl,
         plot_forecast,
+        plot_score_per_vintage,
+        plot_score_time_series,
         train_test_split,
     )
 
@@ -141,7 +150,7 @@ def _(
         coverage_rates=coverage_rates,
     )
     _y_point = conformal.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_int = y_pred_int.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_int = y_pred_int.hstack(_y_point.drop("time", "vintage_time"))
 
     print(f"Prediction columns: {y_pred_int.columns}")
     y_pred_int.head()
@@ -277,7 +286,7 @@ def _(SeasonalNaive, SplitConformalForecaster, forecasting_horizon, y_train):
         coverage_rates=[0.9],
     )
     _y_point = conformal_naive.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_naive_int = y_pred_naive_int.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_naive_int = y_pred_naive_int.hstack(_y_point.drop("time", "vintage_time"))
     y_pred_naive_int.head()
     return (y_pred_naive_int,)
 
@@ -313,6 +322,67 @@ def _(mo):
     - Evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
     """)
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict_interval` method with `stride=1` produces one
+    interval forecast per observation point, creating multiple *vintages*.
+    Each vintage represents a different forecast origin, so you can analyse
+    how interval quality evolves as the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(conformal, coverage_rates, deepcopy, forecasting_horizon, y_test):
+    _vintage_model = deepcopy(conformal)
+    y_pred_vintages = _vintage_model.observe_predict_interval(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=forecasting_horizon,
+        coverage_rates=coverage_rates,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(IntervalScore, y_train):
+    vintage_scorer = IntervalScore()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_time_series, y_pred_vintages, y_test):
+    plot_score_time_series(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Interval Score over Time",
+        y_label="Interval Score",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Interval Score per Vintage",
+        y_label="Interval Score",
+        height=380,
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

@@ -52,6 +52,8 @@ def _():
     from sklearn.model_selection import train_test_split
     from sklearn.multioutput import MultiOutputRegressor
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import (
@@ -61,7 +63,14 @@ def _():
         MeanIntervalWidth,
         PinballLoss,
     )
-    from yohou.plotting import plot_calibration, plot_forecast, plot_score_time_series, plot_time_series
+    from yohou.plotting import (
+        plot_calibration,
+        plot_forecast,
+        plot_score_heatmap,
+        plot_score_per_vintage,
+        plot_score_time_series,
+        plot_time_series,
+    )
     from yohou.preprocessing import LagTransformer
 
     return (
@@ -74,9 +83,12 @@ def _():
         MultiOutputRegressor,
         PinballLoss,
         QuantileRegressor,
+        deepcopy,
         fetch_tourism_monthly,
         plot_calibration,
         plot_forecast,
+        plot_score_heatmap,
+        plot_score_per_vintage,
         plot_score_time_series,
         plot_time_series,
         train_test_split,
@@ -116,9 +128,9 @@ def _(
     interval_forecaster.fit(y_train, forecasting_horizon=fh, coverage_rates=coverage_rates)
     y_pred_int = interval_forecaster.predict_interval(forecasting_horizon=fh, coverage_rates=coverage_rates)
 
-    # Drop observed_time: not needed for metrics/plotting
-    if "observed_time" in y_pred_int.columns:
-        y_pred_int = y_pred_int.drop("observed_time")
+    # Drop vintage_time: not needed for metrics/plotting
+    if "vintage_time" in y_pred_int.columns:
+        y_pred_int = y_pred_int.drop("vintage_time")
 
     print(f"Coverage rates: {coverage_rates}")
     print(f"Prediction columns: {y_pred_int.columns}")
@@ -360,6 +372,65 @@ def _(mo):
     - [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) visualizes calibration quality
     """)
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict_interval` method with `stride=1` produces one
+    interval forecast per observation point, creating multiple *vintages*.
+    Each vintage represents a different forecast origin, so you can analyse
+    how interval quality evolves as the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(coverage_rates, deepcopy, fh, interval_forecaster, y_test):
+    _vintage_model = deepcopy(interval_forecaster)
+    y_pred_vintages = _vintage_model.observe_predict_interval(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=fh,
+        coverage_rates=coverage_rates,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(IntervalScore, y_train):
+    vintage_scorer = IntervalScore()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Interval Score per Vintage",
+        y_label="Interval Score",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
+    plot_score_heatmap(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Score Heatmap (Step x Vintage)",
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

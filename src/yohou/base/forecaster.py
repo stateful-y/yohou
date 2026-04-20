@@ -570,7 +570,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         Returns
         -------
         pl.DataFrame
-            Concatenated predictions with ``"observed_time"`` set to the
+            Concatenated predictions with ``"vintage_time"`` set to the
             first step's value and tail-trimmed to ``forecasting_horizon``.
 
         """
@@ -585,7 +585,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 y_obs, X_slice = derive_observation_fn(forecaster, y_for_obs, X, step)
                 forecaster.observe(y_obs, X_slice)
 
-        y_pred = y_pred.with_columns(observed_time=y_pred["observed_time"][0])
+        y_pred = y_pred.with_columns(vintage_time=y_pred["vintage_time"][0])
 
         if forecasting_horizon % self.fit_forecasting_horizon_:
             end = self.fit_forecasting_horizon_ - forecasting_horizon % self.fit_forecasting_horizon_
@@ -676,7 +676,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         Returns
         -------
         pl.DataFrame
-            Predictions with observed_time and time columns.
+            Predictions with vintage_time and time columns.
 
         """
         # Dispatch to mixin methods
@@ -758,9 +758,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             assert self.target_transformer_ is not None
             assert not isinstance(self.target_transformer_, dict)
 
-            # Remove "observed_time" before inverse_transform (transformers don't handle it)
-            observed_time = y_pred_step.select(cs.by_name("observed_time"))
-            y_pred_step_no_obs = y_pred_step.select(~cs.by_name("observed_time"))
+            # Remove "vintage_time" before inverse_transform (transformers don't handle it)
+            vintage_time = y_pred_step.select(cs.by_name("vintage_time"))
+            y_pred_step_no_obs = y_pred_step.select(~cs.by_name("vintage_time"))
 
             transformer = typing_cast(Any, self.target_transformer_)
             y_pred_step_inv = transformer.inverse_transform(
@@ -777,8 +777,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 how="horizontal",
             )
 
-            # Add "observed_time" back
-            y_pred_step_inv = pl.concat([observed_time, y_pred_step_inv], how="horizontal")
+            # Add "vintage_time" back
+            y_pred_step_inv = pl.concat([vintage_time, y_pred_step_inv], how="horizontal")
 
         else:
             # Panel data
@@ -796,8 +796,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 transformer = target_transformers[panel_group_name]
                 assert transformer is not None
 
-                # Remove "observed_time" before extracting group data
-                observed_time = y_pred_step.select(cs.by_name("observed_time")).head(1)
+                # Remove "vintage_time" before extracting group data
+                vintage_time = y_pred_step.select(cs.by_name("vintage_time")).head(1)
 
                 # Extract the group's columns (in transformed space, with prefix)
                 group_cols = [c for c in y_pred_step.columns if c.startswith(f"{panel_group_name}__")]
@@ -833,15 +833,15 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                     how="horizontal",
                 )
 
-                # Add "observed_time" back
-                y_pred_step_group_inv = pl.concat([observed_time, y_pred_step_group_inv], how="horizontal")
+                # Add "vintage_time" back
+                y_pred_step_group_inv = pl.concat([vintage_time, y_pred_step_group_inv], how="horizontal")
 
                 # Store in dict (without time columns)
                 y_pred_step_inv_dict[panel_group_name] = y_pred_step_group_inv.select(
-                    ~cs.by_name("observed_time") & ~cs.by_name("time")
+                    ~cs.by_name("vintage_time") & ~cs.by_name("time")
                 )
 
-            times = y_pred_step.select(cs.by_name("observed_time") | cs.by_name("time"))
+            times = y_pred_step.select(cs.by_name("vintage_time") | cs.by_name("time"))
             y_pred_inv_cols = pl.concat(list(y_pred_step_inv_dict.values()), how="horizontal")
 
             y_pred_step_inv = pl.concat([times, y_pred_inv_cols], how="horizontal")

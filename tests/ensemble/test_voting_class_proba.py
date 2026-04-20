@@ -120,7 +120,7 @@ class TestVotingClassProbaFitPredict:
         p1 = b1.predict_class_proba(forecasting_horizon=3)
         p2 = b2.predict_class_proba(forecasting_horizon=3)
 
-        proba_cols = [c for c in y_proba.columns if c not in ("observed_time", "time")]
+        proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
         for col in proba_cols:
             expected = (p1[col].to_numpy() + p2[col].to_numpy()) / 2
             np.testing.assert_allclose(y_proba[col].to_numpy(), expected, rtol=1e-10)
@@ -151,7 +151,7 @@ class TestVotingClassProbaFitPredict:
         p1 = b1.predict_class_proba(forecasting_horizon=3)
         p2 = b2.predict_class_proba(forecasting_horizon=3)
 
-        proba_cols = [c for c in y_proba.columns if c not in ("observed_time", "time")]
+        proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
         for col in proba_cols:
             values = np.column_stack([p1[col].to_numpy(), p2[col].to_numpy()])
             expected = np.average(values, axis=1, weights=weights)
@@ -178,7 +178,7 @@ class TestVotingClassProbaFitPredict:
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
-        proba_cols = [c for c in y_proba.columns if c not in ("observed_time", "time")]
+        proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
         row_sums = np.sum([y_proba[col].to_numpy() for col in proba_cols], axis=0)
         np.testing.assert_allclose(row_sums, 1.0, rtol=1e-10)
 
@@ -203,7 +203,7 @@ class TestVotingClassProbaFitPredict:
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
-        proba_cols = [c for c in y_proba.columns if c not in ("observed_time", "time")]
+        proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
         for col in proba_cols:
             values = y_proba[col].to_numpy()
             assert np.all(values >= 0.0), f"Negative probability in {col}"
@@ -236,7 +236,7 @@ class TestVotingClassProbaFitPredict:
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
-        target_col = [c for c in y_pred.columns if c not in ("observed_time", "time")][0]
+        target_col = [c for c in y_pred.columns if c not in ("vintage_time", "time")][0]
         all_classes = set()
         for classes in forecaster.classes_.values():
             all_classes.update(classes)
@@ -271,7 +271,7 @@ class TestVotingClassProbaFitPredict:
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
-        proba_cols = [c for c in y_proba.columns if c not in ("observed_time", "time")]
+        proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
         for col in proba_cols:
             values = y_proba[col].to_numpy()
             assert np.all((values == 0.0) | (values == 1.0)), f"Non-one-hot values in {col}: {values}"
@@ -302,8 +302,8 @@ class TestVotingClassProbaFitPredict:
         y_pred = forecaster.predict(forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
-        target_col = [c for c in y_pred.columns if c not in ("observed_time", "time")][0]
-        proba_cols = [c for c in y_proba.columns if c not in ("observed_time", "time")]
+        target_col = [c for c in y_pred.columns if c not in ("vintage_time", "time")][0]
+        proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
         class_labels = forecaster.classes_[target_col]
 
         # Verify predict returns the class with highest probability
@@ -376,7 +376,7 @@ class TestVotingClassProbaFitPredict:
         p_no_w = f_no_w.predict(forecasting_horizon=3)
         p_w = f_w.predict(forecasting_horizon=3)
 
-        target_col = [c for c in p_no_w.columns if c not in ("observed_time", "time")][0]
+        target_col = [c for c in p_no_w.columns if c not in ("vintage_time", "time")][0]
         assert p_no_w[target_col].to_list() == p_w[target_col].to_list()
 
 

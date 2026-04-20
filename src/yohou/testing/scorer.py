@@ -83,7 +83,7 @@ def check_scorer_tags_static_after_fit(
     y_truth : pl.DataFrame
         Ground truth with "time" column
     y_pred : pl.DataFrame
-        Predictions with "observed_time" and "time" columns
+        Predictions with "vintage_time" and "time" columns
 
     Raises
     ------
@@ -123,7 +123,7 @@ def check_scorer_tags_match_capabilities(
     y_truth : pl.DataFrame
         Ground truth with "time" column
     y_pred : pl.DataFrame
-        Predictions with "observed_time" and "time" columns
+        Predictions with "vintage_time" and "time" columns
     expected_tags : dict, optional
         Expected tag values to validate (keys: prediction_type, lower_is_better, requires_calibration)
 
@@ -469,7 +469,7 @@ def check_scorer_parameter_validation(
     if tags.scorer_tags.prediction_type == "interval":
         # Interval scorer needs _lower and _upper columns
         pl.DataFrame({
-            "observed_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
+            "vintage_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
             "time": [datetime.datetime(2020, 1, i) for i in range(11, 14)],
             "value_lower_0.9": [10.0, 11.0, 12.0],
             "value_upper_0.9": [10.5, 11.5, 12.5],
@@ -477,7 +477,7 @@ def check_scorer_parameter_validation(
     else:
         # Point scorer needs regular value columns
         pl.DataFrame({
-            "observed_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
+            "vintage_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
             "time": [datetime.datetime(2020, 1, i) for i in range(11, 14)],
             "value": range(10, 13),
         })

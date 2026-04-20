@@ -328,7 +328,7 @@ class TestMultimetricScorerErrorSuppression:
         ms = _MultimetricScorer(scorers={"fail": scorer}, raise_exc=False)
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 12, 31)] * 2,
+            "vintage_time": [datetime(2020, 12, 31)] * 2,
             "time": [datetime(2021, 1, 1), datetime(2021, 1, 2)],
             "target": [3.0, 4.0],
         })
@@ -349,7 +349,7 @@ class TestMultimetricScorerErrorSuppression:
         ms = _MultimetricScorer(scorers={"fail": scorer}, raise_exc=True)
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 12, 31)] * 2,
+            "vintage_time": [datetime(2020, 12, 31)] * 2,
             "time": [datetime(2021, 1, 1), datetime(2021, 1, 2)],
             "target": [3.0, 4.0],
         })

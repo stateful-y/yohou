@@ -47,10 +47,16 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_kdd_cup
     from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, MeanIntervalWidth
-    from yohou.plotting import plot_forecast
+    from yohou.metrics import IntervalScore
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_per_vintage,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.utils.panel import inspect_panel
@@ -58,15 +64,18 @@ def _():
     return (
         EmpiricalCoverage,
         IntervalReductionForecaster,
+        IntervalScore,
         LagTransformer,
         MeanIntervalWidth,
         PointReductionForecaster,
         Ridge,
         SplitConformalForecaster,
+        deepcopy,
         fetch_kdd_cup,
         inspect_panel,
         pl,
         plot_forecast,
+        plot_score_per_vintage,
         train_test_split,
     )
 
@@ -129,7 +138,7 @@ def _(
     fc_conformal.fit(y_train, forecasting_horizon=horizon, coverage_rates=coverage_rates)
     y_pred_conf = fc_conformal.predict_interval(forecasting_horizon=horizon, coverage_rates=coverage_rates)
     _y_point = fc_conformal.predict(forecasting_horizon=horizon)
-    y_pred_conf = y_pred_conf.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_conf = y_pred_conf.hstack(_y_point.drop("time", "vintage_time"))
     return (y_pred_conf,)
 
 
@@ -242,6 +251,54 @@ def _(
     _results = pl.DataFrame(_rows)
     mo.ui.table(_results)
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict_interval` method with `stride=1` produces one
+    interval forecast per observation point, creating multiple *vintages*.
+    Each vintage represents a different forecast origin, so you can analyse
+    how interval quality evolves as the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(coverage_rates, deepcopy, fc_conformal, horizon, y_test):
+    _vintage_model = deepcopy(fc_conformal)
+    y_pred_vintages = _vintage_model.observe_predict_interval(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=horizon,
+        coverage_rates=coverage_rates,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(IntervalScore, y_train):
+    vintage_scorer = IntervalScore()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Interval Score per Vintage",
+        y_label="Interval Score",
+        height=380,
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

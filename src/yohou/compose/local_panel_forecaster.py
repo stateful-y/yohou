@@ -142,7 +142,7 @@ class LocalPanelForecaster(BaseForecaster):
     >>> forecaster.fit(y, forecasting_horizon=5)  # doctest: +ELLIPSIS
     LocalPanelForecaster(...)
     >>> y_pred = forecaster.predict(forecasting_horizon=5)
-    >>> sorted(c for c in y_pred.columns if c not in ("time", "observed_time"))
+    >>> sorted(c for c in y_pred.columns if c not in ("time", "vintage_time"))
     ['store_a__sales', 'store_b__sales']
 
     See Also
@@ -597,12 +597,12 @@ class LocalPanelForecaster(BaseForecaster):
 
             # Extract time column from first group only
             if time_col is None:
-                time_cols = [c for c in ["time", "observed_time"] if c in y_pred_group.columns]
+                time_cols = [c for c in ["time", "vintage_time"] if c in y_pred_group.columns]
                 if time_cols:
                     time_col = y_pred_group.select(time_cols)
 
             # Prefix column names and drop time columns
-            non_time_cols = [c for c in y_pred_group.columns if c not in ("time", "observed_time")]
+            non_time_cols = [c for c in y_pred_group.columns if c not in ("time", "vintage_time")]
             y_pred_prefixed = y_pred_group.select(non_time_cols).rename({
                 col: f"{group_name}__{col}" for col in non_time_cols
             })

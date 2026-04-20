@@ -471,16 +471,16 @@ class BasePanelForecaster:
         Returns
         -------
         pl.DataFrame
-            Predictions with observed_time and time columns.
+            Predictions with vintage_time and time columns.
 
         """
         # For panel data, all groups share the same time progression
-        # Use the first group's observed_time as reference
+        # Use the first group's observed_time_ as reference
         first_group_name = list(self.observed_time_.keys())[0]
         observed_time_value = self.observed_time_[first_group_name]
 
         predicted_times = [add_interval(observed_time_value, self.interval_, n=n) for n in range(1, len(y_pred) + 1)]
 
-        time = pl.DataFrame({"observed_time": [observed_time_value] * len(y_pred), "time": predicted_times})
+        time = pl.DataFrame({"vintage_time": [observed_time_value] * len(y_pred), "time": predicted_times})
 
         return pl.concat([time, y_pred], how="horizontal")

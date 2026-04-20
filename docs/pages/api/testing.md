@@ -20,7 +20,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_forecaster_tags_static_after_fit`](generated/yohou.testing.forecaster.check_forecaster_tags_static_after_fit.md) | Check forecaster tags remain static after fit(). |
 | [`check_forecasting_horizon_validation`](generated/yohou.testing.forecaster.check_forecasting_horizon_validation.md) | Check forecasting_horizon < 1 raises ValueError. |
 | [`check_observe_extends_observations`](generated/yohou.testing.forecaster.check_observe_extends_observations.md) | Check observe() extends observation buffers correctly. |
-| [`check_predict_time_columns`](generated/yohou.testing.forecaster.check_predict_time_columns.md) | Check predictions have observed_time and time columns. |
+| [`check_predict_time_columns`](generated/yohou.testing.forecaster.check_predict_time_columns.md) | Check predictions have vintage_time and time columns. |
 | [`check_prediction_types_property`](generated/yohou.testing.forecaster.check_prediction_types_property.md) | Check forecaster_type tag is set correctly. |
 | [`check_rewind_propagates_to_transformers`](generated/yohou.testing.forecaster.check_rewind_propagates_to_transformers.md) | Check rewind() propagates to transformers in forecaster. |
 | [`check_rewind_replaces_observations`](generated/yohou.testing.forecaster.check_rewind_replaces_observations.md) | Check rewind() replaces observation buffers correctly. |

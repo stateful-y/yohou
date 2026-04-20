@@ -68,7 +68,7 @@ class EmpiricalCoverage(BaseIntervalScorer):
     ...     "value": [10.0, 20.0, 30.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value_lower_0.9": [8.0, 18.0, 28.0],
     ...     "value_upper_0.9": [12.0, 22.0, 32.0],
@@ -174,7 +174,7 @@ class MeanIntervalWidth(BaseIntervalScorer):
     >>> from yohou.metrics import MeanIntervalWidth
     >>> y_true = pl.DataFrame({"time": [datetime(2020, 1, 1), datetime(2020, 1, 2)], "value": [10.0, 20.0]})
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 2,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 2,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
     ...     "value_lower_0.9": [8.0, 18.0],
     ...     "value_upper_0.9": [12.0, 22.0],
@@ -281,7 +281,7 @@ class IntervalScore(BaseIntervalScorer):
     >>> from yohou.metrics import IntervalScore
     >>> y_true = pl.DataFrame({"time": [datetime(2020, 1, 1), datetime(2020, 1, 2)], "value": [10.0, 20.0]})
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 2,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 2,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
     ...     "value_lower_0.9": [8.0, 18.0],
     ...     "value_upper_0.9": [12.0, 22.0],
@@ -413,7 +413,7 @@ class PinballLoss(BaseIntervalScorer):
     ...     "value": [10.0, 20.0]
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 2,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 2,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
     ...     "value_lower_0.9": [8.0, 18.0],
     ...     "value_upper_0.9": [12.0, 22.0]
@@ -553,7 +553,7 @@ class CalibrationError(BaseIntervalScorer):
     >>> from yohou.metrics import CalibrationError
     >>> y_true = pl.DataFrame({"time": [datetime(2020, 1, 1), datetime(2020, 1, 2)], "value": [10.0, 20.0]})
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 2,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 2,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
     ...     "value_lower_0.9": [8.0, 18.0],
     ...     "value_upper_0.9": [12.0, 22.0],

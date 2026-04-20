@@ -10,7 +10,7 @@ import polars as pl
 import pytest
 from plotly import graph_objects as go
 
-from yohou.metrics import IntervalScore, MeanAbsoluteError, RootMeanSquaredError
+from yohou.metrics import IntervalScore, MeanAbsoluteError, MeanSquaredError, RootMeanSquaredError
 from yohou.plotting import (
     plot_calibration,
     plot_group_scores,
@@ -121,7 +121,7 @@ def sample_forecast_data():
             "value": [10.0, 20.0, 30.0, 25.0, 35.0, 40.0, 38.0, 45.0, 50.0, 48.0],
         }),
         "y_pred": pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value": [12.0, 19.0, 28.0, 27.0, 33.0, 42.0, 36.0, 43.0, 52.0, 46.0],
         }),
@@ -135,7 +135,7 @@ def multi_model_forecast_data(sample_forecast_data):
 
     times = [datetime(2020, 1, 1 + i) for i in range(10)]
     y_pred_b = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 10,
+        "vintage_time": [datetime(2019, 12, 31)] * 10,
         "time": times,
         "value": [11.0, 21.0, 29.0, 26.0, 34.0, 41.0, 37.0, 44.0, 51.0, 47.0],
     })
@@ -749,7 +749,7 @@ class TestPlotScorePerHorizon:
             "value": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value": [12.0],
         })
@@ -801,7 +801,7 @@ class TestPlotScoreTimeSeriesPanel:
             "value__b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value__a": [12.0 + i for i in range(10)],
             "value__b": [19.0 + i for i in range(10)],
@@ -846,7 +846,7 @@ class TestPlotScoreDistributionPanel:
             "value__b": [20.0 + i for i in range(20)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "value__a": [12.0 + i for i in range(20)],
             "value__b": [19.0 + i for i in range(20)],
@@ -880,7 +880,7 @@ class TestPlotScorePerHorizonPanel:
             "value__b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value__a": [12.0 + i for i in range(10)],
             "value__b": [19.0 + i for i in range(10)],
@@ -1057,7 +1057,7 @@ class TestPlotScoreTimeSeriesMultiComponent:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [12.0 + i for i in range(10)],
             "b": [19.0 + i for i in range(10)],
@@ -1162,12 +1162,12 @@ class TestPlotScorePerHorizonBarMultiModel:
             "value": [10.0 + i for i in range(10)],
         })
         y_pred_a = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value": [12.0 + i for i in range(10)],
         })
         y_pred_b = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value": [11.0 + i for i in range(10)],
         })
@@ -1193,7 +1193,7 @@ class TestPlotScorePerHorizonBarMultiModel:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [12.0 + i for i in range(10)],
             "b": [19.0 + i for i in range(10)],
@@ -1218,7 +1218,7 @@ class TestPlotScoreDistributionEdgeCases:
             "b": [20.0 + i for i in range(20)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "a": [12.0 + i for i in range(20)],
             "b": [19.0 + i for i in range(20)],
@@ -1239,7 +1239,7 @@ class TestPlotScoreDistributionEdgeCases:
             "value": [10.0 + i for i in range(15)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "vintage_time": [datetime(2019, 12, 31)] * 15,
             "time": times,
             "value": [12.0 + i for i in range(15)],
         })
@@ -1392,7 +1392,7 @@ class TestPlotScorePerHorizonIntervalScorer:
         vals = rng.standard_normal(20) * 10 + 100
         y_truth = pl.DataFrame({"time": times, "y": vals})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "y_upper_0.9": vals + 5,
             "y_lower_0.9": vals - 5,
@@ -1415,7 +1415,7 @@ class TestPlotScorePerHorizonShowTrend:
             "value": [10.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value": [12.0 + i for i in range(10)],
         })
@@ -1436,7 +1436,7 @@ class TestPlotScoreDistributionKDEOnly:
         times = [datetime(2020, 1, 1 + i) for i in range(20)]
         y_truth = pl.DataFrame({"time": times, "y": [10.0 + i * 0.5 for i in range(20)]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "y": [12.0 + i * 0.3 for i in range(20)],
         })
@@ -1451,7 +1451,7 @@ class TestPlotScoreDistributionKDEOnly:
         times = [datetime(2020, 1, 1 + i) for i in range(20)]
         y_truth = pl.DataFrame({"time": times, "y": [10.0 + i for i in range(20)]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "y": [12.0 + i for i in range(20)],
         })
@@ -1482,7 +1482,7 @@ class TestPlotScoreDistributionKDEOnly:
         times = [datetime(2020, 1, 1 + i) for i in range(20)]
         y_truth = pl.DataFrame({"time": times, "y": [10.0 + i for i in range(20)]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "y": [12.0 + i for i in range(20)],
         })
@@ -1521,7 +1521,7 @@ class TestPlotResidualsColumnsParam:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [11.0 + i for i in range(10)],
             "b": [19.0 + i for i in range(10)],
@@ -1543,7 +1543,7 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
             "sales__store_1": [10.0, 20.0, 30.0, 40.0, 50.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "sales__store_1": [11.0, 21.0, 31.0, 41.0, 51.0],
         })
@@ -1567,7 +1567,7 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
             "sales__store_2": [15.0, 25.0, 35.0, 45.0, 55.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "sales__store_1": [11.0, 21.0, 31.0, 41.0, 51.0],
             "sales__store_2": [16.0, 26.0, 36.0, 46.0, 56.0],
@@ -1670,7 +1670,7 @@ class TestPlotScoreTimeSeriesPanelColumnFilter:
             "revenue__store_2": [200.0 + i for i in range(8)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 8,
+            "vintage_time": [datetime(2019, 12, 31)] * 8,
             "time": times,
             "sales__store_1": [11.0 + i for i in range(8)],
             "sales__store_2": [21.0 + i for i in range(8)],
@@ -1735,7 +1735,7 @@ class TestPlotScoreTimeSeriesPanelColumnFilter:
             "grp__x": [10.0, 20.0, 30.0, 40.0, 50.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "grp__x": [11.0, 21.0, 31.0, 41.0, 51.0],
         })
@@ -1765,7 +1765,7 @@ class TestPlotScoreTimeSeriesNonPanelColumns:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [11.0 + i for i in range(10)],
             "b": [21.0 + i for i in range(10)],
@@ -1811,7 +1811,7 @@ class TestPlotScoreDistributionMultiColumn:
             "b": [20.0 + i for i in range(20)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "a": [11.0 + i for i in range(20)],
             "b": [21.0 + i for i in range(20)],
@@ -1854,7 +1854,7 @@ class TestPlotScoreDistributionPanelAutoDetect:
             "grp__y": [20.0 + i for i in range(15)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "vintage_time": [datetime(2019, 12, 31)] * 15,
             "time": times,
             "grp__x": [11.0 + i for i in range(15)],
             "grp__y": [21.0 + i for i in range(15)],
@@ -1874,7 +1874,7 @@ class TestPlotScoreDistributionPanelAutoDetect:
             "grp__y": [20.0 + i for i in range(15)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "vintage_time": [datetime(2019, 12, 31)] * 15,
             "time": times,
             "grp__x": [11.0 + i for i in range(15)],
             "grp__y": [21.0 + i for i in range(15)],
@@ -1905,7 +1905,7 @@ class TestPlotScorePerHorizonMultiColumn:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [11.0 + i for i in range(10)],
             "b": [21.0 + i for i in range(10)],
@@ -1948,7 +1948,7 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "grp__y": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "grp__x": [11.0 + i for i in range(10)],
             "grp__y": [21.0 + i for i in range(10)],
@@ -1968,7 +1968,7 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "grp__y": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "grp__x": [11.0 + i for i in range(10)],
             "grp__y": [21.0 + i for i in range(10)],
@@ -1994,7 +1994,7 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "val2": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "val1": [11.0 + i for i in range(10)],
             "val2": [21.0 + i for i in range(10)],
@@ -2033,7 +2033,7 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
             "grp__x": [10.0 + i for i in range(5)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "grp__x": [11.0 + i for i in range(5)],
         })
@@ -2051,7 +2051,7 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
             "grp__x": [10.0 + i for i in range(5)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "grp__x": [11.0 + i for i in range(5)],
         })
@@ -2069,6 +2069,174 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
         assert len(fig.data) >= 1
 
 
+class TestPlotScoreTimeSeriesVintageFacet:
+    """Tests for facet_by='vintage' in plot_score_time_series."""
+
+    @pytest.fixture()
+    def multi_vintage_data(self):
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_truth = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 30)] * 3 + [datetime(2019, 12, 31)] * 3,
+            "time": times * 2,
+            "value": [12.0, 19.0, 28.0, 11.0, 21.0, 29.0],
+        }).sort("time", "vintage_time")
+        return y_truth, y_pred
+
+    def test_creates_one_subplot_per_vintage(self, multi_vintage_data):
+        """Each unique vintage_time gets its own subplot."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by="vintage")
+        assert isinstance(fig, go.Figure)
+        # 2 vintages → 2 traces (one per subplot for the single model)
+        assert len(fig.data) == 2
+        # Each trace has 3 time points
+        for trace in fig.data:
+            assert len(trace.x) == 3
+
+    def test_multi_model_vintage_facet(self, multi_vintage_data):
+        """Multiple models with vintage faceting overlay models within each vintage subplot."""
+        y_truth, y_pred = multi_vintage_data
+        y_pred2 = y_pred.with_columns(pl.col("value") + 1)
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, {"A": y_pred, "B": y_pred2}, facet_by="vintage")
+        # 2 vintages × 2 models = 4 traces
+        assert len(fig.data) == 4
+
+    def test_single_vintage_raises(self):
+        """Single vintage data with facet_by='vintage' raises ValueError."""
+        from datetime import datetime
+
+        y_truth = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [11.0, 21.0],
+        })
+        scorer = MeanAbsoluteError()
+        with pytest.raises(ValueError, match="multiple vintages"):
+            plot_score_time_series(scorer, y_truth, y_pred, facet_by="vintage")
+
+    def test_multi_scorer_vintage_raises(self, multi_vintage_data):
+        """Multi-scorer with facet_by='vintage' raises ValueError."""
+        y_truth, y_pred = multi_vintage_data
+        scorers = {"mae": MeanAbsoluteError(), "mse": MeanSquaredError()}
+        with pytest.raises(ValueError, match="Multi-scorer.*vintage"):
+            plot_score_time_series(scorers, y_truth, y_pred, facet_by="vintage")
+
+    def test_legend_deduplication(self, multi_vintage_data):
+        """Model name appears in legend only once across vintage subplots."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by="vintage")
+        showlegend_count = sum(1 for t in fig.data if t.showlegend is not False)
+        assert showlegend_count == 1
+
+    def test_panel_with_vintage_raises(self):
+        """Panel data (groups) combined with facet_by='vintage' raises ValueError."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_truth = pl.DataFrame({"time": times, "grp__x": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 30)] * 3 + [datetime(2019, 12, 31)] * 3,
+            "time": times * 2,
+            "grp__x": [12.0, 19.0, 28.0, 11.0, 21.0, 29.0],
+        }).sort("time", "vintage_time")
+        scorer = MeanAbsoluteError()
+        with pytest.raises(ValueError, match="cannot be combined with panel"):
+            plot_score_time_series(scorer, y_truth, y_pred, groups=["grp"], facet_by="vintage")
+
+
+class TestPlotScoreTimeSeriesVintageOverlay:
+    """Tests for multi-vintage data without facet_by='vintage' (zigzag fix)."""
+
+    @pytest.fixture()
+    def multi_vintage_data(self):
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_truth = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 28)] * 3 + [datetime(2019, 12, 29)] * 3 + [datetime(2019, 12, 30)] * 3,
+            "time": times * 3,
+            "value": [13.0, 18.0, 27.0, 12.0, 19.0, 28.0, 11.0, 21.0, 29.0],
+        }).sort("time", "vintage_time")
+        return y_truth, y_pred
+
+    def test_multi_model_overlay_splits_by_vintage(self, multi_vintage_data):
+        """Single scorer + multi-model with 3 vintages creates 3 traces per model."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, {"A": y_pred, "B": y_pred}, facet_by=None)
+        # 2 models x 3 vintages = 6 traces
+        assert len(fig.data) == 6
+
+    def test_multi_scorer_overlay_splits_by_vintage(self, multi_vintage_data):
+        """Multi-scorer + single model with 3 vintages creates 3 traces per scorer."""
+        y_truth, y_pred = multi_vintage_data
+        scorers = {"mae": MeanAbsoluteError(), "mse": MeanSquaredError()}
+        fig = plot_score_time_series(scorers, y_truth, y_pred, facet_by=None)
+        # 2 scorers x 3 vintages = 6 traces
+        assert len(fig.data) == 6
+
+    def test_newest_vintage_showlegend(self, multi_vintage_data):
+        """Only the newest vintage trace per model shows in the legend."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by=None)
+        # 3 vintages, only newest shows
+        legend_count = sum(1 for t in fig.data if t.showlegend is not False)
+        assert legend_count == 1
+
+    def test_oldest_vintage_has_lower_opacity(self, multi_vintage_data):
+        """Oldest vintage trace has opacity ~ 0.3, newest ~ 1.0."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by=None)
+        opacities = [t.opacity for t in fig.data]
+        assert min(opacities) == pytest.approx(0.3, abs=0.01)
+        assert max(opacities) == pytest.approx(1.0, abs=0.01)
+
+    def test_vintage_hover_includes_vintage(self, multi_vintage_data):
+        """Hover template includes 'Vintage:' for multi-vintage traces."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by=None)
+        for trace in fig.data:
+            assert "Vintage:" in trace.hovertemplate
+
+    def test_single_vintage_no_split(self):
+        """Single-vintage data draws one trace per model (no splitting)."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_truth = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": times,
+            "value": [11.0, 21.0, 29.0],
+        })
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by=None)
+        assert len(fig.data) == 1
+        assert "Vintage:" not in fig.data[0].hovertemplate
+
+    def test_faceted_overlay_splits_by_vintage(self, multi_vintage_data):
+        """Multi-scorer + multi-model with vintages splits within facet subplots."""
+        y_truth, y_pred = multi_vintage_data
+        scorers = {"mae": MeanAbsoluteError(), "mse": MeanSquaredError()}
+        fig = plot_score_time_series(scorers, y_truth, {"A": y_pred, "B": y_pred}, facet_by=None)
+        # 2 facets x 2 overlays x 3 vintages = 12 traces
+        assert len(fig.data) == 12
+
+
 class TestPlotScorePerHorizonPanelBarMultiModel:
     """Cover bar + multi-model panel path in plot_score_per_step (line 1954)."""
 
@@ -2082,12 +2250,12 @@ class TestPlotScorePerHorizonPanelBarMultiModel:
             "grp__x": [10.0 + i for i in range(8)],
         })
         y_pred_a = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 8,
+            "vintage_time": [datetime(2019, 12, 31)] * 8,
             "time": times,
             "grp__x": [11.0 + i for i in range(8)],
         })
         y_pred_b = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 8,
+            "vintage_time": [datetime(2019, 12, 31)] * 8,
             "time": times,
             "grp__x": [12.0 + i for i in range(8)],
         })
@@ -2119,7 +2287,7 @@ class TestMultiComponentScoreBranches:
             "y2": [20.0 + i * 2 for i in range(30)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 30,
+            "vintage_time": [datetime(2019, 12, 31)] * 30,
             "time": times,
             "y1": [11.0 + i for i in range(30)],
             "y2": [22.0 + i * 2 for i in range(30)],
@@ -2161,7 +2329,7 @@ class TestScorerReturnValidation:
             "sales__store_1": [10.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "sales__store_1": [11.0 + i for i in range(10)],
         })
@@ -2174,7 +2342,7 @@ class TestScorerReturnValidation:
         times = [datetime(2020, 1, 1 + i) for i in range(10)]
         y_truth = pl.DataFrame({"time": times, "y": [10.0 + i for i in range(10)]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "y": [11.0 + i for i in range(10)],
         })
@@ -2269,7 +2437,7 @@ class TestPanelMultiMemberScoring:
             "sales__store_2": [20.0 + i for i in range(15)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "vintage_time": [datetime(2019, 12, 31)] * 15,
             "time": times,
             "sales__store_1": [11.0 + i for i in range(15)],
             "sales__store_2": [21.0 + i for i in range(15)],
@@ -2408,12 +2576,12 @@ def multi_scorer_data():
         "value": [10.0, 20.0, 30.0, 25.0, 35.0, 40.0, 38.0, 45.0, 50.0, 48.0],
     })
     y_pred_a = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 10,
+        "vintage_time": [datetime(2019, 12, 31)] * 10,
         "time": times,
         "value": [12.0, 19.0, 28.0, 27.0, 33.0, 42.0, 36.0, 43.0, 52.0, 46.0],
     })
     y_pred_b = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 10,
+        "vintage_time": [datetime(2019, 12, 31)] * 10,
         "time": times,
         "value": [11.0, 21.0, 29.0, 26.0, 34.0, 41.0, 37.0, 44.0, 51.0, 47.0],
     })
@@ -2435,7 +2603,7 @@ def multi_vintage_data():
         "value": [10.0, 20.0, 30.0, 40.0, 50.0],
     })
     # Build multi-vintage predictions: each vintage is a separate forecast
-    # sorted by observed_time then time
+    # sorted by vintage_time then time
     rows = []
     for ot, offsets in [
         (datetime(2019, 12, 29), [2.0, -1.0, -2.0, 2.0, -2.0]),
@@ -2444,11 +2612,11 @@ def multi_vintage_data():
     ]:
         for i in range(5):
             rows.append({
-                "observed_time": ot,
+                "vintage_time": ot,
                 "time": times[i],
                 "value": [10.0, 20.0, 30.0, 40.0, 50.0][i] + offsets[i],
             })
-    y_pred = pl.DataFrame(rows).sort("time", "observed_time")
+    y_pred = pl.DataFrame(rows).sort("time", "vintage_time")
     return {"y_truth": y_truth, "y_pred": y_pred}
 
 
@@ -2464,7 +2632,7 @@ def panel_group_data():
         "region__west": [15.0, 25.0, 35.0, 45.0, 55.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 5,
+        "vintage_time": [datetime(2019, 12, 31)] * 5,
         "time": times,
         "region__east": [12.0, 19.0, 28.0, 42.0, 48.0],
         "region__west": [14.0, 26.0, 33.0, 46.0, 53.0],
@@ -2531,7 +2699,7 @@ class TestMultiScorerTimeSeries:
             "grp__b": [2.0] * 5,
         })
         y_pred_panel = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "grp__a": [1.1] * 5,
             "grp__b": [2.1] * 5,
@@ -2862,7 +3030,7 @@ class TestPlotGroupScores:
 
         times = [datetime(2020, 1, 1 + i) for i in range(5)]
         y_pred_b = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "region__east": [13.0, 18.0, 29.0, 41.0, 49.0],
             "region__west": [16.0, 24.0, 34.0, 44.0, 54.0],
@@ -2951,10 +3119,10 @@ def multi_vintage_multi_model_data():
     ]:
         for i in range(5):
             base = [10.0, 20.0, 30.0, 40.0, 50.0][i]
-            rows_a.append({"observed_time": ot, "time": times[i], "value": base + offsets_a[i]})
-            rows_b.append({"observed_time": ot, "time": times[i], "value": base + offsets_b[i]})
-    y_pred_a = pl.DataFrame(rows_a).sort("time", "observed_time")
-    y_pred_b = pl.DataFrame(rows_b).sort("time", "observed_time")
+            rows_a.append({"vintage_time": ot, "time": times[i], "value": base + offsets_a[i]})
+            rows_b.append({"vintage_time": ot, "time": times[i], "value": base + offsets_b[i]})
+    y_pred_a = pl.DataFrame(rows_a).sort("time", "vintage_time")
+    y_pred_b = pl.DataFrame(rows_b).sort("time", "vintage_time")
     return {
         "y_truth": y_truth,
         "y_pred_a": y_pred_a,
@@ -3036,14 +3204,14 @@ class TestPlotScoreHeatmapValidation:
                 x_dim="invalid",
             )
 
-    def test_missing_observed_time_raises(self):
-        """y_pred without observed_time raises ValueError."""
+    def test_missing_vintage_time_raises(self):
+        """y_pred without vintage_time raises ValueError."""
         from datetime import datetime
 
         times = [datetime(2020, 1, 1 + i) for i in range(5)]
         y_truth = pl.DataFrame({"time": times, "value": [1.0] * 5})
         y_pred = pl.DataFrame({"time": times, "value": [1.1] * 5})
-        with pytest.raises(ValueError, match="observed_time"):
+        with pytest.raises(ValueError, match="vintage_time"):
             plot_score_heatmap(MeanAbsoluteError(), y_truth, y_pred)
 
     def test_single_vintage_raises(self):
@@ -3053,7 +3221,7 @@ class TestPlotScoreHeatmapValidation:
         times = [datetime(2020, 1, 1 + i) for i in range(5)]
         y_truth = pl.DataFrame({"time": times, "value": [1.0] * 5})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "value": [1.1] * 5,
         })
@@ -3076,7 +3244,7 @@ class TestPanelMultiScorerErrors:
             "region__west": [15.0, 25.0, 35.0, 45.0, 55.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "region__east": [12.0, 19.0, 28.0, 42.0, 48.0],
             "region__west": [14.0, 26.0, 33.0, 46.0, 53.0],
@@ -3127,13 +3295,13 @@ class TestSummaryKindDataFrame:
             "b": [15.0, 25.0, 35.0, 45.0, 55.0],
         })
         y_pred_a = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "a": [12.0, 19.0, 28.0, 42.0, 48.0],
             "b": [14.0, 26.0, 33.0, 46.0, 53.0],
         })
         y_pred_b = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "a": [11.0, 21.0, 29.0, 41.0, 49.0],
             "b": [16.0, 24.0, 34.0, 44.0, 54.0],
@@ -3165,12 +3333,12 @@ class TestGroupScoresBoxKind:
         for ot in [datetime(2019, 12, 30), datetime(2019, 12, 31)]:
             for i in range(5):
                 rows.append({
-                    "observed_time": ot,
+                    "vintage_time": ot,
                     "time": times[i],
                     "region__east": [10.0, 20.0, 30.0, 40.0, 50.0][i] + 2.0,
                     "region__west": [15.0, 25.0, 35.0, 45.0, 55.0][i] + 1.0,
                 })
-        y_pred = pl.DataFrame(rows).sort("time", "observed_time")
+        y_pred = pl.DataFrame(rows).sort("time", "vintage_time")
         fig = plot_group_scores(
             MeanAbsoluteError(),
             y_truth,

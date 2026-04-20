@@ -121,7 +121,7 @@ class TestThreadSafetyObservePredict:
         for pred in results.values():
             assert len(pred) > 0
             assert "time" in pred.columns
-            assert "observed_time" in pred.columns
+            assert "vintage_time" in pred.columns
 
 
 class TestThreadSafetyTransformers:

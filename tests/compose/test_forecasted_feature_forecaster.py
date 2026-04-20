@@ -96,7 +96,7 @@ class TestBasicFitPredict:
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         assert "sales" in y_pred.columns
 

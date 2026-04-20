@@ -33,8 +33,8 @@ def check_point_prediction_structure(forecaster, y_test: pl.DataFrame, X_test: p
     forecasting_horizon = min(3, len(y_test))
     y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
-    # Should have observed_time, time, and target columns
-    assert "observed_time" in y_pred.columns, "Point predictions must have 'observed_time'"
+    # Should have vintage_time, time, and target columns
+    assert "vintage_time" in y_pred.columns, "Point predictions must have 'vintage_time'"
     assert "time" in y_pred.columns, "Point predictions must have 'time'"
 
     # Should NOT have interval columns
@@ -42,7 +42,7 @@ def check_point_prediction_structure(forecaster, y_test: pl.DataFrame, X_test: p
     assert len(interval_cols) == 0, f"Point predictions should not have interval columns, found: {interval_cols}"
 
     # Should have target columns
-    target_cols = [col for col in y_pred.columns if col not in ["observed_time", "time"]]
+    target_cols = [col for col in y_pred.columns if col not in ["vintage_time", "time"]]
     assert len(target_cols) > 0, "Point predictions must have at least one target column"
 
 

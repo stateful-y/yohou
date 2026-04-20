@@ -178,7 +178,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable.
 
         Raises
@@ -291,7 +291,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable.
 
         Raises

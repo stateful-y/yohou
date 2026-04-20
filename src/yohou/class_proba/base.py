@@ -176,7 +176,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Probability predictions with ``"observed_time"``, ``"time"``,
+            Probability predictions with ``"vintage_time"``, ``"time"``,
             and columns ``{target}_proba_{class_label}`` for each class.
 
         """
@@ -208,7 +208,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Probability predictions with ``"observed_time"``, ``"time"``,
+            Probability predictions with ``"vintage_time"``, ``"time"``,
             and columns ``{target}_proba_{class_label}`` for each class.
 
         Raises
@@ -306,7 +306,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable containing the most-likely class.
 
         Raises
@@ -344,7 +344,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         check_is_fitted(self, ["classes_"])
 
-        time_cols = [c for c in ("observed_time", "time") if c in y_proba.columns]
+        time_cols = [c for c in ("vintage_time", "time") if c in y_proba.columns]
         result = y_proba.select(time_cols)
 
         for target_col, class_labels in self.classes_.items():
@@ -383,7 +383,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         exprs = []
         for col in y_obs.columns:
-            if col in ("observed_time", "time"):
+            if col in ("vintage_time", "time"):
                 continue
             mapping = self.label_to_code_[col]
             exprs.append(pl.col(col).cast(pl.String).replace_strict(mapping, return_dtype=pl.Float64).alias(col))
@@ -526,7 +526,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Probability predictions with ``"observed_time"``, ``"time"``,
+            Probability predictions with ``"vintage_time"``, ``"time"``,
             and columns ``{target}_proba_{class_label}`` for each class.
 
         Raises
@@ -605,7 +605,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable containing the most-likely class.
 
         Raises

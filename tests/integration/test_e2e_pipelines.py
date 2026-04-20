@@ -513,7 +513,7 @@ class TestMultiStorePanelPipeline:
         # Check panel structure (inspect_panel excludes "time" from global_cols)
         global_cols, panel_groups = inspect_panel(y_pred)
         assert "time" in y_pred.columns
-        assert "observed_time" in global_cols
+        assert "vintage_time" in global_cols
         assert "sales" in panel_groups
         assert set(panel_groups["sales"]) == {"sales__store_1", "sales__store_2", "sales__store_3"}
 

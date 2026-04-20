@@ -120,7 +120,7 @@ class TestClassProbaReductionFitPredict:
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X_test[:3])
 
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 3  # 3 classes
@@ -215,7 +215,7 @@ class TestObservePredictClassProba:
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
 
         y_pred = forecaster.observe_predict_class_proba(y=y_test[:3], X=X_test[:3], forecasting_horizon=3)
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 3

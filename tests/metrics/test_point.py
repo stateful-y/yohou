@@ -80,7 +80,7 @@ def y_true_y_pred():
         "value": [10.0, 20.0, 30.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "value": [12.0, 19.0, 28.0],
     })
@@ -118,7 +118,7 @@ class TestSystematicChecks:
         y_test = y[80:]
 
         # Create predictions
-        y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("observed_time"))
+        y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("vintage_time"))
 
         # Fit scorer with training data
         scorer = RootMeanSquaredScaledError(seasonality=1)
@@ -145,7 +145,7 @@ class TestSystematicChecks:
         y_test = y[80:]
 
         # Create predictions
-        y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("observed_time"))
+        y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("vintage_time"))
 
         # Fit scorer with training data
         scorer = MeanAbsoluteScaledError(seasonality=1)
@@ -206,7 +206,7 @@ class TestRMSE:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [10.0, 20.0],
         })
@@ -224,7 +224,7 @@ class TestRMSE:
         # Create predictions with small errors
         y_pred = y.clone()
         y_pred = y_pred.with_columns([pl.col(col) + np.random.randn(50) * 2 for col in y_pred.columns if col != "time"])
-        y_pred = y_pred.with_columns(observed_time=pl.lit(y["time"][0]))
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y["time"][0]))
 
         rmse = RootMeanSquaredError()
         rmse.fit(y)
@@ -242,7 +242,7 @@ class TestRMSSE:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [12.0, 19.0],
         })
@@ -304,7 +304,7 @@ class TestRMSSE:
         })
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 20)] * 2,
+            "vintage_time": [datetime(2020, 1, 20)] * 2,
             "time": [datetime(2020, 1, 21), datetime(2020, 1, 22)],
             "target_0": [108.0, 113.0],
             "target_1": [51.0, 52.5],
@@ -329,7 +329,7 @@ class TestRMSSE:
 
         y_train = y[:80]
         y_test = y[80:85]
-        y_pred = y_test.clone().with_columns(observed_time=pl.lit(y_train["time"][-1]))
+        y_pred = y_test.clone().with_columns(vintage_time=pl.lit(y_train["time"][-1]))
 
         for seasonality in [1, 7, 12, 24]:
             rmsse = RootMeanSquaredScaledError(seasonality=seasonality)
@@ -354,7 +354,7 @@ class TestRMSSE:
         })
 
         # Perfect predictions
-        y_pred = y_test.clone().with_columns(observed_time=pl.lit(y_train["time"][-1]))
+        y_pred = y_test.clone().with_columns(vintage_time=pl.lit(y_train["time"][-1]))
 
         rmsse = RootMeanSquaredScaledError(seasonality=2)
         rmsse.fit(y_train)
@@ -380,14 +380,14 @@ class TestRMSSE:
 
         # Good predictions (match pattern)
         y_pred_good = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [10.5, 19.5],  # Close to true pattern
         })
 
         # Bad predictions (opposite pattern)
         y_pred_bad = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [20.0, 10.0],  # Reversed pattern
         })
@@ -437,7 +437,7 @@ class TestIntegration:
         y_pred = y_test.clone()
         errors = np.array([1.0, -2.0, 1.5, -1.5, 2.0])  # Known errors
         y_pred = y_pred.with_columns([(pl.col(col) + errors).alias(col) for col in y_pred.columns if col != "time"])
-        y_pred = y_pred.with_columns(observed_time=pl.lit(y_train["time"][-1]))
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y_train["time"][-1]))
 
         mae = MeanAbsoluteError()
         mse = MeanSquaredError()
@@ -571,7 +571,7 @@ class TestComponentwise:
         })
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 3,
+            "vintage_time": [datetime(2020, 1, 10)] * 3,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12), datetime(2020, 1, 13)],
             "value": [15.5, 16.0, 16.5],
         })
@@ -613,7 +613,7 @@ class TestComponentwise:
         # Create predictions with small errors
         y_pred = y_test.clone()
         y_pred = y_pred.with_columns([(pl.col(col) + 1.0).alias(col) for col in y_pred.columns if col != "time"])
-        y_pred = y_pred.with_columns(observed_time=pl.lit(y_train["time"][-1]))
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y_train["time"][-1]))
 
         # Test MeanAbsoluteError componentwise with multiple columns
         mae = MeanAbsoluteError(aggregation_method=["componentwise"])
@@ -677,7 +677,7 @@ class TestMAPE:
             "value": [0.0],  # Zero actual
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value": [10.0],
         })
@@ -701,7 +701,7 @@ class TestMAPE:
             "value": [100.0, 200.0],
         })
         y_pred_1 = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [110.0, 210.0],
         })
@@ -743,13 +743,13 @@ class TestSMAPE:
         })
         # Perfect predictions
         y_pred_perfect = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [100.0, 200.0],
         })
         # Worst case: predict zero
         y_pred_worst = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [0.0, 0.0],
         })
@@ -772,7 +772,7 @@ class TestSMAPE:
             "value": [0.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value": [0.0],
         })
@@ -801,7 +801,7 @@ class TestMASE:
         })
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [15.5, 16.5],
         })
@@ -822,7 +822,7 @@ class TestMASE:
             "value": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value": [12.0],
         })
@@ -868,7 +868,7 @@ class TestMASE:
             "value": [15.0, 17.0],
         })
         y_pred_1 = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [15.5, 16.5],
         })
@@ -899,7 +899,7 @@ class TestMedianAbsoluteError:
             "value": [10.0, 20.0, 30.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
             "value": [12.0, 19.0, 28.0],
         })
@@ -922,7 +922,7 @@ class TestMedianAbsoluteError:
         })
         # One large outlier
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
             "value": [11.0, 21.0, 31.0, 41.0, 100.0],  # Last one is outlier
         })
@@ -948,7 +948,7 @@ class TestRMSEStepwiseVintagewise:
         y, _ = scorer_data_factory(length=20, n_targets=3, n_features=0, seed=42)
         y_test = y[15:]
         y_pred = y_test.with_columns([(pl.col(c) + 2.0).alias(c) for c in y_test.columns if c != "time"]).with_columns(
-            observed_time=pl.lit(y["time"][14])
+            vintage_time=pl.lit(y["time"][14])
         )
 
         rmse = RootMeanSquaredError(aggregation_method=["stepwise", "vintagewise"])
@@ -971,7 +971,7 @@ class TestRMSEStepwiseVintagewise:
             "value": [15.0, 17.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [15.5, 16.5],
         })
@@ -996,7 +996,7 @@ class TestMAETimeWeight:
             "value": [10.0, 20.0, 30.0, 40.0, 50.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
             "value": [11.0, 21.0, 31.0, 41.0, 51.0],
         })
@@ -1018,7 +1018,7 @@ class TestMAETimeWeight:
             "value": [10.0, 20.0, 30.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": times,
             "value": [12.0, 19.0, 28.0],
         })

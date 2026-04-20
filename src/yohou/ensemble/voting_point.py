@@ -238,7 +238,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         Returns
         -------
         pl.DataFrame
-            Aggregated predictions with ``"observed_time"``, ``"time"``,
+            Aggregated predictions with ``"vintage_time"``, ``"time"``,
             and target columns.
 
         """
@@ -258,7 +258,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
             )
             predictions.append(y_pred)
 
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
         return self._aggregate_values(predictions, target_cols, self.method, self.weights_)
 
     def observe_predict(
@@ -317,7 +317,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
             )
             predictions.append(y_pred)
 
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
         return self._aggregate_values(predictions, target_cols, self.method, self.weights_)
 
     def get_metadata_routing(self) -> MetadataRouter:

@@ -331,7 +331,7 @@ class _BaseEnsembleForecaster:
             Aggregated predictions with time columns.
 
         """
-        time_cols = [c for c in ("observed_time", "time") if c in predictions[0].columns]
+        time_cols = [c for c in ("vintage_time", "time") if c in predictions[0].columns]
         time_df = predictions[0].select(time_cols)
 
         agg_exprs = []
@@ -377,7 +377,7 @@ class _BaseEnsembleForecaster:
             Aggregated interval predictions.
 
         """
-        time_cols = [c for c in ("observed_time", "time") if c in predictions[0].columns]
+        time_cols = [c for c in ("vintage_time", "time") if c in predictions[0].columns]
         time_df = predictions[0].select(time_cols)
 
         agg_exprs = []

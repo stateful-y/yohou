@@ -33,7 +33,7 @@ def y_truth():
 def y_pred():
     """Generate prediction data."""
     return pl.DataFrame({
-        "observed_time": [datetime(2020, 1, 1)] * 10,
+        "vintage_time": [datetime(2020, 1, 1)] * 10,
         "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
         "value": [i + 0.1 for i in range(10)],
     })

@@ -558,7 +558,9 @@ class TestScorerAggregation:
             # Componentwise aggregates over components, returns per-timestep scores
             assert isinstance(score, pl.DataFrame)
             assert "time" in score.columns
-            assert "score" in score.columns or len([c for c in score.columns if c != "time"]) == 1
+            meta_cols = {"time", "vintage_time", "forecasting_step", "coverage_rate"}
+            value_cols = [c for c in score.columns if c not in meta_cols]
+            assert "score" in value_cols or len(value_cols) == 1
             assert len(score) == 5  # 5 timesteps
 
 

@@ -80,7 +80,7 @@ class MeanAbsoluteError(BasePointScorer):
     ...     "value": [10.0, 20.0, 30.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0],
     ... })
@@ -177,7 +177,7 @@ class MeanSquaredError(BasePointScorer):
     ...     "value": [10.0, 20.0, 30.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0],
     ... })
@@ -274,7 +274,7 @@ class RootMeanSquaredError(BasePointScorer):
     ...     "value": [10.0, 20.0, 30.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0],
     ... })
@@ -395,7 +395,7 @@ class RootMeanSquaredScaledError(BasePointScorer):
     ...     "value": [15.0, 17.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2020, 1, 10)] * 2,
+    ...     "vintage_time": [datetime(2020, 1, 10)] * 2,
     ...     "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
     ...     "value": [15.5, 16.5],
     ... })
@@ -580,7 +580,7 @@ class MeanAbsolutePercentageError(BasePointScorer):
     ...     "value": [10.0, 20.0, 30.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0],
     ... })
@@ -689,7 +689,7 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
     ...     "value": [10.0, 20.0, 30.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0],
     ... })
@@ -812,7 +812,7 @@ class MeanAbsoluteScaledError(BasePointScorer):
     ...     "value": [15.0, 17.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2020, 1, 10)] * 2,
+    ...     "vintage_time": [datetime(2020, 1, 10)] * 2,
     ...     "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
     ...     "value": [15.5, 16.5],
     ... })
@@ -987,7 +987,7 @@ class MedianAbsoluteError(BasePointScorer):
     ...     "value": [10.0, 20.0, 30.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0],
     ... })
