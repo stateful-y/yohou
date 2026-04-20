@@ -1,4 +1,4 @@
-"""Tests for component_weight and step_weight parameters."""
+"""Tests for weight dimension parameters (components, groups, step/vintage/time weights)."""
 
 from datetime import datetime, timedelta
 
@@ -6,7 +6,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from yohou.metrics import MeanAbsoluteError
+from yohou.metrics import IntervalScore, MeanAbsoluteError
 
 
 @pytest.fixture()
@@ -660,3 +660,293 @@ class TestNormalizeAggMethodsAll:
 
         modes = BasePointScorer._normalize_agg_methods("all", include_coveragewise=True)
         assert "coveragewise" in modes
+
+
+# ---------------------------------------------------------------------------
+# Interval scorer: time_weight + step_weight / vintage_weight with coverage rates
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def interval_train():
+    """Training data for interval scorer tests."""
+    return pl.DataFrame({
+        "time": [datetime(2024, 1, i) for i in range(1, 11)],
+        "value": [float(i) for i in range(10)],
+    })
+
+
+@pytest.fixture()
+def interval_multi_rate():
+    """Interval predictions with two coverage rates (0.9 and 0.95)."""
+    times = [datetime(2024, 1, 11), datetime(2024, 1, 12), datetime(2024, 1, 13)]
+    y_true = pl.DataFrame({
+        "time": times,
+        "value": [10.0, 20.0, 30.0],
+    })
+    y_pred = pl.DataFrame({
+        "observed_time": [datetime(2024, 1, 10)] * 3,
+        "time": times,
+        "value_lower_0.9": [8.0, 18.0, 28.0],
+        "value_upper_0.9": [12.0, 22.0, 32.0],
+        "value_lower_0.95": [7.0, 17.0, 27.0],
+        "value_upper_0.95": [13.0, 23.0, 33.0],
+    })
+    return y_true, y_pred
+
+
+@pytest.fixture()
+def interval_multi_vintage():
+    """Multi-vintage interval predictions (2 vintages x 2 steps, single rate)."""
+    base = datetime(2024, 1, 10)
+    y_true = pl.DataFrame({
+        "time": [base + timedelta(days=i) for i in range(1, 5)],
+        "value": [10.0, 20.0, 30.0, 40.0],
+    })
+    y_pred = pl.DataFrame({
+        "observed_time": [
+            base,
+            base,
+            base + timedelta(days=1),
+            base + timedelta(days=1),
+        ],
+        "time": [
+            base + timedelta(days=1),
+            base + timedelta(days=2),
+            base + timedelta(days=2),
+            base + timedelta(days=3),
+        ],
+        "value_lower_0.9": [8.0, 18.0, 17.0, 27.0],
+        "value_upper_0.9": [12.0, 22.0, 23.0, 33.0],
+    })
+    return y_true, y_pred
+
+
+class TestIntervalTimeWeight:
+    """Time weight applied to interval scorers."""
+
+    def test_constant_time_weight_matches_default(self, interval_train, interval_multi_rate):
+        """Uniform time weights reproduce the unweighted score."""
+        y_true, y_pred = interval_multi_rate
+
+        scorer = IntervalScore()
+        scorer.fit(interval_train)
+        default = scorer.score(y_true, y_pred)
+
+        scorer_tw = IntervalScore()
+        scorer_tw.fit(interval_train)
+        scorer_tw.set_score_request(time_weight=True)
+        weighted = scorer_tw.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series("w", [1.0] * len(t)),
+        )
+
+        np.testing.assert_allclose(weighted, default, atol=1e-10)
+
+    def test_time_weight_changes_interval_score(self, interval_train):
+        """Non-uniform time weights change the interval score."""
+        # Use asymmetric intervals so different timesteps have different scores
+        times = [datetime(2024, 1, 11), datetime(2024, 1, 12), datetime(2024, 1, 13)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2024, 1, 10)] * 3,
+            "time": times,
+            "value_lower_0.9": [8.0, 15.0, 28.0],  # 2nd point outside interval
+            "value_upper_0.9": [12.0, 18.0, 32.0],
+        })
+
+        scorer = IntervalScore()
+        scorer.fit(interval_train)
+        default = scorer.score(y_true, y_pred)
+
+        scorer_tw = IntervalScore()
+        scorer_tw.fit(interval_train)
+        scorer_tw.set_score_request(time_weight=True)
+        # Weight the outlier timestep heavily
+        weighted = scorer_tw.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series("w", [1.0, 10.0, 1.0][: len(t)]),
+        )
+
+        assert not np.isclose(weighted, default, atol=1e-10)
+
+
+class TestIntervalStepWeight:
+    """Step and vintage weights with interval data and multiple coverage rates."""
+
+    def test_step_weight_with_multi_vintage(self, interval_train):
+        """Step weight changes result for asymmetric per-step errors."""
+        base = datetime(2024, 1, 10)
+        y_true = pl.DataFrame({
+            "time": [base + timedelta(days=i) for i in range(1, 5)],
+            "value": [10.0, 20.0, 30.0, 40.0],
+        })
+        # Asymmetric: step 1 has tight intervals, step 2 has wide intervals
+        y_pred = pl.DataFrame({
+            "observed_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+            ],
+            "value_lower_0.9": [9.0, 10.0, 19.0, 20.0],
+            "value_upper_0.9": [11.0, 30.0, 21.0, 50.0],
+        })
+
+        scorer = IntervalScore()
+        scorer.fit(interval_train)
+        default = scorer.score(y_true, y_pred)
+
+        scorer_sw = IntervalScore()
+        scorer_sw.fit(interval_train)
+        result = scorer_sw.score(y_true, y_pred, step_weight={1: 5.0, 2: 1.0})
+
+        assert isinstance(result, float)
+        assert not np.isclose(result, default, atol=1e-10)
+
+    def test_vintage_weight_with_interval(self, interval_train, interval_multi_vintage):
+        """Vintage weight applied to interval scorer multi-vintage data."""
+        y_true, y_pred = interval_multi_vintage
+        base = datetime(2024, 1, 10)
+
+        scorer = IntervalScore()
+        scorer.fit(interval_train)
+        result = scorer.score(
+            y_true,
+            y_pred,
+            vintage_weight={base: 5.0, base + timedelta(days=1): 1.0},
+        )
+
+        assert isinstance(result, float)
+
+    def test_equal_step_weight_matches_default(self, interval_train, interval_multi_vintage):
+        """Equal step weights reproduce the unweighted score."""
+        y_true, y_pred = interval_multi_vintage
+
+        scorer = IntervalScore()
+        scorer.fit(interval_train)
+        default = scorer.score(y_true, y_pred)
+
+        scorer_eq = IntervalScore()
+        scorer_eq.fit(interval_train)
+        result = scorer_eq.score(y_true, y_pred, step_weight={1: 1.0, 2: 1.0})
+
+        np.testing.assert_allclose(result, default, atol=1e-10)
+
+
+class TestIntervalCoverageWeight:
+    """Coverage weight via dict coverage parameter with weighted collapse."""
+
+    def test_equal_coverage_weights_match_default(self, interval_train, interval_multi_rate):
+        """Equal coverage weights reproduce the unweighted coveragewise collapse."""
+        y_true, y_pred = interval_multi_rate
+
+        scorer = IntervalScore()
+        scorer.fit(interval_train)
+        default = scorer.score(y_true, y_pred)
+
+        scorer_cw = IntervalScore(coverage={0.9: 1.0, 0.95: 1.0})
+        scorer_cw.fit(interval_train)
+        weighted = scorer_cw.score(y_true, y_pred)
+
+        np.testing.assert_allclose(weighted, default, atol=1e-10)
+
+    def test_coverage_weight_shifts_score(self, interval_train, interval_multi_rate):
+        """Unequal coverage weights shift the score toward the heavier rate."""
+        y_true, y_pred = interval_multi_rate
+
+        scorer_heavy_90 = IntervalScore(coverage={0.9: 10.0, 0.95: 1.0})
+        scorer_heavy_90.fit(interval_train)
+        heavy_90 = scorer_heavy_90.score(y_true, y_pred)
+
+        scorer_heavy_95 = IntervalScore(coverage={0.9: 1.0, 0.95: 10.0})
+        scorer_heavy_95.fit(interval_train)
+        heavy_95 = scorer_heavy_95.score(y_true, y_pred)
+
+        assert not np.isclose(heavy_90, heavy_95, atol=1e-10)
+
+
+class TestIntervalPanelTimeWeight:
+    """Time weight applied to interval scorer with panel-prefixed columns."""
+
+    def test_panel_interval_time_weight(self):
+        """Time weight works on panel interval data (exercises panel branch)."""
+        times = [datetime(2024, 1, 11), datetime(2024, 1, 12), datetime(2024, 1, 13)]
+        y_train = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 11)],
+            "g1__val": [float(i) for i in range(10)],
+            "g2__val": [float(i) * 2 for i in range(10)],
+        })
+        y_true = pl.DataFrame({
+            "time": times,
+            "g1__val": [10.0, 20.0, 30.0],
+            "g2__val": [20.0, 40.0, 60.0],
+        })
+        y_pred = pl.DataFrame({
+            "observed_time": [datetime(2024, 1, 10)] * 3,
+            "time": times,
+            "g1__val_lower_0.9": [8.0, 15.0, 28.0],
+            "g1__val_upper_0.9": [12.0, 18.0, 32.0],
+            "g2__val_lower_0.9": [18.0, 35.0, 58.0],
+            "g2__val_upper_0.9": [22.0, 42.0, 62.0],
+        })
+
+        scorer = IntervalScore()
+        scorer.fit(y_train)
+        default = scorer.score(y_true, y_pred)
+
+        scorer_tw = IntervalScore()
+        scorer_tw.fit(y_train)
+        scorer_tw.set_score_request(time_weight=True)
+        weighted = scorer_tw.score(
+            y_true,
+            y_pred,
+            time_weight=lambda t: pl.Series("w", [1.0, 10.0, 1.0][: len(t)]),
+        )
+
+        assert isinstance(weighted, float)
+        assert not np.isclose(weighted, default, atol=1e-10)
+
+
+class TestIntervalMultiRateStepWeight:
+    """Step/vintage weight tiling across multiple coverage rate blocks."""
+
+    def test_step_weight_tiles_across_rates(self):
+        """Step weight tiles correctly when multiple coverage rates exist."""
+        base = datetime(2024, 1, 10)
+        y_train = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 11)],
+            "value": [float(i) for i in range(10)],
+        })
+        y_true = pl.DataFrame({
+            "time": [base + timedelta(days=i) for i in range(1, 5)],
+            "value": [10.0, 20.0, 30.0, 40.0],
+        })
+        # 2 vintages x 2 steps, with 2 coverage rates
+        y_pred = pl.DataFrame({
+            "observed_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+            ],
+            "value_lower_0.9": [9.0, 10.0, 19.0, 20.0],
+            "value_upper_0.9": [11.0, 30.0, 21.0, 50.0],
+            "value_lower_0.95": [8.0, 5.0, 18.0, 15.0],
+            "value_upper_0.95": [12.0, 35.0, 22.0, 55.0],
+        })
+
+        scorer = IntervalScore()
+        scorer.fit(y_train)
+        default = scorer.score(y_true, y_pred)
+
+        scorer_sw = IntervalScore()
+        scorer_sw.fit(y_train)
+        result = scorer_sw.score(y_true, y_pred, step_weight={1: 5.0, 2: 1.0})
+
+        assert isinstance(result, float)
+        assert not np.isclose(result, default, atol=1e-10)

@@ -39,7 +39,7 @@ def _(mo):
     - `"componentwise"`: per-group over time (aggregate members within each panel group)
     - `"groupwise"`: per-component over time (aggregate across panel groups)
     - `"coveragewise"`: aggregate over coverage rates (interval scorers only)
-    - Combining modes and `group_weight` for weighted aggregation
+    - Combining modes and `groups` (dict) for weighted aggregation
     """)
 
 
@@ -260,11 +260,11 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7. `group_weight`: Weighted Group Aggregation
+    ## 7. Weighted Group Aggregation via `groups`
 
-    Pass a dictionary of group weights to emphasise certain stations during
-    `"all"` aggregation. This is useful when some monitoring stations are
-    more critical than others.
+    Pass `groups` as a dictionary of `{name: weight}` to emphasise certain
+    stations during `"all"` aggregation. This is useful when some monitoring
+    stations are more critical than others.
     """)
 
 
@@ -272,7 +272,7 @@ def _(mo):
 def _(MeanAbsoluteError, groups, mo, y_pred, y_test, y_train):
     _group_names = sorted(groups.keys())
     _weights = {_group_names[0]: 5.0}
-    _scorer_w = MeanAbsoluteError(aggregation_method="all", group_weight=_weights)
+    _scorer_w = MeanAbsoluteError(aggregation_method="all", groups=_weights)
     _scorer_u = MeanAbsoluteError(aggregation_method="all")
 
     _scorer_w.fit(y_train)
@@ -371,7 +371,7 @@ def _(mo):
     - **Multivariate panel** groups are essential for seeing the difference
       between `"componentwise"` (pollutants → stations) and `"groupwise"`
       (stations → pollutants).
-    - **`group_weight`**: Weight groups differently during `"all"`
+    - **`groups`** (dict): Weight groups differently during `"all"`
       aggregation.
     - **Combine modes** as a list (e.g., `["stepwise", "vintagewise", "componentwise"]`) to
       aggregate over multiple dimensions at once.
