@@ -296,11 +296,15 @@ class TestVintageWeight:
 
         mae_equal = MeanAbsoluteError()
         mae_equal.fit(y_train)
-        result_equal = mae_equal.score(y_true, y_pred, vintage_weight={
+        result_equal = mae_equal.score(
+            y_true,
+            y_pred,
+            vintage_weight={
                 base: 1.0,
                 base + timedelta(days=1): 1.0,
                 base + timedelta(days=2): 1.0,
-            })
+            },
+        )
 
         np.testing.assert_allclose(result_default, result_equal, atol=1e-10)
 
@@ -355,11 +359,15 @@ class TestVintageWeight:
 
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true_diff, y_pred_diff, vintage_weight={
+        result = mae.score(
+            y_true_diff,
+            y_pred_diff,
+            vintage_weight={
                 base: 0.0,
                 base + timedelta(days=1): 1.0,
                 base + timedelta(days=2): 1.0,
-            })
+            },
+        )
 
         np.testing.assert_allclose(result, 1.5, atol=1e-10)
 
@@ -389,11 +397,15 @@ class TestVintageWeight:
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, vintage_weight={
-            datetime(2024, 1, 10): 1.0,
-            datetime(2024, 1, 11): 1.0,
-            datetime(2024, 1, 12): 1.0,
-        })
+        result = mae.score(
+            y_true,
+            y_pred,
+            vintage_weight={
+                datetime(2024, 1, 10): 1.0,
+                datetime(2024, 1, 11): 1.0,
+                datetime(2024, 1, 12): 1.0,
+            },
+        )
         assert isinstance(result, float)
 
     def test_step_and_vintage_weight_combined(self, y_train, multi_vintage_data):
@@ -409,11 +421,15 @@ class TestVintageWeight:
         # Use only vintage_weight (equal)
         mae_vintage = MeanAbsoluteError()
         mae_vintage.fit(y_train)
-        result_vintage = mae_vintage.score(y_true, y_pred, vintage_weight={
+        result_vintage = mae_vintage.score(
+            y_true,
+            y_pred,
+            vintage_weight={
                 base: 1.0,
                 base + timedelta(days=1): 1.0,
                 base + timedelta(days=2): 1.0,
-            })
+            },
+        )
 
         # Equal vintage weights shouldn't change from default
         mae_default = MeanAbsoluteError()
@@ -598,7 +614,9 @@ class TestCombineRowWeightsBranches:
 
         mae_both = MeanAbsoluteError()
         mae_both.fit(y_train)
-        result_both = mae_both.score(y_true, y_pred,
+        result_both = mae_both.score(
+            y_true,
+            y_pred,
             step_weight={1: 2.0, 2: 1.0},
             vintage_weight={base: 3.0, base + timedelta(days=1): 1.0},
         )
@@ -611,7 +629,9 @@ class TestCombineRowWeightsBranches:
 
         mae_vin = MeanAbsoluteError()
         mae_vin.fit(y_train)
-        result_vin = mae_vin.score(y_true, y_pred,
+        result_vin = mae_vin.score(
+            y_true,
+            y_pred,
             vintage_weight={base: 3.0, base + timedelta(days=1): 1.0},
         )
 

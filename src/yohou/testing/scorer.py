@@ -213,10 +213,11 @@ def check_scorer_prediction_type_compatibility(
     y_truth = y.filter(pl.col("time").is_in(pred_times.to_list()))
     if len(y_truth) == 0:
         value_cols = [c for c in y.columns if c != "time"]
-        y_truth = pl.DataFrame({
-            "time": pred_times,
-            **{col: [float(y[col].mean()) if y[col].dtype.is_numeric() else y[col][0]] * len(pred_times) for col in value_cols},
-        })
+        rows: dict[str, list] = {"time": pred_times.to_list()}
+        for col in value_cols:
+            val = y[col].mean() if y[col].dtype.is_numeric() else y[col][0]
+            rows[col] = [val] * len(pred_times)
+        y_truth = pl.DataFrame(rows)
 
     # Score should work
     try:

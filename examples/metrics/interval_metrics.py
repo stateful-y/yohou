@@ -162,7 +162,7 @@ def _(mo):
 
 @app.cell
 def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
-    ec = EmpiricalCoverage(coverage_rates=[0.9])
+    ec = EmpiricalCoverage(coverage=[0.9])
     ec.fit(y_train)
     coverage_result = ec.score(y_test, y_pred_int)
     print("Empirical Coverage:")
@@ -181,7 +181,7 @@ def _(
     y_test,
 ):
     plot_score_time_series(
-        EmpiricalCoverage(coverage_rates=coverage_rates),
+        EmpiricalCoverage(coverage=coverage_rates),
         y_test,
         y_pred_int,
         title="Empirical Coverage for an Expected Coverage of 90% per Timestep",
@@ -200,7 +200,7 @@ def _(mo):
 
 @app.cell
 def _(IntervalScore, y_pred_int, y_test, y_train):
-    is_scorer = IntervalScore(coverage_rates=[0.9])
+    is_scorer = IntervalScore(coverage=[0.9])
     is_scorer.fit(y_train)
     is_result = is_scorer.score(y_test, y_pred_int)
     print(f"Interval Score: {is_result}")
@@ -215,7 +215,7 @@ def _(
     y_test,
 ):
     plot_score_time_series(
-        IntervalScore(coverage_rates=coverage_rates),
+        IntervalScore(coverage=coverage_rates),
         y_test,
         y_pred_int,
         title="Interval Score per Timestep",
@@ -234,7 +234,7 @@ def _(mo):
 
 @app.cell
 def _(MeanIntervalWidth, y_pred_int, y_test, y_train):
-    miw = MeanIntervalWidth(coverage_rates=[0.9])
+    miw = MeanIntervalWidth(coverage=[0.9])
     miw.fit(y_train)
     width_result = miw.score(y_test, y_pred_int)
     print(f"Mean Interval Width: {width_result}")
@@ -249,7 +249,7 @@ def _(
     y_test,
 ):
     plot_score_time_series(
-        MeanIntervalWidth(coverage_rates=coverage_rates),
+        MeanIntervalWidth(coverage=coverage_rates),
         y_test,
         y_pred_int,
         title="Mean Interval Width per Timestep",
@@ -280,12 +280,12 @@ def _(
     y_test,
     y_train,
 ):
-    pb = PinballLoss(coverage_rates=[0.9])
+    pb = PinballLoss(coverage=[0.9])
     pb.fit(y_train)
     pinball_result = pb.score(y_test, y_pred_int)
     print(f"Pinball Loss: {pinball_result}")
 
-    ce = CalibrationError(coverage_rates=coverage_rates)
+    ce = CalibrationError(coverage=coverage_rates)
     ce.fit(y_train)
     cal_result = ce.score(y_test, y_pred_int)
     print(f"Calibration Error: {cal_result}")
@@ -294,7 +294,7 @@ def _(
 @app.cell
 def _(PinballLoss, coverage_rates, plot_score_time_series, y_pred_int, y_test):
     plot_score_time_series(
-        PinballLoss(coverage_rates=coverage_rates),
+        PinballLoss(coverage=coverage_rates),
         y_test,
         y_pred_int,
         title="Pinball Loss per Timestep",
@@ -314,7 +314,7 @@ def _(mo):
 @app.cell
 def _(EmpiricalCoverage, coverage_rates, y_pred_int, y_test, y_train):
     ec_cw = EmpiricalCoverage(
-        coverage_rates=coverage_rates,
+        coverage=coverage_rates,
         aggregation_method="coveragewise",
     )
     ec_cw.fit(y_train)

@@ -174,7 +174,7 @@ def _(
     y_train,
 ):
     for _scorer_cls in [EmpiricalCoverage, IntervalScore, MeanIntervalWidth]:
-        scorer = _scorer_cls(coverage_rates=coverage_rates)
+        scorer = _scorer_cls(coverage=coverage_rates)
         scorer.fit(y_train)
         score = scorer.score(y_test, y_pred_int)
         print(f"{_scorer_cls.__name__}: {score}")
@@ -266,7 +266,7 @@ def _(
     _rates = []
     _widths = []
     for rate in many_rates:
-        _width_scorer = MeanIntervalWidth(coverage_rates=[rate])
+        _width_scorer = MeanIntervalWidth(coverage=[rate])
         _width_scorer.fit(y_train)
         _rates.append(f"{rate:.0%}")
         _widths.append(_width_scorer.score(y_test, y_pred_many))

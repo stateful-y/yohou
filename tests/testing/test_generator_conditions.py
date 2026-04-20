@@ -552,7 +552,7 @@ class TestSearchGeneratorConditions:
                 calibration_size=20,
             ),
             param_grid={"point_forecaster__seasonality": [1, 5]},
-            scoring=IntervalScore(coverage_rates=[0.9]),
+            scoring=IntervalScore(coverage=[0.9]),
             cv=2,
         )
         search.fit(y[:180], forecasting_horizon=3)
@@ -604,7 +604,7 @@ class TestSearchGeneratorConditions:
                 calibration_size=20,
             ),
             param_grid={"point_forecaster__seasonality": [1, 5]},
-            scoring=IntervalScore(coverage_rates=[0.9]),
+            scoring=IntervalScore(coverage=[0.9]),
             cv=2,
         )
         search.fit(y[:180], forecasting_horizon=3)

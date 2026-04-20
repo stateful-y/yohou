@@ -240,20 +240,19 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         if cw is not None:
             df = df.with_columns(
-                pl.col("coverage_rate")
+                pl
+                .col("coverage_rate")
                 .replace_strict(
                     {r: cw.get(r, 1.0) for r in df["coverage_rate"].unique().to_list()},
                     default=1.0,
                 )
                 .alias("_cw")
             )
-            result = df.group_by(group_cols, maintain_order=True).agg(
-                [(pl.col(c) * pl.col("_cw")).sum() / pl.col("_cw").sum() for c in val_cols]
-            )
+            result = df.group_by(group_cols, maintain_order=True).agg([
+                (pl.col(c) * pl.col("_cw")).sum() / pl.col("_cw").sum() for c in val_cols
+            ])
         else:
-            result = df.group_by(group_cols, maintain_order=True).agg(
-                [pl.col(c).mean() for c in val_cols]
-            )
+            result = df.group_by(group_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
 
         return result.sort("_row_idx").drop("_row_idx")
 
@@ -281,9 +280,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         if collapse_steps and collapse_vintages:
             if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg(
-                    [pl.col(c).mean() for c in val_cols]
-                )
+                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
             return df.select(pl.all().mean())
 
         # Partial collapse: keep one dimension, collapse the other
@@ -292,9 +289,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         if dim_values is None:
             if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg(
-                    [pl.col(c).mean() for c in val_cols]
-                )
+                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
             return df.select(pl.all().mean())
 
         # Tile context values for interval data (coverage_rate repeats rows)
@@ -306,7 +301,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         group_cols = [keep_dim] + meta_cols
 
         return (
-            df.with_columns(pl.Series(keep_dim, dim_list))
+            df
+            .with_columns(pl.Series(keep_dim, dim_list))
             .group_by(group_cols, maintain_order=True)
             .agg([pl.col(c).mean() for c in val_cols])
             .sort(keep_dim)
@@ -338,7 +334,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     unprefixed = [c.split("__", 1)[1] for c in group_cols]
                     weights = [cw.get(n, 1.0) for n in unprefixed]
                     total = sum(weights)
-                    weighted = pl.sum_horizontal([pl.col(c) * (w / total) for c, w in zip(group_cols, weights, strict=True)])
+                    weighted = pl.sum_horizontal([
+                        pl.col(c) * (w / total) for c, w in zip(group_cols, weights, strict=True)
+                    ])
                 else:
                     weighted = pl.sum_horizontal([pl.col(c) for c in group_cols]) / len(group_cols)
                 new_cols.append(weighted.alias(f"{group_name}__score"))
@@ -375,25 +373,25 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         # Add time labels if rows are NOT fully collapsed and no row label exists yet
         has_row_label = any(c in existing_labels for c in ("forecasting_step", "observed_time", "time"))
-        if not rows_collapsed and not has_row_label:
-            if context is not None and context.time_values is not None:
-                time_values = context.time_values
-                if "coverage_rate" in result.columns:
-                    # Tile time values for each coverage rate
-                    n_rates = result["coverage_rate"].n_unique()
-                    if len(time_values) * n_rates == len(result):
-                        tiled_times = time_values * n_rates
-                        result = result.with_columns(
-                            pl.Series("time", tiled_times).cast(pl.Datetime)
-                        )
-                        # Reorder: time first, then all others
-                        cols = ["time"] + [c for c in result.columns if c != "time"]
-                        result = result.select(cols)
-                elif len(time_values) == len(result):
-                    result = pl.concat([
+        if not rows_collapsed and not has_row_label and context is not None and context.time_values is not None:
+            time_values = context.time_values
+            if "coverage_rate" in result.columns:
+                # Tile time values for each coverage rate
+                n_rates = result["coverage_rate"].n_unique()
+                if len(time_values) * n_rates == len(result):
+                    tiled_times = time_values * n_rates
+                    result = result.with_columns(pl.Series("time", tiled_times).cast(pl.Datetime))
+                    # Reorder: time first, then all others
+                    cols = ["time"] + [c for c in result.columns if c != "time"]
+                    result = result.select(cols)
+            elif len(time_values) == len(result):
+                result = pl.concat(
+                    [
                         pl.DataFrame({"time": time_values}).cast({"time": pl.Datetime}),
                         result,
-                    ], how="horizontal")
+                    ],
+                    how="horizontal",
+                )
 
         # Re-check for labels after potential time label addition
         existing_labels = [c for c in result.columns if c in meta_names]
@@ -401,17 +399,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         # Scalar: only when ALL spatial dimensions are collapsed
         # (i.e., stepwise+vintagewise+componentwise+groupwise all in dims, and no remaining labels)
-        all_spatial_collapsed = (
-            "stepwise" in dims
-            and "vintagewise" in dims
-            and "componentwise" in dims
-        )
+        all_spatial_collapsed = "stepwise" in dims and "vintagewise" in dims and "componentwise" in dims
         # A single-value coverage_rate is trivial metadata when all other dims are collapsed
-        if (
-            all_spatial_collapsed
-            and existing_labels == ["coverage_rate"]
-            and len(result) == 1
-        ):
+        if all_spatial_collapsed and existing_labels == ["coverage_rate"] and len(result) == 1:
             existing_labels = []
             result = result.drop("coverage_rate")
             value_cols = [c for c in result.columns if c not in meta_names]
@@ -473,8 +463,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
             if len(weights_series) != n_rows:
                 raise ValueError(
-                    f"time_weight callable returned {len(weights_series)} weights, "
-                    f"but expected {n_rows} rows"
+                    f"time_weight callable returned {len(weights_series)} weights, but expected {n_rows} rows"
                 )
 
             weights_np = weights_series.to_numpy()
@@ -1129,9 +1118,7 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         # 2b. Apply step/vintage row weights (pre-aggregation)
         row_weights = self._build_row_weights(context, len(scores), step_weight, vintage_weight)
         if row_weights is not None:
-            scores = scores.with_columns(
-                [(pl.col(col) * row_weights).alias(col) for col in scores.columns]
-            )
+            scores = scores.with_columns([(pl.col(col) * row_weights).alias(col) for col in scores.columns])
 
         # 3. Aggregate
         result = self._aggregate_scores(scores, context=context)
@@ -1413,30 +1400,20 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             n_rates = raw_scores["coverage_rate"].n_unique() if "coverage_rate" in raw_scores.columns else 1
             n_rows_per_rate = len(raw_scores) // max(n_rates, 1)
 
-            _, panel_groups = inspect_panel(
-                raw_scores.select(value_cols)
-            )
+            _, panel_groups = inspect_panel(raw_scores.select(value_cols))
             time_values = context.time_values
 
             if len(panel_groups) > 0:
                 for group_name, group_cols in panel_groups.items():
-                    tw_vec = self._compute_time_weight_vector(
-                        time_weight, time_values, n_rows_per_rate, group_name
-                    )
+                    tw_vec = self._compute_time_weight_vector(time_weight, time_values, n_rows_per_rate, group_name)
                     if tw_vec is not None:
                         tiled = np.tile(tw_vec, n_rates) if n_rates > 1 else tw_vec
-                        raw_scores = raw_scores.with_columns(
-                            [(pl.col(col) * tiled).alias(col) for col in group_cols]
-                        )
+                        raw_scores = raw_scores.with_columns([(pl.col(col) * tiled).alias(col) for col in group_cols])
             else:
-                tw_vec = self._compute_time_weight_vector(
-                    time_weight, time_values, n_rows_per_rate
-                )
+                tw_vec = self._compute_time_weight_vector(time_weight, time_values, n_rows_per_rate)
                 if tw_vec is not None:
                     tiled = np.tile(tw_vec, n_rates) if n_rates > 1 else tw_vec
-                    raw_scores = raw_scores.with_columns(
-                        [(pl.col(col) * tiled).alias(col) for col in value_cols]
-                    )
+                    raw_scores = raw_scores.with_columns([(pl.col(col) * tiled).alias(col) for col in value_cols])
 
         # 1c. Apply step/vintage row weights (pre-aggregation)
         # For interval data, raw_scores has a coverage_rate column; weights apply to all value columns
@@ -1447,9 +1424,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             n_rates = raw_scores["coverage_rate"].n_unique() if "coverage_rate" in raw_scores.columns else 1
             if n_rates > 1 and len(row_weights) * n_rates == len(raw_scores):
                 row_weights = np.tile(row_weights, n_rates)
-            raw_scores = raw_scores.with_columns(
-                [(pl.col(col) * row_weights).alias(col) for col in value_cols]
-            )
+            raw_scores = raw_scores.with_columns([(pl.col(col) * row_weights).alias(col) for col in value_cols])
 
         # 2. Aggregate
         result = self._aggregate_scores(raw_scores, context=context)
@@ -1794,9 +1769,7 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         # 2b. Apply step/vintage row weights (pre-aggregation)
         row_weights = self._build_row_weights(context, len(scores), step_weight, vintage_weight)
         if row_weights is not None:
-            scores = scores.with_columns(
-                [(pl.col(col) * row_weights).alias(col) for col in scores.columns]
-            )
+            scores = scores.with_columns([(pl.col(col) * row_weights).alias(col) for col in scores.columns])
 
         # 3. Aggregate
         result = self._aggregate_scores(scores, context=context)

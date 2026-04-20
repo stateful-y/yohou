@@ -293,7 +293,7 @@ def _(
     y_test,
     y_train,
 ):
-    _width_scorer = MeanIntervalWidth(coverage_rates=[0.90])
+    _width_scorer = MeanIntervalWidth(coverage=[0.90])
     _width_scorer.fit(y_train)
     _all_preds = {
         "standard": y_pred_standard,
@@ -365,7 +365,7 @@ def _(
     y_test,
 ):
     plot_score_per_horizon(
-        IntervalScore(coverage_rates=[0.90]),
+        IntervalScore(coverage=[0.90]),
         y_test,
         {"standard": y_pred_standard, "euclidean": y_pred_euclidean},
         kind="line",

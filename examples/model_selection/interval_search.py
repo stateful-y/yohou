@@ -152,7 +152,7 @@ def _(
             "calibration_size": [30, 50, 80, 120],
             "conformity_scorer": [Residual(), AbsoluteResidual()],
         },
-        scoring=IntervalScore(coverage_rates=[0.9]),
+        scoring=IntervalScore(coverage=[0.9]),
         refit=True,
         cv=ExpandingWindowSplitter(n_splits=3),
     )
@@ -269,8 +269,8 @@ def _(
             "conformity_scorer": [Residual(), AbsoluteResidual()],
         },
         scoring={
-            "interval_score": IntervalScore(coverage_rates=[0.9]),
-            "coverage": EmpiricalCoverage(coverage_rates=[0.9]),
+            "interval_score": IntervalScore(coverage=[0.9]),
+            "coverage": EmpiricalCoverage(coverage=[0.9]),
             "mae": MeanAbsoluteError(),
         },
         refit="interval_score",
@@ -330,8 +330,8 @@ def _(
         forecasting_horizon=horizon,
         coverage_rates=[0.9],
     )
-    _cov = EmpiricalCoverage(coverage_rates=[0.9])
-    _width = MeanIntervalWidth(coverage_rates=[0.9])
+    _cov = EmpiricalCoverage(coverage=[0.9])
+    _width = MeanIntervalWidth(coverage=[0.9])
     _cov.fit(y_train)
     _width.fit(y_train)
 

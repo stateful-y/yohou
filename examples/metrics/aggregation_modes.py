@@ -246,11 +246,11 @@ def _(mo):
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
-    _scorer_tc = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
+    _scorer_tc = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
     _scorer_tc.fit(y_train)
     _score_tc = _scorer_tc.score(y_test, y_pred)
     mo.md(
-        f"**`['stepwise', 'vintagewise', 'componentwise']`** → scalar: "
+        f"**`['stepwise', 'vintagewise', 'componentwise', 'groupwise']`** → scalar: "
         f"{float(_score_tc):.2f}\n\n"
         "Both time and member dimensions are aggregated, collapsing "
         "everything into a single number."
