@@ -218,6 +218,22 @@ class TestVintageWeightFit:
         assert isinstance(result, pl.DataFrame)
         assert len(result) == 3
 
+
+class TestInvalidSampleWeightAlignment:
+    """Tests for invalid sample_weight_alignment values."""
+
+    def test_invalid_alignment_raises(self, reduction_data, linear_weight_fn):
+        """Invalid sample_weight_alignment should raise ValueError."""
+        f = _make_forecaster()
+        f.set_fit_request(time_weight=True, sample_weight_alignment=True)
+        with pytest.raises(ValueError, match="Invalid sample_weight_alignment"):
+            f.fit(
+                reduction_data,
+                forecasting_horizon=3,
+                time_weight=linear_weight_fn,
+                sample_weight_alignment="invalid_strategy",
+            )
+
     def test_vintage_weight_dataframe(self, reduction_data):
         """DataFrame vintage_weight should work."""
         vw_df = pl.DataFrame({

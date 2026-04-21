@@ -491,3 +491,27 @@ class TestResolveWeightToArray:
         })
         with pytest.raises(ValueError, match="no values for"):
             resolve_weight_to_array(bad_df, time_series, "time")
+
+    def test_dataframe_group_specific_weight_col(self, time_series):
+        """DataFrame with group-specific weight column resolves correctly."""
+        tw_df = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 6)],
+            "groupA_weight": [10.0, 20.0, 30.0, 40.0, 50.0],
+        })
+        result = resolve_weight_to_array(tw_df, time_series, "time", group_name="groupA")
+        np.testing.assert_array_equal(result, [10.0, 20.0, 30.0, 40.0, 50.0])
+
+    def test_dataframe_missing_both_columns_raises(self, time_series):
+        """DataFrame missing both group-specific and generic 'weight' columns raises."""
+        bad_df = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 6)],
+            "unrelated_col": [1.0] * 5,
+        })
+        with pytest.raises(ValueError, match="missing both.*weight"):
+            resolve_weight_to_array(bad_df, time_series, "time", group_name="groupA")
+
+    def test_dict_all_zero_contextual_error(self, time_series):
+        """Dict producing all-zero weights raises with contextual info."""
+        d = {datetime(2099, 1, 1): 1.0, "*": 0.0}
+        with pytest.raises(ValueError, match="All weights are zero.*Requested keys"):
+            resolve_weight_to_array(d, time_series, "time")
