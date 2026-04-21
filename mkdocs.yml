@@ -154,6 +154,7 @@ nav:
     - Stationarity: pages/user-guide/stationarity.md
     - Model Selection: pages/user-guide/model-selection.md
     - Visualization: pages/user-guide/visualization.md
+    - Weighting: pages/user-guide/weighting.md
     - Advanced Topics: pages/user-guide/advanced.md
   - API Reference:
     - pages/api/index.md

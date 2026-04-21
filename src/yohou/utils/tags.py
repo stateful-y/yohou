@@ -125,6 +125,8 @@ class ForecasterTags:
         with prefixed column names).
     supports_time_weight : bool, default=False
         Whether the forecaster supports time-based weighting of observations.
+    supports_vintage_weight : bool, default=False
+        Whether the forecaster supports vintage-based weighting of observations.
     ignores_exogenous : bool, default=False
         Whether the forecaster ignores exogenous features ``X``.
         When ``True``, the forecaster does not use exogenous features
@@ -146,6 +148,7 @@ class ForecasterTags:
     uses_feature_transformer: bool = False
     supports_panel_data: bool = True
     supports_time_weight: bool = False
+    supports_vintage_weight: bool = False
     ignores_exogenous: bool = False
     tracks_observations: bool = True
 

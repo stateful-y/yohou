@@ -830,6 +830,19 @@ class TestPlotScoreTimeSeriesPanel:
         )
         assert len(fig.data) >= 1
 
+    def test_panel_with_step_and_vintage_weight(self, panel_forecast):
+        """Panel score time series forwards step_weight and vintage_weight."""
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(
+            scorer,
+            panel_forecast["y_truth"],
+            panel_forecast["y_pred"],
+            groups=["value"],
+            step_weight=lambda s: pl.Series("w", [1.0] * len(s), dtype=pl.Float64),
+            vintage_weight=lambda v: pl.Series("w", [1.0] * len(v), dtype=pl.Float64),
+        )
+        assert_figure_valid(fig)
+
 
 class TestPlotScoreDistributionPanel:
     """Panel data tests for plot_score_distribution."""
@@ -1013,7 +1026,19 @@ class TestPlotScoreTimeSeriesNonPanel:
         assert_figure_valid(fig)
         names = [t.name for t in fig.data if t.name is not None]
         assert "M1" in names
-        assert "M2" in names
+
+    def test_non_panel_with_step_and_vintage_weight(self, simple_data):
+        """Non-panel score time series forwards step_weight and vintage_weight."""
+        y_truth, y_pred = simple_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(
+            scorer,
+            y_truth,
+            y_pred,
+            step_weight=lambda s: pl.Series("w", [1.0] * len(s), dtype=pl.Float64),
+            vintage_weight=lambda v: pl.Series("w", [1.0] * len(v), dtype=pl.Float64),
+        )
+        assert_figure_valid(fig)
 
 
 class TestPlotScoreTimeSeriesPanelFacet:

@@ -46,7 +46,7 @@ Yohou bridges Scikit-Learn's tabular machine learning ecosystem with time series
 - **Point & interval forecasting**: From naive baselines to conformal prediction intervals with coverage guarantees.
 - **Panel data**: First-class support for multiple related time series via the `__` column naming convention.
 - **Composition**: Pipelines, feature unions, column transformers, and decomposition pipelines that compose like sklearn.
-- **Time-weighted learning**: Metadata routing support for `time_weight` in fitting and scoring.
+- **Time-weighted learning**: Metadata routing support for `time_weight` and `vintage_weight` in fitting and scoring.
 - **Interactive visualization**: Plotly-based plotting functions for exploration, diagnostics, and evaluation.
 - **Remote datasets**: 8 `fetch_*` functions for Monash/Zenodo time series with local Parquet caching (univariate, multivariate, and panel).
 

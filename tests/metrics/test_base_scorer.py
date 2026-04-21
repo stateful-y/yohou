@@ -499,76 +499,6 @@ class TestValidateParametersEdgeCases:
             scorer.fit(None)
 
 
-class TestProcessTimeWeightsCallable:
-    """Tests for _process_time_weights callable and DataFrame paths."""
-
-    @pytest.fixture
-    def scorer_and_data(self, y_true_pred_pair):
-        """Fitted scorer with raw scores and time values."""
-        y_true, y_pred = y_true_pred_pair
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-
-        time_values = y_true["time"].to_list()
-        n = len(y_true)
-        raw_scores = pl.DataFrame({"y_0": [abs(float(i)) for i in range(n)]})
-        return scorer, raw_scores, time_values
-
-    def test_callable_1_param(self, scorer_and_data):
-        """1-parameter callable weight function works."""
-        scorer, raw_scores, time_values = scorer_and_data
-
-        def weight_fn(t: pl.Series) -> pl.Series:
-            return pl.Series("w", [1.0] * len(t))
-
-        result = scorer._process_time_weights(raw_scores, weight_fn, time_values)
-        assert result.shape == raw_scores.shape
-
-    def test_callable_2_param(self, scorer_and_data):
-        """2-parameter callable weight function works."""
-        scorer, raw_scores, time_values = scorer_and_data
-
-        def weight_fn(t: pl.Series, group: str | None) -> pl.Series:
-            return pl.Series("w", [1.0] * len(t))
-
-        result = scorer._process_time_weights(raw_scores, weight_fn, time_values, group_name="g1")
-        assert result.shape == raw_scores.shape
-
-    def test_callable_3_param_raises(self, scorer_and_data):
-        """3-parameter callable raises ValueError."""
-        scorer, raw_scores, time_values = scorer_and_data
-
-        def bad_fn(a, b, c) -> pl.Series:
-            return pl.Series("w", [1.0])
-
-        with pytest.raises(ValueError, match="got 3 parameters"):
-            scorer._process_time_weights(raw_scores, bad_fn, time_values)
-
-    def test_dataframe_weight_global(self, scorer_and_data):
-        """DataFrame time_weight with global 'weight' column works."""
-        scorer, raw_scores, time_values = scorer_and_data
-        weight_df = pl.DataFrame({"time": time_values, "weight": [1.0] * len(time_values)})
-        result = scorer._process_time_weights(raw_scores, weight_df, time_values)
-        assert result.shape == raw_scores.shape
-
-    def test_dataframe_weight_panel_group_col(self, scorer_and_data):
-        """DataFrame time_weight with group-specific weight column works."""
-        scorer, raw_scores, time_values = scorer_and_data
-        weight_df = pl.DataFrame({"time": time_values, "g1_weight": [1.0] * len(time_values)})
-        result = scorer._process_time_weights(raw_scores, weight_df, time_values, group_name="g1")
-        assert result.shape == raw_scores.shape
-
-    def test_callable_none_time_values_raises(self, scorer_and_data):
-        """Callable with None time_values raises ValueError."""
-        scorer, raw_scores, _ = scorer_and_data
-
-        def weight_fn(t: pl.Series) -> pl.Series:
-            return pl.Series("w", [1.0] * len(t))
-
-        with pytest.raises(ValueError, match="time_values cannot be None"):
-            scorer._process_time_weights(raw_scores, weight_fn, None)
-
-
 class TestAggregationMethodCombinations:
     """Tests for various aggregation method combinations in BasePointScorer."""
 
@@ -1011,3 +941,244 @@ class TestFitForecasterParam:
         scorer = MeanAbsoluteError()
         scorer.fit(y)
         assert scorer.interval_ is None
+
+
+class TestPreFilterZeroWeights:
+    """Tests for _pre_filter_zero_weights error paths and panel-aware branches."""
+
+    def test_all_zero_weights_raises(self):
+        """Combined weights zeroing all rows raises ValueError."""
+        base = datetime(2024, 1, 10)
+        y_true = pl.DataFrame({
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+            ],
+            "value": [10.0, 20.0, 30.0],
+        })
+        # 2 vintages, 2 steps each:
+        # Row 0: vintage=base, step=1 → step_weight=0
+        # Row 1: vintage=base, step=2 → step_weight=1, vintage_weight=1
+        # Row 2: vintage=base+1, step=1 → step_weight=0
+        # Row 3: vintage=base+1, step=2 → step_weight=1, vintage_weight=0
+        y_pred = pl.DataFrame({
+            "vintage_time": [base, base, base + timedelta(days=1), base + timedelta(days=1)],
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+            ],
+            "value": [11.0, 22.0, 19.0, 28.0],
+        })
+        y_train = pl.DataFrame({
+            "time": [base - timedelta(days=i) for i in range(9, -1, -1)],
+            "value": [float(i) for i in range(10)],
+        })
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(step_weight=True, vintage_weight=True)
+
+        # step_weight zeros step 1 (rows 0, 2). vintage_weight zeros 2nd vintage (rows 2, 3).
+        # zero_mask: [True, False, True, True]. Row 1 survives. NOT all zero.
+        # To make ALL zero: also zero the remaining vintage=base row at step 2.
+        # vintage_weight: {base: 0.0, base+1: 0.0, "*": 1.0} → all vintages zero → caught early.
+        # Alternative approach: step_weight zeros step 1, time_weight zeros the specific times at step 2.
+        # time_weight zeros base+2 and base+3 (step-2 times), step_weight zeros step 1.
+        scorer2 = MeanAbsoluteError()
+        scorer2.fit(y_train)
+        scorer2.set_score_request(step_weight=True, time_weight=True)
+
+        with pytest.raises(ValueError, match="All rows have zero weight"):
+            scorer2.score(
+                y_true,
+                y_pred,
+                step_weight={1: 0.0, 2: 1.0},
+                time_weight={
+                    base + timedelta(days=1): 1.0,
+                    base + timedelta(days=2): 0.0,
+                    base + timedelta(days=3): 0.0,
+                },
+            )
+
+    def test_panel_aware_callable_resolves_per_group(self, panel_y_true_pred_pair):
+        """2-param callable produces a dict of per-group weight arrays."""
+        y_true, y_pred = panel_y_true_pred_pair
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_true)
+        scorer.set_score_request(time_weight=True)
+
+        def group_weight(time: pl.Series, group_name: str | None) -> pl.Series:
+            val = 2.0 if group_name == "A" else 1.0
+            return pl.Series("w", [val] * len(time), dtype=pl.Float64)
+
+        result = scorer.score(y_true, y_pred, time_weight=group_weight)
+        assert isinstance(result, float)
+
+    def test_panel_aware_dataframe_with_group_weight_cols(self, panel_y_true_pred_pair):
+        """DataFrame with group-specific weight columns is resolved per-group."""
+        y_true, y_pred = panel_y_true_pred_pair
+        times = y_true["time"].to_list()
+        tw_df = pl.DataFrame({
+            "time": times,
+            "A_weight": [2.0, 2.0, 2.0, 2.0, 2.0],
+            "B_weight": [1.0, 1.0, 1.0, 1.0, 1.0],
+        })
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_true)
+        scorer.set_score_request(time_weight=True)
+
+        result = scorer.score(y_true, y_pred, time_weight=tw_df)
+        assert isinstance(result, float)
+
+
+class TestApplyWeightsDict:
+    """Tests for _apply_weights with dict (panel-aware) weight resolution."""
+
+    @pytest.fixture
+    def panel_vintage_data(self):
+        """Panel data with vintage_time and forecasting_step for scorer tests."""
+        base = datetime(2024, 1, 10)
+        y_train = pl.DataFrame({
+            "time": [base - timedelta(days=i) for i in range(9, -1, -1)],
+            "A__value": [float(i) for i in range(10)],
+            "B__value": [float(i) * 2 for i in range(10)],
+        })
+        y_true = pl.DataFrame({
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=3),
+            ],
+            "A__value": [10.0, 20.0, 30.0],
+            "B__value": [100.0, 200.0, 300.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [base, base, base + timedelta(days=1)],
+            "time": [
+                base + timedelta(days=1),
+                base + timedelta(days=2),
+                base + timedelta(days=2),
+            ],
+            "A__value": [11.0, 22.0, 19.0],
+            "B__value": [101.0, 202.0, 199.0],
+        })
+        return y_train, y_true, y_pred
+
+    def test_panel_step_weight_dict_applied(self, panel_vintage_data):
+        """Panel-aware step_weight dict combines step weights per group."""
+        y_train, y_true, y_pred = panel_vintage_data
+
+        def step_wt(step_series: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [1.0] * len(step_series), dtype=pl.Float64)
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(step_weight=True)
+        result = scorer.score(y_true, y_pred, step_weight=step_wt)
+        assert isinstance(result, float)
+
+    def test_panel_vintage_weight_dict_applied(self, panel_vintage_data):
+        """Panel-aware vintage_weight dict combines vintage weights per group."""
+        y_train, y_true, y_pred = panel_vintage_data
+
+        def vintage_wt(vintage_series: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [1.0] * len(vintage_series), dtype=pl.Float64)
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(vintage_weight=True)
+        result = scorer.score(y_true, y_pred, vintage_weight=vintage_wt)
+        assert isinstance(result, float)
+
+    def test_panel_step_and_vintage_weight_combined(self, panel_vintage_data):
+        """Panel-aware step_weight + vintage_weight dicts are combined per group."""
+        y_train, y_true, y_pred = panel_vintage_data
+
+        def step_wt(step_series: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [2.0] * len(step_series), dtype=pl.Float64)
+
+        def vintage_wt(vintage_series: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [3.0] * len(vintage_series), dtype=pl.Float64)
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(step_weight=True, vintage_weight=True)
+        result = scorer.score(y_true, y_pred, step_weight=step_wt, vintage_weight=vintage_wt)
+        assert isinstance(result, float)
+
+    def test_panel_zero_time_weight_dict_filters(self, panel_y_true_pred_pair):
+        """Panel-aware time_weight dict with zeros filters rows and slices dict arrays."""
+        y_true, y_pred = panel_y_true_pred_pair
+
+        # 2-param callable producing different weights per group, with zeros
+        def tw_fn(time: pl.Series, group_name: str | None) -> pl.Series:
+            n = len(time)
+            weights = [1.0] * n
+            weights[0] = 0.0  # zero first row
+            return pl.Series("w", weights, dtype=pl.Float64)
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_true)
+        scorer.set_score_request(time_weight=True)
+
+        # This should work (the 2-param callable is panel-aware → returns dict
+        # internally, so zero-mask filtering must slice the dict)
+        result = scorer.score(y_true, y_pred, time_weight=tw_fn)
+        assert isinstance(result, float)
+
+    def test_step_weight_zero_triggers_zero_mask(self, panel_vintage_data):
+        """Step weight dict with zero value triggers zero_mask filtering."""
+        y_train, y_true, y_pred = panel_vintage_data
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(step_weight=True)
+        result = scorer.score(y_true, y_pred, step_weight={1: 0.0, 2: 1.0})
+        assert isinstance(result, float)
+
+    def test_zero_step_weight_slices_tw_dict(self, panel_vintage_data):
+        """Zero step_weight (array) triggers zero_mask; tw dict is sliced."""
+        y_train, y_true, y_pred = panel_vintage_data
+
+        def tw_fn(time: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [1.0] * len(time), dtype=pl.Float64)
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(time_weight=True, step_weight=True)
+        result = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=tw_fn,
+            step_weight={1: 0.0, 2: 1.0},
+        )
+        assert isinstance(result, float)
+
+    def test_zero_tw_slices_sw_and_vw_dicts(self, panel_vintage_data):
+        """Zero time_weight (array) triggers zero_mask; sw and vw dicts are sliced."""
+        y_train, y_true, y_pred = panel_vintage_data
+
+        def tw_fn(time: pl.Series) -> pl.Series:
+            w = [1.0] * len(time)
+            w[0] = 0.0
+            return pl.Series("w", w, dtype=pl.Float64)
+
+        def sw_fn(step: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [1.0] * len(step), dtype=pl.Float64)
+
+        def vw_fn(vintage: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [1.0] * len(vintage), dtype=pl.Float64)
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(time_weight=True, step_weight=True, vintage_weight=True)
+        result = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=tw_fn,
+            step_weight=sw_fn,
+            vintage_weight=vw_fn,
+        )
+        assert isinstance(result, float)

@@ -142,7 +142,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
-        time_weight: Callable | pl.DataFrame | None = None,
+        time_weight: Callable | pl.DataFrame | dict | None = None,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         sample_weight_alignment: str = "first_step",
         **params,
     ) -> ClassProbaReductionForecaster:
@@ -161,11 +162,21 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             If ``None``, no exogenous features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
-        time_weight : callable, pl.DataFrame, or None, default=None
-            Per-timestep weights for fitting.
+        time_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-timestep weights for fitting.  Accepts a callable
+            ``f(time_series) -> pl.Series``, a panel-aware callable
+            ``f(time_series, group_name) -> pl.Series``, a DataFrame
+            with ``"time"`` and ``"weight"`` columns, or a
+            ``{datetime_or_str: float}`` dict (``"*"`` key sets default).
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights for fitting.  Same formats as
+            ``time_weight``.  Resolved via direct lookup at observation
+            time (no alignment strategy). Combined multiplicatively
+            with ``time_weight``.
         sample_weight_alignment : str, default="first_step"
             Strategy for converting ``time_weight`` to sklearn
-            ``sample_weight`` across forecast horizons.
+            ``sample_weight`` across forecast horizons. Does not apply
+            to ``vintage_weight`` (which uses direct lookup).
         **params : dict
             Metadata to route to nested estimators.
 
@@ -211,6 +222,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             forecasting_horizon,
             time_weight=time_weight,
             sample_weight_alignment=sample_weight_alignment,
+            vintage_weight=vintage_weight,
             estimator_fit_params=params,
         )
 
