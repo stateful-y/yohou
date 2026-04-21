@@ -79,8 +79,8 @@ class Residual(BaseConformityScorer):
         # Filter out scorer from score_params to avoid conflict with explicit scorer=self
         score_params_filtered = {k: v for k, v in score_params.items() if k != "scorer"}
 
-        # Validate and align (time dropped, returned as time_values)
-        y_truth, y_pred, time_values = validate_scorer_data(
+        # Validate and align (time dropped, returned as context)
+        y_truth, y_pred, context = validate_scorer_data(
             self,
             y_truth,
             y_pred,
@@ -89,7 +89,7 @@ class Residual(BaseConformityScorer):
 
         # Compute scores and reconstruct with time
         scores_values = y_truth - y_pred
-        scores = pl.DataFrame({"time": time_values}).hstack(scores_values)
+        scores = pl.DataFrame({"time": context.time_values}).hstack(scores_values)
 
         return scores
 
@@ -117,8 +117,8 @@ class Residual(BaseConformityScorer):
         """
         check_is_fitted(self, ["_is_fitted"])
 
-        # Validate and align inputs (time dropped, returned as time_values for reconstruction)
-        y_pred, conformity_scores, time_values = validate_scorer_data(
+        # Validate and align inputs (time dropped, returned as context for reconstruction)
+        y_pred, conformity_scores, context = validate_scorer_data(
             self, y_true=None, y_pred=y_pred, scores=conformity_scores, inverse=True
         )
 
@@ -129,7 +129,7 @@ class Residual(BaseConformityScorer):
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
         # Add time column back
-        y_pred_interval = pl.DataFrame({"time": time_values}).hstack(y_pred_interval)
+        y_pred_interval = pl.DataFrame({"time": context.time_values}).hstack(y_pred_interval)
 
         return y_pred_interval
 
@@ -189,8 +189,8 @@ class AbsoluteResidual(Residual):
         # Filter out scorer from score_params to avoid conflict with explicit scorer=self
         score_params_filtered = {k: v for k, v in score_params.items() if k != "scorer"}
 
-        # Validate and align (time dropped, returned as time_values)
-        y_truth, y_pred, time_values = validate_scorer_data(
+        # Validate and align (time dropped, returned as context)
+        y_truth, y_pred, context = validate_scorer_data(
             self,
             y_truth,
             y_pred,
@@ -199,7 +199,7 @@ class AbsoluteResidual(Residual):
 
         # Compute scores and reconstruct with time
         scores_values = (y_truth - y_pred).select(pl.all().abs())
-        scores = pl.DataFrame({"time": time_values}).hstack(scores_values)
+        scores = pl.DataFrame({"time": context.time_values}).hstack(scores_values)
 
         return scores
 
@@ -227,8 +227,8 @@ class AbsoluteResidual(Residual):
         """
         check_is_fitted(self, ["_is_fitted"])
 
-        # Validate and align inputs (time dropped, returned as time_values for reconstruction)
-        y_pred, conformity_scores, time_values = validate_scorer_data(
+        # Validate and align inputs (time dropped, returned as context for reconstruction)
+        y_pred, conformity_scores, context = validate_scorer_data(
             self, y_true=None, y_pred=y_pred, scores=conformity_scores, inverse=True
         )
 
@@ -239,7 +239,7 @@ class AbsoluteResidual(Residual):
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
         # Add time column back
-        y_pred_interval = pl.DataFrame({"time": time_values}).hstack(y_pred_interval)
+        y_pred_interval = pl.DataFrame({"time": context.time_values}).hstack(y_pred_interval)
 
         return y_pred_interval
 
@@ -292,14 +292,12 @@ class GammaResidual(BaseConformityScorer):
     def __init__(
         self,
         epsilon: float = 1e-8,
-        panel_group_names: list[str] | None = None,
-        component_names: list[str] | None = None,
-        panel_group_weight: dict[str, float] | None = None,
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
     ) -> None:
         super().__init__(
-            panel_group_names=panel_group_names,
-            component_names=component_names,
-            panel_group_weight=panel_group_weight,
+            groups=groups,
+            components=components,
         )
         self.epsilon = epsilon
 
@@ -325,8 +323,8 @@ class GammaResidual(BaseConformityScorer):
         # Filter out scorer from score_params to avoid conflict with explicit scorer=self
         score_params_filtered = {k: v for k, v in score_params.items() if k != "scorer"}
 
-        # Validate and align (time dropped, returned as time_values)
-        y_truth, y_pred, time_values = validate_scorer_data(
+        # Validate and align (time dropped, returned as context)
+        y_truth, y_pred, context = validate_scorer_data(
             self,
             y_truth,
             y_pred,
@@ -335,7 +333,7 @@ class GammaResidual(BaseConformityScorer):
 
         # Compute scores and reconstruct with time
         scores_values = (y_truth - y_pred) / (y_pred + self.epsilon)
-        scores = pl.DataFrame({"time": time_values}).hstack(scores_values)
+        scores = pl.DataFrame({"time": context.time_values}).hstack(scores_values)
 
         return scores
 
@@ -361,7 +359,7 @@ class GammaResidual(BaseConformityScorer):
         check_is_fitted(self, ["_is_fitted"])
 
         # Validate and align
-        y_pred, conformity_scores, time_values = validate_scorer_data(
+        y_pred, conformity_scores, context = validate_scorer_data(
             self, y_true=None, y_pred=y_pred, scores=conformity_scores, inverse=True
         )
 
@@ -378,7 +376,7 @@ class GammaResidual(BaseConformityScorer):
 
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
-        return pl.DataFrame({"time": time_values}).hstack(y_pred_interval)
+        return pl.DataFrame({"time": context.time_values}).hstack(y_pred_interval)
 
 
 class AbsoluteGammaResidual(GammaResidual):

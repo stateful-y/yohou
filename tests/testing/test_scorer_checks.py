@@ -35,7 +35,7 @@ def scorer_panel_data():
         "g2__val": [float(i) * 2 for i in range(n)],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [times[0]] * n,
+        "vintage_time": [times[0]] * n,
         "time": times,
         "g1__val": [float(i) + 0.5 for i in range(n)],
         "g2__val": [float(i) * 2 + 0.5 for i in range(n)],
@@ -60,7 +60,7 @@ def interval_scorer_data():
         "val": [float(i) for i in range(n)],
     })
     y_pred_interval = pl.DataFrame({
-        "observed_time": [times[-1]] * 5,
+        "vintage_time": [times[-1]] * 5,
         "time": pl.datetime_range(
             start=datetime(2020, 1, 1) + timedelta(days=n),
             end=datetime(2020, 1, 1) + timedelta(days=n + 4),
@@ -104,7 +104,9 @@ class TestScorerCheckFunctions:
     def test_check_aggregation_methods(self, scorer_panel_data):
         """check_scorer_aggregation_methods validates each method."""
         scorer, y_truth, y_pred = scorer_panel_data
-        check_scorer_aggregation_methods(scorer, y_truth, y_pred, aggregation_methods=["timewise", "componentwise"])
+        check_scorer_aggregation_methods(
+            scorer, y_truth, y_pred, aggregation_methods=["stepwise", "vintagewise", "componentwise"]
+        )
 
     def test_check_panel_subselection(self, scorer_panel_data):
         """check_scorer_panel_subselection clones internally (exposes unfitted clone bug)."""
@@ -112,7 +114,7 @@ class TestScorerCheckFunctions:
         scorer_copy = MeanAbsoluteError()
         scorer_copy.fit(y_truth)
         with pytest.raises(AssertionError, match="filtering failed"):
-            check_scorer_panel_subselection(scorer_copy, y_truth, y_pred, panel_group_names=["g1"])
+            check_scorer_panel_subselection(scorer_copy, y_truth, y_pred, groups=["g1"])
 
     def test_check_component_subselection(self, scorer_panel_data):
         """check_scorer_component_subselection clones internally (exposes unfitted clone bug)."""
@@ -120,7 +122,7 @@ class TestScorerCheckFunctions:
         scorer_copy = MeanAbsoluteError()
         scorer_copy.fit(y_truth)
         with pytest.raises(AssertionError, match="filtering failed"):
-            check_scorer_component_subselection(scorer_copy, y_truth, y_pred, component_names=["val"])
+            check_scorer_component_subselection(scorer_copy, y_truth, y_pred, components=["val"])
 
     def test_check_coverage_rate_subselection(self, interval_scorer_data):
         """check_scorer_coverage_rate_subselection filters interval predictions."""
@@ -138,7 +140,7 @@ class TestScorerCheckFunctions:
         )
         y_truth = pl.DataFrame({"time": times, "val": [float(i) for i in range(n)]})
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "val": [float(i) + 0.5 for i in range(n)],
         })
@@ -188,7 +190,7 @@ class TestScorerCheckFunctionsInterval:
         check_scorer_prediction_type_compatibility(scorer, forecaster, y)
 
     def test_interval_aggregation_methods(self):
-        """Point scorer timewise aggregation returns DataFrame (covers DataFrame branch)."""
+        """Point scorer stepwise+vintagewise aggregation returns DataFrame (covers DataFrame branch)."""
         n = 10
         times = pl.datetime_range(
             start=datetime(2020, 1, 1),
@@ -202,7 +204,7 @@ class TestScorerCheckFunctionsInterval:
             "b": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "a": [float(i) + 0.5 for i in range(n)],
             "b": [float(i) * 2 + 0.5 for i in range(n)],
@@ -213,7 +215,7 @@ class TestScorerCheckFunctionsInterval:
             scorer,
             y_truth,
             y_pred,
-            aggregation_methods=["timewise"],
+            aggregation_methods=["stepwise", "vintagewise"],
         )
 
 

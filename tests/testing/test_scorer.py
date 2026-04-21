@@ -33,7 +33,7 @@ def y_truth():
 def y_pred():
     """Generate prediction data."""
     return pl.DataFrame({
-        "observed_time": [datetime(2020, 1, 1)] * 10,
+        "vintage_time": [datetime(2020, 1, 1)] * 10,
         "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
         "value": [i + 0.1 for i in range(10)],
     })
@@ -79,13 +79,15 @@ class TestScorerChecks:
     def test_aggregation_methods(self, scorers, y_truth, y_pred):
         """Test that aggregation methods work."""
         for scorer in scorers:
-            check_scorer_aggregation_methods(scorer, y_truth, y_pred, aggregation_methods=["timewise", "componentwise"])
+            check_scorer_aggregation_methods(
+                scorer, y_truth, y_pred, aggregation_methods=["stepwise", "vintagewise", "componentwise"]
+            )
 
     @pytest.mark.parametrize(
         "scorer_class,param_name,invalid_value,error_match",
         [
-            (MeanAbsoluteError, "panel_group_names", ["nonexistent"], "panel_group_names"),
-            (MeanAbsoluteError, "component_names", ["nonexistent"], "component_names"),
+            (MeanAbsoluteError, "groups", ["nonexistent"], "groups"),
+            (MeanAbsoluteError, "components", ["nonexistent"], "components"),
             (MeanAbsoluteError, "aggregation_method", [["invalid"]], "aggregation_method"),
         ],
     )

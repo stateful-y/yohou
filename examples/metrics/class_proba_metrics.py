@@ -38,7 +38,7 @@ def _(mo):
     - [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/): Cross-entropy between predicted probabilities and true labels
     - [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/): Mean squared probability error
     - [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/): Fraction of correct argmax predictions
-    - Aggregation modes: `"timewise"`, `"componentwise"`, `"all"`
+    - Aggregation modes: `["stepwise", "vintagewise"]`, `"componentwise"`, `"all"`
     - Visualizing calibration with [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
 
     ## Prerequisites
@@ -276,7 +276,7 @@ def _(mo):
     mo.md(r"""
     ### Per-Timestep Scores
 
-    Set `aggregation="timewise"` to get a score for each time step. This
+    Set `aggregation=["stepwise", "vintagewise"]` to get a score for each component. This
     reveals when predictions are most uncertain.
     """)
     return
@@ -284,13 +284,13 @@ def _(mo):
 
 @app.cell
 def _(LogLoss, y_proba_rf, y_test):
-    ll_timewise = LogLoss(aggregation_method="timewise")
-    ll_timewise.fit(y_test)
-    scores_time = ll_timewise.score(y_test, y_proba_rf)
+    ll_sv = LogLoss(aggregation_method=["stepwise", "vintagewise"])
+    ll_sv.fit(y_test)
+    scores_time = ll_sv.score(y_test, y_proba_rf)
 
     print("Per-timestep Log Loss (first 10):")
     scores_time.head(10)
-    return ll_timewise, scores_time
+    return ll_sv, scores_time
 
 
 @app.cell(hide_code=True)

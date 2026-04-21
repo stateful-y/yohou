@@ -120,31 +120,31 @@ class TestBasicFitPredict:
 
 
 class TestGroupSubsetting:
-    """Tests for panel_group_names subsetting."""
+    """Tests for groups subsetting."""
 
     def test_predict_subset_groups(self, panel_y):
-        """predict(panel_group_names=...) should return only requested groups."""
+        """predict(groups=...) should return only requested groups."""
         y = panel_y
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
         f.fit(y[:80], forecasting_horizon=5)
 
-        y_pred = f.predict(forecasting_horizon=5, panel_group_names=["store_a"])
+        y_pred = f.predict(forecasting_horizon=5, groups=["store_a"])
 
-        non_time = [c for c in y_pred.columns if c not in ("time", "observed_time")]
+        non_time = [c for c in y_pred.columns if c not in ("time", "vintage_time")]
         assert all(c.startswith("store_a__") for c in non_time)
 
     def test_observe_subset_groups(self, panel_y):
-        """observe(panel_group_names=...) should update only requested groups."""
+        """observe(groups=...) should update only requested groups."""
         y = panel_y
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
         f.fit(y[:80], forecasting_horizon=5)
 
         # Observe only store_a
-        f.observe(y=y[80:85], panel_group_names=["store_a"])
+        f.observe(y=y[80:85], groups=["store_a"])
 
         # store_a should have been updated, store_b should still be at fit state
         # We verify by checking prediction differs for store_a
-        y_pred_a = f.predict(forecasting_horizon=3, panel_group_names=["store_a"])
+        y_pred_a = f.predict(forecasting_horizon=3, groups=["store_a"])
         assert len(y_pred_a) == 3
 
 
@@ -327,7 +327,7 @@ class TestMultipleGroups:
         f.fit(y[:80], forecasting_horizon=5)
 
         assert len(f.forecasters_) == 5
-        assert len(f.panel_group_names_) == 5
+        assert len(f.groups_) == 5
 
         y_pred = f.predict(forecasting_horizon=5)
         _, panel_groups = inspect_panel(y_pred)

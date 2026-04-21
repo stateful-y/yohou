@@ -194,7 +194,7 @@ class TestPanelData:
         assert "time" in y_pred.columns
         assert len(y_pred) == 3
 
-        non_time_cols = [c for c in y_pred.columns if c not in {"time", "observed_time"}]
+        non_time_cols = [c for c in y_pred.columns if c not in {"time", "vintage_time"}]
         assert len(non_time_cols) > 0, "Should have prediction columns"
         assert any("__" in col for col in non_time_cols), "Should have panel prefixes"
 

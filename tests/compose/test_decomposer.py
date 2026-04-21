@@ -87,7 +87,7 @@ class TestBasicFitPredict:
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         assert "value" in y_pred.columns
 
@@ -225,7 +225,7 @@ class TestUpdateReset:
         )
 
         assert len(y_pred) == predict_forecasting_horizon * (1 + n_new // fit_forecasting_horizon)
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
 
     def test_rewind(self, daily_data):
         """Test rewind method restores state."""
@@ -294,7 +294,7 @@ class TestPanelData:
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
 
 
@@ -490,8 +490,8 @@ class TestDecompositionPipelinePanelInverseTransform:
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
-        assert "observed_time" in y_pred.columns
-        target_cols = [c for c in y_pred.columns if c not in {"time", "observed_time"}]
+        assert "vintage_time" in y_pred.columns
+        target_cols = [c for c in y_pred.columns if c not in {"time", "vintage_time"}]
         assert len(target_cols) == 2
         assert all("__" in c for c in target_cols)
 
@@ -509,8 +509,8 @@ class TestDecompositionPipelinePanelInverseTransform:
         y_pred_transformed = forecaster.predict(forecasting_horizon=5, predict_transformed=True)
         y_pred_original = forecaster.predict(forecasting_horizon=5)
 
-        val_cols_t = [c for c in y_pred_transformed.columns if c not in {"time", "observed_time"}]
-        val_cols_o = [c for c in y_pred_original.columns if c not in {"time", "observed_time"}]
+        val_cols_t = [c for c in y_pred_transformed.columns if c not in {"time", "vintage_time"}]
+        val_cols_o = [c for c in y_pred_original.columns if c not in {"time", "vintage_time"}]
 
         for ct, co in zip(val_cols_t, val_cols_o, strict=False):
             assert y_pred_transformed[ct].to_list() != y_pred_original[co].to_list()
@@ -628,4 +628,4 @@ class TestDecompositionPipelineFeatureTransformer:
         forecaster.fit(y[:60], forecasting_horizon=5)
         y_pred = forecaster.predict(forecasting_horizon=5, predict_transformed=False)
         assert len(y_pred) == 5
-        assert all(v > 0 for v in y_pred.select(pl.exclude("time", "observed_time")).to_series().to_list())
+        assert all(v > 0 for v in y_pred.select(pl.exclude("time", "vintage_time")).to_series().to_list())

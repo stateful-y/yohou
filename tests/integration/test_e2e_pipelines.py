@@ -402,7 +402,7 @@ class TestMultiStorePanelPipeline:
         assert np.isfinite(scores) if isinstance(scores, int | float) else isinstance(scores, pl.DataFrame)
 
     def test_pipeline_b_panel_group_filtering(self):
-        """Pipeline B: predict(panel_group_names=[...]) filters output."""
+        """Pipeline B: predict(groups=[...]) filters output."""
         # Generate panel data
         n = 100
         time_col = pl.datetime_range(
@@ -436,9 +436,9 @@ class TestMultiStorePanelPipeline:
         forecaster.fit(df[:80], forecasting_horizon=7)
 
         # Predict using the panel group prefix ("sales"), not suffix
-        y_pred = forecaster.predict(forecasting_horizon=7, panel_group_names=["sales"])
+        y_pred = forecaster.predict(forecasting_horizon=7, groups=["sales"])
 
-        # Should have all sales columns (panel_group_names filters by prefix)
+        # Should have all sales columns (groups filters by prefix)
         assert "sales__store_1" in y_pred.columns
         assert "sales__store_2" in y_pred.columns
         assert "sales__store_3" in y_pred.columns
@@ -474,10 +474,10 @@ class TestMultiStorePanelPipeline:
 
         # Observe using the panel group prefix ("sales"), not suffix
         y_observe = df[70:75]
-        forecaster.observe(y_observe, panel_group_names=["sales"])
+        forecaster.observe(y_observe, groups=["sales"])
 
         # Predict should still work without crash
-        y_pred_after = forecaster.predict(forecasting_horizon=5, panel_group_names=["sales"])
+        y_pred_after = forecaster.predict(forecasting_horizon=5, groups=["sales"])
         assert "sales__store_1" in y_pred_after.columns
         assert "sales__store_2" in y_pred_after.columns
         assert len(y_pred_after) == 5
@@ -513,7 +513,7 @@ class TestMultiStorePanelPipeline:
         # Check panel structure (inspect_panel excludes "time" from global_cols)
         global_cols, panel_groups = inspect_panel(y_pred)
         assert "time" in y_pred.columns
-        assert "observed_time" in global_cols
+        assert "vintage_time" in global_cols
         assert "sales" in panel_groups
         assert set(panel_groups["sales"]) == {"sales__store_1", "sales__store_2", "sales__store_3"}
 

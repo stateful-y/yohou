@@ -78,6 +78,8 @@ def _():
         plot_calibration,
         plot_cv_results_scatter,
         plot_forecast,
+        plot_score_per_vintage,
+        plot_score_time_series,
         plot_splits,
         plot_time_series,
         plot_time_weight,
@@ -650,7 +652,7 @@ def _(mo):
 
     - **`score(y_truth, y_pred)`** returns a float (default `aggregation_method="all"`)
     - Change `aggregation_method` for richer output:
-      - `"timewise" -> per-compotent scores (DataFrame)
+      - `["stepwise", "vintagewise"]` -> per-component scores (DataFrame)
       - `"componentwise"` → per-timestep scores (DataFrame)
       - `"all"` → single scalar across all columns and timesteps
     """)
@@ -679,6 +681,59 @@ def _(mo):
 
     See `examples/metrics/` for an exhaustive scorer survey.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Multi-vintage scoring
+
+    The `observe_predict` method with `stride=1` produces one forecast per
+    observation point, creating multiple *vintages*. Each vintage represents
+    a different forecast origin, so you can analyse how accuracy evolves as
+    the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(copy, forecasting_horizon, reduction, y_test):
+    _model = copy.deepcopy(reduction)
+    y_pred_vintages = _model.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=forecasting_horizon,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(plot_score_per_vintage, scorer, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        scorer,
+        y_test,
+        y_pred_vintages,
+        title="MAE per Forecast Vintage",
+        y_label="MAE",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(plot_score_time_series, scorer, y_pred_vintages, y_test):
+    plot_score_time_series(
+        scorer,
+        y_test,
+        y_pred_vintages,
+        facet_by="vintage",
+        title="Per-timestep MAE across Vintages",
+        y_label="MAE",
+        height=500,
+    )
     return
 
 
@@ -724,7 +779,7 @@ def _(
     conformal.fit(y_train, forecasting_horizon=forecasting_horizon)
 
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    _y_pred_point = conformal.predict(forecasting_horizon=forecasting_horizon).drop("observed_time")
+    _y_pred_point = conformal.predict(forecasting_horizon=forecasting_horizon).drop("vintage_time")
     _y_pred_pi = conformal.predict_interval(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage_rates,

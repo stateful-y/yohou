@@ -17,10 +17,10 @@ from yohou.utils.validation import (
     check_continuity,
     check_exogenous_required,
     check_forecasting_horizon_positive,
+    check_groups,
+    check_groups_exist,
     check_inputs,
     check_interval_consistency,
-    check_panel_group_names,
-    check_panel_group_names_exist,
     check_schema,
     check_scorer_column_selection,
     check_time_column,
@@ -499,7 +499,7 @@ class TestCheckSchema:
         })
         expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
 
-        result = check_schema(df, expected_schema, panel_group_names=["sales"])
+        result = check_schema(df, expected_schema, groups=["sales"])
 
         assert result.columns == ["time", "sales__store_1", "sales__store_2"]
         assert result.equals(df)
@@ -513,7 +513,7 @@ class TestCheckSchema:
         })
         expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
 
-        result = check_schema(df, expected_schema, panel_group_names=["sales"])
+        result = check_schema(df, expected_schema, groups=["sales"])
 
         # Should reorder according to schema dict order
         assert result.columns == ["time", "sales__store_1", "sales__store_2"]
@@ -531,7 +531,7 @@ class TestCheckSchema:
         })
         expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
 
-        result = check_schema(df, expected_schema, panel_group_names=["sales", "inventory"])
+        result = check_schema(df, expected_schema, groups=["sales", "inventory"])
 
         # Should construct prefixes for all groups in order
         assert result.columns == [
@@ -552,7 +552,7 @@ class TestCheckSchema:
         expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
 
         with pytest.raises(ValueError, match="Schema mismatch"):
-            check_schema(df, expected_schema, panel_group_names=["sales"])
+            check_schema(df, expected_schema, groups=["sales"])
 
     def test_check_schema_panel_missing_prefixed_column(self):
         """Test check_schema raises error when prefixed column is missing."""
@@ -564,10 +564,10 @@ class TestCheckSchema:
         expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
 
         with pytest.raises(ColumnNotFoundError):
-            check_schema(df, expected_schema, panel_group_names=["sales"])
+            check_schema(df, expected_schema, groups=["sales"])
 
     def test_check_schema_panel_empty_group_names(self):
-        """Test check_schema with empty panel_group_names list behaves like non-panel."""
+        """Test check_schema with empty groups list behaves like non-panel."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "value": [10, 20, 30],
@@ -575,7 +575,7 @@ class TestCheckSchema:
         expected_schema = {"value": pl.Int64}
 
         # Empty list should behave like None (non-panel)
-        result = check_schema(df, expected_schema, panel_group_names=[])
+        result = check_schema(df, expected_schema, groups=[])
 
         assert result.columns == ["time"]  # Only time because empty group list means no columns
 
@@ -589,7 +589,7 @@ class TestCheckSchema:
         })
         expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
 
-        result = check_schema(df, expected_schema, panel_group_names=["sales"])
+        result = check_schema(df, expected_schema, groups=["sales"])
 
         # Should only include time and the two prefixed columns from schema
         assert result.columns == ["time", "sales__store_1", "sales__store_2"]
@@ -635,7 +635,7 @@ class TestCheckSchema:
         })
         expected_schema = {"store_1": pl.Int64, "store_2": pl.Int64}
 
-        result = check_schema(df, expected_schema, panel_group_names=["sales"])
+        result = check_schema(df, expected_schema, groups=["sales"])
 
         # Verify data is preserved after reordering
         assert result["time"].to_list() == [10, 20, 30]
@@ -644,57 +644,57 @@ class TestCheckSchema:
 
 
 class TestCheckPanelGroupNames:
-    def test_check_panel_group_names_global_data_no_request(self):
-        """Test check_panel_group_names with global data and no requested groups."""
-        result = check_panel_group_names(fitted_panel_groups=None, requested_panel_groups=None)
+    def test_check_groups_global_data_no_request(self):
+        """Test check_groups with global data and no requested groups."""
+        result = check_groups(fitted_panel_groups=None, requested_panel_groups=None)
 
         assert result is None
 
-    def test_check_panel_group_names_global_data_with_request(self):
-        """Test check_panel_group_names raises error when requesting groups on global data."""
+    def test_check_groups_global_data_with_request(self):
+        """Test check_groups raises error when requesting groups on global data."""
         with pytest.raises(
             ValueError,
-            match="The forecaster was fitted on global data, but `panel_group_names` were provided",
+            match="The forecaster was fitted on global data, but `groups` were provided",
         ):
-            check_panel_group_names(fitted_panel_groups=None, requested_panel_groups=["sales"])
+            check_groups(fitted_panel_groups=None, requested_panel_groups=["sales"])
 
-    def test_check_panel_group_names_panel_data_no_request(self):
-        """Test check_panel_group_names returns all fitted groups when none requested."""
+    def test_check_groups_panel_data_no_request(self):
+        """Test check_groups returns all fitted groups when none requested."""
         fitted = ["sales", "inventory"]
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=None)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=None)
 
         assert result == fitted
         assert result is fitted  # Should return the same object
 
-    def test_check_panel_group_names_panel_data_single_request(self):
-        """Test check_panel_group_names validates single requested group."""
+    def test_check_groups_panel_data_single_request(self):
+        """Test check_groups validates single requested group."""
         fitted = ["sales", "inventory", "revenue"]
         requested = ["sales"]
 
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
         assert result == requested
 
-    def test_check_panel_group_names_panel_data_multiple_requests(self):
-        """Test check_panel_group_names validates multiple requested groups."""
+    def test_check_groups_panel_data_multiple_requests(self):
+        """Test check_groups validates multiple requested groups."""
         fitted = ["sales", "inventory", "revenue", "profit"]
         requested = ["sales", "revenue"]
 
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
         assert result == requested
 
-    def test_check_panel_group_names_panel_data_all_requests(self):
-        """Test check_panel_group_names when requesting all fitted groups explicitly."""
+    def test_check_groups_panel_data_all_requests(self):
+        """Test check_groups when requesting all fitted groups explicitly."""
         fitted = ["sales", "inventory"]
         requested = ["sales", "inventory"]
 
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
         assert result == requested
 
-    def test_check_panel_group_names_missing_single_group(self):
-        """Test check_panel_group_names raises error for single missing group."""
+    def test_check_groups_missing_single_group(self):
+        """Test check_groups raises error for single missing group."""
         fitted = ["sales", "inventory"]
         requested = ["revenue"]
 
@@ -703,10 +703,10 @@ class TestCheckPanelGroupNames:
             match=r"Panel group\(s\) \['revenue'\] not found in fitted forecaster\. "
             r"Available groups: \['inventory', 'sales'\]\.",
         ):
-            check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+            check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
-    def test_check_panel_group_names_missing_multiple_groups(self):
-        """Test check_panel_group_names raises error for multiple missing groups."""
+    def test_check_groups_missing_multiple_groups(self):
+        """Test check_groups raises error for multiple missing groups."""
         fitted = ["sales", "inventory"]
         requested = ["revenue", "profit", "margin"]
 
@@ -715,10 +715,10 @@ class TestCheckPanelGroupNames:
             match=r"Panel group\(s\) \['margin', 'profit', 'revenue'\] not found in fitted "
             r"forecaster\. Available groups: \['inventory', 'sales'\]\.",
         ):
-            check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+            check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
-    def test_check_panel_group_names_partial_missing(self):
-        """Test check_panel_group_names raises error when some groups are valid but others missing."""
+    def test_check_groups_partial_missing(self):
+        """Test check_groups raises error when some groups are valid but others missing."""
         fitted = ["sales", "inventory", "revenue"]
         requested = ["sales", "profit", "inventory"]  # profit is missing
 
@@ -727,49 +727,49 @@ class TestCheckPanelGroupNames:
             match=r"Panel group\(s\) \['profit'\] not found in fitted forecaster\. "
             r"Available groups: \['inventory', 'revenue', 'sales'\]\.",
         ):
-            check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+            check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
-    def test_check_panel_group_names_empty_fitted_list(self):
-        """Test check_panel_group_names with empty fitted groups list."""
+    def test_check_groups_empty_fitted_list(self):
+        """Test check_groups with empty fitted groups list."""
         fitted = []
         requested = None
 
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
         assert result == []
 
-    def test_check_panel_group_names_empty_request_list(self):
-        """Test check_panel_group_names with empty requested groups list."""
+    def test_check_groups_empty_request_list(self):
+        """Test check_groups with empty requested groups list."""
         fitted = ["sales", "inventory"]
         requested = []
 
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
         # Empty request is valid - returns empty list
         assert result == []
 
-    def test_check_panel_group_names_order_preserved(self):
-        """Test check_panel_group_names preserves order of requested groups."""
+    def test_check_groups_order_preserved(self):
+        """Test check_groups preserves order of requested groups."""
         fitted = ["a", "b", "c", "d"]
         requested = ["d", "a", "c"]  # Non-alphabetical order
 
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
         # Should preserve the order in requested_panel_groups
         assert result == ["d", "a", "c"]
 
-    def test_check_panel_group_names_duplicate_requests(self):
-        """Test check_panel_group_names with duplicate requested groups."""
+    def test_check_groups_duplicate_requests(self):
+        """Test check_groups with duplicate requested groups."""
         fitted = ["sales", "inventory"]
         requested = ["sales", "sales", "inventory"]
 
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
         # Should preserve duplicates as provided (validation only checks existence)
         assert result == ["sales", "sales", "inventory"]
 
-    def test_check_panel_group_names_case_sensitive(self):
-        """Test check_panel_group_names is case-sensitive."""
+    def test_check_groups_case_sensitive(self):
+        """Test check_groups is case-sensitive."""
         fitted = ["sales", "inventory"]
         requested = ["Sales"]  # Different case
 
@@ -778,19 +778,19 @@ class TestCheckPanelGroupNames:
             match=r"Panel group\(s\) \['Sales'\] not found in fitted forecaster\. "
             r"Available groups: \['inventory', 'sales'\]\.",
         ):
-            check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+            check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
-    def test_check_panel_group_names_single_fitted_group(self):
-        """Test check_panel_group_names with only one fitted group."""
+    def test_check_groups_single_fitted_group(self):
+        """Test check_groups with only one fitted group."""
         fitted = ["sales"]
         requested = ["sales"]
 
-        result = check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+        result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
         assert result == ["sales"]
 
-    def test_check_panel_group_names_single_fitted_group_wrong_request(self):
-        """Test check_panel_group_names with one fitted group but different request."""
+    def test_check_groups_single_fitted_group_wrong_request(self):
+        """Test check_groups with one fitted group but different request."""
         fitted = ["sales"]
         requested = ["inventory"]
 
@@ -799,7 +799,7 @@ class TestCheckPanelGroupNames:
             match=r"Panel group\(s\) \['inventory'\] not found in fitted forecaster\. "
             r"Available groups: \['sales'\]\.",
         ):
-            check_panel_group_names(fitted_panel_groups=fitted, requested_panel_groups=requested)
+            check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
 
 class TestCheckPanelInternalConsistency:
@@ -1114,7 +1114,7 @@ class TestCheckScorerColumnSelection:
             "revenue__store_2": range(115, 120),
         })
 
-        scorer = MeanAbsoluteError(panel_group_names=["sales"])
+        scorer = MeanAbsoluteError(groups=["sales"])
 
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1149,7 +1149,7 @@ class TestCheckScorerColumnSelection:
             "revenue__store_2": range(115, 120),
         })
 
-        scorer = MeanAbsoluteError(component_names=["store_1"])
+        scorer = MeanAbsoluteError(components=["store_1"])
 
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1165,7 +1165,7 @@ class TestCheckScorerColumnSelection:
         assert set(y_pred_out.columns) == {"time", "sales__store_1", "revenue__store_1"}
 
     def test_check_scorer_column_selection_both_filters_panel(self):
-        """Test both panel_group_names and component_names filters."""
+        """Test both groups and component_names filters."""
         from yohou.metrics import MeanAbsoluteError
 
         times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
@@ -1184,7 +1184,7 @@ class TestCheckScorerColumnSelection:
             "revenue__store_2": range(115, 120),
         })
 
-        scorer = MeanAbsoluteError(panel_group_names=["sales"], component_names=["store_1"])
+        scorer = MeanAbsoluteError(groups=["sales"], components=["store_1"])
 
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1207,7 +1207,7 @@ class TestCheckScorerColumnSelection:
         y_true = pl.DataFrame({"time": times, "sales": range(5), "revenue": range(5, 10)})
         y_pred = pl.DataFrame({"time": times, "sales": range(100, 105), "revenue": range(105, 110)})
 
-        scorer = MeanAbsoluteError(component_names=["sales"])
+        scorer = MeanAbsoluteError(components=["sales"])
 
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1278,7 +1278,7 @@ class TestCheckScorerColumnSelection:
             "sales__store_2_upper_0.95": range(25, 28),
         })
 
-        scorer = IntervalScore(panel_group_names=["sales"], component_names=["store_1"], coverage_rates=[0.95])
+        scorer = IntervalScore(groups=["sales"], components=["store_1"], coverage_rates=[0.95])
 
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
@@ -1306,9 +1306,9 @@ class TestCheckScorerColumnSelection:
         y_true = pl.DataFrame({"time": times, "sales__store_1": range(5)})
         y_pred = pl.DataFrame({"time": times, "sales__store_1": range(5)})
 
-        scorer = MeanAbsoluteError(panel_group_names=["revenue"])
+        scorer = MeanAbsoluteError(groups=["revenue"])
 
-        with pytest.raises(ValueError, match="Invalid panel_group_names.*revenue.*not found"):
+        with pytest.raises(ValueError, match="Invalid groups.*revenue.*not found"):
             check_scorer_column_selection(
                 scorer=scorer,
                 y_true=y_true,
@@ -1326,9 +1326,9 @@ class TestCheckScorerColumnSelection:
         y_true = pl.DataFrame({"time": times, "sales": range(5)})
         y_pred = pl.DataFrame({"time": times, "sales": range(5)})
 
-        scorer = MeanAbsoluteError(component_names=["revenue"])
+        scorer = MeanAbsoluteError(components=["revenue"])
 
-        with pytest.raises(ValueError, match="Invalid component_names.*revenue.*not found"):
+        with pytest.raises(ValueError, match="Invalid components.*revenue.*not found"):
             check_scorer_column_selection(
                 scorer=scorer,
                 y_true=y_true,
@@ -1356,7 +1356,7 @@ class TestCheckScorerColumnSelection:
             "b_upper_0.9": [20.0] * 5,
         })
 
-        scorer = IntervalScore(component_names=["a"], coverage_rates=[0.9])
+        scorer = IntervalScore(components=["a"], coverage_rates=[0.9])
         interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
@@ -1415,7 +1415,7 @@ class TestCheckScorerColumnSelection:
             "grpB__weather_proba_rainy": [0.1, 0.2, 0.8],
             "grpB__weather_proba_cloudy": [0.7, 0.1, 0.1],
         })
-        scorer = LogLoss(panel_group_names=["grpA"])
+        scorer = LogLoss(groups=["grpA"])
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
             y_true=y_true,
@@ -1447,7 +1447,7 @@ class TestCheckScorerColumnSelection:
             "mood_proba_happy": [0.8, 0.2, 0.9],
             "mood_proba_sad": [0.2, 0.8, 0.1],
         })
-        scorer = LogLoss(component_names=["weather"])
+        scorer = LogLoss(components=["weather"])
         y_true_out, y_pred_out = check_scorer_column_selection(
             scorer=scorer,
             y_true=y_true,
@@ -1478,11 +1478,11 @@ class TestCheckTimeColumnEdgeCases:
 
 
 class TestCheckPanelGroupNamesExistEdgeCases:
-    """Additional tests for check_panel_group_names_exist."""
+    """Additional tests for check_groups_exist."""
 
     def test_none_returns_early(self):
         """Passing None for requested_panel_groups returns without error."""
-        check_panel_group_names_exist(
+        check_groups_exist(
             fitted_panel_groups=["a", "b"],
             requested_panel_groups=None,
             context="predict",
@@ -1491,7 +1491,7 @@ class TestCheckPanelGroupNamesExistEdgeCases:
     def test_missing_groups_raises(self):
         """Requesting non-existent groups raises ValueError."""
         with pytest.raises(ValueError, match="not found in fitted"):
-            check_panel_group_names_exist(
+            check_groups_exist(
                 fitted_panel_groups=["a", "b"],
                 requested_panel_groups=["c"],
                 context="predict",
@@ -1590,16 +1590,16 @@ class TestCheckExogenousRequired:
 
 
 class TestCheckPanelGroupNamesExist:
-    """Tests for check_panel_group_names_exist."""
+    """Tests for check_groups_exist."""
 
     def test_missing_group_raises(self):
         """Requesting a non-existent panel group raises ValueError."""
         with pytest.raises(ValueError, match="not found"):
-            check_panel_group_names_exist(["g1"], ["g2", "g3"], "predict")
+            check_groups_exist(["g1"], ["g2", "g3"], "predict")
 
     def test_valid_groups_pass(self):
         """Requesting existing groups passes without error."""
-        check_panel_group_names_exist(["g1", "g2", "g3"], ["g1", "g2"], "predict")
+        check_groups_exist(["g1", "g2", "g3"], ["g1", "g2"], "predict")
 
 
 class TestValidateColumnNames:

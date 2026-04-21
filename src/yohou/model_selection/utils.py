@@ -104,13 +104,31 @@ class _MultimetricScorer:
         self._scorers = scorers
         self._raise_exc = raise_exc
 
-    def fit(self, y: pl.DataFrame) -> _MultimetricScorer:
+        # Validate all scorers produce scalar output
+        for name, scorer in scorers.items():
+            agg = getattr(scorer, "aggregation_method", "all")
+            # Interval scorers expand "all" to the full list at init time
+            is_all = agg == "all" or (
+                isinstance(agg, list) and set(agg) >= {"stepwise", "vintagewise", "componentwise"}
+            )
+            if not is_all:
+                raise ValueError(
+                    f"Scorer '{name}' has aggregation_method={agg!r}, but "
+                    f"cross-validation requires aggregation_method='all' "
+                    f"(scalar output). Use scorer.score() directly for "
+                    f"partial aggregation."
+                )
+
+    def fit(self, y: pl.DataFrame, *, forecaster=None) -> _MultimetricScorer:
         """Fit all scorers that have a fit method.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series used for fitting stateful scorers.
+        forecaster : BaseForecaster or None, default=None
+            If provided, forwarded to each scorer's ``fit`` method so
+            that metadata can be extracted from the fitted forecaster.
 
         Returns
         -------
@@ -118,7 +136,7 @@ class _MultimetricScorer:
         """
         for scorer in self._scorers.values():
             if hasattr(scorer, "fit"):
-                scorer.fit(y)
+                scorer.fit(y, forecaster=forecaster)
         return self
 
     def __call__(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params: object) -> dict[str, float | str]:
@@ -426,7 +444,8 @@ def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[flo
     all_rates: set[float] = set()
     for s in scorers:
         if isinstance(s, BaseIntervalScorer) and s.coverage_rates is not None:
-            all_rates.update(s.coverage_rates)
+            rates = list(s.coverage_rates.keys()) if isinstance(s.coverage_rates, dict) else s.coverage_rates
+            all_rates.update(rates)
     return sorted(all_rates) if all_rates else None
 
 
@@ -519,16 +538,14 @@ def _score(
         else:
             y_pred = getattr(forecaster, observe_method)(y_test, X_test, **predict_func_params)
 
-        # observe_predict produces overlapping prediction windows when the last
-        # observation chunk is smaller than stride. Deduplicate (keeping the most
-        # recently informed prediction) and sort so downstream scorers receive a
-        # clean, monotonically increasing time column.
-        # TODO: Address this formally in scorers
-        y_pred = y_pred.unique(subset=["time"], keep="last").sort("time")
+        # Sort predictions by time for scorer validation.
+        # Multi-vintage predictions from observe_predict are concatenated
+        # and may not be in time order.
+        y_pred = y_pred.sort("time")
 
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):
-            scorer.fit(y_train)
+            scorer.fit(y_train, forecaster=forecaster)
         scores = scorer(y_test, y_pred, **score_params)  # ty: ignore[invalid-assignment]
 
     except Exception:  # noqa: BLE001

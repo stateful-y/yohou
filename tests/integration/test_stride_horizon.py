@@ -613,9 +613,9 @@ class TestPanelStrideHorizon:
     """Panel data stride/horizon operation tests."""
 
     def test_panel_observe_predict_subset_groups(self, ar1_series):
-        """Verify predict with panel_group_names returns only specified groups."""
+        """Verify predict with groups returns only specified groups."""
         # Create panel data where each group has its own prefix
-        # so we can select individual groups via panel_group_names
+        # so we can select individual groups via groups
         series_0 = ar1_series(phi=0.5, c=1.0, length=110, noise_std=0.0)
         series_1 = ar1_series(phi=0.7, c=2.0, length=110, noise_std=0.0)
         series_2 = ar1_series(phi=0.9, c=3.0, length=110, noise_std=0.0)
@@ -635,7 +635,7 @@ class TestPanelStrideHorizon:
 
         # Observe all data, then predict for only alpha and beta groups
         forecaster.observe(y_test)
-        y_pred = forecaster.predict(forecasting_horizon=5, panel_group_names=["alpha", "beta"])
+        y_pred = forecaster.predict(forecasting_horizon=5, groups=["alpha", "beta"])
 
         # Verify only 2 groups returned (plus time columns)
         assert "alpha__series" in y_pred.columns
@@ -724,7 +724,7 @@ class TestPanelStrideHorizon:
         for i in range(0, len(y_test), 5):
             chunk_size = min(5, len(y_test) - i)
             chunk = y_test[i : i + chunk_size]
-            y_pred = forecaster.predict(forecasting_horizon=chunk_size, panel_group_names=["beta", "delta"])
+            y_pred = forecaster.predict(forecasting_horizon=chunk_size, groups=["beta", "delta"])
             forecaster.observe(chunk)
             all_preds.append(y_pred)
 

@@ -212,7 +212,7 @@ def get_group_df(
 
 def select_panel_columns(
     df: pl.DataFrame,
-    panel_group_names: list[str] | None,
+    groups: list[str] | None,
     include_global: bool = True,
 ) -> pl.DataFrame:
     """Select panel group columns and optionally global columns of a DataFrame.
@@ -227,7 +227,7 @@ def select_panel_columns(
         Input DataFrame with potential mix of global and group columns.
         Must contain a "time" column.
 
-    panel_group_names : list of str or None
+    groups : list of str or None
         List of all group prefixes in the dataset. All columns matching
         any <group>__* pattern will be kept. If None, no filtering is performed.
 
@@ -283,7 +283,7 @@ def select_panel_columns(
     `inspect_panel` : Inspect DataFrame to identify global and local columns
     """
     # If no local groups, return DataFrame unchanged (no filtering needed)
-    if panel_group_names is None:
+    if groups is None:
         return df
 
     # Determine which columns to keep
@@ -295,7 +295,7 @@ def select_panel_columns(
 
         # Check if this column belongs to any panel group
         is_panel = False
-        for group_prefix in panel_group_names:
+        for group_prefix in groups:
             if col.startswith(f"{group_prefix}__"):
                 is_panel = True
                 break

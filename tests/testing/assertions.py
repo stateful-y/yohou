@@ -31,10 +31,10 @@ def assert_forecaster_output_valid(
 
     if check_time_column:
         assert "time" in y_pred.columns
-        assert "observed_time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
 
     if expected_columns is not None:
-        actual_cols = y_pred.select(~cs.by_name("time", "observed_time")).columns
+        actual_cols = y_pred.select(~cs.by_name("time", "vintage_time")).columns
         assert set(actual_cols) == set(expected_columns)
 
 

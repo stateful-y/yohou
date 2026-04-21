@@ -194,14 +194,14 @@ class TestCast:
         """Test casting works alongside time columns (common in forecasting)."""
         df = pl.DataFrame({
             "time": [datetime(2020, 1, i) for i in range(1, 4)],
-            "observed_time": [datetime(2020, 1, 1)] * 3,
+            "vintage_time": [datetime(2020, 1, 1)] * 3,
             "value": [10.5, 20.7, 30.9],
         })
         schema = {"value": pl.Int16}
         result = cast(df, schema)
 
         assert result.schema["time"] == pl.Datetime
-        assert result.schema["observed_time"] == pl.Datetime
+        assert result.schema["vintage_time"] == pl.Datetime
         assert result.schema["value"] == pl.Int16
         assert result["value"].to_list() == [10, 21, 31]
 

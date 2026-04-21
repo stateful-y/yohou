@@ -193,7 +193,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
 
         """
         # Non-panel data
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             assert isinstance(y_t, pl.DataFrame)
             patterns = self._extract_pattern_one(y_t)
 
@@ -202,7 +202,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
             # Concatenate all panel group data vertically
             # In panel mode, y_t is a dict and subscript returns DataFrame
             assert isinstance(y_t, dict)
-            all_groups_data = [y_t[group_name] for group_name in self.panel_group_names_]
+            all_groups_data = [y_t[group_name] for group_name in self.groups_]
             y_t_pooled = pl.concat(all_groups_data, how="vertical")
             patterns = self._extract_pattern_one(y_t_pooled)
 
@@ -264,14 +264,14 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
 
     def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **params,
     ) -> pl.DataFrame:
         """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         **params : dict
             Metadata to route to nested estimators.
@@ -285,7 +285,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
         y_t_columns = list(self.local_y_t_schema_.keys())
 
         # Non-panel data
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             # Get phase indices for predictions
             X_phases = self._get_time_indices(self.fit_forecasting_horizon_) % self.seasonality
 
@@ -306,7 +306,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
         # Panel data
         else:
             y_pred = []
-            for panel_group_name in panel_group_names:
+            for panel_group_name in groups:
                 # Get phase indices for this group
                 X_phases = (
                     self._get_time_indices(self.fit_forecasting_horizon_, panel_group_name=panel_group_name)

@@ -216,7 +216,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -228,7 +228,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
             Exogenous features for the forecast period.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to predict.
         predict_transformed : bool, default=False
             If ``True``, return predictions in transformed space.
@@ -238,7 +238,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         Returns
         -------
         pl.DataFrame
-            Aggregated predictions with ``"observed_time"``, ``"time"``,
+            Aggregated predictions with ``"vintage_time"``, ``"time"``,
             and target columns.
 
         """
@@ -252,13 +252,13 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 predict_transformed=predict_transformed,
                 **forecaster_params,
             )
             predictions.append(y_pred)
 
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
         return self._aggregate_values(predictions, target_cols, self.method, self.weights_)
 
     def observe_predict(
@@ -266,7 +266,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
         predict_transformed: bool = False,
         **params,
@@ -284,7 +284,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes.
         stride : int or None, default=None
             Step size for rolling update-predict.
@@ -310,14 +310,14 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
                 y=y,
                 X=X,
                 forecasting_horizon=forecasting_horizon,
-                panel_group_names=panel_group_names,
+                groups=groups,
                 stride=stride,
                 predict_transformed=predict_transformed,
                 **forecaster_params,
             )
             predictions.append(y_pred)
 
-        target_cols = [c for c in predictions[0].columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
         return self._aggregate_values(predictions, target_cols, self.method, self.weights_)
 
     def get_metadata_routing(self) -> MetadataRouter:

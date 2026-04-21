@@ -53,6 +53,8 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import DistanceSimilarity, SplitConformalForecaster
     from yohou.metrics import (
@@ -60,7 +62,13 @@ def _():
         IntervalScore,
         MeanIntervalWidth,
     )
-    from yohou.plotting import plot_calibration, plot_forecast, plot_score_per_horizon
+    from yohou.plotting import (
+        plot_calibration,
+        plot_forecast,
+        plot_score_heatmap,
+        plot_score_per_step,
+        plot_score_per_vintage,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -73,10 +81,13 @@ def _():
         PointReductionForecaster,
         Ridge,
         SplitConformalForecaster,
+        deepcopy,
         fetch_tourism_monthly,
         plot_calibration,
         plot_forecast,
-        plot_score_per_horizon,
+        plot_score_heatmap,
+        plot_score_per_step,
+        plot_score_per_vintage,
         train_test_split,
     )
 
@@ -144,7 +155,7 @@ def _(
         coverage_rates=coverage,
     )
     _y_point = conformal_standard.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_standard = y_pred_standard.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_standard = y_pred_standard.hstack(_y_point.drop("time", "vintage_time"))
     return coverage, y_pred_standard
 
 
@@ -211,7 +222,7 @@ def _(
         coverage_rates=coverage,
     )
     _y_point = conformal_euclidean.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_euclidean = y_pred_euclidean.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_euclidean = y_pred_euclidean.hstack(_y_point.drop("time", "vintage_time"))
     return (y_pred_euclidean,)
 
 
@@ -351,7 +362,7 @@ def _(mo):
     mo.md(r"""
     ## 6. Horizon Degradation
 
-    Prediction intervals typically widen at longer horizons. [`plot_score_per_horizon`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_horizon/)
+    Prediction intervals typically widen at longer horizons. [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/)
     shows how interval scores change across forecast steps.
     """)
 
@@ -359,12 +370,12 @@ def _(mo):
 @app.cell
 def _(
     IntervalScore,
-    plot_score_per_horizon,
+    plot_score_per_step,
     y_pred_euclidean,
     y_pred_standard,
     y_test,
 ):
-    plot_score_per_horizon(
+    plot_score_per_step(
         IntervalScore(coverage_rates=[0.90]),
         y_test,
         {"standard": y_pred_standard, "euclidean": y_pred_euclidean},
@@ -416,7 +427,7 @@ def _(
         coverage_rates=coverage,
     )
     _y_point = conformal_minkowski.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_minkowski = y_pred_minkowski.hstack(_y_point.drop("time", "observed_time"))
+    y_pred_minkowski = y_pred_minkowski.hstack(_y_point.drop("time", "vintage_time"))
     return (y_pred_minkowski,)
 
 
@@ -439,6 +450,65 @@ def _(plot_forecast, y_pred_minkowski, y_test, y_train):
         title="Minkowski (p=1.5) Similarity",
     )
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict_interval` method with `stride=1` produces one
+    interval forecast per observation point, creating multiple *vintages*.
+    Each vintage represents a different forecast origin, so you can analyse
+    how interval quality evolves as the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(conformal_standard, coverage, deepcopy, forecasting_horizon, y_test):
+    _vintage_model = deepcopy(conformal_standard)
+    y_pred_vintages = _vintage_model.observe_predict_interval(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=forecasting_horizon,
+        coverage_rates=coverage,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(IntervalScore, y_train):
+    vintage_scorer = IntervalScore()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Interval Score per Vintage",
+        y_label="Interval Score",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
+    plot_score_heatmap(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Score Heatmap (Step x Vintage)",
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

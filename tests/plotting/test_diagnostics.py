@@ -67,7 +67,7 @@ class TestPlotAutocorrelation:
             "y__a": yearly_2col_df["y"],
             "y__b": yearly_2col_df["y2"],
         })
-        fig = plot_autocorrelation(df, max_lags=10, panel_group_names=["y"])
+        fig = plot_autocorrelation(df, max_lags=10, groups=["y"])
         assert len(fig.data) > 0
 
 
@@ -102,7 +102,7 @@ class TestPlotPartialAutocorrelation:
             "y__a": yearly_2col_df["y"],
             "y__b": yearly_2col_df["y2"],
         })
-        fig = plot_partial_autocorrelation(df, max_lags=10, panel_group_names=["y"])
+        fig = plot_partial_autocorrelation(df, max_lags=10, groups=["y"])
         assert len(fig.data) > 0
 
 
@@ -130,7 +130,7 @@ class TestPlotCorrelationHeatmap:
         fig = plot_correlation_heatmap(multi_column_df, columns=["y1", "y2"])
         assert len(fig.data) > 0
 
-    def test_panel_group_names(self):
+    def test_groups(self):
         """Test panel grouping produces one heatmap per group."""
         df = pl.DataFrame({
             "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True),
@@ -138,7 +138,7 @@ class TestPlotCorrelationHeatmap:
             "y__b": list(range(10, 20)),
             "y__c": list(range(20, 30)),
         })
-        result = plot_correlation_heatmap(df, panel_group_names=["y"])
+        result = plot_correlation_heatmap(df, groups=["y"])
         assert isinstance(result, dict)
         fig = result["y"]
         assert len(fig.data) == 1
@@ -152,7 +152,7 @@ class TestPlotCorrelationHeatmap:
             "y__b": list(range(10, 20)),
         })
         with pytest.raises(ValueError, match="No panel groups found"):
-            plot_correlation_heatmap(df, panel_group_names=["missing"])
+            plot_correlation_heatmap(df, groups=["missing"])
 
 
 class TestPlotSeasonality:
@@ -201,7 +201,7 @@ class TestPlotSeasonality:
             "y__a": yearly_2col_df["y"],
             "y__b": yearly_2col_df["y2"],
         })
-        fig = plot_seasonality(df, seasonality="month", panel_group_names=["y"])
+        fig = plot_seasonality(df, seasonality="month", groups=["y"])
         assert len(fig.data) > 0
 
 
@@ -247,7 +247,7 @@ class TestPlotLagScatter:
             "y__a": short_df["y"],
             "y__b": short_df["x"],
         })
-        result = plot_lag_scatter(df, lags=[1], panel_group_names=["y"])
+        result = plot_lag_scatter(df, lags=[1], groups=["y"])
         assert isinstance(result, dict)
         assert len(result) == 2
         for fig in result.values():
@@ -730,29 +730,29 @@ class TestDiagnosticsPanelAutoDetect:
 
     def test_acf_panel(self, panel_df):
         """plot_autocorrelation with panel data auto-detects groups."""
-        fig = plot_autocorrelation(panel_df, panel_group_names=["y"])
+        fig = plot_autocorrelation(panel_df, groups=["y"])
         assert_figure_valid(fig)
 
     def test_pacf_panel(self, panel_df):
         """plot_partial_autocorrelation with panel data auto-detects groups."""
-        fig = plot_partial_autocorrelation(panel_df, panel_group_names=["y"])
+        fig = plot_partial_autocorrelation(panel_df, groups=["y"])
         assert_figure_valid(fig)
 
     def test_correlation_heatmap_panel(self, panel_df):
         """plot_correlation_heatmap with panel data returns dict per group."""
-        result = plot_correlation_heatmap(panel_df, panel_group_names=["y"])
+        result = plot_correlation_heatmap(panel_df, groups=["y"])
         assert isinstance(result, dict)
         for fig in result.values():
             assert_figure_valid(fig)
 
     def test_seasonality_panel(self, panel_df):
         """plot_seasonality with panel data auto-detects groups."""
-        fig = plot_seasonality(panel_df, seasonality="month", panel_group_names=["y"])
+        fig = plot_seasonality(panel_df, seasonality="month", groups=["y"])
         assert_figure_valid(fig)
 
     def test_lag_scatter_panel(self, panel_df):
         """plot_lag_scatter with panel data auto-detects groups."""
-        result = plot_lag_scatter(panel_df, lags=[1, 5], panel_group_names=["y"])
+        result = plot_lag_scatter(panel_df, lags=[1, 5], groups=["y"])
         assert isinstance(result, dict)
         for fig in result.values():
             assert_figure_valid(fig)
@@ -819,7 +819,7 @@ class TestDiagnosticsEdgeCases:
 
 
 class TestDiagnosticsAutoDetectPanel:
-    """Tests for auto-detection of panel data (no explicit panel_group_names)."""
+    """Tests for auto-detection of panel data (no explicit groups)."""
 
     @pytest.fixture
     def auto_panel_df(self):
@@ -833,7 +833,7 @@ class TestDiagnosticsAutoDetectPanel:
         })
 
     def test_acf_auto_detect(self, auto_panel_df):
-        """plot_autocorrelation auto-detects panel data without panel_group_names."""
+        """plot_autocorrelation auto-detects panel data without groups."""
         fig = plot_autocorrelation(auto_panel_df, max_lags=10)
         assert_figure_valid(fig)
 
@@ -986,7 +986,7 @@ class TestCorrelationHeatmapPanelShowValues:
             "a__g2": [float(i + 10) for i in range(n)],
             "b__g2": [float(i * 3) for i in range(n)],
         })
-        result = plot_correlation_heatmap(df, panel_group_names=["a", "b"], show_values=True)
+        result = plot_correlation_heatmap(df, groups=["a", "b"], show_values=True)
         assert isinstance(result, dict)
         for fig in result.values():
             assert_figure_valid(fig)
@@ -1056,7 +1056,7 @@ class TestPlotACFPanelNoConfidence:
             "sales__store_1": [100.0 + i * 2.0 for i in range(12)],
             "sales__store_2": [200.0 + i * 3.0 for i in range(12)],
         })
-        fig = plot_autocorrelation(df, panel_group_names=["sales"], show_confidence=False)
+        fig = plot_autocorrelation(df, groups=["sales"], show_confidence=False)
         assert_figure_valid(fig)
 
     def test_panel_pacf_no_confidence(self):
@@ -1067,7 +1067,7 @@ class TestPlotACFPanelNoConfidence:
             "sales__store_1": [100.0 + i * 2.0 for i in range(12)],
             "sales__store_2": [200.0 + i * 3.0 for i in range(12)],
         })
-        fig = plot_partial_autocorrelation(df, panel_group_names=["sales"], show_confidence=False)
+        fig = plot_partial_autocorrelation(df, groups=["sales"], show_confidence=False)
         assert_figure_valid(fig)
 
 
@@ -1190,7 +1190,7 @@ class TestPlotSeasonalHeatmap:
         assert_layout(fig, width=800, height=500)
 
     def test_panel_explicit(self):
-        """Panel faceting with explicit panel_group_names."""
+        """Panel faceting with explicit groups."""
         times = pl.datetime_range(
             pl.datetime(2020, 1, 1),
             pl.datetime(2020, 3, 31, 23),
@@ -1203,7 +1203,7 @@ class TestPlotSeasonalHeatmap:
             "weather__temp": [20.0 + i % 24 for i in range(n)],
             "weather__wind": [5.0 + i % 12 for i in range(n)],
         })
-        fig = plot_seasonal_heatmap(df, "temp", panel_group_names=["weather"])
+        fig = plot_seasonal_heatmap(df, "temp", groups=["weather"])
         assert_figure_valid(fig)
 
     def test_auto_column_single(self, hourly_df):
@@ -1250,7 +1250,7 @@ class TestPlotSeasonalHeatmap:
         assert len(fig.data) == 2
 
     def test_panel_auto_detect(self):
-        """Panel data auto-detected when columns=None and no panel_group_names."""
+        """Panel data auto-detected when columns=None and no groups."""
         times = pl.datetime_range(
             pl.datetime(2020, 1, 1),
             pl.datetime(2020, 3, 31, 23),
@@ -1365,9 +1365,9 @@ class TestPlotScatterMatrixPanelPaths:
         fig = plot_scatter_matrix(df, columns=["x", "y"], seasonality="month", max_points=50)
         assert_figure_valid(fig)
 
-    def test_panel_group_names_filter(self, panel_scatter_df):
-        """Passing explicit panel_group_names filters to those groups."""
-        result = plot_scatter_matrix(panel_scatter_df, panel_group_names=["x"])
+    def test_groups_filter(self, panel_scatter_df):
+        """Passing explicit groups filters to those groups."""
+        result = plot_scatter_matrix(panel_scatter_df, groups=["x"])
         assert isinstance(result, dict)
         for fig in result.values():
             assert_figure_valid(fig)
@@ -1666,7 +1666,7 @@ class TestScatterMatrixSeasonality:
             df,
             seasonality="quarter",
             facet_by="group",
-            panel_group_names=["grp"],
+            groups=["grp"],
         )
         assert isinstance(result, dict)
         for fig in result.values():

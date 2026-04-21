@@ -11,7 +11,7 @@ import marimo
 __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Aggregation Modes",
-    "description": "Demonstrate all scorer aggregation strategies (timewise, componentwise, groupwise, coveragewise, all) on panel data with weighted group aggregation.",
+    "description": "Demonstrate all scorer aggregation strategies (stepwise, vintagewise, componentwise, groupwise, coveragewise, all) on panel data with weighted group aggregation.",
 }
 app = marimo.App(width="medium")
 
@@ -34,11 +34,12 @@ def _(mo):
     ## What You'll Learn
 
     - `"all"`: single scalar (default)
-    - `"timewise"`: per-column average (aggregate over time)
+    - `"stepwise"`: per-column average (aggregate over forecasting steps)
+    - `"vintagewise"`: per-column average (aggregate over vintages)
     - `"componentwise"`: per-group over time (aggregate members within each panel group)
     - `"groupwise"`: per-component over time (aggregate across panel groups)
     - `"coveragewise"`: aggregate over coverage rates (interval scorers only)
-    - Combining modes and `panel_group_weight` for weighted aggregation
+    - Combining modes and `groups` (dict) for weighted aggregation
     """)
 
 
@@ -48,10 +49,15 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.datasets import fetch_kdd_cup
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, MeanAbsoluteError
-    from yohou.plotting import plot_time_series
+    from yohou.plotting import (
+        plot_score_heatmap,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.utils.panel import inspect_panel
@@ -63,9 +69,11 @@ def _():
         PointReductionForecaster,
         Ridge,
         SplitConformalForecaster,
+        deepcopy,
         fetch_kdd_cup,
         inspect_panel,
         pl,
+        plot_score_heatmap,
         plot_time_series,
         train_test_split,
     )
@@ -144,7 +152,7 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 3. `"timewise"`: Per-Column Average
+    ## 3. `["stepwise", "vintagewise"]`: Per-Column Average
 
     Aggregate over time → one score per column. Shows which individual
     series are hardest to forecast.
@@ -153,7 +161,7 @@ def _(mo):
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
-    _scorer_tw = MeanAbsoluteError(aggregation_method="timewise")
+    _scorer_tw = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
     _scorer_tw.fit(y_train)
     _score_tw = _scorer_tw.score(y_test, y_pred)
     mo.vstack([
@@ -237,7 +245,7 @@ def _(mo):
     ## 6. Combining Modes
 
     Pass a list to aggregate over multiple dimensions at once.
-    `["timewise", "componentwise"]` removes both time and member
+    `["stepwise", "vintagewise", "componentwise"]` removes both time and member
     dimensions, producing a single scalar which is equivalent to a flat mean
     over all errors.
     """)
@@ -245,11 +253,11 @@ def _(mo):
 
 @app.cell
 def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
-    _scorer_tc = MeanAbsoluteError(aggregation_method=["timewise", "componentwise"])
+    _scorer_tc = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
     _scorer_tc.fit(y_train)
     _score_tc = _scorer_tc.score(y_test, y_pred)
     mo.md(
-        f"**`['timewise', 'componentwise']`** → scalar: "
+        f"**`['stepwise', 'vintagewise', 'componentwise', 'groupwise']`** → scalar: "
         f"{float(_score_tc):.2f}\n\n"
         "Both time and member dimensions are aggregated, collapsing "
         "everything into a single number."
@@ -259,11 +267,11 @@ def _(MeanAbsoluteError, mo, y_pred, y_test, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7. `panel_group_weight`: Weighted Group Aggregation
+    ## 7. Weighted Group Aggregation via `groups`
 
-    Pass a dictionary of group weights to emphasise certain stations during
-    `"all"` aggregation. This is useful when some monitoring stations are
-    more critical than others.
+    Pass `groups` as a dictionary of `{name: weight}` to emphasise certain
+    stations during `"all"` aggregation. This is useful when some monitoring
+    stations are more critical than others.
     """)
 
 
@@ -271,7 +279,7 @@ def _(mo):
 def _(MeanAbsoluteError, groups, mo, y_pred, y_test, y_train):
     _group_names = sorted(groups.keys())
     _weights = {_group_names[0]: 5.0}
-    _scorer_w = MeanAbsoluteError(aggregation_method="all", panel_group_weight=_weights)
+    _scorer_w = MeanAbsoluteError(aggregation_method="all", groups=_weights)
     _scorer_u = MeanAbsoluteError(aggregation_method="all")
 
     _scorer_w.fit(y_train)
@@ -296,7 +304,8 @@ def _(mo):
     Interval scorers score each **coverage rate** separately. This creates an
     extra dimension in the output.
 
-    - **Without** `"coveragewise"`: scores are returned per rate (as a dict)
+    - **Without** `"coveragewise"`: scores are returned per rate (as a DataFrame
+      with a `coverage_rate` column)
     - **With** `"coveragewise"`: coverage rates are averaged, collapsing that
       dimension
     """)
@@ -326,7 +335,7 @@ def _(
     _fc_int.fit(y_train, forecasting_horizon=fh, coverage_rates=_coverage_rates)
     _y_pred_int = _fc_int.predict_interval(forecasting_horizon=fh, coverage_rates=_coverage_rates)
 
-    _cov_per_rate = EmpiricalCoverage(aggregation_method=["timewise", "componentwise"])
+    _cov_per_rate = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise"])
     _cov_all = EmpiricalCoverage(aggregation_method="all")
 
     _cov_per_rate.fit(y_train)
@@ -339,16 +348,67 @@ def _(
         f"**Coverage rates**: {_coverage_rates}\n\n"
         "---\n\n"
         "**Without `'coveragewise'`** "
-        f"(`['timewise', 'componentwise']`) → dict per rate:\n\n"
-        + "\n\n".join(f"- rate {r}: {v:.3f}" for r, v in _s_per_rate.items())
+        f"(`['stepwise', 'vintagewise', 'componentwise']`) → per-rate DataFrame:\n\n"
+        + "\n\n".join(
+            f"- rate {row['coverage_rate']}: {row[_s_per_rate.columns[1]]:.3f}"
+            for row in _s_per_rate.iter_rows(named=True)
+        )
         + "\n\n---\n\n"
         f"**With `'coveragewise'`** (`'all'`) → scalar: "
         f"{float(_s_all):.3f}\n\n"
-        "The per-rate dict shows that wider intervals (0.95) achieve higher "
+        "The per-rate DataFrame shows that wider intervals (0.95) achieve higher "
         "coverage than narrow ones (0.8), as expected. Adding `'coveragewise'` "
         "averages across rates into a single number."
     )
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    Using `observe_predict` with `stride=1`, we create multiple vintages and
+    visualise the score matrix as a heatmap. Each cell shows the error for a
+    specific (step, vintage) combination.
+    """)
+    return
+
+
+@app.cell
+def _(LagTransformer, PointReductionForecaster, Ridge, deepcopy, fh, y_test, y_train):
+    _fc_v = PointReductionForecaster(
+        estimator=Ridge(alpha=1.0),
+        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+    )
+    _fc_v.fit(y_train, forecasting_horizon=fh)
+    _fc_v2 = deepcopy(_fc_v)
+    y_pred_vintages = _fc_v2.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=fh,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(plot_score_heatmap, vintage_scorer, y_pred_vintages, y_test):
+    plot_score_heatmap(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Score Heatmap (Step x Vintage)",
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -358,7 +418,7 @@ def _(mo):
     | Mode | Aggregates Over | Result |
     |------|----------------|--------|
     | `"all"` | time + components + groups + coverage | scalar |
-    | `"timewise"` | time | one row, one col per series |
+    | `["stepwise", "vintagewise"]` | time | one row, one col per series |
     | `"componentwise"` | members within groups | rows = timesteps, cols = panel groups |
     | `"groupwise"` | panel groups (stations) | rows = timesteps, cols = components (pollutants) |
     | `"coveragewise"` | coverage rates (interval only) | collapses coverage dimension |
@@ -366,9 +426,9 @@ def _(mo):
     - **Multivariate panel** groups are essential for seeing the difference
       between `"componentwise"` (pollutants → stations) and `"groupwise"`
       (stations → pollutants).
-    - **`panel_group_weight`**: Weight groups differently during `"all"`
+    - **`groups`** (dict): Weight groups differently during `"all"`
       aggregation.
-    - **Combine modes** as a list (e.g., `["timewise", "componentwise"]`) to
+    - **Combine modes** as a list (e.g., `["stepwise", "vintagewise", "componentwise"]`) to
       aggregate over multiple dimensions at once.
     """)
 

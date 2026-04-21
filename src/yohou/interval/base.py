@@ -324,7 +324,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate interval forecasts.
@@ -350,7 +350,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             - ``"point"``: use the point forecast directly (if available)
 
             If ``None``, defaults to ``"mean"``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -360,7 +360,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"observed_time"``, ``"time"``, and
+            Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         Raises
@@ -369,28 +369,28 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             If the forecaster has not been fitted yet.
         ValueError
             If ``X`` has invalid structure, ``coverage_rates`` not in (0, 1],
-            or ``panel_group_names`` contains names not seen during fit.
+            or ``groups`` contains names not seen during fit.
 
         """
-        check_is_fitted(self, ["panel_group_names_", "local_y_schema_", "fit_forecasting_horizon_"])
-        _, X, panel_group_names = validate_forecaster_data(
+        check_is_fitted(self, ["groups_", "local_y_schema_", "fit_forecasting_horizon_"])
+        _, X, groups = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(forecasting_horizon, coverage_rates)
 
         y_columns = list(self.local_y_schema_.keys())
-        if panel_group_names is not None:
-            y_columns = [f"{panel_group}__{col}" for panel_group in panel_group_names for col in self.local_y_schema_]
+        if groups is not None:
+            y_columns = [f"{panel_group}__{col}" for panel_group in groups for col in self.local_y_schema_]
 
             if X is not None:
                 X = select_panel_columns(
                     X,
-                    self.panel_group_names_,
+                    self.groups_,
                     include_global=True,
                 )
 
@@ -421,9 +421,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             y = pl.DataFrame(y_data)
 
-            if panel_group_names is not None:
+            if groups is not None:
                 cast_schema = {}
-                for group_name in panel_group_names:
+                for group_name in groups:
                     for col_name, dtype in forecaster.local_y_schema_.items():
                         cast_schema[f"{group_name}__{col_name}"] = dtype
             else:
@@ -446,7 +446,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         return self._recursive_predict(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             step_fn=step_fn,
             derive_observation_fn=derive_observation_fn,
         )
@@ -458,7 +458,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -491,7 +491,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             - ``"point"``: use the point forecast directly (if available)
 
             If ``None``, defaults to ``"mean"``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -504,7 +504,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"observed_time"``, ``"time"``, and
+            Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         Raises
@@ -513,16 +513,16 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             If the forecaster has not been fitted yet.
         ValueError
             If ``y`` / ``X`` have invalid structure, ``coverage_rates`` not in
-            (0, 1], or ``panel_group_names`` contains names not seen during fit.
+            (0, 1], or ``groups`` contains names not seen during fit.
 
         """
-        check_is_fitted(self, ["panel_group_names_", "local_y_schema_", "fit_forecasting_horizon_"])
-        y, X, panel_group_names = validate_forecaster_data(
+        check_is_fitted(self, ["groups_", "local_y_schema_", "fit_forecasting_horizon_"])
+        y, X, groups = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon, _ = self._validate_predict_params(forecasting_horizon, coverage_rates)
@@ -534,7 +534,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             predict_fn=self.predict_interval,
             y=y,
             X=X,
-            panel_group_names=panel_group_names,
+            groups=groups,
             stride=stride,
             forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
@@ -544,7 +544,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         coverage_rates: list[StrictFloat] | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -552,7 +552,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         coverage_rates : list of float
             Coverage rates for the prediction intervals.

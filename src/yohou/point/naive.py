@@ -145,14 +145,14 @@ class SeasonalNaive(BasePointForecaster):
 
     def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **params,
     ) -> pl.DataFrame:
         """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         **params : dict
             Metadata to route to nested estimators.
@@ -164,7 +164,7 @@ class SeasonalNaive(BasePointForecaster):
 
         """
         # Non-panel data
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             assert isinstance(self._y_observed, pl.DataFrame)
             y_pred = self._y_observed.select(~cs.by_name("time"))
             if self.fit_forecasting_horizon_ > self.seasonality:
@@ -178,7 +178,7 @@ class SeasonalNaive(BasePointForecaster):
         else:
             assert isinstance(self._y_observed, dict)
             y_pred = []
-            for panel_group_name in panel_group_names:
+            for panel_group_name in groups:
                 y_group = self._y_observed[panel_group_name]
                 assert isinstance(y_group, pl.DataFrame)
                 y_pred_group = y_group.select(~cs.by_name("time"))

@@ -17,14 +17,11 @@ import pytest
 EXAMPLES_DIR = pathlib.Path(__file__).parent.parent / "examples"
 
 # Optional-dependency availability flags
-_has_yohou_optuna = importlib.util.find_spec("yohou_optuna") is not None
 _has_statsmodels = importlib.util.find_spec("statsmodels") is not None
 _has_catboost = importlib.util.find_spec("catboost") is not None
 
 # Notebooks that require optional dependencies or have known issues, keyed by filename
-_NOTEBOOK_MARKS: dict[str, list[pytest.MarkDecorator]] = {
-    "optuna_search.py": [pytest.mark.xfail(not _has_yohou_optuna, reason="requires yohou-optuna", strict=True)],
-}
+_NOTEBOOK_MARKS: dict[str, list[pytest.MarkDecorator]] = {}
 
 
 def _collect_notebooks(subdir: str | None = None) -> list:

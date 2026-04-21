@@ -1,6 +1,7 @@
 """Model evaluation and diagnostic visualization functions."""
 
 import copy
+import warnings
 from collections.abc import Callable
 from typing import Literal
 
@@ -38,12 +39,72 @@ from yohou.utils.panel import inspect_panel
 
 __all__ = [
     "plot_calibration",
-    "plot_model_comparison_bar",
+    "plot_group_scores",
     "plot_residuals",
     "plot_score_distribution",
-    "plot_score_per_horizon",
+    "plot_score_heatmap",
+    "plot_score_per_step",
+    "plot_score_per_vintage",
+    "plot_score_summary",
     "plot_score_time_series",
 ]
+
+_SCORER_META_COLS = frozenset({"time", "vintage_time", "forecasting_step", "coverage_rate"})
+
+
+def _normalize_scorers(
+    scorer: BaseScorer | dict[str, BaseScorer],
+) -> dict[str, BaseScorer]:
+    """Normalize scorer input to a dict mapping name to scorer.
+
+    Parameters
+    ----------
+    scorer : BaseScorer or dict[str, BaseScorer]
+        Single scorer or dict of named scorers.
+
+    Returns
+    -------
+    dict[str, BaseScorer]
+        Mapping of scorer name to scorer instance.
+
+    """
+    if isinstance(scorer, dict):
+        return scorer  # type: ignore
+    return {scorer.__class__.__name__: scorer}
+
+
+def _prepare_scorer_for_componentwise(scorer: BaseScorer) -> BaseScorer:
+    """Clone and configure a scorer for componentwise aggregation.
+
+    Parameters
+    ----------
+    scorer : BaseScorer
+        Scorer to prepare.
+
+    Returns
+    -------
+    BaseScorer
+        Cloned scorer with componentwise aggregation set.
+
+    """
+    scorer_cw = copy.deepcopy(scorer)
+    if isinstance(scorer_cw, BaseIntervalScorer):
+        scorer_cw.set_params(aggregation_method=["componentwise", "coveragewise"])
+    else:
+        scorer_cw.set_params(aggregation_method="componentwise")
+    return scorer_cw
+
+
+def _warn_large_grid(n_scorers: int, n_models: int, threshold: int = 12) -> None:
+    """Warn when the combination of scorers and models exceeds a threshold."""
+    total = n_scorers * n_models
+    if total > threshold:
+        warnings.warn(
+            f"Large facet grid: {n_scorers} scorer(s) x {n_models} model(s) = "
+            f"{total} panels. Consider reducing the number of scorers or models.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _render_residual_diagnostics(
@@ -184,6 +245,11 @@ def _render_residual_diagnostics(
         col=2,
     )
 
+    # Force equal x/y range on Q-Q plot so the reference line is at 45 degrees
+    pad = (max_val - min_val) * 0.05
+    fig.update_xaxes(range=[min_val - pad, max_val + pad], row=2, col=2)
+    fig.update_yaxes(range=[min_val - pad, max_val + pad], row=2, col=2)
+
     # Axis labels
     fig.update_xaxes(title_text="Time", row=1, col=1)
     fig.update_yaxes(title_text="Residuals", row=1, col=1)
@@ -212,7 +278,7 @@ def plot_residuals(
     y_truth: pl.DataFrame,
     *,
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -233,7 +299,7 @@ def plot_residuals(
     residuals over time, residuals vs fitted values, histogram of
     residuals, and Q-Q plot for checking normality assumptions.  When
     multiple columns are resolved (through *columns* or
-    *panel_group_names*), produces a faceted layout showing residuals
+    *groups*), produces a faceted layout showing residuals
     over time for each column.
 
     Residuals are computed internally as ``y_truth - y_pred`` for matching
@@ -246,11 +312,11 @@ def plot_residuals(
     y_truth : pl.DataFrame
         Ground-truth values with ``"time"`` column.
     columns : str | list[str] | None, default=None
-        Column(s) to compute residuals for.  When *panel_group_names* is
+        Column(s) to compute residuals for.  When *groups* is
         set, acts as a member postfix filter (e.g. ``["a"]`` selects
         ``y__a``).  When *None*, uses all common non-time columns. A
         single match triggers 4-panel diagnostics, multiple produce facets.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to facet by.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data. ``"group"`` creates one subplot per
@@ -311,12 +377,12 @@ def plot_residuals(
 
     # Auto-detect panel data
     _, _panel_groups = inspect_panel(y_truth)
-    if panel_group_names is None and columns is None and _panel_groups:
-        panel_group_names = []
+    if groups is None and columns is None and _panel_groups:
+        groups = []
 
     # Resolve target columns
-    if panel_group_names is not None:
-        target_cols = validate_plotting_data(y_pred, columns=columns, panel_group_names=panel_group_names)
+    if groups is not None:
+        target_cols = validate_plotting_data(y_pred, columns=columns, groups=groups)
         missing = [c for c in target_cols if c not in y_truth.columns]
         if missing:
             msg = f"Columns {missing} not found in y_truth"
@@ -360,8 +426,8 @@ def plot_residuals(
 
     # Multiple columns: faceted residuals over time
 
-    if panel_group_names is not None:
-        pn_cols = resolve_panel_columns(residuals_df, panel_group_names, columns)
+    if groups is not None:
+        pn_cols = resolve_panel_columns(residuals_df, groups, columns)
         _, all_members = _group_panel_columns(pn_cols)
         member_palette = resolve_color_palette(color_palette, len(all_members))
         legend_tracker = LegendTracker()
@@ -399,7 +465,7 @@ def plot_residuals(
         fig = facet_figure(
             residuals_df,
             _render_residual_scatter,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
             facet_n_cols=facet_n_cols,
@@ -658,7 +724,7 @@ def plot_calibration(
     columns: str | list[str] | None = None,
     target: str | None = None,
     n_bins: int = 10,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -703,7 +769,7 @@ def plot_calibration(
         columns; ignored for class-probability predictions.
     columns : str | list[str] | None, default=None
         Target column name(s) for interval calibration.  When
-        *panel_group_names* is set this acts as a member postfix
+        *groups* is set this acts as a member postfix
         filter.  Ignored for class-probability predictions (use
         *target* instead).
     target : str or None, default=None
@@ -713,7 +779,7 @@ def plot_calibration(
     n_bins : int, default=10
         Number of bins for class-probability calibration.  Ignored for
         interval calibration.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes for faceted subplots.  When provided, each
         resolved panel column gets its own subplot.
     facet_by : Literal["group", "member"] | None, default="member"
@@ -721,7 +787,7 @@ def plot_calibration(
         group, ``"member"`` one per member. ``None`` disables faceting.
         Ignored for non-panel data.
     facet_n_cols : int, default=2
-        Number of columns in the facet grid when *panel_group_names* is
+        Number of columns in the facet grid when *groups* is
         used.
     color_palette : list[str] | None, default=None
         Custom color palette as hex codes. If None, uses yohou palette.
@@ -837,23 +903,23 @@ def plot_calibration(
 
     # Auto-detect panel data
     _, _panel_groups = inspect_panel(y_truth)
-    if panel_group_names is None and columns is None and _panel_groups:
-        panel_group_names = []
+    if groups is None and columns is None and _panel_groups:
+        groups = []
 
-    if panel_group_names is not None:
-        panel_cols = resolve_panel_columns(y_truth, panel_group_names, columns)
+    if groups is not None:
+        panel_cols = resolve_panel_columns(y_truth, groups, columns)
 
         # Group columns by panel prefix, collect unique members
-        groups, all_members = _group_panel_columns(panel_cols)
+        grouped, all_members = _group_panel_columns(panel_cols)
 
-        n_groups = len(groups)
+        n_groups = len(grouped)
         n_cols_grid = min(n_groups, facet_n_cols)
         n_rows = (n_groups + n_cols_grid - 1) // n_cols_grid
 
         fig = make_subplots(
             rows=n_rows,
             cols=n_cols_grid,
-            subplot_titles=list(groups.keys()),
+            subplot_titles=list(grouped.keys()),
             shared_xaxes=True,
             shared_yaxes=True,
             vertical_spacing=_subplot_spacing(n_rows),
@@ -862,7 +928,7 @@ def plot_calibration(
 
         palette = resolve_color_palette(color_palette, len(all_members))
         legend_tracker = LegendTracker(show_legend=show_legend)
-        for group_idx, (_, group_cols) in enumerate(groups.items()):
+        for group_idx, (_, group_cols) in enumerate(grouped.items()):
             row = group_idx // n_cols_grid + 1
             col_idx = group_idx % n_cols_grid + 1
 
@@ -923,7 +989,7 @@ def plot_calibration(
                 msg = f"Target column '{col}' not found in y_truth"
                 raise ValueError(msg)
     else:
-        target_columns = [c for c in y_truth.columns if c not in ("time", "observed_time")]
+        target_columns = [c for c in y_truth.columns if c not in ("time", "vintage_time")]
         if not target_columns:
             msg = "y_truth has no non-time columns"
             raise ValueError(msg)
@@ -979,7 +1045,7 @@ def _plot_score_time_series_panel(
     scorer_componentwise: BaseScorer,
     y_truth: pl.DataFrame,
     y_pred_dict: dict[str, pl.DataFrame],
-    panel_group_names: list[str],
+    groups: list[str],
     facet_n_cols: int,
     colors: list[str],
     scorer: BaseScorer,
@@ -1008,7 +1074,7 @@ def _plot_score_time_series_panel(
         Ground truth values.
     y_pred_dict : dict[str, pl.DataFrame]
         Model name to prediction DataFrame mapping.
-    panel_group_names : list[str]
+    groups : list[str]
         Panel group prefixes to facet by.
     facet_n_cols : int
         Number of columns in the facet grid.
@@ -1049,9 +1115,9 @@ def _plot_score_time_series_panel(
     mode = "lines+markers" if show_markers else "lines"
 
     _, all_groups = inspect_panel(y_truth)
-    groups = list(all_groups) if not panel_group_names else [g for g in panel_group_names if g in all_groups]
+    groups = list(all_groups) if not groups else [g for g in groups if g in all_groups]
     if not groups:
-        msg = f"No panel groups found matching {panel_group_names}. Available: {list(all_groups)}"
+        msg = f"No panel groups found matching {groups}. Available: {list(all_groups)}"
         raise ValueError(msg)
 
     n_groups = len(groups)
@@ -1086,7 +1152,7 @@ def _plot_score_time_series_panel(
             msg = "Scorer must return DataFrame with 'time' column for componentwise aggregation"
             raise ValueError(msg)
 
-        score_cols = [c for c in scores_df.columns if c != "time"]
+        score_cols = [c for c in scores_df.columns if c not in _SCORER_META_COLS]
 
         for group_idx, group_name in enumerate(groups):
             row = group_idx // n_cols_grid + 1
@@ -1104,22 +1170,28 @@ def _plot_score_time_series_panel(
             else:
                 score_values = scores_df.select(group_score_cols).mean_horizontal()
 
-            fig.add_trace(
-                go.Scatter(
-                    x=scores_df["time"],
-                    y=score_values,
-                    mode=mode,
-                    name=model_name,
-                    legendgroup=model_name,
-                    showlegend=legend_tracker.should_show(model_name),
-                    line={"color": colors[model_idx], "width": line_width, "dash": line_dash},
-                    opacity=line_opacity,
-                    marker={"size": 6} if show_markers else None,
-                    connectgaps=connect_gaps,
-                    hovertemplate=_make_hovertemplate(model_name, "Time", "Score", decimals=3, extra=group_name),
-                ),
+            trace_df = scores_df.select([c for c in scores_df.columns if c in {"time", "vintage_time"}]).with_columns(
+                score_values.alias("_score")
+            )
+
+            _add_vintage_traces(
+                fig,
+                trace_df,
+                x_col="time",
+                y_col="_score",
+                name=model_name,
+                color=colors[model_idx],
+                line_width=line_width,
+                line_dash=line_dash,
+                base_opacity=line_opacity,
+                mode=mode,
+                show_markers=show_markers,
+                connect_gaps=connect_gaps,
+                showlegend=legend_tracker.should_show(model_name),
+                legendgroup=model_name,
                 row=row,
                 col=col,
+                hovertemplate_extra=group_name,
             )
 
     scorer_name = scorer.__class__.__name__
@@ -1141,15 +1213,148 @@ def _plot_score_time_series_panel(
     return fig
 
 
+def _add_vintage_traces(
+    fig: go.Figure,
+    df: pl.DataFrame,
+    *,
+    x_col: str,
+    y_col: str,
+    name: str,
+    color: str,
+    line_width: float,
+    line_dash: str,
+    base_opacity: float,
+    mode: str,
+    show_markers: bool,
+    connect_gaps: bool,
+    showlegend: bool,
+    decimals: int = 3,
+    legendgroup: str | None = None,
+    row: int | None = None,
+    col: int | None = None,
+    hovertemplate_extra: str = "",
+) -> None:
+    """Add one or more traces, splitting by vintage when ``vintage_time`` is present.
+
+    When the DataFrame has an ``vintage_time`` column with multiple unique
+    values, one ``go.Scatter`` trace is created per vintage.  Older vintages
+    are drawn with lower opacity and hidden from the legend so that only the
+    newest vintage trace represents the series.
+    """
+    has_vintages = "vintage_time" in df.columns and df["vintage_time"].n_unique() > 1
+
+    if not has_vintages:
+        base_ht = _make_hovertemplate(name, "Time", "Score", decimals=decimals, extra=hovertemplate_extra)
+        trace = go.Scatter(
+            x=df[x_col],
+            y=df[y_col],
+            mode=mode,
+            name=name,
+            legendgroup=legendgroup,
+            showlegend=showlegend,
+            line={"color": color, "width": line_width, "dash": line_dash},
+            opacity=base_opacity,
+            marker={"size": 6} if show_markers else None,
+            connectgaps=connect_gaps,
+            hovertemplate=base_ht,
+        )
+        kwargs: dict = {}
+        if row is not None:
+            kwargs["row"] = row
+            kwargs["col"] = col
+        fig.add_trace(trace, **kwargs)
+        return
+
+    vintages = df["vintage_time"].unique().sort().to_list()
+    n = len(vintages)
+    base_ht = _make_hovertemplate(name, "Time", "Score", decimals=decimals, extra=hovertemplate_extra)
+
+    for rank, v in enumerate(vintages):
+        opacity = 0.3 + 0.7 * (rank / (n - 1))
+        is_newest = rank == n - 1
+        vintage_ht = base_ht.replace("<extra>", f"<br>Vintage: {v}<extra>")
+
+        trace = go.Scatter(
+            x=df.filter(pl.col("vintage_time") == v)[x_col],
+            y=df.filter(pl.col("vintage_time") == v)[y_col],
+            mode=mode,
+            name=name,
+            legendgroup=legendgroup,
+            showlegend=showlegend and is_newest,
+            line={"color": color, "width": line_width, "dash": line_dash},
+            opacity=opacity,
+            marker={"size": 6} if show_markers else None,
+            connectgaps=connect_gaps,
+            hovertemplate=vintage_ht,
+        )
+        kwargs = {}
+        if row is not None:
+            kwargs["row"] = row
+            kwargs["col"] = col
+        fig.add_trace(trace, **kwargs)
+
+
+def _compute_componentwise_scores(
+    scorer_cw: BaseScorer,
+    y_truth: pl.DataFrame,
+    y_pred_model: pl.DataFrame,
+    columns: str | list[str] | None,
+    time_weight: Callable | pl.DataFrame | None,
+) -> pl.DataFrame:
+    """Compute componentwise scores for one scorer-model pair.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with ``time``, optionally ``vintage_time``, and a single
+        ``score`` column containing the (possibly averaged) metric values.
+    """
+    validate_plotting_data(y_pred_model)
+
+    score_kwargs: dict = {}
+    if time_weight is not None:
+        score_kwargs["time_weight"] = time_weight
+
+    scores_df = scorer_cw.score(y_truth, y_pred_model, **score_kwargs)
+
+    if not isinstance(scores_df, pl.DataFrame):
+        msg = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
+        raise TypeError(msg)
+
+    if "time" not in scores_df.columns:
+        msg = "Scorer must return DataFrame with 'time' column for componentwise aggregation"
+        raise ValueError(msg)
+
+    score_columns = [col for col in scores_df.columns if col not in _SCORER_META_COLS]
+
+    if columns is not None:
+        col_filter = [columns] if isinstance(columns, str) else list(columns)
+        score_columns = [c for c in score_columns if c in col_filter]
+        if not score_columns:
+            msg = f"None of the requested columns {col_filter!r} found in scorer output"
+            raise ValueError(msg)
+
+    if len(score_columns) == 1:
+        score_values = scores_df[score_columns[0]]
+    else:
+        score_values = scores_df.select(score_columns).mean().transpose().to_series()
+
+    keep_cols = ["time"]
+    if "vintage_time" in scores_df.columns:
+        keep_cols.append("vintage_time")
+    return scores_df.select(keep_cols).with_columns(score_values.alias("score"))
+
+
 def plot_score_time_series(
-    scorer: BaseScorer,
+    scorer: BaseScorer | dict[str, BaseScorer],
     y_truth: pl.DataFrame,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
     time_weight: Callable | pl.DataFrame | None = None,
+    compare_by: Literal["scorer", "model"] = "scorer",
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
-    facet_by: Literal["group", "member"] | None = "member",
+    groups: list[str] | None = None,
+    facet_by: Literal["group", "member", "vintage"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -1173,35 +1378,51 @@ def plot_score_time_series(
 
     Parameters
     ----------
-    scorer : BaseScorer
+    scorer : BaseScorer or dict[str, BaseScorer]
         Yohou scorer instance (e.g., MeanAbsoluteError, RootMeanSquaredError).
         Will be cloned and configured with aggregation_method="componentwise".
+
+        - If BaseScorer: single scorer to evaluate.
+        - If dict: keys are scorer names, values are scorer instances.
+          When combined with dict ``y_pred``, the ``compare_by`` parameter
+          controls which dimension is faceted vs overlaid.
     y_truth : pl.DataFrame
         Ground truth values with 'time' column.
     y_pred : pl.DataFrame or dict[str, pl.DataFrame]
-        Predicted values with 'observed_time' and 'time' columns.
+        Predicted values with 'vintage_time' and 'time' columns.
         - If DataFrame: single forecast to plot
         - If dict: multiple forecasts with keys as model names
     time_weight : callable or pl.DataFrame or None, default=None
         Time weighting function or DataFrame forwarded to
         ``scorer.score()``.  When provided, per-timestep scores are
         weighted before being plotted.
+    compare_by : str, default="scorer"
+        When both ``scorer`` and ``y_pred`` are dicts, controls which
+        dimension is overlaid (colored lines) vs faceted (subplots):
+
+        - ``"scorer"``: overlay scorers, facet by model.
+        - ``"model"``: overlay models, facet by scorer.
+
+        Ignored when either ``scorer`` or ``y_pred`` is not a dict.
     columns : str | list[str] | None, default=None
         Target column name(s) to include in the score.  When
-        *panel_group_names* is set, acts as a member postfix filter
+        *groups* is set, acts as a member postfix filter
         (e.g. ``"a"`` selects ``group__a``).  When ``None``, all score
         columns are used.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes for faceted subplots.  When provided, each
         group gets its own subplot showing the score time series for that
         group.  Groups are resolved via ``inspect_panel`` against
         *y_truth*.
-    facet_by : Literal["group", "member"] | None, default="member"
-        Faceting axis for panel data. ``"group"`` creates one subplot per
-        group, ``"member"`` one per member. ``None`` disables faceting.
-        Ignored for non-panel data.
+    facet_by : Literal["group", "member", "vintage"] | None, default="member"
+        Faceting axis for panel data or vintage data.  ``"group"`` creates
+        one subplot per group, ``"member"`` one per member. ``"vintage"``
+        creates one subplot per ``vintage_time`` value found in *y_pred*,
+        showing how score evolves across forecast origins.
+        ``None`` disables faceting. ``"group"`` and ``"member"`` are
+        ignored for non-panel data.
     facet_n_cols : int, default=2
-        Number of columns in the facet grid when *panel_group_names* is
+        Number of columns in the facet grid when *groups* is
         used.
     color_palette : list[str] | None, default=None
         Custom color palette as hex codes. If None, uses yohou palette.
@@ -1257,7 +1478,7 @@ def plot_score_time_series(
     ...     "value": [10.0, 20.0, 30.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [12.0, 19.0, 28.0],
     ... })
@@ -1270,7 +1491,7 @@ def plot_score_time_series(
 
     >>> # Plot multiple forecasts
     >>> y_pred2 = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 3,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "value": [11.0, 21.0, 29.0],
     ... })
@@ -1289,49 +1510,55 @@ def plot_score_time_series(
     - For interval scorers, use aggregation_method=["componentwise", "coveragewise"]
     - Requires scorer to support componentwise aggregation
     - All scores are computed independently at each timestep
+    - Use ``facet_by="vintage"`` to compare score curves across forecast
+      origins (requires ``y_pred`` with multiple ``vintage_time`` values)
 
     """
     # Validate ground truth
     validate_plotting_data(y_truth)
     validate_plotting_params(width=width, height=height)
 
-    # Normalize y_pred to dict format
+    # Normalize inputs
     y_pred_dict = _normalize_y_pred(y_pred)
+    scorer_dict = _normalize_scorers(scorer)
 
-    # Clone scorer and configure for componentwise aggregation
-    scorer_componentwise = copy.deepcopy(scorer)
+    # Prepare and fit each scorer for componentwise aggregation
+    scorer_cw_dict: dict[str, BaseScorer] = {}
+    for s_name, s in scorer_dict.items():
+        s_cw = _prepare_scorer_for_componentwise(s)
+        s_cw.fit(y_truth)
+        scorer_cw_dict[s_name] = s_cw
 
-    # Check if scorer is interval scorer (has different aggregation options)
-    if isinstance(scorer_componentwise, BaseIntervalScorer):
-        # Interval scorer: aggregate across coverage rates too
-        scorer_componentwise.set_params(aggregation_method=["componentwise", "coveragewise"])
-    else:
-        # Point scorer: only componentwise
-        scorer_componentwise.set_params(aggregation_method="componentwise")
-
-    # Fit the cloned scorer (required for validation)
-    scorer_componentwise.fit(y_truth)
-
-    # Get color palette
-    if color_palette is None:
-        colors = resolve_color_palette(None, len(y_pred_dict))
-    else:
-        colors = resolve_color_palette(color_palette, len(y_pred_dict))
+    n_scorers = len(scorer_cw_dict)
+    n_models = len(y_pred_dict)
+    multi_scorer = n_scorers > 1
 
     # Auto-detect panel data
     _, _panel_groups = inspect_panel(y_truth)
-    if panel_group_names is None and _panel_groups:
-        panel_group_names = []
+    if groups is None and _panel_groups:
+        groups = []
 
-    if panel_group_names is not None:
+    if groups is not None:
+        if facet_by == "vintage":
+            msg = "facet_by='vintage' cannot be combined with panel groups. Use facet_by='group' or 'member' for panel data."
+            raise ValueError(msg)
+        if multi_scorer:
+            msg = (
+                "Multi-scorer is not supported with panel data in plot_score_time_series. Pass a single scorer instead."
+            )
+            raise ValueError(msg)
+        first_key = next(iter(scorer_dict))
+        first_scorer = scorer_dict[first_key]
+        first_scorer_cw = scorer_cw_dict[first_key]
+        colors = resolve_color_palette(color_palette, n_models)
         return _plot_score_time_series_panel(
-            scorer_componentwise=scorer_componentwise,
+            scorer_componentwise=first_scorer_cw,
             y_truth=y_truth,
             y_pred_dict=y_pred_dict,
-            panel_group_names=panel_group_names,
+            groups=groups,
             facet_n_cols=facet_n_cols,
             colors=colors,
-            scorer=scorer,
+            scorer=first_scorer,
             show_legend=show_legend,
             title=title,
             x_label=x_label,
@@ -1348,267 +1575,237 @@ def plot_score_time_series(
             show_markers=show_markers,
         )
 
-    # Create figure
-    fig = _create_figure(resampler)
-
-    # Compute and plot scores for each model
-    score_kwargs: dict = {}
-    if time_weight is not None:
-        score_kwargs["time_weight"] = time_weight
-
-    for idx, (model_name, y_pred_model) in enumerate(y_pred_dict.items()):
-        # Validate prediction DataFrame
-        validate_plotting_data(y_pred_model)
-
-        # Compute componentwise scores
-        scores_df = scorer_componentwise.score(y_truth, y_pred_model, **score_kwargs)
-
-        # Type narrow: ensure scores_df is a DataFrame
-        if not isinstance(scores_df, pl.DataFrame):
-            msg = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
-            raise TypeError(msg)
-
-        # scores_df should have "time" column and score columns
-        if "time" not in scores_df.columns:
-            msg = "Scorer must return DataFrame with 'time' column for componentwise aggregation"
+    # Case: facet_by="vintage" -> one subplot per vintage_time value
+    if facet_by == "vintage":
+        if multi_scorer:
+            msg = "Multi-scorer is not supported with facet_by='vintage'. Pass a single scorer instead."
             raise ValueError(msg)
 
-        # Get score columns (all except time)
-        score_columns = [col for col in scores_df.columns if col != "time"]
+        first_key = next(iter(scorer_dict))
+        first_scorer = scorer_dict[first_key]
+        first_scorer_cw = scorer_cw_dict[first_key]
 
-        # Optionally filter to requested columns
-        if columns is not None:
-            col_filter = [columns] if isinstance(columns, str) else list(columns)
-            score_columns = [c for c in score_columns if c in col_filter]
-            if not score_columns:
-                msg = f"None of the requested columns {col_filter!r} found in scorer output"
-                raise ValueError(msg)
+        # Collect all vintage labels across models
+        all_vintages: list = []
+        cw_results: dict[str, pl.DataFrame] = {}
+        for model_name, y_pred_model in y_pred_dict.items():
+            cw_df = _compute_componentwise_scores(first_scorer_cw, y_truth, y_pred_model, columns, time_weight)
+            cw_results[model_name] = cw_df
+            if "vintage_time" in cw_df.columns:
+                for v in cw_df["vintage_time"].unique().sort().to_list():
+                    if v not in all_vintages:
+                        all_vintages.append(v)
 
-        # If multiple score columns, aggregate (mean) for simplicity
-        if len(score_columns) == 1:
-            score_values = scores_df[score_columns[0]]
-        else:
-            # Multiple components: compute mean across components
-            score_values = scores_df.select(score_columns).mean().transpose().to_series()
-
-        # Determine mode
-        mode = "lines+markers" if show_markers else "lines"
-
-        # Add trace
-        fig.add_trace(
-            go.Scatter(
-                x=scores_df["time"],
-                y=score_values,
-                mode=mode,
-                name=model_name,
-                line={"color": colors[idx], "width": line_width, "dash": line_dash},
-                opacity=line_opacity,
-                marker={"size": 6} if show_markers else None,
-                connectgaps=connect_gaps,
-                hovertemplate=_make_hovertemplate(model_name, "Time", "Score", decimals=3),
+        if len(all_vintages) < 2:
+            msg = (
+                "facet_by='vintage' requires predictions with multiple vintages "
+                "(multiple vintage_time values). The provided y_pred has a single vintage."
             )
+            raise ValueError(msg)
+
+        n_vintages = len(all_vintages)
+        n_cols_grid = min(n_vintages, facet_n_cols)
+        n_rows = (n_vintages + n_cols_grid - 1) // n_cols_grid
+        colors = resolve_color_palette(color_palette, n_models)
+
+        vintage_labels = [str(v) for v in reversed(all_vintages)]
+        fig = _create_subplots(
+            resampler,
+            rows=n_rows,
+            cols=n_cols_grid,
+            subplot_titles=vintage_labels,
+            shared_xaxes=True,
+            vertical_spacing=min(0.04, 0.3 / max(n_rows - 1, 1)),
+            horizontal_spacing=0.08,
         )
 
-    # Apply layout
-    if title is None:
-        scorer_name = scorer.__class__.__name__
-        title = f"{scorer_name} Over Time"
+        mode = "lines+markers" if show_markers else "lines"
+        legend_tracker = LegendTracker()
 
-    if x_label is None:
-        x_label = "Time"
+        for vintage_idx, vintage_val in enumerate(all_vintages):
+            rev_idx = n_vintages - 1 - vintage_idx
+            row = rev_idx // n_cols_grid + 1
+            col = rev_idx % n_cols_grid + 1
 
-    if y_label is None:
-        y_label = scorer.__class__.__name__
+            for model_idx, (model_name, cw_df) in enumerate(cw_results.items()):
+                if "vintage_time" not in cw_df.columns:
+                    continue
+                vintage_df = cw_df.filter(pl.col("vintage_time") == vintage_val)
+                if vintage_df.is_empty():
+                    continue
 
-    fig = apply_default_layout(
-        fig,
-        title=title,
-        x_label=x_label,
-        y_label=y_label,
-        width=width,
-        height=height,
-    )
+                fig.add_trace(
+                    go.Scatter(
+                        x=vintage_df["time"],
+                        y=vintage_df["score"],
+                        mode=mode,
+                        name=model_name,
+                        legendgroup=model_name,
+                        showlegend=legend_tracker.should_show(model_name),
+                        line={"color": colors[model_idx], "width": line_width, "dash": line_dash},
+                        opacity=line_opacity,
+                        marker={"size": 6} if show_markers else None,
+                        connectgaps=connect_gaps,
+                        hovertemplate=_make_hovertemplate(model_name, "Time", "Score", decimals=3),
+                    ),
+                    row=row,
+                    col=col,
+                )
 
-    # Update legend
-    fig.update_layout(showlegend=show_legend)
+        scorer_name = first_scorer.__class__.__name__
+        default_title = title or f"{scorer_name} Over Time"
+        row_height = 300
+        default_height = max(row_height * n_rows, 400)
 
-    return fig
+        fig = apply_default_layout(
+            fig,
+            title=default_title,
+            x_label=x_label or "Time",
+            y_label=y_label or scorer_name,
+            width=width,
+            height=height or default_height,
+        )
+        fig.update_layout(showlegend=show_legend)
+        return fig
 
+    mode = "lines+markers" if show_markers else "lines"
 
-def plot_model_comparison_bar(
-    results: dict[str, dict[str, float]],
-    *,
-    group_by: str = "scorer",
-    orientation: str = "vertical",
-    sort_by: str | None = None,
-    ascending: bool = True,
-    color_palette: list[str] | None = None,
-    show_legend: bool = True,
-    title: str | None = None,
-    x_label: str | None = None,
-    y_label: str | None = None,
-    width: int | None = None,
-    height: int | None = None,
-    bar_width: float = 0.8,
-    text_auto: bool = True,
-) -> go.Figure:
-    """Plot grouped bar chart comparing multiple models across scorers.
+    # Case: multi-scorer AND multi-model -> faceted subplots
+    if multi_scorer and n_models > 1:
+        _warn_large_grid(n_scorers, n_models)
 
-    Creates a grouped bar chart with one group per scorer (or per model),
-    allowing side-by-side comparison of multiple model performances.
-
-    Parameters
-    ----------
-    results : dict[str, dict[str, float]]
-        Mapping of model names to dicts of scorer name to score value.
-        Example: ``{"Model A": {"MAE": 0.5, "RMSE": 0.8}, "Model B": {"MAE": 0.3}}``.
-    group_by : str, default="scorer"
-        Grouping axis. ``"scorer"`` groups bars by scorer with one bar per model.
-        ``"model"`` groups bars by model with one bar per scorer.
-    orientation : str, default="vertical"
-        ``"vertical"`` for vertical bars, ``"horizontal"`` for horizontal bars.
-    sort_by : str | None, default=None
-        Name of a model or scorer to sort the category axis by. If None,
-        categories appear in insertion order.
-    ascending : bool, default=True
-        Sort direction when ``sort_by`` is set.
-    color_palette : list[str] | None, default=None
-        Custom color palette. Falls back to ``resolve_color_palette``.
-    show_legend : bool, default=True
-        Whether to show the legend.
-    title : str | None, default=None
-        Plot title. Defaults to ``"Model Comparison"``.
-    x_label : str | None, default=None
-        X-axis label.
-    y_label : str | None, default=None
-        Y-axis label.
-    width : int | None, default=None
-        Plot width in pixels.
-    height : int | None, default=None
-        Plot height in pixels.
-    bar_width : float, default=0.8
-        Width of each bar as a fraction of the group width.
-    text_auto : bool, default=True
-        Annotate bars with their values.
-
-    Returns
-    -------
-    go.Figure
-        Plotly figure with grouped bar chart.
-
-    Raises
-    ------
-    ValueError
-        If *results* is empty or *group_by* / *orientation* is invalid.
-
-    Examples
-    --------
-    >>> from yohou.plotting import plot_model_comparison_bar
-
-    >>> scores = {
-    ...     "Naive": {"MAE": 12.3, "RMSE": 15.1},
-    ...     "LinearRegression": {"MAE": 8.7, "RMSE": 10.4},
-    ... }
-    >>> fig = plot_model_comparison_bar(scores)
-    >>> len(fig.data)
-    2
-
-    See Also
-    --------
-    [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Per-timestep scorer comparison.
-    [`plot_cv_results_scatter`][yohou.plotting.plot_cv_results_scatter] : Cross-validation result scatter.
-    """
-    if not results:
-        msg = "results must be a non-empty dict of model → scorer → score"
-        raise ValueError(msg)
-
-    validate_plotting_params(width=width, height=height)
-
-    valid_group_by = {"scorer", "model"}
-    if group_by not in valid_group_by:
-        msg = f"group_by must be one of {valid_group_by}, got '{group_by}'"
-        raise ValueError(msg)
-
-    valid_orientation = {"vertical", "horizontal"}
-    if orientation not in valid_orientation:
-        msg = f"orientation must be one of {valid_orientation}, got '{orientation}'"
-        raise ValueError(msg)
-
-    # Collect all model and scorer names
-    model_names = list(results.keys())
-    scorer_names: list[str] = []
-    for scores in results.values():
-        for s in scores:
-            if s not in scorer_names:
-                scorer_names.append(s)
-
-    # Determine grouping
-    if group_by == "scorer":
-        categories = scorer_names
-        series_names = model_names
-        # Each series = one model, each category = one scorer
-        series_values = [[results[model].get(scorer, 0.0) for scorer in categories] for model in series_names]
-    else:
-        categories = model_names
-        series_names = scorer_names
-        series_values = [[results[model].get(scorer, 0.0) for model in categories] for scorer in series_names]
-
-    # Optional sorting
-    if sort_by is not None:
-        # Find the series to sort by
-        sort_idx = None
-        for i, name in enumerate(series_names):
-            if name == sort_by:
-                sort_idx = i
-                break
-        if sort_idx is not None:
-            order = sorted(
-                range(len(categories)),
-                key=lambda k: series_values[sort_idx][k],
-                reverse=not ascending,
-            )
-            categories = [categories[k] for k in order]
-            series_values = [[sv[k] for k in order] for sv in series_values]
-
-    colors = resolve_color_palette(color_palette, len(series_names))
-    is_horizontal = orientation == "horizontal"
-
-    fig = go.Figure()
-    for i, (name, values) in enumerate(zip(series_names, series_values, strict=True)):
-        bar_kwargs: dict = {
-            "name": name,
-            "marker_color": colors[i % len(colors)],
-            "width": bar_width / len(series_names),
-        }
-        if text_auto:
-            bar_kwargs["text"] = [f"{v:.3g}" for v in values]
-            bar_kwargs["textposition"] = "outside"
-
-        if is_horizontal:
-            bar_kwargs["x"] = values
-            bar_kwargs["y"] = categories
-            bar_kwargs["orientation"] = "h"
+        if compare_by == "model":
+            # Facet by scorer, overlay models
+            facet_labels = list(scorer_cw_dict.keys())
+            overlay_labels = list(y_pred_dict.keys())
         else:
-            bar_kwargs["x"] = categories
-            bar_kwargs["y"] = values
+            # Facet by model, overlay scorers
+            facet_labels = list(y_pred_dict.keys())
+            overlay_labels = list(scorer_cw_dict.keys())
 
-        fig.add_trace(go.Bar(**bar_kwargs))
+        n_facets = len(facet_labels)
+        n_cols = min(facet_n_cols, n_facets)
+        n_rows = (n_facets + n_cols - 1) // n_cols
+        colors = resolve_color_palette(color_palette, len(overlay_labels))
 
-    fig.update_layout(barmode="group")
+        fig = make_subplots(
+            rows=n_rows,
+            cols=n_cols,
+            subplot_titles=facet_labels,
+            shared_xaxes=True,
+            vertical_spacing=_subplot_spacing(n_rows),
+        )
 
-    title_default = title or "Model Comparison"
-    if is_horizontal:
-        x_label_default = x_label or "Score"
-        y_label_default = y_label or ""
+        legend_tracker = LegendTracker()
+
+        for facet_idx, facet_label in enumerate(facet_labels):
+            row = facet_idx // n_cols + 1
+            col = facet_idx % n_cols + 1
+
+            for overlay_idx, overlay_label in enumerate(overlay_labels):
+                if compare_by == "model":
+                    s_cw = scorer_cw_dict[facet_label]
+                    y_pm = y_pred_dict[overlay_label]
+                else:
+                    s_cw = scorer_cw_dict[overlay_label]
+                    y_pm = y_pred_dict[facet_label]
+
+                cw_df = _compute_componentwise_scores(s_cw, y_truth, y_pm, columns, time_weight)
+
+                _add_vintage_traces(
+                    fig,
+                    cw_df,
+                    x_col="time",
+                    y_col="score",
+                    name=overlay_label,
+                    color=colors[overlay_idx],
+                    line_width=line_width,
+                    line_dash=line_dash,
+                    base_opacity=line_opacity,
+                    mode=mode,
+                    show_markers=show_markers,
+                    connect_gaps=connect_gaps,
+                    showlegend=legend_tracker.should_show(overlay_label),
+                    row=row,
+                    col=col,
+                )
+
+        default_title = title or "Score Over Time"
+        row_height = 300
+        default_height = max(row_height * n_rows, 400)
+
+        fig = apply_default_layout(
+            fig,
+            title=default_title,
+            x_label=x_label or "Time",
+            y_label=y_label or "Score",
+            width=width,
+            height=height or default_height,
+        )
+        fig.update_layout(showlegend=show_legend)
+        return fig
+
+    # Case: single figure (single scorer or single model)
+    fig = _create_figure(resampler)
+
+    if multi_scorer:
+        # Overlay scorers (single model case)
+        colors = resolve_color_palette(color_palette, n_scorers)
+        y_pred_single = next(iter(y_pred_dict.values()))
+
+        for idx, s_name in enumerate(scorer_cw_dict):
+            cw_df = _compute_componentwise_scores(scorer_cw_dict[s_name], y_truth, y_pred_single, columns, time_weight)
+            _add_vintage_traces(
+                fig,
+                cw_df,
+                x_col="time",
+                y_col="score",
+                name=s_name,
+                color=colors[idx],
+                line_width=line_width,
+                line_dash=line_dash,
+                base_opacity=line_opacity,
+                mode=mode,
+                show_markers=show_markers,
+                connect_gaps=connect_gaps,
+                showlegend=True,
+            )
+
+        default_title = title or "Score Over Time"
+        default_y_label = y_label or "Score"
     else:
-        x_label_default = x_label or ""
-        y_label_default = y_label or "Score"
+        # Overlay models (single scorer case - original behavior)
+        colors = resolve_color_palette(color_palette, n_models)
+        first_scorer_cw = next(iter(scorer_cw_dict.values()))
+
+        for idx, (model_name, y_pred_model) in enumerate(y_pred_dict.items()):
+            cw_df = _compute_componentwise_scores(first_scorer_cw, y_truth, y_pred_model, columns, time_weight)
+            _add_vintage_traces(
+                fig,
+                cw_df,
+                x_col="time",
+                y_col="score",
+                name=model_name,
+                color=colors[idx],
+                line_width=line_width,
+                line_dash=line_dash,
+                base_opacity=line_opacity,
+                mode=mode,
+                show_markers=show_markers,
+                connect_gaps=connect_gaps,
+                showlegend=True,
+            )
+
+        first_scorer = next(iter(scorer_dict.values()))
+        scorer_name = first_scorer.__class__.__name__
+        default_title = title or f"{scorer_name} Over Time"
+        default_y_label = y_label or scorer_name
 
     fig = apply_default_layout(
         fig,
-        title=title_default,
-        x_label=x_label_default,
-        y_label=y_label_default,
+        title=default_title,
+        x_label=x_label or "Time",
+        y_label=default_y_label,
         width=width,
         height=height,
     )
@@ -1618,16 +1815,17 @@ def plot_model_comparison_bar(
 
 
 def plot_score_distribution(
-    scorer: BaseScorer,
+    scorer: BaseScorer | dict[str, BaseScorer],
     y_truth: pl.DataFrame,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
     kind: Literal["histogram", "kde", "both"] = "histogram",
+    compare_by: Literal["scorer", "model"] = "scorer",
     n_bins: int = 30,
     show_mean: bool = True,
     show_zero: bool = True,
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -1650,19 +1848,32 @@ def plot_score_distribution(
 
     Parameters
     ----------
-    scorer : BaseScorer
+    scorer : BaseScorer or dict[str, BaseScorer]
         Yohou scorer instance (e.g., ``MeanAbsoluteError``).  Will be
         cloned and configured with ``aggregation_method="componentwise"``.
+
+        - If BaseScorer: single scorer to evaluate.
+        - If dict: keys are scorer names, values are scorer instances.
+          When combined with dict ``y_pred``, the ``compare_by`` parameter
+          controls which dimension is faceted vs overlaid.
     y_truth : pl.DataFrame
         Ground truth values with ``"time"`` column.
     y_pred : pl.DataFrame or dict[str, pl.DataFrame]
-        Predicted values with ``"observed_time"`` and ``"time"`` columns.
+        Predicted values with ``"vintage_time"`` and ``"time"`` columns.
 
         - If DataFrame: single forecast.
         - If dict: keys are model names, values are prediction DataFrames.
     kind : str, default="histogram"
         Distribution visualisation style: ``"histogram"``, ``"kde"`` or
         ``"both"``.
+    compare_by : str, default="scorer"
+        When both ``scorer`` and ``y_pred`` are dicts, controls which
+        dimension is overlaid (colored traces) vs faceted (subplots):
+
+        - ``"scorer"``: overlay scorers, facet by model.
+        - ``"model"``: overlay models, facet by scorer.
+
+        Ignored when either ``scorer`` or ``y_pred`` is not a dict.
     n_bins : int, default=30
         Number of histogram bins (ignored for ``kind="kde"``).
     show_mean : bool, default=True
@@ -1671,9 +1882,9 @@ def plot_score_distribution(
         Add a vertical dashed line at zero (useful as a perfect-forecast
         reference for symmetric scorers).
     columns : str | list[str] | None, default=None
-        Target column name(s) to score.  When *panel_group_names* is set
+        Target column name(s) to score.  When *groups* is set
         this acts as a member postfix filter.  ``None`` uses all columns.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot (faceted layout).
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data. ``"group"`` creates one subplot per
@@ -1727,7 +1938,7 @@ def plot_score_distribution(
     ...     "value": [10.0, 20.0, 30.0, 40.0, 50.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 5,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 5,
     ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
     ...     "value": [12.0, 19.0, 28.0, 42.0, 48.0],
     ... })
@@ -1739,7 +1950,7 @@ def plot_score_distribution(
     See Also
     --------
     [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score values over time.
-    [`plot_score_per_horizon`][yohou.plotting.plot_score_per_horizon] : Score by forecast step.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by forecast step.
     """
     from scipy.stats import gaussian_kde  # noqa: PLC0415
 
@@ -1748,22 +1959,25 @@ def plot_score_distribution(
     validate_plotting_params(kind=kind, valid_kinds={"histogram", "kde", "both"}, width=width, height=height)
 
     y_pred_dict: dict[str, pl.DataFrame] = _normalize_y_pred(y_pred)
+    scorer_dict = _normalize_scorers(scorer)
 
-    scorer_cw = copy.deepcopy(scorer)
-    if isinstance(scorer_cw, BaseIntervalScorer):
-        scorer_cw.set_params(aggregation_method=["componentwise", "coveragewise"])
-    else:
-        scorer_cw.set_params(aggregation_method="componentwise")
-    scorer_cw.fit(y_truth)
+    # Prepare and fit each scorer for componentwise aggregation
+    scorer_cw_dict: dict[str, BaseScorer] = {}
+    for s_name, s in scorer_dict.items():
+        s_cw = _prepare_scorer_for_componentwise(s)
+        s_cw.fit(y_truth)
+        scorer_cw_dict[s_name] = s_cw
 
+    n_scorers = len(scorer_cw_dict)
     n_models = len(y_pred_dict)
-    colors = resolve_color_palette(color_palette, n_models)
+    multi_scorer = n_scorers > 1
 
     def _render(
         fig: go.Figure,
         y_truth_sub: pl.DataFrame,
         y_pred_dict_sub: dict[str, pl.DataFrame],
         _colors: list[str],
+        scorer_cw_r: BaseScorer,
         _show_legend: bool = True,
         *,
         row: int | None = None,
@@ -1772,12 +1986,12 @@ def plot_score_distribution(
         """Render score distribution traces onto *fig*."""
         for idx, (mname, y_pred_m) in enumerate(y_pred_dict_sub.items()):
             validate_plotting_data(y_pred_m)
-            scores_df = scorer_cw.score(y_truth_sub, y_pred_m)
+            scores_df = scorer_cw_r.score(y_truth_sub, y_pred_m)
             if not isinstance(scores_df, pl.DataFrame):
                 msg_ = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
                 raise TypeError(msg_)
 
-            score_cols = [c for c in scores_df.columns if c != "time"]
+            score_cols = [c for c in scores_df.columns if c not in _SCORER_META_COLS]
             if len(score_cols) == 1:
                 score_vals = scores_df[score_cols[0]].drop_nulls().to_numpy()
             else:
@@ -1858,18 +2072,29 @@ def plot_score_distribution(
                 line_color="grey",
             )
 
-    # Panel dispatch
+    # Column filter
     _col_filter: set[str] | None = None
     if columns is not None:
         _col_filter = set([columns] if isinstance(columns, str) else columns)
 
+    # Panel dispatch
     _, _panel_groups = inspect_panel(y_truth)
     _effective_groups: list[str] | None = None
-    if panel_group_names is not None:
-        _effective_groups = panel_group_names
+    if groups is not None:
+        _effective_groups = groups
     elif _panel_groups:
         _effective_groups = list(_panel_groups)
     if _effective_groups:
+        if multi_scorer:
+            msg = (
+                "Multi-scorer is not supported with panel data in "
+                "plot_score_distribution. Pass a single scorer instead."
+            )
+            raise ValueError(msg)
+
+        first_cw = next(iter(scorer_cw_dict.values()))
+        colors = resolve_color_palette(color_palette, n_models)
+
         n_cols_grid = min(len(_effective_groups), facet_n_cols)
         n_rows_grid = (len(_effective_groups) + n_cols_grid - 1) // n_cols_grid
         pfig = make_subplots(
@@ -1893,12 +2118,14 @@ def plot_score_distribution(
                 gp_cols = [
                     cn
                     for cn in y_pred_m.columns
-                    if cn in ("time", "observed_time")
+                    if cn in ("time", "vintage_time")
                     or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))
                 ]
                 y_pred_dict_g[mname] = y_pred_m.select(gp_cols) if len(gp_cols) > 2 else y_pred_m
-            _render(pfig, y_truth_g, y_pred_dict_g, colors, show_legend and g_idx == 0, row=r, col=c_i)
-        scorer_name = scorer.__class__.__name__
+            _render(pfig, y_truth_g, y_pred_dict_g, colors, first_cw, show_legend and g_idx == 0, row=r, col=c_i)
+
+        first_scorer = next(iter(scorer_dict.values()))
+        scorer_name = first_scorer.__class__.__name__
         pfig = apply_default_layout(
             pfig,
             title=title or f"{scorer_name} Distribution",
@@ -1910,21 +2137,94 @@ def plot_score_distribution(
         pfig.update_layout(barmode="overlay" if n_models > 1 else "relative", showlegend=show_legend)
         return pfig
 
-    fig = go.Figure()
-    if _col_filter is not None:
-        _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
-        y_truth_filt = y_truth.select(_keep_truth)
-        y_pred_dict_filt = {
-            k: v.select([c for c in v.columns if c in ("time", "observed_time") or c in _col_filter])
-            for k, v in y_pred_dict.items()
-        }
-        _render(fig, y_truth_filt, y_pred_dict_filt, colors, _show_legend=show_legend)
-    else:
-        _render(fig, y_truth, y_pred_dict, colors, _show_legend=show_legend)
+    # Multi-scorer + multi-model -> faceted subplots
+    if multi_scorer and n_models > 1:
+        _warn_large_grid(n_scorers, n_models)
 
-    scorer_name = scorer.__class__.__name__
-    default_title = title or f"{scorer_name} Distribution"
-    default_x = x_label or scorer_name
+        if compare_by == "model":
+            facet_labels = list(scorer_cw_dict.keys())
+            overlay_labels = list(y_pred_dict.keys())
+        else:
+            facet_labels = list(y_pred_dict.keys())
+            overlay_labels = list(scorer_cw_dict.keys())
+
+        n_facets = len(facet_labels)
+        n_cols_f = min(facet_n_cols, n_facets)
+        n_rows_f = (n_facets + n_cols_f - 1) // n_cols_f
+        colors = resolve_color_palette(color_palette, len(overlay_labels))
+
+        pfig = make_subplots(
+            rows=n_rows_f,
+            cols=n_cols_f,
+            subplot_titles=facet_labels,
+            vertical_spacing=_subplot_spacing(n_rows_f),
+        )
+
+        legend_tracker = LegendTracker()
+        for facet_idx, facet_label in enumerate(facet_labels):
+            r = facet_idx // n_cols_f + 1
+            c_i = facet_idx % n_cols_f + 1
+            for overlay_idx, overlay_label in enumerate(overlay_labels):
+                if compare_by == "model":
+                    s_cw = scorer_cw_dict[facet_label]
+                    ypd_sub = {overlay_label: y_pred_dict[overlay_label]}
+                else:
+                    s_cw = scorer_cw_dict[overlay_label]
+                    ypd_sub = {overlay_label: y_pred_dict[facet_label]}
+                _render(
+                    pfig,
+                    y_truth,
+                    ypd_sub,
+                    [colors[overlay_idx]],
+                    s_cw,
+                    legend_tracker.should_show(overlay_label),
+                    row=r,
+                    col=c_i,
+                )
+
+        pfig = apply_default_layout(
+            pfig,
+            title=title or "Score Distribution",
+            x_label=x_label or "Score",
+            y_label=y_label or ("Density" if kind in ("kde", "both") else "Count"),
+            width=width,
+            height=height or max(300 * n_rows_f, 400),
+        )
+        pfig.update_layout(barmode="overlay", showlegend=show_legend)
+        return pfig
+
+    # Non-panel single figure
+    fig = go.Figure()
+
+    if multi_scorer:
+        # Overlay scorers (single model)
+        colors = resolve_color_palette(color_palette, n_scorers)
+        y_pred_single = next(iter(y_pred_dict.values()))
+        for idx, (s_name, s_cw) in enumerate(scorer_cw_dict.items()):
+            _render(fig, y_truth, {s_name: y_pred_single}, [colors[idx]], s_cw, _show_legend=show_legend)
+    else:
+        # Overlay models (single scorer - original behavior)
+        first_cw = next(iter(scorer_cw_dict.values()))
+        colors = resolve_color_palette(color_palette, n_models)
+        if _col_filter is not None:
+            _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
+            y_truth_filt = y_truth.select(_keep_truth)
+            y_pred_dict_filt = {
+                k: v.select([c for c in v.columns if c in ("time", "vintage_time") or c in _col_filter])
+                for k, v in y_pred_dict.items()
+            }
+            _render(fig, y_truth_filt, y_pred_dict_filt, colors, first_cw, _show_legend=show_legend)
+        else:
+            _render(fig, y_truth, y_pred_dict, colors, first_cw, _show_legend=show_legend)
+
+    if multi_scorer:
+        default_title = title or "Score Distribution"
+        default_x = x_label or "Score"
+    else:
+        first_scorer = next(iter(scorer_dict.values()))
+        scorer_name = first_scorer.__class__.__name__
+        default_title = title or f"{scorer_name} Distribution"
+        default_x = x_label or scorer_name
     default_y = y_label or ("Density" if kind in ("kde", "both") else "Count")
 
     fig = apply_default_layout(
@@ -1936,7 +2236,7 @@ def plot_score_distribution(
         height=height,
     )
 
-    if n_models > 1:
+    if n_models > 1 or multi_scorer:
         fig.update_layout(barmode="overlay", showlegend=show_legend)
     else:
         fig.update_layout(showlegend=show_legend)
@@ -1944,15 +2244,175 @@ def plot_score_distribution(
     return fig
 
 
-def plot_score_per_horizon(
-    scorer: BaseScorer,
+def plot_score_summary(
+    scorer: BaseScorer | dict[str, BaseScorer],
+    y_truth: pl.DataFrame,
+    y_pred: pl.DataFrame | dict[str, pl.DataFrame],
+    *,
+    color_palette: list[str] | None = None,
+    show_legend: bool = True,
+    title: str | None = None,
+    x_label: str | None = None,
+    y_label: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    bar_opacity: float = 0.85,
+    sort_ascending: bool | None = None,
+    text_auto: bool = True,
+) -> go.Figure:
+    """Plot a grouped bar chart comparing aggregate scores across models and scorers.
+
+    For each combination of scorer and model, compute a single aggregate
+    score and display the results as a grouped bar chart. This is useful
+    for quick model comparison without the per-step detail.
+
+    Parameters
+    ----------
+    scorer : BaseScorer or dict[str, BaseScorer]
+        Yohou scorer instance.
+
+        - If BaseScorer: single scorer to evaluate.
+        - If dict: keys are scorer names, values are scorer instances.
+    y_truth : pl.DataFrame
+        Ground truth with ``"time"`` column.
+    y_pred : pl.DataFrame or dict[str, pl.DataFrame]
+        Predictions with ``"vintage_time"`` and ``"time"`` columns.
+
+        - If DataFrame: single forecast.
+        - If dict: keys are model names, values are prediction DataFrames.
+    color_palette : list[str] | None, default=None
+        Custom colour palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
+    title : str | None, default=None
+        Plot title. Defaults to ``"Model Comparison"``.
+    x_label : str | None, default=None
+        X-axis label. Defaults to ``""``.
+    y_label : str | None, default=None
+        Y-axis label. Defaults to ``"Score"``.
+    width : int | None, default=None
+        Plot width in pixels.
+    height : int | None, default=None
+        Plot height in pixels.
+    bar_opacity : float, default=0.85
+        Opacity of bars.
+    sort_ascending : bool or None, default=None
+        Sort bars by score value. ``True`` for ascending, ``False`` for
+        descending, ``None`` to keep insertion order.
+    text_auto : bool, default=True
+        Annotate bars with their values.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure object.
+
+    Raises
+    ------
+    TypeError
+        If *y_truth* or *y_pred* is not a Polars DataFrame.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MeanAbsoluteError
+    >>> from yohou.plotting import plot_score_summary
+
+    >>> y_truth = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
+    ...     "value": [10.0, 20.0, 30.0, 40.0, 50.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 5,
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
+    ...     "value": [12.0, 19.0, 28.0, 42.0, 48.0],
+    ... })
+
+    >>> fig = plot_score_summary(MeanAbsoluteError(), y_truth, y_pred)
+    >>> len(fig.data) >= 1
+    True
+
+    See Also
+    --------
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Per-step score line/bar chart.
+    [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score values over time.
+    """
+    validate_plotting_data(y_truth)
+    validate_plotting_params(width=width, height=height)
+
+    y_pred_dict: dict[str, pl.DataFrame] = _normalize_y_pred(y_pred)
+    scorer_dict = _normalize_scorers(scorer)
+
+    scorer_names = list(scorer_dict.keys())
+    model_names = list(y_pred_dict.keys())
+
+    results: dict[str, dict[str, float]] = {}
+    for m_name, y_pred_m in y_pred_dict.items():
+        validate_plotting_data(y_pred_m)
+        model_scores: dict[str, float] = {}
+        for s_name, s_orig in scorer_dict.items():
+            s_agg = copy.deepcopy(s_orig)
+            s_agg.fit(y_truth)
+            score_val = s_agg.score(y_truth, y_pred_m)
+            if isinstance(score_val, pl.DataFrame):
+                score_cols = [c for c in score_val.columns if c not in _SCORER_META_COLS]
+                score_val = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
+            model_scores[s_name] = float(score_val)  # type: ignore
+        results[m_name] = model_scores
+
+    categories = scorer_names
+    series_names = model_names
+    series_values = [[results[m].get(s, 0.0) for s in categories] for m in series_names]
+
+    if sort_ascending is not None and series_values:
+        order = sorted(
+            range(len(categories)),
+            key=lambda k: series_values[0][k],
+            reverse=not sort_ascending,
+        )
+        categories = [categories[k] for k in order]
+        series_values = [[sv[k] for k in order] for sv in series_values]
+
+    colors = resolve_color_palette(color_palette, len(series_names))
+    fig = go.Figure()
+
+    for i, (name, values) in enumerate(zip(series_names, series_values, strict=True)):
+        bar_kwargs: dict = {
+            "name": name,
+            "marker_color": colors[i % len(colors)],
+            "opacity": bar_opacity,
+            "x": categories,
+            "y": values,
+        }
+        if text_auto:
+            bar_kwargs["text"] = [f"{v:.3g}" for v in values]
+            bar_kwargs["textposition"] = "outside"
+        fig.add_trace(go.Bar(**bar_kwargs))
+
+    fig.update_layout(barmode="group")
+    fig = apply_default_layout(
+        fig,
+        title=title or "Model Comparison",
+        x_label=x_label or "",
+        y_label=y_label or "Score",
+        width=width,
+        height=height,
+    )
+    fig.update_layout(showlegend=show_legend)
+    return fig
+
+
+def plot_score_per_step(
+    scorer: BaseScorer | dict[str, BaseScorer],
     y_truth: pl.DataFrame,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
     kind: Literal["line", "bar"] = "line",
+    compare_by: Literal["scorer", "model"] = "scorer",
     show_trend: bool = False,
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -1975,24 +2435,40 @@ def plot_score_per_horizon(
 
     Parameters
     ----------
-    scorer : BaseScorer
+    scorer : BaseScorer or dict[str, BaseScorer]
         Yohou scorer instance.  Will be cloned with
         ``aggregation_method="componentwise"``.
+
+        - If BaseScorer: single scorer to evaluate.
+        - If dict: keys are scorer names, values are scorer instances.
+          When combined with dict ``y_pred``, the ``compare_by``
+          parameter controls which dimension is faceted vs overlaid.
     y_truth : pl.DataFrame
         Ground truth with ``"time"`` column.
     y_pred : pl.DataFrame or dict[str, pl.DataFrame]
-        Predictions with ``"observed_time"`` and ``"time"`` columns.
+        Predictions with ``"vintage_time"`` and ``"time"`` columns.
 
         - If DataFrame: single forecast.
         - If dict: keys are model names, values are prediction DataFrames.
     kind : str, default="line"
         Plot kind: ``"line"`` or ``"bar"``.
+
+        - ``"line"``: per-step line chart with markers.
+        - ``"bar"``: per-step bar chart.
+    compare_by : str, default="scorer"
+        When both ``scorer`` and ``y_pred`` are dicts, controls which
+        dimension is overlaid (colored traces) vs faceted (subplots):
+
+        - ``"scorer"``: overlay scorers, facet by model.
+        - ``"model"``: overlay models, facet by scorer.
+
+        Ignored when either ``scorer`` or ``y_pred`` is not a dict.
     show_trend : bool, default=False
         Overlay a linear trend line (``np.polyfit`` degree 1).
     columns : str | list[str] | None, default=None
-        Target column name(s) to score.  When *panel_group_names* is set
+        Target column name(s) to score.  When *groups* is set
         this acts as a member postfix filter.  ``None`` uses all columns.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot (faceted layout).
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data. ``"group"`` creates one subplot per
@@ -2040,24 +2516,25 @@ def plot_score_per_horizon(
     >>> import polars as pl
     >>> from datetime import datetime
     >>> from yohou.metrics import MeanAbsoluteError
-    >>> from yohou.plotting import plot_score_per_horizon
+    >>> from yohou.plotting import plot_score_per_step
 
     >>> y_truth = pl.DataFrame({
     ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
     ...     "value": [10.0, 20.0, 30.0, 40.0, 50.0],
     ... })
     >>> y_pred = pl.DataFrame({
-    ...     "observed_time": [datetime(2019, 12, 31)] * 5,
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 5,
     ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
     ...     "value": [12.0, 19.0, 28.0, 42.0, 48.0],
     ... })
 
-    >>> fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
+    >>> fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred)
     >>> len(fig.data) >= 1
     True
 
     See Also
     --------
+    [`plot_score_summary`][yohou.plotting.plot_score_summary] : Grouped bar chart of aggregate scores.
     [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score values over time.
     [`plot_score_distribution`][yohou.plotting.plot_score_distribution] : Score distribution histogram/KDE.
     """
@@ -2066,36 +2543,40 @@ def plot_score_per_horizon(
     validate_plotting_params(kind=kind, valid_kinds={"line", "bar"}, width=width, height=height)
 
     y_pred_dict: dict[str, pl.DataFrame] = _normalize_y_pred(y_pred)
+    scorer_dict = _normalize_scorers(scorer)
 
-    scorer_cw = copy.deepcopy(scorer)
-    if isinstance(scorer_cw, BaseIntervalScorer):
-        scorer_cw.set_params(aggregation_method=["componentwise", "coveragewise"])
-    else:
-        scorer_cw.set_params(aggregation_method="componentwise")
-    scorer_cw.fit(y_truth)
+    # Prepare and fit each scorer for componentwise aggregation
+    scorer_cw_dict: dict[str, BaseScorer] = {}
+    for s_name, s in scorer_dict.items():
+        s_cw = _prepare_scorer_for_componentwise(s)
+        s_cw.fit(y_truth)
+        scorer_cw_dict[s_name] = s_cw
 
+    n_scorers = len(scorer_cw_dict)
     n_models = len(y_pred_dict)
-    colors = resolve_color_palette(color_palette, n_models)
+    multi_scorer = n_scorers > 1
 
     def _render_horizon(
         fig: go.Figure,
         y_truth_sub: pl.DataFrame,
         y_pred_dict_sub: dict[str, pl.DataFrame],
         _colors: list[str],
+        scorer_cw_r: BaseScorer,
         _show_legend: bool = True,
         *,
         row: int | None = None,
         col: int | None = None,
+        legendgroup: str | None = None,
     ) -> None:
         """Render per-horizon score traces onto *fig*."""
         for idx, (mname, y_pred_m) in enumerate(y_pred_dict_sub.items()):
             validate_plotting_data(y_pred_m)
-            scores_df = scorer_cw.score(y_truth_sub, y_pred_m)
+            scores_df = scorer_cw_r.score(y_truth_sub, y_pred_m)
             if not isinstance(scores_df, pl.DataFrame):
                 msg_ = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
                 raise TypeError(msg_)
 
-            score_cols = [c for c in scores_df.columns if c != "time"]
+            score_cols = [c for c in scores_df.columns if c not in _SCORER_META_COLS]
             if len(score_cols) == 1:
                 score_vals = scores_df[score_cols[0]].drop_nulls().to_numpy()
             else:
@@ -2107,6 +2588,10 @@ def plot_score_per_horizon(
             steps = np.arange(1, n_steps + 1)
             c = _colors[idx % len(_colors)]
 
+            lg_kwargs: dict = {}
+            if legendgroup is not None:
+                lg_kwargs["legendgroup"] = legendgroup
+
             if kind == "line":
                 fig.add_trace(
                     go.Scatter(
@@ -2114,8 +2599,10 @@ def plot_score_per_horizon(
                         y=score_vals,
                         mode="lines+markers",
                         name=mname,
+                        showlegend=_show_legend,
                         line={"color": c, "width": line_width},
                         marker={"size": marker_size, "color": c, "opacity": marker_opacity},
+                        **lg_kwargs,
                     ),
                     row=row,
                     col=col,
@@ -2126,8 +2613,10 @@ def plot_score_per_horizon(
                         x=steps,
                         y=score_vals,
                         name=mname,
+                        showlegend=_show_legend,
                         marker_color=c,
                         opacity=bar_opacity,
+                        **lg_kwargs,
                     ),
                     row=row,
                     col=col,
@@ -2144,6 +2633,7 @@ def plot_score_per_horizon(
                         name=f"{mname} trend",
                         line={"color": c, "width": 1.5, "dash": "dash"},
                         showlegend=_show_legend,
+                        **lg_kwargs,
                     ),
                     row=row,
                     col=col,
@@ -2153,13 +2643,21 @@ def plot_score_per_horizon(
     if columns is not None:
         _col_filter = set([columns] if isinstance(columns, str) else columns)
 
+    # Panel dispatch
     _, _panel_groups = inspect_panel(y_truth)
     _effective_groups: list[str] | None = None
-    if panel_group_names is not None:
-        _effective_groups = panel_group_names
+    if groups is not None:
+        _effective_groups = groups
     elif _panel_groups:
         _effective_groups = list(_panel_groups)
     if _effective_groups:
+        if multi_scorer:
+            msg = "Multi-scorer is not supported with panel data in plot_score_per_step. Pass a single scorer instead."
+            raise ValueError(msg)
+
+        first_cw = next(iter(scorer_cw_dict.values()))
+        colors = resolve_color_palette(color_palette, n_models)
+
         n_cols_grid = min(len(_effective_groups), facet_n_cols)
         n_rows_grid = (len(_effective_groups) + n_cols_grid - 1) // n_cols_grid
         pfig = make_subplots(
@@ -2183,12 +2681,23 @@ def plot_score_per_horizon(
                 gp_cols = [
                     cn
                     for cn in y_pred_m.columns
-                    if cn in ("time", "observed_time")
+                    if cn in ("time", "vintage_time")
                     or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))
                 ]
                 y_pred_dict_g[mname] = y_pred_m.select(gp_cols) if len(gp_cols) > 2 else y_pred_m
-            _render_horizon(pfig, y_truth_g, y_pred_dict_g, colors, show_legend and g_idx == 0, row=r, col=c_i)
-        scorer_name = scorer.__class__.__name__
+            _render_horizon(
+                pfig,
+                y_truth_g,
+                y_pred_dict_g,
+                colors,
+                first_cw,
+                show_legend and g_idx == 0,
+                row=r,
+                col=c_i,
+            )
+
+        first_scorer = next(iter(scorer_dict.values()))
+        scorer_name = first_scorer.__class__.__name__
         pfig = apply_default_layout(
             pfig,
             title=title or f"{scorer_name} by Horizon Step",
@@ -2202,22 +2711,683 @@ def plot_score_per_horizon(
         pfig.update_layout(showlegend=show_legend)
         return pfig
 
-    fig = go.Figure()
+    # Multi-scorer + multi-model -> faceted subplots
+    if multi_scorer and n_models > 1:
+        _warn_large_grid(n_scorers, n_models)
+
+        if compare_by == "model":
+            facet_labels = list(scorer_cw_dict.keys())
+            overlay_labels = list(y_pred_dict.keys())
+        else:
+            facet_labels = list(y_pred_dict.keys())
+            overlay_labels = list(scorer_cw_dict.keys())
+
+        n_facets = len(facet_labels)
+        n_cols_f = min(facet_n_cols, n_facets)
+        n_rows_f = (n_facets + n_cols_f - 1) // n_cols_f
+        colors = resolve_color_palette(color_palette, len(overlay_labels))
+
+        pfig = make_subplots(
+            rows=n_rows_f,
+            cols=n_cols_f,
+            subplot_titles=facet_labels,
+            vertical_spacing=_subplot_spacing(n_rows_f),
+        )
+
+        legend_tracker = LegendTracker()
+        for facet_idx, facet_label in enumerate(facet_labels):
+            r = facet_idx // n_cols_f + 1
+            c_i = facet_idx % n_cols_f + 1
+            for overlay_idx, overlay_label in enumerate(overlay_labels):
+                if compare_by == "model":
+                    s_cw = scorer_cw_dict[facet_label]
+                    ypd_sub = {overlay_label: y_pred_dict[overlay_label]}
+                else:
+                    s_cw = scorer_cw_dict[overlay_label]
+                    ypd_sub = {overlay_label: y_pred_dict[facet_label]}
+                _render_horizon(
+                    pfig,
+                    y_truth,
+                    ypd_sub,
+                    [colors[overlay_idx]],
+                    s_cw,
+                    legend_tracker.should_show(overlay_label),
+                    row=r,
+                    col=c_i,
+                )
+
+        pfig = apply_default_layout(
+            pfig,
+            title=title or "Score by Horizon Step",
+            x_label=x_label or "Horizon Step",
+            y_label=y_label or "Score",
+            width=width,
+            height=height or max(300 * n_rows_f, 400),
+        )
+        if kind == "bar":
+            pfig.update_layout(barmode="group")
+        pfig.update_layout(showlegend=show_legend)
+        return pfig
+
+    # Non-panel single figure
+
+    # Determine effective truth/pred for column filtering
     if _col_filter is not None:
         _keep_truth = ["time"] + [c for c in y_truth.columns if c != "time" and c in _col_filter]
-        y_truth_filt = y_truth.select(_keep_truth)
-        y_pred_dict_filt = {
-            k: v.select([c for c in v.columns if c in ("time", "observed_time") or c in _col_filter])
+        _yt_eff = y_truth.select(_keep_truth)
+        _ypd_eff = {
+            k: v.select([c for c in v.columns if c in ("time", "vintage_time") or c in _col_filter])
             for k, v in y_pred_dict.items()
         }
-        _render_horizon(fig, y_truth_filt, y_pred_dict_filt, colors, show_legend)
     else:
-        _render_horizon(fig, y_truth, y_pred_dict, colors, show_legend)
+        _yt_eff = y_truth
+        _ypd_eff = y_pred_dict
+
+    # Detect number of score components
+    _score_cols = [c for c in _yt_eff.columns if c != "time"]
+
+    if multi_scorer:
+        # Overlay scorers (single model)
+        colors = resolve_color_palette(color_palette, n_scorers)
+        y_pred_single = next(iter(_ypd_eff.values()))
+        fig = go.Figure()
+        for idx, (s_name, s_cw) in enumerate(scorer_cw_dict.items()):
+            _render_horizon(
+                fig,
+                _yt_eff,
+                {s_name: y_pred_single},
+                [colors[idx]],
+                s_cw,
+                _show_legend=show_legend,
+            )
+    elif len(_score_cols) > 1:
+        # Multi-component: create subplots per component, group legend per model
+        first_cw = next(iter(scorer_cw_dict.values()))
+        colors = resolve_color_palette(color_palette, n_models)
+        n_comps = len(_score_cols)
+        n_cols_c = min(facet_n_cols, n_comps)
+        n_rows_c = (n_comps + n_cols_c - 1) // n_cols_c
+
+        fig = make_subplots(
+            rows=n_rows_c,
+            cols=n_cols_c,
+            subplot_titles=_score_cols,
+            vertical_spacing=_subplot_spacing(n_rows_c),
+        )
+
+        legend_tracker = LegendTracker()
+        for comp_idx, comp_col in enumerate(_score_cols):
+            r = comp_idx // n_cols_c + 1
+            c_i = comp_idx % n_cols_c + 1
+            yt_comp = _yt_eff.select(["time", comp_col])
+            ypd_comp = {
+                k: v.select([c for c in v.columns if c in ("time", "vintage_time", comp_col)])
+                for k, v in _ypd_eff.items()
+            }
+            for m_idx, (mname, y_pred_m) in enumerate(ypd_comp.items()):
+                _render_horizon(
+                    fig,
+                    yt_comp,
+                    {mname: y_pred_m},
+                    [colors[m_idx]],
+                    first_cw,
+                    legend_tracker.should_show(mname),
+                    row=r,
+                    col=c_i,
+                    legendgroup=mname,
+                )
+    else:
+        # Single component, overlay models (original behavior)
+        first_cw = next(iter(scorer_cw_dict.values()))
+        colors = resolve_color_palette(color_palette, n_models)
+        fig = go.Figure()
+        _render_horizon(fig, _yt_eff, _ypd_eff, colors, first_cw, show_legend)
+
+    if multi_scorer:
+        default_title = title or "Score by Horizon Step"
+        default_y = y_label or "Score"
+        default_height = height
+    elif len(_score_cols) > 1:
+        first_scorer = next(iter(scorer_dict.values()))
+        scorer_name = first_scorer.__class__.__name__
+        default_title = title or f"{scorer_name} by Horizon Step"
+        default_y = y_label or scorer_name
+        n_rows_c = (len(_score_cols) + min(facet_n_cols, len(_score_cols)) - 1) // min(facet_n_cols, len(_score_cols))
+        default_height = height or max(300 * n_rows_c, 400)
+    else:
+        first_scorer = next(iter(scorer_dict.values()))
+        scorer_name = first_scorer.__class__.__name__
+        default_title = title or f"{scorer_name} by Horizon Step"
+        default_y = y_label or scorer_name
+        default_height = height
+
+    fig = apply_default_layout(
+        fig,
+        title=default_title,
+        x_label=x_label or "Horizon Step",
+        y_label=default_y,
+        width=width,
+        height=default_height,
+    )
+
+    if kind == "bar" and (n_models > 1 or multi_scorer):
+        fig.update_layout(barmode="group")
+
+    fig.update_layout(showlegend=show_legend)
+
+    return fig
+
+
+def plot_score_per_vintage(
+    scorer: BaseScorer | dict[str, BaseScorer],
+    y_truth: pl.DataFrame,
+    y_pred: pl.DataFrame | dict[str, pl.DataFrame],
+    *,
+    kind: Literal["line", "bar"] = "line",
+    compare_by: Literal["scorer", "model"] = "scorer",
+    show_trend: bool = False,
+    facet_n_cols: int = 2,
+    color_palette: list[str] | None = None,
+    show_legend: bool = True,
+    title: str | None = None,
+    x_label: str | None = None,
+    y_label: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    line_width: float = 2.0,
+    marker_size: float = 8.0,
+    marker_opacity: float = 0.8,
+    bar_opacity: float = 0.85,
+) -> go.Figure:
+    """Plot scorer value by forecast vintage (observed time).
+
+    For each vintage origin in ``y_pred``, compute the scorer across
+    the forecast steps that originated from that vintage and plot the
+    result. This reveals how forecast quality changes depending on
+    when the forecast was made.
+
+    Parameters
+    ----------
+    scorer : BaseScorer or dict[str, BaseScorer]
+        Yohou scorer instance.  Will be cloned with
+        ``aggregation_method="stepwise"`` to collapse the horizon
+        dimension.
+
+        - If BaseScorer: single scorer to evaluate.
+        - If dict: keys are scorer names, values are scorer instances.
+    y_truth : pl.DataFrame
+        Ground truth with ``"time"`` column.
+    y_pred : pl.DataFrame or dict[str, pl.DataFrame]
+        Predictions with ``"vintage_time"`` and ``"time"`` columns.
+
+        - If DataFrame: single forecast.
+        - If dict: keys are model names, values are prediction DataFrames.
+    kind : str, default="line"
+        Plot kind: ``"line"`` or ``"bar"``.
+    compare_by : str, default="scorer"
+        When both ``scorer`` and ``y_pred`` are dicts, controls which
+        dimension is overlaid vs faceted.
+    show_trend : bool, default=False
+        Overlay a linear trend line.
+    facet_n_cols : int, default=2
+        Columns in the faceted grid.
+    color_palette : list[str] | None, default=None
+        Custom colour palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
+    title : str | None, default=None
+        Plot title.
+    x_label : str | None, default=None
+        X-axis label. Defaults to ``"Vintage (Observed Time)"``.
+    y_label : str | None, default=None
+        Y-axis label.
+    width : int | None, default=None
+        Plot width in pixels.
+    height : int | None, default=None
+        Plot height in pixels.
+    line_width : float, default=2.0
+        Width of score lines.
+    marker_size : float, default=8.0
+        Marker size for line+marker traces.
+    marker_opacity : float, default=0.8
+        Opacity of scatter markers.
+    bar_opacity : float, default=0.85
+        Opacity of bars when ``kind="bar"``.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure object.
+
+    Raises
+    ------
+    ValueError
+        If ``y_pred`` has only a single vintage (single vintage_time).
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MeanAbsoluteError
+    >>> from yohou.plotting import plot_score_per_vintage
+
+    >>> y_truth = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
+    ...     "value": [10.0, 20.0, 30.0, 40.0, 50.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": ([datetime(2019, 12, 30)] * 5 + [datetime(2019, 12, 31)] * 5),
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 6)] * 2,
+    ...     "value": [12.0, 19.0, 28.0, 42.0, 48.0, 11.0, 21.0, 29.0, 41.0, 49.0],
+    ... }).sort("time")
+
+    >>> fig = plot_score_per_vintage(MeanAbsoluteError(), y_truth, y_pred)
+    >>> len(fig.data) >= 1
+    True
+
+    See Also
+    --------
+    [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Per-timestep score with ``facet_by="vintage"`` for detailed vintage comparison.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
+    [`plot_score_heatmap`][yohou.plotting.plot_score_heatmap] : 2D heatmap of scores.
+    """
+    validate_plotting_data(y_truth)
+    validate_plotting_params(kind=kind, valid_kinds={"line", "bar"}, width=width, height=height)
+
+    y_pred_dict = _normalize_y_pred(y_pred)
+    scorer_dict = _normalize_scorers(scorer)
+
+    n_scorers = len(scorer_dict)
+    n_models = len(y_pred_dict)
+    multi_scorer = n_scorers > 1
+
+    def _compute_vintage_scores(
+        s: BaseScorer,
+        y_t: pl.DataFrame,
+        y_p: pl.DataFrame,
+    ) -> tuple[pl.Series, pl.Series]:
+        """Compute per-vintage aggregate scores."""
+        s_cw = copy.deepcopy(s)
+        if isinstance(s_cw, BaseIntervalScorer):
+            s_cw.set_params(aggregation_method=["stepwise", "coveragewise"])
+        else:
+            s_cw.set_params(aggregation_method="stepwise")
+        s_cw.fit(y_t)
+        scores_df = s_cw.score(y_t, y_p)
+        if not isinstance(scores_df, pl.DataFrame):
+            msg = f"Scorer must return DataFrame for stepwise aggregation, got {type(scores_df).__name__}"
+            raise TypeError(msg)
+        if "vintage_time" not in scores_df.columns:
+            msg = (
+                "Scorer did not return 'vintage_time' column. "
+                "Ensure y_pred has multiple vintages (vintage_time values)."
+            )
+            raise ValueError(msg)
+        score_cols = [c for c in scores_df.columns if c not in ("vintage_time", "time")]
+        if len(score_cols) == 1:
+            score_values = scores_df[score_cols[0]]
+        else:
+            score_values = scores_df.select(score_cols).mean_horizontal()
+        return scores_df["vintage_time"], score_values
+
+    # Validate that data has multiple vintages
+    first_y_pred = next(iter(y_pred_dict.values()))
+    if "vintage_time" in first_y_pred.columns:
+        n_vintages = first_y_pred["vintage_time"].n_unique()
+        if n_vintages <= 1:
+            msg = (
+                "y_pred has only a single vintage (vintage_time). "
+                "plot_score_per_vintage requires at least 2 vintages. "
+                "Use plot_score_per_step for single-vintage data."
+            )
+            raise ValueError(msg)
+
+    def _render_vintage(
+        fig: go.Figure,
+        trace_name: str,
+        vintages: pl.Series,
+        score_values: pl.Series,
+        color: str,
+        _show_legend: bool = True,
+        *,
+        row: int | None = None,
+        col: int | None = None,
+    ) -> None:
+        """Render a single vintage trace on the figure."""
+        if kind == "line":
+            fig.add_trace(
+                go.Scatter(
+                    x=vintages,
+                    y=score_values,
+                    mode="lines+markers",
+                    name=trace_name,
+                    line={"color": color, "width": line_width},
+                    marker={"size": marker_size, "color": color, "opacity": marker_opacity},
+                    showlegend=_show_legend,
+                ),
+                row=row,
+                col=col,
+            )
+        else:
+            fig.add_trace(
+                go.Bar(
+                    x=vintages,
+                    y=score_values,
+                    name=trace_name,
+                    marker_color=color,
+                    opacity=bar_opacity,
+                    showlegend=_show_legend,
+                ),
+                row=row,
+                col=col,
+            )
+
+        if show_trend and len(score_values) >= 2:
+            sv_np = score_values.to_numpy().astype(float)
+            x_num = np.arange(len(sv_np))
+            coeffs = np.polyfit(x_num, sv_np, 1)
+            trend_y = np.polyval(coeffs, x_num)
+            fig.add_trace(
+                go.Scatter(
+                    x=vintages,
+                    y=trend_y,
+                    mode="lines",
+                    name=f"{trace_name} trend",
+                    line={"color": color, "width": 1.5, "dash": "dash"},
+                    showlegend=False,
+                ),
+                row=row,
+                col=col,
+            )
+
+    # Multi-scorer + multi-model -> faceted subplots
+    if multi_scorer and n_models > 1:
+        _warn_large_grid(n_scorers, n_models)
+
+        if compare_by == "model":
+            facet_labels = list(scorer_dict.keys())
+            overlay_labels = list(y_pred_dict.keys())
+        else:
+            facet_labels = list(y_pred_dict.keys())
+            overlay_labels = list(scorer_dict.keys())
+
+        n_facets = len(facet_labels)
+        n_cols = min(facet_n_cols, n_facets)
+        n_rows = (n_facets + n_cols - 1) // n_cols
+        colors = resolve_color_palette(color_palette, len(overlay_labels))
+
+        fig = make_subplots(
+            rows=n_rows,
+            cols=n_cols,
+            subplot_titles=facet_labels,
+            shared_xaxes=True,
+            vertical_spacing=_subplot_spacing(n_rows),
+        )
+
+        legend_tracker = LegendTracker()
+        for facet_idx, facet_label in enumerate(facet_labels):
+            r = facet_idx // n_cols + 1
+            c = facet_idx % n_cols + 1
+            for overlay_idx, overlay_label in enumerate(overlay_labels):
+                if compare_by == "model":
+                    s_orig = scorer_dict[facet_label]
+                    y_pm = y_pred_dict[overlay_label]
+                else:
+                    s_orig = scorer_dict[overlay_label]
+                    y_pm = y_pred_dict[facet_label]
+
+                vintages, sv = _compute_vintage_scores(s_orig, y_truth, y_pm)
+                _render_vintage(
+                    fig,
+                    overlay_label,
+                    vintages,
+                    sv,
+                    colors[overlay_idx],
+                    legend_tracker.should_show(overlay_label),
+                    row=r,
+                    col=c,
+                )
+
+        fig = apply_default_layout(
+            fig,
+            title=title or "Score by Vintage",
+            x_label=x_label or "Vintage (Observed Time)",
+            y_label=y_label or "Score",
+            width=width,
+            height=height or max(300 * n_rows, 400),
+        )
+        if kind == "bar":
+            fig.update_layout(barmode="group")
+        fig.update_layout(showlegend=show_legend)
+        return fig
+
+    # Single figure
+    fig = go.Figure()
+
+    if multi_scorer:
+        # Overlay scorers (single model)
+        colors = resolve_color_palette(color_palette, n_scorers)
+        y_pred_single = next(iter(y_pred_dict.values()))
+        for idx, (s_name, s_orig) in enumerate(scorer_dict.items()):
+            vintages, sv = _compute_vintage_scores(s_orig, y_truth, y_pred_single)
+            _render_vintage(fig, s_name, vintages, sv, colors[idx], show_legend)
+
+        default_title = title or "Score by Vintage"
+        default_y = y_label or "Score"
+    else:
+        # Overlay models
+        colors = resolve_color_palette(color_palette, n_models)
+        first_scorer = next(iter(scorer_dict.values()))
+        for idx, (m_name, y_pm) in enumerate(y_pred_dict.items()):
+            vintages, sv = _compute_vintage_scores(first_scorer, y_truth, y_pm)
+            _render_vintage(fig, m_name, vintages, sv, colors[idx], show_legend)
+
+        scorer_name = first_scorer.__class__.__name__
+        default_title = title or f"{scorer_name} by Vintage"
+        default_y = y_label or scorer_name
+
+    fig = apply_default_layout(
+        fig,
+        title=default_title,
+        x_label=x_label or "Vintage (Observed Time)",
+        y_label=default_y,
+        width=width,
+        height=height,
+    )
+
+    if kind == "bar" and (n_models > 1 or multi_scorer):
+        fig.update_layout(barmode="group")
+
+    fig.update_layout(showlegend=show_legend)
+    return fig
+
+
+def plot_score_heatmap(
+    scorer: BaseScorer,
+    y_truth: pl.DataFrame,
+    y_pred: pl.DataFrame,
+    *,
+    x_dim: Literal["step", "vintage"] = "step",
+    y_dim: Literal["step", "vintage"] = "vintage",
+    color_palette: str | None = None,
+    text_format: str = ".2f",
+    show_text: bool = True,
+    title: str | None = None,
+    x_label: str | None = None,
+    y_label: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> go.Figure:
+    """Plot a 2D heatmap of scores across two forecast dimensions.
+
+    Creates a heatmap where each cell shows the score for a specific
+    combination of forecast dimensions (e.g., horizon step vs vintage).
+
+    Parameters
+    ----------
+    scorer : BaseScorer
+        Yohou scorer instance. Used to compute per-cell scores.
+    y_truth : pl.DataFrame
+        Ground truth with ``"time"`` column.
+    y_pred : pl.DataFrame
+        Predictions with ``"vintage_time"`` and ``"time"`` columns.
+        Only single-model input is supported.
+    x_dim : str, default="step"
+        Dimension for the x-axis: ``"step"`` (forecast horizon) or
+        ``"vintage"`` (observed time).
+    y_dim : str, default="vintage"
+        Dimension for the y-axis: ``"step"`` or ``"vintage"``.
+        Must differ from ``x_dim``.
+    color_palette : str or None, default=None
+        Plotly colorscale name. If None, auto-selects based on
+        ``scorer._lower_is_better``: ``"Blues"`` when lower is better,
+        ``"Blues_r"`` otherwise.
+    text_format : str, default=".2f"
+        Format string for cell text annotations.
+    show_text : bool, default=True
+        Whether to display numeric annotations in cells.
+    title : str | None, default=None
+        Plot title.
+    x_label : str | None, default=None
+        X-axis label.
+    y_label : str | None, default=None
+        Y-axis label.
+    width : int | None, default=None
+        Plot width in pixels.
+    height : int | None, default=None
+        Plot height in pixels.
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure with heatmap.
+
+    Raises
+    ------
+    ValueError
+        If ``x_dim`` and ``y_dim`` are the same, or if ``y_pred`` has
+        a single vintage.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MeanAbsoluteError
+    >>> from yohou.plotting import plot_score_heatmap
+
+    >>> y_truth = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 4)],
+    ...     "value": [10.0, 20.0, 30.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 30)] * 3 + [datetime(2019, 12, 31)] * 3,
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 4)] * 2,
+    ...     "value": [12.0, 19.0, 28.0, 11.0, 21.0, 29.0],
+    ... }).sort("time")
+
+    >>> fig = plot_score_heatmap(MeanAbsoluteError(), y_truth, y_pred)
+    >>> len(fig.data)
+    1
+
+    See Also
+    --------
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
+    [`plot_score_per_vintage`][yohou.plotting.plot_score_per_vintage] : Score by vintage.
+    """
+    validate_plotting_data(y_truth)
+    validate_plotting_data(y_pred)
+    validate_plotting_params(width=width, height=height)
+
+    if x_dim == y_dim:
+        msg = f"x_dim and y_dim must differ, got x_dim={x_dim!r} and y_dim={y_dim!r}"
+        raise ValueError(msg)
+
+    valid_dims = {"step", "vintage"}
+    for dim_name, dim_val in [("x_dim", x_dim), ("y_dim", y_dim)]:
+        if dim_val not in valid_dims:
+            msg = f"{dim_name} must be one of {valid_dims}, got {dim_val!r}"
+            raise ValueError(msg)
+
+    if "vintage_time" not in y_pred.columns:
+        msg = "y_pred must have an 'vintage_time' column for heatmap plotting"
+        raise ValueError(msg)
+
+    vintages = y_pred["vintage_time"].unique().sort()
+    if len(vintages) <= 1:
+        msg = "y_pred has only a single vintage (vintage_time). plot_score_heatmap requires at least 2 vintages."
+        raise ValueError(msg)
+
+    # Compute per-vintage, per-step scores
+    scorer_cw = _prepare_scorer_for_componentwise(copy.deepcopy(scorer))
+    scorer_cw.fit(y_truth)
+
+    score_matrix: list[list[float]] = []
+    vintage_labels: list[str] = []
+    n_steps: int | None = None
+
+    for vintage_val in vintages:
+        y_pred_v = y_pred.filter(pl.col("vintage_time") == vintage_val)
+        scores_df = scorer_cw.score(y_truth, y_pred_v)
+
+        if not isinstance(scores_df, pl.DataFrame):
+            msg = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
+            raise TypeError(msg)
+
+        score_cols = [c for c in scores_df.columns if c not in _SCORER_META_COLS]
+        if len(score_cols) == 1:
+            row_scores = scores_df[score_cols[0]].to_list()
+        else:
+            row_scores = scores_df.select(score_cols).mean_horizontal().to_list()
+
+        if n_steps is None:
+            n_steps = len(row_scores)
+
+        # Pad or truncate to consistent length
+        row_scores = row_scores[:n_steps] + [float("nan")] * max(0, n_steps - len(row_scores))
+
+        score_matrix.append(row_scores)
+        vintage_labels.append(str(vintage_val))
+
+    step_labels = [str(i) for i in range(1, (n_steps or 0) + 1)]
+    z = np.array(score_matrix)
+
+    # Arrange dimensions
+    if x_dim == "step" and y_dim == "vintage":
+        x_labels = step_labels
+        y_labels = vintage_labels
+        z_plot = z
+    else:
+        # x_dim == "vintage" and y_dim == "step"
+        x_labels = vintage_labels
+        y_labels = step_labels
+        z_plot = z.T
+
+    # Auto-select colorscale
+    if color_palette is None:
+        lower_is_better = getattr(scorer, "_lower_is_better", True)
+        colorscale = "Blues" if lower_is_better else "Blues_r"
+    else:
+        colorscale = color_palette
+
+    # Build text annotations
+    text_vals = [[f"{v:{text_format}}" for v in row] for row in z_plot] if show_text else None
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=z_plot,
+            x=x_labels,
+            y=y_labels,
+            colorscale=colorscale,
+            text=text_vals,
+            texttemplate="%{text}" if show_text else None,
+            hovertemplate="x: %{x}<br>y: %{y}<br>Score: %{z:.3f}<extra></extra>",
+        )
+    )
 
     scorer_name = scorer.__class__.__name__
-    default_title = title or f"{scorer_name} by Horizon Step"
-    default_x = x_label or "Horizon Step"
-    default_y = y_label or scorer_name
+    default_x = x_label or ("Horizon Step" if x_dim == "step" else "Vintage (Observed Time)")
+    default_y = y_label or ("Horizon Step" if y_dim == "step" else "Vintage (Observed Time)")
+    default_title = title or f"{scorer_name} Heatmap"
 
     fig = apply_default_layout(
         fig,
@@ -2228,11 +3398,395 @@ def plot_score_per_horizon(
         height=height,
     )
 
-    if kind == "bar" and n_models > 1:
+    return fig
+
+
+def plot_group_scores(
+    scorer: BaseScorer | dict[str, BaseScorer],
+    y_truth: pl.DataFrame,
+    y_pred: pl.DataFrame | dict[str, pl.DataFrame],
+    *,
+    kind: Literal["bar", "box", "heatmap"] = "bar",
+    distribute_by: Literal["time", "vintage", "step"] = "time",
+    color_palette: list[str] | None = None,
+    show_legend: bool = True,
+    title: str | None = None,
+    x_label: str | None = None,
+    y_label: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    bar_opacity: float = 0.85,
+    sort_ascending: bool | None = None,
+    text_auto: bool = True,
+) -> go.Figure:
+    """Plot scores broken down by panel group.
+
+    Requires panel data where ``y_truth`` has group columns
+    (e.g. ``group__member``). Computes the scorer for each group
+    independently and visualises the results.
+
+    Parameters
+    ----------
+    scorer : BaseScorer or dict[str, BaseScorer]
+        Yohou scorer instance.
+
+        - If BaseScorer: single scorer to evaluate per group.
+        - If dict: keys are scorer names, values are scorer instances.
+    y_truth : pl.DataFrame
+        Ground truth panel data with ``"time"`` and group columns.
+    y_pred : pl.DataFrame or dict[str, pl.DataFrame]
+        Predictions.
+
+        - If DataFrame: single forecast.
+        - If dict: keys are model names, values are prediction DataFrames.
+    kind : str, default="bar"
+        Plot kind: ``"bar"`` for aggregate bar chart, ``"box"`` for
+        box-plot distribution of per-record scores, ``"heatmap"`` for
+        a 2D heatmap of groups vs models/scorers.
+    distribute_by : str, default="time"
+        For ``kind="box"``, the dimension whose variability the
+        box plot shows:
+
+        - ``"time"``: per-timestep score variability.
+        - ``"vintage"``: per-vintage score variability.
+        - ``"step"``: per-step score variability.
+
+        Ignored for ``kind="bar"``.
+    color_palette : list[str] | None, default=None
+        Custom colour palette.
+    show_legend : bool, default=True
+        Whether to show the legend.
+    title : str | None, default=None
+        Plot title.
+    x_label : str | None, default=None
+        X-axis label. Defaults to ``"Group"``.
+    y_label : str | None, default=None
+        Y-axis label.
+    width : int | None, default=None
+        Plot width in pixels.
+    height : int | None, default=None
+        Plot height in pixels.
+    bar_opacity : float, default=0.85
+        Opacity of bars.
+    sort_ascending : bool or None, default=None
+        Sort groups by score. ``True`` for ascending, ``False`` for
+        descending, ``None`` for insertion order.
+    text_auto : bool, default=True
+        Annotate bars with their values (only for ``kind="bar"``).
+
+    Returns
+    -------
+    go.Figure
+        Plotly figure object.
+
+    Raises
+    ------
+    ValueError
+        If ``y_truth`` does not contain panel group columns.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MeanAbsoluteError
+    >>> from yohou.plotting import plot_group_scores
+
+    >>> y_truth = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 4)],
+    ...     "region__east": [10.0, 20.0, 30.0],
+    ...     "region__west": [15.0, 25.0, 35.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 4)],
+    ...     "region__east": [12.0, 19.0, 28.0],
+    ...     "region__west": [14.0, 26.0, 33.0],
+    ... })
+
+    >>> fig = plot_group_scores(MeanAbsoluteError(), y_truth, y_pred)
+    >>> len(fig.data) >= 1
+    True
+
+    See Also
+    --------
+    [`plot_score_time_series`][yohou.plotting.plot_score_time_series] : Score over time.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
+    """
+    validate_plotting_data(y_truth)
+    validate_plotting_params(kind=kind, valid_kinds={"bar", "box", "heatmap"}, width=width, height=height)
+
+    y_pred_dict = _normalize_y_pred(y_pred)
+    scorer_dict = _normalize_scorers(scorer)
+
+    # Detect panel groups
+    _, panel_groups = inspect_panel(y_truth)
+    if not panel_groups:
+        msg = (
+            "y_truth does not contain panel group columns (e.g. 'group__member'). "
+            "plot_group_scores requires panel data."
+        )
+        raise ValueError(msg)
+
+    group_names = sorted(panel_groups)
+    n_models = len(y_pred_dict)
+
+    if kind == "bar":
+        # Compute aggregate score per group per model per scorer
+        # For bar chart: x-axis = groups, one bar per model (for single scorer)
+        #                or grouped by scorer x model
+
+        all_entries: list[tuple[str, str, str, float]] = []  # (scorer, model, group, score)
+
+        for s_name, s_orig in scorer_dict.items():
+            for m_name, y_pm in y_pred_dict.items():
+                validate_plotting_data(y_pm)
+                for gname in group_names:
+                    g_truth_cols = ["time"] + [c for c in y_truth.columns if c.startswith(f"{gname}__")]
+                    g_pred_cols = [
+                        c for c in y_pm.columns if c in ("time", "vintage_time") or c.startswith(f"{gname}__")
+                    ]
+                    y_truth_g = y_truth.select(g_truth_cols)
+                    y_pm_g = y_pm.select(g_pred_cols)
+
+                    s_agg = copy.deepcopy(s_orig)
+                    s_agg.fit(y_truth_g)
+                    score_val = s_agg.score(y_truth_g, y_pm_g)
+
+                    if isinstance(score_val, pl.DataFrame):
+                        score_cols = [
+                            c for c in score_val.columns if c not in ("time", "vintage_time", "forecasting_step")
+                        ]
+                        group_score = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
+                    else:
+                        group_score = float(score_val)  # type: ignore
+                    all_entries.append((s_name, m_name, gname, group_score))
+
+        # Build grouped bar chart
+        n_scorers = len(scorer_dict)
+        multi_scorer = n_scorers > 1
+
+        if multi_scorer and n_models > 1:
+            # Series = model x scorer combination
+            series_labels = [f"{m} / {s}" for s in scorer_dict for m in y_pred_dict]
+        elif multi_scorer:
+            series_labels = list(scorer_dict.keys())
+        else:
+            series_labels = list(y_pred_dict.keys())
+
+        colors = resolve_color_palette(color_palette, len(series_labels))
+
+        # Optional sorting by first series
+        if sort_ascending is not None and all_entries:
+            first_series_scores = {
+                e[2]: e[3]
+                for e in all_entries
+                if (e[0] == list(scorer_dict.keys())[0] and e[1] == list(y_pred_dict.keys())[0])
+            }
+            group_names = sorted(
+                group_names,
+                key=lambda g: first_series_scores.get(g, 0.0),
+                reverse=not sort_ascending,
+            )
+
+        fig = go.Figure()
+        series_idx = 0
+
+        for s_name in scorer_dict:
+            for m_name in y_pred_dict:
+                values = []
+                for gn in group_names:
+                    match = [e[3] for e in all_entries if e[0] == s_name and e[1] == m_name and e[2] == gn]
+                    values.append(match[0] if match else 0.0)
+
+                if multi_scorer and n_models > 1:
+                    label = f"{m_name} / {s_name}"
+                elif multi_scorer:
+                    label = s_name
+                else:
+                    label = m_name
+
+                bar_kwargs: dict = {
+                    "x": group_names,
+                    "y": values,
+                    "name": label,
+                    "marker_color": colors[series_idx % len(colors)],
+                    "opacity": bar_opacity,
+                }
+                if text_auto:
+                    bar_kwargs["text"] = [f"{v:.3g}" for v in values]
+                    bar_kwargs["textposition"] = "outside"
+
+                fig.add_trace(go.Bar(**bar_kwargs))
+                series_idx += 1
+
         fig.update_layout(barmode="group")
 
-    fig.update_layout(showlegend=show_legend)
+        if multi_scorer:
+            default_title = title or "Group Scores"
+            default_y = y_label or "Score"
+        else:
+            first_scorer = next(iter(scorer_dict.values()))
+            scorer_name = first_scorer.__class__.__name__
+            default_title = title or f"{scorer_name} by Group"
+            default_y = y_label or scorer_name
 
+        fig = apply_default_layout(
+            fig,
+            title=default_title,
+            x_label=x_label or "Group",
+            y_label=default_y,
+            width=width,
+            height=height,
+        )
+        fig.update_layout(showlegend=show_legend)
+        return fig
+
+    if kind == "heatmap":
+        # Heatmap: groups on y-axis, models/scorers on x-axis, score as color
+        all_entries: list[tuple[str, str, str, float]] = []
+
+        for s_name, s_orig in scorer_dict.items():
+            for m_name, y_pm in y_pred_dict.items():
+                validate_plotting_data(y_pm)
+                for gname in group_names:
+                    g_truth_cols = ["time"] + [c for c in y_truth.columns if c.startswith(f"{gname}__")]
+                    g_pred_cols = [
+                        c for c in y_pm.columns if c in ("time", "vintage_time") or c.startswith(f"{gname}__")
+                    ]
+                    y_truth_g = y_truth.select(g_truth_cols)
+                    y_pm_g = y_pm.select(g_pred_cols)
+
+                    s_agg = copy.deepcopy(s_orig)
+                    s_agg.fit(y_truth_g)
+                    score_val = s_agg.score(y_truth_g, y_pm_g)
+
+                    if isinstance(score_val, pl.DataFrame):
+                        score_cols = [
+                            c for c in score_val.columns if c not in ("time", "vintage_time", "forecasting_step")
+                        ]
+                        group_score = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
+                    else:
+                        group_score = float(score_val)  # type: ignore
+                    all_entries.append((s_name, m_name, gname, group_score))
+
+        n_scorers = len(scorer_dict)
+        multi_scorer = n_scorers > 1
+
+        if multi_scorer and n_models > 1:
+            series_labels = [f"{m} / {s}" for s in scorer_dict for m in y_pred_dict]
+        elif multi_scorer:
+            series_labels = list(scorer_dict.keys())
+        else:
+            series_labels = list(y_pred_dict.keys())
+
+        # Build z-matrix: rows = groups, cols = series
+        z_matrix: list[list[float]] = []
+        for gname in group_names:
+            row: list[float] = []
+            for s_name in scorer_dict:
+                for m_name in y_pred_dict:
+                    match = [e[3] for e in all_entries if e[0] == s_name and e[1] == m_name and e[2] == gname]
+                    row.append(match[0] if match else 0.0)
+            z_matrix.append(row)
+
+        # Auto-select colorscale direction
+        first_scorer = next(iter(scorer_dict.values()))
+        lower_better = getattr(first_scorer, "_lower_is_better", True)
+        colorscale = "Blues" if lower_better else "Blues_r"
+
+        text_vals = [[f"{v:.3g}" for v in row] for row in z_matrix] if text_auto else None
+
+        fig = go.Figure(
+            data=go.Heatmap(
+                z=z_matrix,
+                x=series_labels,
+                y=group_names,
+                colorscale=colorscale,
+                text=text_vals,
+                texttemplate="%{text}" if text_auto else "",
+                hovertemplate="Group: %{y}<br>%{x}: %{z:.3g}<extra></extra>",
+            )
+        )
+
+        scorer_name = first_scorer.__class__.__name__
+        default_title = title or ("Group Scores" if multi_scorer else f"{scorer_name} by Group")
+
+        fig = apply_default_layout(
+            fig,
+            title=default_title,
+            x_label=x_label
+            or (
+                "Model / Scorer"
+                if multi_scorer and n_models > 1
+                else "Model"
+                if n_models > 1
+                else "Scorer"
+                if multi_scorer
+                else "Model"
+            ),
+            y_label=y_label or "Group",
+            width=width,
+            height=height,
+        )
+        fig.update_layout(showlegend=False)
+        return fig
+
+    # kind="box": distribution of per-record scores across groups
+    # Use componentwise or stepwise/vintagewise aggregation depending on distribute_by
+    agg_map = {
+        "time": "componentwise",
+        "vintage": "stepwise",
+        "step": "vintagewise",
+    }
+    agg_method = agg_map[distribute_by]
+
+    first_scorer = next(iter(scorer_dict.values()))
+    first_y_pred = next(iter(y_pred_dict.values()))
+
+    s_cw = copy.deepcopy(first_scorer)
+    if isinstance(s_cw, BaseIntervalScorer):
+        s_cw.set_params(aggregation_method=[agg_method, "coveragewise"])
+    else:
+        s_cw.set_params(aggregation_method=agg_method)
+    s_cw.fit(y_truth)
+
+    scores_df = s_cw.score(y_truth, first_y_pred)
+    if not isinstance(scores_df, pl.DataFrame):
+        msg = f"Scorer must return DataFrame for {agg_method} aggregation, got {type(scores_df).__name__}"
+        raise TypeError(msg)
+
+    colors = resolve_color_palette(color_palette, len(group_names))
+    fig = go.Figure()
+
+    for g_idx, gname in enumerate(group_names):
+        g_cols = [c for c in scores_df.columns if c.startswith(f"{gname}__")]
+        if not g_cols:
+            continue
+        if len(g_cols) == 1:
+            g_scores = scores_df[g_cols[0]].drop_nulls().to_numpy()
+        else:
+            g_scores = scores_df.select(g_cols).to_numpy().flatten()
+            g_scores = g_scores[~np.isnan(g_scores)]
+
+        fig.add_trace(
+            go.Box(
+                y=g_scores,
+                name=gname,
+                marker_color=colors[g_idx % len(colors)],
+                boxmean=True,
+            )
+        )
+
+    scorer_name = first_scorer.__class__.__name__
+    fig = apply_default_layout(
+        fig,
+        title=title or f"{scorer_name} Distribution by Group",
+        x_label=x_label or "Group",
+        y_label=y_label or scorer_name,
+        width=width,
+        height=height,
+    )
+    fig.update_layout(showlegend=show_legend)
     return fig
 
 

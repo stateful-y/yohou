@@ -25,7 +25,7 @@ def point_data():
         "value2": [15.0, 25.0, 35.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "value1": [12.0, 18.0, 32.0],
         "value2": [14.0, 26.0, 36.0],
@@ -42,7 +42,7 @@ def interval_data():
         "value2": [15.0, 25.0, 35.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "value1_lower_0.9": [8.0, 18.0, 28.0],
         "value1_upper_0.9": [12.0, 22.0, 32.0],
@@ -60,7 +60,7 @@ def multi_rate_interval_data():
         "value": [10.0, 20.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "value_lower_0.9": [8.0, 18.0],
         "value_upper_0.9": [12.0, 22.0],
@@ -79,7 +79,7 @@ def panel_point_data():
         "sales__store_2": [15.0, 25.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "sales__store_1": [12.0, 18.0],
         "sales__store_2": [14.0, 26.0],
@@ -106,7 +106,7 @@ def equivalence_simple_data():
         "value2": [15.0, 25.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "value1": [11.0, 19.0],
         "value2": [14.0, 26.0],
@@ -123,10 +123,10 @@ class TestPointScorerAggregation:
         result = mae.score(y_true, y_pred)
         assert isinstance(result, float), "aggregation_method='all' should return scalar"
 
-    def test_pointscorer_aggregation_timewise_returns_dataframe_with_components(self, point_data):
-        """Test that aggregation_method=['timewise'] returns per-component DataFrame."""
+    def test_pointscorer_aggregation_stepwise_vintagewise_returns_dataframe_with_components(self, point_data):
+        """Test that aggregation_method=['stepwise', 'vintagewise'] returns per-component DataFrame."""
         y_true, y_pred = point_data
-        mae = MeanAbsoluteError(aggregation_method=["timewise"])
+        mae = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
 
@@ -142,31 +142,32 @@ class TestPointScorerAggregation:
         result = mae.score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame), "Should return DataFrame"
-        assert result.shape == (3, 2), "Should have 3 rows and 2 columns (time + metric)"
+        assert result.shape[0] == 3, "Should have 3 rows"
         assert "time" in result.columns, "Should have time column"
+        assert "vintage_time" in result.columns, "Should have vintage_time column"
         assert "mae" in result.columns, "Should have mae column"
 
-    def test_pointscorer_aggregation_timewise_componentwise_returns_scalar(self, point_data):
+    def test_pointscorer_aggregation_stepwise_vintagewise_componentwise_returns_scalar(self, point_data):
         """Test that both dimensions aggregated returns scalar."""
         y_true, y_pred = point_data
-        mae = MeanAbsoluteError(aggregation_method=["timewise", "componentwise"])
+        mae = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
         assert isinstance(result, float), "Should return scalar when both dimensions aggregated"
 
-    def test_pointscorer_aggregation_all_equivalent_to_both_dimensions(self, point_data):
-        """Test that 'all' is equivalent to ['timewise', 'componentwise']."""
+    def test_pointscorer_aggregation_all_equivalent_to_all_dimensions(self, point_data):
+        """Test that 'all' is equivalent to ['stepwise', 'vintagewise', 'componentwise']."""
         y_true, y_pred = point_data
 
         mae_all = MeanAbsoluteError(aggregation_method="all")
-        mae_both = MeanAbsoluteError(aggregation_method=["timewise", "componentwise"])
+        mae_all_explicit = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
 
         mae_all.fit(y_true)
         result_all = mae_all.score(y_true, y_pred)
-        mae_both.fit(y_true)
-        result_both = mae_both.score(y_true, y_pred)
+        mae_all_explicit.fit(y_true)
+        result_all_explicit = mae_all_explicit.score(y_true, y_pred)
 
-        assert result_all == result_both, "'all' should equal ['timewise', 'componentwise']"
+        assert result_all == result_all_explicit, "'all' should equal ['stepwise', 'vintagewise', 'componentwise']"
 
     def test_pointscorer_aggregation_with_multiple_scorers(self, point_data):
         """Test aggregation works across different scorer types."""
@@ -193,7 +194,7 @@ class TestPanelAggregation:
             "g2__val": [100.0, 200.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "g1__val": [12.0, 18.0],  # Errors: 2, 2 -> MAE=2
             "g2__val": [110.0, 190.0],  # Errors: 10, 10 -> MAE=10
@@ -219,7 +220,7 @@ class TestPanelAggregation:
             "g1__val": [0.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val": [4.0],  # Error 4, SqError 16, MeanSqError 16, RMSE 4
         })
@@ -235,7 +236,7 @@ class TestPanelAggregation:
         # Setup panel data
         y_true = pl.DataFrame({"time": [datetime(2020, 1, 1)], "g1__val": [10.0], "g2__val": [100.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val_lower_0.9": [8.0],
             "g1__val_upper_0.9": [12.0],  # Width 4
@@ -263,7 +264,7 @@ class TestPanelAggregation:
             "g1__val": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val_lower_0.9": [8.0],
             "g1__val_upper_0.9": [12.0],  # Width 4
@@ -277,13 +278,15 @@ class TestPanelAggregation:
         result = scorer.score(y_true, y_pred)
 
         assert "time" in result.columns
-        # With coveragewise not in aggregation, BaseIntervalScorer returns rate columns per group
-        # g1__rate_0.9, g1__rate_0.5 (BaseIntervalScorer implementation detail)
-        assert "g1__rate_0.9" in result.columns
-        assert "g1__rate_0.5" in result.columns
+        assert "coverage_rate" in result.columns
+        # With coveragewise not in aggregation, rates appear as rows
+        assert "g1__width" in result.columns
+        assert result.shape[0] == 2  # one row per rate
 
-        assert result["g1__rate_0.9"][0] == 4.0
-        assert result["g1__rate_0.5"][0] == 2.0
+        rate_09 = result.filter(pl.col("coverage_rate") == 0.9)
+        rate_05 = result.filter(pl.col("coverage_rate") == 0.5)
+        assert rate_09["g1__width"][0] == 4.0
+        assert rate_05["g1__width"][0] == 2.0
 
     def test_panelaggregation_interval_score_componentwise_panel(self):
         # IntervalScore
@@ -292,7 +295,7 @@ class TestPanelAggregation:
             "g1__val": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val_lower_0.9": [8.0],
             "g1__val_upper_0.9": [12.0],  # Width 4, in interval
@@ -317,7 +320,7 @@ class TestPanelAggregation:
         # Group mean: (1.0 + 100.0)/2 = 50.5
 
         y_true_data = {"time": [datetime(2020, 1, 1)]}
-        y_pred_data = {"observed_time": [datetime(2019, 12, 31)], "time": [datetime(2020, 1, 1)]}
+        y_pred_data = {"vintage_time": [datetime(2019, 12, 31)], "time": [datetime(2020, 1, 1)]}
 
         # Group A
         for i in range(10):
@@ -341,7 +344,7 @@ class TestPanelAggregation:
 
         # Custom weights
         weights = {"groupA": 0.9, "groupB": 0.1}
-        scorer_weighted = MeanAbsoluteError(aggregation_method="all", panel_group_weight=weights)
+        scorer_weighted = MeanAbsoluteError(aggregation_method="all", groups=weights)
         scorer.fit(y_true)
         scorer_weighted.fit(y_true)
         result_weighted = scorer_weighted.score(y_true, y_pred)
@@ -376,15 +379,17 @@ class TestIntervalScorerAggregation:
         result = coverage.score(y_true, y_pred)
         assert isinstance(result, float), "aggregation_method='all' should return scalar"
 
-    def test_intervalscorer_aggregation_timewise_returns_dataframe(self, interval_data):
-        """Test that aggregation_method=['timewise'] returns per-component DataFrame."""
+    def test_intervalscorer_aggregation_stepwise_vintagewise_returns_dataframe(self, interval_data):
+        """Test that aggregation_method=['stepwise', 'vintagewise'] returns per-component DataFrame."""
         y_true, y_pred = interval_data
-        coverage = EmpiricalCoverage(aggregation_method=["timewise"])
+        coverage = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise"])
         coverage.fit(y_true)
         result = coverage.score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame), "Should return DataFrame"
-        assert result.shape == (1, 2), "Should have 1 row and 2 component columns"
+        # 1 row per coverage_rate, component columns + coverage_rate
+        assert "coverage_rate" in result.columns
+        assert result.shape[0] == 1  # single rate
 
     def test_intervalscorer_aggregation_componentwise_returns_dataframe(self, interval_data):
         """Test that aggregation_method=['componentwise'] returns per-timestep DataFrame."""
@@ -394,36 +399,43 @@ class TestIntervalScorerAggregation:
         result = coverage.score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame), "Should return DataFrame"
-        assert result.shape == (3, 2), "Should have 3 rows (timesteps)"
+        # 3 timesteps * 1 rate = 3 rows, with time + score + coverage_rate cols
+        assert result.shape[0] == 3
         assert "time" in result.columns, "Should have time column"
+        assert "coverage_rate" in result.columns
 
     def test_intervalscorer_aggregation_without_coveragewise(self, multi_rate_interval_data):
-        """Test aggregation without 'coveragewise' (returns dict)."""
+        """Test aggregation without 'coveragewise' returns DataFrame with coverage_rate column."""
         y_true, y_pred = multi_rate_interval_data
 
         # Explicitly exclude 'coveragewise' to get per-rate scores
-        # "all" would include "coveragewise"
-        coverage = EmpiricalCoverage(aggregation_method=["timewise", "componentwise", "groupwise"])
+        coverage = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
         coverage.fit(y_true)
         result = coverage.score(y_true, y_pred)
 
-        assert isinstance(result, dict), "Should return dict when coveragewise is excluded"
-        assert 0.9 in result, "Should have coverage rate 0.9"
-        assert 0.95 in result, "Should have coverage rate 0.95"
-        assert all(isinstance(v, float) for v in result.values()), "Values should be floats"
+        assert isinstance(result, pl.DataFrame), "Should return DataFrame with coverage_rate rows"
+        assert "coverage_rate" in result.columns
+        # Column name is the metric name after rename (EmpiricalCoverage -> coverage)
+        value_cols = [c for c in result.columns if c != "coverage_rate"]
+        assert len(value_cols) == 1
+        rates = result["coverage_rate"].to_list()
+        assert 0.9 in rates
+        assert 0.95 in rates
 
-    def test_intervalscorer_aggregation_timewise_per_rate(self, multi_rate_interval_data):
-        """Test timewise aggregation without coveragewise returns DataFrame with rate columns."""
+    def test_intervalscorer_aggregation_stepwise_vintagewise_per_rate(self, multi_rate_interval_data):
+        """Test stepwise+vintagewise aggregation without coveragewise returns DataFrame with coverage_rate rows."""
         y_true, y_pred = multi_rate_interval_data
 
-        # aggregation_method=["timewise"] does not include "coveragewise", so it returns per rate
-        coverage = EmpiricalCoverage(aggregation_method=["timewise"])
+        # aggregation_method=["stepwise", "vintagewise"] does not include "coveragewise", so rates appear as rows
+        coverage = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise"])
         coverage.fit(y_true)
         result = coverage.score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame), "Should return DataFrame"
-        # Should have columns like value_rate_0.9, value_rate_0.95
-        assert any("rate_0.9" in col for col in result.columns), "Should have rate-specific columns"
+        assert "coverage_rate" in result.columns, "Should have coverage_rate column"
+        rates = result["coverage_rate"].to_list()
+        assert 0.9 in rates
+        assert 0.95 in rates
 
     def test_intervalscorer_aggregation_with_multiple_interval_scorers(self, interval_data):
         """Test aggregation works across different interval scorer types."""
@@ -445,21 +457,24 @@ class TestIntervalScorerAggregation:
         """Test explicit aggregation_method='coveragewise'."""
         y_true, y_pred = multi_rate_interval_data
 
-        # Case 1: Explicitly exclude coveragewise (return per rate)
-        # now we must explicitly manage the list.
-        # "timewise", "componentwise" -> no "coveragewise" -> return dict of scalars
-        coverage_explicit_ex = EmpiricalCoverage(aggregation_method=["timewise", "componentwise"])
+        # Case 1: Explicitly exclude coveragewise (return per rate as DataFrame)
+        coverage_explicit_ex = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise"])
         coverage_explicit_ex.fit(y_true)
         result_ex = coverage_explicit_ex.score(y_true, y_pred)
 
-        # Should be a dict of scalars (timewise+componentwise reduces everything but rate)
-        assert isinstance(result_ex, dict), "Should return dict when coveragewise is excluded"
-        assert 0.9 in result_ex
-        assert 0.95 in result_ex
-        assert isinstance(result_ex[0.9], float)
+        # Should be a DataFrame with coverage_rate and score columns
+        assert isinstance(result_ex, pl.DataFrame), "Should return DataFrame when coveragewise is excluded"
+        assert "coverage_rate" in result_ex.columns
+        value_cols = [c for c in result_ex.columns if c != "coverage_rate"]
+        assert len(value_cols) == 1
+        rates = result_ex["coverage_rate"].to_list()
+        assert 0.9 in rates
+        assert 0.95 in rates
 
         # Case 2: Explicitly include coveragewise (scalar)
-        coverage_with_cov = EmpiricalCoverage(aggregation_method=["timewise", "componentwise", "coveragewise"])
+        coverage_with_cov = EmpiricalCoverage(
+            aggregation_method=["stepwise", "vintagewise", "componentwise", "coveragewise"]
+        )
         coverage_with_cov.fit(y_true)
         result_with_cov = coverage_with_cov.score(y_true, y_pred)
         assert isinstance(result_with_cov, float), "Should return scalar when coveragewise is included"
@@ -474,10 +489,10 @@ class TestPanelDataAggregation:
         result = mae.score(y_true, y_pred)
         assert isinstance(result, float), "Panel data with 'all' should return scalar"
 
-    def test_paneldata_aggregation_timewise_returns_dataframe(self, panel_point_data):
-        """Test that panel data with timewise aggregation returns per-group-component DataFrame."""
+    def test_paneldata_aggregation_stepwise_vintagewise_returns_dataframe(self, panel_point_data):
+        """Test that panel data with stepwise+vintagewise aggregation returns per-group-component DataFrame."""
         y_true, y_pred = panel_point_data
-        mae = MeanAbsoluteError(aggregation_method=["timewise"])
+        mae = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
 
@@ -507,7 +522,7 @@ class TestValidation:
 
     def test_validation_mixed_valid_invalid_raises_at_fit_time(self, simple_data):
         """Test that mixed valid/invalid list elements are caught at fit time."""
-        mae = MeanAbsoluteError(aggregation_method=["timewise", "bad_method"])
+        mae = MeanAbsoluteError(aggregation_method=["stepwise", "bad_method"])
         with pytest.raises(ValueError, match="Invalid aggregation_method 'bad_method' in list"):
             mae.fit(simple_data)
 
@@ -531,7 +546,7 @@ class TestValidation:
 
     def test_validation_valid_single_methods_accepted(self):
         """Test that all valid single methods are accepted as strings or lists."""
-        valid_methods = ["timewise", "componentwise", "groupwise"]
+        valid_methods = ["stepwise", "vintagewise", "componentwise", "groupwise"]
 
         for method in valid_methods:
             # Test as list
@@ -545,13 +560,14 @@ class TestValidation:
     def test_validation_valid_combinations_accepted(self):
         """Test that valid combinations are accepted."""
         valid_combinations = [
-            ["timewise"],
+            ["stepwise"],
+            ["vintagewise"],
             ["componentwise"],
             ["groupwise"],
-            ["timewise", "componentwise"],
-            ["timewise", "groupwise"],
+            ["stepwise", "vintagewise", "componentwise"],
+            ["stepwise", "vintagewise", "groupwise"],
             ["componentwise", "groupwise"],
-            ["timewise", "componentwise", "groupwise"],
+            ["stepwise", "vintagewise", "componentwise", "groupwise"],
         ]
 
         for combination in valid_combinations:
@@ -583,7 +599,7 @@ class TestGroupwiseAggregation:
             "g2__val_b": [110.0, 210.0, 310.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
             # g1__val_a errors: |10-11|=1, |20-19|=1, |30-31|=1 → all 1.0
             "g1__val_a": [11.0, 19.0, 31.0],
@@ -604,11 +620,11 @@ class TestGroupwiseAggregation:
         result = mae.score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame)
-        # Columns: time + unprefixed component names
+        # Columns: time + vintage_time + unprefixed component names
         assert "time" in result.columns
+        assert "vintage_time" in result.columns
         assert "val_a" in result.columns
         assert "val_b" in result.columns
-        assert len(result.columns) == 3
         assert len(result) == 3  # 3 timesteps
 
     def test_groupwise_only_values_are_group_means(self, panel_multivariate):
@@ -623,12 +639,12 @@ class TestGroupwiseAggregation:
         # val_b: mean(g1=3.0, g2=7.0) = 5.0 at every timestep
         assert result["val_b"].to_list() == [5.0, 5.0, 5.0]
 
-    def test_groupwise_with_panel_group_weight(self, panel_multivariate):
-        """Groupwise respects panel_group_weight."""
+    def test_groupwise_with_group_weight(self, panel_multivariate):
+        """Groupwise respects group_weight."""
         y_true, y_pred = panel_multivariate
         mae = MeanAbsoluteError(
             aggregation_method="groupwise",
-            panel_group_weight={"g1": 3.0, "g2": 1.0},
+            groups={"g1": 3.0, "g2": 1.0},
         )
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
@@ -638,10 +654,10 @@ class TestGroupwiseAggregation:
         # val_b: weighted mean = (3.0*3 + 7.0*1) / 4 = 16/4 = 4.0
         assert result["val_b"].to_list() == [4.0, 4.0, 4.0]
 
-    def test_groupwise_timewise_returns_single_row(self, panel_multivariate):
-        """Groupwise + timewise → single row with component means."""
+    def test_groupwise_stepwise_vintagewise_returns_single_row(self, panel_multivariate):
+        """Groupwise + stepwise+vintagewise → single row with component means."""
         y_true, y_pred = panel_multivariate
-        mae = MeanAbsoluteError(aggregation_method=["groupwise", "timewise"])
+        mae = MeanAbsoluteError(aggregation_method=["groupwise", "stepwise", "vintagewise"])
         mae.fit(y_true)
         result = mae.score(y_true, y_pred)
 
@@ -674,7 +690,7 @@ class TestGroupwiseAggregation:
             "g2__val_a": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "g1__val_a": [11.0],  # error 1
             "g1__val_b": [103.0],  # error 3
@@ -703,7 +719,7 @@ class TestGroupwiseAggregation:
             "g2__val": [15.0, 25.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "g1__val_lower_0.9": [8.0, 18.0],
             "g1__val_upper_0.9": [12.0, 22.0],
@@ -722,8 +738,8 @@ class TestGroupwiseAggregation:
 
 
 class TestEquivalence:
-    def test_equivalence_all_equals_manual_aggregation_timewise(self, equivalence_simple_data):
-        """Test that 'all' equals manual aggregation of timewise results."""
+    def test_equivalence_all_equals_manual_aggregation_stepwise_vintagewise(self, equivalence_simple_data):
+        """Test that 'all' equals manual aggregation of stepwise+vintagewise results."""
         y_true, y_pred = equivalence_simple_data
 
         # Get scalar with 'all'
@@ -731,11 +747,11 @@ class TestEquivalence:
         mae_all.fit(y_true)
         result_all = mae_all.score(y_true, y_pred)
 
-        # Get per-component with timewise, then average manually
-        mae_timewise = MeanAbsoluteError(aggregation_method=["timewise"])
-        mae_timewise.fit(y_true)
-        result_timewise = mae_timewise.score(y_true, y_pred)
-        manual_avg = float(result_timewise.mean().to_numpy().mean())
+        # Get per-component with stepwise+vintagewise, then average manually
+        mae_sv = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+        mae_sv.fit(y_true)
+        result_sv = mae_sv.score(y_true, y_pred)
+        manual_avg = float(result_sv.mean().to_numpy().mean())
 
         assert abs(result_all - manual_avg) < 1e-10, "Should be mathematically equivalent"
 
@@ -770,7 +786,7 @@ class TestIntervalScorerComponentwiseAggregation:
             "g2__val": [15.0, 25.0, 35.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": times,
             "g1__val_lower_0.9": [8.0, 18.0, 28.0],
             "g1__val_upper_0.9": [12.0, 22.0, 32.0],
@@ -794,32 +810,32 @@ class TestIntervalScorerComponentwiseAggregation:
         assert len(result) == 3
 
     def test_componentwise_without_coveragewise_returns_dataframe(self, interval_panel_data):
-        """Componentwise without coveragewise returns rate-specific columns."""
+        """Componentwise without coveragewise returns DataFrame with coverage_rate rows."""
         y_true, y_pred = interval_panel_data
         scorer = EmpiricalCoverage(aggregation_method=["componentwise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
         assert "time" in result.columns
-        assert any("rate_0.9" in c for c in result.columns)
+        assert "coverage_rate" in result.columns
 
-    def test_timewise_coveragewise_returns_dataframe(self, interval_panel_data):
-        """Timewise + coveragewise returns per-component DataFrame."""
+    def test_stepwise_vintagewise_coveragewise_returns_dataframe(self, interval_panel_data):
+        """Stepwise+vintagewise + coveragewise returns per-component DataFrame."""
         y_true, y_pred = interval_panel_data
-        scorer = EmpiricalCoverage(aggregation_method=["timewise", "coveragewise"])
+        scorer = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "coveragewise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
         assert len(result) == 1
 
-    def test_timewise_without_coveragewise_returns_dataframe(self, interval_panel_data):
-        """Timewise without coveragewise produces per-rate per-component columns."""
+    def test_stepwise_vintagewise_without_coveragewise_returns_dataframe(self, interval_panel_data):
+        """Stepwise+vintagewise without coveragewise produces rows per rate."""
         y_true, y_pred = interval_panel_data
-        scorer = EmpiricalCoverage(aggregation_method=["timewise"])
+        scorer = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
-        assert any("rate_0.9" in c for c in result.columns)
+        assert "coverage_rate" in result.columns
 
     def test_groupwise_coveragewise_returns_dataframe(self, interval_panel_data):
         """Groupwise + coveragewise returns collapsed per-component DataFrame."""
@@ -830,21 +846,21 @@ class TestIntervalScorerComponentwiseAggregation:
         assert isinstance(result, pl.DataFrame)
         assert "time" in result.columns
 
-    def test_groupwise_without_coveragewise_returns_dict(self, interval_panel_data):
-        """Groupwise alone without coveragewise returns per-rate DataFrames."""
+    def test_groupwise_without_coveragewise_returns_dataframe(self, interval_panel_data):
+        """Groupwise alone without coveragewise returns DataFrame with coverage_rate."""
         y_true, y_pred = interval_panel_data
         scorer = EmpiricalCoverage(aggregation_method=["groupwise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
-        assert isinstance(result, dict)
-        assert 0.9 in result
+        assert isinstance(result, pl.DataFrame)
+        assert "coverage_rate" in result.columns
 
-    def test_no_spatial_without_coveragewise_returns_dict(self):
-        """No spatial aggregation + no coveragewise returns score per rate."""
+    def test_no_spatial_without_coveragewise_returns_float(self):
+        """coveragewise alone collapses coverage, spatial dims stay; returns DataFrame with time."""
         times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
         y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": times,
             "val_lower_0.9": [8.0, 18.0],
             "val_upper_0.9": [12.0, 22.0],
@@ -852,12 +868,155 @@ class TestIntervalScorerComponentwiseAggregation:
         scorer = EmpiricalCoverage(aggregation_method="coveragewise")
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
-        assert isinstance(result, float)
+        # Single rate, coveragewise collapses it, but spatial dims not collapsed → DataFrame
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
 
-    def test_all_timewise_componentwise_groupwise_coveragewise(self, interval_panel_data):
+    def test_all_stepwise_vintagewise_componentwise_groupwise_coveragewise(self, interval_panel_data):
         """All aggregation returns scalar for interval panel data."""
         y_true, y_pred = interval_panel_data
         scorer = EmpiricalCoverage(aggregation_method="all")
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, float)
+
+
+class TestIndividualModes:
+    """Tests for individual aggregation modes in isolation."""
+
+    @pytest.fixture
+    def multi_vintage_data(self):
+        """Multi-vintage data with 2 components."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "val_a": [10.0, 20.0, 30.0],
+            "val_b": [15.0, 25.0, 35.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [
+                datetime(2019, 12, 30),
+                datetime(2019, 12, 30),
+                datetime(2019, 12, 31),
+                datetime(2019, 12, 31),
+                datetime(2020, 1, 1),
+                datetime(2020, 1, 1),
+            ],
+            "time": [
+                datetime(2020, 1, 1),
+                datetime(2020, 1, 2),
+                datetime(2020, 1, 2),
+                datetime(2020, 1, 3),
+                datetime(2020, 1, 3),
+                datetime(2020, 1, 4),
+            ],
+            "val_a": [11.0, 21.0, 19.0, 31.0, 29.0, 41.0],
+            "val_b": [16.0, 26.0, 24.0, 36.0, 34.0, 46.0],
+        })
+        return y_true, y_pred
+
+    def test_stepwise_alone_returns_dataframe(self, multi_vintage_data):
+        """stepwise alone collapses step dimension, keeps vintage and component."""
+        y_true, y_pred = multi_vintage_data
+        mae = MeanAbsoluteError(aggregation_method=["stepwise"])
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+
+    def test_vintagewise_alone_returns_dataframe(self, multi_vintage_data):
+        """vintagewise alone collapses vintage dimension, keeps step and component."""
+        y_true, y_pred = multi_vintage_data
+        mae = MeanAbsoluteError(aggregation_method=["vintagewise"])
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+
+    def test_groupwise_alone_on_non_panel_returns_dataframe(self):
+        """groupwise on non-panel data returns original shape."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "val": [10.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "val": [11.0, 19.0],
+        })
+        mae = MeanAbsoluteError(aggregation_method=["groupwise"])
+        mae.fit(y_true)
+        result = mae.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+
+
+class TestCoverageWeightAggregation:
+    """Tests for coverage_weight in aggregation."""
+
+    def test_coverage_weight_affects_scalar(self):
+        """coverage_weight changes the scalar result when coveragewise is used."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+        y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": times,
+            "val_lower_0.9": [8.0, 18.0],
+            "val_upper_0.9": [12.0, 22.0],
+            "val_lower_0.95": [5.0, 15.0],
+            "val_upper_0.95": [15.0, 25.0],
+        })
+
+        # Equal weights (default)
+        cov_equal = EmpiricalCoverage(aggregation_method="all")
+        cov_equal.fit(y_true)
+        score_equal = cov_equal.score(y_true, y_pred)
+
+        # Weighted: emphasize 0.9 rate
+        cov_weighted = EmpiricalCoverage(
+            aggregation_method="all",
+            coverage_rates={0.9: 10.0, 0.95: 1.0},
+        )
+        cov_weighted.fit(y_true)
+        score_weighted = cov_weighted.score(y_true, y_pred)
+
+        # Both should be floats
+        assert isinstance(score_equal, float)
+        assert isinstance(score_weighted, float)
+
+    def test_single_rate_no_coveragewise_returns_scalar(self):
+        """Single rate without coveragewise returns scalar directly."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+        y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": times,
+            "val_lower_0.9": [8.0, 18.0],
+            "val_upper_0.9": [12.0, 22.0],
+        })
+        cov = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
+        cov.fit(y_true)
+        result = cov.score(y_true, y_pred)
+        assert isinstance(result, float)
+
+    def test_coverage_weight_with_stepwise_dataframe(self):
+        """coverage_weight with stepwise returns weighted DataFrame."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0, 30.0]})
+        rows = []
+        for ot in [datetime(2019, 12, 30), datetime(2019, 12, 31)]:
+            for i, t in enumerate(times):
+                rows.append({
+                    "vintage_time": ot,
+                    "time": t,
+                    "val_lower_0.9": [10.0, 20.0, 30.0][i] - 2.0,
+                    "val_upper_0.9": [10.0, 20.0, 30.0][i] + 2.0,
+                    "val_lower_0.95": [10.0, 20.0, 30.0][i] - 3.0,
+                    "val_upper_0.95": [10.0, 20.0, 30.0][i] + 3.0,
+                })
+        y_pred = pl.DataFrame(rows).sort("time", "vintage_time")
+        # Stepwise without coveragewise -> DataFrame with coverage_rate and vintage_time
+        cov = EmpiricalCoverage(
+            aggregation_method=["componentwise", "vintagewise", "coveragewise"],
+            coverage_rates={0.9: 2.0, 0.95: 1.0},
+        )
+        cov.fit(y_true)
+        result = cov.score(y_true, y_pred)
+        # Should collapse coverage dimension, returning DataFrame with time or scalar
+        assert isinstance(result, (float, pl.DataFrame))

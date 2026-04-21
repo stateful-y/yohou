@@ -19,7 +19,7 @@ from yohou.plotting import (
     plot_time_weight,
 )
 
-from .conftest import assert_figure_valid, assert_layout
+from .conftest import assert_figure_valid, assert_layout, has_legendgrouptitle
 
 
 class TestPlotForecast:
@@ -70,8 +70,8 @@ class TestPlotForecast:
         fig = plot_forecast(y_test, y_pred, coverage_rates=[0.9])
         assert len(fig.data) > 0
 
-    def test_panel_group_names(self):
-        """Test forecast with panel_group_names parameter."""
+    def test_groups(self):
+        """Test forecast with groups parameter."""
         y_test = pl.DataFrame({
             "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
             "y": [191 + i for i in range(30)],
@@ -80,8 +80,8 @@ class TestPlotForecast:
             "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
             "y": [190 + i for i in range(30)],
         })
-        # Non-panel data with panel_group_names should still work (no panel columns detected)
-        fig = plot_forecast(y_test, y_pred, panel_group_names=["group"])
+        # Non-panel data with groups should still work (no panel columns detected)
+        fig = plot_forecast(y_test, y_pred, groups=["group"])
         assert len(fig.data) >= 0  # May produce empty figure or error gracefully
 
 
@@ -314,7 +314,7 @@ class TestPlotDecompositionPanel:
         assert len(fig.data) >= 3
 
     def test_panel_group_filter(self):
-        """panel_group_names filters to specific groups."""
+        """groups filters to specific groups."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
         n = len(dates)
         y = pl.DataFrame({
@@ -329,7 +329,7 @@ class TestPlotDecompositionPanel:
                 "g2__a": [i * 1.0 for i in range(n)],
             }),
         }
-        result = plot_decomposition(y, components, panel_group_names=["g1"])
+        result = plot_decomposition(y, components, groups=["g1"])
         # With 1 group and 1 member "a", returns single go.Figure
         assert isinstance(result, go.Figure)
         assert_figure_valid(result)
@@ -1103,7 +1103,7 @@ class TestPlotForecastPanelSingleMember:
             y_test,
             y_pred,
             y_train=y_train,
-            panel_group_names=["y", "z"],
+            groups=["y", "z"],
         )
         assert_figure_valid(fig)
 
@@ -1139,7 +1139,7 @@ class TestPlotForecastPanelTrainAndIntervals:
             y_pred,
             y_train=y_train,
             coverage_rates=[0.9],
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert_figure_valid(fig)
         names = [t.name for t in fig.data if t.name is not None]
@@ -1195,7 +1195,7 @@ class TestPlotForecastPanelErrors:
             "sales__store_2": [float(i) + 6 for i in range(10)],
         })
         with pytest.raises(ValueError, match="No panel columns found for groups"):
-            plot_forecast(y_test, y_pred, panel_group_names=["nonexistent"])
+            plot_forecast(y_test, y_pred, groups=["nonexistent"])
 
 
 class TestPlotTimeWeightPanelErrors:
@@ -1210,7 +1210,7 @@ class TestPlotTimeWeightPanelErrors:
             "time_weight__store_2": [0.05 * i for i in range(1, 11)],
         })
         with pytest.raises(ValueError, match="No weight columns found for panel groups"):
-            plot_time_weight(df, panel_group_names=["nonexistent"])
+            plot_time_weight(df, groups=["nonexistent"])
 
     def test_panel_weight_valid_group(self):
         """Panel weight with valid group name produces a figure."""
@@ -1220,7 +1220,7 @@ class TestPlotTimeWeightPanelErrors:
             "time_weight__store_1": [0.1 * i for i in range(1, 11)],
             "time_weight__store_2": [0.05 * i for i in range(1, 11)],
         })
-        fig = plot_time_weight(df, panel_group_names=["time_weight"])
+        fig = plot_time_weight(df, groups=["time_weight"])
         assert_figure_valid(fig)
 
 
@@ -1525,7 +1525,7 @@ class TestSTLEvenWindows:
 
 
 class TestPlotDecompositionPanelGroupNames:
-    """Cover panel_group_names branch in plot_decomposition."""
+    """Cover groups branch in plot_decomposition."""
 
     def test_panel_components_dict(self):
         """Panel components with dict input returns dict of figures."""
@@ -1543,7 +1543,7 @@ class TestPlotDecompositionPanelGroupNames:
         result = plot_decomposition(
             y,
             {"Trend": trend},
-            panel_group_names=["y"],
+            groups=["y"],
             show_original=True,
         )
         assert isinstance(result, dict)
@@ -1567,7 +1567,7 @@ class TestPlotDecompositionPanelGroupNames:
         result = plot_decomposition(
             y,
             {"Trend": trend},
-            panel_group_names=["y"],
+            groups=["y"],
             show_original=False,
         )
         assert isinstance(result, dict)
@@ -1725,7 +1725,7 @@ class TestPanelForecastPIBranches:
             y_test,
             {"M1": y_pred_m1, "M2": y_pred_m2},
             coverage_rates=[0.9],
-            panel_group_names=["y"],
+            groups=["y"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
@@ -2399,8 +2399,6 @@ class TestPlotForecastPanelCategorical:
         assert set(yaxis.ticktext) == {"cloudy", "rainy", "sunny"}
 
 
-# ---- Phase 3: facet_figure integration tests for plot_forecast ----
-
 _DATES_TRAIN = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
 _DATES_TEST = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
 
@@ -2644,3 +2642,103 @@ class TestPlotForecastClassProbaColumns:
         fig = plot_forecast(y_test, y_pred, columns="status")
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
+
+
+class TestPlotForecastPanelLegendGroups:
+    """Tests for grouped legend entries in panel plot_forecast."""
+
+    @pytest.fixture()
+    def panel_data(self):
+        """Panel data with two groups, each containing two members."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        train_dates = pl.date_range(pl.date(2020, 3, 20), pl.date(2020, 3, 31), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates,
+            "A__x": list(range(10)),
+            "A__y": list(range(10, 20)),
+            "B__x": list(range(20, 30)),
+            "B__y": list(range(30, 40)),
+        })
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "A__x": [v + 1 for v in range(10)],
+            "A__y": [v + 1 for v in range(10, 20)],
+            "B__x": [v + 1 for v in range(20, 30)],
+            "B__y": [v + 1 for v in range(30, 40)],
+        })
+        y_train = pl.DataFrame({
+            "time": train_dates,
+            "A__x": list(range(12)),
+            "A__y": list(range(12, 24)),
+            "B__x": list(range(24, 36)),
+            "B__y": list(range(36, 48)),
+        })
+        return y_test, y_pred, y_train
+
+    def test_facet_by_group_has_legendgrouptitle(self, panel_data):
+        """facet_by='group' with multi_sub creates grouped legend headers."""
+        y_test, y_pred, y_train = panel_data
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, facet_by="group")
+        assert has_legendgrouptitle(fig)
+        titles = {
+            t.legendgrouptitle.text
+            for t in fig.data
+            if getattr(t, "legendgrouptitle", None) and getattr(t.legendgrouptitle, "text", None)
+        }
+        assert {"x", "y"} == titles
+
+    def test_facet_by_member_has_legendgrouptitle(self, panel_data):
+        """facet_by='member' with multi_sub creates grouped legend headers."""
+        y_test, y_pred, y_train = panel_data
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, facet_by="member")
+        assert has_legendgrouptitle(fig)
+        titles = {
+            t.legendgrouptitle.text
+            for t in fig.data
+            if getattr(t, "legendgrouptitle", None) and getattr(t.legendgrouptitle, "text", None)
+        }
+        assert {"A", "B"} == titles
+
+    def test_facet_by_none_no_legendgrouptitle(self, panel_data):
+        """facet_by=None keeps flat legend (no grouped headers)."""
+        y_test, y_pred, y_train = panel_data
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, facet_by=None)
+        assert not has_legendgrouptitle(fig)
+
+    def test_single_member_no_legendgrouptitle(self):
+        """Single member per subplot (multi_sub=False) keeps flat legend."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_test = pl.DataFrame({"time": dates, "A__x": list(range(10)), "B__x": list(range(10, 20))})
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "A__x": [v + 1 for v in range(10)],
+            "B__x": [v + 1 for v in range(10, 20)],
+        })
+        fig = plot_forecast(y_test, y_pred, facet_by="group")
+        assert not has_legendgrouptitle(fig)
+
+    def test_group_entries_contain_train_actual_forecast(self, panel_data):
+        """Each legend group contains Train, Actual, and Forecast sub-items."""
+        y_test, y_pred, y_train = panel_data
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, facet_by="group")
+        groups: dict[str, set[str]] = {}
+        for t in fig.data:
+            lg = getattr(t, "legendgroup", None)
+            name = getattr(t, "name", None)
+            if lg and name:
+                groups.setdefault(lg, set()).add(name)
+        for group_name in ("x", "y"):
+            assert group_name in groups, f"Missing legend group {group_name}"
+            entries = groups[group_name]
+            assert "Train" in entries
+            assert "Actual" in entries
+            assert "Forecast" in entries
+
+    def test_all_traces_use_group_legendgroup(self, panel_data):
+        """All traces in a group share the same legendgroup value."""
+        y_test, y_pred, y_train = panel_data
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, facet_by="group")
+        for t in fig.data:
+            lg = getattr(t, "legendgroup", None)
+            if lg:
+                assert lg in ("x", "y"), f"Unexpected legendgroup: {lg}"

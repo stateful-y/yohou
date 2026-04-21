@@ -7,7 +7,7 @@ received metadata via the _Registry pattern.
 Critical differences from standard sklearn routing tests:
 1. Yohou-specific methods: observe, observe_predict, observe_transform, predict_interval
 2. Time-series metadata: time_weight (converted to sample_weight), coverage_rates
-3. Panel data: panel_group_names routing (predict/observe/rewind on subset of groups)
+3. Panel data: groups routing (predict/observe/rewind on subset of groups)
 4. Composite methods: observe_predict must route observe AND predict metadata separately
 
 Test coverage (~23 tests):
@@ -16,7 +16,7 @@ Test coverage (~23 tests):
 - ColumnTransformer: time_weight to column-specific transformers
 - DecompositionPipeline: time_weight to component forecasters
 - ForecastedFeatureForecaster: time_weight to target + feature forecasters
-- ColumnForecaster: time_weight and panel_group_names to per-column forecasters
+- ColumnForecaster: time_weight and groups to per-column forecasters
 - Ridge with time_weight: analytical verification of sample_weight conversion
 - IntervalReductionForecaster: coverage_rates to predict_interval
 - Composite methods: observe_predict metadata splitting
@@ -303,12 +303,12 @@ class ConsumingForecaster(BasePointForecaster):
         BasePointForecaster.fit(self, y=y, X=X, forecasting_horizon=forecasting_horizon)
         return self
 
-    def _predict_one(self, panel_group_names, **kwargs):
+    def _predict_one(self, groups, **kwargs):
         """Return zero predictions for requested horizon.
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         **kwargs : dict
             Additional params.
@@ -326,10 +326,10 @@ class ConsumingForecaster(BasePointForecaster):
         # Handle both panel (dict) and non-panel (DataFrame) _y_observed
         if isinstance(self._y_observed, dict):
             # Panel data: use local_y_schema_ for column names
-            if panel_group_names:
-                value_cols = [f"{group}__{col}" for group in panel_group_names for col in self.local_y_schema_]
+            if groups:
+                value_cols = [f"{group}__{col}" for group in groups for col in self.local_y_schema_]
             else:
-                value_cols = [f"{group}__{col}" for group in self.panel_group_names_ for col in self.local_y_schema_]
+                value_cols = [f"{group}__{col}" for group in self.groups_ for col in self.local_y_schema_]
         else:
             value_cols = [c for c in self._y_observed.columns if c != "time"]
         data = {}
@@ -339,7 +339,7 @@ class ConsumingForecaster(BasePointForecaster):
         y_pred = self._add_time_columns(y_pred)
         return y_pred
 
-    def predict(self, X=None, forecasting_horizon=None, panel_group_names=None, **kwargs):
+    def predict(self, X=None, forecasting_horizon=None, groups=None, **kwargs):
         """Predict and record metadata.
 
         Parameters
@@ -348,7 +348,7 @@ class ConsumingForecaster(BasePointForecaster):
             Future exogenous features.
         forecasting_horizon : int, optional
             Forecasting horizon.
-        panel_group_names : list of str, optional
+        groups : list of str, optional
             Panel group names for prediction filtering.
         **kwargs : dict
             Metadata.
@@ -363,9 +363,7 @@ class ConsumingForecaster(BasePointForecaster):
         record_metadata(self, **metadata)
         if self.registry is not None:
             self.registry.append(self)
-        return BasePointForecaster.predict(
-            self, X=X, forecasting_horizon=forecasting_horizon, panel_group_names=panel_group_names, **kwargs
-        )
+        return BasePointForecaster.predict(self, X=X, forecasting_horizon=forecasting_horizon, groups=groups, **kwargs)
 
 
 @pytest.mark.integration
@@ -856,10 +854,10 @@ class TestTimeWeightConversion:
 
 @pytest.mark.integration
 class TestColumnForecasterPanelRouting:
-    """Tests for ColumnForecaster panel_group_names pass-through to child forecasters."""
+    """Tests for ColumnForecaster groups pass-through to child forecasters."""
 
-    def test_column_forecaster_panel_group_names_passed_to_children_predict(self):
-        """Verify panel_group_names is forwarded to child forecasters in predict."""
+    def test_column_forecaster_groups_passed_to_children_predict(self):
+        """Verify groups is forwarded to child forecasters in predict."""
         registry = _Registry()
 
         forecaster = ConsumingForecaster(registry=registry)
@@ -879,10 +877,10 @@ class TestColumnForecasterPanelRouting:
 
         cf.fit(y, forecasting_horizon=3)
 
-        # Predict all groups (panel_group_names=None)
+        # Predict all groups (groups=None)
         y_pred = cf.predict(forecasting_horizon=3)
 
-        pred_cols = [c for c in y_pred.columns if c not in {"time", "observed_time"}]
+        pred_cols = [c for c in y_pred.columns if c not in {"time", "vintage_time"}]
         assert len(pred_cols) == 3, f"Expected 3 prediction columns, got {pred_cols}"
 
     def test_column_forecaster_observe_passes_data_to_children(self):
@@ -1009,7 +1007,7 @@ class TestCoverageRatesRouting:
             expected_cols.add(f"target_lower_{rate}")
             expected_cols.add(f"target_upper_{rate}")
 
-        pred_cols = {c for c in y_pred.columns if c not in ["time", "observed_time"]}
+        pred_cols = {c for c in y_pred.columns if c not in ["time", "vintage_time"]}
         assert expected_cols.issubset(pred_cols), f"Missing coverage columns: {expected_cols - pred_cols}"
 
     def test_predict_interval_routes_coverage_rates_directly(self):

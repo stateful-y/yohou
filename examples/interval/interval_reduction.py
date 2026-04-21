@@ -48,10 +48,18 @@ def _():
     from sklearn.linear_model import QuantileRegressor
     from sklearn.model_selection import train_test_split
 
+    import plotly.graph_objects as go
+
+    from copy import deepcopy
+
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
-    from yohou.plotting import plot_forecast, plot_model_comparison_bar
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_heatmap,
+        plot_score_per_vintage,
+    )
     from yohou.preprocessing import LagTransformer
 
     return (
@@ -60,9 +68,12 @@ def _():
         IntervalScore,
         LagTransformer,
         MeanIntervalWidth,
+        deepcopy,
         fetch_tourism_monthly,
+        go,
         plot_forecast,
-        plot_model_comparison_bar,
+        plot_score_heatmap,
+        plot_score_per_vintage,
         train_test_split,
     )
 
@@ -247,7 +258,7 @@ def _(mo):
 
     How much wider do intervals get as coverage increases?
     We score [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) once per rate and compare them
-    side-by-side with [`plot_model_comparison_bar`](/pages/api/generated/yohou.plotting.evaluation.plot_model_comparison_bar/).
+    side-by-side in a grouped bar chart.
     """)
     return
 
@@ -255,24 +266,34 @@ def _(mo):
 @app.cell
 def _(
     MeanIntervalWidth,
+    go,
     many_rates,
-    plot_model_comparison_bar,
     y_pred_many,
     y_test,
     y_train,
 ):
-    width_per_rate = {}
+    _rates = []
+    _widths = []
     for rate in many_rates:
         _width_scorer = MeanIntervalWidth(coverage_rates=[rate])
         _width_scorer.fit(y_train)
-        width_per_rate[f"{rate:.0%}"] = _width_scorer.score(y_test, y_pred_many)
+        _rates.append(f"{rate:.0%}")
+        _widths.append(_width_scorer.score(y_test, y_pred_many))
 
-    plot_model_comparison_bar(
-        {"IntervalReduction": width_per_rate},
-        group_by="scorer",
-        title="Mean Interval Width by Coverage Rate",
-        y_label="Width",
+    fig = go.Figure(
+        go.Bar(
+            x=_rates,
+            y=_widths,
+            text=[f"{w:.2f}" for w in _widths],
+            textposition="outside",
+        )
     )
+    fig.update_layout(
+        title="Mean Interval Width by Coverage Rate",
+        yaxis_title="Width",
+        xaxis_title="Coverage Rate",
+    )
+    fig
     return
 
 
@@ -289,6 +310,65 @@ def _(mo):
     """)
     return
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict_interval` method with `stride=1` produces one
+    interval forecast per observation point, creating multiple *vintages*.
+    Each vintage represents a different forecast origin, so you can analyse
+    how interval quality evolves as the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(coverage_rates, deepcopy, forecasting_horizon, interval_fc, y_test):
+    _vintage_model = deepcopy(interval_fc)
+    y_pred_vintages = _vintage_model.observe_predict_interval(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=forecasting_horizon,
+        coverage_rates=coverage_rates,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(IntervalScore, y_train):
+    vintage_scorer = IntervalScore()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Interval Score per Vintage",
+        y_label="Interval Score",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
+    plot_score_heatmap(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Score Heatmap (Step x Vintage)",
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

@@ -137,8 +137,8 @@ class TestGridSearchNestedParamGrid:
         assert len(y_pred) == 8
         assert "time" in y_pred.columns
         assert "value" in y_pred.columns
-        # Should have 'observed_time' for point forecasts
-        assert "observed_time" in y_pred.columns
+        # Should have 'vintage_time' for point forecasts
+        assert "vintage_time" in y_pred.columns
 
     def test_grid_search_nested_param_grid_observe_predict(self, linear_series):
         """Verify observe() and predict() work correctly after fit."""

@@ -81,10 +81,7 @@ class TestVotingIntervalForecasterSystematicChecks:
         run_checks(
             forecaster_fitted,
             _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
-            expected_failures={
-                # predict_interval() output omits 'observed_time' column
-                "check_predict_time_columns",
-            },
+            expected_failures=set(),
         )
 
 
@@ -149,7 +146,7 @@ class TestVotingIntervalForecasterStrategies:
             preds.append(fitted.predict_interval(forecasting_horizon=3))
 
         for col in y_pred.columns:
-            if col in ("observed_time", "time"):
+            if col in ("vintage_time", "time"):
                 continue
             vals = np.column_stack([p[col].to_numpy() for p in preds])
             if "_lower_" in col:
@@ -177,7 +174,7 @@ class TestVotingIntervalForecasterStrategies:
             preds.append(fitted.predict_interval(forecasting_horizon=3))
 
         for col in y_pred.columns:
-            if col in ("observed_time", "time"):
+            if col in ("vintage_time", "time"):
                 continue
             vals = np.column_stack([p[col].to_numpy() for p in preds])
             expected = np.mean(vals, axis=1)
@@ -225,7 +222,7 @@ class TestVotingIntervalForecasterStrategies:
             preds.append(fitted.predict_interval(forecasting_horizon=3))
 
         for col in y_pred.columns:
-            if col in ("observed_time", "time"):
+            if col in ("vintage_time", "time"):
                 continue
             vals = np.column_stack([p[col].to_numpy() for p in preds])
             expected = np.median(vals, axis=1)
@@ -250,7 +247,7 @@ class TestVotingIntervalForecasterStrategies:
             preds.append(fitted.predict_interval(forecasting_horizon=3))
 
         for col in y_pred.columns:
-            if col in ("observed_time", "time"):
+            if col in ("vintage_time", "time"):
                 continue
             vals = np.column_stack([p[col].to_numpy() for p in preds])
             expected = np.average(vals, axis=1, weights=weights)
@@ -287,7 +284,7 @@ class TestVotingIntervalForecasterPointPrediction:
         y_pred = ensemble.predict(forecasting_horizon=3)
 
         assert len(y_pred) == 3
-        target_cols = [c for c in y_pred.columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in y_pred.columns if c not in ("vintage_time", "time")]
         assert len(target_cols) > 0
 
     def test_point_method_uses_correct_aggregation(self, y_X_factory):
@@ -326,7 +323,7 @@ class TestVotingIntervalForecasterPointPrediction:
             fitted = clone(f).fit(y_train, forecasting_horizon=3)
             preds.append(fitted.predict(forecasting_horizon=3))
 
-        target_col = [c for c in y_pred.columns if c not in ("observed_time", "time")][0]
+        target_col = [c for c in y_pred.columns if c not in ("vintage_time", "time")][0]
         vals = np.column_stack([p[target_col].to_numpy() for p in preds])
         expected = np.median(vals, axis=1)
         np.testing.assert_allclose(y_pred[target_col].to_numpy(), expected)
@@ -382,7 +379,7 @@ class TestVotingIntervalForecasterPanelData:
         forecaster.fit(y[:80], forecasting_horizon=3)
         y_pred = forecaster.predict_interval(forecasting_horizon=3)
 
-        assert forecaster.panel_group_names_ is not None
+        assert forecaster.groups_ is not None
         assert len(y_pred) == 3
 
 

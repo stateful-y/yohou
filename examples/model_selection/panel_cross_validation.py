@@ -34,7 +34,7 @@ def _(mo):
     ## What You'll Learn
 
     - Running [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) on panel data to find optimal hyperparameters
-    - Using `observe` and `predict` with `panel_group_names` on the best
+    - Using `observe` and `predict` with `groups` on the best
       model returned by the search
     - Using `rewind` to reset the forecast origin for specific groups
     - Visualising how observation shifts the forecast origin per group
@@ -51,7 +51,11 @@ def _():
     from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
-    from yohou.plotting import plot_forecast, plot_time_series
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_per_vintage,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -66,6 +70,7 @@ def _():
         fetch_tourism_quarterly,
         pl,
         plot_forecast,
+        plot_score_per_vintage,
         plot_time_series,
     )
 
@@ -166,7 +171,7 @@ def _(mo):
 
     After `refit=True`, the search object delegates `predict`, `observe`,
     and `rewind` to its `best_forecaster_`. All three accept
-    `panel_group_names` for selective group operations.
+    `groups` for selective group operations.
 
     We demonstrate three steps on groups **T5** and **T8**:
 
@@ -184,37 +189,37 @@ def _(deepcopy, fh, mo, plot_forecast, search, y_test, y_train):
     _search = deepcopy(search)
 
     # 1) Predict from training window
-    _y_pred_baseline = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _y_pred_baseline = _search.predict(forecasting_horizon=fh, groups=_groups)
     _fig_baseline = plot_forecast(
         y_test,
         _y_pred_baseline,
         y_train=y_train,
-        panel_group_names=_groups,
+        groups=_groups,
         n_history=16,
         title="Step 1 - Predict from training window",
     )
 
     # 2) Observe first half of test data for those groups, then predict
     _y_obs = y_test.head(fh // 2)
-    _search.observe(_y_obs, panel_group_names=_groups)
-    _y_pred_observed = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _search.observe(_y_obs, groups=_groups)
+    _y_pred_observed = _search.predict(forecasting_horizon=fh, groups=_groups)
     _fig_observed = plot_forecast(
         y_test,
         _y_pred_observed,
         y_train=y_train,
-        panel_group_names=_groups,
+        groups=_groups,
         n_history=16,
         title="Step 2 - After observing first half of test (origin moves forward)",
     )
 
     # 3) Rewind back and predict again
-    _search.rewind(y_train, panel_group_names=_groups)
-    _y_pred_rewound = _search.predict(forecasting_horizon=fh, panel_group_names=_groups)
+    _search.rewind(y_train, groups=_groups)
+    _y_pred_rewound = _search.predict(forecasting_horizon=fh, groups=_groups)
     _fig_rewound = plot_forecast(
         y_test,
         _y_pred_rewound,
         y_train=y_train,
-        panel_group_names=_groups,
+        groups=_groups,
         n_history=16,
         title="Step 3 - After rewind (origin returns)",
     )
@@ -228,6 +233,53 @@ def _(deepcopy, fh, mo, plot_forecast, search, y_test, y_train):
     ])
 
 
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict` method with `stride=1` produces one forecast per
+    observation point, creating multiple *vintages*. Each vintage represents
+    a different forecast origin, so you can analyse how accuracy evolves as
+    the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(deepcopy, fh, search, y_test):
+    _vintage_model = deepcopy(search.best_forecaster_)
+    y_pred_vintages = _vintage_model.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=fh,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
+    plot_score_per_vintage(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="MAE per Forecast Vintage",
+        y_label="MAE",
+        height=380,
+    )
+    return
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -237,11 +289,11 @@ def _(mo):
       boundaries; [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates them together
     - **`refit=True`**: The best model is fitted on all training data after
       search, ready for `predict` / `observe` / `rewind`
-    - **`observe` with `panel_group_names`**: Feed new data to specific
+    - **`observe` with `groups`**: Feed new data to specific
       groups, shifting their forecast origin forward
-    - **`rewind` with `panel_group_names`**: Reset specific groups back to
+    - **`rewind` with `groups`**: Reset specific groups back to
       a previous observation window without refitting
-    - **`predict` with `panel_group_names`**: Generate forecasts for a
+    - **`predict` with `groups`**: Generate forecasts for a
       subset of groups only
 
     ## Next Steps

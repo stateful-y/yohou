@@ -78,7 +78,7 @@ class TestPredict:
 
         expected_y_pred = pl.DataFrame(
             {
-                "observed_time": [y_train["time"][-1]] * predict_forecasting_horizon,
+                "vintage_time": [y_train["time"][-1]] * predict_forecasting_horizon,
                 "time": pl.datetime_range(
                     start=datetime(2021, 12, 16, 0, 0, len(y_train)),
                     end=datetime(2021, 12, 16, 0, 0, len(y_train) + predict_forecasting_horizon - 1),
@@ -89,7 +89,7 @@ class TestPredict:
                 "b": np.array(expected_a) + 10,
             },
             schema={
-                "observed_time": pl.Datetime(time_unit="us", time_zone=None),
+                "vintage_time": pl.Datetime(time_unit="us", time_zone=None),
                 "time": pl.Datetime(time_unit="us", time_zone=None),
                 "a": pl.Float64,
                 "b": pl.Float64,
@@ -152,7 +152,7 @@ class TestObservePredict:
 
         expected_y_pred = pl.DataFrame(
             {
-                "observed_time": [y_test["time"][-1]] * predict_forecasting_horizon,
+                "vintage_time": [y_test["time"][-1]] * predict_forecasting_horizon,
                 "time": pl.datetime_range(
                     start=datetime(2021, 12, 16, 0, 0, len(y_train) + len(y_test)),
                     end=datetime(2021, 12, 16, 0, 0, len(y_train) + len(y_test) + predict_forecasting_horizon - 1),
@@ -163,7 +163,7 @@ class TestObservePredict:
                 "b": np.array(expected_a) + 10,
             },
             schema={
-                "observed_time": pl.Datetime(time_unit="us", time_zone=None),
+                "vintage_time": pl.Datetime(time_unit="us", time_zone=None),
                 "time": pl.Datetime(time_unit="us", time_zone=None),
                 "a": pl.Float64,
                 "b": pl.Float64,
@@ -260,7 +260,7 @@ class TestObservePredictGlobal:
 
         expected_y_pred = pl.DataFrame(
             {
-                "observed_time": [y_test_panel["time"][-1]] * predict_forecasting_horizon,
+                "vintage_time": [y_test_panel["time"][-1]] * predict_forecasting_horizon,
                 "time": pl.datetime_range(
                     start=datetime(2021, 12, 16, 0, 0, len(y_train_panel) + len(y_test_panel)),
                     end=datetime(
@@ -280,7 +280,7 @@ class TestObservePredictGlobal:
                 "y__b": [int(v) + 20 for v in expected_a],
             },
             schema={
-                "observed_time": pl.Datetime(time_unit="us", time_zone=None),
+                "vintage_time": pl.Datetime(time_unit="us", time_zone=None),
                 "time": pl.Datetime(time_unit="us", time_zone=None),
                 "x__a": pl.Int64,
                 "x__b": pl.Int64,
@@ -927,8 +927,8 @@ class TestDirRecStrategy:
         y_pred_dirrec = forecaster_dirrec.predict(X=X_test[:1], forecasting_horizon=1)
 
         np.testing.assert_allclose(
-            y_pred_direct.select(~cs.by_name("time", "observed_time")).to_numpy(),
-            y_pred_dirrec.select(~cs.by_name("time", "observed_time")).to_numpy(),
+            y_pred_direct.select(~cs.by_name("time", "vintage_time")).to_numpy(),
+            y_pred_dirrec.select(~cs.by_name("time", "vintage_time")).to_numpy(),
             rtol=1e-10,
         )
 

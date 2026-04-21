@@ -220,7 +220,7 @@ class TestPointReductionPanel:
         ids=["no_features", "lag_only", "lag_pipeline"],
     )
     def test_point_reduction_panel_observe_subset_groups(self, linear_panel_5groups, feature_transformer):
-        """Test observe() with panel_group_names filters to specific groups."""
+        """Test observe() with groups filters to specific groups."""
         y = linear_panel_5groups
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
@@ -236,11 +236,11 @@ class TestPointReductionPanel:
 
         # Update only groups 1 and 2
         y_update = y[60:80]
-        forecaster.observe(y_update, panel_group_names=["g1", "g2"])
+        forecaster.observe(y_update, groups=["g1", "g2"])
 
         # Predict only the updated groups (partial update replaces internal state
         # for those groups only, making predict-all unavailable)
-        y_pred_after = forecaster.predict(forecasting_horizon=5, panel_group_names=["g1", "g2"])
+        y_pred_after = forecaster.predict(forecasting_horizon=5, groups=["g1", "g2"])
 
         # Groups 1 and 2 should have different predictions (updated state)
         for group_idx in [1, 2]:
@@ -266,7 +266,7 @@ class TestPointReductionPanel:
         ids=["no_features", "lag_only", "lag_pipeline"],
     )
     def test_point_reduction_panel_rewind_subset_groups(self, linear_panel_5groups, feature_transformer):
-        """Test rewind() with panel_group_names filters to specific groups."""
+        """Test rewind() with groups filters to specific groups."""
         y = linear_panel_5groups
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
@@ -280,11 +280,11 @@ class TestPointReductionPanel:
         # Reset only group_1
         y_reset = y[60:80]  # Last 20 rows
 
-        forecaster.rewind(y_reset, panel_group_names=["g1"])
+        forecaster.rewind(y_reset, groups=["g1"])
 
         # Predict only the reset group (partial reset replaces internal state
         # for that group only, making predict-all unavailable)
-        y_pred = forecaster.predict(forecasting_horizon=5, panel_group_names=["g1"])
+        y_pred = forecaster.predict(forecasting_horizon=5, groups=["g1"])
 
         # Verify prediction for the reset group
         assert "g1__value" in y_pred.columns
@@ -1075,7 +1075,7 @@ class TestTenGroupPanelScalability:
 
     @pytest.mark.integration
     def test_ten_group_panel_observe_subset_at_scale(self, linear_panel_10groups):
-        """Test observe with panel_group_names filtering at 10-group scale."""
+        """Test observe with groups filtering at 10-group scale."""
         y = linear_panel_10groups
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
@@ -1087,11 +1087,11 @@ class TestTenGroupPanelScalability:
         # Update only groups 0, 3, 7
         y_update = y[60:80]
         subset_groups = ["g0", "g3", "g7"]
-        forecaster.observe(y_update, panel_group_names=subset_groups)
+        forecaster.observe(y_update, groups=subset_groups)
 
         # Predict only the updated groups (partial update replaces internal state
         # for those groups only, making predict-all unavailable)
-        y_pred = forecaster.predict(forecasting_horizon=5, panel_group_names=subset_groups)
+        y_pred = forecaster.predict(forecasting_horizon=5, groups=subset_groups)
 
         # Verify structure maintained for requested groups
         global_cols, panel_groups = inspect_panel(y_pred)
@@ -1099,7 +1099,7 @@ class TestTenGroupPanelScalability:
 
     @pytest.mark.integration
     def test_ten_group_panel_predict_subset(self, linear_panel_10groups):
-        """Test prediction with panel_group_names filtering at scale."""
+        """Test prediction with groups filtering at scale."""
         y = linear_panel_10groups
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
@@ -1112,7 +1112,7 @@ class TestTenGroupPanelScalability:
         subset_groups = ["g2", "g5", "g8"]
         y_pred_subset = forecaster.predict(
             forecasting_horizon=5,
-            panel_group_names=subset_groups,
+            groups=subset_groups,
         )
 
         # Verify only requested groups present

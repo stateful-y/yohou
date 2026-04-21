@@ -49,8 +49,8 @@ class TestForecasterReproducibility:
         pred2 = f2.predict(forecasting_horizon=5)
 
         # Drop time columns for value comparison
-        v1 = pred1.drop("time", "observed_time")
-        v2 = pred2.drop("time", "observed_time")
+        v1 = pred1.drop("time", "vintage_time")
+        v2 = pred2.drop("time", "vintage_time")
         assert v1.equals(v2), "Deterministic forecaster should produce identical predictions"
 
     def test_observe_predict_deterministic(self, y_X_factory):
@@ -65,6 +65,6 @@ class TestForecasterReproducibility:
         f2.fit(y[:80], forecasting_horizon=5)
         pred2 = f2.observe_predict(y[80:85])
 
-        v1 = pred1.drop("time", "observed_time")
-        v2 = pred2.drop("time", "observed_time")
+        v1 = pred1.drop("time", "vintage_time")
+        v2 = pred2.drop("time", "vintage_time")
         assert v1.equals(v2), "observe_predict should be deterministic"

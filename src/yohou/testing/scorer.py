@@ -83,7 +83,7 @@ def check_scorer_tags_static_after_fit(
     y_truth : pl.DataFrame
         Ground truth with "time" column
     y_pred : pl.DataFrame
-        Predictions with "observed_time" and "time" columns
+        Predictions with "vintage_time" and "time" columns
 
     Raises
     ------
@@ -123,7 +123,7 @@ def check_scorer_tags_match_capabilities(
     y_truth : pl.DataFrame
         Ground truth with "time" column
     y_pred : pl.DataFrame
-        Predictions with "observed_time" and "time" columns
+        Predictions with "vintage_time" and "time" columns
     expected_tags : dict, optional
         Expected tag values to validate (keys: prediction_type, lower_is_better, requires_calibration)
 
@@ -207,9 +207,21 @@ def check_scorer_prediction_type_compatibility(
     else:
         raise AssertionError(f"Unknown prediction_type: {scorer_tags.scorer_tags.prediction_type}")
 
+    # Build y_truth that overlaps with predicted times (predictions may be
+    # for future timestamps beyond the training data).
+    pred_times = y_pred["time"].unique()
+    y_truth = y.filter(pl.col("time").is_in(pred_times.to_list()))
+    if len(y_truth) == 0:
+        value_cols = [c for c in y.columns if c != "time"]
+        rows: dict[str, list] = {"time": pred_times.to_list()}
+        for col in value_cols:
+            val = y[col].mean() if y[col].dtype.is_numeric() else y[col][0]
+            rows[col] = [val] * len(pred_times)
+        y_truth = pl.DataFrame(rows)
+
     # Score should work
     try:
-        score = scorer.score(y, y_pred)
+        score = scorer.score(y_truth, y_pred)
         assert isinstance(score, int | float | np.number), f"score() should return numeric value, got {type(score)}"
     except Exception as e:
         raise AssertionError(f"Compatible scorer/forecaster types failed: {e}") from e
@@ -269,7 +281,7 @@ def check_scorer_aggregation_methods(
 
     Notes
     -----
-    Single aggregation methods (e.g., ['timewise']) may return DataFrames.
+    Single aggregation methods (e.g., ['stepwise']) may return DataFrames.
     Only when using all available methods together does it return a scalar.
 
     """
@@ -285,7 +297,7 @@ def check_scorer_aggregation_methods(
 
             # Validate return type - can be scalar or DataFrame depending on aggregation
             if isinstance(score, pl.DataFrame):
-                # DataFrame is valid for partial aggregations (e.g., timewise only)
+                # DataFrame is valid for partial aggregations (e.g., stepwise only)
                 assert len(score) > 0, f"aggregation_method={agg_method}: returned empty DataFrame"
                 assert not score.null_count().sum_horizontal()[0] > 0, (
                     f"aggregation_method={agg_method}: DataFrame contains null values"
@@ -305,9 +317,9 @@ def check_scorer_panel_subselection(
     scorer,
     y_truth_panel: pl.DataFrame,
     y_pred_panel: pl.DataFrame,
-    panel_group_names: list[str],
+    groups: list[str],
 ) -> None:
-    """Check panel_group_names filtering works correctly.
+    """Check groups filtering works correctly.
 
     Parameters
     ----------
@@ -317,7 +329,7 @@ def check_scorer_panel_subselection(
         Panel ground truth
     y_pred_panel : pl.DataFrame
         Panel predictions
-    panel_group_names : list of str
+    groups : list of str
         Panel group names to filter
 
     Raises
@@ -327,22 +339,22 @@ def check_scorer_panel_subselection(
 
     """
     scorer_filtered = clone(scorer)
-    scorer_filtered.set_params(panel_group_names=panel_group_names)
+    scorer_filtered.set_params(groups=groups)
 
     try:
         score = scorer_filtered.score(y_truth_panel, y_pred_panel)
         assert isinstance(score, int | float | np.number), "Panel-filtered score should be numeric"
     except Exception as e:
-        raise AssertionError(f"panel_group_names={panel_group_names} filtering failed: {e}") from e
+        raise AssertionError(f"groups={groups} filtering failed: {e}") from e
 
 
 def check_scorer_component_subselection(
     scorer,
     y_truth: pl.DataFrame,
     y_pred: pl.DataFrame,
-    component_names: list[str],
+    components: list[str],
 ) -> None:
-    """Check component_names filtering works correctly.
+    """Check components filtering works correctly.
 
     Parameters
     ----------
@@ -352,7 +364,7 @@ def check_scorer_component_subselection(
         Ground truth
     y_pred : pl.DataFrame
         Predictions
-    component_names : list of str
+    components : list of str
         Component names to filter
 
     Raises
@@ -362,13 +374,13 @@ def check_scorer_component_subselection(
 
     """
     scorer_filtered = clone(scorer)
-    scorer_filtered.set_params(component_names=component_names)
+    scorer_filtered.set_params(components=components)
 
     try:
         score = scorer_filtered.score(y_truth, y_pred)
         assert isinstance(score, int | float | np.number), "Component-filtered score should be numeric"
     except Exception as e:
-        raise AssertionError(f"component_names={component_names} filtering failed: {e}") from e
+        raise AssertionError(f"components={components} filtering failed: {e}") from e
 
 
 def check_scorer_coverage_rate_subselection(
@@ -377,7 +389,7 @@ def check_scorer_coverage_rate_subselection(
     y_pred_interval: pl.DataFrame,
     coverage_rates: list[float],
 ) -> None:
-    """Check coverage_rates parameter filters interval predictions correctly.
+    """Check coverage parameter filters interval predictions correctly.
 
     Only applicable for interval scorers.
 
@@ -395,7 +407,7 @@ def check_scorer_coverage_rate_subselection(
     Raises
     ------
     AssertionError
-        If coverage_rates filtering fails
+        If coverage filtering fails
 
     """
     tags = scorer.__sklearn_tags__()
@@ -457,7 +469,7 @@ def check_scorer_parameter_validation(
     if tags.scorer_tags.prediction_type == "interval":
         # Interval scorer needs _lower and _upper columns
         pl.DataFrame({
-            "observed_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
+            "vintage_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
             "time": [datetime.datetime(2020, 1, i) for i in range(11, 14)],
             "value_lower_0.9": [10.0, 11.0, 12.0],
             "value_upper_0.9": [10.5, 11.5, 12.5],
@@ -465,7 +477,7 @@ def check_scorer_parameter_validation(
     else:
         # Point scorer needs regular value columns
         pl.DataFrame({
-            "observed_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
+            "vintage_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
             "time": [datetime.datetime(2020, 1, i) for i in range(11, 14)],
             "value": range(10, 13),
         })

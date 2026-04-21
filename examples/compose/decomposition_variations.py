@@ -48,10 +48,18 @@ def _():
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
 
+    from copy import deepcopy
+
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_sunspot, fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.plotting import plot_decomposition, plot_forecast, plot_time_series
+    from yohou.plotting import (
+        plot_decomposition,
+        plot_forecast,
+        plot_score_per_step,
+        plot_score_summary,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.stationarity import (
@@ -69,11 +77,14 @@ def _():
         PointReductionForecaster,
         PolynomialTrendForecaster,
         Ridge,
+        deepcopy,
         fetch_sunspot,
         fetch_tourism_quarterly,
         pl,
         plot_decomposition,
         plot_forecast,
+        plot_score_per_step,
+        plot_score_summary,
         plot_time_series,
         train_test_split,
     )
@@ -159,7 +170,7 @@ def _(fc_two, horizon, plot_decomposition, y_test):
     _components = {}
     for _name, _forecaster in fc_two.forecasters_:
         _pred = _forecaster.predict(forecasting_horizon=horizon)
-        _components[_name] = _pred.drop("observed_time")
+        _components[_name] = _pred.drop("vintage_time")
     plot_decomposition(y_test, _components, title="Two-Component Decomposition")
 
 
@@ -218,7 +229,7 @@ def _(fc_three, horizon, plot_decomposition, y_test):
     _components = {}
     for _name, _forecaster in fc_three.forecasters_:
         _pred = _forecaster.predict(forecasting_horizon=horizon)
-        _components[_name] = _pred.drop("observed_time")
+        _components[_name] = _pred.drop("vintage_time")
     plot_decomposition(y_test, _components, title="Three-Component Decomposition")
 
 
@@ -355,10 +366,73 @@ def _(
         _y_pred_panel,
         y_train=_y_train_p,
         n_history=8,
-        panel_group_names=["T3", "T4", "T5"],
+        groups=["T3", "T4", "T5"],
         title="Panel Decomposition: Trend + Residual",
     )
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict` method with `stride=1` produces one forecast per
+    observation point, creating multiple *vintages*. Each vintage represents
+    a different forecast origin, so you can analyse how accuracy evolves as
+    the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(LagTransformer, PointReductionForecaster, Ridge, deepcopy, horizon, y_test, y_train):
+    _fc_v = PointReductionForecaster(
+        estimator=Ridge(alpha=1.0),
+        feature_transformer=LagTransformer(lag=[1, 12]),
+    )
+    _fc_v.fit(y_train, forecasting_horizon=horizon)
+    _vintage_model = deepcopy(_fc_v)
+    y_pred_vintages = _vintage_model.observe_predict(
+        y=y_test,
+        stride=1,
+        forecasting_horizon=horizon,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_pred_vintages,)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_step, y_pred_vintages, y_test):
+    plot_score_per_step(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="MAE per Forecast Step",
+        y_label="MAE",
+        height=380,
+    )
+    return
+
+
+@app.cell
+def _(vintage_scorer, plot_score_summary, y_pred_vintages, y_test):
+    plot_score_summary(
+        vintage_scorer,
+        y_test,
+        y_pred_vintages,
+        title="Model Score Summary",
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

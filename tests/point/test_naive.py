@@ -94,7 +94,7 @@ class TestSeasonalNaive:
         y_pred = forecaster.predict(forecasting_horizon=predict_forecasting_horizon)
 
         expected_y_pred = pl.DataFrame({
-            "observed_time": [y_train["time"][-1]] * predict_forecasting_horizon,
+            "vintage_time": [y_train["time"][-1]] * predict_forecasting_horizon,
             "time": pl.datetime_range(
                 start=datetime(2021, 12, 16, 0, 0, len(y_train)),
                 end=datetime(2021, 12, 16, 0, 0, len(y_train) + predict_forecasting_horizon - 1),

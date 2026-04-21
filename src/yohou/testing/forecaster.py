@@ -33,7 +33,7 @@ def check_fit_sets_forecaster_attributes(
     """Check fit() sets required forecaster attributes.
 
     Validates that fit() creates all required attributes for forecasters including
-    fit_forecasting_horizon_, interval_, panel_group_names_, local_y_schema_,
+    fit_forecasting_horizon_, interval_, groups_, local_y_schema_,
     observation buffers, and transformer references.
 
     Parameters
@@ -64,7 +64,7 @@ def check_fit_sets_forecaster_attributes(
 
     assert hasattr(forecaster_clone, "interval_"), "fit() must set interval_ attribute (timedelta)"
 
-    assert hasattr(forecaster_clone, "panel_group_names_"), "fit() must set panel_group_names_ attribute (None or list)"
+    assert hasattr(forecaster_clone, "groups_"), "fit() must set groups_ attribute (None or list)"
     assert hasattr(forecaster_clone, "local_y_schema_"), (
         "fit() must set local_y_schema_ attribute (dict[str, pl.DataType])"
     )
@@ -130,7 +130,7 @@ def check_forecaster_not_fitted_error(forecaster, y: pl.DataFrame, X: pl.DataFra
 
 
 def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
-    """Check predictions have observed_time and time columns.
+    """Check predictions have vintage_time and time columns.
 
     Parameters
     ----------
@@ -155,14 +155,14 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_test: pl.Data
     else:
         y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
 
-    assert "observed_time" in y_pred.columns, "Predictions must have 'observed_time' column"
+    assert "vintage_time" in y_pred.columns, "Predictions must have 'vintage_time' column"
     assert "time" in y_pred.columns, "Predictions must have 'time' column"
 
     # Validate shapes
     assert len(y_pred) == forecasting_horizon, f"Predictions should have {forecasting_horizon} rows, got {len(y_pred)}"
 
     # Validate time column types
-    assert y_pred["observed_time"].dtype == pl.Datetime, "observed_time must be Datetime dtype"
+    assert y_pred["vintage_time"].dtype == pl.Datetime, "vintage_time must be Datetime dtype"
     assert y_pred["time"].dtype == pl.Datetime, "time must be Datetime dtype"
 
 

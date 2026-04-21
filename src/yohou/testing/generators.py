@@ -743,7 +743,7 @@ def _yield_yohou_scorer_checks(
     y_truth : pl.DataFrame
         Ground truth with "time" column
     y_pred : pl.DataFrame
-        Predictions with "observed_time" and "time" columns
+        Predictions with "vintage_time" and "time" columns
     tags : dict, optional
         Scorer metadata tags (if None, auto-detected from __sklearn_tags__):
         - prediction_type: str | None
@@ -803,7 +803,7 @@ def _yield_yohou_scorer_checks(
 
     # Aggregation methods check (if scorer has aggregation_method parameter)
     if hasattr(scorer, "aggregation_method"):
-        aggregation_methods = ["timewise", "componentwise"]
+        aggregation_methods = ["stepwise", "vintagewise", "componentwise"]
         yield (
             "check_scorer_aggregation_methods",
             check_scorer_aggregation_methods,
@@ -822,20 +822,20 @@ def _yield_yohou_scorer_checks(
     # Parameter validation checks
     scorer_class = type(scorer)
     validation_test_cases: list[tuple[str, list, str]] = [
-        ("panel_group_names", ["nonexistent_group"], "panel_group_names"),
-        ("component_names", ["nonexistent_component"], "component_names"),
+        ("groups", ["nonexistent_group"], "groups"),
+        ("components", ["nonexistent_component"], "components"),
     ]
 
     # Aggregation method validation
     if hasattr(scorer, "aggregation_method"):
         validation_test_cases.append(("aggregation_method", ["invalid_method"], "aggregation_method"))
 
-    # Add coverage_rates validation for interval scorers
+    # Add coverage validation for interval scorers
     if tags.get("prediction_type") == "interval":
         validation_test_cases.extend([
-            ("coverage_rates", [1.5], "coverage_rates"),  # Out of range
-            ("coverage_rates", [0.0], "coverage_rates"),  # Out of range
-            ("coverage_rates", [[]], "coverage_rates"),  # Invalid type (nested list)
+            ("coverage_rates", [1.5], "coverage"),  # Out of range
+            ("coverage_rates", [0.0], "coverage"),  # Out of range
+            ("coverage_rates", [[]], "coverage"),  # Invalid type (nested list)
         ])
 
     for param_name, invalid_value, error_match in validation_test_cases:
@@ -1053,7 +1053,7 @@ def _yield_yohou_search_checks(
         _, y_panel_groups = inspect_panel(y_train)
         if len(y_panel_groups) > 0:
             # Extract first group name for testing
-            panel_group_names = list(y_panel_groups.keys())[:1]
+            groups = list(y_panel_groups.keys())[:1]
             yield (
                 "check_search_panel_data",
                 check_search_panel_data,
@@ -1062,6 +1062,6 @@ def _yield_yohou_search_checks(
                     "y_test": y_test,
                     "X_train": X_train,
                     "X_test": X_test,
-                    "panel_group_names": panel_group_names,
+                    "groups": groups,
                 },
             )

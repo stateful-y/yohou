@@ -93,10 +93,10 @@ class TestPanelForecasterBoundaries:
         forecaster.fit(y[:80], forecasting_horizon=5)
         y_pred = forecaster.predict(
             forecasting_horizon=5,
-            panel_group_names=["group_0"],
+            groups=["group_0"],
         )
-        # Should only have time + observed_time + group_0 columns
-        non_time_cols = [c for c in y_pred.columns if c not in ("time", "observed_time")]
+        # Should only have time + vintage_time + group_0 columns
+        non_time_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time")]
         assert all(c.startswith("group_0__") for c in non_time_cols), (
             f"Expected only group_0 columns, got {non_time_cols}"
         )

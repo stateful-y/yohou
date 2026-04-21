@@ -20,7 +20,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_forecaster_tags_static_after_fit`](generated/yohou.testing.forecaster.check_forecaster_tags_static_after_fit.md) | Check forecaster tags remain static after fit(). |
 | [`check_forecasting_horizon_validation`](generated/yohou.testing.forecaster.check_forecasting_horizon_validation.md) | Check forecasting_horizon < 1 raises ValueError. |
 | [`check_observe_extends_observations`](generated/yohou.testing.forecaster.check_observe_extends_observations.md) | Check observe() extends observation buffers correctly. |
-| [`check_predict_time_columns`](generated/yohou.testing.forecaster.check_predict_time_columns.md) | Check predictions have observed_time and time columns. |
+| [`check_predict_time_columns`](generated/yohou.testing.forecaster.check_predict_time_columns.md) | Check predictions have vintage_time and time columns. |
 | [`check_prediction_types_property`](generated/yohou.testing.forecaster.check_prediction_types_property.md) | Check forecaster_type tag is set correctly. |
 | [`check_rewind_propagates_to_transformers`](generated/yohou.testing.forecaster.check_rewind_propagates_to_transformers.md) | Check rewind() propagates to transformers in forecaster. |
 | [`check_rewind_replaces_observations`](generated/yohou.testing.forecaster.check_rewind_replaces_observations.md) | Check rewind() replaces observation buffers correctly. |
@@ -97,7 +97,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_scorer_coverage_rate_subselection`](generated/yohou.testing.scorer.check_scorer_coverage_rate_subselection.md) | Check coverage_rates parameter filters interval predictions correctly. |
 | [`check_scorer_lower_is_better`](generated/yohou.testing.scorer.check_scorer_lower_is_better.md) | Check lower_is_better convention matches scoring direction. |
 | [`check_scorer_methods_call_check_is_fitted`](generated/yohou.testing.scorer.check_scorer_methods_call_check_is_fitted.md) | Check all scorer methods (except fit) raise NotFittedError when unfitted. |
-| [`check_scorer_panel_subselection`](generated/yohou.testing.scorer.check_scorer_panel_subselection.md) | Check panel_group_names filtering works correctly. |
+| [`check_scorer_panel_subselection`](generated/yohou.testing.scorer.check_scorer_panel_subselection.md) | Check groups filtering works correctly. |
 | [`check_scorer_parameter_validation`](generated/yohou.testing.scorer.check_scorer_parameter_validation.md) | Check parameter validation raises ValueError for invalid inputs. |
 | [`check_scorer_prediction_type_compatibility`](generated/yohou.testing.scorer.check_scorer_prediction_type_compatibility.md) | Check scorer works with correct forecaster output type. |
 | [`check_scorer_tags_accessible_before_fit`](generated/yohou.testing.scorer.check_scorer_tags_accessible_before_fit.md) | Check \_\_sklearn_tags\_\_() is callable on scorer instance. |
@@ -133,7 +133,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_search_error_score_handling`](generated/yohou.testing.search.check_search_error_score_handling.md) | Check error_score parameter handles failing fits correctly. |
 | [`check_search_refit_false_no_forecaster`](generated/yohou.testing.search.check_search_refit_false_no_forecaster.md) | Check refit=False doesn't create best_forecaster_. |
 | [`check_search_return_train_score`](generated/yohou.testing.search.check_search_return_train_score.md) | Check return_train_score=True adds train score keys to cv_results_. |
-| [`check_search_panel_data`](generated/yohou.testing.search.check_search_panel_data.md) | Check panel_group_names parameter propagates correctly. |
+| [`check_search_panel_data`](generated/yohou.testing.search.check_search_panel_data.md) | Check groups parameter propagates correctly. |
 | [`check_grid_search_exhaustive`](generated/yohou.testing.search.check_grid_search_exhaustive.md) | Check GridSearchCV evaluates all parameter combinations. |
 | [`check_grid_search_param_grid_validation`](generated/yohou.testing.search.check_grid_search_param_grid_validation.md) | Check param_grid format is validated (dict or list of dicts). |
 | [`check_randomized_search_distributions`](generated/yohou.testing.search.check_randomized_search_distributions.md) | Check scipy.stats distributions work for parameter sampling. |

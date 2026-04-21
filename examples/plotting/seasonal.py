@@ -103,7 +103,7 @@ def _(mo):
 
     [`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/) overlays one line per cycle on the same seasonal axis (FPP3
     gg_season style). Vary the **seasonality**, use **highlight** to emphasise
-    specific years, and pass **panel_group_names** for panel data.
+    specific years, and pass **groups** for panel data.
     """)
 
 
@@ -140,7 +140,7 @@ def _(plot_seasonality, tourism_quarterly):
     plot_seasonality(
         tourism_quarterly,
         seasonality="quarter",
-        panel_group_names=["T1", "T2"],
+        groups=["T1", "T2"],
         title="Seasonal Overlay - Tourism Quarterly Panel (T1 & T2)",
     )
 

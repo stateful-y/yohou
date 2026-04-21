@@ -60,13 +60,13 @@ class TestBaseForecasterPredict:
         assert isinstance(result, pl.DataFrame)
 
     def test_predict_has_time_columns(self, y_X_factory):
-        """Predict output has observed_time and time columns."""
+        """Predict output has vintage_time and time columns."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=0)
         f = PointReductionForecaster()
         f.fit(y, forecasting_horizon=3)
         result = f.predict()
         assert "time" in result.columns
-        assert "observed_time" in result.columns
+        assert "vintage_time" in result.columns
 
     def test_predict_length_matches_horizon(self, y_X_factory):
         """Predict returns rows equal to forecasting_horizon."""

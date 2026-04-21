@@ -25,7 +25,7 @@ def perfect_interval_predictions():
         "value": [10.0, 20.0, 30.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "value_lower_0.9": [8.0, 18.0, 28.0],
         "value_upper_0.9": [12.0, 22.0, 32.0],
@@ -41,7 +41,7 @@ def zero_coverage_predictions():
         "value": [10.0, 20.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "value_lower_0.9": [15.0, 25.0],  # All actuals below lower bound
         "value_upper_0.9": [18.0, 28.0],
@@ -57,7 +57,7 @@ def multi_rate_predictions():
         "value": [10.0, 20.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "value_lower_0.9": [8.0, 18.0],
         "value_upper_0.9": [12.0, 22.0],
@@ -122,17 +122,21 @@ class TestEmpiricalCoverage:
         assert score == 0.0
 
     def test_empirical_coverage_per_rate_via_aggregation(self, multi_rate_predictions):
-        """Test aggregation without "coveragewise" returns dict with rate keys."""
+        """Test aggregation without 'coveragewise' returns DataFrame with coverage_rate."""
         y_true, y_pred = multi_rate_predictions
-        # Exclude "coveragewise" to get per-rate results
-        coverage = EmpiricalCoverage(aggregation_method=["timewise", "componentwise", "groupwise"])
+        # Exclude "coveragewise" to get per-rate scores
+        coverage = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
         coverage.fit(y_true)
         scores = coverage.score(y_true, y_pred)
 
-        assert isinstance(scores, dict)
-        assert set(scores.keys()) == {0.9, 0.95}
-        assert all(isinstance(v, float) for v in scores.values())
-        assert all(0 <= v <= 1 for v in scores.values())
+        assert isinstance(scores, pl.DataFrame)
+        assert "coverage_rate" in scores.columns
+        value_cols = [c for c in scores.columns if c != "coverage_rate"]
+        assert len(value_cols) == 1
+        rates = set(scores["coverage_rate"].to_list())
+        assert rates == {0.9, 0.95}
+        for val in scores[value_cols[0]].to_list():
+            assert 0 <= val <= 1
 
     def test_empirical_coverage_per_step(self, perfect_interval_predictions):
         """Test aggregation_method=['componentwise', 'coveragewise'] returns DataFrame with time column."""
@@ -148,7 +152,7 @@ class TestEmpiricalCoverage:
         assert df["time"].dtype == pl.Datetime
 
     def test_empirical_coverage_per_step_and_per_rate(self, multi_rate_predictions):
-        """Test aggregation_method=['componentwise'] returns DataFrame with rate columns."""
+        """Test aggregation_method=['componentwise'] returns DataFrame with coverage_rate rows."""
         y_true, y_pred = multi_rate_predictions
         coverage = EmpiricalCoverage(aggregation_method=["componentwise"])
         coverage.fit(y_true)
@@ -156,10 +160,9 @@ class TestEmpiricalCoverage:
 
         assert isinstance(scores, pl.DataFrame)
         assert "time" in scores.columns
-        # Without coveragewise aggregation, returns one column per rate (BaseIntervalScorer logic)
-        # Columns will be named rate_0.9, rate_0.95 (or similar, depending on BaseIntervalScorer)
-        assert any("rate_0.9" in col for col in scores.columns)
-        assert any("rate_0.95" in col for col in scores.columns)
+        assert "coverage_rate" in scores.columns
+        rates = set(scores["coverage_rate"].to_list())
+        assert rates == {0.9, 0.95}
 
     def test_empirical_coverage_sklearn_tags(self):
         """Test scorer has correct sklearn tags."""
@@ -176,7 +179,7 @@ class TestMeanIntervalWidth:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [8.0, 18.0],
             "value_upper_0.9": [12.0, 22.0],
@@ -194,7 +197,7 @@ class TestMeanIntervalWidth:
         })
         # Inverted bounds: upper < lower
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [12.0],
             "value_upper_0.9": [8.0],
@@ -205,15 +208,21 @@ class TestMeanIntervalWidth:
         assert score == 4.0  # abs(8 - 12) = 4
 
     def test_mean_interval_width_per_rate_via_aggregation(self, multi_rate_predictions):
-        """Test aggregation without "coveragewise" returns dict with rate keys."""
+        """Test aggregation without 'coveragewise' returns DataFrame with coverage_rate."""
         y_true, y_pred = multi_rate_predictions
-        width = MeanIntervalWidth(aggregation_method=["timewise", "componentwise", "groupwise"])
+        width = MeanIntervalWidth(aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"])
         width.fit(y_true)
         scores = width.score(y_true, y_pred)
 
-        assert isinstance(scores, dict)
-        assert set(scores.keys()) == {0.9, 0.95}
-        assert scores[0.95] > scores[0.9]  # Wider interval at higher coverage
+        assert isinstance(scores, pl.DataFrame)
+        assert "coverage_rate" in scores.columns
+        value_cols = [c for c in scores.columns if c != "coverage_rate"]
+        assert len(value_cols) == 1
+        rates = set(scores["coverage_rate"].to_list())
+        assert rates == {0.9, 0.95}
+        score_09 = scores.filter(pl.col("coverage_rate") == 0.9)[value_cols[0]][0]
+        score_095 = scores.filter(pl.col("coverage_rate") == 0.95)[value_cols[0]][0]
+        assert score_095 > score_09  # Wider interval at higher coverage
 
     def test_mean_interval_width_per_step(self):
         """Test aggregation_method=['componentwise', 'coveragewise'] returns DataFrame."""
@@ -222,7 +231,7 @@ class TestMeanIntervalWidth:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [8.0, 17.0],
             "value_upper_0.9": [12.0, 23.0],
@@ -258,7 +267,7 @@ class TestIntervalScore:
         })
         # Actual below lower bound
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [15.0],
             "value_upper_0.9": [20.0],
@@ -278,7 +287,7 @@ class TestIntervalScore:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [8.0, 18.0],
             "value_upper_0.9": [12.0, 22.0],
@@ -303,7 +312,7 @@ class TestPinballLoss:
         })
         # Actuals exactly at bounds (quantiles)
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [10.0, 20.0],
             "value_upper_0.9": [10.0, 20.0],
@@ -322,7 +331,7 @@ class TestPinballLoss:
 
         # Under-prediction
         y_pred_under = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [8.0],
             "value_upper_0.9": [9.0],  # Below actual
@@ -330,7 +339,7 @@ class TestPinballLoss:
 
         # Over-prediction
         y_pred_over = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [11.0],  # Above actual
             "value_upper_0.9": [12.0],
@@ -351,7 +360,7 @@ class TestPinballLoss:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value_lower_0.9": [8.0, 18.0],
             "value_upper_0.9": [12.0, 22.0],
@@ -373,7 +382,7 @@ class TestCalibrationError:
             "value": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [8.0],
             "value_upper_0.9": [12.0],
@@ -417,7 +426,7 @@ class TestPanelData:
             "sales__store_2": [15.0, 25.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "sales__store_1_lower_0.9": [8.0, 18.0],
             "sales__store_1_upper_0.9": [12.0, 22.0],
@@ -440,7 +449,7 @@ class TestEdgeCases:
             "value": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value_lower_0.9": [8.0],
             "value_upper_0.9": [12.0],
@@ -462,7 +471,7 @@ class TestEdgeCases:
             "col2": [15.0, 25.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "col1_lower_0.9": [8.0, 18.0],
             "col1_upper_0.9": [12.0, 22.0],

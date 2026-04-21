@@ -48,7 +48,7 @@ def data():
 
     y_truth = pl.DataFrame({"time": dates, "y": [1.0, 2.0, 3.0]})
 
-    y_pred = pl.DataFrame({"observed_time": [start - timedelta(days=1)] * 3, "time": dates, "y": [1.1, 1.9, 3.2]})
+    y_pred = pl.DataFrame({"vintage_time": [start - timedelta(days=1)] * 3, "time": dates, "y": [1.1, 1.9, 3.2]})
     return y_truth, y_pred
 
 

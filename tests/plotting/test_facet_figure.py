@@ -22,10 +22,10 @@ def col_df():
 
 
 class TestFacetFigureColumnsDispatch:
-    """Tests that facet_figure dispatches to column mode when panel_group_names is None."""
+    """Tests that facet_figure dispatches to column mode when groups is None."""
 
-    def test_dispatch_without_panel_group_names(self, col_df):
-        """Omitting panel_group_names triggers column-mode faceting."""
+    def test_dispatch_without_groups(self, col_df):
+        """Omitting groups triggers column-mode faceting."""
         contexts: list[RenderContext] = []
 
         def _capture(ctx: RenderContext) -> None:
@@ -35,8 +35,8 @@ class TestFacetFigureColumnsDispatch:
         assert len(contexts) == 2
         assert all(ctx.facet_by == "column" for ctx in contexts)
 
-    def test_dispatch_with_panel_group_names(self):
-        """Providing panel_group_names triggers panel-mode faceting."""
+    def test_dispatch_with_groups(self):
+        """Providing groups triggers panel-mode faceting."""
         df = pl.DataFrame({
             "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True),
             "y__a": [1, 2, 3, 4, 5],
@@ -47,7 +47,7 @@ class TestFacetFigureColumnsDispatch:
         def _capture(ctx: RenderContext) -> None:
             contexts.append(ctx)
 
-        facet_figure(df, _capture, panel_group_names=["y"])
+        facet_figure(df, _capture, groups=["y"])
         assert len(contexts) == 2
         assert all(ctx.facet_by == "member" for ctx in contexts)
 

@@ -27,7 +27,7 @@ All plot functions share a consistent set of keyword-only layout parameters:
 
 | Parameter | Type | Default | Purpose |
 |---|---|---|---|
-| `panel_group_names` | `list[str] \| None` | `None` | Filter to specific groups |
+| `groups` | `list[str] \| None` | `None` | Filter to specific groups |
 | `columns` | `str \| list[str] \| None` | `None` | Filter to specific members within groups |
 | `facet_by` | `"group" \| "member" \| None` | `"member"` | Faceting dimension for subplots |
 | `facet_n_cols` | `int` | `2` | Number of columns in the facet grid |
@@ -284,14 +284,16 @@ from yohou.plotting import plot_score_time_series
 fig = plot_score_time_series(MeanAbsoluteError(), y_truth, y_pred)
 ```
 
-### plot_model_comparison_bar
+### plot_score_summary
 
-Grouped bar chart comparing multiple models across multiple scorers. Results are passed as `dict[str, dict[str, float]]` mapping model names to scorer-value pairs.
+Grouped bar chart comparing multiple models across multiple scorers.
 
 ```python
-from yohou.plotting import plot_model_comparison_bar
-fig = plot_model_comparison_bar(
-    results={"Model A": {"MAE": 1.2, "RMSE": 1.5}, "Model B": {"MAE": 0.9, "RMSE": 1.1}},
+from yohou.plotting import plot_score_summary
+fig = plot_score_summary(
+    {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()},
+    y_truth,
+    {"Model A": y_pred_a, "Model B": y_pred_b},
 )
 ```
 
@@ -304,13 +306,13 @@ from yohou.plotting import plot_score_distribution
 fig = plot_score_distribution(scorer, y_truth, y_pred, kind="both")
 ```
 
-### plot_score_per_horizon
+### plot_score_per_step
 
 Score degradation by forecast horizon step - shows how accuracy changes as predictions extend further into the future.
 
 ```python
-from yohou.plotting import plot_score_per_horizon
-fig = plot_score_per_horizon(scorer, y_truth, y_pred)
+from yohou.plotting import plot_score_per_step
+fig = plot_score_per_step(scorer, y_truth, y_pred)
 ```
 
 ## Model Selection Plots

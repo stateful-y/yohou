@@ -395,7 +395,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
             # Align predictions with current residuals on time
             aligned = residuals.join(
-                y_pred_train.select(~cs.by_name("observed_time")),
+                y_pred_train.select(~cs.by_name("vintage_time")),
                 on="time",
                 how="inner",
                 suffix="_pred",
@@ -417,7 +417,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -429,7 +429,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             Exogenous feature time series.
         forecasting_horizon : int >= 1 or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data:
             - If None: predict for all groups
             - If list of str: predict only for the specified panel groups
@@ -442,7 +442,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Returns
         -------
         pl.DataFrame
-            Predictions with columns: "observed_time", "time", <target_columns>
+            Predictions with columns: "vintage_time", "time", <target_columns>
 
         Raises
         ------
@@ -452,13 +452,13 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             If no fitted forecasters are available.
 
         """
-        check_is_fitted(self, ["forecasters_", "panel_group_names_"])
-        _, X, panel_group_names = validate_forecaster_data(
+        check_is_fitted(self, ["forecasters_", "groups_"])
+        _, X, groups = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         # Use fit horizon if not specified
@@ -487,8 +487,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         )
 
         # Initialize with first prediction
-        time_cols = y_pred_first.select("observed_time", "time")
-        y_pred_sum = y_pred_first.select(~cs.by_name("observed_time", "time"))
+        time_cols = y_pred_first.select("vintage_time", "time")
+        y_pred_sum = y_pred_first.select(~cs.by_name("vintage_time", "time"))
 
         # Process remaining forecasters and accumulate predictions
         for name, forecaster in self.forecasters_[1:]:
@@ -503,7 +503,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             )
 
             # Extract values (without time columns) and sum
-            y_pred_values = y_pred.select(~cs.by_name("observed_time", "time"))
+            y_pred_values = y_pred.select(~cs.by_name("vintage_time", "time"))
             y_pred_sum = y_pred_sum + y_pred_values
 
         # Combine time columns with summed values
@@ -512,12 +512,12 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         if not predict_transformed and self.target_transformer is not None:
             # Apply inverse target transform
 
-            # Remove observed_time before inverse transform
-            observed_time = y_pred.select("observed_time")
-            y_pred_no_obs = y_pred.select(~cs.by_name("observed_time"))
+            # Remove vintage_time before inverse transform
+            vintage_time = y_pred.select("vintage_time")
+            y_pred_no_obs = y_pred.select(~cs.by_name("vintage_time"))
 
             # Handle panel data (target_transformer_ and _y_observed are dicts)
-            if self.panel_group_names_ is None:
+            if self.groups_ is None:
                 # Non-panel data
                 assert isinstance(self.target_transformer_, BaseTransformer)
                 y_pred_inv = self.target_transformer_.inverse_transform(  # ty: ignore[unresolved-attribute]
@@ -529,7 +529,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 assert isinstance(self.target_transformer_, dict)
                 assert isinstance(self._y_observed, dict)
                 y_pred_inv_dict = {}
-                for panel_group_name in panel_group_names or self.panel_group_names_:
+                for panel_group_name in groups or self.groups_:
                     transformer = self.target_transformer_[panel_group_name]
 
                     # Skip if no transformer for this group
@@ -583,8 +583,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 y_pred_inv_cols = pl.concat(list(y_pred_inv_dict.values()), how="horizontal")
                 y_pred_inv = pl.concat([times, y_pred_inv_cols], how="horizontal")
 
-            # Add observed_time back
-            y_pred = pl.concat([observed_time, y_pred_inv], how="horizontal")
+            # Add vintage_time back
+            y_pred = pl.concat([vintage_time, y_pred_inv], how="horizontal")
 
         return y_pred
 
@@ -592,7 +592,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "DecompositionPipeline":
         """Observe new data for all component forecasters.
 
@@ -602,7 +602,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             New target observations with a ``"time"`` column.
         X : pl.DataFrame or None, default=None
             New exogenous features with a ``"time"`` column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.  Ignored for
             DecompositionPipeline (all groups are always observed).
 
@@ -617,13 +617,13 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             If the pipeline has not been fitted yet.
 
         """
-        check_is_fitted(self, ["forecasters_", "panel_group_names_"])
-        y, X, panel_group_names = validate_forecaster_data(
+        check_is_fitted(self, ["forecasters_", "groups_"])
+        y, X, groups = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         # Observe transformers first
@@ -657,7 +657,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             )
             # Align predictions with current residuals on time
             aligned = residuals.join(
-                y_pred.select(~cs.by_name("observed_time")),
+                y_pred.select(~cs.by_name("vintage_time")),
                 on="time",
                 how="inner",
                 suffix="_pred",
@@ -686,7 +686,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
     ) -> "DecompositionPipeline":
         """Rewind all component forecasters to a new observation horizon.
 
@@ -696,7 +696,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             Target observations with a ``"time"`` column.
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data.  Ignored for
             DecompositionPipeline (all groups are always rewound).
 
@@ -711,13 +711,13 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             If the pipeline has not been fitted yet.
 
         """
-        check_is_fitted(self, ["forecasters_", "panel_group_names_"])
-        y, X, panel_group_names = validate_forecaster_data(
+        check_is_fitted(self, ["forecasters_", "groups_"])
+        y, X, groups = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         # Rewind transformers first

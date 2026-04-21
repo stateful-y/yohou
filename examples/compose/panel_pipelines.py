@@ -164,7 +164,7 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         y_pred_global,
         y_train=y_train,
         n_history=48,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="Global Model: First 2 Stations",
     )
 
@@ -242,7 +242,7 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         y_pred_column,
         y_train=y_train,
         n_history=48,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="ColumnForecaster: Different Model Per Station",
     )
 
@@ -289,7 +289,7 @@ def _(
         _y_pred_union,
         y_train=y_train,
         n_history=48,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="FeatureUnion (Lags + Rolling) on Panel Data",
     )
     return (fc_union,)
@@ -339,7 +339,7 @@ def _(
         _y_pred_decomp,
         y_train=y_train,
         n_history=48,
-        panel_group_names=_groups[:2],
+        groups=_groups[:2],
         title="DecompositionPipeline (Trend + Residual) on Panel Data",
     )
     return (fc_decomp,)
@@ -397,7 +397,7 @@ def _(
         _y_pred_nested,
         y_train=y_train,
         n_history=48,
-        panel_group_names=[_groups[0], _groups[-1]],
+        groups=[_groups[0], _groups[-1]],
         title="Nested Pipeline on Panel Data",
     )
     return (fc_nested,)
@@ -420,8 +420,8 @@ def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y
 
     _rows = []
     for _group in sorted(groups.keys()):
-        _s_global = _scorer.score(y_test, y_pred_global, panel_group_names=[_group])
-        _s_column = _scorer.score(y_test, y_pred_column, panel_group_names=[_group])
+        _s_global = _scorer.score(y_test, y_pred_global, groups=[_group])
+        _s_column = _scorer.score(y_test, y_pred_column, groups=[_group])
         _rows.append({
             "Group": _group,
             "Global MAE": round(float(_s_global), 1),

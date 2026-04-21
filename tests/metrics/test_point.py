@@ -80,7 +80,7 @@ def y_true_y_pred():
         "value": [10.0, 20.0, 30.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "value": [12.0, 19.0, 28.0],
     })
@@ -118,7 +118,7 @@ class TestSystematicChecks:
         y_test = y[80:]
 
         # Create predictions
-        y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("observed_time"))
+        y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("vintage_time"))
 
         # Fit scorer with training data
         scorer = RootMeanSquaredScaledError(seasonality=1)
@@ -145,7 +145,7 @@ class TestSystematicChecks:
         y_test = y[80:]
 
         # Create predictions
-        y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("observed_time"))
+        y_pred = y_test.with_columns(pl.lit(datetime(2020, 1, 1)).alias("vintage_time"))
 
         # Fit scorer with training data
         scorer = MeanAbsoluteScaledError(seasonality=1)
@@ -206,7 +206,7 @@ class TestRMSE:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [10.0, 20.0],
         })
@@ -224,7 +224,7 @@ class TestRMSE:
         # Create predictions with small errors
         y_pred = y.clone()
         y_pred = y_pred.with_columns([pl.col(col) + np.random.randn(50) * 2 for col in y_pred.columns if col != "time"])
-        y_pred = y_pred.with_columns(observed_time=pl.lit(y["time"][0]))
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y["time"][0]))
 
         rmse = RootMeanSquaredError()
         rmse.fit(y)
@@ -242,7 +242,7 @@ class TestRMSSE:
             "value": [10.0, 20.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [12.0, 19.0],
         })
@@ -304,7 +304,7 @@ class TestRMSSE:
         })
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 20)] * 2,
+            "vintage_time": [datetime(2020, 1, 20)] * 2,
             "time": [datetime(2020, 1, 21), datetime(2020, 1, 22)],
             "target_0": [108.0, 113.0],
             "target_1": [51.0, 52.5],
@@ -329,7 +329,7 @@ class TestRMSSE:
 
         y_train = y[:80]
         y_test = y[80:85]
-        y_pred = y_test.clone().with_columns(observed_time=pl.lit(y_train["time"][-1]))
+        y_pred = y_test.clone().with_columns(vintage_time=pl.lit(y_train["time"][-1]))
 
         for seasonality in [1, 7, 12, 24]:
             rmsse = RootMeanSquaredScaledError(seasonality=seasonality)
@@ -354,7 +354,7 @@ class TestRMSSE:
         })
 
         # Perfect predictions
-        y_pred = y_test.clone().with_columns(observed_time=pl.lit(y_train["time"][-1]))
+        y_pred = y_test.clone().with_columns(vintage_time=pl.lit(y_train["time"][-1]))
 
         rmsse = RootMeanSquaredScaledError(seasonality=2)
         rmsse.fit(y_train)
@@ -380,14 +380,14 @@ class TestRMSSE:
 
         # Good predictions (match pattern)
         y_pred_good = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [10.5, 19.5],  # Close to true pattern
         })
 
         # Bad predictions (opposite pattern)
         y_pred_bad = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [20.0, 10.0],  # Reversed pattern
         })
@@ -437,7 +437,7 @@ class TestIntegration:
         y_pred = y_test.clone()
         errors = np.array([1.0, -2.0, 1.5, -1.5, 2.0])  # Known errors
         y_pred = y_pred.with_columns([(pl.col(col) + errors).alias(col) for col in y_pred.columns if col != "time"])
-        y_pred = y_pred.with_columns(observed_time=pl.lit(y_train["time"][-1]))
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y_train["time"][-1]))
 
         mae = MeanAbsoluteError()
         mse = MeanSquaredError()
@@ -480,14 +480,14 @@ class TestComponentwise:
         expected_errors = [2.0, 1.0, 2.0]  # |12-10|, |19-20|, |28-30|
         assert np.allclose(result["mae"].to_numpy(), expected_errors, atol=1e-5), "Per-step MAE values incorrect"
 
-        # Verify aggregated mean matches aggregation_method=['timewise']
+        # Verify aggregated mean matches 'all' aggregation
         mae_default = MeanAbsoluteError()
         mae_default.fit(y_true)
         default_score = mae_default.score(y_true, y_pred)
         componentwise_mean = result["mae"].mean()
 
         assert np.isclose(default_score, componentwise_mean, atol=1e-5), (
-            f"Aggregated componentwise mean ({componentwise_mean}) should match timewise ({default_score})"
+            f"Aggregated componentwise mean ({componentwise_mean}) should match 'all' ({default_score})"
         )
 
     def test_mse_per_step(self, y_true_y_pred):
@@ -513,14 +513,14 @@ class TestComponentwise:
             "Per-step MeanSquaredError values incorrect"
         )
 
-        # Verify aggregated mean matches aggregation_method=['timewise']
+        # Verify aggregated mean matches 'all' aggregation
         mse_default = MeanSquaredError()
         mse_default.fit(y_true)
         default_score = mse_default.score(y_true, y_pred)
         componentwise_mean = result["mse"].mean()
 
         assert np.isclose(default_score, componentwise_mean, atol=1e-5), (
-            f"Aggregated componentwise mean ({componentwise_mean}) should match timewise ({default_score})"
+            f"Aggregated componentwise mean ({componentwise_mean}) should match 'all' ({default_score})"
         )
 
     def test_rmse_per_step(self, y_true_y_pred):
@@ -571,7 +571,7 @@ class TestComponentwise:
         })
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 3,
+            "vintage_time": [datetime(2020, 1, 10)] * 3,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12), datetime(2020, 1, 13)],
             "value": [15.5, 16.0, 16.5],
         })
@@ -613,7 +613,7 @@ class TestComponentwise:
         # Create predictions with small errors
         y_pred = y_test.clone()
         y_pred = y_pred.with_columns([(pl.col(col) + 1.0).alias(col) for col in y_pred.columns if col != "time"])
-        y_pred = y_pred.with_columns(observed_time=pl.lit(y_train["time"][-1]))
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y_train["time"][-1]))
 
         # Test MeanAbsoluteError componentwise with multiple columns
         mae = MeanAbsoluteError(aggregation_method=["componentwise"])
@@ -629,9 +629,9 @@ class TestComponentwise:
 
     def test_aggregate_parameter_validation(self):
         """aggregation_method parameter should accept valid list or string values."""
-        # Valid: aggregation_method=['timewise']
-        mae_timewise = MeanAbsoluteError(aggregation_method=["timewise"])
-        assert mae_timewise.aggregation_method == ["timewise"]
+        # Valid: aggregation_method=['stepwise', 'vintagewise']
+        mae_sv = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+        assert mae_sv.aggregation_method == ["stepwise", "vintagewise"]
 
         # Valid: aggregation_method=['componentwise']
         mae_componentwise = MeanAbsoluteError(aggregation_method=["componentwise"])
@@ -650,8 +650,8 @@ class TestComponentwise:
         assert mae_default.aggregation_method == "all"
 
         # Valid: multiple aggregation methods
-        mae_multi = MeanAbsoluteError(aggregation_method=["timewise", "componentwise"])
-        assert mae_multi.aggregation_method == ["timewise", "componentwise"]
+        mae_multi = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
+        assert mae_multi.aggregation_method == ["stepwise", "vintagewise", "componentwise"]
 
 
 class TestMAPE:
@@ -677,7 +677,7 @@ class TestMAPE:
             "value": [0.0],  # Zero actual
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value": [10.0],
         })
@@ -701,7 +701,7 @@ class TestMAPE:
             "value": [100.0, 200.0],
         })
         y_pred_1 = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [110.0, 210.0],
         })
@@ -743,13 +743,13 @@ class TestSMAPE:
         })
         # Perfect predictions
         y_pred_perfect = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [100.0, 200.0],
         })
         # Worst case: predict zero
         y_pred_worst = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 2,
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
             "value": [0.0, 0.0],
         })
@@ -772,7 +772,7 @@ class TestSMAPE:
             "value": [0.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value": [0.0],
         })
@@ -801,7 +801,7 @@ class TestMASE:
         })
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [15.5, 16.5],
         })
@@ -822,7 +822,7 @@ class TestMASE:
             "value": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value": [12.0],
         })
@@ -868,7 +868,7 @@ class TestMASE:
             "value": [15.0, 17.0],
         })
         y_pred_1 = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [15.5, 16.5],
         })
@@ -899,7 +899,7 @@ class TestMedianAbsoluteError:
             "value": [10.0, 20.0, 30.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
             "value": [12.0, 19.0, 28.0],
         })
@@ -922,7 +922,7 @@ class TestMedianAbsoluteError:
         })
         # One large outlier
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
             "value": [11.0, 21.0, 31.0, 41.0, 100.0],  # Last one is outlier
         })
@@ -940,18 +940,18 @@ class TestMedianAbsoluteError:
         assert score_median < score_mean
 
 
-class TestRMSETimewise:
-    """Tests for RMSE with timewise aggregation and sqrt."""
+class TestRMSEStepwiseVintagewise:
+    """Tests for RMSE with stepwise+vintagewise aggregation and sqrt."""
 
-    def test_rmse_timewise_returns_per_component(self, scorer_data_factory):
-        """RMSE with timewise agg returns per-component DataFrame with sqrt applied."""
+    def test_rmse_stepwise_vintagewise_returns_per_component(self, scorer_data_factory):
+        """RMSE with stepwise+vintagewise agg returns per-component DataFrame with sqrt applied."""
         y, _ = scorer_data_factory(length=20, n_targets=3, n_features=0, seed=42)
         y_test = y[15:]
         y_pred = y_test.with_columns([(pl.col(c) + 2.0).alias(c) for c in y_test.columns if c != "time"]).with_columns(
-            observed_time=pl.lit(y["time"][14])
+            vintage_time=pl.lit(y["time"][14])
         )
 
-        rmse = RootMeanSquaredError(aggregation_method=["timewise"])
+        rmse = RootMeanSquaredError(aggregation_method=["stepwise", "vintagewise"])
         rmse.fit(y[:15])
         result = rmse.score(y_test, y_pred)
 
@@ -960,8 +960,8 @@ class TestRMSETimewise:
         for col in result.columns:
             assert result[col][0] == pytest.approx(2.0, abs=1e-5)
 
-    def test_rmsse_timewise_returns_per_component(self):
-        """RMSSE with timewise agg returns per-component DataFrame with sqrt applied."""
+    def test_rmsse_stepwise_vintagewise_returns_per_component(self):
+        """RMSSE with stepwise+vintagewise agg returns per-component DataFrame with sqrt applied."""
         y_train = pl.DataFrame({
             "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
             "value": [10.0, 12.0, 11.0, 13.0, 12.0, 14.0, 13.0, 15.0, 14.0, 16.0],
@@ -971,12 +971,12 @@ class TestRMSETimewise:
             "value": [15.0, 17.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 1, 10)] * 2,
+            "vintage_time": [datetime(2020, 1, 10)] * 2,
             "time": [datetime(2020, 1, 11), datetime(2020, 1, 12)],
             "value": [15.5, 16.5],
         })
 
-        rmsse = RootMeanSquaredScaledError(seasonality=2, aggregation_method=["timewise"])
+        rmsse = RootMeanSquaredScaledError(seasonality=2, aggregation_method=["stepwise", "vintagewise"])
         rmsse.fit(y_train)
         result = rmsse.score(y_test, y_pred)
 
@@ -996,7 +996,7 @@ class TestMAETimeWeight:
             "value": [10.0, 20.0, 30.0, 40.0, 50.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
             "value": [11.0, 21.0, 31.0, 41.0, 51.0],
         })
@@ -1018,7 +1018,7 @@ class TestMAETimeWeight:
             "value": [10.0, 20.0, 30.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 3,
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": times,
             "value": [12.0, 19.0, 28.0],
         })

@@ -10,13 +10,16 @@ import polars as pl
 import pytest
 from plotly import graph_objects as go
 
-from yohou.metrics import IntervalScore, MeanAbsoluteError
+from yohou.metrics import IntervalScore, MeanAbsoluteError, MeanSquaredError, RootMeanSquaredError
 from yohou.plotting import (
     plot_calibration,
-    plot_model_comparison_bar,
+    plot_group_scores,
     plot_residuals,
     plot_score_distribution,
-    plot_score_per_horizon,
+    plot_score_heatmap,
+    plot_score_per_step,
+    plot_score_per_vintage,
+    plot_score_summary,
     plot_score_time_series,
 )
 
@@ -118,7 +121,7 @@ def sample_forecast_data():
             "value": [10.0, 20.0, 30.0, 25.0, 35.0, 40.0, 38.0, 45.0, 50.0, 48.0],
         }),
         "y_pred": pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value": [12.0, 19.0, 28.0, 27.0, 33.0, 42.0, 36.0, 43.0, 52.0, 46.0],
         }),
@@ -132,7 +135,7 @@ def multi_model_forecast_data(sample_forecast_data):
 
     times = [datetime(2020, 1, 1 + i) for i in range(10)]
     y_pred_b = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 10,
+        "vintage_time": [datetime(2019, 12, 31)] * 10,
         "time": times,
         "value": [11.0, 21.0, 29.0, 26.0, 34.0, 41.0, 37.0, 44.0, 51.0, 47.0],
     })
@@ -187,7 +190,7 @@ class TestPlotResiduals:
             "y__a": [100 + i + (i % 3) for i in range(10)],
             "y__b": [200 + i - (i % 2) for i in range(10)],
         })
-        fig = plot_residuals(y_pred, y_truth, panel_group_names=["y"])
+        fig = plot_residuals(y_pred, y_truth, groups=["y"])
         assert_figure_valid(fig)  # At least one trace for panel facets
 
     def test_custom_title(self, sample_residuals_data):
@@ -271,7 +274,7 @@ class TestPlotResiduals:
             "y__b": [200 + i - 1 for i in range(10)],
         })
         # Filter to member "a" only
-        fig = plot_residuals(y_pred, y_truth, panel_group_names=["y"], columns=["a"])
+        fig = plot_residuals(y_pred, y_truth, groups=["y"], columns=["a"])
         assert_figure_valid(fig)
         # Single panel column → 4-panel diagnostics (5 traces: scatter, scatter, hist, scatter, line)
         assert len(fig.data) >= 4
@@ -452,7 +455,7 @@ class TestPlotCalibration:
             panel_interval_data["y_pred_int"],
             panel_interval_data["y_truth"],
             coverage_rates=[0.9],
-            panel_group_names=["x", "y"],
+            groups=["x", "y"],
         )
         # 2 panels × (1 empirical + 1 reference) = 4
         assert len(fig.data) == 4
@@ -463,7 +466,7 @@ class TestPlotCalibration:
             panel_interval_data["y_pred_int"],
             panel_interval_data["y_truth"],
             coverage_rates=[0.9],
-            panel_group_names=["x"],
+            groups=["x"],
             columns="a",
         )
         # 1 panel × 2 traces = 2
@@ -598,91 +601,6 @@ class TestPlotScoreTimeSeries:
         assert fig.data[0].name == "Forecast"
 
 
-class TestPlotModelComparisonBar:
-    """Tests for plot_model_comparison_bar function."""
-
-    def test_basic(self, sample_comparison_results):
-        """Test basic model comparison bar chart."""
-        fig = plot_model_comparison_bar(sample_comparison_results)
-        assert_figure_valid(fig)
-        assert len(fig.data) == 3  # 3 models
-
-    def test_group_by_scorer(self, sample_comparison_results):
-        """Test grouping by scorer (default)."""
-        fig = plot_model_comparison_bar(sample_comparison_results, group_by="scorer")
-        assert len(fig.data) == 3
-
-    def test_group_by_model(self, sample_comparison_results):
-        """Test grouping by model."""
-        fig = plot_model_comparison_bar(sample_comparison_results, group_by="model")
-        # 3 scorers as series
-        assert len(fig.data) == 3
-
-    def test_horizontal_orientation(self, sample_comparison_results):
-        """Test horizontal bar chart."""
-        fig = plot_model_comparison_bar(sample_comparison_results, orientation="horizontal")
-        assert len(fig.data) == 3
-
-    def test_invalid_group_by(self, sample_comparison_results):
-        """Test error for invalid group_by."""
-        with pytest.raises(ValueError, match="group_by must be one of"):
-            plot_model_comparison_bar(sample_comparison_results, group_by="invalid")
-
-    def test_invalid_orientation(self, sample_comparison_results):
-        """Test error for invalid orientation."""
-        with pytest.raises(ValueError, match="orientation must be one of"):
-            plot_model_comparison_bar(sample_comparison_results, orientation="diagonal")
-
-    def test_empty_results(self):
-        """Test error for empty results."""
-        with pytest.raises(ValueError, match="non-empty"):
-            plot_model_comparison_bar({})
-
-    def test_custom_title(self, sample_comparison_results):
-        """Test custom title."""
-        fig = plot_model_comparison_bar(sample_comparison_results, title="My Comparison")
-        assert_layout(fig, title="My Comparison")
-
-    def test_default_title(self, sample_comparison_results):
-        """Test default title."""
-        fig = plot_model_comparison_bar(sample_comparison_results)
-        assert_layout(fig, title="Model Comparison")
-
-    def test_sort_by(self, sample_comparison_results):
-        """Test sorting by a model."""
-        fig = plot_model_comparison_bar(
-            sample_comparison_results,
-            sort_by="LinearRegression",
-            ascending=True,
-        )
-        assert len(fig.data) == 3
-
-    def test_custom_color_palette(self, sample_comparison_results):
-        """Test custom color palette."""
-        fig = plot_model_comparison_bar(
-            sample_comparison_results,
-            color_palette=["#FF0000", "#00FF00", "#0000FF"],
-        )
-        assert len(fig.data) == 3
-
-    def test_no_text_auto(self, sample_comparison_results):
-        """Test without text annotations."""
-        fig = plot_model_comparison_bar(
-            sample_comparison_results,
-            text_auto=False,
-        )
-        assert len(fig.data) == 3
-
-    def test_custom_dimensions(self, sample_comparison_results):
-        """Test custom dimensions."""
-        fig = plot_model_comparison_bar(
-            sample_comparison_results,
-            width=1000,
-            height=700,
-        )
-        assert_layout(fig, width=1000, height=700)
-
-
 class TestPlotScoreDistribution:
     """Tests for plot_score_distribution function."""
 
@@ -776,11 +694,11 @@ class TestPlotScoreDistribution:
 
 
 class TestPlotScorePerHorizon:
-    """Tests for plot_score_per_horizon function."""
+    """Tests for plot_score_per_step function."""
 
     def test_line(self, sample_forecast_data):
         """Test line chart mode."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -791,7 +709,7 @@ class TestPlotScorePerHorizon:
 
     def test_bar(self, sample_forecast_data):
         """Test bar chart mode."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -802,7 +720,7 @@ class TestPlotScorePerHorizon:
 
     def test_multi_model(self, multi_model_forecast_data):
         """Test multi-model comparison."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             multi_model_forecast_data["y_truth"],
             multi_model_forecast_data["y_preds"],
@@ -812,7 +730,7 @@ class TestPlotScorePerHorizon:
 
     def test_show_trend(self, sample_forecast_data):
         """Test trend line overlay."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -831,17 +749,17 @@ class TestPlotScorePerHorizon:
             "value": [10.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)],
+            "vintage_time": [datetime(2019, 12, 31)],
             "time": [datetime(2020, 1, 1)],
             "value": [12.0],
         })
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred)
         assert_figure_valid(fig)
 
     def test_invalid_kind(self, sample_forecast_data):
         """Test that invalid kind raises ValueError."""
         with pytest.raises(ValueError, match="kind must be one of"):
-            plot_score_per_horizon(
+            plot_score_per_step(
                 MeanAbsoluteError(),
                 sample_forecast_data["y_truth"],
                 sample_forecast_data["y_pred"],
@@ -850,7 +768,7 @@ class TestPlotScorePerHorizon:
 
     def test_default_title(self, sample_forecast_data):
         """Test default title uses scorer name."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -859,7 +777,7 @@ class TestPlotScorePerHorizon:
 
     def test_custom_palette(self, sample_forecast_data):
         """Test custom color palette."""
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             sample_forecast_data["y_truth"],
             sample_forecast_data["y_pred"],
@@ -883,7 +801,7 @@ class TestPlotScoreTimeSeriesPanel:
             "value__b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value__a": [12.0 + i for i in range(10)],
             "value__b": [19.0 + i for i in range(10)],
@@ -897,7 +815,7 @@ class TestPlotScoreTimeSeriesPanel:
             scorer,
             panel_forecast["y_truth"],
             panel_forecast["y_pred"],
-            panel_group_names=["value"],
+            groups=["value"],
         )
         assert_figure_valid(fig)
 
@@ -908,7 +826,7 @@ class TestPlotScoreTimeSeriesPanel:
             scorer,
             panel_forecast["y_truth"],
             panel_forecast["y_pred"],
-            panel_group_names=["value"],
+            groups=["value"],
         )
         assert len(fig.data) >= 1
 
@@ -928,7 +846,7 @@ class TestPlotScoreDistributionPanel:
             "value__b": [20.0 + i for i in range(20)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "value__a": [12.0 + i for i in range(20)],
             "value__b": [19.0 + i for i in range(20)],
@@ -942,13 +860,13 @@ class TestPlotScoreDistributionPanel:
             scorer,
             panel_forecast["y_truth"],
             panel_forecast["y_pred"],
-            panel_group_names=["value"],
+            groups=["value"],
         )
         assert_figure_valid(fig)
 
 
 class TestPlotScorePerHorizonPanel:
-    """Panel data tests for plot_score_per_horizon."""
+    """Panel data tests for plot_score_per_step."""
 
     @pytest.fixture
     def panel_forecast(self):
@@ -962,7 +880,7 @@ class TestPlotScorePerHorizonPanel:
             "value__b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value__a": [12.0 + i for i in range(10)],
             "value__b": [19.0 + i for i in range(10)],
@@ -972,11 +890,11 @@ class TestPlotScorePerHorizonPanel:
     def test_panel_produces_figure(self, panel_forecast):
         """Panel data produces a valid score per horizon figure."""
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             scorer,
             panel_forecast["y_truth"],
             panel_forecast["y_pred"],
-            panel_group_names=["value"],
+            groups=["value"],
         )
         assert_figure_valid(fig)
 
@@ -1022,7 +940,7 @@ class TestPlotResidualsColumnResolution:
         with pytest.raises(ValueError, match="not found in y_truth"):
             plot_residuals(y_pred, y_truth, columns="b")
 
-    def test_panel_group_names(self):
+    def test_groups(self):
         """Panel group names resolve panel columns correctly."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         y_truth = pl.DataFrame({
@@ -1035,7 +953,7 @@ class TestPlotResidualsColumnResolution:
             "y__a": [102 + i for i in range(91)],
             "y__b": [198 + i for i in range(91)],
         })
-        fig = plot_residuals(y_pred, y_truth, panel_group_names=["y"])
+        fig = plot_residuals(y_pred, y_truth, groups=["y"])
         assert_figure_valid(fig)
 
 
@@ -1119,7 +1037,7 @@ class TestPlotScoreTimeSeriesPanelFacet:
             scorer,
             y_truth,
             y_pred,
-            panel_group_names=["value"],
+            groups=["value"],
         )
         assert_figure_valid(fig)
 
@@ -1139,7 +1057,7 @@ class TestPlotScoreTimeSeriesMultiComponent:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [12.0 + i for i in range(10)],
             "b": [19.0 + i for i in range(10)],
@@ -1178,7 +1096,7 @@ class TestPlotScoreTimeSeriesAutoPanel:
     """Tests for plot_score_time_series auto-detecting panel data."""
 
     def test_auto_panel_detection(self):
-        """Passing panel data without panel_group_names auto-detects."""
+        """Passing panel data without groups auto-detects."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         y_truth = pl.DataFrame({
             "time": dates,
@@ -1199,7 +1117,7 @@ class TestPlotResidualsAutoPanel:
     """Tests for plot_residuals panel resolution paths."""
 
     def test_panel_explicit_empty_groups_error(self):
-        """Passing empty panel_group_names raises ValueError."""
+        """Passing empty groups raises ValueError."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 20), "1d", eager=True)
         y_truth = pl.DataFrame({
             "time": dates,
@@ -1212,7 +1130,7 @@ class TestPlotResidualsAutoPanel:
             "y__b": [198.0 + i for i in range(20)],
         })
         with pytest.raises(ValueError, match="panel columns"):
-            plot_residuals(y_pred, y_truth, panel_group_names=[])
+            plot_residuals(y_pred, y_truth, groups=[])
 
     def test_panel_with_columns(self):
         """Panel data with explicit columns parameter."""
@@ -1232,7 +1150,7 @@ class TestPlotResidualsAutoPanel:
 
 
 class TestPlotScorePerHorizonBarMultiModel:
-    """Tests for plot_score_per_horizon bar mode with multiple models."""
+    """Tests for plot_score_per_step bar mode with multiple models."""
 
     def test_bar_multi_model_grouped(self):
         """Bar mode with multiple models sets barmode=group."""
@@ -1244,17 +1162,17 @@ class TestPlotScorePerHorizonBarMultiModel:
             "value": [10.0 + i for i in range(10)],
         })
         y_pred_a = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value": [12.0 + i for i in range(10)],
         })
         y_pred_b = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value": [11.0 + i for i in range(10)],
         })
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             scorer,
             y_truth,
             {"A": y_pred_a, "B": y_pred_b},
@@ -1275,13 +1193,13 @@ class TestPlotScorePerHorizonBarMultiModel:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [12.0 + i for i in range(10)],
             "b": [19.0 + i for i in range(10)],
         })
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred, kind="bar")
+        fig = plot_score_per_step(scorer, y_truth, y_pred, kind="bar")
         assert_figure_valid(fig)
         assert any(isinstance(t, go.Bar) for t in fig.data)
 
@@ -1300,7 +1218,7 @@ class TestPlotScoreDistributionEdgeCases:
             "b": [20.0 + i for i in range(20)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "a": [12.0 + i for i in range(20)],
             "b": [19.0 + i for i in range(20)],
@@ -1321,7 +1239,7 @@ class TestPlotScoreDistributionEdgeCases:
             "value": [10.0 + i for i in range(15)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "vintage_time": [datetime(2019, 12, 31)] * 15,
             "time": times,
             "value": [12.0 + i for i in range(15)],
         })
@@ -1352,7 +1270,7 @@ class TestPlotResidualsExplicitColumns:
         assert_figure_valid(fig)
 
     def test_auto_detect_panel_residuals(self):
-        """Panel data without explicit panel_group_names auto-detects and raises."""
+        """Panel data without explicit groups auto-detects and raises."""
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 20), "1d", eager=True)
         y_truth = pl.DataFrame({
             "time": dates,
@@ -1372,7 +1290,7 @@ class TestPlotCalibrationAutoPanel:
     """Tests for plot_calibration auto-detecting panel data (L612)."""
 
     def test_auto_detect_panel_calibration(self):
-        """Panel data without panel_group_names triggers auto-detect branch."""
+        """Panel data without groups triggers auto-detect branch."""
         n = 30
         rng = np.random.default_rng(42)
         xa = rng.standard_normal(n) * 10 + 100
@@ -1463,10 +1381,10 @@ class TestPlotScoreDistributionIntervalScorer:
 
 
 class TestPlotScorePerHorizonIntervalScorer:
-    """Tests for plot_score_per_horizon with interval scorer (L1716)."""
+    """Tests for plot_score_per_step with interval scorer (L1716)."""
 
     def test_interval_scorer_per_horizon(self):
-        """IntervalScorer with plot_score_per_horizon triggers coveragewise branch."""
+        """IntervalScorer with plot_score_per_step triggers coveragewise branch."""
         from datetime import datetime
 
         times = [datetime(2020, 1, 1 + i) for i in range(20)]
@@ -1474,18 +1392,18 @@ class TestPlotScorePerHorizonIntervalScorer:
         vals = rng.standard_normal(20) * 10 + 100
         y_truth = pl.DataFrame({"time": times, "y": vals})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "y_upper_0.9": vals + 5,
             "y_lower_0.9": vals - 5,
         })
         scorer = IntervalScore(coverage_rates=[0.9])
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred)
+        fig = plot_score_per_step(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 
 
 class TestPlotScorePerHorizonShowTrend:
-    """Tests for plot_score_per_horizon show_trend branch (L1799-L1809)."""
+    """Tests for plot_score_per_step show_trend branch (L1799-L1809)."""
 
     def test_trend_line_overlay(self):
         """show_trend=True adds a linear trend trace."""
@@ -1497,53 +1415,15 @@ class TestPlotScorePerHorizonShowTrend:
             "value": [10.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "value": [12.0 + i for i in range(10)],
         })
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred, show_trend=True)
+        fig = plot_score_per_step(scorer, y_truth, y_pred, show_trend=True)
         assert_figure_valid(fig)
         trace_names = [t.name for t in fig.data if t.name is not None]
         assert any("trend" in name.lower() for name in trace_names)
-
-
-class TestPlotModelComparisonBarSortBy:
-    """Tests for plot_model_comparison_bar sort_by parameter (L1253-L1261)."""
-
-    def test_sort_by_ascending(self):
-        """sort_by with ascending=True orders categories."""
-        results = {
-            "ModelA": {"MAE": 2.0, "RMSE": 3.0},
-            "ModelB": {"MAE": 1.0, "RMSE": 4.0},
-            "ModelC": {"MAE": 3.0, "RMSE": 2.0},
-        }
-        fig = plot_model_comparison_bar(results, sort_by="ModelA", ascending=True)
-        assert_figure_valid(fig)
-        assert len(fig.data) == 3
-
-    def test_sort_by_descending(self):
-        """sort_by with ascending=False orders categories descending."""
-        results = {
-            "ModelA": {"MAE": 2.0, "RMSE": 3.0},
-            "ModelB": {"MAE": 1.0, "RMSE": 4.0},
-        }
-        fig = plot_model_comparison_bar(results, sort_by="ModelA", ascending=False)
-        assert_figure_valid(fig)
-
-    def test_group_by_model_horizontal(self):
-        """group_by='model' + orientation='horizontal' covers both branches."""
-        results = {
-            "MA": {"MAE": 2.0, "RMSE": 3.0},
-            "MB": {"MAE": 1.0, "RMSE": 4.0},
-        }
-        fig = plot_model_comparison_bar(
-            results,
-            group_by="model",
-            orientation="horizontal",
-        )
-        assert_figure_valid(fig)
-        assert len(fig.data) >= 2
 
 
 class TestPlotScoreDistributionKDEOnly:
@@ -1556,7 +1436,7 @@ class TestPlotScoreDistributionKDEOnly:
         times = [datetime(2020, 1, 1 + i) for i in range(20)]
         y_truth = pl.DataFrame({"time": times, "y": [10.0 + i * 0.5 for i in range(20)]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "y": [12.0 + i * 0.3 for i in range(20)],
         })
@@ -1571,7 +1451,7 @@ class TestPlotScoreDistributionKDEOnly:
         times = [datetime(2020, 1, 1 + i) for i in range(20)]
         y_truth = pl.DataFrame({"time": times, "y": [10.0 + i for i in range(20)]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "y": [12.0 + i for i in range(20)],
         })
@@ -1602,7 +1482,7 @@ class TestPlotScoreDistributionKDEOnly:
         times = [datetime(2020, 1, 1 + i) for i in range(20)]
         y_truth = pl.DataFrame({"time": times, "y": [10.0 + i for i in range(20)]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "y": [12.0 + i for i in range(20)],
         })
@@ -1641,40 +1521,12 @@ class TestPlotResidualsColumnsParam:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [11.0 + i for i in range(10)],
             "b": [19.0 + i for i in range(10)],
         })
         fig = plot_residuals(y_truth, y_pred, columns="a")
-        assert_figure_valid(fig)
-
-
-class TestPlotModelComparisonBarSortByMatchingSeries:
-    """Tests for plot_model_comparison_bar sort_by that matches a series name."""
-
-    def test_sort_by_scorer_name(self):
-        """sort_by matching a scorer name reorders categories."""
-        from yohou.plotting import plot_model_comparison_bar
-
-        results = {
-            "ModelA": {"mae": 5.0, "rmse": 8.0},
-            "ModelB": {"mae": 3.0, "rmse": 10.0},
-            "ModelC": {"mae": 7.0, "rmse": 6.0},
-        }
-        fig = plot_model_comparison_bar(results, group_by="scorer", sort_by="mae")
-        assert_figure_valid(fig)
-        assert len(fig.data) >= 2
-
-    def test_sort_by_ascending(self):
-        """sort_by with ascending=True sorts from low to high."""
-        from yohou.plotting import plot_model_comparison_bar
-
-        results = {
-            "ModelA": {"mae": 5.0, "rmse": 8.0},
-            "ModelB": {"mae": 3.0, "rmse": 10.0},
-        }
-        fig = plot_model_comparison_bar(results, group_by="scorer", sort_by="mae", ascending=True)
         assert_figure_valid(fig)
 
 
@@ -1691,7 +1543,7 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
             "sales__store_1": [10.0, 20.0, 30.0, 40.0, 50.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "sales__store_1": [11.0, 21.0, 31.0, 41.0, 51.0],
         })
@@ -1700,7 +1552,7 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
             scorer,
             y_truth,
             {"model": y_pred},
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         assert_figure_valid(fig)
 
@@ -1715,7 +1567,7 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
             "sales__store_2": [15.0, 25.0, 35.0, 45.0, 55.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "sales__store_1": [11.0, 21.0, 31.0, 41.0, 51.0],
             "sales__store_2": [16.0, 26.0, 36.0, 46.0, 56.0],
@@ -1725,7 +1577,7 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
             scorer,
             y_truth,
             {"model": y_pred},
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         assert_figure_valid(fig)
 
@@ -1753,7 +1605,7 @@ class TestPanelLegendDedupResiduals:
             "g2__a": [151.0 + i for i in range(10)],
             "g2__b": [249.0 + i for i in range(10)],
         })
-        fig = plot_residuals(y_pred, y_truth, panel_group_names=["g1", "g2"])
+        fig = plot_residuals(y_pred, y_truth, groups=["g1", "g2"])
         names = visible_legend_names(fig)
         assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
 
@@ -1777,14 +1629,14 @@ class TestPlotResidualsPanelMissingTruthCols:
             "y__b": [10.0, 20.0, 30.0, 40.0, 50.0],
         })
         with pytest.raises(ValueError, match="not found in y_truth"):
-            plot_residuals(y_pred, y_truth, panel_group_names=["y"])
+            plot_residuals(y_pred, y_truth, groups=["y"])
 
 
 class TestPlotCalibrationAutoDetectPanel:
     """Cover plot_calibration auto-detect panel path (lines 628-632)."""
 
     def test_auto_detect_panel_calibration(self):
-        """Panel-formatted y_truth auto-detects panel groups without explicit panel_group_names."""
+        """Panel-formatted y_truth auto-detects panel groups without explicit groups."""
         n = 30
         rng = np.random.default_rng(42)
         xa = rng.standard_normal(n)
@@ -1818,7 +1670,7 @@ class TestPlotScoreTimeSeriesPanelColumnFilter:
             "revenue__store_2": [200.0 + i for i in range(8)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 8,
+            "vintage_time": [datetime(2019, 12, 31)] * 8,
             "time": times,
             "sales__store_1": [11.0 + i for i in range(8)],
             "sales__store_2": [21.0 + i for i in range(8)],
@@ -1835,8 +1687,8 @@ class TestPlotScoreTimeSeriesPanelColumnFilter:
             scorer,
             y_truth,
             y_pred,
-            panel_group_names=["sales", "revenue"],
-            columns="score",
+            groups=["sales", "revenue"],
+            columns="mae",
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
@@ -1849,7 +1701,7 @@ class TestPlotScoreTimeSeriesPanelColumnFilter:
             scorer,
             y_truth,
             y_pred,
-            panel_group_names=["sales"],
+            groups=["sales"],
             columns="nonexistent",
         )
         assert isinstance(fig, go.Figure)
@@ -1868,7 +1720,7 @@ class TestPlotScoreTimeSeriesPanelColumnFilter:
             scorer,
             y_truth,
             {"M1": y_pred, "M2": y_pred2},
-            panel_group_names=["sales"],
+            groups=["sales"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 2
@@ -1883,7 +1735,7 @@ class TestPlotScoreTimeSeriesPanelColumnFilter:
             "grp__x": [10.0, 20.0, 30.0, 40.0, 50.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "grp__x": [11.0, 21.0, 31.0, 41.0, 51.0],
         })
@@ -1892,7 +1744,7 @@ class TestPlotScoreTimeSeriesPanelColumnFilter:
             scorer,
             y_truth,
             y_pred,
-            panel_group_names=["grp"],
+            groups=["grp"],
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
@@ -1913,7 +1765,7 @@ class TestPlotScoreTimeSeriesNonPanelColumns:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [11.0 + i for i in range(10)],
             "b": [21.0 + i for i in range(10)],
@@ -1924,7 +1776,7 @@ class TestPlotScoreTimeSeriesNonPanelColumns:
         """Filtering to scorer output column in non-panel mode."""
         y_truth, y_pred = multi_col_data
         scorer = MeanAbsoluteError()
-        fig = plot_score_time_series(scorer, y_truth, y_pred, columns="score")
+        fig = plot_score_time_series(scorer, y_truth, y_pred, columns="mae")
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
@@ -1959,7 +1811,7 @@ class TestPlotScoreDistributionMultiColumn:
             "b": [20.0 + i for i in range(20)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 20,
+            "vintage_time": [datetime(2019, 12, 31)] * 20,
             "time": times,
             "a": [11.0 + i for i in range(20)],
             "b": [21.0 + i for i in range(20)],
@@ -2002,7 +1854,7 @@ class TestPlotScoreDistributionPanelAutoDetect:
             "grp__y": [20.0 + i for i in range(15)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "vintage_time": [datetime(2019, 12, 31)] * 15,
             "time": times,
             "grp__x": [11.0 + i for i in range(15)],
             "grp__y": [21.0 + i for i in range(15)],
@@ -2022,7 +1874,7 @@ class TestPlotScoreDistributionPanelAutoDetect:
             "grp__y": [20.0 + i for i in range(15)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "vintage_time": [datetime(2019, 12, 31)] * 15,
             "time": times,
             "grp__x": [11.0 + i for i in range(15)],
             "grp__y": [21.0 + i for i in range(15)],
@@ -2031,7 +1883,7 @@ class TestPlotScoreDistributionPanelAutoDetect:
             MeanAbsoluteError(),
             y_truth,
             y_pred,
-            panel_group_names=["grp"],
+            groups=["grp"],
             columns="x",
         )
         assert isinstance(fig, go.Figure)
@@ -2039,7 +1891,7 @@ class TestPlotScoreDistributionPanelAutoDetect:
 
 
 class TestPlotScorePerHorizonMultiColumn:
-    """Cover plot_score_per_horizon multi-column paths (lines 1858-1867)."""
+    """Cover plot_score_per_step multi-column paths (lines 1858-1867)."""
 
     @pytest.fixture
     def multi_col_data(self):
@@ -2053,7 +1905,7 @@ class TestPlotScorePerHorizonMultiColumn:
             "b": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "a": [11.0 + i for i in range(10)],
             "b": [21.0 + i for i in range(10)],
@@ -2063,27 +1915,27 @@ class TestPlotScorePerHorizonMultiColumn:
     def test_multi_column_scores(self, multi_col_data):
         """Multi-column data averages scores across columns per horizon step."""
         y_truth, y_pred = multi_col_data
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
     def test_columns_filter(self, multi_col_data):
         """Non-panel with columns filter selects specific column."""
         y_truth, y_pred = multi_col_data
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred, columns="a")
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred, columns="a")
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
     def test_columns_filter_list(self, multi_col_data):
         """Non-panel with columns filter as list."""
         y_truth, y_pred = multi_col_data
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred, columns=["a", "b"])
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred, columns=["a", "b"])
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
 
 class TestPlotScorePerHorizonPanelAutoDetect:
-    """Cover plot_score_per_horizon panel auto-detect and column filter (lines 1917-1963)."""
+    """Cover plot_score_per_step panel auto-detect and column filter (lines 1917-1963)."""
 
     def test_auto_detect_panel(self):
         """Panel-formatted data auto-detects panel groups for per-horizon."""
@@ -2096,12 +1948,12 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "grp__y": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "grp__x": [11.0 + i for i in range(10)],
             "grp__y": [21.0 + i for i in range(10)],
         })
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred)
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
@@ -2116,16 +1968,16 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "grp__y": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "grp__x": [11.0 + i for i in range(10)],
             "grp__y": [21.0 + i for i in range(10)],
         })
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             y_truth,
             y_pred,
-            panel_group_names=["grp"],
+            groups=["grp"],
             columns="x",
         )
         assert isinstance(fig, go.Figure)
@@ -2142,12 +1994,12 @@ class TestPlotScorePerHorizonPanelAutoDetect:
             "val2": [20.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "val1": [11.0 + i for i in range(10)],
             "val2": [21.0 + i for i in range(10)],
         })
-        fig = plot_score_per_horizon(MeanAbsoluteError(), y_truth, y_pred, columns="val1")
+        fig = plot_score_per_step(MeanAbsoluteError(), y_truth, y_pred, columns="val1")
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
@@ -2181,13 +2033,13 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
             "grp__x": [10.0 + i for i in range(5)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "grp__x": [11.0 + i for i in range(5)],
         })
         scorer = MeanAbsoluteError()
         with pytest.raises(ValueError, match="No panel groups found"):
-            plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["nonexistent"])
+            plot_score_time_series(scorer, y_truth, y_pred, groups=["nonexistent"])
 
     def test_panel_with_time_weight(self):
         """Panel score time series with time_weight parameter."""
@@ -2199,7 +2051,7 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
             "grp__x": [10.0 + i for i in range(5)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "grp__x": [11.0 + i for i in range(5)],
         })
@@ -2210,15 +2062,183 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
             scorer,
             y_truth,
             y_pred,
-            panel_group_names=["grp"],
+            groups=["grp"],
             time_weight=weights,
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
 
 
+class TestPlotScoreTimeSeriesVintageFacet:
+    """Tests for facet_by='vintage' in plot_score_time_series."""
+
+    @pytest.fixture()
+    def multi_vintage_data(self):
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_truth = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 30)] * 3 + [datetime(2019, 12, 31)] * 3,
+            "time": times * 2,
+            "value": [12.0, 19.0, 28.0, 11.0, 21.0, 29.0],
+        }).sort("time", "vintage_time")
+        return y_truth, y_pred
+
+    def test_creates_one_subplot_per_vintage(self, multi_vintage_data):
+        """Each unique vintage_time gets its own subplot."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by="vintage")
+        assert isinstance(fig, go.Figure)
+        # 2 vintages → 2 traces (one per subplot for the single model)
+        assert len(fig.data) == 2
+        # Each trace has 3 time points
+        for trace in fig.data:
+            assert len(trace.x) == 3
+
+    def test_multi_model_vintage_facet(self, multi_vintage_data):
+        """Multiple models with vintage faceting overlay models within each vintage subplot."""
+        y_truth, y_pred = multi_vintage_data
+        y_pred2 = y_pred.with_columns(pl.col("value") + 1)
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, {"A": y_pred, "B": y_pred2}, facet_by="vintage")
+        # 2 vintages × 2 models = 4 traces
+        assert len(fig.data) == 4
+
+    def test_single_vintage_raises(self):
+        """Single vintage data with facet_by='vintage' raises ValueError."""
+        from datetime import datetime
+
+        y_truth = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [11.0, 21.0],
+        })
+        scorer = MeanAbsoluteError()
+        with pytest.raises(ValueError, match="multiple vintages"):
+            plot_score_time_series(scorer, y_truth, y_pred, facet_by="vintage")
+
+    def test_multi_scorer_vintage_raises(self, multi_vintage_data):
+        """Multi-scorer with facet_by='vintage' raises ValueError."""
+        y_truth, y_pred = multi_vintage_data
+        scorers = {"mae": MeanAbsoluteError(), "mse": MeanSquaredError()}
+        with pytest.raises(ValueError, match="Multi-scorer.*vintage"):
+            plot_score_time_series(scorers, y_truth, y_pred, facet_by="vintage")
+
+    def test_legend_deduplication(self, multi_vintage_data):
+        """Model name appears in legend only once across vintage subplots."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by="vintage")
+        showlegend_count = sum(1 for t in fig.data if t.showlegend is not False)
+        assert showlegend_count == 1
+
+    def test_panel_with_vintage_raises(self):
+        """Panel data (groups) combined with facet_by='vintage' raises ValueError."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_truth = pl.DataFrame({"time": times, "grp__x": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 30)] * 3 + [datetime(2019, 12, 31)] * 3,
+            "time": times * 2,
+            "grp__x": [12.0, 19.0, 28.0, 11.0, 21.0, 29.0],
+        }).sort("time", "vintage_time")
+        scorer = MeanAbsoluteError()
+        with pytest.raises(ValueError, match="cannot be combined with panel"):
+            plot_score_time_series(scorer, y_truth, y_pred, groups=["grp"], facet_by="vintage")
+
+
+class TestPlotScoreTimeSeriesVintageOverlay:
+    """Tests for multi-vintage data without facet_by='vintage' (zigzag fix)."""
+
+    @pytest.fixture()
+    def multi_vintage_data(self):
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_truth = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 28)] * 3 + [datetime(2019, 12, 29)] * 3 + [datetime(2019, 12, 30)] * 3,
+            "time": times * 3,
+            "value": [13.0, 18.0, 27.0, 12.0, 19.0, 28.0, 11.0, 21.0, 29.0],
+        }).sort("time", "vintage_time")
+        return y_truth, y_pred
+
+    def test_multi_model_overlay_splits_by_vintage(self, multi_vintage_data):
+        """Single scorer + multi-model with 3 vintages creates 3 traces per model."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, {"A": y_pred, "B": y_pred}, facet_by=None)
+        # 2 models x 3 vintages = 6 traces
+        assert len(fig.data) == 6
+
+    def test_multi_scorer_overlay_splits_by_vintage(self, multi_vintage_data):
+        """Multi-scorer + single model with 3 vintages creates 3 traces per scorer."""
+        y_truth, y_pred = multi_vintage_data
+        scorers = {"mae": MeanAbsoluteError(), "mse": MeanSquaredError()}
+        fig = plot_score_time_series(scorers, y_truth, y_pred, facet_by=None)
+        # 2 scorers x 3 vintages = 6 traces
+        assert len(fig.data) == 6
+
+    def test_newest_vintage_showlegend(self, multi_vintage_data):
+        """Only the newest vintage trace per model shows in the legend."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by=None)
+        # 3 vintages, only newest shows
+        legend_count = sum(1 for t in fig.data if t.showlegend is not False)
+        assert legend_count == 1
+
+    def test_oldest_vintage_has_lower_opacity(self, multi_vintage_data):
+        """Oldest vintage trace has opacity ~ 0.3, newest ~ 1.0."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by=None)
+        opacities = [t.opacity for t in fig.data]
+        assert min(opacities) == pytest.approx(0.3, abs=0.01)
+        assert max(opacities) == pytest.approx(1.0, abs=0.01)
+
+    def test_vintage_hover_includes_vintage(self, multi_vintage_data):
+        """Hover template includes 'Vintage:' for multi-vintage traces."""
+        y_truth, y_pred = multi_vintage_data
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by=None)
+        for trace in fig.data:
+            assert "Vintage:" in trace.hovertemplate
+
+    def test_single_vintage_no_split(self):
+        """Single-vintage data draws one trace per model (no splitting)."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)]
+        y_truth = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": times,
+            "value": [11.0, 21.0, 29.0],
+        })
+        scorer = MeanAbsoluteError()
+        fig = plot_score_time_series(scorer, y_truth, y_pred, facet_by=None)
+        assert len(fig.data) == 1
+        assert "Vintage:" not in fig.data[0].hovertemplate
+
+    def test_faceted_overlay_splits_by_vintage(self, multi_vintage_data):
+        """Multi-scorer + multi-model with vintages splits within facet subplots."""
+        y_truth, y_pred = multi_vintage_data
+        scorers = {"mae": MeanAbsoluteError(), "mse": MeanSquaredError()}
+        fig = plot_score_time_series(scorers, y_truth, {"A": y_pred, "B": y_pred}, facet_by=None)
+        # 2 facets x 2 overlays x 3 vintages = 12 traces
+        assert len(fig.data) == 12
+
+
 class TestPlotScorePerHorizonPanelBarMultiModel:
-    """Cover bar + multi-model panel path in plot_score_per_horizon (line 1954)."""
+    """Cover bar + multi-model panel path in plot_score_per_step (line 1954)."""
 
     def test_panel_bar_multi_model(self):
         """Panel bar chart with multiple models triggers barmode='group'."""
@@ -2230,20 +2250,20 @@ class TestPlotScorePerHorizonPanelBarMultiModel:
             "grp__x": [10.0 + i for i in range(8)],
         })
         y_pred_a = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 8,
+            "vintage_time": [datetime(2019, 12, 31)] * 8,
             "time": times,
             "grp__x": [11.0 + i for i in range(8)],
         })
         y_pred_b = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 8,
+            "vintage_time": [datetime(2019, 12, 31)] * 8,
             "time": times,
             "grp__x": [12.0 + i for i in range(8)],
         })
-        fig = plot_score_per_horizon(
+        fig = plot_score_per_step(
             MeanAbsoluteError(),
             y_truth,
             {"M1": y_pred_a, "M2": y_pred_b},
-            panel_group_names=["grp"],
+            groups=["grp"],
             kind="bar",
         )
         assert isinstance(fig, go.Figure)
@@ -2267,7 +2287,7 @@ class TestMultiComponentScoreBranches:
             "y2": [20.0 + i * 2 for i in range(30)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 30,
+            "vintage_time": [datetime(2019, 12, 31)] * 30,
             "time": times,
             "y1": [11.0 + i for i in range(30)],
             "y2": [22.0 + i * 2 for i in range(30)],
@@ -2292,7 +2312,7 @@ class TestMultiComponentScoreBranches:
         """Multiple score columns trigger mean_horizontal in score_per_horizon."""
         y_truth, y_pred = multi_col_data
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred)
+        fig = plot_score_per_step(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 
 
@@ -2309,7 +2329,7 @@ class TestScorerReturnValidation:
             "sales__store_1": [10.0 + i for i in range(10)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "sales__store_1": [11.0 + i for i in range(10)],
         })
@@ -2322,7 +2342,7 @@ class TestScorerReturnValidation:
         times = [datetime(2020, 1, 1 + i) for i in range(10)]
         y_truth = pl.DataFrame({"time": times, "y": [10.0 + i for i in range(10)]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 10,
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
             "time": times,
             "y": [11.0 + i for i in range(10)],
         })
@@ -2338,7 +2358,7 @@ class TestScorerReturnValidation:
             patch.object(MeanAbsoluteError, "score", return_value=42.0),
             pytest.raises(TypeError, match="Scorer must return DataFrame"),
         ):
-            plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["sales"])
+            plot_score_time_series(scorer, y_truth, y_pred, groups=["sales"])
 
     def test_panel_score_time_series_no_time_col_raises(self, panel_data):
         """Panel score_time_series raises ValueError when scorer.score returns no 'time' column."""
@@ -2351,7 +2371,7 @@ class TestScorerReturnValidation:
             patch.object(MeanAbsoluteError, "score", return_value=bad_df),
             pytest.raises(ValueError, match="'time' column"),
         ):
-            plot_score_time_series(scorer, y_truth, y_pred, panel_group_names=["sales"])
+            plot_score_time_series(scorer, y_truth, y_pred, groups=["sales"])
 
     def test_score_time_series_non_dataframe_raises(self, simple_data):
         """Non-panel score_time_series raises TypeError when scorer.score returns non-DataFrame."""
@@ -2391,7 +2411,7 @@ class TestScorerReturnValidation:
             plot_score_distribution(scorer, y_truth, y_pred)
 
     def test_per_horizon_non_dataframe_raises(self, simple_data):
-        """plot_score_per_horizon raises TypeError when scorer.score returns non-DataFrame."""
+        """plot_score_per_step raises TypeError when scorer.score returns non-DataFrame."""
         from unittest.mock import patch
 
         y_truth, y_pred = simple_data
@@ -2400,7 +2420,7 @@ class TestScorerReturnValidation:
             patch.object(MeanAbsoluteError, "score", return_value=42.0),
             pytest.raises(TypeError, match="Scorer must return DataFrame"),
         ):
-            plot_score_per_horizon(scorer, y_truth, y_pred)
+            plot_score_per_step(scorer, y_truth, y_pred)
 
 
 class TestPanelMultiMemberScoring:
@@ -2417,7 +2437,7 @@ class TestPanelMultiMemberScoring:
             "sales__store_2": [20.0 + i for i in range(15)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 15,
+            "vintage_time": [datetime(2019, 12, 31)] * 15,
             "time": times,
             "sales__store_1": [11.0 + i for i in range(15)],
             "sales__store_2": [21.0 + i for i in range(15)],
@@ -2428,14 +2448,14 @@ class TestPanelMultiMemberScoring:
         """Score distribution multi-member panel triggers multi-column flatten."""
         y_truth, y_pred = panel_multi_member
         scorer = MeanAbsoluteError()
-        fig = plot_score_distribution(scorer, y_truth, y_pred, panel_group_names=["sales"])
+        fig = plot_score_distribution(scorer, y_truth, y_pred, groups=["sales"])
         assert_figure_valid(fig)
 
     def test_panel_score_per_horizon_multi_member(self, panel_multi_member):
         """Per-horizon multi-member panel triggers multi-column mean_horizontal."""
         y_truth, y_pred = panel_multi_member
         scorer = MeanAbsoluteError()
-        fig = plot_score_per_horizon(scorer, y_truth, y_pred, panel_group_names=["sales"])
+        fig = plot_score_per_step(scorer, y_truth, y_pred, groups=["sales"])
         assert_figure_valid(fig)
 
     def test_panel_score_time_series_filtered_empty_group(self, panel_multi_member):
@@ -2446,7 +2466,7 @@ class TestPanelMultiMemberScoring:
             scorer,
             y_truth,
             y_pred,
-            panel_group_names=["sales"],
+            groups=["sales"],
             columns="nonexistent_member",
         )
         assert isinstance(fig, go.Figure)
@@ -2538,3 +2558,803 @@ class TestPlotReliabilityDiagram:
         y_truth_bad = y_truth.rename({"w": "other"})
         with pytest.raises(ValueError, match="not found in y_truth"):
             plot_calibration(y_pred, y_truth_bad)
+
+
+# ---------------------------------------------------------------------------
+# Multi-scorer support tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def multi_scorer_data():
+    """Create data suitable for multi-scorer tests."""
+    from datetime import datetime
+
+    times = [datetime(2020, 1, 1 + i) for i in range(10)]
+    y_truth = pl.DataFrame({
+        "time": times,
+        "value": [10.0, 20.0, 30.0, 25.0, 35.0, 40.0, 38.0, 45.0, 50.0, 48.0],
+    })
+    y_pred_a = pl.DataFrame({
+        "vintage_time": [datetime(2019, 12, 31)] * 10,
+        "time": times,
+        "value": [12.0, 19.0, 28.0, 27.0, 33.0, 42.0, 36.0, 43.0, 52.0, 46.0],
+    })
+    y_pred_b = pl.DataFrame({
+        "vintage_time": [datetime(2019, 12, 31)] * 10,
+        "time": times,
+        "value": [11.0, 21.0, 29.0, 26.0, 34.0, 41.0, 37.0, 44.0, 51.0, 47.0],
+    })
+    return {
+        "y_truth": y_truth,
+        "y_pred": y_pred_a,
+        "y_preds": {"Model A": y_pred_a, "Model B": y_pred_b},
+    }
+
+
+@pytest.fixture
+def multi_vintage_data():
+    """Create data with multiple vintages for per-vintage tests."""
+    from datetime import datetime
+
+    times = [datetime(2020, 1, 1 + i) for i in range(5)]
+    y_truth = pl.DataFrame({
+        "time": times,
+        "value": [10.0, 20.0, 30.0, 40.0, 50.0],
+    })
+    # Build multi-vintage predictions: each vintage is a separate forecast
+    # sorted by vintage_time then time
+    rows = []
+    for ot, offsets in [
+        (datetime(2019, 12, 29), [2.0, -1.0, -2.0, 2.0, -2.0]),
+        (datetime(2019, 12, 30), [1.0, 1.0, -1.0, 1.0, -1.0]),
+        (datetime(2019, 12, 31), [0.5, 0.5, 0.5, 0.5, 0.5]),
+    ]:
+        for i in range(5):
+            rows.append({
+                "vintage_time": ot,
+                "time": times[i],
+                "value": [10.0, 20.0, 30.0, 40.0, 50.0][i] + offsets[i],
+            })
+    y_pred = pl.DataFrame(rows).sort("time", "vintage_time")
+    return {"y_truth": y_truth, "y_pred": y_pred}
+
+
+@pytest.fixture
+def panel_group_data():
+    """Create panel data with groups for group score tests."""
+    from datetime import datetime
+
+    times = [datetime(2020, 1, 1 + i) for i in range(5)]
+    y_truth = pl.DataFrame({
+        "time": times,
+        "region__east": [10.0, 20.0, 30.0, 40.0, 50.0],
+        "region__west": [15.0, 25.0, 35.0, 45.0, 55.0],
+    })
+    y_pred = pl.DataFrame({
+        "vintage_time": [datetime(2019, 12, 31)] * 5,
+        "time": times,
+        "region__east": [12.0, 19.0, 28.0, 42.0, 48.0],
+        "region__west": [14.0, 26.0, 33.0, 46.0, 53.0],
+    })
+    return {"y_truth": y_truth, "y_pred": y_pred}
+
+
+class TestMultiScorerTimeSeries:
+    """Tests for multi-scorer support in plot_score_time_series."""
+
+    def test_dict_scorer_single_model(self, multi_scorer_data):
+        """Dict scorer with single model overlays scorers."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_time_series(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) == 2  # one trace per scorer
+
+    def test_dict_scorer_dict_model_faceted(self, multi_scorer_data):
+        """Dict scorer with dict y_pred creates faceted subplots."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_time_series(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+        )
+        assert_figure_valid(fig)
+        # 2 models * 2 scorers = 4 traces
+        assert len(fig.data) == 4
+
+    def test_compare_by_model(self, multi_scorer_data):
+        """compare_by='model' facets by scorer, overlays models."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_time_series(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+            compare_by="model",
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) == 4
+
+    def test_single_scorer_backward_compat(self, multi_scorer_data):
+        """Single scorer still works as before."""
+        fig = plot_score_time_series(
+            MeanAbsoluteError(),
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) == 2  # one trace per model
+
+    def test_multi_scorer_panel_raises(self, multi_scorer_data):
+        """Multi-scorer with panel data raises ValueError."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_truth_panel = pl.DataFrame({
+            "time": times,
+            "grp__a": [1.0] * 5,
+            "grp__b": [2.0] * 5,
+        })
+        y_pred_panel = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "grp__a": [1.1] * 5,
+            "grp__b": [2.1] * 5,
+        })
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        with pytest.raises(ValueError, match="Multi-scorer"):
+            plot_score_time_series(scorers, y_truth_panel, y_pred_panel)
+
+
+class TestMultiScorerDistribution:
+    """Tests for multi-scorer support in plot_score_distribution."""
+
+    def test_dict_scorer_single_model(self, multi_scorer_data):
+        """Dict scorer with single model overlays scorers."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_distribution(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+
+    def test_dict_scorer_dict_model(self, multi_scorer_data):
+        """Dict scorer with dict y_pred creates faceted subplots."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_distribution(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+        )
+        assert_figure_valid(fig)
+
+    def test_kde_mode(self, multi_scorer_data):
+        """Multi-scorer with KDE mode."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_distribution(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_pred"],
+            kind="kde",
+        )
+        assert_figure_valid(fig)
+
+
+class TestMultiScorerPerHorizon:
+    """Tests for multi-scorer support in plot_score_per_step."""
+
+    def test_dict_scorer_single_model(self, multi_scorer_data):
+        """Dict scorer with single model overlays scorers."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_step(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) == 2
+
+    def test_dict_scorer_dict_model(self, multi_scorer_data):
+        """Dict scorer with dict y_pred creates faceted subplots."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_step(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+        )
+        assert_figure_valid(fig)
+
+    def test_bar_mode(self, multi_scorer_data):
+        """Multi-scorer with bar mode."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_step(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_pred"],
+            kind="bar",
+        )
+        assert_figure_valid(fig)
+
+
+class TestPlotScoreSummary:
+    """Tests for plot_score_summary function."""
+
+    def test_summary_single_scorer(self, multi_scorer_data):
+        """plot_score_summary with single scorer and dict y_pred."""
+        fig = plot_score_summary(
+            MeanAbsoluteError(),
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+        )
+        assert_figure_valid(fig)
+        assert any(isinstance(t, go.Bar) for t in fig.data)
+
+    def test_summary_multi_scorer(self, multi_scorer_data):
+        """plot_score_summary with dict scorers and dict y_pred."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_summary(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+        )
+        assert_figure_valid(fig)
+        # 2 models
+        assert len(fig.data) == 2
+
+    def test_summary_default_title(self, multi_scorer_data):
+        """plot_score_summary uses 'Model Comparison' as default title."""
+        fig = plot_score_summary(
+            MeanAbsoluteError(),
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+        )
+        assert_layout(fig, title="Model Comparison")
+
+    def test_summary_sort_ascending(self, multi_scorer_data):
+        """plot_score_summary with sort_ascending."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_summary(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_pred"],
+            sort_ascending=True,
+        )
+        assert_figure_valid(fig)
+
+
+class TestPlotScorePerVintage:
+    """Tests for plot_score_per_vintage function."""
+
+    def test_basic(self, multi_vintage_data):
+        """Basic per-vintage plot with single scorer."""
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 1
+
+    def test_bar_kind(self, multi_vintage_data):
+        """Per-vintage bar chart."""
+        from yohou.plotting import plot_score_per_vintage
+
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+            kind="bar",
+        )
+        assert_figure_valid(fig)
+
+    def test_multi_scorer(self, multi_vintage_data):
+        """Dict scorer overlays scorers."""
+        from yohou.plotting import plot_score_per_vintage
+
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_vintage(
+            scorers,
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) == 2
+
+    def test_single_vintage_raises(self, multi_scorer_data):
+        """Single vintage raises ValueError."""
+        from yohou.plotting import plot_score_per_vintage
+
+        with pytest.raises(ValueError, match="single vintage"):
+            plot_score_per_vintage(
+                MeanAbsoluteError(),
+                multi_scorer_data["y_truth"],
+                multi_scorer_data["y_pred"],
+            )
+
+    def test_show_trend(self, multi_vintage_data):
+        """Trend line is displayed."""
+        from yohou.plotting import plot_score_per_vintage
+
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+            show_trend=True,
+        )
+        assert_figure_valid(fig)
+        trace_names = [t.name for t in fig.data if t.name is not None]
+        assert any("trend" in name.lower() for name in trace_names)
+
+
+class TestPlotScoreHeatmap:
+    """Tests for plot_score_heatmap function."""
+
+    def test_basic(self, multi_vintage_data):
+        """Basic heatmap: step x vintage."""
+
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) == 1
+        assert isinstance(fig.data[0], go.Heatmap)
+
+    def test_inverted_dims(self, multi_vintage_data):
+        """Heatmap with x=vintage, y=step."""
+
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+            x_dim="vintage",
+            y_dim="step",
+        )
+        assert_figure_valid(fig)
+
+    def test_same_dims_raises(self, multi_vintage_data):
+        """Same x_dim and y_dim raises ValueError."""
+
+        with pytest.raises(ValueError, match="must differ"):
+            plot_score_heatmap(
+                MeanAbsoluteError(),
+                multi_vintage_data["y_truth"],
+                multi_vintage_data["y_pred"],
+                x_dim="step",
+                y_dim="step",
+            )
+
+    def test_custom_colorscale(self, multi_vintage_data):
+        """Custom colorscale."""
+
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+            color_palette="Viridis",
+        )
+        assert_figure_valid(fig)
+
+    def test_no_text(self, multi_vintage_data):
+        """Heatmap without text annotations."""
+
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+            show_text=False,
+        )
+        assert_figure_valid(fig)
+
+
+class TestPlotGroupScores:
+    """Tests for plot_group_scores function."""
+
+    def test_basic_bar(self, panel_group_data):
+        """Basic bar chart per group."""
+
+        fig = plot_group_scores(
+            MeanAbsoluteError(),
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+        assert any(isinstance(t, go.Bar) for t in fig.data)
+
+    def test_box_kind(self, panel_group_data):
+        """Box plot per group."""
+
+        fig = plot_group_scores(
+            MeanAbsoluteError(),
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+            kind="box",
+        )
+        assert_figure_valid(fig)
+        assert any(isinstance(t, go.Box) for t in fig.data)
+
+    def test_multi_scorer_bar(self, panel_group_data):
+        """Multi-scorer bar chart."""
+
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_group_scores(
+            scorers,
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+        # 2 scorers
+        assert len(fig.data) == 2
+
+    def test_non_panel_raises(self, multi_scorer_data):
+        """Non-panel data raises ValueError."""
+
+        with pytest.raises(ValueError, match="panel group columns"):
+            plot_group_scores(
+                MeanAbsoluteError(),
+                multi_scorer_data["y_truth"],
+                multi_scorer_data["y_pred"],
+            )
+
+    def test_sort_ascending(self, panel_group_data):
+        """Sorted bar chart."""
+
+        fig = plot_group_scores(
+            MeanAbsoluteError(),
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+            sort_ascending=True,
+        )
+        assert_figure_valid(fig)
+
+    def test_heatmap_kind(self, panel_group_data):
+        """Heatmap per group."""
+
+        fig = plot_group_scores(
+            MeanAbsoluteError(),
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+            kind="heatmap",
+        )
+        assert_figure_valid(fig)
+        assert any(isinstance(t, go.Heatmap) for t in fig.data)
+
+    def test_multi_scorer_multi_model_bar(self, panel_group_data):
+        """Multi-scorer dict with multi-model dict produces bar chart."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_pred_b = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "region__east": [13.0, 18.0, 29.0, 41.0, 49.0],
+            "region__west": [16.0, 24.0, 34.0, 44.0, 54.0],
+        })
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        y_preds = {"Model A": panel_group_data["y_pred"], "Model B": y_pred_b}
+        fig = plot_group_scores(
+            scorers,
+            panel_group_data["y_truth"],
+            y_preds,
+        )
+        assert_figure_valid(fig)
+        # 2 scorers x 2 models = 4 series
+        assert len(fig.data) == 4
+
+    def test_multi_scorer_heatmap(self, panel_group_data):
+        """Multi-scorer dict produces heatmap with scorer columns."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_group_scores(
+            scorers,
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+            kind="heatmap",
+        )
+        assert_figure_valid(fig)
+        assert any(isinstance(t, go.Heatmap) for t in fig.data)
+
+    def test_invalid_kind_raises(self, panel_group_data):
+        """Invalid kind raises ValueError."""
+        with pytest.raises(ValueError, match="kind must be"):
+            plot_group_scores(
+                MeanAbsoluteError(),
+                panel_group_data["y_truth"],
+                panel_group_data["y_pred"],
+                kind="scatter",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Multi-scorer + multi-model faceted coverage tests
+# ---------------------------------------------------------------------------
+
+
+class TestMultiScorerMultiModelFaceted:
+    """Tests for multi-scorer + multi-model faceted subplot paths."""
+
+    def test_distribution_compare_by_model(self, multi_scorer_data):
+        """Distribution with compare_by='model' facets by scorer."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_distribution(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+            compare_by="model",
+        )
+        assert_figure_valid(fig)
+
+    def test_horizon_compare_by_model(self, multi_scorer_data):
+        """Per-horizon with compare_by='model' facets by scorer."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_step(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+            compare_by="model",
+        )
+        assert_figure_valid(fig)
+
+
+@pytest.fixture
+def multi_vintage_multi_model_data():
+    """Create multi-vintage data with two models for faceted vintage tests."""
+    from datetime import datetime
+
+    times = [datetime(2020, 1, 1 + i) for i in range(5)]
+    y_truth = pl.DataFrame({
+        "time": times,
+        "value": [10.0, 20.0, 30.0, 40.0, 50.0],
+    })
+    rows_a = []
+    rows_b = []
+    for ot, offsets_a, offsets_b in [
+        (datetime(2019, 12, 29), [2.0, -1.0, -2.0, 2.0, -2.0], [3.0, -2.0, -1.0, 1.0, -3.0]),
+        (datetime(2019, 12, 30), [1.0, 1.0, -1.0, 1.0, -1.0], [0.5, 2.0, -0.5, 0.5, -0.5]),
+        (datetime(2019, 12, 31), [0.5, 0.5, 0.5, 0.5, 0.5], [1.0, 1.0, 1.0, 1.0, 1.0]),
+    ]:
+        for i in range(5):
+            base = [10.0, 20.0, 30.0, 40.0, 50.0][i]
+            rows_a.append({"vintage_time": ot, "time": times[i], "value": base + offsets_a[i]})
+            rows_b.append({"vintage_time": ot, "time": times[i], "value": base + offsets_b[i]})
+    y_pred_a = pl.DataFrame(rows_a).sort("time", "vintage_time")
+    y_pred_b = pl.DataFrame(rows_b).sort("time", "vintage_time")
+    return {
+        "y_truth": y_truth,
+        "y_pred_a": y_pred_a,
+        "y_preds": {"Model A": y_pred_a, "Model B": y_pred_b},
+    }
+
+
+class TestPlotScorePerVintageFaceted:
+    """Tests for multi-scorer + multi-model faceted vintage plots."""
+
+    def test_multi_scorer_multi_model(self, multi_vintage_multi_model_data):
+        """Multi-scorer + multi-model creates faceted subplots."""
+        d = multi_vintage_multi_model_data
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_vintage(scorers, d["y_truth"], d["y_preds"])
+        assert_figure_valid(fig)
+        # Should have at least 2 * 2 = 4 traces (2 models overlay in each facet)
+        assert len(fig.data) >= 4
+
+    def test_multi_scorer_multi_model_compare_by_model(self, multi_vintage_multi_model_data):
+        """compare_by='model' facets by scorer, overlays models."""
+        d = multi_vintage_multi_model_data
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_vintage(
+            scorers,
+            d["y_truth"],
+            d["y_preds"],
+            compare_by="model",
+        )
+        assert_figure_valid(fig)
+
+    def test_multi_scorer_single_model(self, multi_vintage_multi_model_data):
+        """Multi-scorer with single model overlays scorers."""
+        d = multi_vintage_multi_model_data
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_vintage(
+            scorers,
+            d["y_truth"],
+            d["y_pred_a"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) == 2
+
+    def test_multi_scorer_multi_model_bar(self, multi_vintage_multi_model_data):
+        """Multi-scorer + multi-model bar mode faceted."""
+        d = multi_vintage_multi_model_data
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        fig = plot_score_per_vintage(
+            scorers,
+            d["y_truth"],
+            d["y_preds"],
+            kind="bar",
+        )
+        assert_figure_valid(fig)
+
+    def test_multi_model_overlay(self, multi_vintage_multi_model_data):
+        """Single scorer + multi-model overlays models."""
+        d = multi_vintage_multi_model_data
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            d["y_truth"],
+            d["y_preds"],
+        )
+        assert_figure_valid(fig)
+        # 2 models = 2 traces per-vintage overlay
+        assert len(fig.data) >= 2
+
+
+class TestPlotScoreHeatmapValidation:
+    """Tests for error paths in plot_score_heatmap."""
+
+    def test_invalid_dim_raises(self, multi_vintage_data):
+        """Invalid dim value raises ValueError."""
+        with pytest.raises(ValueError, match="must be one of"):
+            plot_score_heatmap(
+                MeanAbsoluteError(),
+                multi_vintage_data["y_truth"],
+                multi_vintage_data["y_pred"],
+                x_dim="invalid",
+            )
+
+    def test_missing_vintage_time_raises(self):
+        """y_pred without vintage_time raises ValueError."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_truth = pl.DataFrame({"time": times, "value": [1.0] * 5})
+        y_pred = pl.DataFrame({"time": times, "value": [1.1] * 5})
+        with pytest.raises(ValueError, match="vintage_time"):
+            plot_score_heatmap(MeanAbsoluteError(), y_truth, y_pred)
+
+    def test_single_vintage_raises(self):
+        """Single vintage raises ValueError."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_truth = pl.DataFrame({"time": times, "value": [1.0] * 5})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "value": [1.1] * 5,
+        })
+        with pytest.raises(ValueError, match="single vintage"):
+            plot_score_heatmap(MeanAbsoluteError(), y_truth, y_pred)
+
+
+class TestPanelMultiScorerErrors:
+    """Tests for multi-scorer with panel data error paths."""
+
+    @pytest.fixture
+    def panel_forecast(self):
+        """Panel data for error tests."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "region__east": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "region__west": [15.0, 25.0, 35.0, 45.0, 55.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "region__east": [12.0, 19.0, 28.0, 42.0, 48.0],
+            "region__west": [14.0, 26.0, 33.0, 46.0, 53.0],
+        })
+        return y_truth, y_pred
+
+    def test_distribution_panel_multi_scorer_raises(self, panel_forecast):
+        """Multi-scorer with panel in distribution raises ValueError."""
+        y_truth, y_pred = panel_forecast
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        with pytest.raises(ValueError, match="Multi-scorer is not supported with panel data"):
+            plot_score_distribution(scorers, y_truth, y_pred)
+
+    def test_horizon_panel_multi_scorer_raises(self, panel_forecast):
+        """Multi-scorer with panel in per-horizon raises ValueError."""
+        y_truth, y_pred = panel_forecast
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        with pytest.raises(ValueError, match="Multi-scorer is not supported with panel data"):
+            plot_score_per_step(scorers, y_truth, y_pred)
+
+
+class TestWarnLargeGrid:
+    """Tests for _warn_large_grid warning."""
+
+    def test_large_grid_warns(self, multi_scorer_data):
+        """Many scorers x many models triggers UserWarning."""
+        # 13 scorers x 2 models = 26 > 12
+        scorers = {f"scorer_{i}": MeanAbsoluteError() for i in range(7)}
+        with pytest.warns(UserWarning, match="Large facet grid"):
+            plot_score_distribution(
+                scorers,
+                multi_scorer_data["y_truth"],
+                multi_scorer_data["y_preds"],
+            )
+
+
+class TestSummaryKindDataFrame:
+    """Tests for plot_score_summary when scorer returns DataFrame."""
+
+    def test_summary_with_multivariate_scorer(self):
+        """plot_score_summary handles scorer that returns DataFrame."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "a": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "b": [15.0, 25.0, 35.0, 45.0, 55.0],
+        })
+        y_pred_a = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "a": [12.0, 19.0, 28.0, 42.0, 48.0],
+            "b": [14.0, 26.0, 33.0, 46.0, 53.0],
+        })
+        y_pred_b = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "a": [11.0, 21.0, 29.0, 41.0, 49.0],
+            "b": [16.0, 24.0, 34.0, 44.0, 54.0],
+        })
+        # aggregation_method="componentwise" so score returns DataFrame, not scalar
+        scorer = MeanAbsoluteError(aggregation_method="componentwise")
+        fig = plot_score_summary(
+            scorer,
+            y_truth,
+            {"Model A": y_pred_a, "Model B": y_pred_b},
+        )
+        assert_figure_valid(fig)
+
+
+class TestGroupScoresBoxKind:
+    """Tests for plot_group_scores kind='box' with panel data."""
+
+    def test_box_with_multi_vintage(self):
+        """Box plot with panel data and multiple vintages."""
+        from datetime import datetime
+
+        times = [datetime(2020, 1, 1 + i) for i in range(5)]
+        y_truth = pl.DataFrame({
+            "time": times,
+            "region__east": [10.0, 20.0, 30.0, 40.0, 50.0],
+            "region__west": [15.0, 25.0, 35.0, 45.0, 55.0],
+        })
+        rows = []
+        for ot in [datetime(2019, 12, 30), datetime(2019, 12, 31)]:
+            for i in range(5):
+                rows.append({
+                    "vintage_time": ot,
+                    "time": times[i],
+                    "region__east": [10.0, 20.0, 30.0, 40.0, 50.0][i] + 2.0,
+                    "region__west": [15.0, 25.0, 35.0, 45.0, 55.0][i] + 1.0,
+                })
+        y_pred = pl.DataFrame(rows).sort("time", "vintage_time")
+        fig = plot_group_scores(
+            MeanAbsoluteError(),
+            y_truth,
+            y_pred,
+            kind="box",
+        )
+        assert_figure_valid(fig)
+        assert any(isinstance(t, go.Box) for t in fig.data)
+
+    def test_box_distribute_by_vintage(self, panel_group_data):
+        """Box plot with distribute_by='vintage'."""
+        fig = plot_group_scores(
+            MeanAbsoluteError(),
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+            kind="box",
+            distribute_by="vintage",
+        )
+        assert_figure_valid(fig)

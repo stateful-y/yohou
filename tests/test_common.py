@@ -139,7 +139,7 @@ def _make_scorer_data():
         "value": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2020, 12, 31)] * 10,
+        "vintage_time": [datetime(2020, 12, 31)] * 10,
         "time": time,
         "value": [12.0, 19.0, 28.0, 42.0, 48.0, 62.0, 68.0, 82.0, 88.0, 102.0],
     })
@@ -154,7 +154,7 @@ def _make_interval_scorer_data():
         "value": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2020, 12, 31)] * 10,
+        "vintage_time": [datetime(2020, 12, 31)] * 10,
         "time": time,
         "value": [12.0, 19.0, 28.0, 42.0, 48.0, 62.0, 68.0, 82.0, 88.0, 102.0],
         "value_lower_0.9": [6.0, 13.0, 22.0, 34.0, 42.0, 54.0, 62.0, 74.0, 82.0, 94.0],
@@ -343,7 +343,7 @@ def _make_class_proba_scorer_data():
     labels = ["cat_a", "cat_b", "cat_a", "cat_c", "cat_b", "cat_a", "cat_c", "cat_b", "cat_a", "cat_c"]
     y_truth = pl.DataFrame({"time": time, "target": labels})
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2020, 12, 31)] * 10,
+        "vintage_time": [datetime(2020, 12, 31)] * 10,
         "time": time,
         "target_proba_cat_a": [0.7, 0.1, 0.6, 0.1, 0.2, 0.8, 0.1, 0.2, 0.7, 0.1],
         "target_proba_cat_b": [0.2, 0.7, 0.2, 0.1, 0.6, 0.1, 0.1, 0.7, 0.2, 0.2],

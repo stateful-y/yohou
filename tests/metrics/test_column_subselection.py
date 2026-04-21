@@ -1,4 +1,4 @@
-"""Tests for scorer column subselection via panel_group_names, component_names, and coverage_rates."""
+"""Tests for scorer column subselection via groups, component_names, and coverage_rates."""
 
 from datetime import datetime
 
@@ -23,7 +23,7 @@ def panel_point_data():
         "demand__store_2": [6.0, 8.0, 10.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         # Sales predictions have error of 1.0
         "sales__store_1": [11.0, 14.0, 19.0],
@@ -44,7 +44,7 @@ def panel_interval_data():
         "sales__store_2": [12.0, 18.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 2,
+        "vintage_time": [datetime(2019, 12, 31)] * 2,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
         "sales__store_1_lower_0.9": [8.0, 13.0],
         "sales__store_1_upper_0.9": [12.0, 17.0],
@@ -67,7 +67,7 @@ def global_multi_component_data():
         "demand": [5.0, 7.0, 9.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 3,
+        "vintage_time": [datetime(2019, 12, 31)] * 3,
         "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
         "sales": [11.0, 14.0, 19.0],  # Error of 1.0
         "demand": [7.0, 9.0, 11.0],  # Error of 2.0
@@ -77,16 +77,16 @@ def global_multi_component_data():
 
 class TestPointScorerPanelGroupFiltering:
     def test_point_scorer_filter_panel_group(self, panel_point_data):
-        """Test filtering by panel_group_names for point scorers."""
+        """Test filtering by groups for point scorers."""
         y_true, y_pred = panel_point_data
 
         # Score only sales group (includes both sales__store_1 and sales__store_2)
-        mae_sales = MeanAbsoluteError(panel_group_names=["sales"])
+        mae_sales = MeanAbsoluteError(groups=["sales"])
         mae_sales.fit(y_true)
         score_sales = mae_sales.score(y_true, y_pred)
 
         # Score only demand group (includes both demand__store_1 and demand__store_2)
-        mae_demand = MeanAbsoluteError(panel_group_names=["demand"])
+        mae_demand = MeanAbsoluteError(groups=["demand"])
         mae_demand.fit(y_true)
         score_demand = mae_demand.score(y_true, y_pred)
 
@@ -106,7 +106,7 @@ class TestPointScorerPanelGroupFiltering:
         y_true, y_pred = panel_point_data
 
         # Score only store_1 components
-        mae_store1 = MeanAbsoluteError(component_names=["store_1"])
+        mae_store1 = MeanAbsoluteError(components=["store_1"])
         mae_store1.fit(y_true)
         score_store1 = mae_store1.score(y_true, y_pred)
 
@@ -119,11 +119,11 @@ class TestPointScorerPanelGroupFiltering:
         assert score_store1 != score_all
 
     def test_point_scorer_filter_both_panel_and_component(self, panel_point_data):
-        """Test filtering by both panel_group_names and component_names."""
+        """Test filtering by both groups and component_names."""
         y_true, y_pred = panel_point_data
 
         # Score only sales group, store_1 component
-        mae_filtered = MeanAbsoluteError(panel_group_names=["sales"], component_names=["store_1"])
+        mae_filtered = MeanAbsoluteError(groups=["sales"], components=["store_1"])
         mae_filtered.fit(y_true)
         score_filtered = mae_filtered.score(y_true, y_pred)
 
@@ -143,12 +143,12 @@ class TestPointScorerComponentNameFiltering:
         y_true, y_pred = global_multi_component_data
 
         # Score only sales component
-        mae_sales = MeanAbsoluteError(component_names=["sales"])
+        mae_sales = MeanAbsoluteError(components=["sales"])
         mae_sales.fit(y_true)
         score_sales = mae_sales.score(y_true, y_pred)
 
         # Score only demand component
-        mae_demand = MeanAbsoluteError(component_names=["demand"])
+        mae_demand = MeanAbsoluteError(components=["demand"])
         mae_demand.fit(y_true)
         score_demand = mae_demand.score(y_true, y_pred)
 
@@ -179,7 +179,7 @@ class TestIntervalScorerFiltering:
         score_095 = cov_095.score(y_true, y_pred)
 
         # Score all coverage rates (should return dict unless fully aggregated)
-        cov_all = EmpiricalCoverage(aggregation_method=["timewise", "componentwise"])
+        cov_all = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise"])
         cov_all.fit(y_true)
         score_all = cov_all.score(y_true, y_pred)
 
@@ -187,17 +187,19 @@ class TestIntervalScorerFiltering:
         assert isinstance(score_09, float)
         assert isinstance(score_095, float)
 
-        # When not aggregating coveragewise, result should be dict
-        assert isinstance(score_all, dict)
-        assert 0.9 in score_all
-        assert 0.95 in score_all
+        # When not aggregating coveragewise, result should be DataFrame with coverage_rate rows
+        assert isinstance(score_all, pl.DataFrame)
+        assert "coverage_rate" in score_all.columns
+        rates = score_all["coverage_rate"].to_list()
+        assert 0.9 in rates
+        assert 0.95 in rates
 
     def test_interval_scorer_filter_panel_group(self, panel_interval_data):
-        """Test filtering by panel_group_names for interval scorers."""
+        """Test filtering by groups for interval scorers."""
         y_true, y_pred = panel_interval_data
 
         # Score only sales group
-        width_sales = MeanIntervalWidth(panel_group_names=["sales"])
+        width_sales = MeanIntervalWidth(groups=["sales"])
         width_sales.fit(y_true)
         score_sales = width_sales.score(y_true, y_pred)
 
@@ -215,12 +217,12 @@ class TestIntervalScorerFiltering:
         y_true, y_pred = panel_interval_data
 
         # Score only store_1
-        cov_store1 = EmpiricalCoverage(component_names=["store_1"])
+        cov_store1 = EmpiricalCoverage(components=["store_1"])
         cov_store1.fit(y_true)
         score_store1 = cov_store1.score(y_true, y_pred)
 
         # Score only store_2
-        cov_store2 = EmpiricalCoverage(component_names=["store_2"])
+        cov_store2 = EmpiricalCoverage(components=["store_2"])
         cov_store2.fit(y_true)
         score_store2 = cov_store2.score(y_true, y_pred)
 
@@ -229,13 +231,13 @@ class TestIntervalScorerFiltering:
         assert isinstance(score_store2, float)
 
     def test_interval_scorer_filter_all_three(self, panel_interval_data):
-        """Test filtering by panel_group_names, component_names, and coverage_rates."""
+        """Test filtering by groups, component_names, and coverage_rates."""
         y_true, y_pred = panel_interval_data
 
         # Filter by all three parameters
         cov_filtered = EmpiricalCoverage(
-            panel_group_names=["sales"],
-            component_names=["store_1"],
+            groups=["sales"],
+            components=["store_1"],
             coverage_rates=[0.9],
         )
         cov_filtered.fit(y_true)
@@ -251,7 +253,7 @@ class TestEdgeCases:
         y_true, y_pred = panel_point_data
 
         # Explicit None parameters
-        mae_none = MeanAbsoluteError(panel_group_names=None, component_names=None)
+        mae_none = MeanAbsoluteError(groups=None, components=None)
         mae_none.fit(y_true)
         score_none = mae_none.score(y_true, y_pred)
 
@@ -268,9 +270,9 @@ class TestEdgeCases:
         y_true, y_pred = panel_point_data
 
         # Filter for non-existent group
-        mae_invalid = MeanAbsoluteError(panel_group_names=["nonexistent"])
+        mae_invalid = MeanAbsoluteError(groups=["nonexistent"])
 
-        with pytest.raises(ValueError, match="(Invalid|Requested) panel_group_names.*not found"):
+        with pytest.raises(ValueError, match="(Invalid|Requested) groups.*not found"):
             mae_invalid.fit(y_true)
             mae_invalid.score(y_true, y_pred)
 
@@ -279,9 +281,9 @@ class TestEdgeCases:
         y_true, y_pred = global_multi_component_data
 
         # Filter for non-existent component
-        mae_invalid = MeanAbsoluteError(component_names=["nonexistent"])
+        mae_invalid = MeanAbsoluteError(components=["nonexistent"])
 
-        with pytest.raises(ValueError, match="(Invalid|Requested) component_names.*not found"):
+        with pytest.raises(ValueError, match="(Invalid|Requested) components.*not found"):
             mae_invalid.fit(y_true)
             mae_invalid.score(y_true, y_pred)
 

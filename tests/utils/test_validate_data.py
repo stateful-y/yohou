@@ -64,7 +64,7 @@ def sample_scorer_data():
     )
     y_true = pl.DataFrame({"time": time, "target": range(10)})
     y_pred = pl.DataFrame({
-        "observed_time": time[:10],
+        "vintage_time": time[:10],
         "time": time[:10],
         "target": range(10),  # Use int to match y_true type
     })
@@ -163,7 +163,7 @@ class TestValidateForecasterData:
         forecaster.fit(y, forecasting_horizon=2)
 
         # Should detect panel structure
-        assert forecaster.panel_group_names_ == ["sales"]
+        assert forecaster.groups_ == ["sales"]
         assert "store_1" in forecaster.local_y_schema_
         assert "store_2" in forecaster.local_y_schema_
 
@@ -188,7 +188,7 @@ class TestValidateForecasterData:
         forecaster.observe(y[10:])
 
         # Should maintain panel structure
-        assert forecaster.panel_group_names_ == ["sales"]
+        assert forecaster.groups_ == ["sales"]
 
     def test_validate_data_with_none_X(self):
         """Test validate_data works when X is None."""
@@ -416,7 +416,7 @@ class TestValidateScorerData:
         })
         # Predictions missing one store
         y_pred = pl.DataFrame({
-            "observed_time": time,
+            "vintage_time": time,
             "time": time,
             "sales__store_1": range(10),
             # Missing sales__store_2
@@ -460,7 +460,7 @@ class TestValidateScorerData:
         })
         # y_pred with extra interval columns (as in mixed multimetric scenarios)
         y_pred = pl.DataFrame({
-            "observed_time": time,
+            "vintage_time": time,
             "time": time,
             "target": [float(x) for x in range(10)],
             "target_lower_0.9": [float(x - 1) for x in range(10)],
@@ -486,7 +486,7 @@ class TestValidateScorerData:
             "target": list(range(10)),
         })
         y_pred = pl.DataFrame({
-            "observed_time": time,
+            "vintage_time": time,
             "time": time,
             "target": [float(x) for x in range(10)],
         })
@@ -768,7 +768,7 @@ class TestValidateTimeWeight:
             "store_1_weight": [1.0, 2.0, 3.0],
             "store_2_weight": [3.0, 2.0, 1.0],
         })
-        validate_time_weight(tw, y_global, panel_group_names=["store_1", "store_2"])
+        validate_time_weight(tw, y_global, groups=["store_1", "store_2"])
 
     def test_panel_with_global_weight(self, y_global):
         """Panel data with global 'weight' column should pass."""
@@ -778,7 +778,7 @@ class TestValidateTimeWeight:
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "weight": [1.0, 2.0, 3.0],
         })
-        validate_time_weight(tw, y_global, panel_group_names=["store_1"])
+        validate_time_weight(tw, y_global, groups=["store_1"])
 
     def test_panel_missing_both_group_and_global(self, y_global):
         """Panel data without group or global weight columns should raise."""
@@ -790,7 +790,7 @@ class TestValidateTimeWeight:
         })
 
         with pytest.raises(ValueError, match="must have either"):
-            validate_time_weight(tw, y_global, panel_group_names=["store_1"])
+            validate_time_weight(tw, y_global, groups=["store_1"])
 
 
 class TestValidateScorerDataInverse:
@@ -937,7 +937,7 @@ class TestValidateScorerDataPanelEdgeCases:
         times = [datetime(2024, 1, i) for i in range(1, 4)]
         y_true = pl.DataFrame({"time": times, "val": [1.0, 2.0, 3.0]})
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "vintage_time": [datetime(2023, 12, 31)] * 3,
             "time": times,
             "val": [1.1, 2.1, 3.1],
         })
@@ -1014,10 +1014,10 @@ class TestValidateScorerDataResetNone:
 
 
 class TestValidateScorerDataInverseObservedTime:
-    """Tests for inverse scorer path with observed_time in y_pred."""
+    """Tests for inverse scorer path with vintage_time in y_pred."""
 
-    def test_inverse_observed_time_dropped(self):
-        """observed_time column in y_pred is dropped during inverse scoring."""
+    def test_inverse_vintage_time_dropped(self):
+        """vintage_time column in y_pred is dropped during inverse scoring."""
         from yohou.utils.validate_data import validate_scorer_data
 
         times = [datetime(2024, 1, i) for i in range(1, 4)]
@@ -1025,20 +1025,20 @@ class TestValidateScorerDataInverseObservedTime:
         scorer.fit(pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]}))
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "vintage_time": [datetime(2023, 12, 31)] * 3,
             "time": times,
             "value": [1.1, 2.1, 3.1],
         })
         scores = pl.DataFrame({"time": times, "value": [0.1, 0.1, 0.1]})
-        result_pred, result_scores, time_vals = validate_scorer_data(
+        result_pred, result_scores, context = validate_scorer_data(
             scorer,
             y_pred=y_pred,
             scores=scores,
             inverse=True,
         )
-        assert "observed_time" not in result_pred.columns
+        assert "vintage_time" not in result_pred.columns
         assert "time" not in result_pred.columns
-        assert len(time_vals) == 3
+        assert len(context.time_values) == 3
 
     def test_inverse_column_mismatch_raises(self):
         """Mismatched columns between y_pred and scores raises ValueError."""
@@ -1067,7 +1067,7 @@ class TestValidateScorerDataPointStripExtra:
         scorer.fit(y_true)
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2023, 12, 31)] * 3,
+            "vintage_time": [datetime(2023, 12, 31)] * 3,
             "time": times,
             "val": [1.1, 2.1, 3.1],
             "val_lower_0.9": [0.1, 0.1, 0.1],
@@ -1295,3 +1295,138 @@ class TestValidatePlottingDataCategorical:
         df = pl.DataFrame({"time": time, "y": [1.0, 2.0, 3.0], "cat": ["a", "b", "c"]})
         result = validate_plotting_data(df, columns=["cat"])
         assert result == ["cat"]
+
+
+class TestComputeForecastingStep:
+    """Tests for _compute_forecasting_step helper."""
+
+    def test_fixed_daily_interval(self):
+        """Daily interval computes correct integer steps."""
+        from yohou.utils.validate_data import _compute_forecasting_step
+
+        observed = pl.Series([datetime(2020, 1, 1)] * 3)
+        time = pl.Series([
+            datetime(2020, 1, 2),
+            datetime(2020, 1, 3),
+            datetime(2020, 1, 4),
+        ])
+        result = _compute_forecasting_step(time, observed, "1d")
+        assert result.to_list() == [1, 2, 3]
+
+    def test_fixed_hourly_interval(self):
+        """Hourly interval computes correct integer steps."""
+        from yohou.utils.validate_data import _compute_forecasting_step
+
+        observed = pl.Series([datetime(2020, 1, 1)] * 3)
+        time = pl.Series([
+            datetime(2020, 1, 1, 1),
+            datetime(2020, 1, 1, 2),
+            datetime(2020, 1, 1, 3),
+        ])
+        result = _compute_forecasting_step(time, observed, "1h")
+        assert result.to_list() == [1, 2, 3]
+
+    def test_monthly_interval(self):
+        """Monthly interval uses calendar-unit arithmetic."""
+        from yohou.utils.validate_data import _compute_forecasting_step
+
+        observed = pl.Series([datetime(2020, 1, 1)] * 3)
+        time = pl.Series([
+            datetime(2020, 2, 1),
+            datetime(2020, 3, 1),
+            datetime(2020, 4, 1),
+        ])
+        result = _compute_forecasting_step(time, observed, "1mo")
+        assert result.to_list() == [1, 2, 3]
+
+    def test_quarterly_interval(self):
+        """Quarterly (3mo) interval uses calendar-unit arithmetic."""
+        from yohou.utils.validate_data import _compute_forecasting_step
+
+        observed = pl.Series([datetime(2020, 1, 1)] * 2)
+        time = pl.Series([
+            datetime(2020, 4, 1),
+            datetime(2020, 7, 1),
+        ])
+        result = _compute_forecasting_step(time, observed, "1q")
+        assert result.to_list() == [1, 2]
+
+    def test_yearly_interval(self):
+        """Yearly interval uses calendar-unit arithmetic."""
+        from yohou.utils.validate_data import _compute_forecasting_step
+
+        observed = pl.Series([datetime(2020, 1, 1)] * 2)
+        time = pl.Series([
+            datetime(2021, 1, 1),
+            datetime(2022, 1, 1),
+        ])
+        result = _compute_forecasting_step(time, observed, "1y")
+        assert result.to_list() == [1, 2]
+
+    def test_weekly_interval(self):
+        """Weekly (fixed) interval computes correct steps."""
+        from yohou.utils.validate_data import _compute_forecasting_step
+
+        observed = pl.Series([datetime(2020, 1, 1)] * 2)
+        time = pl.Series([
+            datetime(2020, 1, 8),
+            datetime(2020, 1, 15),
+        ])
+        result = _compute_forecasting_step(time, observed, "1w")
+        assert result.to_list() == [1, 2]
+
+
+class TestResolveColumnsGroupFilter:
+    """Tests for validate_plotting_data with groups + columns filter."""
+
+    def test_groups_with_columns_filter(self):
+        """Groups + columns filter returns matching panel columns."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        df = pl.DataFrame({
+            "time": [1, 2, 3],
+            "sales__east": [10.0, 20.0, 30.0],
+            "sales__west": [15.0, 25.0, 35.0],
+            "returns__east": [1.0, 2.0, 3.0],
+        })
+        result = validate_plotting_data(df, groups=["sales"], columns=["east"])
+        assert result == ["sales__east"]
+
+    def test_groups_with_columns_no_match_raises(self):
+        """Groups + columns with no match raises ValueError."""
+        from yohou.utils.validate_data import validate_plotting_data
+
+        df = pl.DataFrame({
+            "time": [1, 2, 3],
+            "sales__east": [10.0, 20.0, 30.0],
+        })
+        with pytest.raises(ValueError, match="No panel columns found"):
+            validate_plotting_data(df, groups=["sales"], columns=["nonexistent"])
+
+
+class TestTruncatePartialVintage:
+    """Tests for _truncate_partial_vintage."""
+
+    def test_partial_vintage_truncated(self):
+        """Last vintage with shorter gap is removed."""
+        from yohou.utils.validate_data import _truncate_partial_vintage
+
+        # y_true must have the same rows as y_pred (aligned/expanded)
+        rows_true = []
+        rows_pred = []
+        for ot in [datetime(2020, 1, 1), datetime(2020, 1, 8), datetime(2020, 1, 15), datetime(2020, 1, 19)]:
+            for i in range(1, 4):
+                rows_true.append({"time": datetime(2020, 1, i), "value": float(i)})
+                rows_pred.append({
+                    "vintage_time": ot,
+                    "time": datetime(2020, 1, i),
+                    "value": float(i) + 0.5,
+                })
+        y_true = pl.DataFrame(rows_true)
+        y_pred = pl.DataFrame(rows_pred)
+        y_true_out, y_pred_out = _truncate_partial_vintage(y_true, y_pred)
+        # Last vintage (Jan 19) should be removed
+        remaining = y_pred_out["vintage_time"].unique().sort()
+        assert len(remaining) == 3
+        assert datetime(2020, 1, 19) not in remaining.to_list()
+        assert len(y_true_out) == 9  # 3 vintages × 3 time points

@@ -152,7 +152,7 @@ class TestSelectPanelColumns:
             "sales__store_2": [150, 160, 170],
         })
 
-        result = select_panel_columns(df, panel_group_names=["sales"], include_global=False)
+        result = select_panel_columns(df, groups=["sales"], include_global=False)
 
         assert set(result.columns) == {"time", "sales__store_1", "sales__store_2"}
         assert len(result) == 3
@@ -169,7 +169,7 @@ class TestSelectPanelColumns:
             ]),
         })
 
-        result = select_panel_columns(df, panel_group_names=["sales"], include_global=True)
+        result = select_panel_columns(df, groups=["sales"], include_global=True)
 
         assert set(result.columns) == {"time", "global_feature", "sales"}
         assert len(result) == 3
@@ -187,7 +187,7 @@ class TestSelectPanelColumns:
 
         result = select_panel_columns(
             df,
-            panel_group_names=["sales", "inventory"],
+            groups=["sales", "inventory"],
             include_global=False,
         )
 
@@ -213,20 +213,20 @@ class TestSelectPanelColumns:
             ]),
         })
 
-        result = select_panel_columns(df, panel_group_names=["sales"], include_global=True)
+        result = select_panel_columns(df, groups=["sales"], include_global=True)
 
         assert set(result.columns) == {"time", "global_1", "global_2", "sales"}
         assert len(result) == 3
 
-    def test_select_panel_columns_none_panel_group_names(self):
-        """Test that None panel_group_names returns DataFrame unchanged."""
+    def test_select_panel_columns_none_groups(self):
+        """Test that None groups returns DataFrame unchanged."""
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "value": [10.0, 20.0, 30.0],
             "feature": [100.0, 200.0, 300.0],
         })
 
-        result = select_panel_columns(df, panel_group_names=None, include_global=True)
+        result = select_panel_columns(df, groups=None, include_global=True)
 
         assert result.columns == df.columns
         assert result.equals(df)
@@ -240,7 +240,7 @@ class TestSelectPanelColumns:
             "sales__store_2": pl.Series([], dtype=pl.Int64),
         })
 
-        result = select_panel_columns(df, panel_group_names=["sales"], include_global=False)
+        result = select_panel_columns(df, groups=["sales"], include_global=False)
 
         assert set(result.columns) == {"time", "sales__store_1", "sales__store_2"}
         assert len(result) == 0
@@ -257,7 +257,7 @@ class TestSelectPanelColumns:
             ]),
         })
 
-        result = select_panel_columns(df, panel_group_names=["sales"], include_global=True)
+        result = select_panel_columns(df, groups=["sales"], include_global=True)
 
         assert result["time"].to_list() == [1, 2, 3]
         assert result["global_feature"].to_list() == [10.0, 20.0, 30.0]
@@ -278,7 +278,7 @@ class TestSelectPanelColumns:
             "sales__store_2": [150, 160, 170],
         })
 
-        result = select_panel_columns(df, panel_group_names=["sales"], include_global=False)
+        result = select_panel_columns(df, groups=["sales"], include_global=False)
 
         assert set(result.columns) == {"time", "sales__store_1", "sales__store_2"}
         assert result["time"].dtype == pl.Datetime
@@ -296,7 +296,7 @@ class TestSelectPanelColumns:
 
         result = select_panel_columns(
             df,
-            panel_group_names=["store_sales", "online_sales"],
+            groups=["store_sales", "online_sales"],
             include_global=False,
         )
 
@@ -324,7 +324,7 @@ class TestSelectPanelColumns:
 
         result = select_panel_columns(
             df,
-            panel_group_names=["store_promotions"],
+            groups=["store_promotions"],
             include_global=True,
         )
 
@@ -338,7 +338,7 @@ class TestSelectPanelColumns:
             "feature": [100.0, 200.0, 300.0],
         })
 
-        result = select_panel_columns(df, panel_group_names=None, include_global=True)
+        result = select_panel_columns(df, groups=None, include_global=True)
 
         assert result.equals(df)
 

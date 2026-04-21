@@ -151,7 +151,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         predict_transformed: bool = False,
         **params,
     ) -> pl.DataFrame:
@@ -165,7 +165,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -178,7 +178,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable.
 
         Raises
@@ -186,29 +186,29 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``X`` has invalid structure or ``panel_group_names`` contains
+            If ``X`` has invalid structure or ``groups`` contains
             names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
-        _, X, panel_group_names = validate_forecaster_data(
+        _, X, groups = validate_forecaster_data(
             self,
             y=None,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
 
-        if panel_group_names is not None and X is not None:
+        if groups is not None and X is not None:
             X = select_panel_columns(
                 X,
-                panel_group_names,
+                groups,
                 include_global=True,
             )
 
@@ -220,11 +220,11 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         def derive_observation_fn(forecaster, y_pred_step_inv, X, step):
             """Derive observation from inverse-transformed prediction."""
-            if self.panel_group_names_ is None:
+            if self.groups_ is None:
                 y = y_pred_step_inv.select(["time"] + list(self.local_y_schema_.keys()))
             else:
                 y_columns = ["time"]
-                for group_name in self.panel_group_names_:
+                for group_name in self.groups_:
                     y_columns.extend([f"{group_name}__{col}" for col in self.local_y_schema_])
                 y = y_pred_step_inv.select(y_columns)
 
@@ -244,7 +244,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         return self._recursive_predict(
             X=X,
             forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
+            groups=groups,
             step_fn=step_fn,
             derive_observation_fn=derive_observation_fn,
         )
@@ -254,7 +254,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
         predict_transformed: bool = False,
         **params,
@@ -275,7 +275,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -291,7 +291,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"observed_time"``, ``"time"``, and one
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
             column per target variable.
 
         Raises
@@ -299,21 +299,21 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure or ``panel_group_names``
+            If ``y`` / ``X`` have invalid structure or ``groups``
             contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
         )
 
-        y, X, panel_group_names = validate_forecaster_data(
+        y, X, groups = validate_forecaster_data(
             self,
             y=y,
             X=X,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
@@ -324,7 +324,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             predict_fn=self.predict,
             y=y,
             X=X,
-            panel_group_names=panel_group_names,
+            groups=groups,
             stride=stride,
             forecasting_horizon=forecasting_horizon,
             predict_transformed=predict_transformed,

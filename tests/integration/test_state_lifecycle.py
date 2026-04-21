@@ -166,15 +166,15 @@ class TestStateMachineProtocol:
         predictions_2 = forecaster.predict(forecasting_horizon=fh)
 
         assert len(predictions_2) == fh
-        # State should have changed after observe: observed_time should differ
-        assert not predictions_1["observed_time"].equals(predictions_2["observed_time"])
+        # State should have changed after observe: vintage_time should differ
+        assert not predictions_1["vintage_time"].equals(predictions_2["vintage_time"])
 
         # State 3: second observe → predict
         forecaster.observe(y_test2, X=X_test2)
         predictions_3 = forecaster.predict(forecasting_horizon=fh)
 
         assert len(predictions_3) == fh
-        assert not predictions_2["observed_time"].equals(predictions_3["observed_time"])
+        assert not predictions_2["vintage_time"].equals(predictions_3["vintage_time"])
 
         # State 4: rewind to training tail → predict
         try:
@@ -290,7 +290,7 @@ class TestStateMachineProtocol:
         assert len(pred_combined) >= 3
 
         # Compare predicted values for the last forecasting_horizon rows
-        value_cols = [c for c in pred_separate.columns if c not in ("time", "observed_time")]
+        value_cols = [c for c in pred_separate.columns if c not in ("time", "vintage_time")]
         sep_vals = pred_separate.tail(3).select(value_cols)
         comb_vals = pred_combined.tail(3).select(value_cols)
         assert sep_vals.equals(comb_vals)
@@ -620,7 +620,7 @@ class TestCloneAndSerialization:
         assert pred_original.equals(pred_original_after)
 
         # Clone predictions should differ from original (different training data)
-        pred_cols = pl.exclude("time", "observed_time")
+        pred_cols = pl.exclude("time", "vintage_time")
         assert not pred_original.select(pred_cols).equals(pred_clone.select(pred_cols))
 
     @pytest.mark.parametrize(

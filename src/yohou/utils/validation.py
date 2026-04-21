@@ -17,8 +17,8 @@ __all__ = [
     "check_forecasting_horizon_positive",
     "check_inputs",
     "check_interval_consistency",
-    "check_panel_group_names",
-    "check_panel_group_names_exist",
+    "check_groups",
+    "check_groups_exist",
     "check_panel_groups_match",
     "check_panel_internal_consistency",
     "check_schema",
@@ -90,7 +90,7 @@ def check_scorer_column_selection(
     Parameters
     ----------
     scorer : BaseScorer
-        Scorer instance with panel_group_names and component_names attributes.
+        Scorer instance with groups and components attributes.
     y_true : pl.DataFrame
         True values DataFrame.
     y_pred : pl.DataFrame
@@ -110,16 +110,16 @@ def check_scorer_column_selection(
     Raises
     ------
     ValueError
-        If panel_group_names or component_names are invalid.
+        If groups or components are invalid.
 
     See Also
     --------
     `inspect_panel` : Detect panel groups in a DataFrame.
-    `check_panel_group_names` : Validate panel group names for forecaster operations.
+    `check_groups` : Validate panel group names for forecaster operations.
 
     """
-    has_panel_specs = hasattr(scorer, "panel_group_names") and scorer.panel_group_names is not None
-    has_component_specs = hasattr(scorer, "component_names") and scorer.component_names is not None
+    has_panel_specs = hasattr(scorer, "groups") and scorer.groups is not None
+    has_component_specs = hasattr(scorer, "components") and scorer.components is not None
 
     if not (has_panel_specs or has_component_specs or coverage_rates is not None):
         return y_true, y_pred
@@ -128,7 +128,7 @@ def check_scorer_column_selection(
     if coverage_rates is not None and pred_type == "interval" and interval_pattern is not None:
         available_rates = set()
         for col in y_pred.columns:
-            if col in ("time", "observed_time"):
+            if col in ("time", "vintage_time"):
                 continue
             match = interval_pattern.match(col)
             if match:
@@ -145,22 +145,22 @@ def check_scorer_column_selection(
 
     # Validate panel groups if specified (must exist in data)
     if has_panel_specs:
-        assert scorer.panel_group_names is not None
-        missing_groups = set(scorer.panel_group_names) - set(y_groups.keys())
+        assert scorer.groups is not None
+        missing_groups = set(scorer.groups) - set(y_groups.keys())
         if missing_groups:
             raise ValueError(
-                f"Invalid panel_group_names: {sorted(missing_groups)} not found in data. "
+                f"Invalid groups: {sorted(missing_groups)} not found in data. "
                 f"Available groups: {sorted(y_groups.keys())}"
             )
 
     is_panel = len(y_groups) > 0
 
     if is_panel:
-        # Panel data: filter by panel_group_names and/or component_names
+        # Panel data: filter by groups and/or components
         selected_cols = []
 
         # Determine which groups to include
-        groups_to_include = scorer.panel_group_names if has_panel_specs else list(y_groups.keys())
+        groups_to_include = scorer.groups if has_panel_specs else list(y_groups.keys())
 
         # Type narrowing for iteration
         assert groups_to_include is not None
@@ -168,11 +168,11 @@ def check_scorer_column_selection(
             if group_name in y_groups:
                 group_cols = y_groups[group_name]
 
-                # Filter by component_names if specified
+                # Filter by components if specified
                 if has_component_specs:
-                    assert scorer.component_names is not None
-                    # Extract unprefixed column names and check against component_names
-                    filtered_cols = [col for col in group_cols if col.split("__", 1)[1] in scorer.component_names]
+                    assert scorer.components is not None
+                    # Extract unprefixed column names and check against components
+                    filtered_cols = [col for col in group_cols if col.split("__", 1)[1] in scorer.components]
                     selected_cols.extend(filtered_cols)
                 else:
                     selected_cols.extend(group_cols)
@@ -226,19 +226,19 @@ def check_scorer_column_selection(
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(valid_y_pred_cols)
 
-    # Global data: filter by component_names only
+    # Global data: filter by components only
     elif has_component_specs:
-        assert scorer.component_names is not None
+        assert scorer.components is not None
         # Validate component names exist in data
         available_components = [col for col in y_true.columns if col != "time"]
-        missing_components = set(scorer.component_names) - set(available_components)
+        missing_components = set(scorer.components) - set(available_components)
         if missing_components:
             raise ValueError(
-                f"Invalid component_names: {sorted(missing_components)} not found in data. "
+                f"Invalid components: {sorted(missing_components)} not found in data. "
                 f"Available components: {sorted(available_components)}"
             )
 
-        selected_cols = [col for col in y_true.columns if col in scorer.component_names]
+        selected_cols = [col for col in y_true.columns if col in scorer.components]
         if selected_cols:
             # Always preserve time column during subselection
             if "time" not in selected_cols:
@@ -286,7 +286,7 @@ def check_scorer_column_selection(
 
         # Filter y_pred columns to only those matching requested rates
         for col in y_pred.columns:
-            if col in ("time", "observed_time"):
+            if col in ("time", "vintage_time"):
                 continue
             match = interval_pattern.match(col)
             if match and float(match.group(3)) in coverage_rates:
@@ -337,7 +337,7 @@ def check_sufficient_rows(
         raise ValueError(f"{df_name} has {actual_rows} rows but requires at least {min_rows} rows {context}.")
 
 
-def check_panel_group_names(
+def check_groups(
     fitted_panel_groups: list[str] | None,
     requested_panel_groups: list[str] | None,
 ) -> list[str] | None:
@@ -349,7 +349,7 @@ def check_panel_group_names(
     Parameters
     ----------
     fitted_panel_groups : list of str or None
-        Panel group names from fitted forecaster (panel_group_names_).
+        Panel group names from fitted forecaster (groups_).
         None indicates the forecaster was fitted on global (non-panel) data.
 
     requested_panel_groups : list of str or None
@@ -371,23 +371,21 @@ def check_panel_group_names(
     Examples
     --------
     >>> # Global data: no panel groups
-    >>> result = check_panel_group_names(fitted_panel_groups=None, requested_panel_groups=None)
+    >>> result = check_groups(fitted_panel_groups=None, requested_panel_groups=None)
     >>> result is None
     True
 
     >>> # Panel data: use all fitted groups
-    >>> check_panel_group_names(fitted_panel_groups=["sales", "inventory"], requested_panel_groups=None)
+    >>> check_groups(fitted_panel_groups=["sales", "inventory"], requested_panel_groups=None)
     ['sales', 'inventory']
 
     >>> # Panel data: validate specific groups
-    >>> check_panel_group_names(
-    ...     fitted_panel_groups=["sales", "inventory"], requested_panel_groups=["sales"]
-    ... )
+    >>> check_groups(fitted_panel_groups=["sales", "inventory"], requested_panel_groups=["sales"])
     ['sales']
 
     See Also
     --------
-    `check_panel_group_names_exist` : Validate requested panel groups exist (deprecated).
+    `check_groups_exist` : Validate requested panel groups exist (deprecated).
     `check_panel_groups_match` : Validate y and X have matching panel groups.
     `inspect_panel` : Detect panel groups in a DataFrame.
 
@@ -398,7 +396,7 @@ def check_panel_group_names(
 
     # Validate that requested groups are compatible with fitted state
     if fitted_panel_groups is None:
-        raise ValueError("The forecaster was fitted on global data, but `panel_group_names` were provided.")
+        raise ValueError("The forecaster was fitted on global data, but `groups` were provided.")
 
     # Check that all requested groups exist in fitted groups
     missing_groups = set(requested_panel_groups) - set(fitted_panel_groups)
@@ -411,7 +409,7 @@ def check_panel_group_names(
     return requested_panel_groups
 
 
-def check_panel_group_names_exist(
+def check_groups_exist(
     fitted_panel_groups: list[str],
     requested_panel_groups: list[str] | None,
     context: str,
@@ -419,14 +417,14 @@ def check_panel_group_names_exist(
     """Validate all requested panel groups exist in fitted forecaster.
 
     .. deprecated::
-        Use `check_panel_group_names` instead.
+        Use `check_groups` instead.
 
     Consolidates duplicated validation in predict, observe, rewind methods.
 
     Parameters
     ----------
     fitted_panel_groups : list of str
-        Panel group names from fitted forecaster (panel_group_names_).
+        Panel group names from fitted forecaster (groups_).
     requested_panel_groups : list of str or None
         Panel group names requested for operation.
     context : str
@@ -439,7 +437,7 @@ def check_panel_group_names_exist(
 
     See Also
     --------
-    `check_panel_group_names` : Preferred replacement for this function.
+    `check_groups` : Preferred replacement for this function.
     `check_panel_groups_match` : Validate y and X have matching panel groups.
 
     """
@@ -499,7 +497,7 @@ def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame
     See Also
     --------
     `check_panel_groups_match` : Validate y and X have matching panel groups.
-    `check_panel_group_names` : Validate panel group names for forecaster operations.
+    `check_groups` : Validate panel group names for forecaster operations.
     `inspect_panel` : Detect panel groups in a DataFrame.
 
     """
@@ -574,7 +572,7 @@ def check_panel_groups_match(
     See Also
     --------
     `check_panel_internal_consistency` : Validate panel groups have consistent structure.
-    `check_panel_group_names` : Validate panel group names for forecaster operations.
+    `check_groups` : Validate panel group names for forecaster operations.
     `inspect_panel` : Detect panel groups in a DataFrame.
 
     """
@@ -986,7 +984,7 @@ def validate_column_names(df: pl.DataFrame) -> None:
 def check_schema(
     df: pl.DataFrame,
     expected_schema: dict[str, pl.DataType],
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> pl.DataFrame:
     """Validate DataFrame schema and return with proper column ordering.
 
@@ -1001,7 +999,7 @@ def check_schema(
     expected_schema : dict[str, pl.DataType]
         Expected schema for non-time columns.
         For panel data, this should contain unprefixed column names.
-    panel_group_names : list[str] or None, default=None
+    groups : list[str] or None, default=None
         Group prefixes for panel data. If provided, constructs expected
         schema with prefixes (e.g., "panel__series_0"). None for global data.
 
@@ -1035,7 +1033,7 @@ def check_schema(
     >>> # Panel data validation (constructs prefixed schema automatically)
     >>> df_panel = pl.DataFrame({"panel__s1": [15, 25], "time": [1, 2], "panel__s0": [10, 20]})
     >>> expected_schema = {"s0": pl.Int64, "s1": pl.Int64}
-    >>> result = check_schema(df_panel, expected_schema, panel_group_names=["panel"])
+    >>> result = check_schema(df_panel, expected_schema, groups=["panel"])
     >>> list(result.columns)
     ['time', 'panel__s0', 'panel__s1']
 
@@ -1051,8 +1049,8 @@ def check_schema(
     The returned DataFrame has columns ordered consistently with the schema.
 
     """
-    # Construct expected column list based on panel_group_names
-    if panel_group_names is None:
+    # Construct expected column list based on groups
+    if groups is None:
         # Non-panel data: use schema as-is
         expected_columns = ["time"] + list(expected_schema.keys())
         expected_full_schema = expected_schema
@@ -1060,7 +1058,7 @@ def check_schema(
         # Panel data: construct prefixed schema
         expected_columns = ["time"]
         expected_full_schema = {}
-        for group_name in panel_group_names:
+        for group_name in groups:
             for col, dtype in expected_schema.items():
                 prefixed_col = f"{group_name}__{col}"
                 expected_columns.append(prefixed_col)

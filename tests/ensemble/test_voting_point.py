@@ -89,7 +89,7 @@ class TestVotingPointForecasterAggregation:
         y_pred_1 = n1_fitted.predict(forecasting_horizon=3)
         y_pred_7 = n7_fitted.predict(forecasting_horizon=3)
 
-        target_col = [c for c in y_pred.columns if c not in ("observed_time", "time")][0]
+        target_col = [c for c in y_pred.columns if c not in ("vintage_time", "time")][0]
         expected = (y_pred_1[target_col].to_numpy() + y_pred_7[target_col].to_numpy()) / 2
         np.testing.assert_allclose(y_pred[target_col].to_numpy(), expected)
 
@@ -112,7 +112,7 @@ class TestVotingPointForecasterAggregation:
             fitted = clone(naive).fit(y[:40], forecasting_horizon=3)
             individual_preds.append(fitted.predict(forecasting_horizon=3))
 
-        target_col = [c for c in y_pred.columns if c not in ("observed_time", "time")][0]
+        target_col = [c for c in y_pred.columns if c not in ("vintage_time", "time")][0]
         values = np.column_stack([p[target_col].to_numpy() for p in individual_preds])
         expected = np.median(values, axis=1)
         np.testing.assert_allclose(y_pred[target_col].to_numpy(), expected)
@@ -136,7 +136,7 @@ class TestVotingPointForecasterAggregation:
             fitted = clone(naive).fit(y[:40], forecasting_horizon=3)
             individual_preds.append(fitted.predict(forecasting_horizon=3))
 
-        target_col = [c for c in y_pred.columns if c not in ("observed_time", "time")][0]
+        target_col = [c for c in y_pred.columns if c not in ("vintage_time", "time")][0]
         values = np.column_stack([p[target_col].to_numpy() for p in individual_preds])
         expected = np.average(values, axis=1, weights=weights)
         np.testing.assert_allclose(y_pred[target_col].to_numpy(), expected)
@@ -167,7 +167,7 @@ class TestVotingPointForecasterAggregation:
         y_pred_no = forecaster_no_weights.predict(forecasting_horizon=3)
         y_pred_w = forecaster_weights.predict(forecasting_horizon=3)
 
-        target_col = [c for c in y_pred_no.columns if c not in ("observed_time", "time")][0]
+        target_col = [c for c in y_pred_no.columns if c not in ("vintage_time", "time")][0]
         np.testing.assert_allclose(y_pred_no[target_col].to_numpy(), y_pred_w[target_col].to_numpy())
 
 
@@ -188,9 +188,9 @@ class TestVotingPointForecasterPanelData:
         forecaster.fit(y[:80], forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
-        assert forecaster.panel_group_names_ is not None
+        assert forecaster.groups_ is not None
         assert len(y_pred) == 3
-        target_cols = [c for c in y_pred.columns if c not in ("observed_time", "time")]
+        target_cols = [c for c in y_pred.columns if c not in ("vintage_time", "time")]
         assert len(target_cols) > 0
 
 

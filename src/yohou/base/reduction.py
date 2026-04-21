@@ -161,7 +161,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if time_weight is None:
             return None
 
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             # Global data: y_t is DataFrame
             assert isinstance(y_t, pl.DataFrame)
             sample_weights = self._compute_sample_weights_one(
@@ -175,7 +175,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             # Panel data: y_t is dict, stack weights
             assert isinstance(y_t, dict)
             sample_weights_list = []
-            for panel_group_name in self.panel_group_names_:
+            for panel_group_name in self.groups_:
                 y_t_local = y_t[panel_group_name]
                 weights_local = self._compute_sample_weights_one(
                     y_t=y_t_local,
@@ -494,7 +494,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Stacked target matrix with all horizon steps.
 
         """
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             assert isinstance(y_t, pl.DataFrame)
             assert isinstance(X_t, pl.DataFrame)
             return self._get_tabularized_dataset(y_t, X_t, forecasting_horizon)
@@ -502,7 +502,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         assert isinstance(y_t, dict)
         assert isinstance(X_t, dict)
         X_tab_list, y_tab_list = [], []
-        for panel_group_name in self.panel_group_names_:
+        for panel_group_name in self.groups_:
             y_t_local = y_t[panel_group_name]
             X_t_local = X_t[panel_group_name]
             y_columns = [c for c in y_t_local.columns if c != "time"]
@@ -723,7 +723,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         n_targets = (
             len(self.local_y_t_schema_)
-            if self.panel_group_names_ is None
+            if self.groups_ is None
             else len([c for c in next(iter(y_t.values())).columns if c != "time"])
             if isinstance(y_t, dict)
             else len(self.local_y_t_schema_)
@@ -803,7 +803,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         n_targets = (
             len(self.local_y_t_schema_)
-            if self.panel_group_names_ is None
+            if self.groups_ is None
             else len([c for c in next(iter(y_t.values())).columns if c != "time"])
             if isinstance(y_t, dict)
             else len(self.local_y_t_schema_)
@@ -839,7 +839,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def _estimator_predict_one(
         self,
         estimator: BaseEstimator | list[BaseEstimator],
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> pl.DataFrame:
         """Dispatch estimator prediction to the strategy-specific method.
 
@@ -852,7 +852,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         estimator : BaseEstimator or list[BaseEstimator]
             For ``"multi-output"``: a single fitted estimator.
             For ``"direct"`` or ``"dir-rec"``: a list of H fitted estimators.
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
 
         Returns
@@ -871,16 +871,16 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             assert isinstance(estimator, list)
             return self._estimator_predict_direct(
                 typing_cast(list[BaseEstimator], estimator),
-                panel_group_names,
+                groups,
             )
         if self.reduction_strategy == "dir-rec":
             assert isinstance(estimator, list)
             return self._estimator_predict_dir_rec(
                 typing_cast(list[BaseEstimator], estimator),
-                panel_group_names,
+                groups,
             )
         assert isinstance(estimator, BaseEstimator)
-        return self._estimator_predict_multi_output(estimator, panel_group_names)
+        return self._estimator_predict_multi_output(estimator, groups)
 
     def _get_predict_features(
         self,
@@ -945,7 +945,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def _estimator_predict_multi_output(
         self,
         estimator: BaseEstimator,
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> pl.DataFrame:
         """Generate predictions using a fitted multi-output estimator.
 
@@ -953,7 +953,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ----------
         estimator : BaseEstimator
             Fitted scikit-learn estimator.
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
 
         Returns
@@ -962,13 +962,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Predictions for the forecasting horizon.
 
         """
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             X_tab = self._get_predict_features()
             y_tab_pred = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return self._reshape_predictions(y_tab_pred)
 
         y_pred_dict = {}
-        for panel_group_name in panel_group_names:
+        for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
             y_tab_pred = estimator.predict(X_tab)
             y_pred_dict[panel_group_name] = self._reshape_predictions(y_tab_pred, panel_group_name)
@@ -977,7 +977,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def _estimator_predict_direct(
         self,
         estimators: list[BaseEstimator],
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> pl.DataFrame:
         """Generate predictions using H independent direct estimators.
 
@@ -988,7 +988,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ----------
         estimators : list[BaseEstimator]
             H fitted estimators, one per horizon step.
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
 
         Returns
@@ -1006,7 +1006,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             pred = est.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return np.atleast_1d(pred.ravel())[:n_targets]
 
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             X_tab = self._get_predict_features()
             rows: list[np.ndarray] = Parallel(n_jobs=self.n_jobs)(
                 delayed(_predict_step)(est, X_tab) for est in estimators
@@ -1016,7 +1016,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             return cast(y_pred, self.local_y_t_schema_)
 
         y_pred_dict = {}
-        for panel_group_name in panel_group_names:
+        for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
             rows = Parallel(n_jobs=self.n_jobs)(delayed(_predict_step)(est, X_tab) for est in estimators)
             y_pred_arr = np.vstack(rows)
@@ -1029,7 +1029,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def _estimator_predict_dir_rec(
         self,
         estimators: list[BaseEstimator],
-        panel_group_names: list[str],
+        groups: list[str],
     ) -> pl.DataFrame:
         """Generate predictions using H dir-rec estimators with feature augmentation.
 
@@ -1040,7 +1040,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ----------
         estimators : list[BaseEstimator]
             H fitted estimators with progressively augmented features.
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
 
         Returns
@@ -1053,7 +1053,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_cols = list(self.local_y_t_schema_.keys())
         n_targets = len(y_cols)
 
-        if self.panel_group_names_ is None:
+        if self.groups_ is None:
             X_tab = self._get_predict_features()
             X_aug = X_tab.copy()
             rows = []
@@ -1068,7 +1068,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             return cast(y_pred, self.local_y_t_schema_)
 
         y_pred_dict = {}
-        for panel_group_name in panel_group_names:
+        for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
             X_aug = X_tab.copy()
             rows = []

@@ -78,7 +78,7 @@ class TestMultimetricScorer:
         ms = _MultimetricScorer(scorers={"s": scorer})
         y = pl.DataFrame({"time": [1], "a": [1.0]})
         ms.fit(y)
-        scorer.fit.assert_called_once_with(y)
+        scorer.fit.assert_called_once_with(y, forecaster=None)
 
     def test_get_metadata_routing(self):
         """get_metadata_routing returns a MetadataRouter."""
@@ -328,7 +328,7 @@ class TestMultimetricScorerErrorSuppression:
         ms = _MultimetricScorer(scorers={"fail": scorer}, raise_exc=False)
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 12, 31)] * 2,
+            "vintage_time": [datetime(2020, 12, 31)] * 2,
             "time": [datetime(2021, 1, 1), datetime(2021, 1, 2)],
             "target": [3.0, 4.0],
         })
@@ -349,7 +349,7 @@ class TestMultimetricScorerErrorSuppression:
         ms = _MultimetricScorer(scorers={"fail": scorer}, raise_exc=True)
 
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2020, 12, 31)] * 2,
+            "vintage_time": [datetime(2020, 12, 31)] * 2,
             "time": [datetime(2021, 1, 1), datetime(2021, 1, 2)],
             "target": [3.0, 4.0],
         })

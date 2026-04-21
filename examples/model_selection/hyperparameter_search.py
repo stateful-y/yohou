@@ -56,6 +56,8 @@ def _():
     from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
+    from copy import deepcopy
+
     from yohou.class_proba import ClassProbaReductionForecaster
     from yohou.datasets import fetch_air_quality_classification, fetch_tourism_monthly
     from yohou.metrics import LogLoss, MeanAbsoluteError
@@ -64,7 +66,12 @@ def _():
         GridSearchCV,
         RandomizedSearchCV,
     )
-    from yohou.plotting import plot_cv_results_scatter, plot_forecast, plot_time_series
+    from yohou.plotting import (
+        plot_cv_results_scatter,
+        plot_forecast,
+        plot_score_per_step,
+        plot_time_series,
+    )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
@@ -79,11 +86,13 @@ def _():
         PointReductionForecaster,
         RandomizedSearchCV,
         Ridge,
+        deepcopy,
         fetch_air_quality_classification,
         fetch_tourism_monthly,
         pl,
         plot_cv_results_scatter,
         plot_forecast,
+        plot_score_per_step,
         plot_time_series,
         train_test_split,
         uniform,
@@ -434,6 +443,53 @@ def _(mo):
     - Use [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) to visualize parameter-score relationships
     """)
 
+
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Multi-vintage Scoring
+
+    The `observe_predict` method with `stride=1` produces one forecast per
+    observation point, creating multiple *vintages*. Each vintage represents
+    a different forecast origin, so you can analyse how accuracy evolves as
+    the model absorbs more data.
+    """)
+    return
+
+
+@app.cell
+def _(deepcopy, fh, grid_search, y, y_train):
+    _vintage_model = deepcopy(grid_search.best_forecaster_)
+    y_after_train = y.slice(len(y_train))
+    y_pred_vintages = _vintage_model.observe_predict(
+        y=y_after_train,
+        forecasting_horizon=fh,
+    )
+    print(f"Vintages: {y_pred_vintages['vintage_time'].n_unique()}")
+    y_pred_vintages.head(10)
+    return (y_after_train, y_pred_vintages)
+
+
+@app.cell
+def _(MeanAbsoluteError, y_train):
+    vintage_scorer = MeanAbsoluteError()
+    vintage_scorer.fit(y_train)
+    return (vintage_scorer,)
+
+
+@app.cell
+def _(vintage_scorer, plot_score_per_step, y_after_train, y_pred_vintages):
+    plot_score_per_step(
+        vintage_scorer,
+        y_after_train,
+        y_pred_vintages,
+        title="MAE per Forecast Step",
+        y_label="MAE",
+        height=380,
+    )
+    return
 
 @app.cell(hide_code=True)
 def _(mo):

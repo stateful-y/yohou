@@ -4,9 +4,18 @@ from datetime import datetime, timedelta
 
 import polars as pl
 import pytest
+from sklearn.base import BaseEstimator
+from sklearn.exceptions import NotFittedError
 
 from yohou.metrics import MeanAbsoluteError
 from yohou.metrics.base import BaseIntervalScorer, BasePointScorer, BaseScorer
+
+
+class _DummyForecaster(BaseEstimator):
+    """Minimal estimator stub to satisfy check_is_fitted."""
+
+    def fit(self, X=None, y=None):
+        return self
 
 
 @pytest.fixture
@@ -15,7 +24,7 @@ def y_true_pred_pair():
     times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
     y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 5,
+        "vintage_time": [datetime(2019, 12, 31)] * 5,
         "time": times,
         "value": [12.0, 18.0, 33.0, 38.0, 55.0],
     })
@@ -32,7 +41,7 @@ def panel_y_true_pred_pair():
         "B__value": [100.0, 200.0, 300.0, 400.0, 500.0],
     })
     y_pred = pl.DataFrame({
-        "observed_time": [datetime(2019, 12, 31)] * 5,
+        "vintage_time": [datetime(2019, 12, 31)] * 5,
         "time": times,
         "A__value": [12.0, 18.0, 33.0, 38.0, 55.0],
         "B__value": [110.0, 190.0, 310.0, 390.0, 510.0],
@@ -302,9 +311,9 @@ class TestTimeWeightValidation:
 
 
 class TestPanelGroupWeights:
-    """Tests for panel_group_weight parameter on BaseScorer."""
+    """Tests for group_weight parameter on BaseScorer."""
 
-    def test_panel_group_weight_affects_score(self, panel_y_true_pred_pair):
+    def test_group_weight_affects_score(self, panel_y_true_pred_pair):
         """Different panel group weights should change the score."""
         y_true, y_pred = panel_y_true_pred_pair
 
@@ -312,7 +321,7 @@ class TestPanelGroupWeights:
         scorer_equal.fit(y_true)
         score_equal = scorer_equal.score(y_true, y_pred)
 
-        scorer_weighted = MeanAbsoluteError(panel_group_weight={"A": 10.0, "B": 0.1})
+        scorer_weighted = MeanAbsoluteError(groups={"A": 10.0, "B": 0.1})
         scorer_weighted.fit(y_true)
         score_weighted = scorer_weighted.score(y_true, y_pred)
 
@@ -326,7 +335,7 @@ class TestPanelGroupWeights:
         scorer_default.fit(y_true)
         score_default = scorer_default.score(y_true, y_pred)
 
-        scorer_explicit = MeanAbsoluteError(panel_group_weight={"A": 1.0, "B": 1.0})
+        scorer_explicit = MeanAbsoluteError(groups={"A": 1.0, "B": 1.0})
         scorer_explicit.fit(y_true)
         score_explicit = scorer_explicit.score(y_true, y_pred)
 
@@ -382,13 +391,13 @@ class TestPanelGroupWeightsZero:
             "B__value": [100.0, 200.0, 300.0, 400.0, 500.0],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [datetime(2019, 12, 31)] * 5,
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
             "time": times,
             "A__value": [12.0, 18.0, 33.0, 38.0, 55.0],
             "B__value": [110.0, 190.0, 310.0, 390.0, 510.0],
         })
         scorer = MeanAbsoluteError(
-            panel_group_weight={"A": 0.0, "B": 0.0},
+            groups={"A": 0.0, "B": 0.0},
         )
         scorer.fit(y_true)
         with pytest.raises(ValueError, match="Total panel group weight is zero"):
@@ -451,45 +460,43 @@ class TestValidateParametersEdgeCases:
         """Providing aggregation_method without valid_aggregation_methods raises."""
         scorer = MeanAbsoluteError()
         with pytest.raises(ValueError, match="valid_aggregation_methods must be provided"):
-            scorer._validate_parameters(aggregation_method="timewise", valid_aggregation_methods=None)
+            scorer._validate_parameters(aggregation_method="stepwise", valid_aggregation_methods=None)
 
     def test_aggregation_invalid_string_raises(self):
         """Invalid string aggregation_method raises ValueError."""
         scorer = MeanAbsoluteError()
         with pytest.raises(ValueError, match="Invalid aggregation_method"):
-            scorer._validate_parameters(aggregation_method="bad", valid_aggregation_methods={"timewise"})
+            scorer._validate_parameters(aggregation_method="bad", valid_aggregation_methods={"stepwise"})
 
     def test_aggregation_empty_list_raises(self):
         """Empty list aggregation_method raises ValueError."""
         scorer = MeanAbsoluteError()
         with pytest.raises(ValueError, match="cannot be empty"):
-            scorer._validate_parameters(aggregation_method=[], valid_aggregation_methods={"timewise"})
+            scorer._validate_parameters(aggregation_method=[], valid_aggregation_methods={"stepwise"})
 
     def test_aggregation_invalid_list_element_raises(self):
         """Invalid element in aggregation_method list raises ValueError."""
         scorer = MeanAbsoluteError()
         with pytest.raises(ValueError, match="Invalid aggregation_method"):
-            scorer._validate_parameters(aggregation_method=["bad"], valid_aggregation_methods={"timewise"})
+            scorer._validate_parameters(aggregation_method=["bad"], valid_aggregation_methods={"stepwise"})
 
     def test_aggregation_non_string_type_raises(self):
         """Non-string non-list aggregation_method raises ValueError."""
         scorer = MeanAbsoluteError()
         with pytest.raises(ValueError, match="must be a string or list"):
-            scorer._validate_parameters(aggregation_method=42, valid_aggregation_methods={"timewise"})
+            scorer._validate_parameters(aggregation_method=42, valid_aggregation_methods={"stepwise"})
 
-    def test_panel_group_names_non_list_raises(self):
-        """Non-list panel_group_names raises ValueError."""
-        scorer = MeanAbsoluteError()
-        scorer.panel_group_names = "not_a_list"
-        with pytest.raises(ValueError, match="panel_group_names must be a list"):
-            scorer._validate_parameters()
+    def test_groups_non_list_raises(self):
+        """Non-list/dict groups raises ValueError."""
+        scorer = MeanAbsoluteError(groups="not_a_list")
+        with pytest.raises(ValueError, match="groups.*must be an instance of 'list'"):
+            scorer.fit(None)
 
     def test_component_names_non_list_raises(self):
-        """Non-list component_names raises ValueError."""
-        scorer = MeanAbsoluteError()
-        scorer.component_names = "not_a_list"
-        with pytest.raises(ValueError, match="component_names must be a list"):
-            scorer._validate_parameters()
+        """Non-list/dict components raises ValueError."""
+        scorer = MeanAbsoluteError(components="not_a_list")
+        with pytest.raises(ValueError, match="components.*must be an instance of 'list'"):
+            scorer.fit(None)
 
 
 class TestProcessTimeWeightsCallable:
@@ -578,7 +585,7 @@ class TestAggregationMethodCombinations:
             "b": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "a": [float(i) + 0.5 for i in range(n)],
             "b": [float(i) * 2 + 0.5 for i in range(n)],
@@ -598,19 +605,19 @@ class TestAggregationMethodCombinations:
             "g2__val": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "g1__val": [float(i) + 0.5 for i in range(n)],
             "g2__val": [float(i) * 2 + 0.5 for i in range(n)],
         })
         return y_truth, y_pred
 
-    def test_timewise_only_returns_dataframe(self, multivariate_data):
-        """aggregation_method=['timewise'] returns DataFrame."""
+    def test_stepwise_vintagewise_only_returns_dataframe(self, multivariate_data):
+        """aggregation_method=['stepwise', 'vintagewise'] returns DataFrame."""
         from yohou.metrics.point import MeanAbsoluteError
 
         y_truth, y_pred = multivariate_data
-        scorer = MeanAbsoluteError(aggregation_method=["timewise"])
+        scorer = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
         scorer.fit(y_truth)
         result = scorer.score(y_truth, y_pred)
         assert isinstance(result, pl.DataFrame)
@@ -635,24 +642,24 @@ class TestAggregationMethodCombinations:
         result = scorer.score(y_truth, y_pred)
         assert isinstance(result, pl.DataFrame)
 
-    def test_timewise_componentwise_returns_scalar(self, multivariate_data):
-        """aggregation_method=['timewise', 'componentwise'] returns scalar."""
+    def test_stepwise_vintagewise_componentwise_returns_scalar(self, multivariate_data):
+        """aggregation_method=['stepwise', 'vintagewise', 'componentwise'] returns scalar."""
         from yohou.metrics.point import MeanAbsoluteError
 
         y_truth, y_pred = multivariate_data
-        scorer = MeanAbsoluteError(aggregation_method=["timewise", "componentwise"])
+        scorer = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
         scorer.fit(y_truth)
         result = scorer.score(y_truth, y_pred)
         assert isinstance(result, float)
 
-    def test_panel_group_weight_in_collapse(self, panel_data):
-        """panel_group_weight dict is used by _collapse_panel_groups."""
+    def test_group_weight_in_collapse(self, panel_data):
+        """group_weight dict is used by _collapse_panel_groups."""
         from yohou.metrics.point import MeanAbsoluteError
 
         y_truth, y_pred = panel_data
         scorer = MeanAbsoluteError(
             aggregation_method="all",
-            panel_group_weight={"g1": 2.0, "g2": 1.0},
+            groups={"g1": 2.0, "g2": 1.0},
         )
         scorer.fit(y_truth)
         result = scorer.score(y_truth, y_pred)
@@ -675,7 +682,7 @@ class TestGroupwiseAggregation:
             "g2__val": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "g1__val": [float(i) + 0.5 for i in range(n)],
             "g2__val": [float(i) * 2 + 0.5 for i in range(n)],
@@ -692,13 +699,13 @@ class TestGroupwiseAggregation:
         result = scorer.score(y_truth, y_pred)
         assert isinstance(result, pl.DataFrame)
 
-    def test_panel_timewise_componentwise_groupwise(self, panel_scorer_data):
+    def test_panel_stepwise_vintagewise_componentwise_groupwise(self, panel_scorer_data):
         """All three aggregation dimensions yield scalar on panel data."""
         from yohou.metrics.point import MeanAbsoluteError
 
         y_truth, y_pred = panel_scorer_data
         scorer = MeanAbsoluteError(
-            aggregation_method=["timewise", "componentwise", "groupwise"],
+            aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"],
         )
         scorer.fit(y_truth)
         result = scorer.score(y_truth, y_pred)
@@ -721,7 +728,7 @@ class TestPanelComponentwiseRename:
             "g2__val": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "g1__val": [float(i) + 0.5 for i in range(n)],
             "g2__val": [float(i) * 2 + 0.5 for i in range(n)],
@@ -760,10 +767,10 @@ class TestPanelComponentwiseRename:
 
 
 class TestPanelGroupWeight:
-    """Tests for _apply_panel_weights with custom panel_group_weight."""
+    """Tests for _apply_panel_weights with custom group_weight."""
 
-    def test_custom_panel_group_weight(self):
-        """Custom panel_group_weight applies weighted average to group scores."""
+    def test_custom_group_weight(self):
+        """Custom group_weight applies weighted average to group scores."""
         from datetime import datetime, timedelta
 
         from yohou.metrics.point import MeanAbsoluteError
@@ -776,7 +783,7 @@ class TestPanelGroupWeight:
             "g2__val": [float(i) * 2 for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "g1__val": [float(i) + 1.0 for i in range(n)],
             "g2__val": [float(i) * 2 + 2.0 for i in range(n)],
@@ -787,7 +794,7 @@ class TestPanelGroupWeight:
 
         scorer_weighted = MeanAbsoluteError(
             aggregation_method="all",
-            panel_group_weight={"g1": 10.0, "g2": 0.0001},
+            groups={"g1": 10.0, "g2": 0.0001},
         )
         scorer_weighted.fit(y_truth)
         score_weighted = scorer_weighted.score(y_truth, y_pred)
@@ -811,7 +818,7 @@ class TestIntervalScorerAggregation:
             "value": [10.0 + i for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "value_lower_0.9": [8.0 + i for i in range(n)],
             "value_upper_0.9": [12.0 + i for i in range(n)],
@@ -835,7 +842,7 @@ class TestIntervalScorerAggregation:
         from yohou.metrics import IntervalScore
 
         y_truth, y_pred = interval_data
-        scorer = IntervalScore(aggregation_method=["timewise", "componentwise", "coveragewise"])
+        scorer = IntervalScore(aggregation_method=["stepwise", "vintagewise", "componentwise", "coveragewise"])
         scorer.fit(y_truth)
         result = scorer.score(y_truth, y_pred)
         assert isinstance(result, float)
@@ -857,7 +864,7 @@ class TestIntervalScorerAggregation:
 
         y_truth, _ = interval_data
         scorer = IntervalScore(coverage_rates=0.9)
-        with pytest.raises((ValueError, TypeError), match="coverage_rates"):
+        with pytest.raises((ValueError, TypeError), match="coverage"):
             scorer.fit(y_truth)
 
 
@@ -877,7 +884,7 @@ class TestIntervalScorerGroupwise:
             "sales__store_2": [20.0 + i for i in range(n)],
         })
         y_pred = pl.DataFrame({
-            "observed_time": [times[0]] * n,
+            "vintage_time": [times[0]] * n,
             "time": times,
             "sales__store_1_lower_0.9": [8.0 + i for i in range(n)],
             "sales__store_1_upper_0.9": [12.0 + i for i in range(n)],
@@ -916,3 +923,91 @@ class TestIntervalScorerGroupwise:
         result = scorer.score(y_truth, y_pred)
         assert isinstance(result, float)
         assert result > 0
+
+
+class TestFitForecasterParam:
+    """Tests for the optional forecaster parameter on scorer.fit()."""
+
+    @pytest.fixture
+    def daily_y_train(self):
+        """Daily training series with 10 timesteps."""
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)]
+        return pl.DataFrame({"time": times, "value": list(range(10))})
+
+    @pytest.fixture
+    def panel_y_train(self):
+        """Panel training series with 2 groups and 10 timesteps."""
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)]
+        return pl.DataFrame({
+            "time": times,
+            "A__value": list(range(10)),
+            "B__value": list(range(10, 20)),
+        })
+
+    @staticmethod
+    def _make_fitted_forecaster(interval="1d", horizon=5):
+        """Create a minimal fitted forecaster-like estimator."""
+        fc = _DummyForecaster()
+        fc.interval_ = interval
+        fc.fit_forecasting_horizon_ = horizon
+        return fc
+
+    def test_fit_without_forecaster_infers_interval(self, daily_y_train):
+        """fit(y_train) without forecaster infers interval_ from data."""
+        scorer = MeanAbsoluteError()
+        scorer.fit(daily_y_train)
+        assert scorer.interval_ == "1d"
+
+    def test_fit_with_forecaster_uses_its_interval(self, daily_y_train):
+        """fit(y_train, forecaster=fc) uses forecaster.interval_."""
+        fc = self._make_fitted_forecaster(interval="2h")
+        scorer = MeanAbsoluteError()
+        scorer.fit(daily_y_train, forecaster=fc)
+        assert scorer.interval_ == "2h"
+
+    def test_fit_with_forecaster_stores_horizon(self, daily_y_train):
+        """fit() stores forecaster_horizon_ from the forecaster."""
+        fc = self._make_fitted_forecaster(horizon=7)
+        scorer = MeanAbsoluteError()
+        scorer.fit(daily_y_train, forecaster=fc)
+        assert scorer.forecaster_horizon_ == 7
+
+    def test_fit_without_forecaster_has_no_horizon(self, daily_y_train):
+        """fit() without forecaster does not set forecaster_horizon_."""
+        scorer = MeanAbsoluteError()
+        scorer.fit(daily_y_train)
+        assert not hasattr(scorer, "forecaster_horizon_")
+
+    def test_fit_infers_groups_from_y_train(self, panel_y_train):
+        """groups_ is always inferred from y_train, not from forecaster."""
+        fc = self._make_fitted_forecaster()
+        scorer = MeanAbsoluteError()
+        scorer.fit(panel_y_train, forecaster=fc)
+        assert set(scorer.groups_) == {"A", "B"}
+
+    def test_fit_non_panel_has_no_groups(self, daily_y_train):
+        """Non-panel data results in groups_=None."""
+        scorer = MeanAbsoluteError()
+        scorer.fit(daily_y_train)
+        assert scorer.groups_ is None
+
+    def test_unfitted_forecaster_raises(self, daily_y_train):
+        """Passing an unfitted forecaster raises NotFittedError."""
+        fc = _DummyForecaster()  # no fitted attributes (nothing ending with _)
+        scorer = MeanAbsoluteError()
+        with pytest.raises(NotFittedError):
+            scorer.fit(daily_y_train, forecaster=fc)
+
+    def test_backward_compat_positional_y_train(self, daily_y_train):
+        """Existing code calling fit(y_train) still works."""
+        scorer = MeanAbsoluteError()
+        result = scorer.fit(daily_y_train)
+        assert result is scorer
+        assert scorer._is_fitted
+
+    def test_interval_none_for_single_row(self):
+        """Fewer than 2 rows results in interval_=None."""
+        y = pl.DataFrame({"time": [datetime(2020, 1, 1)], "value": [1.0]})
+        scorer = MeanAbsoluteError()
+        scorer.fit(y)
+        assert scorer.interval_ is None

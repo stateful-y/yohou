@@ -25,7 +25,7 @@ class TestNaNInfForecasters:
         forecaster.fit(y[:80], forecasting_horizon=5)
         y_pred = forecaster.predict(forecasting_horizon=5)
 
-        values = y_pred.drop("time", "observed_time").to_numpy()
+        values = y_pred.drop("time", "vintage_time").to_numpy()
         assert np.all(np.isfinite(values)), "Predictions should be finite"
 
 

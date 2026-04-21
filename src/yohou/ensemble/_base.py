@@ -279,7 +279,7 @@ class _BaseEnsembleForecaster:
         """
         self.fit_forecasting_horizon_ = forecasting_horizon
         self.interval_ = first_forecaster.interval_
-        self.panel_group_names_ = first_forecaster.panel_group_names_
+        self.groups_ = first_forecaster.groups_
         self.local_y_schema_ = dict(first_forecaster.local_y_schema_)
         self.local_X_schema_ = getattr(first_forecaster, "local_X_schema_", None)
         self.shared_X_schema_ = getattr(first_forecaster, "shared_X_schema_", None)
@@ -331,7 +331,7 @@ class _BaseEnsembleForecaster:
             Aggregated predictions with time columns.
 
         """
-        time_cols = [c for c in ("observed_time", "time") if c in predictions[0].columns]
+        time_cols = [c for c in ("vintage_time", "time") if c in predictions[0].columns]
         time_df = predictions[0].select(time_cols)
 
         agg_exprs = []
@@ -377,7 +377,7 @@ class _BaseEnsembleForecaster:
             Aggregated interval predictions.
 
         """
-        time_cols = [c for c in ("observed_time", "time") if c in predictions[0].columns]
+        time_cols = [c for c in ("vintage_time", "time") if c in predictions[0].columns]
         time_df = predictions[0].select(time_cols)
 
         agg_exprs = []
@@ -445,7 +445,7 @@ class _BaseEnsembleForecaster:
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ):
         """Observe new data on all surviving base forecasters.
@@ -456,7 +456,7 @@ class _BaseEnsembleForecaster:
             New target observations.
         X : pl.DataFrame or None, default=None
             New exogenous observations.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to observe.
         **params : dict
             Metadata routing parameters.
@@ -468,14 +468,14 @@ class _BaseEnsembleForecaster:
         """
         check_is_fitted(self, ["forecasters_"])
         for _name, forecaster in self.forecasters_:
-            forecaster.observe(y=y, X=X, panel_group_names=panel_group_names, **params)
+            forecaster.observe(y=y, X=X, groups=groups, **params)
         return self
 
     def rewind(
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ):
         """Rewind all surviving base forecasters.
@@ -486,7 +486,7 @@ class _BaseEnsembleForecaster:
             Target data to rewind to.
         X : pl.DataFrame or None, default=None
             Exogenous data to rewind to.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to rewind.
         **params : dict
             Metadata routing parameters.
@@ -498,5 +498,5 @@ class _BaseEnsembleForecaster:
         """
         check_is_fitted(self, ["forecasters_"])
         for _name, forecaster in self.forecasters_:
-            forecaster.rewind(y=y, X=X, panel_group_names=panel_group_names, **params)
+            forecaster.rewind(y=y, X=X, groups=groups, **params)
         return self

@@ -27,6 +27,7 @@ from yohou.plotting._utils import (
     apply_default_layout,
     build_category_map,
     facet_figure,
+    grouped_legend_kwargs,
     palette_yohou,
     resolve_color_palette,
     resolve_panel_columns,
@@ -64,7 +65,7 @@ def _detect_prediction_mode(df: pl.DataFrame) -> str:
     """
     if any("_proba_" in c for c in df.columns):
         return "class_proba"
-    value_cols = [c for c in df.columns if c not in ("time", "observed_time")]
+    value_cols = [c for c in df.columns if c not in ("time", "vintage_time")]
     if value_cols and any(df[c].dtype in (pl.String, pl.Categorical) for c in value_cols):
         return "categorical"
     return "numeric"
@@ -78,7 +79,7 @@ def plot_forecast(
     columns: str | list[str] | None = None,
     coverage_rates: list[float] | None = None,
     n_history: int | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -131,7 +132,7 @@ def plot_forecast(
         Looks for ``{col}_lower_{rate}`` / ``{col}_upper_{rate}`` in y_pred.
     n_history : int | None, default=None
         Number of historical observations to show from y_train. If None, shows all.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Panel group prefixes to plot. If None and panel data is detected,
         plots all groups. Creates faceted subplots.
     facet_by : Literal["group", "member"] | None, default="member"
@@ -216,7 +217,7 @@ def plot_forecast(
     See Also
     --------
     [`plot_residuals`][yohou.plotting.plot_residuals] : Plot residual diagnostics.
-    [`plot_model_comparison_bar`][yohou.plotting.plot_model_comparison_bar] : Grouped bar chart for scorer comparison.
+    [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
     """
     # Validate inputs
     validate_plotting_data(y_test)
@@ -251,7 +252,7 @@ def plot_forecast(
             y_train=y_train,
             coverage_rates=coverage_rates,
             n_history=n_history,
-            panel_group_names=panel_group_names,
+            groups=groups,
             facet_by=facet_by,
             facet_n_cols=facet_n_cols,
             color_palette=color_palette,
@@ -327,9 +328,7 @@ def plot_forecast(
 
     # Non-panel, single-model case
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
-    pred_value_cols = [
-        c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
-    ]
+    pred_value_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)]
     test_value_cols = [c for c in y_test.columns if c != "time"]
 
     # Apply columns filter (Decision #8: columns param on plot_forecast)
@@ -764,10 +763,10 @@ def _extract_member_df(df: pl.DataFrame, suffix: str) -> pl.DataFrame:
 
     """
     cols: dict[str, pl.Series] = {"time": df["time"]}
-    if "observed_time" in df.columns:
-        cols["observed_time"] = df["observed_time"]
+    if "vintage_time" in df.columns:
+        cols["vintage_time"] = df["vintage_time"]
     for c in df.columns:
-        if c in ("time", "observed_time"):
+        if c in ("time", "vintage_time"):
             continue
         prefix, sep, member = c.partition("__")
         if sep and member == suffix:
@@ -945,7 +944,7 @@ def _plot_forecast_categorical(
     cat_cols = [
         c
         for c in first_pred.columns  # ty: ignore[unresolved-attribute]
-        if c not in ("time", "observed_time") and first_pred[c].dtype in (pl.String, pl.Categorical)  # ty: ignore[not-subscriptable]
+        if c not in ("time", "vintage_time") and first_pred[c].dtype in (pl.String, pl.Categorical)  # ty: ignore[not-subscriptable]
     ]
 
     if columns is not None:
@@ -1102,7 +1101,7 @@ def _plot_forecast_multi_model(
         for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
             model_color = colors[model_idx % len(colors)]
             pred_value_cols = [
-                c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+                c for c in y_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)
             ]
             pred_col = col if col in pred_value_cols else (pred_value_cols[0] if pred_value_cols else None)
             interval_base = pred_col if (pred_col is not None and pred_col in y_pred.columns) else col
@@ -1161,7 +1160,7 @@ def _plot_forecast_multi_model(
         for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
             model_color = colors[model_idx % len(colors)]
             pred_value_cols = [
-                c for c in y_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+                c for c in y_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)
             ]
             pred_col = col if col in pred_value_cols else (pred_value_cols[0] if pred_value_cols else None)
             if pred_col is None or pred_col not in y_pred.columns:
@@ -1218,7 +1217,7 @@ def _render_interval_bands(
     member,
     band_opacity,
     legend_tracker,
-    lg_key,
+    group_title,
     row,
     col_grid,
 ):
@@ -1226,7 +1225,7 @@ def _render_interval_bands(
     for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
         m_color = model_colors[m_idx % len(model_colors)]
         pred_value_cols = [
-            c for c in m_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+            c for c in m_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)
         ]
         pred_col = col if col in pred_value_cols else None
         interval_base = pred_col if pred_col is not None else col
@@ -1246,10 +1245,19 @@ def _render_interval_bands(
                 x_band = t + t[::-1]
                 y_band = y_upper + y_lower[::-1]
                 if multi_member:
-                    pi_label = f"{member} {m_name} ({rate:.0%} PI)" if is_multi_model else f"{member} ({rate:.0%} PI)"
+                    pi_entry = f"{m_name} ({rate:.0%} PI)" if is_multi_model else f"{rate:.0%} PI"
                 else:
-                    pi_label = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
-                _show_pi = legend_tracker.should_show(pi_label)
+                    pi_entry = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
+
+                if group_title is not None:
+                    legend_kw = grouped_legend_kwargs(group_title, pi_entry, legend_tracker, is_first_in_group=False)
+                else:
+                    legend_kw = {
+                        "name": pi_entry,
+                        "showlegend": legend_tracker.should_show(pi_entry),
+                        "legendgroup": m_name,
+                    }
+
                 fig.add_trace(
                     go.Scatter(
                         x=x_band,
@@ -1258,9 +1266,7 @@ def _render_interval_bands(
                         fillcolor=rgba,
                         mode="lines",
                         line={"width": 0, "color": rgba},
-                        name=pi_label,
-                        showlegend=_show_pi,
-                        legendgroup=lg_key or m_name,
+                        **legend_kw,
                         legendrank=10 + m_idx * 100 + sort_idx + 1,
                         hoverinfo="skip",
                     ),
@@ -1286,7 +1292,7 @@ def _render_forecast_trace(
     show_transition,
     y_train,
     legend_tracker,
-    lg_key,
+    group_title,
     row,
     col_grid,
 ):
@@ -1294,7 +1300,7 @@ def _render_forecast_trace(
     for m_idx, (m_name, m_pred) in enumerate(model_preds.items()):
         m_color = model_colors[m_idx % len(model_colors)]
         pred_value_cols = [
-            c for c in m_pred.columns if c not in ("time", "observed_time") and not interval_pattern.match(c)
+            c for c in m_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)
         ]
         pred_col = col if col in pred_value_cols else None
 
@@ -1317,18 +1323,26 @@ def _render_forecast_trace(
 
             if multi_member:
                 fc_color = base_color if not is_multi_model else m_color
-                fc_label = f"{member} (Forecast)" if not is_multi_model else f"{member} ({m_name})"
+                fc_entry = "Forecast" if not is_multi_model else m_name
                 fc_dash: str | None = "dash"
             else:
                 fc_color = m_color
-                fc_label = m_name
+                fc_entry = m_name
                 fc_dash = None
 
             line_spec: dict = {"color": fc_color, "width": line_width}
             if fc_dash:
                 line_spec["dash"] = fc_dash
 
-            _show_fc = legend_tracker.should_show(fc_label)
+            if group_title is not None:
+                legend_kw = grouped_legend_kwargs(group_title, fc_entry, legend_tracker, is_first_in_group=False)
+            else:
+                legend_kw = {
+                    "name": fc_entry,
+                    "showlegend": legend_tracker.should_show(fc_entry),
+                    "legendgroup": m_name,
+                }
+
             fig.add_trace(
                 go.Scatter(
                     x=x_fc,
@@ -1336,9 +1350,7 @@ def _render_forecast_trace(
                     mode="lines",
                     line=line_spec,
                     connectgaps=connect_gaps,
-                    name=fc_label,
-                    showlegend=_show_fc,
-                    legendgroup=lg_key or m_name,
+                    **legend_kw,
                     legendrank=10 + m_idx * 100,
                 ),
                 row=row,
@@ -1353,7 +1365,7 @@ def _plot_forecast_panel_typed(
     prediction_mode: str,
     y_train: pl.DataFrame | None,
     n_history: int | None,
-    panel_group_names: list[str] | None,
+    groups: list[str] | None,
     facet_n_cols: int,
     color_palette: list[str] | None,
     title: str | None,
@@ -1378,7 +1390,7 @@ def _plot_forecast_panel_typed(
         Historical training data.
     n_history : int or None
         Number of training rows to show.
-    panel_group_names : list of str or None
+    groups : list of str or None
         Panel group prefixes to include.
     facet_n_cols : int
         Columns in facet grid.
@@ -1422,15 +1434,15 @@ def _plot_forecast_panel_typed(
     # Collect unique panel member suffixes from test data
     suffix_by_prefix: dict[str, set[str]] = {}
     for c in y_test.columns:
-        if c in ("time", "observed_time"):
+        if c in ("time", "vintage_time"):
             continue
         prefix, sep, member = c.partition("__")
         if sep:
             suffix_by_prefix.setdefault(prefix, set()).add(member)
 
-    # Apply panel_group_names filter (filters by prefix)
-    if panel_group_names is not None:
-        suffix_by_prefix = {k: v for k, v in suffix_by_prefix.items() if k in panel_group_names}
+    # Apply groups filter (filters by prefix)
+    if groups is not None:
+        suffix_by_prefix = {k: v for k, v in suffix_by_prefix.items() if k in groups}
 
     all_suffixes: set[str] = set()
     for members in suffix_by_prefix.values():
@@ -1438,7 +1450,7 @@ def _plot_forecast_panel_typed(
     suffixes_list = sorted(all_suffixes)
 
     if not suffixes_list:
-        msg = f"No panel members found for groups: {panel_group_names}"
+        msg = f"No panel members found for groups: {groups}"
         raise ValueError(msg)
 
     # Create subplots
@@ -1468,18 +1480,18 @@ def _plot_forecast_panel_typed(
             for pred_df in model_preds.values():
                 pred_m = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
                 for cc in pred_m.columns:
-                    if cc in ("time", "observed_time"):
+                    if cc in ("time", "vintage_time"):
                         continue
                     if pred_m[cc].dtype in (pl.String, pl.Categorical):
                         all_cats.update(pred_m[cc].cast(pl.String).unique().to_list())
             for cc in test_m.columns:
-                if cc in ("time", "observed_time"):
+                if cc in ("time", "vintage_time"):
                     continue
                 if test_m[cc].dtype in (pl.String, pl.Categorical):
                     all_cats.update(test_m[cc].cast(pl.String).unique().to_list())
             if train_m is not None:
                 for cc in train_m.columns:
-                    if cc in ("time", "observed_time"):
+                    if cc in ("time", "vintage_time"):
                         continue
                     if train_m[cc].dtype in (pl.String, pl.Categorical):
                         all_cats.update(train_m[cc].cast(pl.String).unique().to_list())
@@ -1531,7 +1543,7 @@ def _plot_forecast_panel_typed(
             cat_cols = [
                 c
                 for c in first_pred_member.columns
-                if c not in ("time", "observed_time") and first_pred_member[c].dtype in (pl.String, pl.Categorical)
+                if c not in ("time", "vintage_time") and first_pred_member[c].dtype in (pl.String, pl.Categorical)
             ]
 
             for model_idx, (model_name, pred_df) in enumerate(model_preds.items()):
@@ -1588,7 +1600,7 @@ def _plot_forecast_panel(
     y_train: pl.DataFrame | None,
     coverage_rates: list[float] | None,
     n_history: int | None,
-    panel_group_names: list[str] | None,
+    groups: list[str] | None,
     facet_by: Literal["group", "member"] | None,
     facet_n_cols: int,
     color_palette: list[str] | None,
@@ -1628,7 +1640,7 @@ def _plot_forecast_panel(
         Coverage rates for intervals.
     n_history : int | None
         Number of history points to show.
-    panel_group_names : list[str] | None
+    groups : list[str] | None
         Groups to plot.
     facet_by : Literal["group", "member"] | None
         Controls subplot organisation.
@@ -1668,7 +1680,7 @@ def _plot_forecast_panel(
             prediction_mode=prediction_mode,
             y_train=y_train,
             n_history=n_history,
-            panel_group_names=panel_group_names,
+            groups=groups,
             facet_n_cols=facet_n_cols,
             color_palette=color_palette,
             title=title,
@@ -1688,18 +1700,18 @@ def _plot_forecast_panel(
     _, test_panels = inspect_panel(y_test)
 
     # Group panel columns by group prefix
-    groups: dict[str, list[str]] = {}
+    group_map: dict[str, list[str]] = {}
     for prefix, cols in test_panels.items():
-        if panel_group_names is None or prefix in panel_group_names:
-            groups.setdefault(prefix, []).extend(cols)
+        if groups is None or prefix in groups:
+            group_map.setdefault(prefix, []).extend(cols)
 
-    if not groups:
-        msg = f"No panel columns found for groups: {panel_group_names}"
+    if not group_map:
+        msg = f"No panel columns found for groups: {groups}"
         raise ValueError(msg)
 
-    all_flat_cols = [c for cols in groups.values() for c in cols]
+    all_flat_cols = [c for cols in group_map.values() for c in cols]
     _, all_members = _group_panel_columns(all_flat_cols)
-    all_group_names = list(groups.keys())
+    all_group_names = list(group_map.keys())
 
     # Build faceting structure
     # facets: dict from subplot label -> list of columns in that subplot
@@ -1709,7 +1721,7 @@ def _plot_forecast_panel(
         facets: dict[str, list[str]] = {}
         for member in all_members:
             cols_for_member = []
-            for gcols in groups.values():
+            for gcols in group_map.values():
                 col = next((c for c in gcols if _member_name(c) == member), None)
                 if col:
                     cols_for_member.append(col)
@@ -1745,7 +1757,7 @@ def _plot_forecast_panel(
 
     else:
         # facet_by == "group" (default)
-        facets = groups
+        facets = group_map
         sub_names = all_members
         sub_palette = resolve_color_palette(_model_pal, len(sub_names))
 
@@ -1787,6 +1799,7 @@ def _plot_forecast_panel(
 
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
     legend_tracker = LegendTracker()
+    seen_groups: set[str] = set()
 
     for facet_idx, (_, facet_cols) in enumerate(facets.items()):
         row = facet_idx // facet_n_cols + 1
@@ -1797,25 +1810,37 @@ def _plot_forecast_panel(
             base_color = _get_sub_color(col)
 
             # Resolve per-trace colours and labels
-            if multi_sub:
+            if multi_sub and facet_by is not None:
                 _hex = base_color.lstrip("#")
                 _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
                 train_c: str = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
                 actual_c = base_color
-                train_label = f"{sub_name} (Train)"
-                actual_label = f"{sub_name} (Actual)"
-                lg_key: str | None = sub_name
+                group_title: str | None = sub_name
+            elif multi_sub:
+                _hex = base_color.lstrip("#")
+                _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+                train_c = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+                actual_c = base_color
+                group_title = None
             else:
                 train_c = history_color
                 actual_c = actual_color
-                train_label = "Train"
-                actual_label = "Actual"
-                lg_key = None
+                group_title = None
 
             # Train
             if y_train is not None and col in y_train.columns:
                 train_df = y_train.tail(n_history) if n_history is not None else y_train
-                _show = legend_tracker.should_show(train_label)
+                if group_title is not None:
+                    is_first = sub_name not in seen_groups
+                    seen_groups.add(sub_name)
+                    legend_kw = grouped_legend_kwargs(group_title, "Train", legend_tracker, is_first_in_group=is_first)
+                else:
+                    train_label = f"{sub_name} (Train)" if multi_sub else "Train"
+                    legend_kw = {
+                        "name": train_label,
+                        "showlegend": legend_tracker.should_show(train_label),
+                        "legendgroup": sub_name if multi_sub else "train",
+                    }
                 fig.add_trace(
                     go.Scatter(
                         x=train_df["time"],
@@ -1823,9 +1848,7 @@ def _plot_forecast_panel(
                         mode="lines",
                         line={"color": train_c, "width": line_width},
                         connectgaps=connect_gaps,
-                        name=train_label,
-                        showlegend=_show,
-                        legendgroup=lg_key or "train",
+                        **legend_kw,
                         legendrank=0,
                     ),
                     row=row,
@@ -1846,14 +1869,22 @@ def _plot_forecast_panel(
                 member=sub_name,
                 band_opacity=band_opacity,
                 legend_tracker=legend_tracker,
-                lg_key=lg_key,
+                group_title=group_title,
                 row=row,
                 col_grid=col_grid,
             )
 
             # Actual
             if col in y_test.columns:
-                _show_actual = legend_tracker.should_show(actual_label)
+                if group_title is not None:
+                    legend_kw = grouped_legend_kwargs(group_title, "Actual", legend_tracker, is_first_in_group=False)
+                else:
+                    actual_label = f"{sub_name} (Actual)" if multi_sub else "Actual"
+                    legend_kw = {
+                        "name": actual_label,
+                        "showlegend": legend_tracker.should_show(actual_label),
+                        "legendgroup": sub_name if multi_sub else "actual",
+                    }
                 fig.add_trace(
                     go.Scatter(
                         x=y_test["time"],
@@ -1861,9 +1892,7 @@ def _plot_forecast_panel(
                         mode="lines",
                         line={"color": actual_c, "width": line_width},
                         connectgaps=connect_gaps,
-                        name=actual_label,
-                        showlegend=_show_actual,
-                        legendgroup=lg_key or "actual",
+                        **legend_kw,
                         legendrank=1,
                     ),
                     row=row,
@@ -1887,7 +1916,7 @@ def _plot_forecast_panel(
                 show_transition=show_transition,
                 y_train=y_train,
                 legend_tracker=legend_tracker,
-                lg_key=lg_key,
+                group_title=group_title,
                 row=row,
                 col_grid=col_grid,
             )
@@ -1912,7 +1941,7 @@ def plot_time_weight(
     df: pl.DataFrame,
     *,
     weight_column: str = "time_weight",
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     facet_by: Literal["group", "member"] | None = "member",
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
@@ -1942,7 +1971,7 @@ def plot_time_weight(
     weight_column : str, default="time_weight"
         Name of the column containing weight values. For panel data,
         this is the base name (without the group prefix).
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         List of panel group prefixes to plot. If None, plots all groups.
         Creates subplots for each group.
     facet_by : Literal["group", "member"] | None, default="member"
@@ -2041,11 +2070,11 @@ def plot_time_weight(
     # If we found panel weight columns
     if weight_panel_cols:
         # Filter to requested groups if specified
-        if panel_group_names is not None:
-            weight_panel_cols = {k: v for k, v in weight_panel_cols.items() if k in panel_group_names}
+        if groups is not None:
+            weight_panel_cols = {k: v for k, v in weight_panel_cols.items() if k in groups}
 
         if not weight_panel_cols:
-            msg = f"No weight columns found for panel groups: {panel_group_names}"
+            msg = f"No weight columns found for panel groups: {groups}"
             raise ValueError(msg)
 
         # Collect unique member names for consistent colouring
@@ -2654,7 +2683,7 @@ def plot_decomposition(
     *,
     method: Literal["stl", "mstl", "classical"] | None = None,
     columns: str | list[str] | None = None,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     show_original: bool = True,
     period: int | str = "auto",
     periods: list[int] | str | None = None,
@@ -2710,7 +2739,7 @@ def plot_decomposition(
         ``None`` means pre-computed dict mode.
     columns : str | list[str] | None
         Value columns to plot.  ``None`` uses all numeric non-time columns.
-    panel_group_names : list[str] | None
+    groups : list[str] | None
         Panel group prefixes to include.  For panel data, returns one
         figure per member with groups overlaid by colour.
     show_original : bool
@@ -2937,17 +2966,17 @@ def plot_decomposition(
     is_panel = bool(panel_groups)
 
     # Auto-enter panel mode when panel columns are detected
-    if is_panel and panel_group_names is None and columns is None:
-        panel_group_names = []
+    if is_panel and groups is None and columns is None:
+        groups = []
 
-    if is_panel and panel_group_names is not None:
+    if is_panel and groups is not None:
         return _plot_decomposition_panel(
             y=y,
             components=components,
             value_cols=value_cols,
             decomp_mode=decomp_mode,
             show_original=show_original,
-            panel_group_names=panel_group_names,
+            groups=groups,
             color_palette=color_palette,
             title=title,
             x_label=x_label,
@@ -3009,7 +3038,7 @@ def plot_decomposition(
                 )
 
     # Component panels
-    _meta_cols = {"time", "observed_time"}
+    _meta_cols = {"time", "vintage_time"}
     for comp_idx, (comp_name, comp_df) in enumerate(components.items()):
         row = comp_idx + 1 + row_offset
         # Resolve value columns for this component: prefer names matching y,
@@ -3074,7 +3103,7 @@ def _plot_decomposition_panel(
     value_cols: list[str],
     decomp_mode: bool,
     show_original: bool,
-    panel_group_names: list[str],
+    groups: list[str],
     color_palette: list[str] | None,
     title: str | None,
     x_label: str | None,
@@ -3092,8 +3121,8 @@ def _plot_decomposition_panel(
     Returns one figure per member with groups overlaid by colour.
     When there is only one member, returns a single ``go.Figure``.
     """
-    panel_cols = resolve_panel_columns(y, panel_group_names or None, None)
-    groups, all_members = _group_panel_columns(panel_cols)
+    panel_cols = resolve_panel_columns(y, groups or None, None)
+    group_map, all_members = _group_panel_columns(panel_cols)
 
     # Component row labels
     comp_labels: list[str] = []
@@ -3126,7 +3155,7 @@ def _plot_decomposition_panel(
             _legend_tracker: LegendTracker = legend_tracker,
         ) -> None:
             """Add component traces for a single member to the figure."""
-            for gname, group_cols in groups.items():
+            for gname, group_cols in group_map.items():
                 col_name = next(
                     (c for c in group_cols if _member_name(c) == _member),
                     None,
