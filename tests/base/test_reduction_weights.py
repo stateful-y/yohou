@@ -183,3 +183,171 @@ class TestTimeWeightValidation:
 
         with pytest.raises(ValueError, match="sample_weight"):
             f.fit(reduction_data, forecasting_horizon=3, time_weight=linear_weight_fn)
+
+
+class TestVintageWeightFit:
+    """Tests for vintage_weight integration with fit()."""
+
+    def test_vintage_weight_none_matches_no_kwarg(self, reduction_data):
+        """Passing vintage_weight=None should match omitting it entirely."""
+        f1 = _make_forecaster()
+        f1.fit(reduction_data, forecasting_horizon=3)
+        pred1 = f1.predict(forecasting_horizon=3)
+
+        f2 = _make_forecaster()
+        f2.set_fit_request(vintage_weight=True)
+        f2.fit(reduction_data, forecasting_horizon=3, vintage_weight=None)
+        pred2 = f2.predict(forecasting_horizon=3)
+
+        np.testing.assert_array_almost_equal(
+            pred1["value"].to_numpy(),
+            pred2["value"].to_numpy(),
+        )
+
+    def test_vintage_weight_callable(self, reduction_data):
+        """Callable vintage_weight should produce a fitted forecaster."""
+
+        def vw_fn(time: pl.Series) -> pl.Series:
+            n = len(time)
+            return pl.Series("w", list(range(1, n + 1)), dtype=pl.Float64)
+
+        f = _make_forecaster()
+        f.set_fit_request(vintage_weight=True)
+        f.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_fn)
+        result = f.predict(forecasting_horizon=3)
+        assert isinstance(result, pl.DataFrame)
+        assert len(result) == 3
+
+    def test_vintage_weight_dataframe(self, reduction_data):
+        """DataFrame vintage_weight should work."""
+        vw_df = pl.DataFrame({
+            "time": reduction_data["time"].to_list(),
+            "weight": list(range(1, len(reduction_data) + 1)),
+        }).cast({"weight": pl.Float64})
+
+        f = _make_forecaster()
+        f.set_fit_request(vintage_weight=True)
+        f.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_df)
+        result = f.predict(forecasting_horizon=3)
+        assert isinstance(result, pl.DataFrame)
+
+    def test_vintage_weight_dict(self, reduction_data):
+        """Dict vintage_weight should work."""
+        times = reduction_data["time"].to_list()
+        vw_dict = {t: float(i + 1) for i, t in enumerate(times)}
+
+        f = _make_forecaster()
+        f.set_fit_request(vintage_weight=True)
+        f.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_dict)
+        result = f.predict(forecasting_horizon=3)
+        assert isinstance(result, pl.DataFrame)
+
+    def test_vintage_weight_changes_predictions(self, reduction_data):
+        """Non-uniform vintage_weight should change predictions vs no weight."""
+        f_plain = _make_forecaster()
+        f_plain.fit(reduction_data, forecasting_horizon=3)
+        pred_plain = f_plain.predict(forecasting_horizon=3)
+
+        # Weight only the first 5 observations, zero out the rest
+        def vw_fn(time: pl.Series) -> pl.Series:
+            n = len(time)
+            weights = [0.0] * n
+            for i in range(min(5, n)):
+                weights[i] = 1.0
+            return pl.Series("w", weights, dtype=pl.Float64)
+
+        f_weighted = _make_forecaster()
+        f_weighted.set_fit_request(vintage_weight=True)
+        f_weighted.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_fn)
+        pred_weighted = f_weighted.predict(forecasting_horizon=3)
+
+        assert not np.allclose(
+            pred_plain["value"].to_numpy(),
+            pred_weighted["value"].to_numpy(),
+        )
+
+
+class TestCombinedTimeAndVintageWeight:
+    """Tests for combining time_weight and vintage_weight."""
+
+    def test_both_weights_work_together(self, reduction_data, linear_weight_fn):
+        """Providing both time_weight and vintage_weight should produce fitted forecaster."""
+
+        def vw_fn(time: pl.Series) -> pl.Series:
+            n = len(time)
+            return pl.Series("w", list(range(1, n + 1)), dtype=pl.Float64)
+
+        f = _make_forecaster()
+        f.set_fit_request(time_weight=True, vintage_weight=True)
+        f.fit(
+            reduction_data,
+            forecasting_horizon=3,
+            time_weight=linear_weight_fn,
+            vintage_weight=vw_fn,
+        )
+        result = f.predict(forecasting_horizon=3)
+        assert isinstance(result, pl.DataFrame)
+        assert len(result) == 3
+
+    def test_combined_differs_from_individual(self, reduction_data, linear_weight_fn):
+        """Combined weights should differ from either individual weight alone."""
+
+        def vw_fn(time: pl.Series) -> pl.Series:
+            n = len(time)
+            weights = [0.01] * n
+            weights[-1] = 100.0
+            return pl.Series("w", weights, dtype=pl.Float64)
+
+        f_tw = _make_forecaster()
+        f_tw.set_fit_request(time_weight=True)
+        f_tw.fit(reduction_data, forecasting_horizon=3, time_weight=linear_weight_fn)
+        pred_tw = f_tw.predict(forecasting_horizon=3)["value"].to_numpy()
+
+        f_vw = _make_forecaster()
+        f_vw.set_fit_request(vintage_weight=True)
+        f_vw.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_fn)
+        pred_vw = f_vw.predict(forecasting_horizon=3)["value"].to_numpy()
+
+        f_both = _make_forecaster()
+        f_both.set_fit_request(time_weight=True, vintage_weight=True)
+        f_both.fit(
+            reduction_data,
+            forecasting_horizon=3,
+            time_weight=linear_weight_fn,
+            vintage_weight=vw_fn,
+        )
+        pred_both = f_both.predict(forecasting_horizon=3)["value"].to_numpy()
+
+        differs_from_tw = not np.allclose(pred_both, pred_tw)
+        differs_from_vw = not np.allclose(pred_both, pred_vw)
+        assert differs_from_tw or differs_from_vw
+
+    def test_zero_vintage_weight_raises(self, reduction_data):
+        """All-zero vintage_weight should raise ValueError."""
+
+        def zero_vw(time: pl.Series) -> pl.Series:
+            return pl.Series("w", [0.0] * len(time), dtype=pl.Float64)
+
+        f = _make_forecaster()
+        f.set_fit_request(vintage_weight=True)
+        with pytest.raises(ValueError, match="zero"):
+            f.fit(reduction_data, forecasting_horizon=3, vintage_weight=zero_vw)
+
+
+class TestVintageWeightDirectStrategies:
+    """Tests for vintage_weight with different reduction strategies."""
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct"])
+    def test_vintage_weight_with_strategy(self, reduction_data, strategy):
+        """vintage_weight should work with each reduction strategy."""
+
+        def vw_fn(time: pl.Series) -> pl.Series:
+            n = len(time)
+            return pl.Series("w", list(range(1, n + 1)), dtype=pl.Float64)
+
+        f = PointReductionForecaster(estimator=LinearRegression(), reduction_strategy=strategy)
+        f.set_fit_request(vintage_weight=True)
+        f.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_fn)
+        result = f.predict(forecasting_horizon=3)
+        assert isinstance(result, pl.DataFrame)
+        assert len(result) == 3

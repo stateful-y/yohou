@@ -1056,7 +1056,9 @@ def _plot_score_time_series_panel(
     width: int | None,
     height: int | None,
     connect_gaps: bool = False,
-    time_weight: Callable | pl.DataFrame | None = None,
+    time_weight: Callable | pl.DataFrame | dict | None = None,
+    step_weight: Callable | pl.DataFrame | dict | None = None,
+    vintage_weight: Callable | pl.DataFrame | dict | None = None,
     resampler: bool | Literal["widget"] | None = None,
     columns: str | list[str] | None = None,
     line_width: float = 2.0,
@@ -1094,9 +1096,13 @@ def _plot_score_time_series_panel(
         Plot width in pixels.
     height : int | None
         Plot height in pixels.
-    time_weight : callable or pl.DataFrame or None, default=None
-        Time weighting function or DataFrame forwarded to
+    time_weight : callable, pl.DataFrame, dict, or None, default=None
+        Time weighting function, DataFrame, or dict forwarded to
         ``scorer.score()``.
+    step_weight : callable, pl.DataFrame, dict, or None, default=None
+        Per-step weights forwarded to ``scorer.score()``.
+    vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+        Per-vintage weights forwarded to ``scorer.score()``.
     line_width : float, default=2.0
         Width of score lines.
     line_dash : str, default="solid"
@@ -1137,6 +1143,10 @@ def _plot_score_time_series_panel(
     score_kwargs: dict = {}
     if time_weight is not None:
         score_kwargs["time_weight"] = time_weight
+    if step_weight is not None:
+        score_kwargs["step_weight"] = step_weight
+    if vintage_weight is not None:
+        score_kwargs["vintage_weight"] = vintage_weight
 
     legend_tracker = LegendTracker(show_legend=show_legend)
 
@@ -1299,7 +1309,9 @@ def _compute_componentwise_scores(
     y_truth: pl.DataFrame,
     y_pred_model: pl.DataFrame,
     columns: str | list[str] | None,
-    time_weight: Callable | pl.DataFrame | None,
+    time_weight: Callable | pl.DataFrame | dict | None,
+    step_weight: Callable | pl.DataFrame | dict | None = None,
+    vintage_weight: Callable | pl.DataFrame | dict | None = None,
 ) -> pl.DataFrame:
     """Compute componentwise scores for one scorer-model pair.
 
@@ -1314,6 +1326,10 @@ def _compute_componentwise_scores(
     score_kwargs: dict = {}
     if time_weight is not None:
         score_kwargs["time_weight"] = time_weight
+    if step_weight is not None:
+        score_kwargs["step_weight"] = step_weight
+    if vintage_weight is not None:
+        score_kwargs["vintage_weight"] = vintage_weight
 
     scores_df = scorer_cw.score(y_truth, y_pred_model, **score_kwargs)
 
@@ -1350,7 +1366,9 @@ def plot_score_time_series(
     y_truth: pl.DataFrame,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
-    time_weight: Callable | pl.DataFrame | None = None,
+    time_weight: Callable | pl.DataFrame | dict | None = None,
+    step_weight: Callable | pl.DataFrame | dict | None = None,
+    vintage_weight: Callable | pl.DataFrame | dict | None = None,
     compare_by: Literal["scorer", "model"] = "scorer",
     columns: str | list[str] | None = None,
     groups: list[str] | None = None,
@@ -1392,10 +1410,14 @@ def plot_score_time_series(
         Predicted values with 'vintage_time' and 'time' columns.
         - If DataFrame: single forecast to plot
         - If dict: multiple forecasts with keys as model names
-    time_weight : callable or pl.DataFrame or None, default=None
-        Time weighting function or DataFrame forwarded to
+    time_weight : callable, pl.DataFrame, dict, or None, default=None
+        Time weighting function, DataFrame, or dict forwarded to
         ``scorer.score()``.  When provided, per-timestep scores are
         weighted before being plotted.
+    step_weight : callable, pl.DataFrame, dict, or None, default=None
+        Per-step weights forwarded to ``scorer.score()``.
+    vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+        Per-vintage weights forwarded to ``scorer.score()``.
     compare_by : str, default="scorer"
         When both ``scorer`` and ``y_pred`` are dicts, controls which
         dimension is overlaid (colored lines) vs faceted (subplots):
@@ -1567,6 +1589,8 @@ def plot_score_time_series(
             height=height,
             connect_gaps=connect_gaps,
             time_weight=time_weight,
+            step_weight=step_weight,
+            vintage_weight=vintage_weight,
             resampler=resampler,
             columns=columns,
             line_width=line_width,
@@ -1589,7 +1613,9 @@ def plot_score_time_series(
         all_vintages: list = []
         cw_results: dict[str, pl.DataFrame] = {}
         for model_name, y_pred_model in y_pred_dict.items():
-            cw_df = _compute_componentwise_scores(first_scorer_cw, y_truth, y_pred_model, columns, time_weight)
+            cw_df = _compute_componentwise_scores(
+                first_scorer_cw, y_truth, y_pred_model, columns, time_weight, step_weight, vintage_weight
+            )
             cw_results[model_name] = cw_df
             if "vintage_time" in cw_df.columns:
                 for v in cw_df["vintage_time"].unique().sort().to_list():
@@ -1710,7 +1736,9 @@ def plot_score_time_series(
                     s_cw = scorer_cw_dict[overlay_label]
                     y_pm = y_pred_dict[facet_label]
 
-                cw_df = _compute_componentwise_scores(s_cw, y_truth, y_pm, columns, time_weight)
+                cw_df = _compute_componentwise_scores(
+                    s_cw, y_truth, y_pm, columns, time_weight, step_weight, vintage_weight
+                )
 
                 _add_vintage_traces(
                     fig,
@@ -1754,7 +1782,9 @@ def plot_score_time_series(
         y_pred_single = next(iter(y_pred_dict.values()))
 
         for idx, s_name in enumerate(scorer_cw_dict):
-            cw_df = _compute_componentwise_scores(scorer_cw_dict[s_name], y_truth, y_pred_single, columns, time_weight)
+            cw_df = _compute_componentwise_scores(
+                scorer_cw_dict[s_name], y_truth, y_pred_single, columns, time_weight, step_weight, vintage_weight
+            )
             _add_vintage_traces(
                 fig,
                 cw_df,
@@ -1779,7 +1809,9 @@ def plot_score_time_series(
         first_scorer_cw = next(iter(scorer_cw_dict.values()))
 
         for idx, (model_name, y_pred_model) in enumerate(y_pred_dict.items()):
-            cw_df = _compute_componentwise_scores(first_scorer_cw, y_truth, y_pred_model, columns, time_weight)
+            cw_df = _compute_componentwise_scores(
+                first_scorer_cw, y_truth, y_pred_model, columns, time_weight, step_weight, vintage_weight
+            )
             _add_vintage_traces(
                 fig,
                 cw_df,

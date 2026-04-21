@@ -3,21 +3,24 @@
 from __future__ import annotations
 
 import abc
-import functools
-import inspect
-import operator
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.utils import Tags, inspect_panel, validate_callable_signature, validate_scorer_data
+from yohou.utils import Tags, inspect_panel, validate_scorer_data
 from yohou.utils._compat import StrOptions, _fit_context
 from yohou.utils.validation import check_interval_consistency
+from yohou.utils.weighting import (
+    combine_weight_vectors,
+    normalize_weights,
+    resolve_weight_to_array,
+    validate_callable_signature,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -433,146 +436,222 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return result
 
-    def _compute_time_weight_vector(
+    def _pre_filter_zero_weights(
         self,
-        time_weight: Callable | pl.DataFrame | None,
-        time_values: list | None,
-        n_rows: int,
-        group_name: str | None = None,
-    ) -> np.ndarray | None:
-        """Build a normalized time weight vector.
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        context: ScoringContext,
+        time_weight: Callable | pl.DataFrame | dict | None = None,
+        step_weight: Callable | pl.DataFrame | dict | None = None,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
+    ) -> tuple[
+        pl.DataFrame,
+        pl.DataFrame,
+        ScoringContext,
+        np.ndarray | dict[str, np.ndarray] | None,
+        np.ndarray | dict[str, np.ndarray] | None,
+        np.ndarray | dict[str, np.ndarray] | None,
+    ]:
+        """Resolve weights and pre-filter rows with zero weight.
 
-        Parameters
-        ----------
-        time_weight : callable, pl.DataFrame, or None
-            Time weighting specification.
-        time_values : list or None
-            Time values for each row.
-        n_rows : int
-            Expected number of rows.
-        group_name : str or None
-            Panel group name for 2-parameter callables.
+        For group-uniform sources (dict, 1-param callable, DataFrame
+        without group columns), zeros are combined into a mask and matching
+        rows are removed from ``y_truth``, ``y_pred``, and ``context``.
+        For panel-aware sources, weights are resolved per-group into a
+        ``dict[str, np.ndarray]`` but NOT used for row pre-filtering.
 
-        Returns
-        -------
-        numpy.ndarray or None
-            Normalized weight vector of length ``n_rows``, or None if
-            ``time_weight`` is None.
+        Returns the filtered data plus pre-resolved weights to avoid
+        resolving twice.
 
         """
-        if time_weight is None:
-            return None
+        _, panel_groups = inspect_panel(y_truth)
+        has_panel = len(panel_groups) > 0
 
-        if callable(time_weight):
-            validate_callable_signature(time_weight)
+        zero_mask = np.zeros(len(y_truth), dtype=bool)
 
-            if time_values is None:
-                raise ValueError("time_values cannot be None when time_weight is callable")
+        def _resolve_one(
+            w: Callable | pl.DataFrame | dict | None,
+            key_series: pl.Series,
+            join_column: str,
+            name: str,
+        ) -> np.ndarray | dict[str, np.ndarray] | None:
+            if w is None:
+                return None
 
-            time_series = pl.Series("time", time_values)
-            tw = cast("Callable[..., pl.Series]", time_weight)
-            sig = inspect.signature(time_weight)
-            if len(sig.parameters) == 1:
-                weights_series = tw(time_series)
-            elif len(sig.parameters) == 2:
-                weights_series = tw(time_series, group_name)
-            else:
-                raise ValueError(f"time_weight callable must have 1 or 2 parameters, got {len(sig.parameters)}")
+            # Detect panel-awareness
+            is_panel_aware = False
+            if has_panel and callable(w) and not isinstance(w, dict):
+                n_params = validate_callable_signature(w)
+                is_panel_aware = n_params == 2
+            elif has_panel and isinstance(w, pl.DataFrame):
+                # Check if it has group-specific weight columns
+                for g in panel_groups:
+                    if f"{g}_weight" in w.columns:
+                        is_panel_aware = True
+                        break
 
-            if not isinstance(weights_series, pl.Series):
-                raise ValueError(f"time_weight callable must return pl.Series, got {type(weights_series).__name__}")
+            if is_panel_aware and has_panel:
+                # Resolve per-group, no row pre-filtering
+                result_dict: dict[str, np.ndarray] = {}
+                for group_name in panel_groups:
+                    arr = resolve_weight_to_array(w, key_series, join_column, group_name)
+                    result_dict[group_name] = arr
+                return result_dict
 
-            if len(weights_series) != n_rows:
+            # Group-uniform: resolve once, track zeros for filtering
+            group_name = next(iter(panel_groups)) if has_panel else None
+            arr = resolve_weight_to_array(w, key_series, join_column, group_name)
+            return arr
+
+        # Build key series for each weight type
+        time_series = pl.Series("time", context.time_values) if context.time_values is not None else None
+        step_series = context.forecasting_step
+        vintage_series = context.vintage_time
+
+        # Resolve time_weight
+        tw_resolved = None
+        if time_weight is not None:
+            if time_series is None:
+                raise ValueError("time_values unavailable in context but time_weight was provided")
+            tw_resolved = _resolve_one(time_weight, time_series, "time", "time_weight")
+            if isinstance(tw_resolved, np.ndarray):
+                zero_mask |= tw_resolved == 0.0
+
+        # Resolve step_weight (silently ignored when forecasting_step unavailable)
+        sw_resolved = None
+        if step_weight is not None and step_series is not None:
+            sw_resolved = _resolve_one(step_weight, step_series, "forecasting_step", "step_weight")
+            if isinstance(sw_resolved, np.ndarray):
+                zero_mask |= sw_resolved == 0.0
+
+        # Resolve vintage_weight (silently ignored when vintage_time unavailable)
+        vw_resolved = None
+        if vintage_weight is not None and vintage_series is not None:
+            vw_resolved = _resolve_one(vintage_weight, vintage_series, "vintage_time", "vintage_weight")
+            if isinstance(vw_resolved, np.ndarray):
+                zero_mask |= vw_resolved == 0.0
+
+        # Apply zero-mask filter
+        if np.any(zero_mask):
+            keep = ~zero_mask
+            if not np.any(keep):
                 raise ValueError(
-                    f"time_weight callable returned {len(weights_series)} weights, but expected {n_rows} rows"
+                    "All rows have zero weight after pre-filtering. "
+                    "Check that weight dicts/callables assign non-zero weights to at least some data."
                 )
 
-            weights_np = weights_series.to_numpy()
+            from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
 
-        elif isinstance(time_weight, pl.DataFrame):
-            if time_values is None:
-                raise ValueError("time_values cannot be None when time_weight is DataFrame")
-
-            time_df = pl.DataFrame({"time": time_values})
-            joined = time_df.join(time_weight, on="time", how="left")
-
-            if group_name is not None:
-                group_col = f"{group_name}_weight"
-                if group_col in joined.columns:
-                    weights_series = joined[group_col]
-                elif "weight" in joined.columns:
-                    weights_series = joined["weight"]
-                else:
-                    raise ValueError(f"time_weight DataFrame missing both '{group_col}' and 'weight' columns")
-            else:
-                if "weight" not in joined.columns:
-                    raise ValueError("time_weight DataFrame must have 'weight' column for global data")
-                weights_series = joined["weight"]
-
-            weights_np = weights_series.to_numpy()
-
-        else:
-            raise ValueError(f"time_weight must be callable, pl.DataFrame, or None, got {type(time_weight).__name__}")
-
-        # Validate weights
-        nan_mask = np.isnan(weights_np)
-        if np.any(nan_mask):
-            nan_indices = np.where(nan_mask)[0].tolist()
-            if time_values is not None:
-                missing_times = [time_values[i] for i in nan_indices]
-                raise ValueError(
-                    f"Time weights contain NaN at {len(nan_indices)} position(s). "
-                    f"The time_weight source has no values for times: {missing_times[:5]}"
-                    f"{'...' if len(missing_times) > 5 else ''}. "
-                    "Check that time_weight covers all scored time points."
-                )
-            raise ValueError(
-                f"Time weights contain NaN at indices {nan_indices[:10]}. "
-                "Check that time_weight covers all scored time points."
-            )
-        if np.any(weights_np < 0):
-            raise ValueError("Time weights contain negative values")
-        if np.any(np.isinf(weights_np)):
-            raise ValueError("Time weights contain infinite values")
-        if np.sum(weights_np) == 0:
-            raise ValueError(
-                "Time weights sum to zero. All weights are zero, so no time points contribute to the score."
+            y_truth = y_truth.filter(keep)
+            y_pred = y_pred.filter(keep)
+            context = _ScoringContext(
+                time_values=[t for t, m in zip(context.time_values, keep.tolist(), strict=True) if m],
+                vintage_time=(context.vintage_time.filter(keep) if context.vintage_time is not None else None),
+                forecasting_step=(
+                    context.forecasting_step.filter(keep) if context.forecasting_step is not None else None
+                ),
             )
 
-        # Normalize weights to sum to number of samples (preserves scale)
-        return weights_np * (len(weights_np) / np.sum(weights_np))
+            # Slice resolved weight arrays to match
+            if isinstance(tw_resolved, np.ndarray):
+                tw_resolved = tw_resolved[keep]  # ty: ignore[invalid-argument-type]
+            elif isinstance(tw_resolved, dict):
+                tw_resolved = {g: a[keep] for g, a in tw_resolved.items()}  # ty: ignore[invalid-argument-type]
 
-    def _process_time_weights(
+            if isinstance(sw_resolved, np.ndarray):
+                sw_resolved = sw_resolved[keep]  # ty: ignore[invalid-argument-type]
+            elif isinstance(sw_resolved, dict):
+                sw_resolved = {g: a[keep] for g, a in sw_resolved.items()}  # ty: ignore[invalid-argument-type]
+
+            if isinstance(vw_resolved, np.ndarray):
+                vw_resolved = vw_resolved[keep]  # ty: ignore[invalid-argument-type]
+            elif isinstance(vw_resolved, dict):
+                vw_resolved = {g: a[keep] for g, a in vw_resolved.items()}  # ty: ignore[invalid-argument-type]
+
+        return y_truth, y_pred, context, tw_resolved, sw_resolved, vw_resolved
+
+    def _apply_weights(
         self,
-        raw_scores: pl.DataFrame,
-        time_weight: Callable | pl.DataFrame | None,
-        time_values: list | None,
-        group_name: str | None = None,
+        scores: pl.DataFrame,
+        time_weight_resolved: np.ndarray | dict[str, np.ndarray] | None,
+        step_weight_resolved: np.ndarray | dict[str, np.ndarray] | None,
+        vintage_weight_resolved: np.ndarray | dict[str, np.ndarray] | None,
+        n_rates: int = 1,
     ) -> pl.DataFrame:
-        """Apply time-based weights to raw per-timestep scores.
+        """Apply pre-resolved weights to score DataFrame.
 
-        Parameters
-        ----------
-        raw_scores : pl.DataFrame
-            Per-timestep per-component scores without "time" column.
-        time_weight : callable, pl.DataFrame, or None
-            Time weighting specification.
-        time_values : list or None
-            Time values corresponding to raw_scores rows.
-        group_name : str or None
-            Panel group name for 2-parameter callables. None for global data.
-
-        Returns
-        -------
-        pl.DataFrame
-            Weighted scores with same shape as raw_scores.
+        Two-stage normalization: (1) normalize and apply time_weight,
+        (2) combine step_weight + vintage_weight, normalize, and apply.
 
         """
-        weights_np = self._compute_time_weight_vector(time_weight, time_values, len(raw_scores), group_name)
-        if weights_np is None:
-            return raw_scores
+        _, panel_groups = inspect_panel(scores)
 
-        return raw_scores.with_columns([(pl.col(col) * weights_np).alias(col) for col in raw_scores.columns])
+        def _apply_array(df: pl.DataFrame, w: np.ndarray, cols: list[str]) -> pl.DataFrame:
+            """Multiply columns by weight array."""
+            return df.with_columns([(pl.col(c) * w).alias(c) for c in cols])
+
+        def _apply_one_weight(
+            df: pl.DataFrame,
+            w_resolved: np.ndarray | dict[str, np.ndarray],
+            value_cols: list[str],
+        ) -> pl.DataFrame:
+            """Apply a single normalized weight (array or dict) to scores."""
+            if isinstance(w_resolved, dict):
+                for group_name, group_arr in w_resolved.items():
+                    normed = normalize_weights(group_arr)  # ty: ignore[invalid-argument-type]
+                    tiled = np.tile(normed, n_rates) if n_rates > 1 else normed
+                    group_cols = [c for c in panel_groups.get(group_name, []) if c in value_cols]  # ty: ignore[no-matching-overload]
+                    if group_cols:
+                        df = _apply_array(df, tiled, group_cols)
+            else:
+                normed = normalize_weights(w_resolved)
+                tiled = np.tile(normed, n_rates) if n_rates > 1 else normed
+                df = _apply_array(df, tiled, value_cols)
+            return df
+
+        value_cols = [c for c in scores.columns if c != "coverage_rate"]
+
+        # Stage 1: time_weight (normalized independently)
+        if time_weight_resolved is not None:
+            scores = _apply_one_weight(scores, time_weight_resolved, value_cols)
+
+        # Stage 2: step_weight + vintage_weight (combined, then normalized)
+        if step_weight_resolved is not None or vintage_weight_resolved is not None:
+            # For dict weights, combine per-group
+            if isinstance(step_weight_resolved, dict) or isinstance(vintage_weight_resolved, dict):
+                all_groups = set()
+                if isinstance(step_weight_resolved, dict):
+                    all_groups |= step_weight_resolved.keys()
+                if isinstance(vintage_weight_resolved, dict):
+                    all_groups |= vintage_weight_resolved.keys()
+
+                for group_name in all_groups:
+                    sw_g = (
+                        step_weight_resolved.get(group_name)
+                        if isinstance(step_weight_resolved, dict)
+                        else step_weight_resolved
+                    )
+                    vw_g = (
+                        vintage_weight_resolved.get(group_name)
+                        if isinstance(vintage_weight_resolved, dict)
+                        else vintage_weight_resolved
+                    )
+                    n = len(sw_g) if sw_g is not None else len(vw_g)  # ty: ignore[invalid-argument-type]
+                    combined = combine_weight_vectors(sw_g, vw_g, n=n)  # ty: ignore[invalid-argument-type]
+                    if combined is not None:
+                        tiled = np.tile(combined, n_rates) if n_rates > 1 else combined
+                        group_cols = [c for c in panel_groups.get(group_name, []) if c in value_cols]  # ty: ignore[no-matching-overload]
+                        if group_cols:
+                            scores = _apply_array(scores, tiled, group_cols)
+            else:
+                # Both are plain arrays or None
+                n = len(step_weight_resolved) if step_weight_resolved is not None else len(vintage_weight_resolved)  # ty: ignore[invalid-argument-type]
+                combined = combine_weight_vectors(step_weight_resolved, vintage_weight_resolved, n=n)
+                if combined is not None:
+                    tiled = np.tile(combined, n_rates) if n_rates > 1 else combined
+                    scores = _apply_array(scores, tiled, value_cols)
+
+        return scores
 
     def _validate_parameters(
         self,
@@ -721,75 +800,6 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         modes = {aggregation_method} if isinstance(aggregation_method, str) else set(aggregation_method)
 
         return modes
-
-    def _apply_step_filter(
-        self,
-        y_truth: pl.DataFrame,
-        y_pred: pl.DataFrame,
-        context: ScoringContext,
-        forecasting_steps: list[int] | None = None,
-    ) -> tuple[pl.DataFrame, pl.DataFrame, ScoringContext]:
-        """Filter rows to the requested ``forecasting_steps``.
-
-        When ``forecasting_steps`` is ``None`` or
-        ``context.forecasting_step`` is unavailable, returns the inputs
-        unchanged.
-
-        """
-        if forecasting_steps is None or context.forecasting_step is None:
-            return y_truth, y_pred, context
-
-        mask = context.forecasting_step.is_in(forecasting_steps)
-
-        from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
-
-        return (
-            y_truth.filter(mask),
-            y_pred.filter(mask),
-            _ScoringContext(
-                time_values=[t for t, m in zip(context.time_values, mask.to_list(), strict=True) if m],
-                vintage_time=(context.vintage_time.filter(mask) if context.vintage_time is not None else None),
-                forecasting_step=context.forecasting_step.filter(mask),
-            ),
-        )
-
-    def _build_row_weights(
-        self,
-        context: ScoringContext | None,
-        n_rows: int,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
-    ) -> np.ndarray | None:
-        """Build combined per-row weight array from step_weight and vintage_weight.
-
-        Resolves both weight dicts into per-row arrays and combines them
-        multiplicatively. The combined product is normalized once so that
-        weights sum to ``n_rows`` (preserving score scale).
-
-        Returns ``None`` when neither weight applies, meaning equal weights.
-        """
-        weights: list[np.ndarray] = []
-
-        if step_weight is not None and context is not None:
-            steps = getattr(context, "forecasting_step", None)
-            if steps is not None:
-                weights.append(np.array([step_weight.get(int(s), 1.0) for s in steps.to_list()]))
-
-        if vintage_weight is not None and context is not None:
-            obs = getattr(context, "vintage_time", None)
-            if obs is not None:
-                weights.append(np.array([vintage_weight.get(v, 1.0) for v in obs.to_list()]))
-
-        if not weights:
-            return None
-
-        combined = functools.reduce(operator.mul, weights)
-        if combined.sum() == 0:
-            return None
-
-        # Normalize: preserves scale by making weights sum to n_rows
-        combined = combined * (n_rows / combined.sum())
-        return combined
 
     def _aggregate_scores(
         self, raw_scores: pl.DataFrame, context: ScoringContext | None = None
@@ -1073,16 +1083,15 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         /,
-        time_weight: Callable | pl.DataFrame | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
-        forecasting_steps: list[int] | None = None,
+        time_weight: Callable | pl.DataFrame | dict[datetime | str, float] | None = None,
+        step_weight: Callable | pl.DataFrame | dict[int | str, float] | None = None,
+        vintage_weight: Callable | pl.DataFrame | dict[datetime | str, float] | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute the point metric score.
 
-        Template method: validate -> compute raw errors -> apply time
-        weights -> aggregate -> post-aggregate transform -> rename columns.
+        Template method: validate -> pre-filter zeros -> compute raw errors
+        -> apply weights -> aggregate -> post-aggregate transform -> rename.
 
         Parameters
         ----------
@@ -1090,14 +1099,19 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
             True values with ``"time"`` column.
         y_pred : pl.DataFrame
             Predicted values with ``"time"`` column.
-        time_weight : callable, pl.DataFrame, or None, default=None
-            Time-based evaluation weights.
-        step_weight : dict or None, default=None
-            Per-step weights ({step_index: weight}).
-        vintage_weight : dict or None, default=None
-            Per-vintage weights ({datetime: weight}).
-        forecasting_steps : list of int or None, default=None
-            Subset of forecasting steps to score.
+        time_weight : callable, pl.DataFrame, dict, or None, default=None
+            Time-based evaluation weights. Accepts a callable
+            ``f(time_series) -> pl.Series``, a panel-aware callable
+            ``f(time_series, group_name) -> pl.Series``, a DataFrame
+            with ``"time"`` and ``"weight"`` columns, or a
+            ``{datetime_or_str: float}`` dict (``"*"`` key sets default).
+        step_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-step weights. Same formats as ``time_weight`` but keyed on
+            ``"forecasting_step"``. Use ``{"*": 0.0, 1: 1.0}`` to score
+            only step 1.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights. Same formats as ``time_weight`` but keyed
+            on ``"vintage_time"``.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1115,31 +1129,21 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
             y_pred,
         )
 
-        # 0. Apply forecasting_steps filter
-        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context, forecasting_steps)
+        # 0. Resolve weights and pre-filter zero-weight rows
+        y_truth, y_pred, context, tw, sw, vw = self._pre_filter_zero_weights(
+            y_truth,
+            y_pred,
+            context,
+            time_weight,
+            step_weight,
+            vintage_weight,
+        )
 
         # 1. Compute raw per-timestep per-component errors
         scores = self._compute_raw_errors(y_truth, y_pred)
 
-        # 2. Apply time weights if provided
-        if time_weight is not None:
-            _, panel_groups = inspect_panel(scores)
-            time_values = context.time_values
-
-            if len(panel_groups) > 0:
-                weighted_parts = []
-                for group_name, group_cols in panel_groups.items():
-                    group_scores = scores.select(group_cols)
-                    weighted_group = self._process_time_weights(group_scores, time_weight, time_values, group_name)
-                    weighted_parts.append(weighted_group)
-                scores = pl.concat(weighted_parts, how="horizontal")
-            else:
-                scores = self._process_time_weights(scores, time_weight, time_values, group_name=None)
-
-        # 2b. Apply step/vintage row weights (pre-aggregation)
-        row_weights = self._build_row_weights(context, len(scores), step_weight, vintage_weight)
-        if row_weights is not None:
-            scores = scores.with_columns([(pl.col(col) * row_weights).alias(col) for col in scores.columns])
+        # 2. Apply weights (two-stage: time first, then step+vintage)
+        scores = self._apply_weights(scores, tw, sw, vw)
 
         # 3. Aggregate
         result = self._aggregate_scores(scores, context=context)
@@ -1364,16 +1368,15 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         /,
-        time_weight: Callable | pl.DataFrame | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
-        forecasting_steps: list[int] | None = None,
+        time_weight: Callable | pl.DataFrame | dict[datetime | str, float] | None = None,
+        step_weight: Callable | pl.DataFrame | dict[int | str, float] | None = None,
+        vintage_weight: Callable | pl.DataFrame | dict[datetime | str, float] | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute the interval metric score.
 
-        Template method: validate -> extract rates/columns -> compute raw
-        scores -> aggregate -> rename columns.
+        Template method: validate -> pre-filter zeros -> extract rates/columns
+        -> compute raw scores -> apply weights -> aggregate -> rename.
 
         Parameters
         ----------
@@ -1381,14 +1384,18 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             True values with ``"time"`` column.
         y_pred : pl.DataFrame
             Predicted intervals with ``"time"`` column.
-        time_weight : callable, pl.DataFrame, or None, default=None
-            Time-based evaluation weights.
-        step_weight : dict or None, default=None
-            Per-step weights ({step_index: weight}).
-        vintage_weight : dict or None, default=None
-            Per-vintage weights ({datetime: weight}).
-        forecasting_steps : list of int or None, default=None
-            Subset of forecasting steps to score.
+        time_weight : callable, pl.DataFrame, dict, or None, default=None
+            Time-based evaluation weights. Accepts a callable
+            ``f(time_series) -> pl.Series``, a panel-aware callable
+            ``f(time_series, group_name) -> pl.Series``, a DataFrame
+            with ``"time"`` and ``"weight"`` columns, or a
+            ``{datetime_or_str: float}`` dict (``"*"`` key sets default).
+        step_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-step weights. Same formats as ``time_weight`` but keyed on
+            ``"forecasting_step"``.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights. Same formats as ``time_weight`` but keyed
+            on ``"vintage_time"``.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1406,8 +1413,15 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             y_pred,
         )
 
-        # 0. Apply forecasting_steps filter
-        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context, forecasting_steps)
+        # 0. Resolve weights and pre-filter zero-weight rows
+        y_truth, y_pred, context, tw, sw, vw = self._pre_filter_zero_weights(
+            y_truth,
+            y_pred,
+            context,
+            time_weight,
+            step_weight,
+            vintage_weight,
+        )
 
         coverage_rates = self._extract_coverage_rates(y_pred)
         target_columns = self._extract_target_columns(y_truth)
@@ -1415,42 +1429,14 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         # 1. Compute raw per-timestep per-component per-rate scores (flat DataFrame)
         raw_scores = self._compute_raw_scores(y_truth, y_pred, coverage_rates, target_columns)
 
-        # 1b. Apply time weights (pre-aggregation, tiled across coverage rates)
-        if time_weight is not None:
-            value_cols = [c for c in raw_scores.columns if c != "coverage_rate"]
-            n_rates = raw_scores["coverage_rate"].n_unique() if "coverage_rate" in raw_scores.columns else 1
-            n_rows_per_rate = len(raw_scores) // max(n_rates, 1)
+        # 2. Apply weights (two-stage, tiled across coverage rates)
+        n_rates = raw_scores["coverage_rate"].n_unique() if "coverage_rate" in raw_scores.columns else 1
+        raw_scores = self._apply_weights(raw_scores, tw, sw, vw, n_rates=n_rates)
 
-            _, panel_groups = inspect_panel(raw_scores.select(value_cols))
-            time_values = context.time_values
-
-            if len(panel_groups) > 0:
-                for group_name, group_cols in panel_groups.items():
-                    tw_vec = self._compute_time_weight_vector(time_weight, time_values, n_rows_per_rate, group_name)
-                    if tw_vec is not None:
-                        tiled = np.tile(tw_vec, n_rates) if n_rates > 1 else tw_vec
-                        raw_scores = raw_scores.with_columns([(pl.col(col) * tiled).alias(col) for col in group_cols])
-            else:
-                tw_vec = self._compute_time_weight_vector(time_weight, time_values, n_rows_per_rate)
-                if tw_vec is not None:
-                    tiled = np.tile(tw_vec, n_rates) if n_rates > 1 else tw_vec
-                    raw_scores = raw_scores.with_columns([(pl.col(col) * tiled).alias(col) for col in value_cols])
-
-        # 1c. Apply step/vintage row weights (pre-aggregation)
-        # For interval data, raw_scores has a coverage_rate column; weights apply to all value columns
-        row_weights = self._build_row_weights(context, len(raw_scores), step_weight, vintage_weight)
-        if row_weights is not None:
-            value_cols = [c for c in raw_scores.columns if c != "coverage_rate"]
-            # coverage_rate repeats rows for each rate; weights must tile accordingly
-            n_rates = raw_scores["coverage_rate"].n_unique() if "coverage_rate" in raw_scores.columns else 1
-            if n_rates > 1 and len(row_weights) * n_rates == len(raw_scores):
-                row_weights = np.tile(row_weights, n_rates)
-            raw_scores = raw_scores.with_columns([(pl.col(col) * row_weights).alias(col) for col in value_cols])
-
-        # 2. Aggregate
+        # 3. Aggregate
         result = self._aggregate_scores(raw_scores, context=context)
 
-        # 3. Rename columns
+        # 4. Rename columns
         if isinstance(result, pl.DataFrame):
             result = self._rename_metric_columns(result)
 
@@ -1725,16 +1711,15 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         /,
-        time_weight: Callable | pl.DataFrame | None = None,
-        step_weight: dict[int, float] | None = None,
-        vintage_weight: dict[datetime, float] | None = None,
-        forecasting_steps: list[int] | None = None,
+        time_weight: Callable | pl.DataFrame | dict[datetime | str, float] | None = None,
+        step_weight: Callable | pl.DataFrame | dict[int | str, float] | None = None,
+        vintage_weight: Callable | pl.DataFrame | dict[datetime | str, float] | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute the class-probability metric score.
 
-        Template method: validate -> compute raw errors -> apply time
-        weights -> aggregate -> rename columns.
+        Template method: validate -> pre-filter zeros -> compute raw errors
+        -> apply weights -> aggregate -> rename.
 
         Parameters
         ----------
@@ -1742,14 +1727,18 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
             True class labels with ``"time"`` column.
         y_pred : pl.DataFrame
             Predicted probabilities with ``"time"`` column.
-        time_weight : callable, pl.DataFrame, or None, default=None
-            Time-based evaluation weights.
-        step_weight : dict or None, default=None
-            Per-step weights ({step_index: weight}).
-        vintage_weight : dict or None, default=None
-            Per-vintage weights ({datetime: weight}).
-        forecasting_steps : list of int or None, default=None
-            Subset of forecasting steps to score.
+        time_weight : callable, pl.DataFrame, dict, or None, default=None
+            Time-based evaluation weights. Accepts a callable
+            ``f(time_series) -> pl.Series``, a panel-aware callable
+            ``f(time_series, group_name) -> pl.Series``, a DataFrame
+            with ``"time"`` and ``"weight"`` columns, or a
+            ``{datetime_or_str: float}`` dict (``"*"`` key sets default).
+        step_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-step weights. Same formats as ``time_weight`` but keyed on
+            ``"forecasting_step"``.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights. Same formats as ``time_weight`` but keyed
+            on ``"vintage_time"``.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1763,8 +1752,15 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         y_truth, y_pred, context = validate_scorer_data(self, y_truth, y_pred)
 
-        # 0. Apply forecasting_steps filter
-        y_truth, y_pred, context = self._apply_step_filter(y_truth, y_pred, context, forecasting_steps)
+        # 0. Resolve weights and pre-filter zero-weight rows
+        y_truth, y_pred, context, tw, sw, vw = self._pre_filter_zero_weights(
+            y_truth,
+            y_pred,
+            context,
+            time_weight,
+            step_weight,
+            vintage_weight,
+        )
 
         # 0b. Validate probability columns are finite and in [0, 1]
         self._validate_probabilities(y_truth, y_pred)
@@ -1772,25 +1768,8 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         # 1. Compute raw per-timestep per-component errors
         scores = self._compute_raw_errors(y_truth, y_pred)
 
-        # 2. Apply time weights if provided
-        if time_weight is not None:
-            _, panel_groups = inspect_panel(scores)
-            time_values = context.time_values
-
-            if len(panel_groups) > 0:
-                weighted_parts = []
-                for group_name, group_cols in panel_groups.items():
-                    group_scores = scores.select(group_cols)
-                    weighted_group = self._process_time_weights(group_scores, time_weight, time_values, group_name)
-                    weighted_parts.append(weighted_group)
-                scores = pl.concat(weighted_parts, how="horizontal")
-            else:
-                scores = self._process_time_weights(scores, time_weight, time_values, group_name=None)
-
-        # 2b. Apply step/vintage row weights (pre-aggregation)
-        row_weights = self._build_row_weights(context, len(scores), step_weight, vintage_weight)
-        if row_weights is not None:
-            scores = scores.with_columns([(pl.col(col) * row_weights).alias(col) for col in scores.columns])
+        # 2. Apply weights (two-stage: time first, then step+vintage)
+        scores = self._apply_weights(scores, tw, sw, vw)
 
         # 3. Aggregate
         result = self._aggregate_scores(scores, context=context)

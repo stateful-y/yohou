@@ -7,11 +7,16 @@ import polars as pl
 import pytest
 
 from yohou.utils.weighting import (
+    combine_weight_vectors,
     compose_weights,
     exponential_decay_weight,
     linear_decay_weight,
+    normalize_weights,
+    resolve_dict_weights,
+    resolve_weight_to_array,
     seasonal_emphasis_weight,
     validate_callable_signature,
+    validate_weight_array,
 )
 
 
@@ -270,3 +275,219 @@ class TestValidateCallableSignature:
     def test_lambda_two_params(self):
         """Lambda with 2 parameters should work."""
         assert validate_callable_signature(lambda t, g: t) == 2
+
+
+class TestNormalizeWeights:
+    """Tests for normalize_weights."""
+
+    def test_uniform_unchanged(self):
+        """Uniform weights should remain uniform after normalization."""
+        w = np.array([2.0, 2.0, 2.0])
+        result = normalize_weights(w)
+        np.testing.assert_allclose(result, [1.0, 1.0, 1.0])
+        assert result.sum() == pytest.approx(3.0)
+
+    def test_nonuniform_sums_to_n(self):
+        """Non-uniform weights should sum to n after normalization."""
+        w = np.array([1.0, 3.0, 6.0])
+        result = normalize_weights(w)
+        assert result.sum() == pytest.approx(3.0)
+
+    def test_single_element(self):
+        """Single element normalizes to 1."""
+        w = np.array([5.0])
+        result = normalize_weights(w)
+        assert result[0] == pytest.approx(1.0)
+
+    def test_zero_sum_raises(self):
+        """Weights summing to zero should raise ValueError."""
+        w = np.array([0.0, 0.0, 0.0])
+        with pytest.raises(ValueError, match="sum is zero"):
+            normalize_weights(w)
+
+
+class TestValidateWeightArray:
+    """Tests for validate_weight_array."""
+
+    def test_valid_array_passes(self):
+        """Normal positive array passes without error."""
+        validate_weight_array(np.array([1.0, 2.0, 3.0]))
+
+    def test_array_with_zeros_and_nonzeros_passes(self):
+        """Array with some zeros but not all passes."""
+        validate_weight_array(np.array([0.0, 1.0, 0.0]))
+
+    def test_nan_raises(self):
+        """NaN values should raise ValueError."""
+        with pytest.raises(ValueError, match="contains NaN"):
+            validate_weight_array(np.array([1.0, np.nan, 3.0]))
+
+    def test_negative_raises(self):
+        """Negative values should raise ValueError."""
+        with pytest.raises(ValueError, match="negative values"):
+            validate_weight_array(np.array([1.0, -0.5, 3.0]))
+
+    def test_infinite_raises(self):
+        """Infinite values should raise ValueError."""
+        with pytest.raises(ValueError, match="infinite values"):
+            validate_weight_array(np.array([1.0, np.inf, 3.0]))
+
+    def test_all_zeros_raises(self):
+        """All-zero weights should raise ValueError."""
+        with pytest.raises(ValueError, match="All weights are zero"):
+            validate_weight_array(np.array([0.0, 0.0]))
+
+    def test_custom_name_in_message(self):
+        """Custom name appears in error messages."""
+        with pytest.raises(ValueError, match="my_weight"):
+            validate_weight_array(np.array([np.nan]), name="my_weight")
+
+
+class TestResolveDictWeights:
+    """Tests for resolve_dict_weights."""
+
+    def test_exact_keys(self):
+        """Dict keys matching array produce correct weights."""
+        result = resolve_dict_weights({1: 2.0, 2: 3.0}, [1, 2, 1])
+        np.testing.assert_array_equal(result, [2.0, 3.0, 2.0])
+
+    def test_missing_keys_use_default(self):
+        """Missing keys fall back to default=1.0."""
+        result = resolve_dict_weights({1: 5.0}, [1, 2, 3])
+        np.testing.assert_array_equal(result, [5.0, 1.0, 1.0])
+
+    def test_wildcard_overrides_default(self):
+        """Wildcard '*' key overrides the default value."""
+        result = resolve_dict_weights({"*": 0.0, 1: 2.0}, [1, 2, 3])
+        np.testing.assert_array_equal(result, [2.0, 0.0, 0.0])
+
+    def test_empty_dict_uses_default(self):
+        """Empty dict gives all defaults."""
+        result = resolve_dict_weights({}, [1, 2])
+        np.testing.assert_array_equal(result, [1.0, 1.0])
+
+    def test_datetime_keys(self):
+        """Dict with datetime keys works."""
+        d1, d2 = datetime(2024, 1, 1), datetime(2024, 1, 2)
+        result = resolve_dict_weights({d1: 2.0, d2: 3.0}, [d1, d2])
+        np.testing.assert_array_equal(result, [2.0, 3.0])
+
+
+class TestCombineWeightVectors:
+    """Tests for combine_weight_vectors."""
+
+    def test_single_array(self):
+        """Single non-None array returned normalized."""
+        result = combine_weight_vectors(np.array([2.0, 4.0]), n=2)
+        assert result is not None
+        assert result.sum() == pytest.approx(2.0)
+
+    def test_two_arrays_multiplied(self):
+        """Two arrays are multiplied element-wise then normalized."""
+        a = np.array([1.0, 2.0])
+        b = np.array([3.0, 1.0])
+        result = combine_weight_vectors(a, b, n=2)
+        assert result is not None
+        # products: [3, 2], normalize to sum=2: [6/5, 4/5]
+        np.testing.assert_allclose(result, [3 * 2 / 5, 2 * 2 / 5])
+
+    def test_all_none_returns_none(self):
+        """All None inputs return None."""
+        assert combine_weight_vectors(None, None, n=5) is None
+
+    def test_none_mixed_with_array(self):
+        """None entries are ignored; only non-None arrays used."""
+        a = np.array([1.0, 3.0])
+        result = combine_weight_vectors(None, a, None, n=2)
+        assert result is not None
+        assert result.sum() == pytest.approx(2.0)
+
+    def test_zero_product_raises(self):
+        """Weights producing all-zero product should raise ValueError."""
+        a = np.array([1.0, 0.0])
+        b = np.array([0.0, 1.0])
+        with pytest.raises(ValueError, match="zero"):
+            combine_weight_vectors(a, b, n=2)
+
+
+class TestResolveWeightToArray:
+    """Tests for resolve_weight_to_array."""
+
+    @pytest.fixture
+    def time_series(self):
+        """Return a time series for testing."""
+        return pl.Series("time", [datetime(2024, 1, i) for i in range(1, 6)])
+
+    def test_callable_1_param(self, time_series):
+        """1-parameter callable is resolved correctly."""
+
+        def wfn(t: pl.Series) -> pl.Series:
+            return pl.Series("w", [1.0] * len(t))
+
+        result = resolve_weight_to_array(wfn, time_series, "time")
+        assert len(result) == 5
+        np.testing.assert_array_equal(result, [1.0] * 5)
+
+    def test_callable_2_param(self, time_series):
+        """2-parameter callable passes group_name correctly."""
+
+        def wfn(t: pl.Series, g: str) -> pl.Series:
+            val = 2.0 if g == "groupA" else 1.0
+            return pl.Series("w", [val] * len(t))
+
+        result = resolve_weight_to_array(wfn, time_series, "time", group_name="groupA")
+        np.testing.assert_array_equal(result, [2.0] * 5)
+
+    def test_dataframe(self, time_series):
+        """DataFrame with 'time' and 'weight' columns resolves correctly."""
+        tw_df = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 6)],
+            "weight": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+        result = resolve_weight_to_array(tw_df, time_series, "time")
+        np.testing.assert_array_equal(result, [1.0, 2.0, 3.0, 4.0, 5.0])
+
+    def test_dict(self, time_series):
+        """Dict with datetime keys resolves correctly."""
+        d = {datetime(2024, 1, i): float(i) for i in range(1, 6)}
+        result = resolve_weight_to_array(d, time_series, "time")
+        np.testing.assert_array_equal(result, [1.0, 2.0, 3.0, 4.0, 5.0])
+
+    def test_dict_wildcard(self, time_series):
+        """Dict with '*' wildcard applies default to unmatched keys."""
+        d = {datetime(2024, 1, 1): 10.0, "*": 0.5}
+        result = resolve_weight_to_array(d, time_series, "time")
+        assert result[0] == pytest.approx(10.0)
+        assert all(w == pytest.approx(0.5) for w in result[1:])
+
+    def test_invalid_type_raises(self, time_series):
+        """Invalid weight type raises ValueError."""
+        with pytest.raises(ValueError, match="callable.*DataFrame.*dict.*None"):
+            resolve_weight_to_array("bad", time_series, "time")
+
+    def test_callable_wrong_length_raises(self, time_series):
+        """Callable returning wrong number of weights raises ValueError."""
+
+        def wfn(t: pl.Series) -> pl.Series:
+            return pl.Series("w", [1.0, 2.0])
+
+        with pytest.raises(ValueError, match="weights.*expected"):
+            resolve_weight_to_array(wfn, time_series, "time")
+
+    def test_dataframe_missing_weight_col_raises(self, time_series):
+        """DataFrame without 'weight' column raises ValueError."""
+        bad_df = pl.DataFrame({
+            "time": [datetime(2024, 1, 1)],
+            "bad_col": [1.0],
+        })
+        with pytest.raises(ValueError, match="weight.*column"):
+            resolve_weight_to_array(bad_df, time_series, "time")
+
+    def test_dataframe_unmatched_keys_raises(self, time_series):
+        """DataFrame with mismatched keys raises ValueError for NaN."""
+        bad_df = pl.DataFrame({
+            "time": [datetime(2025, 1, 1)],
+            "weight": [1.0],
+        })
+        with pytest.raises(ValueError, match="no values for"):
+            resolve_weight_to_array(bad_df, time_series, "time")

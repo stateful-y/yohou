@@ -55,11 +55,16 @@ from .validation import (
     validate_search_data,
 )
 from .weighting import (
+    combine_weight_vectors,
     compose_weights,
     exponential_decay_weight,
     linear_decay_weight,
+    normalize_weights,
+    resolve_dict_weights,
+    resolve_weight_to_array,
     seasonal_emphasis_weight,
     validate_callable_signature,
+    validate_weight_array,
 )
 
 __all__ = [
@@ -91,6 +96,7 @@ __all__ = [
     "check_scorer_column_selection",
     "check_sufficient_rows",
     "check_time_column",
+    "combine_weight_vectors",
     "compose_weights",
     "dict_to_panel",
     "exponential_decay_weight",
@@ -100,10 +106,13 @@ __all__ = [
     "inspect_panel",
     "interval_to_timedelta",
     "linear_decay_weight",
+    "normalize_weights",
     "panel_aware_prefix",
     "panel_aware_rename",
     "panel_aware_suffix",
     "parse_interval",
+    "resolve_dict_weights",
+    "resolve_weight_to_array",
     "seasonal_emphasis_weight",
     "select_panel_columns",
     "tabularize",
@@ -117,4 +126,5 @@ __all__ = [
     "validate_splitter_data",
     "validate_time_weight",
     "validate_transformer_data",
+    "validate_weight_array",
 ]

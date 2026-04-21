@@ -170,14 +170,14 @@ class TestAllAggregation:
         np.testing.assert_allclose(result, 1.5, atol=1e-10)
 
 
-class TestForecastingStepsFilter:
-    """forecasting_steps parameter filters which steps are scored."""
+class TestStepWeightFilter:
+    """step_weight with zero weights filters which steps are scored."""
 
     def test_filter_single_step(self, y_train, multi_vintage_data):
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, forecasting_steps=[1])
+        result = mae.score(y_true, y_pred, step_weight={1: 1.0, "*": 0.0})
 
         # Only step-1 errors: 1, 1, 1 → mean=1.0
         assert isinstance(result, float)
@@ -187,7 +187,7 @@ class TestForecastingStepsFilter:
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, forecasting_steps=[2])
+        result = mae.score(y_true, y_pred, step_weight={2: 1.0, "*": 0.0})
 
         # Only step-2 errors: 2, 2, 2 → mean=2.0
         assert isinstance(result, float)
@@ -202,12 +202,12 @@ class TestForecastingStepsFilter:
 
         mae_filtered = MeanAbsoluteError()
         mae_filtered.fit(y_train)
-        result_filtered = mae_filtered.score(y_true, y_pred, forecasting_steps=[1, 2])
+        result_filtered = mae_filtered.score(y_true, y_pred, step_weight={1: 1.0, 2: 1.0})
 
         np.testing.assert_allclose(result_all, result_filtered, atol=1e-10)
 
     def test_filter_without_vintage_time_is_noop(self, y_train):
-        """When y_pred has no vintage_time, filter is silently skipped."""
+        """When y_pred has no vintage_time, step_weight has no effect."""
         y_true = pl.DataFrame({
             "time": [datetime(2024, 1, i) for i in range(1, 4)],
             "value": [10.0, 20.0, 30.0],
@@ -218,17 +218,17 @@ class TestForecastingStepsFilter:
         })
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, forecasting_steps=[1])
-        # No forecasting_step -> filter ignored -> scores all rows
+        result = mae.score(y_true, y_pred, step_weight={1: 1.0, "*": 0.0})
+        # No forecasting_step -> step_weight ignored -> scores all rows
         assert isinstance(result, float)
         np.testing.assert_allclose(result, (1.0 + 2.0 + 2.0) / 3, atol=1e-10)
 
     def test_filter_with_vintagewise(self, y_train, multi_vintage_data):
-        """Filter + vintagewise: only step-1, collapse vintage → per-step DF."""
+        """Filter + vintagewise: only step-1, collapse vintage -> per-step DF."""
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError(aggregation_method="vintagewise")
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, forecasting_steps=[1])
+        result = mae.score(y_true, y_pred, step_weight={1: 1.0, "*": 0.0})
 
         assert isinstance(result, pl.DataFrame)
         assert "forecasting_step" in result.columns
@@ -236,12 +236,12 @@ class TestForecastingStepsFilter:
         assert len(result) == 1
         np.testing.assert_allclose(result["value"][0], 1.0, atol=1e-10)
 
-    def test_forecasting_steps_passed_to_score(self, y_train, multi_vintage_data):
-        """forecasting_steps is now a score() parameter."""
+    def test_step_weight_dict_filters_steps(self, y_train, multi_vintage_data):
+        """step_weight dict with zero wildcard filters to selected steps."""
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, forecasting_steps=[1])
+        result = mae.score(y_true, y_pred, step_weight={1: 1.0, "*": 0.0})
         np.testing.assert_allclose(result, 1.0, atol=1e-10)
 
 

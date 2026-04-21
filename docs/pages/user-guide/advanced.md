@@ -25,17 +25,13 @@ This chapter covers advanced capabilities for power users: panel data workflows,
 
 ### time_weight Support
 
+### vintage_weight Support
+
 ### Custom Routing
 
 ## Time Weighting
 
-### exponential_decay_weight
-
-### linear_decay_weight
-
-### seasonal_emphasis_weight
-
-### compose_weights
+See the dedicated [Weighting](weighting.md) page.
 
 ## Custom Estimators
 

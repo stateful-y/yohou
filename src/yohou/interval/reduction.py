@@ -192,7 +192,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         coverage_rates: list[StrictFloat] | None = None,
-        time_weight: Callable | pl.DataFrame | None = None,
+        time_weight: Callable | pl.DataFrame | dict | None = None,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         sample_weight_alignment: str = "first_step",
         **params,
     ) -> "IntervalReductionForecaster":
@@ -215,14 +216,21 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to
             ``[0.95]``.
-        time_weight : callable, pl.DataFrame, or None, default=None
-            Per-timestep weights for fitting.  If ``pl.DataFrame``, must
-            have a ``"time"`` and a ``"weight"`` column.  If callable,
-            receives a ``pl.DataFrame`` and returns weights.  If ``None``,
-            uniform weighting is applied.
+        time_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-timestep weights for fitting.  Accepts a callable
+            ``f(time_series) -> pl.Series``, a panel-aware callable
+            ``f(time_series, group_name) -> pl.Series``, a DataFrame
+            with ``"time"`` and ``"weight"`` columns, or a
+            ``{datetime_or_str: float}`` dict (``"*"`` key sets default).
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights for fitting.  Same formats as
+            ``time_weight``.  Resolved via direct lookup at observation
+            time (no alignment strategy). Combined multiplicatively
+            with ``time_weight``.
         sample_weight_alignment : str, default="first_step"
             Strategy for converting ``time_weight`` to sklearn
-            ``sample_weight`` across forecast horizons.
+            ``sample_weight`` across forecast horizons. Does not apply
+            to ``vintage_weight`` (which uses direct lookup).
         **params : dict
             Metadata to route to nested estimators.
 
@@ -230,79 +238,6 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         -------
         self
             The fitted forecaster instance.
-
-        Notes
-        -----
-        **Time Weight Formats**:
-
-        The ``time_weight`` parameter accepts three formats for specifying time-based
-        importance of training samples:
-
-        1. **DataFrame**: Must have "time" column matching y timestamps, plus:
-
-           - Global weights: Single "weight" column applies to all series
-           - Panel weights: Columns named "{group}_weight" (e.g., "store_1_weight")
-             for group-specific weighting. Falls back to "weight" column if
-             group-specific column missing.
-
-        2. **Callable (single-argument)**: ``f(time: pl.Series) -> pl.Series``
-
-           Applied uniformly to all series. Returns pl.Series with same length
-           as input, containing non-negative weight values.
-
-        3. **Callable (panel-aware)**: ``f(time: pl.Series, group_name: str) -> pl.Series``
-
-           Enables group-specific weight generation. Signature detected via
-           ``inspect.signature()`` parameter count (2 params = panel-aware).
-           For global data, group_name will be None.
-
-        **Sample Weight Alignment Strategies**:
-
-        After tabularization, training samples no longer correspond 1:1 with original
-        time points. Each sample predicts a window of future steps [t+1, ..., t+H].
-        The alignment strategy determines how weights from this window are aggregated:
-
-        - ``"first_step"``: Use weight at first forecast step (t+1)
-
-          Example: For H=3, sample at t=10 uses weight at t=11
-
-          Best for: Emphasizing immediate forecasts
-
-        - ``"mean_step"``: Average weight across all horizon steps
-
-          Example: For H=3, sample at t=10 uses mean(weight[t=11:t=13])
-
-          Best for: Equal importance across forecast horizon, robust to noise
-
-        - ``"weighted_mean_step"``: Exponentially weighted mean (near-term emphasized)
-
-          Example: For H=3, sample at t=10 uses weighted average favoring t=11 over t=13
-
-          Best for: Gradual decay in importance with forecast distance
-
-        - ``"max_weight_step"``: Maximum weight across horizon steps
-
-          Example: For H=3, sample at t=10 uses max(weight[t=11:t=13])
-
-          Best for: Capturing seasonal peaks where any step may be critical
-
-        - ``"min_weight_step"``: Minimum weight across horizon steps
-
-          Example: For H=3, sample at t=10 uses min(weight[t=11:t=13])
-
-          Best for: Conservative weighting, only high if all steps important
-
-        **Weight Validation**:
-
-        - Weights must be non-negative and finite (no NaN/inf)
-        - Sum must be non-zero
-        - Estimator must support ``sample_weight`` parameter in fit()
-
-        **Interval Estimation**:
-
-        This forecaster trains separate quantile regressors for upper and lower bounds.
-        The same time weights and alignment strategy are applied to both estimators,
-        ensuring consistent importance weighting across the prediction interval.
 
         """
         forecasting_horizon, self.fit_coverage_rates_ = self._validate_fit_params(forecasting_horizon, coverage_rates)
@@ -333,6 +268,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 forecasting_horizon,
                 time_weight=time_weight,
                 sample_weight_alignment=sample_weight_alignment,
+                vintage_weight=vintage_weight,
                 estimator_params={multiquantile_param: f"MultiQuantile:alpha={alpha_str}"},
             )
             self.estimator_ = {"_multiquantile": estimator}
@@ -371,6 +307,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                     forecasting_horizon,
                     time_weight=time_weight,
                     sample_weight_alignment=sample_weight_alignment,
+                    vintage_weight=vintage_weight,
                     estimator_params=estimator_params_lower,
                 )
 
@@ -383,6 +320,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                     forecasting_horizon,
                     time_weight=time_weight,
                     sample_weight_alignment=sample_weight_alignment,
+                    vintage_weight=vintage_weight,
                     estimator_params=estimator_params_upper,
                 )
 

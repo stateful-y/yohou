@@ -17,11 +17,16 @@ import numpy as np
 import polars as pl
 
 __all__ = [
+    "combine_weight_vectors",
     "compose_weights",
     "exponential_decay_weight",
     "linear_decay_weight",
+    "normalize_weights",
+    "resolve_dict_weights",
+    "resolve_weight_to_array",
     "seasonal_emphasis_weight",
     "validate_callable_signature",
+    "validate_weight_array",
 ]
 
 
@@ -449,3 +454,238 @@ def validate_callable_signature(
         )
 
     return n_params
+
+
+def normalize_weights(weights: np.ndarray) -> np.ndarray:
+    """Normalize weights so they sum to the number of elements.
+
+    Applies the convention ``weights * (n / sum(weights))`` so the sum of
+    the returned array equals ``len(weights)``.  This preserves scale when
+    weights are used as multiplicative factors on scores or loss values.
+
+    Parameters
+    ----------
+    weights : numpy.ndarray
+        Weight array. Must not sum to zero.
+
+    Returns
+    -------
+    numpy.ndarray
+        Normalized weight array with ``sum == len(weights)``.
+
+    Raises
+    ------
+    ValueError
+        If ``weights`` sums to zero.
+
+    """
+    total = weights.sum()
+    if total == 0:
+        raise ValueError("Cannot normalize weights: sum is zero")
+    return weights * (len(weights) / total)
+
+
+def validate_weight_array(weights: np.ndarray, name: str = "weights") -> None:
+    """Validate a resolved weight array for NaN, negatives, infinities, and all-zero.
+
+    Parameters
+    ----------
+    weights : numpy.ndarray
+        Weight array to validate.
+    name : str, default="weights"
+        Descriptive name used in error messages (e.g., ``"step_weight"``,
+        ``"vintage_weight"``).
+
+    Raises
+    ------
+    ValueError
+        If any element is NaN, negative, infinite, or if all elements are zero.
+
+    """
+    nan_mask = np.isnan(weights)
+    if np.any(nan_mask):
+        nan_indices = np.where(nan_mask)[0].tolist()
+        raise ValueError(
+            f"{name} contains NaN at {len(nan_indices)} position(s) "
+            f"(indices {nan_indices[:10]}{'...' if len(nan_indices) > 10 else ''})"
+        )
+    if np.any(weights < 0):
+        neg_indices = np.where(weights < 0)[0].tolist()
+        raise ValueError(
+            f"{name} contains negative values at indices {neg_indices[:10]}{'...' if len(neg_indices) > 10 else ''}"
+        )
+    if np.any(np.isinf(weights)):
+        inf_indices = np.where(np.isinf(weights))[0].tolist()
+        raise ValueError(
+            f"{name} contains infinite values at indices {inf_indices[:10]}{'...' if len(inf_indices) > 10 else ''}"
+        )
+    if weights.sum() == 0:
+        raise ValueError(f"All weights are zero for {name}")
+
+
+def resolve_dict_weights(
+    weight_dict: dict,
+    keys: np.ndarray | list,
+    default: float = 1.0,
+) -> np.ndarray:
+    """Map a ``{key: weight}`` dict to an aligned numpy array.
+
+    For each element in ``keys``, looks up the corresponding weight in
+    ``weight_dict``.  Missing keys receive ``default``.  If the dict
+    contains the wildcard key ``"*"``, its value overrides ``default``
+    (e.g., ``{"*": 0.0, 1: 2.0}`` gives step 1 weight 2.0 and all
+    others weight 0.0).  The ``"*"`` key is consumed and never looked up
+    in ``keys``.
+
+    Parameters
+    ----------
+    weight_dict : dict
+        Mapping from key values to weights.
+    keys : numpy.ndarray or list
+        Key values to look up, one per element.
+    default : float, default=1.0
+        Weight for keys not present in ``weight_dict``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Weight array aligned to ``keys``.
+
+    """
+    effective_default = weight_dict.get("*", default)
+    lookup = {k: v for k, v in weight_dict.items() if k != "*"}
+    return np.array([lookup.get(k, effective_default) for k in keys], dtype=np.float64)
+
+
+def combine_weight_vectors(*arrays: np.ndarray | None, n: int) -> np.ndarray | None:
+    """Combine weight vectors multiplicatively and normalize.
+
+    Filters out ``None`` inputs, multiplies the remaining arrays
+    element-wise, then normalizes so the result sums to ``n``.
+
+    Parameters
+    ----------
+    *arrays : numpy.ndarray or None
+        Weight arrays to combine.  ``None`` entries are ignored.
+    n : int
+        Target sum after normalization (typically the number of rows).
+
+    Returns
+    -------
+    numpy.ndarray or None
+        Combined, normalized weight array, or ``None`` if all inputs are
+        ``None``.
+
+    Raises
+    ------
+    ValueError
+        If the combined product sums to zero.
+
+    """
+    valid = [a for a in arrays if a is not None]
+    if not valid:
+        return None
+    combined = valid[0].copy()
+    for a in valid[1:]:
+        combined = combined * a
+    if combined.sum() == 0:
+        raise ValueError("Combined weights sum to zero: all weighted elements have zero weight")
+    return combined * (n / combined.sum())
+
+
+def resolve_weight_to_array(
+    weight: Callable | pl.DataFrame | dict,
+    key_series: pl.Series,
+    join_column: str,
+    group_name: str | None = None,
+) -> np.ndarray:
+    """Resolve a weight specification to a raw numpy array.
+
+    Accepts three formats (callable, DataFrame, or dict) and returns an
+    unnormalized weight array aligned to ``key_series``.  Validation is
+    performed via `validate_weight_array` after resolution.
+
+    Parameters
+    ----------
+    weight : callable, pl.DataFrame, or dict
+        Weight specification in one of the supported formats.
+    key_series : polars.Series
+        Data series whose values are used for alignment (e.g., time
+        values, forecasting steps, vintage times).
+    join_column : str
+        Column name used for DataFrame joins (``"time"``,
+        ``"forecasting_step"``, or ``"vintage_time"``).
+    group_name : str or None, default=None
+        Panel group name for 2-parameter callables and group-specific
+        DataFrame columns.  ``None`` for global (non-panel) data.
+
+    Returns
+    -------
+    numpy.ndarray
+        Raw (unnormalized) weight array of same length as ``key_series``.
+
+    Raises
+    ------
+    ValueError
+        If ``weight`` is not callable, DataFrame, or dict, or if
+        the resolved weights fail validation.
+
+    """
+    if isinstance(weight, dict):
+        weights_np = resolve_dict_weights(weight, key_series.to_list())
+    elif callable(weight):
+        n_params = validate_callable_signature(weight)
+        weights_series = weight(key_series) if n_params == 1 else weight(key_series, group_name)  # type: ignore[call-arg]  # ty: ignore[call-top-callable]
+
+        if not isinstance(weights_series, pl.Series):
+            raise ValueError(f"Weight callable must return pl.Series, got {type(weights_series).__name__}")
+        if len(weights_series) != len(key_series):
+            raise ValueError(f"Weight callable returned {len(weights_series)} weights, expected {len(key_series)} rows")
+        weights_np = weights_series.to_numpy().astype(np.float64)
+    elif isinstance(weight, pl.DataFrame):
+        key_df = pl.DataFrame({join_column: key_series})
+        joined = key_df.join(weight, on=join_column, how="left")
+
+        weight_col = None
+        if group_name is not None:
+            group_col = f"{group_name}_weight"
+            if group_col in joined.columns:
+                weight_col = group_col
+        if weight_col is None and "weight" in joined.columns:
+            weight_col = "weight"
+        if weight_col is None:
+            if group_name is not None:
+                raise ValueError(
+                    f"Weight DataFrame missing both '{group_name}_weight' and "
+                    f"'weight' columns for panel group '{group_name}'"
+                )
+            raise ValueError("Weight DataFrame must have 'weight' column")
+
+        weights_np = joined[weight_col].to_numpy().astype(np.float64)
+
+        # Check for NaN from unmatched keys (left join produces null for missing keys)
+        nan_mask = np.isnan(weights_np)
+        if nan_mask.any():
+            missing_keys = key_series.filter(pl.Series(nan_mask)).unique().to_list()
+            raise ValueError(f"Weight DataFrame has no values for {join_column}s: {missing_keys}")
+    else:
+        raise ValueError(f"Weight must be callable, pl.DataFrame, dict, or None, got {type(weight).__name__}")
+
+    # Validate
+    try:
+        validate_weight_array(weights_np, name=f"{join_column} weight")
+    except ValueError as exc:
+        if "All weights are zero" in str(exc):
+            # Re-raise with contextual info about which keys were requested
+            if isinstance(weight, dict):
+                requested = {k for k in weight if k != "*"}
+                available = set(key_series.unique().to_list())
+                raise ValueError(
+                    f"All weights are zero for {join_column} weight. "
+                    f"Requested keys {requested} vs available keys "
+                    f"{available}"
+                ) from exc
+            raise
+        raise
+
+    return weights_np
