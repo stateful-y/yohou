@@ -1128,3 +1128,57 @@ class TestApplyWeightsDict:
         # internally, so zero-mask filtering must slice the dict)
         result = scorer.score(y_true, y_pred, time_weight=tw_fn)
         assert isinstance(result, float)
+
+    def test_step_weight_zero_triggers_zero_mask(self, panel_vintage_data):
+        """Step weight dict with zero value triggers zero_mask filtering."""
+        y_train, y_true, y_pred = panel_vintage_data
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(step_weight=True)
+        result = scorer.score(y_true, y_pred, step_weight={1: 0.0, 2: 1.0})
+        assert isinstance(result, float)
+
+    def test_zero_step_weight_slices_tw_dict(self, panel_vintage_data):
+        """Zero step_weight (array) triggers zero_mask; tw dict is sliced."""
+        y_train, y_true, y_pred = panel_vintage_data
+
+        def tw_fn(time: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [1.0] * len(time), dtype=pl.Float64)
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(time_weight=True, step_weight=True)
+        result = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=tw_fn,
+            step_weight={1: 0.0, 2: 1.0},
+        )
+        assert isinstance(result, float)
+
+    def test_zero_tw_slices_sw_and_vw_dicts(self, panel_vintage_data):
+        """Zero time_weight (array) triggers zero_mask; sw and vw dicts are sliced."""
+        y_train, y_true, y_pred = panel_vintage_data
+
+        def tw_fn(time: pl.Series) -> pl.Series:
+            w = [1.0] * len(time)
+            w[0] = 0.0
+            return pl.Series("w", w, dtype=pl.Float64)
+
+        def sw_fn(step: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [1.0] * len(step), dtype=pl.Float64)
+
+        def vw_fn(vintage: pl.Series, group_name: str | None) -> pl.Series:
+            return pl.Series("w", [1.0] * len(vintage), dtype=pl.Float64)
+
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_train)
+        scorer.set_score_request(time_weight=True, step_weight=True, vintage_weight=True)
+        result = scorer.score(
+            y_true,
+            y_pred,
+            time_weight=tw_fn,
+            step_weight=sw_fn,
+            vintage_weight=vw_fn,
+        )
+        assert isinstance(result, float)

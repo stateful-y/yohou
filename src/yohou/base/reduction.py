@@ -296,7 +296,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         # Combine and normalize
         sample_weights = combine_weight_vectors(tw_aligned, vw_aligned, n=n_samples)
-        if sample_weights is None:
+        if sample_weights is None:  # pragma: no cover
             # Both were None (shouldn't reach here since caller checks)
             sample_weights = np.ones(n_samples)
 

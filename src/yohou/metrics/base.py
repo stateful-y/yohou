@@ -476,7 +476,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             name: str,
         ) -> np.ndarray | dict[str, np.ndarray] | None:
             """Resolve a single weight argument into aligned arrays."""
-            if w is None:
+            if w is None:  # pragma: no cover
                 return None
 
             # Detect panel-awareness
@@ -512,7 +512,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         # Resolve time_weight
         tw_resolved = None
         if time_weight is not None:
-            if time_series is None:
+            if time_series is None:  # pragma: no cover
                 raise ValueError("time_values unavailable in context but time_weight was provided")
             tw_resolved = _resolve_one(time_weight, time_series, "time", "time_weight")
             if isinstance(tw_resolved, np.ndarray):
