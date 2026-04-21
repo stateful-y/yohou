@@ -475,6 +475,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             join_column: str,
             name: str,
         ) -> np.ndarray | dict[str, np.ndarray] | None:
+            """Resolve a single weight argument into aligned arrays."""
             if w is None:
                 return None
 
@@ -556,17 +557,17 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             if isinstance(tw_resolved, np.ndarray):
                 tw_resolved = tw_resolved[keep]  # ty: ignore[invalid-argument-type]
             elif isinstance(tw_resolved, dict):
-                tw_resolved = {g: a[keep] for g, a in tw_resolved.items()}  # ty: ignore[invalid-argument-type]
+                tw_resolved = {g: a[keep] for g, a in tw_resolved.items()}
 
             if isinstance(sw_resolved, np.ndarray):
                 sw_resolved = sw_resolved[keep]  # ty: ignore[invalid-argument-type]
             elif isinstance(sw_resolved, dict):
-                sw_resolved = {g: a[keep] for g, a in sw_resolved.items()}  # ty: ignore[invalid-argument-type]
+                sw_resolved = {g: a[keep] for g, a in sw_resolved.items()}
 
             if isinstance(vw_resolved, np.ndarray):
                 vw_resolved = vw_resolved[keep]  # ty: ignore[invalid-argument-type]
             elif isinstance(vw_resolved, dict):
-                vw_resolved = {g: a[keep] for g, a in vw_resolved.items()}  # ty: ignore[invalid-argument-type]
+                vw_resolved = {g: a[keep] for g, a in vw_resolved.items()}
 
         return y_truth, y_pred, context, tw_resolved, sw_resolved, vw_resolved
 
@@ -640,7 +641,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     combined = combine_weight_vectors(sw_g, vw_g, n=n)  # ty: ignore[invalid-argument-type]
                     if combined is not None:
                         tiled = np.tile(combined, n_rates) if n_rates > 1 else combined
-                        group_cols = [c for c in panel_groups.get(group_name, []) if c in value_cols]  # ty: ignore[no-matching-overload]
+                        group_cols = [c for c in panel_groups.get(group_name, []) if c in value_cols]
                         if group_cols:
                             scores = _apply_array(scores, tiled, group_cols)
             else:
