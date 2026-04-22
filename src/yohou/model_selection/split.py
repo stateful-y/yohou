@@ -191,6 +191,7 @@ class ExpandingWindowSplitter(BaseSplitter):
     >>> len(train), len(test)
     (80, 10)
     >>>
+
     Notes
     -----
     - Training sets grow with each split (expanding window)
