@@ -17,7 +17,7 @@ This **minor release** includes 13 commits.
 - Add categorical class-probability forecasting  ([#30](https://github.com/stateful-y/yohou/pull/30)) by @gtauzin
 - Add calendar, holiday, Fourier, and time index transformers  ([#39](https://github.com/stateful-y/yohou/pull/39)) by @gtauzin
 - Add VotingForecaster and VotingClassProbaForecaster  ([#40](https://github.com/stateful-y/yohou/pull/40)) by @gtauzin
-- Add vintage and step weighting to reduction forecasters  ([#42](https://github.com/stateful-y/yohou/pull/42)) by @gtauzin
+- Add vintage weighting to reduction forecasters  ([#42](https://github.com/stateful-y/yohou/pull/42)) by @gtauzin
 - Add MeanSeasonalNaive and MeanLagTransformer  ([#43](https://github.com/stateful-y/yohou/pull/43)) by @gtauzin
 
 ### Bug Fixes
@@ -28,9 +28,6 @@ This **minor release** includes 13 commits.
 - Codebase quality overhaul  ([#28](https://github.com/stateful-y/yohou/pull/28)) by @gtauzin
 - Standardize arguments, panel layout, and plotting defaults  ([#33](https://github.com/stateful-y/yohou/pull/33)) by @gtauzin
 - Unify scorer API with fit(forecaster) and scoring dimensions  ([#41](https://github.com/stateful-y/yohou/pull/41)) by @gtauzin
-
-### Miscellaneous Tasks
-- Delete file committed by mistake by @gtauzin
 
 ### Contributors
 
