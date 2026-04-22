@@ -556,6 +556,106 @@ class TestMultiQuantile:
                 assert f"{col}_upper_{cr}" in y_pred.columns
 
 
+class _MockLGBMQuantileRegressor(BaseEstimator, RegressorMixin):
+    """Lightweight stand-in for LGBMRegressor with ``objective="quantile"``.
+
+    Mimics the LightGBM pattern where the quantile level is controlled
+    by an ``alpha`` parameter rather than a ``quantile`` parameter.
+    """
+
+    def __init__(self, objective="quantile", alpha=0.5):
+        self.objective = objective
+        self.alpha = alpha
+
+    def fit(self, X, y, **kwargs):
+        y = np.asarray(y)
+        if y.ndim == 2:
+            y = y[:, 0]
+        self.intercept_ = np.quantile(y, self.alpha)
+        return self
+
+    def predict(self, X):
+        return np.full(X.shape[0], self.intercept_)
+
+
+class TestLGBMQuantileAlpha:
+    """Tests for LightGBM-style ``objective='quantile'`` + ``alpha`` detection."""
+
+    def test_detect_lgbm_quantile_alpha(self):
+        """_detect_lgbm_quantile_alpha returns alpha param for LGBM-style estimators."""
+        est = _MockLGBMQuantileRegressor()
+        forecaster = IntervalReductionForecaster(estimator=est)
+        assert forecaster._detect_lgbm_quantile_alpha() == ["alpha"]
+
+    def test_detect_lgbm_quantile_alpha_nested(self):
+        """_detect_lgbm_quantile_alpha resolves nested alpha param path."""
+        from sklearn.multioutput import MultiOutputRegressor
+
+        est = MultiOutputRegressor(_MockLGBMQuantileRegressor())
+        forecaster = IntervalReductionForecaster(estimator=est)
+        assert forecaster._detect_lgbm_quantile_alpha() == ["estimator__alpha"]
+
+    def test_detect_lgbm_quantile_alpha_absent(self):
+        """_detect_lgbm_quantile_alpha returns empty list for standard estimators."""
+        forecaster = IntervalReductionForecaster()
+        assert forecaster._detect_lgbm_quantile_alpha() == []
+
+    @pytest.mark.slow
+    def test_fit_predict_direct(self, standard_splits):
+        """LGBM-style alpha detection produces correct interval columns (direct)."""
+        y_train, y_test, X_train, X_test = standard_splits
+        coverage_rates = [0.5, 0.9]
+        est = _MockLGBMQuantileRegressor()
+        forecaster = IntervalReductionForecaster(
+            estimator=est,
+            reduction_strategy="direct",
+        )
+
+        forecaster.fit(
+            y=y_train,
+            X=X_train,
+            forecasting_horizon=2,
+            coverage_rates=coverage_rates,
+        )
+
+        y_pred = forecaster.predict_interval(
+            forecasting_horizon=2,
+            X=X_test,
+            coverage_rates=coverage_rates,
+        )
+
+        y_cols = [c for c in y_train.columns if c != "time"]
+        for col in y_cols:
+            for cr in coverage_rates:
+                assert f"{col}_lower_{cr}" in y_pred.columns
+                assert f"{col}_upper_{cr}" in y_pred.columns
+                assert all(y_pred[f"{col}_upper_{cr}"] + 1e-14 >= y_pred[f"{col}_lower_{cr}"])
+
+    def test_no_quantile_param_raises(self):
+        """Estimator without quantile or alpha raises ValueError."""
+
+        class _NoQuantileEstimator(BaseEstimator, RegressorMixin):
+            def fit(self, X, y):
+                return self
+
+            def predict(self, X):
+                return np.zeros(X.shape[0])
+
+        forecaster = IntervalReductionForecaster(estimator=_NoQuantileEstimator())
+        y = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1),
+                end=datetime(2021, 1, 1, 0, 0, 9),
+                interval="1s",
+                eager=True,
+            ),
+            "value": list(range(10)),
+        }).cast({"value": pl.Float64})
+
+        with pytest.raises(ValueError, match="No quantile parameter found"):
+            forecaster.fit(y=y, forecasting_horizon=1, coverage_rates=[0.9])
+
+
 class TestIntervalReductionWithFeaturesSystematicChecks:
     """Systematic checks for IntervalReductionForecaster with exogenous features."""
 
