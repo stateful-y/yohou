@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Tourism Quarterly Analytics",
     "description": "Diagnostic analytics on quarterly tourism panel data with autocorrelation, correlation heatmaps, lag scatter, and seasonal subseries plots.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -47,23 +48,15 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Tourism Quarterly - Advanced Panel Analytics
+    # Tourism Quarterly: Advanced Panel Analytics
 
     This notebook builds on the basic Tourism Quarterly exploration with
     deeper diagnostic plots. We use 8 quarterly tourism series (T3-T10)
     from the Monash forecasting competition.
 
-    ## What You'll Learn
+    This notebook shows how to perform diagnostic analytics on quarterly tourism panel data with autocorrelation, correlation heatmaps, lag scatter, and seasonal subseries plots.
 
-    - Autocorrelation and partial autocorrelation for quarterly lags
-    - Inter-series correlation heatmap across panel groups
-    - Lag scatter plots to visualise temporal dependencies
-    - Seasonal subseries for quarter-by-quarter patterns
-    - Rolling statistics for trend tracking
-
-    ## Prerequisites
-
-    See `examples/datasets/australian_tourism.py` for basic panel
+    **Prerequisites:** See `examples/datasets/australian_tourism.py` for basic panel
     exploration of this dataset.
     """)
 
@@ -206,24 +199,6 @@ def _(plot_rolling_statistics, tourism):
         title="T3 - Rolling Mean and Std (4-quarter window)",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **ACF/PACF**: Quarterly data shows strong seasonal spikes at lag 4 (annual cycle)
-    - **Correlation heatmap**: Reveals which panel series share common patterns
-    - **Lag scatter**: Tight diagonal clusters at lag 4 confirm annual seasonality
-    - **Subseries**: Quarter-by-quarter view isolates within-year variation
-    - **Rolling statistics**: 4-quarter window reveals long-term trends
-
-    ## Next Steps
-
-    - **Basic panel exploration**: See [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
-    - **Weekly panel data**: See [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
-    - **Hourly panel data**: See [`examples/datasets/pedestrian_counts.py`](/examples/datasets/pedestrian_counts/)
-    """)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Seasonal Analysis",
     "description": "Seasonal overlays, subseasonal structure, ACF/PACF correlation patterns, and STL decomposition for monthly, quarterly, and long-cycle datasets.",
+    "category": "tutorial",
+    "companion": "/pages/explanation/time-series-patterns/",
 }
 app = marimo.App(width="medium")
 
@@ -59,14 +61,9 @@ def _(mo):
     mo.md(r"""
     # Seasonal and Frequency Domain Analysis
 
-    ## What You'll Learn
-
-    - Overlaying seasonal cycles with [`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/) and highlighting specific years
-    - Inspecting subseasonal structure with [`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)
-    - Identifying autocorrelation and partial autocorrelation patterns for AR/MA order selection
-    - Applying these diagnostics to monthly, quarterly, and long-cycle datasets
-    - Visualising seasonal patterns with 2-D heatmaps via [`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/)
-    - STL decomposition with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) and flat decomposition parameters
+    In this notebook we will explore seasonal overlays, subseasonal structure,
+    ACF/PACF correlation patterns, seasonal heatmaps, and STL decomposition
+    across monthly, quarterly, and long-cycle datasets.
 
     ## Prerequisites
 
@@ -404,27 +401,3 @@ def _(elec_heatmap, plot_seasonal_heatmap):
         reverse_y=True,
         title="Seasonal Heatmap - Max, Hot Colorscale, Reversed Y",
     )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Seasonal overlays** ([`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/)) make year-over-year comparisons immediate; `highlight` draws attention to specific cycles
-    - **Subseries plots** ([`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/)) reveal within-season trends over time; the mean line shows each season's average level
-    - **ACF** identifies repeating correlation patterns at seasonal multiples; **PACF** isolates direct lag effects for AR order selection
-    - **Seasonal heatmaps** ([`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/)) aggregate values across two time dimensions; the `x_period`/`y_period` pair reveals different seasonal structures
-    - **STL decomposition** separates trend, seasonal, and residual components; `robust=True` reduces outlier influence
-    - **Seasonal window** tuning controls seasonal component flexibility; larger values produce a more stable pattern
-
-    ## Next Steps
-
-    - **Correlation diagnostics**: See [`correlation.py`](/examples/plotting/correlation/) for scatter matrices and cross-correlation
-    - **Forecast visualization**: See [`forecasting_visualization.py`](/examples/plotting/forecasting_visualization/) for model comparison
-    - **Exploration**: See [`exploration.py`](/examples/plotting/exploration/) for rolling statistics and missing data audits
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

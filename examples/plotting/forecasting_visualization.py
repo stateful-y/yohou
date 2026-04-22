@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Forecast Visualization",
     "description": "Visualise point forecasts from single and multiple models, decomposition pipeline components, and time weight decay functions with interactive Plotly.",
+    "category": "tutorial",
+    "companion": "/pages/explanation/visualization/",
 }
 app = marimo.App(width="medium")
 
@@ -82,14 +84,10 @@ def _(mo):
     mo.md(r"""
     # Forecast Visualization and Comparison
 
-    ## What You'll Learn
-
-    - Plotting forecasts from single and multiple models with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
-    - Visualizing **categorical** (hard-label) forecasts as step charts
-    - Visualizing **class-probability** (soft) forecasts as stacked area charts
-    - Checking probability calibration with [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
-    - Visualizing decomposition components with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/)
-    - Rendering time weight functions with [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/)
+    In this notebook we will plot forecasts from single and multiple models,
+    visualize categorical and class-probability predictions, check probability
+    calibration, inspect decomposition components, and render time weight
+    functions.
 
     ## Prerequisites
 
@@ -472,28 +470,3 @@ def _(lin_weight_df, plot_time_weight):
         fill_opacity=0.5,
         title="Linear Decay Weight - Semi-Transparent Fill",
     )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **plot_forecast** handles single models, multi-model dicts, and prediction intervals via `coverage_rates`; `n_history` trims the visible training window
-    - **plot_forecast (categorical)** auto-detects `String`/`Categorical` columns and renders **step charts**; multi-model dicts overlay separate traces
-    - **plot_forecast (class-probability)** auto-detects `_proba_` columns and renders **stacked area charts** with diamond markers for the true class
-    - **plot_calibration** produces reliability diagrams for class-probability forecasts; `n_bins` controls granularity
-    - **plot_decomposition** stacks components vertically; `show_original` toggles whether the raw series appears as the first panel
-    - **plot_time_weight** visualizes weighting schemes; `fill=True` shows the area under the curve, `fill_opacity` controls transparency
-
-    ## Next Steps
-
-    - **Model evaluation**: See [`examples/plotting/evaluation.py`](/examples/plotting/evaluation/) for residual diagnostics, scoring distributions, and calibration plots
-    - **Exploration**: See [`examples/plotting/exploration.py`](/examples/plotting/exploration/) for rolling statistics and missing data audits
-    - **Cross-validation**: See [`examples/plotting/model_selection.py`](/examples/plotting/model_selection/) for CV split visualization and hyperparameter search results
-    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for LogLoss, BrierScore, and Accuracy evaluation
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

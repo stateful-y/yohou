@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Pedestrian Counts Dataset",
     "description": "Sensor-level panel exploration of Melbourne pedestrian counts with per-sensor boxplots, hourly seasonal patterns, and panel structure inspection.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -42,20 +43,9 @@ def _(mo):
     mo.md("""
     # Pedestrian Counts Dataset
 
-    ## What You'll Learn
+    This notebook shows how to perform sensor-level panel exploration of Melbourne pedestrian counts with per-sensor boxplots, hourly seasonal patterns, and panel structure inspection.
 
-    This example demonstrates sensor-level panel analysis with the Melbourne
-    Pedestrian Counts dataset, pre-formatted in Yohou's native `__` panel
-    convention. You'll learn how to:
-
-    - Inspect panel structure with [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)
-    - Compare hourly pedestrian counts across sensors
-    - Visualize distributions across sensors with boxplots
-    - Analyze hour-of-day effects
-
-    ## Prerequisites
-
-    None. this is a standalone dataset exploration.
+    **Prerequisites:** None. this is a standalone dataset exploration.
     """)
 
 
@@ -177,24 +167,6 @@ def _(df, plot_seasonality):
         y_label="Average Count",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Key Takeaways
-
-    - **Native panel format**: Columns use `Tn__count` convention: no pivoting needed
-    - **Hourly frequency**: 20 pedestrian count sensors by default (pass `n_series=None` for all 66)
-    - **Sensor comparison**: Direct multi-series plotting without manual pivoting
-    - **Intraday patterns**: Clear hour-of-day effects with commute and lunch-time peaks
-    - **[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)**: Automatically discovers panel groups from column names
-
-    ## Next Steps
-
-    - **Weekly panel**: See [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
-    - **Quarterly panel data**: See [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
-    - **Advanced analytics**: See [`examples/datasets/pedestrian_counts_forecasting.py`](/examples/datasets/pedestrian_counts_forecasting/) for ACF, PACF, spectral diagnostics
-    """)
 
 
 if __name__ == "__main__":

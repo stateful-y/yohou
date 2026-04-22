@@ -11,6 +11,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Stationarity Transforms",
     "description": "Catalogue of variance-stabilising and detrending transforms: LogTransformer, BoxCox, SeasonalDifferencing, SeasonalReturn, and ASinh with inverse verification.",
+    "category": "how-to",
+    "companion": "/pages/explanation/stationarity/#standalone-transforms",
 }
 app = marimo.App(width="medium")
 
@@ -31,18 +33,9 @@ def _(mo):
     and variance). Yohou provides invertible transformers to stabilize variance
     and remove trends.
 
-    ## What You'll Learn
+    This notebook shows how to use the catalogue of variance-stabilising and detrending transforms: LogTransformer, BoxCox, SeasonalDifferencing, SeasonalReturn, and ASinh with inverse verification.
 
-    - [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) / [`BoxCoxTransformer`](/pages/api/generated/yohou.stationarity.transformers.BoxCoxTransformer/): Stabilize variance
-    - [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/): Remove seasonal patterns
-    - [`SeasonalLogDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalLogDifferencing/): Combined log + differencing
-    - [`SeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.SeasonalReturn/) / [`AbsoluteSeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.AbsoluteSeasonalReturn/): Percentage and absolute changes
-    - [`ASinhTransformer`](/pages/api/generated/yohou.stationarity.transformers.ASinhTransformer/): Robust symmetric transformation
-    - Inverse transforms to recover original scale
-
-    ## Prerequisites
-
-    Understanding of stationarity concepts in time series.
+    **Prerequisites:** Understanding of stationarity concepts in time series.
     """)
 
 
@@ -281,32 +274,3 @@ def _(
         _y_t = _tf.transform(y)
         _has_inv = hasattr(_tf, "inverse_transform")
         print(f"{_name:<22s}  {_tf.observation_horizon:>11d}  {str(_has_inv):>10s}")
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Variance stabilization**: [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/), [`BoxCoxTransformer`](/pages/api/generated/yohou.stationarity.transformers.BoxCoxTransformer/), [`ASinhTransformer`](/pages/api/generated/yohou.stationarity.transformers.ASinhTransformer/)
-    - **Seasonal removal**: [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/), [`SeasonalLogDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalLogDifferencing/)
-    - **Returns**: [`SeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.SeasonalReturn/) (percentage), [`AbsoluteSeasonalReturn`](/pages/api/generated/yohou.stationarity.transformers.AbsoluteSeasonalReturn/) (absolute)
-    - All are **invertible**, critical for `target_transformer` in forecasters
-    - Stateful transformers have `observation_horizon > 0` (first rows are lost)
-    - Combine with `target_transformer` in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) for automatic inverse
-    """)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Decomposition**: See [`decomposition.py`](/examples/stationarity/decomposition/) for trend + seasonality forecasting
-    - **Using as target_transformer**: See [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/)
-    - **Preprocessing**: See [Preprocessing](/examples/#preprocessing) for data cleaning and feature engineering
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

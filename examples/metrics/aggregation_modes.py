@@ -12,6 +12,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Aggregation Modes",
     "description": "Demonstrate all scorer aggregation strategies (stepwise, vintagewise, componentwise, groupwise, coveragewise, all) on panel data with weighted group aggregation.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -362,8 +363,6 @@ def _(
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -409,29 +408,3 @@ def _(plot_score_heatmap, vintage_scorer, y_pred_vintages, y_test):
         title="Score Heatmap (Step x Vintage)",
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    | Mode | Aggregates Over | Result |
-    |------|----------------|--------|
-    | `"all"` | time + components + groups + coverage | scalar |
-    | `["stepwise", "vintagewise"]` | time | one row, one col per series |
-    | `"componentwise"` | members within groups | rows = timesteps, cols = panel groups |
-    | `"groupwise"` | panel groups (stations) | rows = timesteps, cols = components (pollutants) |
-    | `"coveragewise"` | coverage rates (interval only) | collapses coverage dimension |
-
-    - **Multivariate panel** groups are essential for seeing the difference
-      between `"componentwise"` (pollutants → stations) and `"groupwise"`
-      (stations → pollutants).
-    - **`groups`** (dict): Weight groups differently during `"all"`
-      aggregation.
-    - **Combine modes** as a list (e.g., `["stepwise", "vintagewise", "componentwise"]`) to
-      aggregate over multiple dimensions at once.
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

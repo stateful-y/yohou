@@ -13,6 +13,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Fourier Tuning",
     "description": "Explore how Fourier harmonic count affects seasonal fit quality, compare Fourier vs Pattern seasonality, and tune harmonics jointly with GridSearchCV.",
+    "category": "how-to",
+    "companion": "/pages/explanation/stationarity/#seasonality-estimation",
 }
 app = marimo.App(width="medium")
 
@@ -401,8 +403,6 @@ def _(
     ])
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -449,36 +449,3 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Harmonics** control model complexity: `[1]` gives a single
-    smooth wave, adding higher harmonics captures sharper patterns
-    (max useful = `floor(seasonality / 2)`)
-    - **Fourier vs Pattern**: Fourier generalises well for smooth
-    seasonal shapes; Pattern is more flexible for irregular or
-    asymmetric cycles
-    - **Estimator regularisation** matters: Ridge shrinks Fourier
-    coefficients uniformly, ElasticNet can zero some out entirely.
-    The right alpha depends on the signal-to-noise ratio
-    - **DecompositionPipeline** is the natural home for Fourier
-    seasonality: remove the seasonal component first, then model
-    the residual with lags or other features
-    - **GridSearchCV** lets you tune harmonics and Ridge alphas
-    jointly using time-series cross-validation, avoiding the need
-    for manual trial and error
-
-    ## Next Steps
-
-    - **Decomposition pipelines**: See [`examples/compose/decomposition_variations.py`](/examples/compose/decomposition_variations/)
-    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
-    - **Decomposition**: See [`examples/stationarity/decomposition.py`](/examples/stationarity/decomposition/)
-    - **Hyperparameter search**: See [`examples/model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/)
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

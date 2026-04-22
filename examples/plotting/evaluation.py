@@ -8,6 +8,12 @@
 import marimo
 
 __generated_with = "0.23.1"
+__gallery__ = {
+    "title": "Evaluation Plots",
+    "description": "Residual diagnostics, per-timestep score tracking, model comparison bar charts, calibration plots, and score distribution analysis for forecast evaluation.",
+    "category": "how-to",
+    "companion": "/pages/explanation/visualization/#evaluating-model-quality",
+}
 app = marimo.App(width="medium")
 
 
@@ -687,32 +693,3 @@ def _(
         title="Groupwise MAE - Heatmap",
     )
     return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **plot_residuals** takes `y_pred` and `y_truth`, computing residuals internally; produces a 4-panel diagnostic layout for single columns or faceted residuals for multiple
-    - **plot_score_time_series** reveals temporal patterns in forecast errors; pass a dict for multi-model comparison; pass a dict of scorers for multi-scorer overlay
-    - **plot_score_distribution** supports `kind="histogram"`, `"kde"`, or `"both"`; `show_mean` and `show_zero` add reference lines
-    - **plot_score_per_step** shows error degradation as horizon increases; `show_trend=True` overlays a linear fit
-    - **plot_score_summary** produces a grouped bar chart for multi-model comparison
-    - **plot_score_per_vintage** tracks accuracy across forecast origins; requires multi-vintage predictions from `observe_predict`
-    - **plot_score_heatmap** reveals step-vintage interactions in a 2D heatmap
-    - **plot_group_scores** breaks down scores by panel group; supports `kind="bar"`, `"box"`, and `"heatmap"`
-    - **plot_calibration** compares nominal vs empirical coverage; points near the diagonal indicate well-calibrated intervals
-
-    ## Next Steps
-
-    - **Forecasting**: See [`examples/plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/) for forecast plots, intervals, and comparison modes
-    - **Cross-validation**: See [`examples/plotting/model_selection.py`](/examples/plotting/model_selection/) for train/test split visualization
-    - **Similarity**: See `examples/plotting/similarity_heatmap.py` for distance-based interval weights
-    - **Signal processing**: See [`examples/plotting/signal_processing.py`](/examples/plotting/signal_processing/) for spectrum and phase analysis
-    """)
-    return
-
-
-if __name__ == "__main__":
-    app.run()

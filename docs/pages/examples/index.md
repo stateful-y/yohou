@@ -2,6 +2,10 @@
 
 Learn Yohou through focused, interactive examples. Each notebook demonstrates one core concept and is runnable in the browser or editable online via the [marimo playground](https://marimo.io). Examples are organized from introductory walkthroughs to advanced topics.
 
+## Tutorials
+
+<!-- GALLERY:tutorials -->
+
 ## Quickstart
 
 <!-- GALLERY:quickstart -->
@@ -44,6 +48,6 @@ Learn Yohou through focused, interactive examples. Each notebook demonstrates on
 
 ## Next Steps
 
-- **[User Guide](../user-guide/index.md)**: Deep dive into core concepts and architecture
+- **[Explanation](../explanation/core-concepts.md)**: Deep dive into core concepts and architecture
 - **[API Reference](../api/index.md)**: Complete class and function documentation
-- **[Development](../development/index.md)**: Contributing and developing new estimators
+- **[Contributing](../how-to/contribute.md)**: Contributing and developing new estimators

@@ -9,6 +9,12 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "How to Combine Interval Forecasters",
+    "description": "Build interval ensembles with VotingIntervalForecaster using envelope, mean, and median aggregation strategies.",
+    "category": "how-to",
+    "companion": "/pages/explanation/ensemble-forecasting/",
+}
 app = marimo.App(width="medium")
 
 
@@ -29,16 +35,9 @@ def _(mo):
     Aggregating intervals from diverse models can produce more robust
     coverage than any single model.
 
-    ## What You'll Learn
-
-    - Aggregating intervals with `method="envelope"`, `"mean"`, or `"median"`
-    - Extracting point predictions from interval ensembles via `predict()`
-    - Assigning `weights` for weighted mean aggregation
-    - Visualizing ensemble intervals with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
-
     ## Prerequisites
 
-    Familiarity with interval forecasting - see the [conformal forecasting example](/examples/interval/conformal_forecasting/) for an introduction.
+    Familiarity with interval forecasting. See the [conformal forecasting example](/examples/interval/conformal_forecasting/) for an introduction.
     """)
 
 

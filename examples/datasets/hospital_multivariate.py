@@ -12,6 +12,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Hospital Multivariate Analytics",
     "description": "Multivariate analytics on hospital patient data with scatter matrices, correlation heatmaps, STL decomposition, and cross-correlation diagnostics.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -51,24 +52,16 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Hospital - Multivariate Descriptive Analytics
+    # Hospital: Multivariate Descriptive Analytics
 
     The Hospital dataset contains 767 monthly patient count series related
     to medical products (2000-2006). This notebook picks four series and
     examines the **relationships between them** using multivariate
     diagnostic plots.
 
-    ## What You'll Learn
+    This notebook shows how to perform multivariate analytics on hospital patient data with scatter matrices, correlation heatmaps, STL decomposition, and cross-correlation diagnostics.
 
-    - Scatter matrix for pairwise relationships and distributions
-    - Correlation heatmap across multiple series
-    - STL decomposition to separate trend, seasonality, and residuals
-    - Cross-correlation for lead/lag relationships
-    - Lag scatter and rolling statistics for individual series
-
-    ## Prerequisites
-
-    See `examples/datasets/hospital.py` for basic panel exploration
+    **Prerequisites:** See `examples/datasets/hospital.py` for basic panel exploration
     (single-series seasonality and cross-correlation).
     """)
 
@@ -252,25 +245,6 @@ def _(hospital, plot_rolling_statistics):
         title="Patients A - Rolling Mean and Std (12-month window)",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Scatter matrix**: Quick multivariate overview of pairwise relationships
-    - **Correlation heatmap**: Some patient count series are strongly correlated
-    - **STL decomposition**: Decomposes trend, seasonality, and residuals clearly
-    - **Cross-correlation**: Different series pairs show different lag structures
-    - **ACF and lag scatter**: Annual seasonality (lag 12) is prominent
-    - **Rolling statistics**: 12-month window reveals long-term trends
-
-    ## Next Steps
-
-    - **Basic panel exploration**: See [`examples/datasets/hospital.py`](/examples/datasets/hospital/)
-    - **Panel data analysis**: See [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
-    - **Signal processing**: See [`examples/datasets/sunspots.py`](/examples/datasets/sunspots/) for spectral analysis
-    """)
 
 
 if __name__ == "__main__":

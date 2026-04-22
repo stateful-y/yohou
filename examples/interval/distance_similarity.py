@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Distance-Based Similarity",
     "description": "Adaptive prediction intervals via similarity-weighted conformal prediction using DistanceSimilarity with configurable distance metrics and bandwidths.",
+    "category": "how-to",
+    "companion": "/pages/explanation/interval-forecasting/#similarity-based-adaptive-intervals",
 }
 app = marimo.App(width="medium")
 
@@ -451,8 +453,6 @@ def _(plot_forecast, y_pred_minkowski, y_test, y_train):
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -509,25 +509,3 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         title="Score Heatmap (Step x Vintage)",
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **DistanceSimilarity** is the concrete `BaseSimilarity` subclass that produces locally-weighted conformal intervals
-    - **Adaptive intervals** narrow in well-predicted regions and widen where the model struggles, unlike uniform conformal
-    - **Distance metric choice** matters: `euclidean` is the default; `cosine` ignores magnitude; `cityblock` is more robust to outliers
-    - **metric_params** allow fine-tuning (e.g., Minkowski p-norm) without subclassing
-    - **Calibration** should be checked after any similarity choice: local weighting can improve or hurt coverage depending on the data
-
-    ## Next Steps
-
-    - **Conformity scorers**: See [`conformity_scorers.py`](/examples/metrics/conformity_scorers/) for comparing Residual, GammaResidual, etc.
-    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/) for prediction intervals on panel data
-    - **Interval metrics**: See [`examples/metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) for EmpiricalCoverage, IntervalScore, and more
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

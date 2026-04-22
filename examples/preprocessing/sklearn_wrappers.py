@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Sklearn Scalers & Transformers",
     "description": "Wrap sklearn scalers (StandardScaler, MinMaxScaler, RobustScaler, PowerTransformer, PolynomialFeatures) for polars DataFrames with inverse transforms.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -378,8 +379,6 @@ def _(
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -424,27 +423,3 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Sklearn wrappers** (StandardScaler, MinMaxScaler, RobustScaler, PowerTransformer, etc.) work natively with polars DataFrames
-    - The `"time"` column is automatically stripped before sklearn logic and re-attached afterwards
-    - All scalers support **inverse_transform** for exact back-transformation
-    - **PowerTransformer** (Box-Cox / Yeo-Johnson) stabilises variance and reduces skewness
-    - **PolynomialFeatures** enriches the feature space with interactions and higher-order terms
-    - When used as `target_transformer` in a panel forecaster, a **separate scaler is fitted per group**
-    - Combine scalers with [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) when different columns need different scaling
-
-    ## Next Steps
-
-    - **Column-wise transforms**: See [`examples/compose/column_transformer.py`](/examples/compose/column_transformer/) for applying different scalers to different columns
-    - **Custom transforms**: See [`examples/preprocessing/function_transformer.py`](/examples/preprocessing/function_transformer/) for wrapping arbitrary polars operations
-    - **Stationarity transforms**: See `examples/stationarity/` for decomposition-based transforms (LogTransformer, BoxCoxTransformer, etc.)
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

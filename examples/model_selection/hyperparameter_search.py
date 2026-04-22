@@ -12,6 +12,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Hyperparameter Search",
     "description": "Tune forecaster hyperparameters with GridSearchCV and RandomizedSearchCV using temporal cross-validation splitters and result scatter visualisation.",
+    "category": "how-to",
+    "companion": "/pages/explanation/model-selection/",
 }
 app = marimo.App(width="medium")
 
@@ -28,19 +30,10 @@ def _(mo):
     mo.md(r"""
     # Hyperparameter Search for Time Series
 
-    Yohou's [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) combine sklearn's hyperparameter
-    search with time-respecting cross-validation. They work with any forecaster,
-    scorer, and splitter.
-
-    ## What You'll Learn
-
-    - [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) with exhaustive grid search
-    - [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) for larger search spaces
-    - Using time series splitters with search
-    - Tuning a [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) with [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) scoring
-    - Visualizing soft (probability) and hard (label) predictions from the best model
-    - Inspecting `cv_results_` and `best_params_`
-    - Visualizing results with [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/)
+    Yohou's [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and
+    [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/)
+    combine sklearn's hyperparameter search with time-respecting cross-validation.
+    They work with any forecaster, scorer, and splitter.
 
     ## Prerequisites
 
@@ -431,24 +424,6 @@ def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, plot_forecast):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Key Takeaways
-
-    - [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/): Exhaustive search: best for small parameter grids
-    - [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/): Random sampling: better for large/continuous spaces
-    - Both use time-respecting splitters (never leak future data)
-    - `scoring` takes scorer **instances** (e.g., `MeanAbsoluteError()`, `LogLoss()`)
-    - Works with **all forecaster types**: point, interval, and class-probability
-    - After fitting, use the search object directly as a forecaster (including `predict_class_proba()`)
-    - Access results via `best_params_`, `best_score_`, `cv_results_`
-    - Use [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) to visualize parameter-score relationships
-    """)
-
-
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict` method with `stride=1` produces one forecast per
@@ -490,19 +465,3 @@ def _(vintage_scorer, plot_score_per_step, y_after_train, y_pred_vintages):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Splitters**: See [`cv_splitters.py`](/examples/model_selection/cv_splitters/) for splitter details
-    - **Scoring**: See [Metrics](/examples/#metrics) for all available scorers
-    - **Interval search**: Use [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) with search for interval tuning
-    - **Classification forecaster**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for the full classification workflow
-    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for LogLoss, BrierScore, and Accuracy evaluation
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

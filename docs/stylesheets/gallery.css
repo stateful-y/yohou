@@ -13,3 +13,24 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Gallery badge: Diataxis category label on gallery cards. */
+
+.gallery-badge {
+  font-size: 0.7em;
+  padding: 0.1em 0.5em;
+  border-radius: 0.8em;
+  font-weight: 600;
+  vertical-align: middle;
+  margin-right: 0.3em;
+}
+
+.gallery-badge--tutorial {
+  background: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+}
+
+.gallery-badge--howto {
+  background: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+}

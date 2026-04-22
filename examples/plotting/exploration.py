@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Exploratory Visualization",
     "description": "Exploratory time series visualisation with raw series plots, rolling statistics overlays, distribution boxplots, missing data pattern auditing, outlier detection, and resampling comparison.",
+    "category": "tutorial",
+    "companion": "/pages/explanation/visualization/",
 }
 app = marimo.App(width="medium")
 
@@ -64,19 +66,15 @@ def _(mo):
     mo.md(r"""
     # Exploratory Time Series Visualization
 
-    ## What You'll Learn
-
-    - How to visualize raw time series across univariate, multivariate, and panel datasets
-    - Using rolling statistics with different window sizes, statistics, and envelope bands
-    - Generating boxplot distributions grouped by different periods
-    - Auditing missing data with heatmap, bar, and matrix visualizations
-    - Plotting value distributions with histograms and KDE overlays
-    - Detecting and highlighting outliers across detection methods
-    - Comparing original vs resampled time series
+    In this notebook we will walk through Yohou's exploratory plotting
+    functions: raw time series, rolling statistics overlays, boxplot
+    distributions, missing data auditing, outlier detection, and
+    resampling comparison, applied to univariate, multivariate, and
+    panel datasets.
 
     ## Prerequisites
 
-    None - this is a standalone exploration tutorial.
+    This is a standalone exploration tutorial.
     """)
 
 
@@ -416,28 +414,3 @@ def _(plot_resampling_comparison, tourism_monthly, tourism_resampled):
         resampled_line_dash="dash",
         title="Resampling Comparison - Custom Labels and Dash",
     )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **plot_time_series** adapts to single-column, multi-column, and panel data via `columns` and `groups`
-    - **Rolling statistics** reveal trends (`"mean"`), variability (`"std"`), and range (`"min"/"max"`)
-    - **Boxplots** aggregate at different time granularities (`period`); `show_points="all"` shows every observation
-    - **Missing data** visualizations come in three forms: `"heatmap"` for patterns over time, `"bars"` for column-level counts, `"matrix"` for a compact binary view
-    - **Distributions** show value spread with histograms and KDE; multi-column overlays compare variables
-    - **Outlier detection** supports z-score, IQR, and percentile methods with customisable markers
-    - **Resampling comparison** overlays original and aggregated series to assess temporal smoothing
-
-    ## Next Steps
-
-    - **Correlation diagnostics**: See [`examples/plotting/correlation.py`](/examples/plotting/correlation/) for scatter matrices and cross-correlation
-    - **Seasonal analysis**: See [`examples/plotting/seasonal.py`](/examples/plotting/seasonal/) for seasonality overlays and frequency-domain plots
-    - **Forecast visualization**: See [`examples/plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/) for model comparison and prediction intervals
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

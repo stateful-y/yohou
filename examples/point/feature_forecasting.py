@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Feature Forecasting",
     "description": "Chain feature and target forecasters with ForecastedFeatureForecaster when exogenous variables are unknown at prediction time and must be forecasted.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -32,16 +33,9 @@ def _(mo):
     you need to forecast them first. [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) chains a
     **feature forecaster** and a **target forecaster** automatically.
 
-    ## What You'll Learn
+    This notebook shows how to chain feature and target forecasters with ForecastedFeatureForecaster when exogenous variables are unknown at prediction time and must be forecasted.
 
-    - When and why to use [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
-    - The three training strategies: `"actual"`, `"predicted"`, `"rewind"`
-    - Comparing strategies on real data
-    - Using `observe` for rolling evaluation
-
-    ## Prerequisites
-
-    Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
+    **Prerequisites:** Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
     """)
 
 
@@ -384,32 +378,3 @@ def _(
         n_history=60,
         title="Known-in-Advance Calendar Features",
     )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) automates the two-step forecast: features first, then target
-    - Adding calendar features (day_of_week, month) helps capture weekly and seasonal patterns
-    - Three strategies control how the target forecaster sees features during training
-    - `"actual"` is simplest; `"predicted"` / `"rewind"` reduce train-test distribution shift
-    - `observe()` passes new observations to both internal forecasters
-    - Use `ColumnForecaster(remainder="drop")` as the feature forecaster to skip known-in-advance columns, then pass them via `X` at predict time
-    """)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Multi-column**: See [`multi_column_forecasting.py`](/examples/point/multi_column_forecasting/) for [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
-    - **Interval forecasting**: See [Interval](/examples/#interval-forecasting) for prediction intervals
-    - **Decomposition**: See [Stationarity](/examples/#stationarity) for [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

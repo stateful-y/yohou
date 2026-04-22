@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Advanced Imputation",
     "description": "Compare SimpleTimeImputer, SeasonalImputer, SimpleImputer, and TransformedSpaceKNNImputer on synthetic block and scattered gaps in monthly tourism data.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -30,12 +31,7 @@ def _(mo):
     Missing values are common in real-world time series. Yohou provides
     temporal-aware imputation methods alongside sklearn wrappers.
 
-    ## What You'll Learn
-
-    - [`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/): linear, forward, backward, nearest, fill_both
-    - [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/): seasonal mean/median fill
-    - [`SimpleImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleImputer/) / [`TransformedSpaceKNNImputer`](/pages/api/generated/yohou.preprocessing.imputation.TransformedSpaceKNNImputer/) (sklearn wrappers)
-    - Comparing methods on synthetic gaps
+    This notebook shows how to compare SimpleTimeImputer, SeasonalImputer, SimpleImputer, and TransformedSpaceKNNImputer on synthetic block and scattered gaps in monthly tourism data.
     """)
 
 
@@ -352,24 +348,6 @@ def _(
     fig.update_layout(title="Imputation MAE at Gap Positions", yaxis_title="MAE")
     fig
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **[`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/)**: Best for temporal data (linear, forward, backward, nearest)
-    - **[`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/)**: Uses seasonal patterns when periodicity is known
-    - **`limit`**: Prevents filling across long gaps
-    - **[`SimpleImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleImputer/)/[`TransformedSpaceKNNImputer`](/pages/api/generated/yohou.preprocessing.imputation.TransformedSpaceKNNImputer/)**: sklearn wrappers for non-temporal strategies
-    - **Linear interpolation** typically best for short gaps; seasonal imputation for long gaps with known periodicity
-
-    ## Next Steps
-
-    - **Data cleaning**: See [`examples/preprocessing/data_cleaning.py`](/examples/preprocessing/data_cleaning/)
-    - **Resampling**: See [`resampling.py`](/examples/preprocessing/resampling/)
-    - **Sklearn wrappers**: See [`examples/preprocessing/sklearn_wrappers.py`](/examples/preprocessing/sklearn_wrappers/)
-    """)
 
 
 if __name__ == "__main__":

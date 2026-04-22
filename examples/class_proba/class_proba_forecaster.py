@@ -9,6 +9,12 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Class-Probability Forecasting Quickstart",
+    "description": "Forecast categorical time series with ClassProbaReductionForecaster, evaluate with LogLoss and BrierScore, and inspect class probability distributions.",
+    "category": "tutorial",
+    "companion": "/pages/explanation/class-probability-forecasting/",
+}
 app = marimo.App(width="medium")
 
 
@@ -27,13 +33,12 @@ def _(mo):
     This notebook demonstrates **class-probability forecasting**, that is, predicting the
     probability distribution over categorical outcomes at future time steps.
 
-    ## What You'll Learn
-
-    - How [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) converts categorical time series into a classification problem
-    - Obtaining probability predictions with `predict_class_proba()` and class labels with `predict()`
-    - Evaluating predictions with [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/), [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/), and [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/)
-    - Visualizing class probabilities with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
-    - Using the observe-predict workflow for rolling evaluation
+    We will fit a [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/),
+    obtain probability predictions with `predict_class_proba()` and hard labels with
+    `predict()`, evaluate with [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/),
+    [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/), and
+    [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/), and visualize
+    class probabilities with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/).
 
     We use [`fetch_air_quality_classification`](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/),
     which derives a 4-class air quality target (good / moderate / unhealthy / hazardous)
@@ -423,21 +428,3 @@ def _(plot_calibration, y_rolling_proba, y_test):
         title="Calibration Plot (Rolling Predictions)",
     )
     return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - Try different classifiers: `LogisticRegression`, `RandomForestClassifier`, `GradientBoostingClassifier`
-    - Experiment with `reduction_strategy="direct"` for independent step classifiers
-    - Add more lag features with [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
-    - Explore [Metrics](/examples/#metrics) for more evaluation options
-    - See [`reduction_forecaster.py`](/examples/point/reduction_forecaster/) for the regression equivalent
-    """)
-    return
-
-
-if __name__ == "__main__":
-    app.run()

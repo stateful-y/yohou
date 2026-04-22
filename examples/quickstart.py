@@ -13,6 +13,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Quickstart",
     "description": "End-to-end tour of yohou covering data loading, baseline forecasting, preprocessing pipelines, decomposition, cross-validation search, and interval prediction.",
+    "category": "tutorial",
 }
 app = marimo.App(width="medium")
 
@@ -1233,39 +1234,3 @@ def _(
         height=700,
     )
     return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Scikit-learn API**: `fit(y, X, forecasting_horizon)` → `predict(forecasting_horizon)` → `score(y_truth, y_pred)`
-    - **Preprocessing**: [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains invertible transforms (log, differencing, lags)
-    - **Decomposition**: [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) models trend + seasonality + residual
-    - **Cross-validation**: [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) / [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/) respect temporal order
-    - **Hyperparameter search**: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) (exhaustive) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) (efficient)
-    - **Time weighting**: [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/), [`compose_weights`](/pages/api/generated/yohou.utils.weighting.compose_weights/) for recency emphasis
-    - **Streaming**: `observe_predict` updates memory without retraining
-    - **Intervals**: [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) + `predict_interval(coverage_rates=[0.9])`
-    - **Panel data**: `__` separator convention; `panel_strategy="global"` pools groups; [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) fits per-group models
-
-    ## Next Steps
-
-    | Topic | Notebook |
-    |-------|----------|
-    | Feature engineering | [`point/feature_forecasting.py`](/examples/point/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/) |
-    | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
-    | Class probability | [`point/class_proba_forecaster.py`](/examples/point/class_proba_forecaster/), [`metrics/class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) |
-    | Interval forecasting | [`interval/interval_reduction.py`](/examples/interval/interval_reduction/), [`metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/) |
-    | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/stationarity/decomposition/) |
-    | Metrics guide | [`metrics/point_metrics.py`](/examples/metrics/point_metrics/), [`metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) |
-    | Splitters & search | [`model_selection/cv_splitters.py`](/examples/model_selection/cv_splitters/), [`model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/) |
-    | Dataset explorers | [`datasets/tourism_monthly.py`](/examples/datasets/tourism_monthly/), [`datasets/store_sales.py`](/examples/datasets/store_sales/), … |
-    | Plotting gallery | [`plotting/exploration.py`](/examples/plotting/exploration/), [`plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/), … |
-    """)
-    return
-
-
-if __name__ == "__main__":
-    app.run()

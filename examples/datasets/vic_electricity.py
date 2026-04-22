@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Electricity Demand Dataset",
     "description": "High-frequency panel analysis of half-hourly Australian electricity demand across five states with cross-correlation diagnostics and rolling statistics.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -44,19 +45,9 @@ def _(mo):
     mo.md("""
     # Electricity Demand Dataset
 
-    ## What You'll Learn
+    This notebook shows how to perform high-frequency panel analysis of half-hourly Australian electricity demand across five states with cross-correlation diagnostics and rolling statistics.
 
-    This example demonstrates high-frequency panel time series analysis with the
-    Australian Electricity Demand dataset. You'll learn how to:
-
-    - Inspect the panel structure of 5 Australian state demands
-    - Visualize and compare half-hourly demand across states
-    - Use cross-correlation to find relationships between states
-    - Apply intraday seasonality analysis (hour of day)
-
-    ## Prerequisites
-
-    None; this is a standalone dataset exploration.
+    **Prerequisites:** None; this is a standalone dataset exploration.
     """)
 
 
@@ -113,7 +104,7 @@ def _(df, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## 3. Rolling Average - NSW Demand
+    ## 3. Rolling Average: NSW Demand
 
     A 24-hour (48-step) rolling average of NSW demand highlights daily and
     weekly patterns beneath the noisy half-hourly readings.
@@ -171,24 +162,6 @@ def _(df, plot_seasonality):
         title="NSW - Average Demand by Hour",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Key Takeaways
-
-    - **Panel format**: 5 state-level demand series using `state__demand` convention
-    - **High frequency**: Half-hourly data captures intraday patterns
-    - **Cross-state correlation**: States show strongly correlated demand patterns
-    - **Intraday seasonality**: Clear hour-of-day effects (peak demand times)
-    - **Scale differences**: NSW and Victoria dominate total demand
-
-    ## Next Steps
-
-    - For monthly panel data, see [`examples/datasets/hospital.py`](/examples/datasets/hospital/)
-    - For weekly panel data, see [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
-    - For advanced panel analytics, see [`examples/datasets/australian_tourism_forecasting.py`](/examples/datasets/australian_tourism_forecasting/)
-    """)
 
 
 if __name__ == "__main__":

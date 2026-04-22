@@ -13,6 +13,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Time-Weighted Reduction",
     "description": "Use time_weight and sample_weight_alignment to emphasise recent or seasonal training samples in PointReductionForecaster, with visualisation of weight curves and alignment strategy comparison.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -31,25 +32,16 @@ def _(mo):
 
     By default, every training sample contributes equally to the fitted
     estimator. With **time weighting** you can emphasise recent observations,
-    de-emphasise stale data, or boost seasonal positions - all without
+    de-emphasise stale data, or boost seasonal positions, all without
     discarding any data.
 
     [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) accepts a `time_weight` argument in
     `fit()` and converts it to sklearn's `sample_weight` using a configurable
     `sample_weight_alignment` strategy.
 
-    ## What You'll Learn
+    This notebook shows how to use time_weight and sample_weight_alignment to emphasise recent or seasonal training samples in PointReductionForecaster, with visualisation of weight curves and alignment strategy comparison.
 
-    - Creating weight functions with `exponential_decay_weight`, `linear_decay_weight`, `seasonal_emphasis_weight`
-    - Composing multiple weight functions with `compose_weights`
-    - Visualising weights with `plot_time_weight`
-    - Passing `time_weight` to `fit()`
-    - Comparing the five `sample_weight_alignment` strategies
-    - Tuning weight parameters with `GridSearchCV`
-
-    ## Prerequisites
-
-    Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) (see [`reduction_forecaster.py`](/examples/point/reduction_forecaster/)).
+    **Prerequisites:** Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) (see [`reduction_forecaster.py`](/examples/point/reduction_forecaster/)).
     """)
 
 
@@ -357,26 +349,6 @@ def _(
         title="Weight Function Comparison (MAE)",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - `time_weight` accepts a callable, a DataFrame, or `None` (uniform)
-    - Built-in generators: `exponential_decay_weight`, `linear_decay_weight`, `seasonal_emphasis_weight`
-    - `compose_weights` multiplies weight functions for combined strategies
-    - `sample_weight_alignment` controls how per-timestep weights map to tabularized samples
-    - Weight functions and alignment strategies are **orthogonal** to `reduction_strategy`
-    - Visualise weights before fitting to verify the profile makes sense
-
-    ## Next Steps
-
-    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
-    - **Feature construction**: See [`reduction_forecaster.py`](/examples/point/reduction_forecaster/) for transformers and `target_as_feature`
-    - **Hyperparameter search**: Tune `half_life` or `emphasis` via [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
-    - **Scoring with weights**: Scorers also accept `time_weight` for weighted evaluation
-    """)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Stationarity",
     "description": "Apply per-group stationarity transforms on panel data with SeasonalDifferencing, DecompositionPipeline (polynomial trend + pattern seasonality), and residuals.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -281,8 +282,6 @@ def _(
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -329,25 +328,3 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Per-group decomposition**: [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) fits trend, seasonality, and residual separately for each panel group
-    - **Seasonal differencing**: `SeasonalDifferencing(seasonality=4)` operates per-group with invertible transforms
-    - **Use `PolynomialTrendForecaster(degree=1)`** for linear trends (no separate linear trend forecaster)
-    - **Three-component pipelines** (trend + season + residual) can improve on simpler baselines
-    - **Groupwise scoring** reveals groups where decomposition helps vs hurts
-
-    ## Next Steps
-
-    - **Panel pipelines**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
-    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
-    - **Decomposition details**: See [`examples/stationarity/decomposition.py`](/examples/stationarity/decomposition/)
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

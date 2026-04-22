@@ -15,6 +15,8 @@ Usage
 from __future__ import annotations
 
 from yohou.datasets import (
+    fetch_air_quality_classification,
+    fetch_demand_classification,
     fetch_dominick,
     fetch_electricity_demand,
     fetch_hospital,
@@ -32,11 +34,18 @@ _FETCHERS = [
     ("electricity_demand", fetch_electricity_demand),
     ("pedestrian_counts", fetch_pedestrian_counts),
     ("dominick", fetch_dominick),
+    ("air_quality_classification", fetch_air_quality_classification),
+    ("demand_classification", fetch_demand_classification),
 ]
 
 if __name__ == "__main__":
     for name, fetcher in _FETCHERS:
         print(f"[precache] Fetching {name} ...", flush=True)
         bunch = fetcher()
-        print(f"[precache]   -> {bunch.n_series} series, {len(bunch.frame)} rows, cached to {bunch.filename}")
+        if hasattr(bunch, "n_series"):
+            print(f"[precache]   -> {bunch.n_series} series, {len(bunch.frame)} rows, cached to {bunch.filename}")
+        else:
+            n_rows = len(bunch.y)
+            n_classes = len(bunch.classes)
+            print(f"[precache]   -> {n_rows} rows, {n_classes} classes")
     print("[precache] All datasets cached.")

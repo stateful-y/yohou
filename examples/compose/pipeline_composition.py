@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Pipeline Composition",
     "description": "Nest FeaturePipeline, FeatureUnion, and DecompositionPipeline for multi-level feature engineering with trend-season-residual decomposition.",
+    "category": "how-to",
+    "companion": "/pages/explanation/preprocessing/#composing-transformers",
 }
 app = marimo.App(width="medium")
 
@@ -33,12 +35,7 @@ def _(mo):
     branches execute in parallel, and [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) cascades
     residuals.
 
-    ## What You'll Learn
-
-    - [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/): sequential transformers (observation_horizon = SUM)
-    - Nesting [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) inside [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/)
-    - [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) with feature-engineered residual models
-    - Multi-level nesting: Decomposition → Feature → Union → Forecaster
+    This notebook shows how to nest FeaturePipeline, FeatureUnion, and DecompositionPipeline for multi-level feature engineering with trend-season-residual decomposition.
     """)
 
 
@@ -332,24 +329,6 @@ def _(MeanAbsoluteError, fc_deep, fc_fp, horizon, mo, pl, y_test, y_train):
 
     mo.ui.table(pl.DataFrame(_rows))
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **FeaturePipeline**: Sequential steps, `observation_horizon` = SUM
-    - **FeatureUnion**: Parallel branches, `observation_horizon` = MAX
-    - **Nesting**: Union inside Pipeline, Pipeline as feature_transformer, etc.
-    - **DecompositionPipeline**: Cascade residuals with feature-rich residual models
-    - **Best practice**: Start simple, add complexity only if it improves scores
-
-    ## Next Steps
-
-    - **Forecasted feature**: See [`examples/compose/forecasted_feature_advanced.py`](/examples/compose/forecasted_feature_advanced/)
-    - **Feature union details**: See [`examples/compose/feature_union.py`](/examples/compose/feature_union/)
-    - **Panel pipelines**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
-    """)
 
 
 if __name__ == "__main__":

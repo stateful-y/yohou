@@ -11,6 +11,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Dominick Store Sales",
     "description": "Explore the Dominick's Finer Foods panel dataset with per-SKU profit visualisation, cross-group distribution boxplots, and weekly seasonality.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -44,20 +45,9 @@ def _(mo):
     mo.md("""
     # Dominick Dataset
 
-    ## What You'll Learn
+    This notebook shows how to explore the Dominick's Finer Foods panel dataset with per-SKU profit visualisation, cross-group distribution boxplots, and weekly seasonality.
 
-    This example demonstrates panel data analysis with the Dominick dataset
-    (Dominick's Finer Foods), pre-formatted in Yohou's native `__` panel
-    convention. You'll learn how to:
-
-    - Inspect panel structure with [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)
-    - Visualize panel columns directly without manual pivoting
-    - Compare profit across SKUs
-    - Analyze distributions across panel groups with boxplots
-
-    ## Prerequisites
-
-    None - this is a standalone dataset exploration.
+    **Prerequisites:** This is a standalone dataset exploration.
     """)
 
 
@@ -177,24 +167,6 @@ def _(df, plot_seasonality):
         title="T1 - Average Profit by Month",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Key Takeaways
-
-    - **Native panel format**: Columns use `Tn__profit` convention: no pivoting needed
-    - **[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)**: Automatically discovers panel groups from column names
-    - **Direct plotting**: Panel columns can be plotted directly with [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/)
-    - **Boxplots**: Compare distributions across panel groups to spot outliers and variability
-    - **Large dataset**: 50 series loaded by default; pass `n_series=None` for all 115704
-
-    ## Next Steps
-
-    - **Hourly panel**: See [`examples/datasets/pedestrian_counts.py`](/examples/datasets/pedestrian_counts/)
-    - **Quarterly panel data**: See [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
-    - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/) for global vs local models
-    """)
 
 
 if __name__ == "__main__":

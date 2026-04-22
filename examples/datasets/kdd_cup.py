@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "KDD Cup Air Quality",
     "description": "Explore the KDD Cup 2018 multivariate panel dataset with hourly air quality readings from 59 Beijing and London monitoring stations.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -42,21 +43,9 @@ def _(mo):
     mo.md("""
     # KDD Cup 2018 Air Quality
 
-    ## What You'll Learn
+    This notebook shows how to explore the KDD Cup 2018 multivariate panel dataset with hourly air quality readings from 59 Beijing and London monitoring stations.
 
-    This example explores the KDD Cup 2018 air quality dataset, a
-    **multivariate panel** dataset with hourly measurements from 59
-    monitoring stations across Beijing and London. You'll learn how to:
-
-    - Load and inspect a multivariate panel dataset
-    - Understand the `station__measurement` column naming convention
-    - Visualize multiple pollutants per station
-    - Compare measurement distributions across stations
-    - Examine correlations between pollutants within a station
-
-    ## Prerequisites
-
-    None. This is a standalone dataset exploration.
+    **Prerequisites:** None. This is a standalone dataset exploration.
     """)
 
 
@@ -175,25 +164,6 @@ def _(df, plot_correlation_heatmap):
         title="Aotizhongxin Station - Pollutant Correlations",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Key Takeaways
-
-    - **Multivariate panel**: Each station is a panel group with 6 measurement members
-    - **`station__measurement` convention**: Follows yohou's `__` separator for automatic panel detection
-    - **59 stations**: 35 Beijing + 24 London, use `n_groups=None` for all 270 raw series
-    - **Hourly frequency**: High-resolution data suitable for short-horizon forecasting
-    - **Cross-pollutant correlations**: PM2.5/PM10 often correlated which benefits multivariate models
-
-    ## Next Steps
-
-    - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/) for global vs local models
-    - **Panel pipelines**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/) for composition patterns
-    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/) for prediction intervals
-    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/) for multivariate scoring
-    """)
 
 
 if __name__ == "__main__":

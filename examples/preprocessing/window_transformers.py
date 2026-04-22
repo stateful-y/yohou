@@ -11,6 +11,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Window Transformers",
     "description": "Feature engineering with LagTransformer, RollingStatisticsTransformer, SlidingWindowFunctionTransformer, and ExponentialMovingAverage on time series data.",
+    "category": "how-to",
+    "companion": "/pages/explanation/preprocessing/",
 }
 app = marimo.App(width="medium")
 
@@ -30,18 +32,9 @@ def _(mo):
     Window transformers create features from temporal windows of data. They are
     the core building blocks for feature engineering in time series forecasting.
 
-    ## What You'll Learn
+    This notebook shows how to engineer features with LagTransformer, RollingStatisticsTransformer, SlidingWindowFunctionTransformer, and ExponentialMovingAverage on time series data.
 
-    - [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/): Create lagged copies of columns
-    - [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/): Rolling mean, std, min, max, etc.
-    - [`SlidingWindowFunctionTransformer`](/pages/api/generated/yohou.preprocessing.window.SlidingWindowFunctionTransformer/): Custom functions over sliding windows
-    - [`ExponentialMovingAverage`](/pages/api/generated/yohou.preprocessing.window.ExponentialMovingAverage/): Exponentially weighted moving average
-    - How `observation_horizon` works for stateful transformers
-    - Combining transformers with [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)
-
-    ## Prerequisites
-
-    Basic understanding of feature engineering and time series concepts.
+    **Prerequisites:** Basic understanding of feature engineering and time series concepts.
     """)
 
 
@@ -240,32 +233,3 @@ def _(
     union.fit(y)
     y_combined = union.transform(y)
     plot_time_series(y_combined, title="FeatureUnion: All Window Features Combined")
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/): Creates lagged columns; `observation_horizon = max(lag)`
-    - [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/): Computes rolling stats; multiple statistics at once
-    - [`SlidingWindowFunctionTransformer`](/pages/api/generated/yohou.preprocessing.window.SlidingWindowFunctionTransformer/): Any custom function over sliding windows
-    - [`ExponentialMovingAverage`](/pages/api/generated/yohou.preprocessing.window.ExponentialMovingAverage/): EWMA smoothing; `observation_horizon = 0` (stateless)
-    - [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) combines transformers in parallel for rich feature engineering
-    - Stateful transformers produce nulls for the first `observation_horizon` rows
-    """)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Imputation & outliers**: See [`data_cleaning.py`](/examples/preprocessing/data_cleaning/) for handling nulls and outliers
-    - **Resampling**: See [`resampling.py`](/examples/preprocessing/resampling/) for frequency changes
-    - **Using in forecasters**: Pass to `feature_transformer` in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

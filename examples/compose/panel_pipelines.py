@@ -12,6 +12,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Panel Pipelines",
     "description": "Combine ColumnForecaster, FeaturePipeline, FeatureUnion, and DecompositionPipeline on panel data with per-group scoring on KDD Cup air quality.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -33,18 +34,9 @@ def _(mo):
     and models, and reassembling the results. This notebook demonstrates
     all major composition patterns with panel data.
 
-    ## What You'll Learn
+    This notebook shows how to combine ColumnForecaster, FeaturePipeline, FeatureUnion, and DecompositionPipeline on panel data with per-group scoring on KDD Cup air quality.
 
-    - Global model: single [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) across all groups
-    - [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/): per-group specialised models
-    - [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) + [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) inside a panel forecaster
-    - [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/): automatic per-group trend/season extraction
-    - Nested pipelines for panel data
-    - Comparing global vs local models with groupwise scoring
-
-    ## Prerequisites
-
-    Panel data conventions (`__` separator) and basic forecasting
+    **Prerequisites:** Panel data conventions (`__` separator) and basic forecasting
     (see `examples/quickstart.py`).
     """)
 
@@ -432,26 +424,6 @@ def _(MeanAbsoluteError, groups, mo, pl, y_pred_column, y_pred_global, y_test, y
     mo.ui.table(comparison)
     return (comparison,)
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **All composition meta-estimators** work with panel data automatically
-    - **Global model** (single forecaster): fits one model per group with shared hyperparameters
-    - **ColumnForecaster**: assigns different forecasters to different column subsets for per-group specialisation
-    - **FeatureUnion**: parallel feature engineering applied per-group inside a panel forecaster
-    - **DecompositionPipeline**: per-group trend/season extraction with automatic reassembly
-    - **Nested pipelines**: combine decomposition with feature engineering seamlessly
-    - **Groupwise scoring** reveals which groups benefit from local vs global models
-
-    ## Next Steps
-
-    - **Panel point forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/) for deeper panel patterns
-    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/) for prediction intervals on panel data
-    - **Panel preprocessing**: See [`examples/preprocessing/panel_preprocessing.py`](/examples/preprocessing/panel_preprocessing/) for transformer-level panel handling
-    """)
 
 
 if __name__ == "__main__":

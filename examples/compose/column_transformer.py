@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Column Transformer",
     "description": "Route columns through distinct transformers with ColumnTransformer, including remainder handling and automatic panel-aware column detection.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -34,17 +35,9 @@ def _(mo):
     [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) applies **distinct transformers to distinct columns**
     in a single step.
 
-    ## What You'll Learn
+    This notebook shows how to route columns through distinct transformers with ColumnTransformer, including remainder handling and automatic panel-aware column detection.
 
-    - Building a [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) with named transformer-column pairs
-    - Remainder handling: `"drop"` vs `"passthrough"`
-    - Inspecting output feature names
-    - Combining [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
-    - Using [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) inside a panel forecaster for automatic per-group application
-
-    ## Prerequisites
-
-    Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) and basic transformers
+    **Prerequisites:** Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) and basic transformers
     (see `examples/point/reduction_forecaster.py`).
     """)
 
@@ -330,24 +323,6 @@ def _(
         title="Panel Forecast: First 3 Groups",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **ColumnTransformer** applies distinct transformers to distinct columns in a single step
-    - **Remainder handling** controls what happens to unlisted columns: `"drop"` (default) discards them, `"passthrough"` keeps them
-    - **verbose_feature_names_out** prefixes output names with transformer names for traceability
-    - **Panel integration** is automatic: when used inside a forecaster, ColumnTransformer is applied per group to unprefixed columns
-    - **Forecaster composition**: Pass ColumnTransformer as `feature_transformer` to [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
-
-    ## Next Steps
-
-    - **Parallel features**: See [`examples/compose/feature_union.py`](/examples/compose/feature_union/) for combining transformers in parallel
-    - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/compose/pipeline_composition/) for nesting ColumnTransformer in larger pipelines
-    - **Panel pipelines**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/) for comprehensive panel composition patterns
-    """)
 
 
 if __name__ == "__main__":

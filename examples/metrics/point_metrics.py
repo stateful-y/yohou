@@ -9,6 +9,12 @@
 import marimo
 
 __generated_with = "0.23.1"
+__gallery__ = {
+    "title": "Point Metrics",
+    "description": "All 8 point scorers (MAE, MSE, RMSE, MedianAE, MAPE, sMAPE, RMSSE, MASE) with flexible aggregation modes and per-timestep score visualisation.",
+    "category": "how-to",
+    "companion": "/pages/explanation/forecast-accuracy/",
+}
 app = marimo.App(width="medium")
 
 
@@ -634,22 +640,6 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Key Takeaways
-
-    - All point scorers follow `fit()` → `score()` pattern
-    - Basic metrics (MAE, MSE, RMSE, MAPE, sMAPE, MedianAE) need no training data
-    - Scaled metrics (MASE, RMSSE) fit on **training data** for normalization
-    - `aggregation_method` controls granularity: `"all"`, `["stepwise", "vintagewise"]`, `"componentwise"`
-    - [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/) evaluates hard classification correctness (use with care on imbalanced data)
-    - Use [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) for temporal error analysis
-    - Use [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) for multi-model comparison
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict` method with `stride=1` produces one forecast per
@@ -705,20 +695,3 @@ def _(plot_score_time_series, vintage_scorer, y_pred_vintages, y_test):
         facet_by="member",
     )
     return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Interval metrics**: See [`interval_metrics.py`](/examples/metrics/interval_metrics/) for interval scoring
-    - **Cross-validation**: See [Model Selection](/examples/#model-selection) for temporal CV with scoring
-    - **Time weighting**: See [`time_weighted_scoring.py`](/examples/metrics/time_weighted_scoring/)
-    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for soft classification metrics (LogLoss, BrierScore) and reliability diagrams
-    """)
-    return
-
-
-if __name__ == "__main__":
-    app.run()

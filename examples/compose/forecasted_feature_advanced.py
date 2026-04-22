@@ -12,6 +12,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "ForecastedFeatureForecaster (Advanced)",
     "description": "Compare ForecastedFeatureForecaster strategies (actual, predicted, rewind) and split ratio tuning for chaining feature and target forecasters.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -32,13 +33,7 @@ def _(mo):
     [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) chains a feature forecaster with
     a target forecaster.
 
-    ## What You'll Learn
-
-    - **`strategy="actual"`**: Uses real feature values during fit (default)
-    - **`strategy="predicted"`**: Uses forecasted features during prediction
-    - **`strategy="rewind"`**: Rewinds feature forecaster state before prediction
-    - **`split_ratio`**: Controls train/validation split for feature forecaster
-    - Strategy comparison on Hospital multivariate data
+    This notebook shows how to compare ForecastedFeatureForecaster strategies (actual, predicted, rewind) and split ratio tuning for chaining feature and target forecasters.
     """)
 
 
@@ -311,23 +306,6 @@ def _(
 
     mo.ui.table(pl.DataFrame(_rows))
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **`strategy="actual"`**: Target model trained on actual features (best if X is available at predict time)
-    - **`strategy="predicted"`**: Both models use forecasted features (no future data leakage)
-    - **`strategy="rewind"`**: Rewinds feature forecaster state before prediction
-    - **`split_ratio`**: Higher = more data for feature forecaster, less for target forecaster
-    - Choose strategy based on whether X is known at prediction time
-
-    ## Next Steps
-
-    - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/compose/pipeline_composition/)
-    - **Feature union**: See [`examples/compose/feature_union.py`](/examples/compose/feature_union/)
-    """)
 
 
 if __name__ == "__main__":

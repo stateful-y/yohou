@@ -10,6 +10,11 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "CatBoost Multi-Quantile",
+    "description": "Generate prediction intervals using CatBoost multi-quantile regression for interval forecasting.",
+    "category": "how-to",
+}
 app = marimo.App(width="medium")
 
 
@@ -277,8 +282,6 @@ def _(
     return
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -337,27 +340,3 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - Set `loss_function='MultiQuantile:alpha=...'` on `CatBoostRegressor`
-    - [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) detects this and fits **one** model
-    - The alpha placeholder is overwritten: just specify `coverage_rates`
-    - Multi-quantile is faster when many coverage rates are needed
-    - Interval quality is comparable to separate quantile models
-    - `reduction_strategy` does not change multi-quantile behaviour (always recursive with H=1)
-
-    ## Next Steps
-
-    - **Standard interval reduction**: See [`interval_reduction.py`](/examples/interval/interval_reduction/) for `reduction_strategy` comparison
-    - **Point CatBoost**: See [`catboost_forecasting.py`](/examples/point/catboost_forecasting/) for point forecasting with CatBoost
-    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
-    """)
-    return
-
-
-if __name__ == "__main__":
-    app.run()

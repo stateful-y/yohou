@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Naive Forecasters",
     "description": "Baseline forecasting with SeasonalNaive using different seasonality periods, the observe/predict streaming workflow, and rolling evaluation patterns.",
+    "category": "tutorial",
 }
 app = marimo.App(width="medium")
 
@@ -29,19 +30,14 @@ def _(mo):
     # Naive Forecasters as Baselines
 
     Every forecasting project needs a **baseline** to judge model quality.
-    Naive methods repeat past patterns with no learning, yet they are surprisingly
-    hard to beat on many datasets.
+    Naive methods repeat past patterns with no learning, yet they are
+    surprisingly hard to beat on many datasets.
 
-    ## What You'll Learn
+    In this tutorial we will build seasonal naive forecasters with different
+    periods, compare their accuracy, and use the `observe` / `predict`
+    workflow to see how fresh observations improve forecast quality.
 
-    - Using [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) to forecast by repeating the last seasonal cycle
-    - The `observe` / `predict` workflow for rolling evaluation
-    - Comparing different seasonality periods
-    - Visualizing forecasts with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
-
-    ## Prerequisites
-
-    Basic understanding of seasonality in time series.
+    **Prerequisites**: Basic understanding of seasonality in time series.
     """)
 
 
@@ -81,7 +77,8 @@ def _(mo):
     mo.md(r"""
     ## 1. Load and Split Data
 
-    We begin by loading the Monthly Tourism dataset and splitting it into training and test sets for evaluating the forecasters.
+    We start by loading the Monthly Tourism dataset and splitting it into
+    training and test sets for evaluating our forecasters.
     """)
 
 
@@ -98,8 +95,9 @@ def _(fetch_tourism_monthly, train_test_split):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders the full dataset to reveal the yearly seasonal
-    pattern and upward trend that the naive forecaster will attempt to capture.
+    [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders the full dataset. Notice the clear yearly
+    seasonal pattern and upward trend. These are what the naive forecaster
+    will attempt to capture.
     """)
 
 
@@ -152,7 +150,8 @@ def _(mo):
     ## 3. Comparing Seasonality Periods
 
     The `seasonality` parameter controls how far back the forecaster looks.
-    Let's compare `seasonality=1` (repeat last value), `6`, and `12`.
+    We compare `seasonality=1` (repeat last value), `6`, and `12` to see
+    which period best matches the data.
     """)
 
 
@@ -178,9 +177,8 @@ def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) overlays predictions from all three seasonality settings
-    against the test actuals, making it easy to see which period best captures
-    the seasonal pattern.
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) overlays predictions from all three settings against the
+    test actuals. Notice how `seasonality=12` best captures the yearly pattern.
     """)
 
 
@@ -200,10 +198,10 @@ def _(mo):
     mo.md(r"""
     ## 4. predict vs observe_predict
 
-    `predict` generates forecasts from the last fitted state.
-    `observe_predict` first ingests new observations, then predicts,
-    giving the model fresh data to work with. Comparing both on the
-    same test set reveals the benefit of incremental observation.
+    So far we have used `predict` alone, which forecasts from the last fitted
+    state. Now we try `observe_predict`, which first ingests new observations
+    and then predicts, giving the model fresh data to work with. Comparing
+    both on the same test set reveals the benefit of incremental observation.
     """)
 
 
@@ -237,15 +235,14 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Key Takeaways
+    ## What We Built
 
-    - [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) repeats last season's values - a strong baseline for seasonal data
-    - `seasonality=12` matches monthly patterns (12 months = 1 year)
-    - `observe_predict()` ingests new data then predicts, improving accuracy
-    - Always compare ML forecasters against naive baselines to prove added value
+    We started with a simple `SeasonalNaive(seasonality=12)` baseline,
+    compared different seasonality periods, and used `observe_predict()`
+    to show how feeding new observations improves accuracy without
+    retraining. Any ML forecaster we build next should beat these baselines
+    to justify its added complexity.
     """)
-
-
 
 
 @app.cell(hide_code=True)
@@ -303,17 +300,3 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         title="Score Heatmap (Step x Vintage)",
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Reduction forecasting**: See [`reduction_forecaster.py`](/examples/point/reduction_forecaster/) for ML-based approach
-    - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive evaluation metrics
-    - **Cross-validation**: See [Model Selection](/examples/#model-selection) for temporal CV strategies
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

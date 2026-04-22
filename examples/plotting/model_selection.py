@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Model Selection Plots",
     "description": "Visualise CV fold geometry with expanding and sliding window splitters and hyperparameter search results with plot_splits and plot_cv_results_scatter.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -52,16 +53,9 @@ def _(mo):
     mo.md(r"""
     # Model Selection Visualization
 
-    ## What You'll Learn
+    This notebook shows how to visualize CV fold geometry with expanding and sliding window splitters and hyperparameter search results with plot_splits and plot_cv_results_scatter.
 
-    - Visualizing train/test CV splits with [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/)
-    - Comparing expanding vs sliding window strategies
-    - Using gap periods to prevent data leakage
-    - Plotting hyperparameter search results with [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/)
-
-    ## Prerequisites
-
-    Familiarity with cross-validation concepts. See `examples/cross_validation.py`
+    **Prerequisites:** Familiarity with cross-validation concepts. See `examples/cross_validation.py`
     for a detailed introduction.
     """)
 
@@ -227,24 +221,6 @@ def _(cv_results, plot_cv_results_scatter):
         title="CV Results - Custom Marker Style",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **plot_splits** colour-codes train / test / gap segments per fold; custom colours via `train_color`, `test_color`, `gap_color`
-    - **ExpandingWindowSplitter** grows the training window; **SlidingWindowSplitter** slides a fixed window with optional `stride`
-    - Setting `gap > 0` inserts a buffer between train and test to prevent data leakage
-    - **plot_cv_results_scatter** plots hyperparameter vs score; `highlight_best` marks the optimal value; `show_std` toggles error bars
-
-    ## Next Steps
-
-    - **Evaluation**: See [`examples/plotting/evaluation.py`](/examples/plotting/evaluation/) for residual and score distribution plots
-    - **Forecasting**: See [`examples/plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/) for forecast and comparison plots
-    - **Similarity**: See `examples/plotting/similarity_heatmap.py` for distance-based interval weights
-    - **Signal processing**: See [`examples/plotting/signal_processing.py`](/examples/plotting/signal_processing/) for spectrum and phase analysis
-    """)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Preprocessing",
     "description": "Automatic panel-aware transformation (StandardScaler, rolling stats, imputation) plus manual per-group workflows with get_group_df and dict_to_panel.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -32,12 +33,7 @@ def _(mo):
     path, then the manual per-group workflow using [`get_group_df`](/pages/api/generated/yohou.utils.panel.get_group_df/) and
     [`dict_to_panel`](/pages/api/generated/yohou.utils.panel.dict_to_panel/).
 
-    ## What You'll Learn
-
-    - Automatic panel-aware transformation with [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/), rolling statistics, imputation
-    - Manual per-group extraction: `get_group_df()` and `dict_to_panel()`
-    - Inspecting panel structure with `inspect_panel()`
-    - Custom per-group preprocessing pipelines
+    This notebook shows how to perform automatic panel-aware transformation (StandardScaler, rolling stats, imputation) plus manual per-group workflows with get_group_df and dict_to_panel.
     """)
 
 
@@ -246,25 +242,6 @@ def _(SimpleTimeImputer, pl, plot_time_series, tourism):
     )
     plot_time_series(_combined, title="T3: Panel Imputation (linear, per group)")
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Automatic panel handling**: All transformers process panel groups independently
-    - **Column naming preserved**: [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/), [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/) all maintain the `__` convention
-    - **`inspect_panel()`**: Explores panel structure (global vs group columns)
-    - **`get_group_df()`**: Extracts one group with unprefixed column names
-    - **`dict_to_panel()`**: Reassembles per-group DataFrames into a panel DataFrame
-    - **Custom workflows**: Extract → process → reassemble for per-group specialisation
-
-    ## Next Steps
-
-    - **Panel stationarity**: See [`examples/stationarity/panel_stationarity.py`](/examples/stationarity/panel_stationarity/)
-    - **Panel pipelines**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
-    - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/)
-    """)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Pedestrian Counts Analytics",
     "description": "Advanced sensor analytics on Melbourne pedestrian data with autocorrelation, partial autocorrelation, rolling statistics, and day-of-week seasonality.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -45,22 +46,16 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Pedestrian Counts - Advanced Sensor Analytics
+    # Pedestrian Counts: Advanced Sensor Analytics
 
     This notebook builds on the basic Pedestrian Counts exploration with
     deeper diagnostic plots. We use hourly data from Melbourne sensors to
     examine temporal dependencies, spectral structure, and seasonal
     patterns at multiple scales.
 
-    ## What You'll Learn
+    This notebook shows how to perform advanced sensor analytics on Melbourne pedestrian data with autocorrelation, partial autocorrelation, rolling statistics, and day-of-week seasonality.
 
-    - Autocorrelation and partial autocorrelation for hourly/daily lags
-    - Day-of-week seasonal patterns
-    - Rolling statistics to track trend and volatility
-
-    ## Prerequisites
-
-    See `examples/datasets/pedestrian_counts.py` for basic panel
+    **Prerequisites:** See `examples/datasets/pedestrian_counts.py` for basic panel
     exploration (boxplots, hour-of-day patterns).
     """)
 
@@ -165,22 +160,6 @@ def _(pedestrian, plot_rolling_statistics):
         title="T1 - Rolling Mean and Std (1-week window)",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **ACF/PACF**: Hourly data shows strong daily (lag 24) and weekly (lag 168) cycles
-    - **Day-of-week seasonality**: Weekday vs weekend patterns are visually distinct
-    - **Rolling statistics**: 1-week window tracks evolving traffic levels
-
-    ## Next Steps
-
-    - **Basic sensor exploration**: See [`examples/datasets/pedestrian_counts.py`](/examples/datasets/pedestrian_counts/)
-    - **Panel data analysis**: See [`examples/datasets/australian_tourism.py`](/examples/datasets/australian_tourism/)
-    - **Signal diagnostics**: See [`examples/datasets/sunspots.py`](/examples/datasets/sunspots/) for spectral analysis
-    """)
 
 
 if __name__ == "__main__":

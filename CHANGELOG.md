@@ -6,34 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [0.1.0-alpha.4] - 2026-04-22
-
-This **minor release** includes 13 commits.
-
-
-### Features
-- Enable interval forecaster support in SearchCV  ([#25](https://github.com/stateful-y/yohou/pull/25)) by @gtauzin
-- Add direct and dir-rec reduction strategies with example notebooks  ([#27](https://github.com/stateful-y/yohou/pull/27)) by @gtauzin
-- Add categorical class-probability forecasting  ([#30](https://github.com/stateful-y/yohou/pull/30)) by @gtauzin
-- Add calendar, holiday, Fourier, and time index transformers  ([#39](https://github.com/stateful-y/yohou/pull/39)) by @gtauzin
-- Add VotingForecaster and VotingClassProbaForecaster  ([#40](https://github.com/stateful-y/yohou/pull/40)) by @gtauzin
-- Add vintage weighting to reduction forecasters  ([#42](https://github.com/stateful-y/yohou/pull/42)) by @gtauzin
-- Add MeanSeasonalNaive and MeanLagTransformer  ([#43](https://github.com/stateful-y/yohou/pull/43)) by @gtauzin
-
-### Bug Fixes
-- Skip plotting extras in test_docstrings on Python 3.14  ([#38](https://github.com/stateful-y/yohou/pull/38)) by @gtauzin
-
-### Refactoring
-- Centralize private sklearn imports into utils/_compat.py  ([#26](https://github.com/stateful-y/yohou/pull/26)) by @gtauzin
-- Codebase quality overhaul  ([#28](https://github.com/stateful-y/yohou/pull/28)) by @gtauzin
-- Standardize arguments, panel layout, and plotting defaults  ([#33](https://github.com/stateful-y/yohou/pull/33)) by @gtauzin
-- Unify scorer API with fit(forecaster) and scoring dimensions  ([#41](https://github.com/stateful-y/yohou/pull/41)) by @gtauzin
-
-### Contributors
-
-Thanks to all contributors for this release:
-- @gtauzin
-
 ## [0.1.0-alpha.3] - 2026-03-01
 
 This **minor release** includes 5 commits.

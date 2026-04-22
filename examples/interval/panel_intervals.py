@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Prediction Intervals",
     "description": "Combine conformal and quantile regression intervals on panel data with per-group coverage analysis, calibration plots, and groupwise interval scoring.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -252,8 +253,6 @@ def _(
     mo.ui.table(_results)
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -299,24 +298,3 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Per-group calibration**: Both conformal and quantile regression methods calibrate independently per group
-    - **Coverage varies by group**: Some groups may have wider/narrower intervals depending on their variance
-    - **[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)** wraps any point forecaster with conformal calibration
-    - **[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)** uses quantile regression directly
-    - Use [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) for per-group coverage/width analysis
-
-    ## Next Steps
-
-    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/) for coveragewise scoring
-    - **Conformity scorers**: See [`examples/metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/)
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

@@ -12,6 +12,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Interval Search",
     "description": "Tune interval forecaster parameters directly with interval metrics in GridSearchCV, including mixed point+interval multimetric search.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -31,12 +32,7 @@ def _(mo):
     Tune interval forecaster parameters using interval metrics
     **directly** in [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/).
 
-    ## What You'll Learn
-
-    - Scoring with interval metrics (`IntervalScore`, `EmpiricalCoverage`) during CV
-    - Mixed multimetric search: point + interval metrics together
-    - How `GridSearchCV` automatically routes `coverage_rates` to the forecaster
-    - Comparing calibration parameters with interval-aware selection
+    This notebook shows how to tune interval forecaster parameters directly with interval metrics in GridSearchCV, including mixed point+interval multimetric search.
     """)
 
 
@@ -340,24 +336,6 @@ def _(
     - **Mean interval width**: {float(_width.score(y_test, y_pred_mixed)):.1f}
     """)
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Interval metrics work directly** in `GridSearchCV` - no workaround needed
-    - `coverage_rates` are automatically collected from interval scorers and routed
-    - **Mixed multimetric** search combines point and interval metrics in one call
-    - Point scorers receive midpoint estimates `(lower + upper) / 2` from the tightest interval
-    - Use `refit` to pick which metric selects the best configuration
-
-    ## Next Steps
-
-    - [`multi_metric_search.py`](/examples/model_selection/multi_metric_search/) for more on multi-metric strategies
-    - [`optuna_search.py`](/examples/model_selection/optuna_search/) for Optuna-based search
-    - [`conformity_scorers.py`](/examples/metrics/conformity_scorers/) for conformity scorer details
-    """)
 
 
 if __name__ == "__main__":

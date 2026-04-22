@@ -12,6 +12,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Feature Union",
     "description": "Combine lag features, rolling statistics, EMA, and scaling in parallel with FeatureUnion and automatic observation horizon resolution.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -32,12 +33,7 @@ def _(mo):
     same input and concatenates the results column-wise. The resulting
     `observation_horizon` is the **maximum** across all transformers.
 
-    ## What You'll Learn
-
-    - Combine lag features, rolling statistics, and scaling in parallel
-    - `observation_horizon` = max of child transformers
-    - `verbose_feature_names_out` for prefixed column names
-    - Using [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) as `feature_transformer` in a forecaster
+    This notebook shows how to combine lag features, rolling statistics, EMA, and scaling in parallel with FeatureUnion and automatic observation horizon resolution.
     """)
 
 
@@ -280,24 +276,6 @@ def _(fc_union, horizon, plot_forecast, y_test, y_train):
         title="FeatureUnion (Lags + Rolling + EMA): Sunspots",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **[`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)** applies transformers in parallel and concatenates outputs
-    - **`observation_horizon`** = MAX across all child transformers
-    - **`verbose_feature_names_out=True`** prefixes columns with transformer name
-    - Use as **`feature_transformer`** in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) for rich feature engineering
-    - Combine [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/), [`ExponentialMovingAverage`](/pages/api/generated/yohou.preprocessing.window.ExponentialMovingAverage/), etc.
-
-    ## Next Steps
-
-    - **FeaturePipeline**: See [`examples/compose/pipeline_composition.py`](/examples/compose/pipeline_composition/) for sequential pipelines
-    - **Decomposition**: See [`examples/compose/decomposition_variations.py`](/examples/compose/decomposition_variations/)
-    - **Panel feature union**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
-    """)
 
 
 if __name__ == "__main__":

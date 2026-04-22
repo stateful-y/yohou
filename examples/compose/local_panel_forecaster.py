@@ -12,6 +12,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "LocalPanelForecaster",
     "description": "Wrap any forecaster with LocalPanelForecaster for fully independent per-group clones, parallel fitting via n_jobs, and selective group operations.",
+    "category": "how-to",
+    "companion": "/pages/explanation/core-concepts/#univariate-multivariate-and-panel-data",
 }
 app = marimo.App(width="medium")
 
@@ -355,8 +357,6 @@ def _(LocalPanelForecaster, MeanAbsoluteError, SeasonalNaive, horizon, mo, y_tes
     return (fc_naive_local,)
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -401,29 +401,3 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test2):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    | Feature | `panel_strategy="global"` | [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) |
-    |---|---|---|
-    | **Model sharing** | Shared hyperparameters | Fully independent clones |
-    | **Transformers** | Per-group (automatic) | Per-group (inside each clone) |
-    | **Cross-group learning** | Pooled estimator | None |
-    | **Parallel fitting** | Sequential | `n_jobs` parameter |
-    | **Selective operations** | `groups` on all methods | `groups` on all methods |
-    | **Best for** | Homogeneous groups | Heterogeneous groups |
-
-    ## Next Steps
-
-    - **Panel strategy overview**: See `examples/panel_reduction.py`
-    - **Per-group specialisation**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/) for [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
-    - **Composition patterns**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
-    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/)
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

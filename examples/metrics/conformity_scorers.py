@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Conformity Scorers",
     "description": "Compare Residual, AbsoluteResidual, GammaResidual, and AbsoluteGammaResidual conformity scorers with coverage/width analysis and DistanceSimilarity interaction.",
+    "category": "how-to",
+    "companion": "/pages/explanation/interval-forecasting/#conformity-scores",
 }
 app = marimo.App(width="medium")
 
@@ -471,8 +473,6 @@ def _(
     return (fc_sim,)
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -518,27 +518,3 @@ def _(vintage_scorer, plot_score_per_step, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Four concrete conformity scorers** control interval shape in [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
-    - **Symmetric** scorers (AbsoluteResidual, AbsoluteGammaResidual) centre intervals on the point prediction
-    - **Asymmetric** scorers (Residual, GammaResidual) allow unequal lower/upper widths
-    - **Gamma** variants normalise by the prediction magnitude, producing **adaptive** interval widths
-    - The `epsilon` parameter in Gamma scorers prevents division by zero
-    - [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/) adds observation-dependent weighting for locally adaptive intervals
-    - Always evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
-    - For multiplicative data, Gamma scorers typically produce better-calibrated intervals
-
-    ## Next Steps
-
-    - **Distance similarity**: See [`distance_similarity.py`](/examples/interval/distance_similarity/) for full adaptive conformal intervals deep-dive
-    - **Interval metrics**: See [`interval_metrics.py`](/examples/metrics/interval_metrics/) for deep-dive into interval evaluation
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

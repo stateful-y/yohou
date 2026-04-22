@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Decomposition Variations",
     "description": "Build 2- and 3-component DecompositionPipeline forecasters chaining trend, seasonality, and residual models with target pre-transformation.",
+    "category": "how-to",
+    "companion": "/pages/explanation/stationarity/#decomposition",
 }
 app = marimo.App(width="medium")
 
@@ -371,8 +373,6 @@ def _(
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -433,28 +433,3 @@ def _(vintage_scorer, plot_score_summary, y_pred_vintages, y_test):
         title="Model Score Summary",
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Predictions are summed** across all components in [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
-    - **`store_residuals=True`**: stores intermediate residuals for inspection
-    - **`target_transformer`**: applied before decomposition, inverted after prediction
-    - **Panel data**: each group gets independent decomposition
-    - **Common patterns**:
-      - Trend + Residual (simple noise after detrending)
-      - Trend + Seasonality + Residual (captures periodic patterns)
-      - Log transform + Decomposition (multiplicative to additive conversion)
-
-    ## Next Steps
-
-    - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/compose/pipeline_composition/)
-    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
-    - **Panel stationarity**: See [`examples/stationarity/panel_stationarity.py`](/examples/stationarity/panel_stationarity/)
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

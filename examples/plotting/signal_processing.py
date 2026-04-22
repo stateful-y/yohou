@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Signal Processing Plots",
     "description": "Butterworth low-pass filtering with frequency spectrum analysis and phase shift inspection on half-hourly electricity demand data using Plotly.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -43,21 +44,7 @@ def _(mo):
     mo.md(r"""
     # Signal Processing
 
-    ## What You'll Learn
-
-    - Applying a [`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/) (Butterworth low-pass) to a demand
-      signal
-    - Comparing raw vs. filtered signals in the time domain
-    - Using [`plot_spectrum`](/pages/api/generated/yohou.plotting.signal.plot_spectrum/) to see how a low-pass filter removes
-      high-frequency noise
-    - Using [`plot_phase`](/pages/api/generated/yohou.plotting.signal.plot_phase/) to examine phase shifts introduced by the filter
-
-    ## The Dataset
-
-    Australian electricity demand data recorded every **30 minutes** over
-    several years. The **vic__demand** column contains a strong daily cycle
-    (period ≈ 48 samples) plus higher-frequency fluctuations that a
-    low-pass filter will suppress.
+    This notebook shows how to apply Butterworth low-pass filtering with frequency spectrum analysis and phase shift inspection on half-hourly electricity demand data using Plotly.
     """)
 
 
@@ -278,28 +265,6 @@ def _(plot_spectrum, temp_bp):
         title="Power Spectrum - Bandpass (Log Scale)",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - [`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/) applies causal IIR filters (Butterworth, Chebyshev,
-      etc.) to polars DataFrames while preserving the `"time"` column
-    - [`plot_spectrum`](/pages/api/generated/yohou.plotting.signal.plot_spectrum/) shows how filtering reshapes the frequency content;
-      `log_scale=True` reveals detail across decades; period is always
-      shown in hover tooltips and peak annotations
-    - [`plot_phase`](/pages/api/generated/yohou.plotting.signal.plot_phase/) exposes phase shifts; `unwrap=True` prevents jumps;
-      `angle_unit="degree"` aids interpretation
-    - Bandpass mode isolates specific periodicities (here the daily cycle)
-
-    ## Next Steps
-
-    - **Similarity heatmaps**: See `examples/plotting/similarity_heatmap.py`
-      for distance-based interval forecasting weights
-    - **Seasonal diagnostics**: See [`seasonal.py`](/examples/plotting/seasonal/) for
-      ACF/PACF, seasonality overlays, and STL decomposition
-    """)
 
 
 if __name__ == "__main__":

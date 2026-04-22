@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Decomposition",
     "description": "Chain PolynomialTrendForecaster, PatternSeasonalityForecaster, and FourierSeasonalityForecaster inside DecompositionPipeline with component visualisation.",
+    "category": "tutorial",
+    "companion": "/pages/explanation/stationarity/#decomposition",
 }
 app = marimo.App(width="medium")
 
@@ -28,21 +30,13 @@ def _(mo):
     mo.md(r"""
     # Trend and Seasonality Decomposition
 
-    Classical decomposition splits a time series into **trend**, **seasonality**,
-    and **residual** components. Yohou provides specialized forecasters for each
-    component and [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) to chain them.
+    Classical decomposition splits a time series into **trend**,
+    **seasonality**, and **residual** components. In this tutorial we will
+    fit each component type individually, then chain them with
+    [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) and visualize the result with
+    [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/).
 
-    ## What You'll Learn
-
-    - [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/): Fit polynomial trend
-    - [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/): Repeat seasonal patterns (naive, average, median)
-    - [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/): Fourier-based seasonal modeling
-    - [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/): Chain trend + seasonality + residual forecasters
-    - Visualizing decomposition with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/)
-
-    ## Prerequisites
-
-    Understanding of trend and seasonality concepts.
+    **Prerequisites**: Understanding of trend and seasonality concepts.
     """)
 
 
@@ -97,7 +91,7 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We load a time series dataset suitable for demonstrating trend and seasonality decomposition.
+    We load a monthly tourism series and split it into train and test sets.
     """)
 
 
@@ -187,10 +181,10 @@ def _(mo):
     mo.md(r"""
     ## 5. DecompositionPipeline
 
-    Chain multiple component forecasters sequentially. Each forecaster in the pipeline
-    fits on the **residuals** from the previous one.
+    Now we chain all three component forecasters. Each forecaster in the
+    pipeline fits on the **residuals** from the previous one:
 
-    `trend → seasonality → residual`
+    `trend -> seasonality -> residual`
     """)
 
 
@@ -251,8 +245,9 @@ def _(mo):
     mo.md(r"""
     ## 6. Visualizing Components
 
-    With `store_residuals=True`, access each component's contribution via
-    `named_forecasters_`.
+    With `store_residuals=True`, we can access each component's contribution
+    via `named_forecasters_` and see how the final prediction is the sum of
+    all three.
     """)
 
 
@@ -273,17 +268,14 @@ def _(decomp, fh, plot_decomposition, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Key Takeaways
+    ## What We Built
 
-    - [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/): Polynomial trend modeling (linear, quadratic, etc.)
-    - [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/): Pattern-based seasonality (naive, average, median)
-    - [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/): Smooth seasonal curves via harmonics
-    - [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/): Chain forecasters; each fits on previous residuals
-    - `store_residuals=True` enables component inspection
-    - The pipeline prediction is the **sum** of all component predictions
+    We fitted trend, seasonality, and residual components individually,
+    then composed them into a single `DecompositionPipeline`. With
+    `store_residuals=True` we visualized how each component contributes
+    to the final forecast: the prediction is the **sum** of all
+    component predictions.
     """)
-
-
 
 
 @app.cell(hide_code=True)
@@ -330,17 +322,3 @@ def _(vintage_scorer, plot_score_per_step, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Stationarity transforms**: See [`stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/) for differencing
-    - **Reduction forecasting**: See [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/)
-    - **Interval forecasting**: See [Interval](/examples/#interval-forecasting) for prediction intervals
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

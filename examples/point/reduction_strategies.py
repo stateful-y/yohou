@@ -9,6 +9,12 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Reduction Strategies",
+    "description": "Compare direct, recursive, and multi-output reduction strategies for point forecasting.",
+    "category": "how-to",
+    "companion": "/pages/explanation/forecasting/#reduction-strategies",
+}
 app = marimo.App(width="medium")
 
 
@@ -370,23 +376,6 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Key Takeaways
-
-    - `reduction_strategy` controls how multi-step forecasts are produced from tabularized data
-    - **Multi-output**: one model, all steps at once - simple and fast
-    - **Direct**: H independent models - avoids error accumulation
-    - **Dir-Rec**: H sequential models with feature augmentation - captures inter-step dependencies
-    - `target_as_feature` controls whether lags come from the transformed target, raw target, or neither
-    - For direct and dir-rec, `estimator_` becomes a `list[BaseEstimator]` of length H
-    """)
-    return
-
-
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict` method with `stride=1` produces one forecast per
@@ -428,19 +417,3 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Reduction basics**: See [`reduction_forecaster.py`](/examples/point/reduction_forecaster/) for transformers and GridSearchCV
-    - **Interval strategies**: See [`interval_reduction.py`](/examples/interval/interval_reduction/) for quantile regression with reduction strategies
-    - **Panel data**: See [`panel_reduction.py`](/examples/point/panel_reduction/) for panel strategies (orthogonal to reduction strategies)
-    - **Time weighting**: See [`time_weighted_reduction.py`](/examples/point/time_weighted_reduction/) for sample weight alignment
-    """)
-    return
-
-
-if __name__ == "__main__":
-    app.run()

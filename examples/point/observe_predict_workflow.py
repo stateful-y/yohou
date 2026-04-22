@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Observe-Predict Workflow",
     "description": "Incrementally observe new data and predict without refitting, including rewind for memory management and selective panel group update operations.",
+    "category": "tutorial",
+    "companion": "/pages/explanation/forecasting/#incremental-observation",
 }
 app = marimo.App(width="medium")
 
@@ -33,16 +35,10 @@ def _(mo):
     then **predict** using the already-fitted model. This is much cheaper than
     refitting and enables streaming evaluation.
 
-    ## What You'll Learn
-
-    - `observe(y, X)`: push new observations into the forecaster's memory
-    - `predict(forecasting_horizon)`: generate forecasts recursively from observed state
-    - `observe_predict(y, X)`: atomic observe + predict in a single call
-    - `observe_predict_interval(y, X)`: observe + predict prediction intervals
-    - `observe_predict_class_proba(y, X)`: observe + predict class probabilities
-    - `observe_predict(y, X)` on a class-proba forecaster: observe + predict hard labels
-    - `rewind(y, X)`: reset state to a specific window without refitting
-    - Panel data: selective group observation with `groups`
+    In this notebook we will use `observe`, `predict`, `observe_predict`, and
+    `rewind` to feed new data incrementally, generate forecasts, and roll back
+    state. We will also apply these operations to interval, class-probability,
+    and panel forecasters.
 
     > **Note**: The observe/predict API is **independent of `reduction_strategy`**.
     > Whether you use `"multi-output"`, `"direct"`, or `"dir-rec"`, the observe,
@@ -514,38 +510,3 @@ def _(
         f"**Predicted columns**: {[c for c in _y_pred_s1.columns if c != 'time' and c != 'vintage_time']}\n\n"
         f"Only T7, T11, T12 groups were observed and predicted, other groups remain at their previous state."
     )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    | Method | Forecaster Type | Returns |
-    |--------|----------------|--------|
-    | `observe_predict()` | Point | Numeric predictions |
-    | `observe_predict()` | Class-proba | Argmax hard labels (String) |
-    | `observe_predict_interval()` | Interval | Lower/upper bounds per coverage rate |
-    | `observe_predict_class_proba()` | Class-proba | Probability per class (float) |
-
-    - **`observe(y, X)`** appends new data to the forecaster's memory without refitting (cheap, incremental)
-    - **`predict(forecasting_horizon)`** generates forecasts from the current observed state
-    - **`observe_predict(y, X)`** is the atomic combination: the workhorse of rolling evaluation
-    - **`observe_predict_interval(y, X)`** returns prediction intervals with `coverage_rates`
-    - **`observe_predict_class_proba(y, X)`** returns full probability distributions over classes
-    - **`rewind(y, X)`** resets state to a specific window without refitting (useful for backtesting)
-    - **Panel selective observation**: Use `groups` to observe/predict subsets of groups independently
-    - Observations update transformer state (buffers) but **do not refit the model**
-
-    ## Next Steps
-
-    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output, direct, and dir-rec comparison
-    - **Interval forecasting**: See [`interval_metrics.py`](/examples/metrics/interval_metrics/) for scoring prediction intervals
-    - **Classification forecasting**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for the full classification workflow
-    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for LogLoss, BrierScore, and Accuracy
-    - **Panel forecasting**: See [`panel_forecasting.py`](/examples/point/panel_forecasting/) for comprehensive panel workflows
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

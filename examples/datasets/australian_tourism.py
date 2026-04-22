@@ -11,6 +11,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Tourism Quarterly",
     "description": "Explore the Tourism Quarterly panel dataset with inspect_panel structure analysis, cross-group demand comparison, and seasonal boxplots across 8 series.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -42,20 +43,9 @@ def _(mo):
     mo.md("""
     # Tourism Quarterly Dataset
 
-    ## What You'll Learn
+    This notebook shows how to explore the Tourism Quarterly panel dataset with inspect_panel structure analysis, cross-group demand comparison, and seasonal boxplots across 8 series.
 
-    This example demonstrates quarterly panel data analysis with the Tourism
-    Quarterly dataset, pre-formatted in Yohou's native `__` panel convention. You'll
-    learn how to:
-
-    - Inspect panel structure with [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/)
-    - Compare tourism demand across panel groups
-    - Analyze quarterly seasonal patterns
-    - Use box plots for distribution analysis
-
-    ## Prerequisites
-
-    None. this is a standalone dataset exploration.
+    **Prerequisites:** None. this is a standalone dataset exploration.
     """)
 
 
@@ -172,23 +162,6 @@ def _(df, plot_boxplot):
         title="Annual Tourism Distribution",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Key Takeaways
-
-    - **Native panel format**: Columns use `Tn__tourists` convention: no pivoting needed
-    - **Quarterly frequency**: 427 tourism time series from the Monash competition
-    - **Seasonal patterns**: Quarterly aggregation reveals peak tourism periods
-    - **Scale differences**: Different series have different demand levels
-
-    ## Next Steps
-
-    - For weekly panel data, see [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
-    - For hourly panel, see [`examples/datasets/pedestrian_counts.py`](/examples/datasets/pedestrian_counts/)
-    - **Advanced analytics**: See [`examples/datasets/australian_tourism_forecasting.py`](/examples/datasets/australian_tourism_forecasting/) for ACF, PACF, spectral diagnostics
-    """)
 
 
 if __name__ == "__main__":

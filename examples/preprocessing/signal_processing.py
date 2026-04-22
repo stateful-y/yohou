@@ -11,6 +11,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Signal Processing",
     "description": "Apply NumericalFilter (Butterworth, Chebyshev, Bessel), NumericalDifferentiator, and NumericalIntegrator for signal smoothing and rate-of-change extraction.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -31,12 +32,7 @@ def _(mo):
     extraction, rate-of-change analysis, and cumulative integration.
     These work best on high-frequency data.
 
-    ## What You'll Learn
-
-    - [`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/): Butterworth/Chebyshev/Bessel low/highpass filters
-    - [`NumericalDifferentiator`](/pages/api/generated/yohou.preprocessing.signal.NumericalDifferentiator/): Rate-of-change estimation
-    - [`NumericalIntegrator`](/pages/api/generated/yohou.preprocessing.signal.NumericalIntegrator/): Cumulative integration
-    - Chaining filters for bandpass-like behaviour
+    This notebook shows how to apply NumericalFilter (Butterworth, Chebyshev, Bessel), NumericalDifferentiator, and NumericalIntegrator for signal smoothing and rate-of-change extraction.
     """)
 
 
@@ -307,25 +303,6 @@ def _(NumericalDifferentiator, NumericalFilter, elec_subset, pl, plot_time_serie
         title="Rate of Change: Raw vs Smoothed",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **[`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/)**: Butterworth, Chebyshev, Bessel filters in lowpass/highpass/bandpass/bandstop modes
-    - **[`NumericalDifferentiator`](/pages/api/generated/yohou.preprocessing.signal.NumericalDifferentiator/)**: Estimates rate of change using `np.gradient`
-    - **[`NumericalIntegrator`](/pages/api/generated/yohou.preprocessing.signal.NumericalIntegrator/)**: Cumulative trapezoidal or Simpson integration
-    - **Filter order**: Higher order = sharper cutoff but more phase distortion
-    - **Cutoff frequency**: 0-1 as fraction of Nyquist frequency
-    - **Chain transformers**: Smooth first, then differentiate for cleaner signals
-
-    ## Next Steps
-
-    - **Resampling**: See [`resampling.py`](/examples/preprocessing/resampling/)
-    - **Window transformers**: See [`examples/preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/)
-    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
-    """)
 
 
 if __name__ == "__main__":

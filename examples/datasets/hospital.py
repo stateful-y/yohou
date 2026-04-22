@@ -11,6 +11,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Hospital",
     "description": "Explore the Hospital panel dataset (767 series) with multi-series visualisation, cross-correlation analysis across lags, and monthly seasonality.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -40,19 +41,9 @@ def _(mo):
     mo.md("""
     # Hospital Dataset
 
-    ## What You'll Learn
+    This notebook shows how to explore the Hospital panel dataset (767 series) with multi-series visualisation, cross-correlation analysis across lags, and monthly seasonality.
 
-    This example demonstrates monthly panel time series analysis with the
-    Hospital dataset (767 series of patient counts). You'll learn how to:
-
-    - Visualize multiple patient count series simultaneously
-    - Analyze cross-correlation between different series
-    - Identify monthly and quarterly seasonality patterns in healthcare data
-    - Understand relationships across panel groups
-
-    ## Prerequisites
-
-    None. this is a standalone dataset exploration.
+    **Prerequisites:** None. this is a standalone dataset exploration.
     """)
 
 
@@ -167,24 +158,6 @@ def _(df, plot_seasonality):
         title="T1 - Average Patient Count by Quarter",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Key Takeaways
-
-    - **Panel format**: 767 monthly patient count series using `Tn__patients` convention
-    - **Cross-series correlation**: Different medical product series show varying correlation strength
-    - **Monthly seasonality**: Healthcare demand follows seasonal illness patterns
-    - **Monthly resolution**: Captures medium-term trends in patient counts
-    - **Large panel**: 767 series available; select a subset for tractable exploration
-
-    ## Next Steps
-
-    - For high-frequency panel data, see [`examples/datasets/vic_electricity.py`](/examples/datasets/vic_electricity/)
-    - For weekly panel, see [`examples/datasets/store_sales.py`](/examples/datasets/store_sales/)
-    - For univariate cyclic patterns, see [`examples/datasets/sunspots.py`](/examples/datasets/sunspots/)
-    """)
 
 
 if __name__ == "__main__":

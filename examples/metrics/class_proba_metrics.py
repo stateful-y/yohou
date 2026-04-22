@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Class-Probability Metrics",
     "description": "Evaluate categorical forecasts with LogLoss, BrierScore, and Accuracy. Covers per-timestep scoring, aggregation modes, and reliability diagrams.",
+    "category": "how-to",
+    "companion": "/pages/explanation/forecast-accuracy/#classification-scoring-rules",
 }
 app = marimo.App(width="medium")
 
@@ -489,20 +491,3 @@ def _(Accuracy, plot_score_time_series, y_proba_dt, y_proba_rf, y_test):
         title="Accuracy Over Time - Model Comparison",
     )
     return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) - Full class-probability forecasting walkthrough
-    - [`point_metrics.py`](/examples/metrics/point_metrics/) - Point forecast evaluation metrics
-    - [`aggregation_modes.py`](/examples/metrics/aggregation_modes/) - Deep dive into aggregation modes
-    - [Metrics](/examples/#metrics) - All metric examples
-    """)
-    return
-
-
-if __name__ == "__main__":
-    app.run()

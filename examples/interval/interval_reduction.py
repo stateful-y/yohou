@@ -9,6 +9,12 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Interval Reduction Forecaster",
+    "description": "Build prediction intervals using reduction-based interval forecasters with quantile regression.",
+    "category": "how-to",
+    "companion": "/pages/explanation/interval-forecasting/",
+}
 app = marimo.App(width="medium")
 
 
@@ -300,22 +306,6 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Key Takeaways
-
-    - [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) uses quantile regression for native intervals
-    - `coverage_rates` are specified at **fit time** (models for each quantile)
-    - No separate calibration set needed (unlike conformal prediction)
-    - More coverage rates = more quantile models to train
-    - Evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
-    """)
-    return
-
-
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict_interval` method with `stride=1` produces one
@@ -369,19 +359,3 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         title="Score Heatmap (Step x Vintage)",
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Point strategy comparison**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
-    - **CatBoost multi-quantile**: See [`catboost_multiquantile.py`](/examples/interval/catboost_multiquantile/) for single-model quantile prediction
-    - **Calibration plots**: Use [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) from `yohou.plotting`
-    - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval metrics
-    """)
-    return
-
-
-if __name__ == "__main__":
-    app.run()

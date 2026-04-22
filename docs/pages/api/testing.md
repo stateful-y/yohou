@@ -93,7 +93,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | Name | Description |
 | --- | --- |
 | [`check_scorer_aggregation_methods`](generated/yohou.testing.scorer.check_scorer_aggregation_methods.md) | Check all aggregation_method combinations produce valid output. |
-| [`check_scorer_component_subselection`](generated/yohou.testing.scorer.check_scorer_component_subselection.md) | Check component_names filtering works correctly. |
+| [`check_scorer_component_subselection`](generated/yohou.testing.scorer.check_scorer_component_subselection.md) | Check components filtering works correctly. |
 | [`check_scorer_coverage_rate_subselection`](generated/yohou.testing.scorer.check_scorer_coverage_rate_subselection.md) | Check coverage_rates parameter filters interval predictions correctly. |
 | [`check_scorer_lower_is_better`](generated/yohou.testing.scorer.check_scorer_lower_is_better.md) | Check lower_is_better convention matches scoring direction. |
 | [`check_scorer_methods_call_check_is_fitted`](generated/yohou.testing.scorer.check_scorer_methods_call_check_is_fitted.md) | Check all scorer methods (except fit) raise NotFittedError when unfitted. |

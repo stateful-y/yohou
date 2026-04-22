@@ -14,9 +14,9 @@
 
 ## What is Yohou?
 
-Yohou is a Scikit-Learn-compatible time series forecasting framework built on [Polars](https://pola.rs/). It treats forecasting as a supervised learning reduction problem: wrap any sklearn regressor and Yohou handles windowing, tabularization, and recursive prediction while preserving temporal structure. It supports both point and interval forecasting with native panel data capabilities.
+Yohou is a Scikit-Learn-compatible time series forecasting framework built on [Polars](https://pola.rs/). It treats forecasting as a supervised learning reduction problem: wrap any sklearn regressor or classifier and Yohou handles windowing, tabularization, and recursive prediction while preserving temporal structure. It supports point, interval, and class-probability forecasting with native panel data capabilities.
 
-Yohou extends sklearn's API with time series-specific operations (`observe`, `rewind`, `observe_predict`) so fitted forecasters can ingest new data incrementally without retraining. After fitting, every forecaster exposes the same `predict` / `predict_interval` / `observe_predict` interface whether it wraps a simple baseline or a full decomposition pipeline.
+Yohou extends sklearn's API with time series-specific operations (`observe`, `rewind`, `observe_predict`) so fitted forecasters can ingest new data incrementally without retraining. After fitting, every forecaster exposes the same `predict` / `predict_interval` / `predict_class_proba` / `observe_predict` interface whether it wraps a simple baseline or a full decomposition pipeline.
 
 Currently, Yohou supports Python 3.11+.
 
@@ -28,10 +28,12 @@ Currently, Yohou supports Python 3.11+.
 - **Preprocessing & stationarity**: Lag, rolling, and EMA window transforms, signal filters, sklearn scaler wrappers, imputation, outlier handling, and stationarity transforms like `SeasonalDifferencing`, `BoxCoxTransformer`, and Fourier seasonality estimation.
 - **Panel data support**: Prefix columns with `group__` and forecasters, transformers, and metrics operate across all groups automatically. Use `ColumnForecaster` or `LocalPanelForecaster` for per-group models.
 - **Interval forecasting**: Get calibrated prediction intervals via `SplitConformalForecaster`, `IntervalReductionForecaster` with `DistanceSimilarity`, and conformity scorers.
+- **Classification forecasting**: Forecast categorical time series with `ClassProbaReductionForecaster`, producing calibrated probability distributions. Evaluate with `LogLoss`, `BrierScore`, and `Accuracy`.
+- **Ensemble methods**: Combine multiple forecasters using `VotingPointForecaster`, `VotingIntervalForecaster`, and `VotingClassProbaForecaster` for improved predictions through diversity.
 - **Time-weighted training**: Weight recent or seasonal observations with `exponential_decay_weight`, `linear_decay_weight`, `seasonal_emphasis_weight`, and `compose_weights`, propagated via sklearn metadata routing.
 - **Cross-validation & tuning**: Temporal splitters (`ExpandingWindowSplitter`, `SlidingWindowSplitter`) and `GridSearchCV` / `RandomizedSearchCV` designed for time series with no data leakage across time.
-- **Metrics & visualization**: Point and interval scorers with stepwise, vintagewise, componentwise, and groupwise aggregation. Plotly-based plotting functions for exploration, diagnostics, forecasting, and evaluation.
-- **Remote datasets**: Eight `fetch_*` functions download Monash/Zenodo time series on demand (`tourism_monthly`, `sunspot`, `tourism_quarterly`, `electricity_demand`, `dominick`, `pedestrian_counts`, `hospital`, `kdd_cup`) with local Parquet caching.
+- **Metrics & visualization**: Point, interval, and class-probability scorers with stepwise, vintagewise, componentwise, and groupwise aggregation. Plotly-based plotting functions for exploration, diagnostics, forecasting, and evaluation (install with `pip install yohou[plotting]`).
+- **Remote datasets**: Ten `fetch_*` functions download Monash/Zenodo time series on demand with local Parquet caching, including classification datasets.
 
 ## How to install Yohou?
 
@@ -147,6 +149,22 @@ For questions and discussions, you can also open a [discussion](https://github.c
 ## License
 
 This project is licensed under the terms of the [Apache-2.0 License](https://github.com/stateful-y/yohou/blob/main/LICENSE).
+
+## Acknowledgements
+
+We would like to thank [Evolta Technologies](https://www.evolta-technologies.com/) for their support to the project.
+
+<br>
+
+<p align="center">
+  <a href="https://www.evolta-technologies.com/">
+    <img src="docs/assets/evolta_logo.png" alt="Evolta Technologies" width="400">
+  </a>
+</p>
+
+<br>
+
+This project is maintained by [stateful-y](https://stateful-y.io), an ML consultancy specializing in time series data science & engineering. If you're interested in collaborating or learning more about our services, please visit our website.
 
 <p align="center">
   <a href="https://stateful-y.io">

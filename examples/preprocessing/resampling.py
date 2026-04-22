@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Resampling",
     "description": "Demonstrate Downsampler and Upsampler for changing time series frequency, including multivariate support, boundary settings, and round-trip information loss.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -30,17 +31,9 @@ def _(mo):
     Time series data often needs frequency changes, downsampling (e.g., hourly → daily)
     or upsampling (e.g., monthly → weekly). Yohou provides [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/) and [`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/).
 
-    ## What You'll Learn
+    This notebook shows how to demonstrate Downsampler and Upsampler for changing time series frequency, including multivariate support, boundary settings, and round-trip information loss.
 
-    - [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/): Aggregate to lower frequency (mean, sum, min, max, etc.)
-    - [`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/): Interpolate to higher frequency
-    - Multivariate DataFrame support
-    - Controlling `closed` and `label` boundary settings
-    - Round-trip: Downsample then upsample to see information loss
-
-    ## Prerequisites
-
-    None.
+    **Prerequisites:** None.
     """)
 
 
@@ -296,34 +289,3 @@ def _(Upsampler, plot_time_series, y_daily_mean, y_hf):
         _combined.head(96),
         title="Round-Trip: Original vs Down-then-Up (first 2 days)",
     )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/): Reduces frequency with aggregation (mean, sum, etc.)
-    - [`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/): Increases frequency with interpolation (linear, nearest, etc.)
-    - Both are stateless transformers (`observation_horizon = 0`)
-    - Both handle **multivariate** DataFrames: all non-time columns are processed identically
-    - **`closed`/`label`** control boundary inclusion and timestamp labelling
-    - **Round-trip** (downsample then upsample) always loses within-interval variation
-    - `interval` uses polars duration strings: `"1h"`, `"1d"`, `"1w"`, `"1mo"`
-    """)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Window transformers**: See [`window_transformers.py`](/examples/preprocessing/window_transformers/) for feature engineering
-    - **Data cleaning**: See [`data_cleaning.py`](/examples/preprocessing/data_cleaning/) for imputation and outliers
-    - **Signal processing**: See [`signal_processing.py`](/examples/preprocessing/signal_processing/) for filters and differentiators
-    - **In forecasters**: Use resampled data as input to any forecaster
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

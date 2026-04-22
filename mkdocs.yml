@@ -71,7 +71,10 @@ markdown_extensions:
   - pymdownx.magiclink
   - pymdownx.mark
   - pymdownx.smartsymbols
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path:
+        - docs
+        - .
   - pymdownx.superfences:
       custom_fences:
         - class: mermaid
@@ -83,17 +86,17 @@ markdown_extensions:
   - pymdownx.tilde
   - pymdownx.emoji
 
-extra_css:
-  - stylesheets/theme.css
-  - https://cdn.datatables.net/2.2.2/css/dataTables.dataTables.min.css
-  - stylesheets/gallery.css
-
 extra_javascript:
   - javascripts/readthedocs.js
   - javascripts/mathjax.js
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
   - https://code.jquery.com/jquery-3.7.1.min.js
   - https://cdn.datatables.net/2.2.2/js/dataTables.min.js
+
+extra_css:
+  - stylesheets/theme.css
+  - https://cdn.datatables.net/2.2.2/css/dataTables.dataTables.min.css
+  - stylesheets/gallery.css
 
 exclude_docs: |
   api-submodule.html
@@ -141,55 +144,81 @@ plugins:
 
 nav:
   - Home: index.md
-  - Getting Started:
-    - pages/getting-started/index.md
-    - Installation: pages/getting-started/installation.md
-    - Overview: pages/getting-started/overview.md
-  - User Guide:
-    - pages/user-guide/index.md
-    - Core Concepts: pages/user-guide/core-concepts.md
-    - Forecasting: pages/user-guide/forecasting.md
-    - Interval Forecasting: pages/user-guide/interval-forecasting.md
-    - Preprocessing: pages/user-guide/preprocessing.md
-    - Stationarity: pages/user-guide/stationarity.md
-    - Model Selection: pages/user-guide/model-selection.md
-    - Visualization: pages/user-guide/visualization.md
-    - Weighting: pages/user-guide/weighting.md
-    - Advanced Topics: pages/user-guide/advanced.md
-  - API Reference:
-    - pages/api/index.md
-    - yohou.base: pages/api/base.md
-    - yohou.compose: pages/api/compose.md
-    - yohou.ensemble: pages/api/ensemble.md
-    - yohou.point: pages/api/point.md
-    - yohou.interval: pages/api/interval.md
-    - yohou.metrics: pages/api/metrics.md
-    - yohou.model_selection: pages/api/model_selection.md
-    - yohou.preprocessing: pages/api/preprocessing.md
-    - yohou.stationarity: pages/api/stationarity.md
-    - yohou.plotting: pages/api/plotting.md
-    - yohou.datasets: pages/api/datasets.md
-    - yohou.utils: pages/api/utils.md
-    - yohou.testing: pages/api/testing.md
+  - Tutorials:
+    - Getting Started: pages/tutorials/getting-started.md
+    - Your First Forecast: pages/tutorials/first-forecast.md
+    - Forecasting Workflow: pages/tutorials/forecasting-workflow.md
+  - How-to Guides:
+    - pages/how-to/index.md
+    - Installation: pages/how-to/installation.md
+    - Choose a Forecasting Method: pages/how-to/choose-forecasting-method.md
+    - Evaluate Forecast Accuracy: pages/how-to/evaluate-forecast-accuracy.md
+    - Evaluate with Multi-vintage Scoring: pages/how-to/multi-vintage-scoring.md
+    - Visualize and Compare Model Scores: pages/how-to/visualize-scores.md
+    - Work with Panel Data: pages/how-to/panel-data.md
+    - Use Time Weighting: pages/how-to/time-weighting.md
+    - Combine Forecasters with Ensembles: pages/how-to/ensemble-forecasting.md
+    - Forecast Categorical Time Series: pages/how-to/classification-forecasting.md
+    - Add Calendar and Time Features: pages/how-to/time-features.md
+    - Create Custom Estimators: pages/how-to/custom-estimators.md
+    - Create Custom Scorers: pages/how-to/custom-scorers.md
+    - Troubleshooting: pages/how-to/troubleshooting.md
+    - Contributing: pages/how-to/contribute.md
   - Examples:
     - pages/examples/index.md
     - Quickstart: pages/examples/quickstart.md
     - Point Forecasting: pages/examples/point.md
     - Interval Forecasting: pages/examples/interval.md
-    - Composition: pages/examples/compose.md
+    - Class-Probability Forecasting: pages/examples/class_proba.md
     - Ensemble: pages/examples/ensemble.md
+    - Composition: pages/examples/compose.md
     - Preprocessing: pages/examples/preprocessing.md
     - Stationarity: pages/examples/stationarity.md
     - Metrics: pages/examples/metrics.md
     - Model Selection: pages/examples/model-selection.md
     - Datasets: pages/examples/datasets.md
     - Plotting: pages/examples/plotting.md
-  - Development:
-    - pages/development/index.md
-    - Contributing: pages/development/contributing.md
-    - Developing Estimators: pages/development/developing-estimators.md
-    - Changelog: pages/development/changelog.md
-  - Extensions: pages/extensions/index.md
+  - Explanation:
+    - Core Concepts: pages/explanation/core-concepts.md
+    - Time Series Patterns: pages/explanation/time-series-patterns.md
+    - Forecasting: pages/explanation/forecasting.md
+    - Interval Forecasting: pages/explanation/interval-forecasting.md
+    - Class-Probability Forecasting: pages/explanation/class-probability-forecasting.md
+    - Ensemble Forecasting: pages/explanation/ensemble-forecasting.md
+    - Composition and Pipelines: pages/explanation/composition.md
+    - Exogenous Features: pages/explanation/exogenous-features.md
+    - Preprocessing: pages/explanation/preprocessing.md
+    - Stationarity: pages/explanation/stationarity.md
+    - Model Selection: pages/explanation/model-selection.md
+    - Forecast Accuracy: pages/explanation/forecast-accuracy.md
+    - Weighting: pages/explanation/weighting.md
+    - Residual Diagnostics: pages/explanation/residual-diagnostics.md
+    - Practical Issues: pages/explanation/practical-issues.md
+    - Visualization: pages/explanation/visualization.md
+    - Advanced Topics: pages/explanation/advanced.md
+    - Extending Yohou: pages/explanation/extending-yohou.md
+    - Glossary: pages/explanation/glossary.md
+  - Reference:
+    - Overview: pages/reference/overview.md
+    - API Reference:
+      - pages/api/index.md
+      - yohou.base: pages/api/base.md
+      - yohou.class_proba: pages/api/class_proba.md
+      - yohou.compose: pages/api/compose.md
+      - yohou.ensemble: pages/api/ensemble.md
+      - yohou.point: pages/api/point.md
+      - yohou.interval: pages/api/interval.md
+      - yohou.metrics: pages/api/metrics.md
+      - yohou.model_selection: pages/api/model_selection.md
+      - yohou.preprocessing: pages/api/preprocessing.md
+      - yohou.stationarity: pages/api/stationarity.md
+      - yohou.plotting: pages/api/plotting.md
+      - yohou.datasets: pages/api/datasets.md
+      - yohou.utils: pages/api/utils.md
+      - yohou.testing: pages/api/testing.md
+      - Custom Estimators: pages/api/custom-estimators.md
+    - Extensions: pages/reference/extensions.md
+    - Changelog: pages/reference/changelog.md
 
 extra:
   social:

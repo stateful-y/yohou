@@ -13,6 +13,7 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Function Transformer",
     "description": "Wrap arbitrary polars or numpy operations as sklearn transformers with FunctionTransformer, supporting stateful warmup, inverse transforms, and pipelines.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -304,8 +305,6 @@ def _(plot_forecast, y_pred, y_test, y_train):
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -350,27 +349,3 @@ def _(vintage_scorer, plot_score_time_series, y_pred_vintages, y_test):
         height=380,
     )
     return
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) wraps any `polars DataFrame -> DataFrame` function as an sklearn-compatible transformer
-    - **func** receives the DataFrame **without** the `"time"` column; time is re-attached automatically
-    - **Statefulness** is auto-detected: if `func` produces leading NaN rows, those become `observation_horizon` warmup
-    - **check_inverse** verifies the round-trip `inverse_func(func(x)) ≈ x` at fit time (warns, does not raise)
-    - **kw_args / inv_kw_args** pass extra keyword arguments to `func` / `inverse_func`
-    - **feature_names_out** controls output column naming: `"one-to-one"` or a callable
-    - Compose with forecasters via `target_transformer` or `feature_transformer` parameters
-
-    ## Next Steps
-
-    - **Sklearn wrappers**: See [`examples/preprocessing/sklearn_wrappers.py`](/examples/preprocessing/sklearn_wrappers/) for built-in StandardScaler, MinMaxScaler, etc.
-    - **Window transforms**: See `examples/preprocessing/window_transforms.py` for rolling and expanding windows
-    - **Signal processing**: See [`examples/preprocessing/signal_processing.py`](/examples/preprocessing/signal_processing/) for numerical filters and differentiators
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

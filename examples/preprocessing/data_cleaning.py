@@ -11,6 +11,8 @@ __generated_with = "0.19.9"
 __gallery__ = {
     "title": "Data Cleaning",
     "description": "End-to-end data cleaning pipeline combining SimpleTimeImputer and SeasonalImputer for missing values with OutlierThresholdHandler for anomaly clipping.",
+    "category": "how-to",
+    "companion": "/pages/explanation/preprocessing/",
 }
 app = marimo.App(width="medium")
 
@@ -27,20 +29,11 @@ def _(mo):
     mo.md(r"""
     # Data Cleaning: Imputation and Outlier Handling
 
-    Real-world time series often contain **missing values** and **outliers**.
-    Yohou provides temporal-aware imputers and outlier handlers.
+    This notebook shows how to clean time series data by filling
+    missing values with temporal imputers and handling outliers
+    with threshold-based handlers.
 
-    ## What You'll Learn
-
-    - [`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/): Linear, forward, backward, nearest interpolation
-    - [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/): Fill missing with seasonal averages
-    - [`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierThresholdHandler/): Clip/nullify by fixed thresholds
-    - [`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierPercentileHandler/): Clip/nullify by learned percentiles
-    - Visualizing missing data with [`plot_missing_data`](/pages/api/generated/yohou.plotting.exploration.plot_missing_data/)
-
-    ## Prerequisites
-
-    None. data cleaning is often the first preprocessing step.
+    **Prerequisites:** This is a standalone preprocessing guide.
     """)
 
 
@@ -76,9 +69,8 @@ def _(mo):
     mo.md(r"""
     ## 1. Create Data with Missing Values
 
-    We load a single monthly tourism series and randomly remove 15
-    observations. This creates the kind of sparse gaps that commonly arise
-    from sensor dropouts, data pipeline failures, or manual data collection.
+    Load a single monthly tourism series and randomly remove 15
+    observations to simulate sensor dropouts or data pipeline failures.
     """)
 
 
@@ -109,8 +101,7 @@ def _(fetch_tourism_monthly, pl):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    [`plot_missing_data`](/pages/api/generated/yohou.plotting.exploration.plot_missing_data/) highlights which time steps have null values so you can
-    see the gap distribution at a glance.
+    Use [`plot_missing_data`](/pages/api/generated/yohou.plotting.exploration.plot_missing_data/) to inspect which time steps have null values.
     """)
 
 
@@ -122,13 +113,11 @@ def _(plot_missing_data, y_missing):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. SimpleTimeImputer
+    ## 2. Fill Gaps with SimpleTimeImputer
 
-    [`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/) fills missing values using time-aware interpolation
-    strategies. Supported methods are `"linear"` (straight-line interpolation
-    between known neighbours), `"forward"` (last observation carried forward),
-    `"backward"` (next observation carried backward), and `"nearest"` (closest
-    non-null value in either direction).
+    Use [`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/) to fill missing values with time-aware
+    interpolation. Supported methods: `"linear"`, `"forward"`, `"backward"`,
+    and `"nearest"`.
     """)
 
 
@@ -146,8 +135,7 @@ def _(SimpleTimeImputer, y_missing):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    We visualise the result of linear imputation with [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) to
-    confirm that the gaps have been filled smoothly.
+    Verify that linear imputation filled the gaps smoothly.
     """)
 
 
@@ -168,13 +156,11 @@ def _(SimpleTimeImputer, plot_time_series, y_missing):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 3. SeasonalImputer
+    ## 3. Fill Gaps with SeasonalImputer
 
-    [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/) replaces each missing value with the average of values
-    at the same seasonal position in other cycles. Setting `period=12` on
-    monthly data means a missing January is filled using Januaries from other
-    years. This preserves seasonal shape better than linear interpolation when
-    gaps span multiple months.
+    Use [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/) to replace each missing value with the average
+    at the same seasonal position. Set `period=12` for monthly data so a
+    missing January is filled using Januaries from other years.
     """)
 
 
@@ -195,15 +181,14 @@ def _(SeasonalImputer, plot_time_series, y_missing):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Outlier Handling
+    ## 4. Handle Outliers
 
-    Outliers can distort model training. Yohou provides two outlier handlers:
-    [`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierThresholdHandler/) uses fixed, user-defined bounds, while
-    [`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierPercentileHandler/) learns the bounds from the data distribution.
-    Both support two strategies: `"clip"` (cap values at the threshold) and
-    `"nan"` (replace values outside the threshold with null).
+    Use [`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierThresholdHandler/) with fixed bounds or
+    [`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierPercentileHandler/) with data-driven percentile bounds.
+    Both support `"clip"` (cap at threshold) and `"nan"` (replace with null)
+    strategies.
 
-    We inject synthetic spikes and dips to demonstrate both handlers.
+    Inject synthetic spikes and dips to test both handlers.
     """)
 
 
@@ -298,14 +283,10 @@ def _(OutlierPercentileHandler, plot_time_series, y_outlier):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 5. Chaining: Outlier Removal then Imputation
+    ## 5. Chain Outlier Removal and Imputation
 
-    A common workflow is to first replace outliers with null, then fill those
-    nulls with interpolation. [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) lets you express this as a
-    single composable object: a list of `(name, transformer)` steps that are
-    applied sequentially. One call to `fit_transform` runs both stages, and
-    the pipeline can later be reused on new data with a single `transform`
-    call.
+    Use [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) to compose an outlier handler and imputer
+    into a single reusable pipeline.
     """)
 
 
@@ -325,32 +306,3 @@ def _(FeaturePipeline, OutlierPercentileHandler, SimpleTimeImputer, plot_time_se
     )
     plot_time_series(_combined, title="FeaturePipeline: Outlier Removal + Linear Imputation")
     return pipeline, y_clean
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - [`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/): Temporal interpolation (linear, forward, backward, nearest)
-    - [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/): Fills with seasonal pattern averages
-    - [`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierThresholdHandler/): Fixed-threshold clipping or nullification
-    - [`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierPercentileHandler/): Data-driven percentile-based thresholds
-    - Chain outlier and imputation via [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) for robust cleaning
-    - All transformers are stateless (no `observation_horizon`)
-    """)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Next Steps
-
-    - **Window transformers**: See [`window_transformers.py`](/examples/preprocessing/window_transformers/) for feature engineering
-    - **Resampling**: See [`resampling.py`](/examples/preprocessing/resampling/) for frequency changes
-    - **Stationarity**: See [Stationarity](/examples/#stationarity) for trend/seasonality removal
-    """)
-
-
-if __name__ == "__main__":
-    app.run()

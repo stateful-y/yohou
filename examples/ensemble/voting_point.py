@@ -9,6 +9,12 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "How to Combine Point Forecasters",
+    "description": "Build point ensembles with VotingPointForecaster using mean, weighted, and median aggregation strategies.",
+    "category": "how-to",
+    "companion": "/pages/explanation/ensemble-forecasting/",
+}
 app = marimo.App(width="medium")
 
 

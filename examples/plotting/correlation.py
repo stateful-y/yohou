@@ -11,6 +11,7 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Correlation Diagnostics",
     "description": "Pairwise correlation heatmaps, scatter matrices, cross-correlation at multiple lags, and lag scatter plots for multivariate time series diagnostics.",
+    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -50,16 +51,9 @@ def _(mo):
     mo.md(r"""
     # Correlation and Scatter Diagnostics
 
-    ## What You'll Learn
+    This notebook shows how to create pairwise correlation heatmaps, scatter matrices, cross-correlation at multiple lags, and lag scatter plots for multivariate time series diagnostics.
 
-    - How to compute and visualize pairwise correlations with [`plot_correlation_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_correlation_heatmap/)
-    - Building scatter matrices with seasonal coloring using [`plot_scatter_matrix`](/pages/api/generated/yohou.plotting.diagnostics.plot_scatter_matrix/)
-    - Measuring lead-lag relationships with [`plot_cross_correlation`](/pages/api/generated/yohou.plotting.diagnostics.plot_cross_correlation/)
-    - Inspecting serial dependence with [`plot_lag_scatter`](/pages/api/generated/yohou.plotting.diagnostics.plot_lag_scatter/) at single or multiple lags
-
-    ## Prerequisites
-
-    Basic understanding of correlation and scatter plots. Familiarity with multivariate time series concepts.
+    **Prerequisites:** Basic understanding of correlation and scatter plots. Familiarity with multivariate time series concepts.
     """)
 
 
@@ -278,23 +272,6 @@ def _(hospital, plot_lag_scatter):
         title="Lag Scatter -- No Diagonal, Transparent Markers",
     )
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Key Takeaways
-
-    - **Correlation diagnostics** provide a quick overview of linear relationships; use `colorscale` and `show_values` to customise the heatmap
-    - **Scatter matrices** reveal pairwise nonlinear patterns; `seasonality` coloring exposes seasonal clustering in the scatter space
-    - **Cross-correlation** measures lead-lag effects between two series; reversing the pair reveals asymmetric relationships
-    - **Lag scatter** at multiple lags shows how auto-dependence decays; `show_regression` and `seasonality` add interpretive layers
-
-    ## Next Steps
-
-    - **Seasonal diagnostics**: See [`examples/plotting/seasonal.py`](/examples/plotting/seasonal/) for seasonality overlays, ACF/PACF, and frequency-domain analysis
-    - **STL decomposition**: See [`seasonal.py`](/examples/plotting/seasonal/) for STL decomposition, seasonality overlays, and ACF/PACF
-    - **Exploration**: See [`examples/plotting/exploration.py`](/examples/plotting/exploration/) for rolling statistics and missing data audits
-    """)
 
 
 if __name__ == "__main__":

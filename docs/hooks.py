@@ -21,6 +21,8 @@ _CATEGORY_LABELS = {
     "model_selection": "Model Selection",
     "datasets": "Datasets",
     "plotting": "Plotting",
+    "class_proba": "Class-Probability Forecasting",
+    "ensemble": "Ensemble",
 }
 
 _DISCOVERY_CACHE = None
@@ -674,57 +676,87 @@ def _get_gallery_items(project_root):
         if not gallery or not isinstance(gallery, dict):
             continue
 
-        rel = notebook.relative_to(examples_dir)
-        parts = rel.parts
-        category = parts[0] if len(parts) > 1 else "quickstart"
         stem = notebook.stem
-
-        # view_path is always flat (notebooks are exported to docs/examples/{stem}/)
         view_path = f"/examples/{stem}/"
-
-        if len(parts) > 1:
-            # open_path preserves category so the marimo-playground rewrite
-            # regex can reconstruct the real repo path (examples/{category}/{stem}.py)
-            open_path = f"/examples/{category}/{stem}/edit/"
-        else:
-            open_path = f"/examples/{stem}/edit/"
+        open_path = f"/examples/{stem}/edit/"
 
         items.append({
             "title": gallery.get("title", stem.replace("_", " ").title()),
-            "category": category,
             "description": gallery.get("description", ""),
+            "category": gallery.get("category", ""),
+            "companion": gallery.get("companion"),
             "view_path": view_path,
             "open_path": open_path,
             "stem": stem,
+            "directory": stem if notebook.parent.name == examples_dir.name else notebook.parent.name,
         })
 
     _GALLERY_CACHE = items
     return _GALLERY_CACHE
 
 
-def _build_gallery_html(project_root, category=None):
-    """Build gallery card grid as Material 'grid cards' markdown."""
+def _build_gallery_html(project_root, category=None, quadrant=None, directory=None):
+    """Build gallery card grid as Material 'grid cards' markdown, grouped by category."""
     items = _get_gallery_items(project_root)
 
     if category:
-        items = [i for i in items if i["category"] == category]
+        items = [i for i in items if i.get("category") == category]
+
+    if quadrant:
+        items = [i for i in items if i.get("category") == quadrant]
+
+    if directory:
+        items = [i for i in items if i.get("directory") == directory]
 
     if not items:
         return "<!-- no gallery items found -->\n"
 
+    # Group items by category, preserving order within each group
+    _CATEGORY_ORDER = ["tutorial", "how-to"]
+    _CATEGORY_HEADINGS = {
+        "tutorial": "Tutorials",
+        "how-to": "How-to Guides",
+    }
+
+    grouped: dict[str, list[dict]] = {}
+    for item in items:
+        cat = item.get("category") or "other"
+        grouped.setdefault(cat, []).append(item)
+
+    sections = []
+    for cat in _CATEGORY_ORDER:
+        group = grouped.pop(cat, [])
+        if not group:
+            continue
+        heading = _CATEGORY_HEADINGS.get(cat, cat.title())
+        cards = _build_gallery_cards(group)
+        sections.append(f"## {heading}\n\n{cards}")
+
+    # Remaining uncategorized items
+    for _cat, group in grouped.items():
+        cards = _build_gallery_cards(group)
+        sections.append(cards)
+
+    return "\n\n".join(sections) + "\n"
+
+
+_BADGE_LABELS = {"tutorial": "Tutorial", "how-to": "How-to"}
+_BADGE_CLASSES = {"tutorial": "tutorial", "how-to": "howto"}
+
+
+def _build_gallery_cards(items):
+    """Build a Material 'grid cards' block from a list of gallery items."""
     cards = []
     for item in items:
         desc = item["description"] or "No description."
-        cards.append(
-            f"-   **{item['title']}**\n"
-            f"\n"
-            f"    ---\n"
-            f"\n"
-            f"    {desc}\n"
-            f"\n"
-            f"    [View]({item['view_path']}) · "
-            f"[Open in marimo]({item['open_path']})"
-        )
+        cat = item.get("category", "")
+        badge_label = _BADGE_LABELS.get(cat)
+        badge_cls = _BADGE_CLASSES.get(cat)
+        badge = f'<small class="gallery-badge gallery-badge--{badge_cls}">{badge_label}</small> ' if badge_label else ""
+        links = f"[View]({item['view_path']}) · [Open in marimo]({item['open_path']})"
+        if item.get("companion"):
+            links += f" · [Guide]({item['companion']})"
+        cards.append(f"-   {badge}**{item['title']}**\n\n    ---\n\n    {desc}\n\n    {links}")
 
     return '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
 
@@ -818,28 +850,12 @@ def _build_api_examples_html(project_root, qualified_name):
             seen.add(item["stem"])
             unique_items.append(item)
 
-    cards = []
-    for item in unique_items:
-        desc = item["description"] or "No description."
-        cat_label = _CATEGORY_LABELS.get(item["category"], item["category"].title())
-        cards.append(
-            f"-   **{item['title']}**\n"
-            f"\n"
-            f"    ---\n"
-            f"\n"
-            f"    <small>{cat_label}</small>\n"
-            f"\n"
-            f"    {desc}\n"
-            f"\n"
-            f"    [View]({item['view_path']}) \u00b7 "
-            f"[Open in marimo]({item['open_path']})"
-        )
+    return "## Examples\n\nThe following example notebooks use this component:\n\n" + _build_gallery_cards(unique_items)
 
-    return (
-        "## Examples\n\n"
-        "The following example notebooks use this component:\n\n"
-        '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
-    )
+
+# ---------------------------------------------------------------------------
+# API sidebar module TOC
+# ---------------------------------------------------------------------------
 
 
 def _build_module_toc(config, current_src_path=None):
@@ -1290,10 +1306,14 @@ def on_page_markdown(markdown, page, config, files):
         gallery_html = _build_gallery_html(project_root)
         markdown = markdown.replace("<!-- GALLERY -->", gallery_html)
 
-    # Per-category: <!-- GALLERY:point -->, <!-- GALLERY:interval -->, etc.
+    # Per-category filter: <!-- GALLERY:point -->, <!-- GALLERY:tutorials -->, etc.
+    _CATEGORY_FILTER_MAP = {"tutorials": "tutorial", "howto": "how-to"}
     for match in re.finditer(r"<!-- GALLERY:(\w+) -->", markdown):
-        cat = match.group(1)
-        gallery_html = _build_gallery_html(project_root, category=cat)
+        key = match.group(1)
+        if key in _CATEGORY_FILTER_MAP:
+            gallery_html = _build_gallery_html(project_root, quadrant=_CATEGORY_FILTER_MAP[key])
+        else:
+            gallery_html = _build_gallery_html(project_root, directory=key)
         markdown = markdown.replace(match.group(0), gallery_html)
 
     # Resolve [Open in marimo] placeholder URLs → full marimo.app playground URLs
