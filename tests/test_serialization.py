@@ -67,7 +67,7 @@ _NESTED_ESTIMATORS = {
 }
 
 # Skip these: SklearnScaler/SklearnTransformer expect a class, not instance.
-_SKIP_UNFITTED = {"SklearnScaler", "SklearnTransformer"}
+_SKIP_UNFITTED = {"SklearnScaler", "SklearnTransformer", "BaseReductionForecaster"}
 
 
 def _make_instance(name: str, cls: type):

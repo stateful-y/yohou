@@ -144,6 +144,8 @@ class StatelessTransformer(BaseTransformer):
 class InvertibleTransformer(BaseTransformer):
     """Transformer with perfect inverse_transform."""
 
+    _tags = {"invertible": True}
+
     def __init__(self, observation_horizon=2, offset=10.0):
         self.observation_horizon = observation_horizon
         self.offset = offset
@@ -956,7 +958,7 @@ class DummyPointForecaster(BasePointForecaster):
         super().fit(y, X, forecasting_horizon)
         return self
 
-    def _predict_one(self):
+    def _predict(self):
         # Return constant prediction
         return pl.DataFrame({
             col: [self.constant] * self.fit_forecasting_horizon_ for col in list(self.local_y_schema_.keys())
@@ -974,7 +976,7 @@ class DummyIntervalForecaster(BaseIntervalForecaster):
         super().fit(y, X, forecasting_horizon)
         return self
 
-    def _predict_one(self):
+    def _predict(self):
         # Return constant interval
         data = {}
         for col in list(self.local_y_schema_.keys()):

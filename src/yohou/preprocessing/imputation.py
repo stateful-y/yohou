@@ -176,7 +176,6 @@ class TransformedSpaceKNNImputer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "n_neighbors": [Interval(numbers.Integral, 1, None, closed="left")],
         "weights": [StrOptions({"uniform", "distance"})],
         "metric": [StrOptions({"nan_euclidean"})],
@@ -228,7 +227,7 @@ class TransformedSpaceKNNImputer(BaseTransformer):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
+            Ignored.  Present for API compatibility.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -268,28 +267,20 @@ class TransformedSpaceKNNImputer(BaseTransformer):
 
         return self
 
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Impute missing values, optionally in a transformed feature space.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Imputed time series.  When ``transformer`` is ``None`` the schema
-            matches the input; otherwise it matches the transformer's output
-            schema.
+            Imputed time series.
 
         """
-        check_is_fitted(self, ["imputer_", "X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Project via inner transformer (if any)
         X_projected = self.transformer_.transform(X) if self.transformer_ is not None else X
 
@@ -386,10 +377,11 @@ class SimpleTimeImputer(BaseTransformer):
     _valid_methods = {"linear", "forward", "backward", "nearest", "fill_both"}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "method": [StrOptions(_valid_methods)],
         "limit": [Interval(numbers.Integral, 1, None, closed="left"), None],
     }
+
+    _tags = {"stateful": False, "invertible": False}
 
     def __init__(
         self,
@@ -398,21 +390,6 @@ class SimpleTimeImputer(BaseTransformer):
     ):
         self.method = method
         self.limit = limit
-
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = False
-        tags.transformer_tags.invertible = False
-        return tags
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SimpleTimeImputer":
@@ -424,7 +401,7 @@ class SimpleTimeImputer(BaseTransformer):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
+            Ignored.  Present for API compatibility.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -441,27 +418,20 @@ class SimpleTimeImputer(BaseTransformer):
 
         return self
 
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Impute missing values in time series.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Imputed time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "method_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Get data columns
         data_cols = [c for c in X.columns if c != "time"]
 
@@ -562,10 +532,11 @@ class SeasonalImputer(BaseTransformer):
     _valid_fill_methods = {"seasonal_mean", "seasonal_median"}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "period": [Interval(numbers.Integral, 2, None, closed="left")],
         "fill_method": [StrOptions(_valid_fill_methods)],
     }
+
+    _tags = {"stateful": False, "invertible": False}
 
     def __init__(
         self,
@@ -574,21 +545,6 @@ class SeasonalImputer(BaseTransformer):
     ):
         self.period = period
         self.fill_method = fill_method
-
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = False
-        tags.transformer_tags.invertible = False
-        return tags
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SeasonalImputer":
@@ -600,7 +556,7 @@ class SeasonalImputer(BaseTransformer):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
+            Ignored.  Present for API compatibility.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -644,27 +600,20 @@ class SeasonalImputer(BaseTransformer):
 
         return self
 
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Impute missing values using seasonal patterns.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Imputed time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "seasonal_values_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Get data columns
         data_cols = [c for c in X.columns if c != "time"]
 

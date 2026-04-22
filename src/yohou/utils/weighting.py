@@ -33,11 +33,13 @@ __all__ = [
 def exponential_decay_weight(
     half_life: int | float | timedelta,
 ) -> Callable[[pl.Series], pl.Series]:
-    """Generate exponential decay weights giving more weight to recent times.
+    r"""Generate exponential decay weights giving more weight to recent times.
 
-    Creates a callable that computes weights using exponential decay formula:
-    weight(t) = exp(-ln(2) * distance / half_life), where distance is measured
-    from the most recent time point.
+    Creates a callable that computes weights using exponential decay:
+
+    $$w(t) = \exp\left(-\ln(2) \cdot \frac{d(t)}{\text{half\_life}}\right)$$
+
+    where $d(t)$ is the distance from the most recent time point.
 
     Parameters
     ----------
@@ -50,6 +52,12 @@ def exponential_decay_weight(
     Callable[[pl.Series], pl.Series]
         Function accepting time series (datetime) and returning weight series
         (float64). Most recent time has weight 1.0, older times decay exponentially.
+
+    References
+    ----------
+    .. [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+       OTexts.com/fpp3. Chapter 8.1.
 
     See Also
     --------
@@ -121,10 +129,15 @@ def exponential_decay_weight(
 def linear_decay_weight(
     max_steps: int | None = None,
 ) -> Callable[[pl.Series], pl.Series]:
-    """Generate linear decay weights giving more weight to recent times.
+    r"""Generate linear decay weights giving more weight to recent times.
 
-    Creates a callable that computes weights using linear decay from oldest
-    (weight=0) to most recent (weight=1). Optionally truncates decay window.
+    Creates a callable that computes weights using linear decay:
+
+    $$w(t) = \frac{\text{rank}(t)}{n - 1}$$
+
+    where $\text{rank}(t) = 0$ for the oldest observation and $n - 1$
+    for the most recent. When ``max_steps`` is set, observations older
+    than ``max_steps`` receive weight 0.
 
     Parameters
     ----------
@@ -215,11 +228,14 @@ def seasonal_emphasis_weight(
     seasonality: int | list[int],
     emphasis: float = 2.0,
 ) -> Callable[[pl.Series], pl.Series]:
-    """Generate weights emphasizing specific seasonal positions.
+    r"""Generate weights emphasizing specific seasonal positions.
 
     Creates a callable that gives higher weights to times matching the most
-    recent seasonal position (e.g., same day of week, same day of month).
-    Useful for emphasizing seasonal patterns in training or evaluation.
+    recent seasonal position (e.g., same day of week, same day of month):
+
+    $$w(t) = \begin{cases} \text{emphasis} & \text{if } t \bmod s \equiv t_n \bmod s \\ 1 & \text{otherwise} \end{cases}$$
+
+    where $s$ is the seasonal period and $t_n$ is the most recent time.
 
     Parameters
     ----------

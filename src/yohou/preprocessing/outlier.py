@@ -8,8 +8,7 @@ import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
-from yohou.utils import Tags, validate_transformer_data
-from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in, _fit_context
+from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in
 
 __all__ = ["OutlierPercentileHandler", "OutlierThresholdHandler"]
 
@@ -122,11 +121,12 @@ class OutlierThresholdHandler(BaseTransformer):
     _valid_strategies = {"clip", "nan"}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "low": [numbers.Real, None],
         "high": [numbers.Real, None],
         "strategy": [StrOptions(_valid_strategies)],
     }
+
+    _tags = {"stateful": False, "invertible": False}
 
     def __init__(
         self,
@@ -138,44 +138,8 @@ class OutlierThresholdHandler(BaseTransformer):
         self.high = high
         self.strategy = strategy
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = False
-        tags.transformer_tags.invertible = False
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "OutlierThresholdHandler":
-        """Fit the handler (validates parameters).
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         self.low_ = self.low
         self.high_ = self.high
 
@@ -184,29 +148,20 @@ class OutlierThresholdHandler(BaseTransformer):
             msg = f"low ({self.low_}) must be <= high ({self.high_})"
             raise ValueError(msg)
 
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Handle outliers in time series.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Transformed time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         return _apply_outlier_handling(
             X,
             self.strategy,
@@ -295,11 +250,12 @@ class OutlierPercentileHandler(BaseTransformer):
     _valid_strategies = {"clip", "nan"}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "low": [Interval(numbers.Real, 0, 100, closed="both"), None],
         "high": [Interval(numbers.Real, 0, 100, closed="both"), None],
         "strategy": [StrOptions(_valid_strategies)],
     }
+
+    _tags = {"stateful": False, "invertible": False}
 
     def __init__(
         self,
@@ -311,44 +267,8 @@ class OutlierPercentileHandler(BaseTransformer):
         self.high = high
         self.strategy = strategy
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = False
-        tags.transformer_tags.invertible = False
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "OutlierPercentileHandler":
-        """Fit the handler by computing percentile thresholds.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         # Validate percentile ordering
         if self.low is not None and self.high is not None and self.low > self.high:
             msg = f"low ({self.low}) must be <= high ({self.high})"
@@ -372,29 +292,20 @@ class OutlierPercentileHandler(BaseTransformer):
 
             self.thresholds_[col_name] = (low_val, high_val)
 
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Handle outliers based on fitted percentile thresholds.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Transformed time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "thresholds_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         return _apply_outlier_handling(
             X,
             self.strategy,

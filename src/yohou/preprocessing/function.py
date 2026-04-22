@@ -14,7 +14,6 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.base import BaseTransformer
 from yohou.utils import validate_transformer_data
 from yohou.utils._compat import StrOptions, _check_feature_names_in, _fit_context
-from yohou.utils.tags import Tags
 
 __all__ = ["FunctionTransformer"]
 
@@ -135,7 +134,6 @@ class FunctionTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "func": [callable, None],
         "inverse_func": [callable, None],
         "check_inverse": ["boolean"],
@@ -143,6 +141,8 @@ class FunctionTransformer(BaseTransformer):
         "inv_kw_args": [dict, None],
         "feature_names_out": [callable, StrOptions({"one-to-one"}), None],
     }
+
+    _tags = {"stateful": True}
 
     def __init__(
         self,
@@ -160,20 +160,6 @@ class FunctionTransformer(BaseTransformer):
         self.kw_args = kw_args
         self.inv_kw_args = inv_kw_args
         self.feature_names_out = feature_names_out
-
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
 
     def _check_inverse_transform(self, X: pl.DataFrame) -> None:
         """Check that func and inverse_func are inverses."""
@@ -267,7 +253,7 @@ class FunctionTransformer(BaseTransformer):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
+            Ignored.  Present for API compatibility.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -301,7 +287,7 @@ class FunctionTransformer(BaseTransformer):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
+            Ignored.  Present for API compatibility.
         **params : dict
             Metadata to route to nested estimators.
 

@@ -520,9 +520,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             if self.groups_ is None:
                 # Non-panel data
                 assert isinstance(self.target_transformer_, BaseTransformer)
-                y_pred_inv = self.target_transformer_.inverse_transform(  # ty: ignore[unresolved-attribute]
-                    X_t=y_pred_no_obs, X_p=self._y_observed
-                )
+                assert not isinstance(self._y_observed, dict)
+                y_pred_inv = self.target_transformer_.inverse_transform(X_t=y_pred_no_obs, X_p=self._y_observed)
 
             else:
                 # Panel data

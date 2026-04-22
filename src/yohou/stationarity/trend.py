@@ -75,10 +75,15 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
     - Polynomial trends can overfit - use with caution (typically degree <= 3)
     - Time is converted to numeric values (number of intervals since first observation)
 
+    References
+    ----------
+    .. [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+       OTexts.com/fpp3. Chapters 3.2 and 7.4.
+
     """
 
     _parameter_constraints: dict = {
-        **_BaseTrendForecaster._parameter_constraints,
         "degree": [Interval(numbers.Integral, 0, None, closed="left")],
         "estimator": [RegressorMixin],
     }

@@ -810,7 +810,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
                 # Inverse transform (works with unprefixed/local columns)
                 y_observed_local = y_observed_dict[panel_group_name]
-                y_pred_step_group_inv = transformer.inverse_transform(  # ty: ignore[unresolved-attribute]
+                y_pred_step_group_inv = transformer.inverse_transform(
                     X_t=y_pred_step_group,
                     X_p=y_observed_local,
                 )

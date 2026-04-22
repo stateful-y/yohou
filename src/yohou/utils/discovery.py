@@ -102,6 +102,9 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
     estimators = [c for c in all_classes_set if (issubclass(c[1], BaseEstimator) and c[0] != "BaseEstimator")]
     # get rid of abstract base classes
     estimators = [c for c in estimators if not is_abstract(c[1])]
+    # Exclude internal base classes that are not meant to be instantiated directly
+    _BASE_CLASSES = {"BaseForecaster", "BaseReductionForecaster", "BaseIntervalForecaster"}
+    estimators = [c for c in estimators if c[0] not in _BASE_CLASSES]
 
     if type_filter is not None:
         type_filter = [type_filter] if not isinstance(type_filter, list) else list(type_filter)
