@@ -513,12 +513,6 @@ class SlidingWindowSplitter(BaseSplitter):
                 stacklevel=3,
             )
 
-        if train_size + test_size > n_samples:
-            raise ValueError(
-                f"train_size ({train_size}) + test_size ({test_size}) = "
-                f"{train_size + test_size} is greater than n_samples ({n_samples})."
-            )
-
         # Fixed iteration: produce exactly n_splits test windows
         test_start = train_size
         for _ in range(self.n_splits):
