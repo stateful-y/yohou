@@ -150,6 +150,53 @@ class TestSeasonalNaiveWithoutExogenous:
         assert tags.forecaster_tags.ignores_exogenous is True
 
 
+class TestSeasonalNaivePanel:
+    """Tests for SeasonalNaive with panel data."""
+
+    def test_panel_predict(self):
+        """Panel predict produces correct columns and repeats seasonal pattern."""
+        length = 20
+        y = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1),
+                end=datetime(2021, 1, 1, 0, 0, length - 1),
+                interval="1s",
+                eager=True,
+            ),
+            "grp__a": list(range(length)),
+            "grp__b": list(range(10, length + 10)),
+        })
+        forecaster = SeasonalNaive(seasonality=3)
+        forecaster.fit(y=y[:15], forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        assert "grp__a" in y_pred.columns
+        assert "grp__b" in y_pred.columns
+        assert len(y_pred) == 5
+        # Last 3 values: [12, 13, 14], repeated => [12, 13, 14, 12, 13]
+        assert y_pred["grp__a"].to_list() == [12, 13, 14, 12, 13]
+
+    def test_panel_predict_fh_less_than_seasonality(self):
+        """Panel predict works when fh <= seasonality (no repetition needed)."""
+        length = 20
+        y = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1),
+                end=datetime(2021, 1, 1, 0, 0, length - 1),
+                interval="1s",
+                eager=True,
+            ),
+            "grp__a": list(range(length)),
+        })
+        forecaster = SeasonalNaive(seasonality=5)
+        forecaster.fit(y=y[:15], forecasting_horizon=3)
+        y_pred = forecaster.predict(forecasting_horizon=3)
+
+        assert len(y_pred) == 3
+        # Last 5 values: [10, 11, 12, 13, 14], take first 3 => [10, 11, 12]
+        assert y_pred["grp__a"].to_list() == [10, 11, 12]
+
+
 @pytest.fixture(scope="module")
 def mean_naive_data():
     """Deterministic data shared by MeanSeasonalNaive tests (longer than naive_data)."""
@@ -311,3 +358,53 @@ class TestMeanSeasonalNaiveWithoutExogenous:
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags.ignores_exogenous is True
+
+
+class TestMeanSeasonalNaivePanel:
+    """Tests for MeanSeasonalNaive with panel data."""
+
+    @pytest.fixture()
+    def panel_y(self):
+        """Panel y with two groups, each with two series."""
+        length = 30
+        return pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1),
+                end=datetime(2021, 1, 1, 0, 0, length - 1),
+                interval="1s",
+                eager=True,
+            ),
+            "grp__a": [float(i) for i in range(length)],
+            "grp__b": [float(i + 10) for i in range(length)],
+        })
+
+    def test_panel_predict(self, panel_y):
+        """Panel predict produces correct columns and length."""
+        forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
+        forecaster.fit(y=panel_y[:24], forecasting_horizon=3)
+        y_pred = forecaster.predict(forecasting_horizon=3)
+
+        assert "grp__a" in y_pred.columns
+        assert "grp__b" in y_pred.columns
+        assert len(y_pred) == 3
+
+    def test_panel_predict_with_repeat(self, panel_y):
+        """Panel predict repeats the seasonal pattern when fh > seasonality."""
+        forecaster = MeanSeasonalNaive(seasonality=2, n_seasons=2)
+        forecaster.fit(y=panel_y[:24], forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        assert len(y_pred) == 5
+        assert "grp__a" in y_pred.columns
+        # Last 4 values: [20,21,22,23], reshape [[20,21],[22,23]], mean=[21,22]
+        # Repeated: [21,22,21,22,21]
+        assert y_pred["grp__a"].to_list() == [21.0, 22.0, 21.0, 22.0, 21.0]
+
+    def test_panel_observe_predict(self, panel_y):
+        """Panel observe_predict works correctly."""
+        forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
+        forecaster.fit(y=panel_y[:24], forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(panel_y[24:26])
+
+        assert isinstance(y_pred, pl.DataFrame)
+        assert "grp__a" in y_pred.columns
