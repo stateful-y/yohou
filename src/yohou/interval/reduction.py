@@ -185,6 +185,32 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 return param_name
         return None
 
+    def _detect_lgbm_quantile_alpha(self) -> list[str]:
+        """Detect LightGBM-style quantile regression via ``objective="quantile"``.
+
+        LightGBM uses ``objective="quantile"`` with ``alpha`` as the
+        quantile level parameter, rather than a single ``quantile`` param.
+        This method detects that pattern and returns the ``alpha``
+        parameter path so that it can be used the same way as a native
+        ``quantile`` parameter.
+
+        Returns
+        -------
+        list[str]
+            A list with the ``alpha`` parameter path (e.g. ``["alpha"]``
+            or ``["estimator__alpha"]``) if the pattern is detected,
+            otherwise an empty list.
+
+        """
+        params = self.estimator.get_params(deep=True)
+        for param_name, value in params.items():
+            if param_name.split("__")[-1] == "objective" and value == "quantile":
+                # Derive the ``alpha`` parameter path from the ``objective``
+                # path (e.g. ``"estimator__objective"`` -> ``"estimator__alpha"``).
+                prefix = param_name.rsplit("objective", 1)[0]
+                return [f"{prefix}alpha"]
+        return []
+
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
@@ -278,6 +304,12 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 param_name for param_name in estimator_param_names if param_name.split("__")[-1] == "quantile"
             ]
 
+            # LightGBM uses ``objective="quantile"`` with ``alpha`` as the
+            # quantile parameter (instead of a param named ``quantile``).
+            # Detect this pattern when no ``quantile`` param was found.
+            if len(quantile_param_names) == 0:
+                quantile_param_names = self._detect_lgbm_quantile_alpha()
+
             if len(quantile_param_names) > 1:
                 raise ValueError(
                     f"Found multiple quantile parameters in estimator: {quantile_param_names}. "
@@ -289,7 +321,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 raise ValueError(
                     f"No quantile parameter found in estimator. "
                     f"IntervalReductionForecaster requires an estimator with a 'quantile' "
-                    f"parameter (e.g., QuantileRegressor) or a multi-quantile loss function "
+                    f"parameter (e.g., QuantileRegressor), a 'quantile' objective with an "
+                    f"'alpha' parameter (e.g., LGBMRegressor with ``objective='quantile'``), "
+                    f"or a multi-quantile loss function "
                     f"(e.g., CatBoost ``loss_function='MultiQuantile:alpha=...'``). "
                     f"Available parameters: {estimator_param_names}"
                 )
