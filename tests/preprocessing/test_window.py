@@ -14,6 +14,7 @@ from sklearn.base import clone
 from conftest import run_checks
 from yohou.preprocessing.window import (
     LagTransformer,
+    MeanLagTransformer,
     RollingStatisticsTransformer,
     SlidingWindowFunctionTransformer,
 )
@@ -496,6 +497,146 @@ class TestRollingStatisticsTransformerSklearn:
 
         assert cloned.window_size == transformer.window_size
         assert cloned.statistics == transformer.statistics
+
+
+class TestMeanLagTransformerSystematic:
+    """Systematic checks for MeanLagTransformer."""
+
+    @pytest.mark.parametrize(
+        "lag,n_lags",
+        [([1], 2), ([1, 2], 3)],
+        ids=["lag_1_nlags_2", "lag_1_2_nlags_3"],
+    )
+    def test_systematic_checks(self, lag, n_lags, time_series_train_test_factory):
+        """Run all checks for MeanLagTransformer with different configurations."""
+        transformer = MeanLagTransformer(lag=lag, n_lags=n_lags)
+        expected_failures = []
+
+        min_horizon = max(lag) * n_lags + 10
+        X_train, X_test = time_series_train_test_factory(train_length=min_horizon + 50, test_length=min_horizon + 20)
+
+        transformer_fitted = clone(transformer)
+        transformer_fitted.fit(X_train)
+
+        run_checks(
+            transformer_fitted,
+            _yield_yohou_transformer_checks(transformer_fitted, X_train, None, X_test),
+            expected_failures=set(expected_failures),
+        )
+
+
+class TestMeanLagTransformer:
+    """Functional tests for MeanLagTransformer."""
+
+    def test_feature_names(self, time_series_factory):
+        """Test MeanLagTransformer generates correct feature names."""
+        X = time_series_factory(length=50, n_components=2)
+        transformer = MeanLagTransformer(lag=[1, 2], n_lags=2)
+        transformer.fit(X)
+
+        transformer.transform(X)
+        feature_names = transformer.get_feature_names_out()
+
+        # Should have mean_lag_1 and mean_lag_2 for each input feature
+        expected_n_features = 2 * 2  # 2 features * 2 lags
+        assert len(feature_names) == expected_n_features
+
+        # Check feature naming pattern
+        assert all("mean_lag" in name for name in feature_names)
+
+    def test_observation_horizon(self, time_series_factory):
+        """Test observation_horizon equals max(lag) * n_lags."""
+        X = time_series_factory(length=100)
+
+        for lag, n_lags in [([1], 1), ([1, 2], 3), ([1, 5, 10], 2)]:
+            transformer = MeanLagTransformer(lag=lag, n_lags=n_lags)
+            transformer.fit(X)
+
+            expected_horizon = max(lag) * n_lags
+            assert transformer.observation_horizon == expected_horizon, (
+                f"For lag={lag}, n_lags={n_lags}, expected horizon={expected_horizon}, got {transformer.observation_horizon}"
+            )
+
+    def test_output_length(self, time_series_factory):
+        """Test output length drops max(lag) * n_lags rows."""
+        X = time_series_factory(length=50)
+        transformer = MeanLagTransformer(lag=[1, 2, 3], n_lags=2)
+        transformer.fit(X)
+
+        X_trans = transformer.transform(X)
+
+        expected_length = len(X) - max([1, 2, 3]) * 2
+        assert len(X_trans) == expected_length
+
+    def test_n_lags_1_equivalence(self, time_series_factory):
+        """With n_lags=1, values should match LagTransformer (different column names, same dtype)."""
+        X = time_series_factory(length=50, n_components=2)
+
+        for lag in [[1], [1, 2], [3]]:
+            lag_t = LagTransformer(lag=lag)
+            lag_t.fit(X)
+            X_lag = lag_t.transform(X)
+
+            mean_t = MeanLagTransformer(lag=lag, n_lags=1)
+            mean_t.fit(X)
+            X_mean = mean_t.transform(X)
+
+            # Same number of rows and columns (excluding time)
+            assert len(X_mean) == len(X_lag)
+            lag_cols = [c for c in X_lag.columns if c != "time"]
+            mean_cols = [c for c in X_mean.columns if c != "time"]
+            assert len(lag_cols) == len(mean_cols)
+
+            # Values should match (compare column by column, names differ)
+            for lag_col, mean_col in zip(lag_cols, mean_cols, strict=True):
+                assert X_lag[lag_col].to_list() == X_mean[mean_col].to_list()
+                assert X_lag[lag_col].dtype == X_mean[mean_col].dtype
+
+    def test_mean_values(self):
+        """Test that averaging produces correct values with known data."""
+        time = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(20)]
+        X = pl.DataFrame({
+            "time": time,
+            "x": list(range(20)),
+        })
+
+        # lag=3, n_lags=2: mean of shift(3) and shift(6)
+        transformer = MeanLagTransformer(lag=3, n_lags=2)
+        transformer.fit(X)
+        X_t = transformer.transform(X)
+
+        # observation_horizon = 3*2 = 6, output starts at row 6
+        assert len(X_t) == 14
+        # row 6 (x=6): mean(x[3], x[0]) = mean(3, 0) = 1.5
+        # row 7 (x=7): mean(x[4], x[1]) = mean(4, 1) = 2.5
+        # row 8 (x=8): mean(x[5], x[2]) = mean(5, 2) = 3.5
+        expected = [1.5, 2.5, 3.5, 4.5, 5.5]
+        assert X_t["x_mean_lag_3"][:5].to_list() == expected
+
+    def test_with_panel_data(self, panel_time_series_factory):
+        """Test MeanLagTransformer handles panel data."""
+        X_panel = panel_time_series_factory(length=50, n_series=3, n_global=2)
+        transformer = MeanLagTransformer(lag=[1, 2], n_lags=2)
+
+        transformer.fit(X_panel)
+        X_trans = transformer.transform(X_panel)
+
+        assert "time" in X_trans.columns
+        expected_length = len(X_panel) - max([1, 2]) * 2
+        assert len(X_trans) == expected_length
+
+    def test_insufficient_data_raises(self):
+        """Test that fitting with insufficient data raises ValueError."""
+        time = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(5)]
+        X = pl.DataFrame({
+            "time": time,
+            "x": list(range(5)),
+        })
+
+        # observation_horizon = 3*3 = 9 > 5 rows
+        transformer = MeanLagTransformer(lag=3, n_lags=3)
+        with pytest.raises(ValueError):
+            transformer.fit(X)
 
 
 class TestWindowTransformersIntegration:
