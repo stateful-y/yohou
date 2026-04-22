@@ -8,11 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0-alpha.5] - 2026-04-22
 
-This **minor release** includes 1 commit.
-
+This **minor release** includes 2 commits.
 
 ### Refactoring
-- Type fixes, compat shims, and code cleanups  ([#45](https://github.com/stateful-y/yohou/pull/45)) by @gtauzin
+- Add `_fit()`, `_transform()`, and `_inverse_transform()` hooks to `BaseTransformer`, eliminating boilerplate validation and `check_is_fitted` calls from every subclass ([#45](https://github.com/stateful-y/yohou/pull/45)) by @gtauzin
+- Auto-merge `_parameter_constraints` across the MRO via `__init_subclass__`, removing manual `**BaseTransformer._parameter_constraints` spreads ([#45](https://github.com/stateful-y/yohou/pull/45)) by @gtauzin
+- Replace `__sklearn_tags__` overrides with declarative `_tags` dicts, merged automatically by the base class ([#45](https://github.com/stateful-y/yohou/pull/45)) by @gtauzin
+- Deduplicate transformer subclasses in `preprocessing/` and `stationarity/` (net 870 lines removed) ([#45](https://github.com/stateful-y/yohou/pull/45)) by @gtauzin
+- Add LaTeX equations and literature references to `BoxCoxTransformer`, `LogTransformer`, and `SeasonalDifferencing` docstrings ([#45](https://github.com/stateful-y/yohou/pull/45)) by @gtauzin
+
+### Testing
+- Add `test_compat` nox session for pinned-dependency compatibility testing ([#45](https://github.com/stateful-y/yohou/pull/45)) by @gtauzin
 
 ### Contributors
 
