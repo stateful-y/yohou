@@ -16,6 +16,7 @@ from yohou.utils.tags import Tags
 __all__ = [
     "ExponentialMovingAverage",
     "LagTransformer",
+    "MeanLagTransformer",
     "RollingStatisticsTransformer",
     "SlidingWindowFunctionTransformer",
 ]
@@ -63,6 +64,7 @@ class LagTransformer(BaseTransformer):
 
     See Also
     --------
+    `MeanLagTransformer` : Averages multiple lag multiples into a single feature.
     `RollingStatisticsTransformer` : Compute rolling statistics (mean, std, etc.).
     `SlidingWindowFunctionTransformer` : Apply custom functions to sliding windows.
     `tabularize` : Underlying tabularization function.
@@ -175,6 +177,194 @@ class LagTransformer(BaseTransformer):
         """
         input_features = _check_feature_names_in(self, input_features)
         feature_names = [f"{col}_lag_{lag}" for col in input_features for lag in self.lags_]
+
+        arr: list[str] = np.asarray(feature_names, dtype=object).tolist()
+        return arr
+
+
+class MeanLagTransformer(BaseTransformer):
+    """Create mean-lagged features by averaging across lag multiples.
+
+    For each input column and each base lag ``k``, this transformer computes
+    the arithmetic mean of the column shifted by ``k, 2k, ..., n_lags * k``
+    time steps.  This captures averaged seasonal patterns as features for
+    supervised learning.
+
+    Parameters
+    ----------
+    lag : int >= 1 or list of ints >= 1, default=1
+        Base lag(s) to create. Can be a single integer or a list of integers.
+        Each lag value must be >= 1.
+    n_lags : int >= 1, default=1
+        Number of lag multiples to average. For a base lag ``k`` the shifts
+        ``k, 2k, ..., n_lags * k`` are averaged. When ``n_lags=1`` the output
+        is a single shift (equivalent to ``LagTransformer``).
+
+    Attributes
+    ----------
+    lags_ : list of int
+        Effective list of base lags used for transformation.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.preprocessing import MeanLagTransformer
+
+    >>> # Create sample data
+    >>> X = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, i) for i in range(1, 13)],
+    ...     "value": list(range(12)),
+    ... })
+
+    >>> # Average lag-3 and lag-6 into a single feature
+    >>> transformer = MeanLagTransformer(lag=3, n_lags=2)
+    >>> transformer.fit(X)  # doctest: +ELLIPSIS
+    MeanLagTransformer(...)
+    >>> X_t = transformer.transform(X)
+    >>> X_t.columns
+    ['time', 'value_mean_lag_3']
+    >>> len(X_t)  # First 6 rows dropped (max(lag) * n_lags = 6)
+    6
+
+    See Also
+    --------
+    `LagTransformer` : Creates individual lag features without averaging.
+    `RollingStatisticsTransformer` : Compute rolling statistics over consecutive windows.
+
+    Notes
+    -----
+    For a base lag ``k`` and ``n_lags=3``, the output at time ``t`` is
+    ``mean(x[t-k], x[t-2k], x[t-3k])``.  This differs from
+    ``RollingStatisticsTransformer`` which uses consecutive time steps
+    rather than seasonal multiples.
+
+    The first ``max(lags) * n_lags`` rows are dropped because they contain
+    incomplete lookback windows, setting
+    ``observation_horizon = max(lags) * n_lags``.
+
+    When ``n_lags=1`` the output values are identical to ``LagTransformer``
+    and the original column dtype is preserved.  When ``n_lags > 1`` the
+    averaging produces ``Float64`` columns.
+
+    Output column names follow the pattern ``{input_col}_mean_lag_{k}``.
+
+    """
+
+    _parameter_constraints: dict = {
+        **BaseTransformer._parameter_constraints,
+        "lag": [Interval(numbers.Integral, 1, None, closed="left"), list],
+        "n_lags": [Interval(numbers.Integral, 1, None, closed="left")],
+    }
+
+    def __init__(self, lag: StrictInt | list[StrictInt] = 1, n_lags: StrictInt = 1):
+        self.lag = lag
+        self.n_lags = n_lags
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with yohou-specific attributes.
+
+        """
+        tags = super().__sklearn_tags__()
+        assert tags.transformer_tags is not None
+        tags.transformer_tags.stateful = True
+        return tags
+
+    @_fit_context(prefer_skip_nested_validation=True)
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "MeanLagTransformer":
+        """Fit the transformer to input data.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Input time series with a ``"time"`` column (datetime) and one or
+            more numeric columns.
+
+        y : pl.DataFrame or None, default=None
+            Ignored.  Present for API compatibility with yohou pipelines.
+
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        self
+            The fitted transformer instance.
+
+        Raises
+        ------
+        ValueError
+            If ``X`` has fewer rows than ``max(lags) * n_lags``.
+
+        """
+        self.lags_: list[int] = self.lag if isinstance(self.lag, list) else [self.lag]
+
+        self._observation_horizon = max(self.lags_) * self.n_lags
+        X = validate_transformer_data(self, X=X, reset=True)
+
+        BaseTransformer.fit(self, X, y, **params)
+
+        return self
+
+    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+        """Transform the input time series.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Input time series with a ``"time"`` column (datetime) and one or
+            more numeric columns.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed time series with a ``"time"`` column and
+            ``{col}_mean_lag_{k}`` columns.
+
+        """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
+
+        data_cols = [c for c in X.columns if c != "time"]
+
+        exprs: list[pl.Expr] = [pl.col("time")]
+        for col in data_cols:
+            for lag in self.lags_:
+                if self.n_lags == 1:
+                    exprs.append(pl.col(col).shift(lag).alias(f"{col}_mean_lag_{lag}"))
+                else:
+                    shifted = [pl.col(col).shift(lag * j) for j in range(1, self.n_lags + 1)]
+                    exprs.append(pl.mean_horizontal(*shifted).alias(f"{col}_mean_lag_{lag}"))
+
+        X_t = X.select(exprs)
+        X_t = X_t[self._observation_horizon :]
+
+        return X_t
+
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
+        """Get output feature names for transformation.
+
+        Parameters
+        ----------
+        input_features : array-like of str or None, default=None
+            Column names of the input features.  If ``None``, uses the
+            feature names seen during ``fit``.
+
+        Returns
+        -------
+        list of str
+            Output feature names after transformation.
+
+        """
+        input_features = _check_feature_names_in(self, input_features)
+        feature_names = [f"{col}_mean_lag_{lag}" for col in input_features for lag in self.lags_]
 
         arr: list[str] = np.asarray(feature_names, dtype=object).tolist()
         return arr

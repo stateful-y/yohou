@@ -18,17 +18,17 @@ class TestAllEstimators:
     def test_all_estimators_total_count(self):
         """Test all_estimators returns correct total count."""
         estimators = all_estimators()
-        assert len(estimators) == 82
+        assert len(estimators) == 84
 
     def test_all_estimators_forecaster_filter(self):
         """Test forecaster type filter (matches estimator_type == 'forecaster')."""
         forecasters = all_estimators(type_filter="forecaster")
-        assert len(forecasters) == 7
+        assert len(forecasters) == 8
 
     def test_all_estimators_point_filter(self):
         """Test point forecaster sub-type filter."""
         points = all_estimators(type_filter="point")
-        assert len(points) == 5
+        assert len(points) == 6
 
     def test_all_estimators_interval_filter(self):
         """Test interval forecaster sub-type filter."""
@@ -43,7 +43,7 @@ class TestAllEstimators:
     def test_all_estimators_transformer_filter(self):
         """Test transformer type filter."""
         transformers = all_estimators(type_filter="transformer")
-        assert len(transformers) == 33
+        assert len(transformers) == 34
 
     def test_all_estimators_splitter_filter(self):
         """Test splitter type filter."""
@@ -53,7 +53,7 @@ class TestAllEstimators:
     def test_all_estimators_multiple_filters(self):
         """Test multiple type filters combined."""
         multi = all_estimators(type_filter=["forecaster", "transformer"])
-        assert len(multi) == 40  # 7 forecasters + 33 transformers  (class_proba scorers not included)
+        assert len(multi) == 42  # 8 forecasters + 34 transformers  (class_proba scorers not included)
 
     def test_all_estimators_invalid_filter(self):
         """Test invalid filter raises error with proper message."""
