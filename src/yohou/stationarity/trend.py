@@ -77,9 +77,9 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
 
     References
     ----------
-    .. [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
-       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
-       OTexts.com/fpp3. Chapters 3.2 and 7.4.
+    [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapters 3.2 and 7.4.
 
     """
 

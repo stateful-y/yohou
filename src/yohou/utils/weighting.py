@@ -55,9 +55,9 @@ def exponential_decay_weight(
 
     References
     ----------
-    .. [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
-       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
-       OTexts.com/fpp3. Chapter 8.1.
+    [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 8.1.
 
     See Also
     --------

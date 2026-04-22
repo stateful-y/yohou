@@ -54,12 +54,12 @@ class BoxCoxTransformer(BaseTransformer):
 
     References
     ----------
-    .. [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
-       transformations." Journal of the Royal Statistical Society:
-       Series B, 26(2), 211-252.
-    .. [2] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
-       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
-       OTexts.com/fpp3. Chapter 3.1.
+    [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
+        transformations." Journal of the Royal Statistical Society:
+        Series B, 26(2), 211-252.
+    [2] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 3.1.
 
 
     Examples
@@ -227,9 +227,9 @@ class LogTransformer(BoxCoxTransformer):
 
     References
     ----------
-    .. [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
-       transformations." Journal of the Royal Statistical Society:
-       Series B, 26(2), 211-252.
+    [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
+        transformations." Journal of the Royal Statistical Society:
+        Series B, 26(2), 211-252.
 
     See Also
     --------
@@ -298,9 +298,9 @@ class SeasonalDifferencing(BaseTransformer):
 
     References
     ----------
-    .. [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
-       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
-       OTexts.com/fpp3. Chapter 9.1.
+    [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 9.1.
 
     Examples
     --------
@@ -457,12 +457,12 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
 
     References
     ----------
-    .. [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
-       transformations." Journal of the Royal Statistical Society:
-       Series B, 26(2), 211-252.
-    .. [2] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
-       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
-       OTexts.com/fpp3. Chapter 9.1.
+    [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
+        transformations." Journal of the Royal Statistical Society:
+        Series B, 26(2), 211-252.
+    [2] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 9.1.
 
     See Also
     --------
@@ -591,9 +591,9 @@ class SeasonalReturn(BaseTransformer):
 
     References
     ----------
-    .. [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
-       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
-       OTexts.com/fpp3. Chapter 9.1.
+    [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 9.1.
 
     See Also
     --------
@@ -749,9 +749,9 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
     References
     ----------
-    .. [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
-       principles and practice," 3rd edition, OTexts: Melbourne, Australia.
-       OTexts.com/fpp3. Chapter 9.1.
+    [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 9.1.
 
     See Also
     --------
@@ -898,9 +898,9 @@ class ASinhTransformer(BaseTransformer):
 
     References
     ----------
-    .. [1] Johnson, N.L. (1949). "Systems of frequency curves generated
-       by methods of translation." Biometrika, 36(1-2), 149-176.
-       https://doi.org/10.1093/biomet/36.1-2.149
+    [1] Johnson, N.L. (1949). "Systems of frequency curves generated
+        by methods of translation." Biometrika, 36(1-2), 149-176.
+        https://doi.org/10.1093/biomet/36.1-2.149
 
     See Also
     --------
