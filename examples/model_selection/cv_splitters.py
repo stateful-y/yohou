@@ -34,7 +34,6 @@ def _(mo):
 
     - [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/): Growing training window
     - [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/): Fixed-size sliding window
-    - Controlling `gap` between train and test
     - Visualizing splits with [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/)
 
     ## Prerequisites
@@ -152,27 +151,7 @@ def _(plot_splits, sliding, y):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Using `gap` to Simulate Forecast Delay
-
-    In practice, there's often a gap between the last known observation and when
-    forecasts are needed. The `gap` parameter simulates this.
-    """)
-
-
-@app.cell
-def _(ExpandingWindowSplitter, plot_splits, y):
-    expanding_gap = ExpandingWindowSplitter(n_splits=3, test_size=12, gap=6)
-
-    for _i, (_train_idx, _test_idx) in enumerate(expanding_gap.split(y)):
-        print(f"  Split {_i}: train ends at {_train_idx[-1]}, test starts at {_test_idx[0]} (gap=6)")
-
-    plot_splits(y, expanding_gap, title="Expanding Window with gap=6")
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 5. Controlling Window Size
+    ## 4. Controlling Window Size
 
     `max_train_size` on [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) limits growth, effectively
     becoming a sliding window that fills up from the expanding start.
@@ -192,7 +171,7 @@ def _(ExpandingWindowSplitter, plot_splits, y):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 6. SlidingWindowSplitter with Stride
+    ## 5. SlidingWindowSplitter with Stride
 
     `stride` controls how many observations the window advances between splits.
     Default is `test_size` (non-overlapping test sets).
@@ -214,7 +193,6 @@ def _(mo):
 
     - [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/): Training window grows: uses all historical data
     - [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/): Fixed training window: focuses on recent data
-    - `gap`: Simulates forecast delay between train and test periods
     - `max_train_size`: Caps expanding window growth
     - `stride`: Controls step size between splits (for overlapping test sets)
     - [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/) visualizes the temporal structure of CV splits

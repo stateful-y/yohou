@@ -37,7 +37,6 @@ def splitters():
     return [
         ExpandingWindowSplitter(n_splits=3, test_size=10),
         SlidingWindowSplitter(n_splits=3, test_size=10),
-        ExpandingWindowSplitter(n_splits=3, test_size=10, gap=2),
     ]
 
 
@@ -48,7 +47,6 @@ class TestSplitterChecks:
         """Test that tags are accessible on splitter instances."""
         check_splitter_tags_accessible_before_fit(ExpandingWindowSplitter(n_splits=3, test_size=10))
         check_splitter_tags_accessible_before_fit(SlidingWindowSplitter(n_splits=3, test_size=10))
-        check_splitter_tags_accessible_before_fit(ExpandingWindowSplitter(n_splits=3, test_size=10, gap=2))
 
     def test_tags_static_after_fit(self, splitters, y_data):
         """Test that tags don't change after split()."""
@@ -69,13 +67,6 @@ class TestSplitterChecks:
             splitters[1],
             y_data,
             expected_tags={"splitter_type": "sliding"},
-        )
-
-        # Test ExpandingWindowSplitter with gap
-        check_splitter_tags_match_capabilities(
-            splitters[2],
-            y_data,
-            expected_tags={"splitter_type": "expanding"},
         )
 
     def test_tags_match_capabilities_without_expected_tags(self, y_data):
@@ -103,10 +94,8 @@ class TestSplitterChecks:
         [
             (ExpandingWindowSplitter, "n_splits", [1, 0, -1]),
             (ExpandingWindowSplitter, "test_size", [0, -1]),
-            (ExpandingWindowSplitter, "gap", [-1]),
             (SlidingWindowSplitter, "n_splits", [1, 0, -1]),
             (SlidingWindowSplitter, "test_size", [0, -1]),
-            (SlidingWindowSplitter, "gap", [-1]),
         ],
     )
     def test_parameter_constraints(self, splitter_class, param_name, invalid_values):
@@ -139,15 +128,6 @@ class TestSplitterChecks:
     def test_systematic_sliding_window_checks(self, y_data):
         """Systematic test using generator for SlidingWindowSplitter."""
         splitter = SlidingWindowSplitter(n_splits=3, test_size=10)
-
-        run_checks(
-            splitter,
-            _yield_yohou_splitter_checks(splitter, y_data),
-        )
-
-    def test_systematic_expanding_with_gap_checks(self, y_data):
-        """Systematic test using generator for ExpandingWindowSplitter with gap."""
-        splitter = ExpandingWindowSplitter(n_splits=3, test_size=10, gap=5)
 
         run_checks(
             splitter,

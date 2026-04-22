@@ -117,62 +117,6 @@ class TestExpandingWindowBasic:
         assert train_sizes[0] < train_sizes[1] < train_sizes[2]
 
 
-class TestExpandingWindowGap:
-    """Tests for ExpandingWindowSplitter with gap parameter."""
-
-    def test_expanding_window_gap_insertion(self, y_X_factory):
-        """Test gap parameter inserts gap between train and test."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
-
-        splitter = ExpandingWindowSplitter(n_splits=3, test_size=10, gap=5)
-        splits = list(splitter.split(y, X))
-
-        for train_idx, test_idx in splits:
-            gap_size = test_idx[0] - train_idx[-1] - 1
-            assert gap_size == 5
-
-    def test_expanding_window_gap_preserves_split_count(self, y_X_factory):
-        """Test gap doesn't change number of splits, only index positions."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-
-        splitter = ExpandingWindowSplitter(n_splits=5, test_size=10, gap=10)
-        base_splitter = ExpandingWindowSplitter(n_splits=5, test_size=10)
-
-        splits = list(splitter.split(y))
-        base_splits = list(base_splitter.split(y))
-
-        assert len(splits) == len(base_splits) == 5
-
-        for (train_gap, test_gap), (train_base, test_base) in zip(splits, base_splits, strict=False):
-            assert test_gap[0] == test_base[0]
-            assert train_gap[-1] == train_base[-1] - 10
-
-    def test_expanding_window_gap_zero_equivalent_to_none(self, y_X_factory):
-        """Test gap=0 produces same result as no gap argument."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-
-        splitter_gap_zero = ExpandingWindowSplitter(n_splits=3, test_size=10, gap=0)
-        splitter_no_gap = ExpandingWindowSplitter(n_splits=3, test_size=10)
-
-        splits_zero = list(splitter_gap_zero.split(y))
-        splits_no_gap = list(splitter_no_gap.split(y))
-
-        for (t1, te1), (t2, te2) in zip(splits_zero, splits_no_gap, strict=False):
-            assert np.array_equal(t1, t2)
-            assert np.array_equal(te1, te2)
-
-    def test_expanding_window_gap_get_n_splits_no_data_required(self, y_X_factory):
-        """Test get_n_splits works without y even when gap > 0."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-
-        splitter = ExpandingWindowSplitter(n_splits=3, test_size=10, gap=5)
-
-        n_splits_no_y = splitter.get_n_splits(y=None)
-        n_splits_with_y = splitter.get_n_splits(y)
-
-        assert n_splits_no_y == n_splits_with_y == 3
-
-
 class TestSlidingWindowBasic:
     """Tests for basic SlidingWindowSplitter functionality."""
 
@@ -269,60 +213,6 @@ class TestSlidingWindowBasic:
             list(splitter.split(y))
 
 
-class TestSlidingWindowGap:
-    """Tests for SlidingWindowSplitter with gap parameter."""
-
-    def test_sliding_window_gap_insertion(self, y_X_factory):
-        """Test gap parameter inserts gap between train and test."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
-
-        splitter = SlidingWindowSplitter(n_splits=6, train_size=30, test_size=10, gap=5)
-        splits = list(splitter.split(y, X))
-
-        train_sizes = [len(train) for train, _ in splits]
-        assert all(size == 30 for size in train_sizes)
-
-        for train_idx, test_idx in splits:
-            assert test_idx[0] - train_idx[-1] == 6  # gap + 1
-
-    def test_sliding_window_gap_with_stride(self, y_X_factory):
-        """Test gap and stride work independently."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-
-        splitter = SlidingWindowSplitter(n_splits=3, train_size=30, test_size=10, stride=20, gap=5)
-        splits = list(splitter.split(y))
-
-        assert len(splits) == 3
-
-        train_sizes = [len(train) for train, _ in splits]
-        assert all(size == 30 for size in train_sizes)
-
-        for train_idx, test_idx in splits:
-            assert test_idx[0] - train_idx[-1] == 6  # gap + 1
-
-    def test_sliding_window_gap_zero_equivalent_to_none(self, y_X_factory):
-        """Test gap=0 produces same result as no gap argument."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-
-        splitter_gap_zero = SlidingWindowSplitter(n_splits=7, train_size=30, test_size=10, gap=0)
-        splitter_no_gap = SlidingWindowSplitter(n_splits=7, train_size=30, test_size=10)
-
-        splits_zero = list(splitter_gap_zero.split(y))
-        splits_no_gap = list(splitter_no_gap.split(y))
-
-        for (t1, te1), (t2, te2) in zip(splits_zero, splits_no_gap, strict=False):
-            assert np.array_equal(t1, t2)
-            assert np.array_equal(te1, te2)
-
-    def test_sliding_window_gap_insufficient_data(self, y_X_factory):
-        """Test error when gap + train + test exceeds data."""
-        y, _ = y_X_factory(length=40, n_targets=1, n_features=0, seed=42)
-
-        splitter = SlidingWindowSplitter(n_splits=2, train_size=30, test_size=10, gap=5)
-        with pytest.raises(ValueError, match="train_size.*gap.*test_size.*greater than n_samples"):
-            list(splitter.split(y))
-
-
 class TestSplitterIntegration:
     """Integration tests for splitters with forecasters."""
 
@@ -375,13 +265,3 @@ class TestSplitterIntegration:
 
         assert len(scores) >= 1
         assert all(score >= 0 for score in scores)
-
-    def test_gap_prevents_leakage(self, y_X_factory):
-        """Test gap parameter prevents data leakage."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
-
-        splitter = ExpandingWindowSplitter(n_splits=3, test_size=10, gap=5)
-
-        for train_idx, test_idx in splitter.split(y, X):
-            gap_size = test_idx[0] - train_idx[-1] - 1
-            assert gap_size == 5

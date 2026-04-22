@@ -257,19 +257,3 @@ class TestPlotCvResultsScatter:
         scatter_y = list(fig.data[0].y)
         assert scatter_y == [-0.5, -0.3, -0.2]
         assert len(fig.data) > 0
-
-
-class TestPlotSplitsGap:
-    """Test gap rendering in plot_splits (line 164)."""
-
-    def test_gap_renders_extra_traces(self, sample_y):
-        """Splitter with gap > 0 adds gap traces between train and test."""
-        splitter = SlidingWindowSplitter(n_splits=3, test_size=30, gap=10)
-        fig = plot_splits(sample_y, splitter)
-        assert_figure_valid(fig)
-        # With gap > 0, each fold gets 3 traces (train + gap + test)
-        # 3 folds x 3 traces = 9 minimum
-        assert len(fig.data) >= 9
-        # At least one trace should belong to the "gap" legendgroup
-        gap_traces = [t for t in fig.data if getattr(t, "legendgroup", None) == "gap"]
-        assert len(gap_traces) >= 1
