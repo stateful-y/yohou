@@ -6,11 +6,10 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
-from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.utils import Tags, validate_transformer_data
-from yohou.utils._compat import Interval, _check_feature_names_in, _fit_context
+from yohou.utils._compat import Interval, _check_feature_names_in
 from yohou.utils.panel import panel_aware_prefix
 
 __all__ = [
@@ -25,13 +24,12 @@ __all__ = [
 
 
 class BoxCoxTransformer(BaseTransformer):
-    """Box-Cox power transformation time series transformer.
+    r"""Box-Cox power transformation time series transformer.
 
     The Box-Cox transformation is a parametric transformation that stabilizes
-    variance and makes the data more normally distributed. The transformation is:
+    variance and makes the data more normally distributed:
 
-    - If lambda != 0: y = (x^lambda - 1) / lambda
-    - If lambda == 0: y = log(x)
+    $$y = \begin{cases} \frac{(x + \text{offset})^\lambda - 1}{\lambda} & \text{if } \lambda \neq 0 \\ \ln(x + \text{offset}) & \text{if } \lambda = 0 \end{cases}$$
 
     Parameters
     ----------
@@ -53,6 +51,15 @@ class BoxCoxTransformer(BaseTransformer):
     Notes
     -----
     Box-Cox requires strictly positive input data.
+
+    References
+    ----------
+    [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
+        transformations." Journal of the Royal Statistical Society:
+        Series B, 26(2), 211-252.
+    [2] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 3.1.
 
 
     Examples
@@ -80,10 +87,11 @@ class BoxCoxTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "lmbda": [Interval(numbers.Real, None, None, closed="neither")],
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
+
+    _tags = {"invertible": True}
 
     def __init__(self, lmbda: StrictFloat = 0.0, offset: StrictFloat = 0.0):
         self.lmbda = lmbda
@@ -104,55 +112,8 @@ class BoxCoxTransformer(BaseTransformer):
         tags.input_tags.min_value = -self.offset if self.offset > 0.0 else 0.0
         return tags
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "BoxCoxTransformer":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        BaseTransformer.fit(self, X, y, **params)
-
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
-        """Transform the input time series.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Transform the input time series."""
         time = X.select(cs.by_name("time"))
         X_shifted = X.select(~cs.by_name("time")) + self.offset
 
@@ -168,27 +129,22 @@ class BoxCoxTransformer(BaseTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
         """Inverse-transform the time series.
 
         Parameters
         ----------
         X_t : pl.DataFrame
             Transformed time series.
-
         X_p : pl.DataFrame or None
-            Untransformed time series corresponding to at least `observation_horizon` immediately
-            previous time stamps. Can be None if `observation_horizon == 0`.
+            Past observations.
 
         Returns
         -------
         pl.DataFrame
-            Inverse-transformed time series, reversing the transformation
-            applied by ``transform``.
+            Inverse-transformed time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-
         X_t, _ = validate_transformer_data(
             self,
             X=X_t,
@@ -236,9 +192,10 @@ class BoxCoxTransformer(BaseTransformer):
 
 
 class LogTransformer(BoxCoxTransformer):
-    """Logarithmic time series transformer.
+    r"""Logarithmic time series transformer.
 
-    This is a convenience class equivalent to BoxCoxTransformer with lmbda=0.
+    Applies $y = \ln(x + \text{offset})$, equivalent to ``BoxCoxTransformer``
+    with ``lmbda=0``.
 
     Parameters
     ----------
@@ -268,6 +225,12 @@ class LogTransformer(BoxCoxTransformer):
     >>> "time" in X_t.columns
     True
 
+    References
+    ----------
+    [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
+        transformations." Journal of the Royal Statistical Society:
+        Series B, 26(2), 211-252.
+
     See Also
     --------
     `BoxCoxTransformer` : Generalized power transform (parent class).
@@ -277,7 +240,6 @@ class LogTransformer(BoxCoxTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
 
@@ -306,11 +268,15 @@ class LogTransformer(BoxCoxTransformer):
 
 
 class SeasonalDifferencing(BaseTransformer):
-    """Seasonal differencing time series transformer.
+    r"""Seasonal differencing time series transformer.
 
     Computes the difference between each value and its value at a seasonal
-    lag: ``y_t - y_{t-s}`` where ``s`` is the seasonality. This removes
-    seasonal patterns and is a common stationarization technique.
+    lag:
+
+    $$\Delta_s y_t = y_t - y_{t-s}$$
+
+    where $s$ is the ``seasonality``. This removes seasonal patterns and is
+    a common stationarization technique.
 
     Parameters
     ----------
@@ -329,6 +295,12 @@ class SeasonalDifferencing(BaseTransformer):
     This transformer is stateful with ``observation_horizon = seasonality``.
     The first ``seasonality`` rows are dropped in the output since they lack
     sufficient history for differencing.
+
+    References
+    ----------
+    [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 9.1.
 
     Examples
     --------
@@ -357,77 +329,21 @@ class SeasonalDifferencing(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
     }
+
+    _tags = {"stateful": True, "invertible": True}
 
     def __init__(self, seasonality: StrictInt = 1):
         self.seasonality = seasonality
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
+    @property
+    def observation_horizon(self) -> int:  # noqa: D102
+        """Return the number of past observations needed."""
+        return self.seasonality
 
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SeasonalDifferencing":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        self._observation_horizon = self.seasonality
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        BaseTransformer.fit(self, X, y, **params)
-
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
-        """Transform the input time series.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Transform the input time series."""
         time = X.select(cs.by_name("time"))[self.seasonality :]
         X_t = X.select(~cs.by_name("time")).select(pl.all().diff(self.seasonality))[self.seasonality :]
         feature_names = self.get_feature_names_out()
@@ -436,26 +352,8 @@ class SeasonalDifferencing(BaseTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
-        """Inverse-transform the time series.
-
-        Parameters
-        ----------
-        X_t : pl.DataFrame
-            Transformed time series.
-
-        X_p : pl.DataFrame or None
-            Untransformed time series corresponding to at least `observation_horizon` immediately
-            previous time stamps. Can be None if `observation_horizon == 0`.
-
-        Returns
-        -------
-        pl.DataFrame
-            Inverse-transformed time series, reversing the transformation
-            applied by ``transform``.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+        """Inverse-transform the time series."""
         X_t, X_p = validate_transformer_data(
             self,
             X=X_t,
@@ -557,6 +455,15 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
     This is equivalent to computing ``log(x_t + offset) - log(x_{t-s} + offset)``
     which equals ``log((x_t + offset) / (x_{t-s} + offset))``.
 
+    References
+    ----------
+    [1] Box, G.E.P., & Cox, D.R. (1964). "An analysis of
+        transformations." Journal of the Royal Statistical Society:
+        Series B, 26(2), 211-252.
+    [2] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 9.1.
+
     See Also
     --------
     `SeasonalDifferencing` : Simple seasonal differencing without log transform.
@@ -566,7 +473,6 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
@@ -575,60 +481,20 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
         SeasonalDifferencing.__init__(self, seasonality=seasonality)
         LogTransformer.__init__(self, offset=offset)
 
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SeasonalLogDifferencing":
-        """Fit the transformer to input data.
+    @property
+    def observation_horizon(self) -> int:  # noqa: D102
+        """Return the number of past observations needed."""
+        return self.seasonality
 
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
+        self.log_transform_ = LogTransformer(offset=self.offset).fit(X=X, y=y)
+        self.seasonal_diff_transform_ = SeasonalDifferencing(seasonality=self.seasonality).fit(X=X, y=y)
 
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        self._observation_horizon = self.seasonality
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        BaseTransformer.fit(self, X, y, **params)
-
-        self.log_transform_ = LogTransformer(offset=self.offset).fit(X=X, y=y, **params)
-        self.seasonal_diff_transform_ = SeasonalDifferencing(seasonality=self.seasonality).fit(X=X, y=y, **params)
-
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
-        """Transform the input time series.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Transform the input time series."""
         # Apply log transform
-        X_t = LogTransformer.transform(self, X=X)
+        X_t = LogTransformer._transform(self, X)
 
         # Apply seasonal differencing manually (skip validate_data since columns are transformed)
         time = X_t.select(cs.by_name("time"))[self.seasonality :]
@@ -639,26 +505,8 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
-        """Inverse-transform the time series.
-
-        Parameters
-        ----------
-        X_t : pl.DataFrame
-            Transformed time series.
-
-        X_p : pl.DataFrame or None
-            Untransformed time series corresponding to at least `observation_horizon` immediately
-            previous time stamps. Can be None if `observation_horizon == 0`.
-
-        Returns
-        -------
-        pl.DataFrame
-            Inverse-transformed time series, reversing the transformation
-            applied by ``transform``.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+        """Inverse-transform the time series."""
         X_t, X_p = validate_transformer_data(
             self,
             X=X_t,
@@ -699,12 +547,12 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
 
 
 class SeasonalReturn(BaseTransformer):
-    """Seasonal percentage return time series transformer.
+    r"""Seasonal percentage return time series transformer.
 
-    Computes the percentage return relative to the value from `seasonality`
+    Computes the percentage return relative to the value from ``seasonality``
     time steps ago:
 
-        return_t = (X_t + offset) / (X_{t-seasonality} + offset) - 1
+    $$r_t = \frac{X_t + \text{offset}}{X_{t-s} + \text{offset}} - 1$$
 
     This is useful for modeling relative changes in time series with
     seasonal patterns, such as year-over-year percentage growth.
@@ -741,6 +589,12 @@ class SeasonalReturn(BaseTransformer):
     >>> len(X_t) == len(X) - 2  # First 2 rows dropped
     True
 
+    References
+    ----------
+    [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 9.1.
+
     See Also
     --------
     `AbsoluteSeasonalReturn` : Absolute difference instead of percentage return.
@@ -750,79 +604,23 @@ class SeasonalReturn(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
+
+    _tags = {"stateful": True, "invertible": True}
 
     def __init__(self, seasonality: StrictInt = 1, offset: StrictFloat = 0.0):
         self.seasonality = seasonality
         self.offset = offset
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
+    @property
+    def observation_horizon(self) -> int:  # noqa: D102
+        """Return the number of past observations needed."""
+        return self.seasonality
 
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SeasonalReturn":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        self._observation_horizon = self.seasonality
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        BaseTransformer.fit(self, X, y, **params)
-
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
-        """Transform the input time series.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Transform the input time series."""
         time = X.select(cs.by_name("time"))[self.seasonality :]
         X_numeric = X.select(~cs.by_name("time")) + self.offset
 
@@ -836,26 +634,8 @@ class SeasonalReturn(BaseTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
-        """Inverse-transform the time series.
-
-        Parameters
-        ----------
-        X_t : pl.DataFrame
-            Transformed time series (returns).
-
-        X_p : pl.DataFrame or None
-            Untransformed time series corresponding to at least `observation_horizon` immediately
-            previous time stamps. Required for inverse transform.
-
-        Returns
-        -------
-        pl.DataFrame
-            Inverse-transformed time series, reversing the transformation
-            applied by ``transform``.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+        """Inverse-transform the time series."""
         X_t, X_p = validate_transformer_data(
             self,
             X=X_t,
@@ -924,15 +704,15 @@ class SeasonalReturn(BaseTransformer):
 
 
 class AbsoluteSeasonalReturn(BaseTransformer):
-    """Absolute seasonal return (difference) time series transformer.
+    r"""Absolute seasonal return (difference) time series transformer.
 
-    Computes the absolute difference relative to the value from `seasonality`
+    Computes the absolute difference relative to the value from ``seasonality``
     time steps ago:
 
-        diff_t = (X_t + offset) - (X_{t-seasonality} + offset) = X_t - X_{t-seasonality}
+    $$\Delta_s X_t = X_t - X_{t-s}$$
 
-    This is semantically similar to `SeasonalDifferencing` but provides a
-    consistent API with `SeasonalReturn` and explicitly handles the offset
+    This is semantically similar to ``SeasonalDifferencing`` but provides a
+    consistent API with ``SeasonalReturn`` and explicitly handles the offset
     parameter for API symmetry.
 
     Parameters
@@ -967,6 +747,12 @@ class AbsoluteSeasonalReturn(BaseTransformer):
     >>> len(X_t) == len(X) - 2  # First 2 rows dropped
     True
 
+    References
+    ----------
+    [1] Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting:
+        principles and practice," 3rd edition, OTexts: Melbourne, Australia.
+        OTexts.com/fpp3. Chapter 9.1.
+
     See Also
     --------
     `SeasonalReturn` : Percentage returns instead of absolute differences.
@@ -975,79 +761,23 @@ class AbsoluteSeasonalReturn(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
+
+    _tags = {"stateful": True, "invertible": True}
 
     def __init__(self, seasonality: StrictInt = 1, offset: StrictFloat = 0.0):
         self.seasonality = seasonality
         self.offset = offset
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
+    @property
+    def observation_horizon(self) -> int:  # noqa: D102
+        """Return the number of past observations needed."""
+        return self.seasonality
 
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "AbsoluteSeasonalReturn":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        self._observation_horizon = self.seasonality
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        BaseTransformer.fit(self, X, y, **params)
-
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
-        """Transform the input time series.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Transform the input time series."""
         time = X.select(cs.by_name("time"))[self.seasonality :]
 
         # Compute absolute difference: X_t - X_{t-seasonality}
@@ -1060,26 +790,8 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
-        """Inverse-transform the time series.
-
-        Parameters
-        ----------
-        X_t : pl.DataFrame
-            Transformed time series (absolute differences).
-
-        X_p : pl.DataFrame or None
-            Untransformed time series corresponding to at least `observation_horizon` immediately
-            previous time stamps. Required for inverse transform.
-
-        Returns
-        -------
-        pl.DataFrame
-            Inverse-transformed time series, reversing the transformation
-            applied by ``transform``.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+        """Inverse-transform the time series."""
         X_t, X_p = validate_transformer_data(
             self,
             X=X_t,
@@ -1137,14 +849,19 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
 
 class ASinhTransformer(BaseTransformer):
-    """Variance stabilization through arcsinh transform.
+    r"""Variance stabilization through arcsinh transform.
 
-    Applies the transformation: asinh((X - median) / MAD)
+    Applies the transformation:
 
-    Where MAD is the Median Absolute Deviation scaled by 1.4826 to be
-    consistent with the standard deviation for normally distributed data.
+    $$y = \operatorname{asinh}\!\left(\frac{X - \tilde{X}}{\text{MAD}}\right)$$
+
+    where $\tilde{X}$ is the median and
+    $\text{MAD} = c \cdot \text{median}(|X - \tilde{X}|)$ with scale factor
+    $c = 1.4826$ by default to match the standard deviation for normally
+    distributed data.
 
     This transformation is useful for:
+
     - Stabilizing variance in heteroscedastic time series
     - Handling data with outliers (asinh is less sensitive than log)
     - Data that can be negative (unlike log transform)
@@ -1179,6 +896,12 @@ class ASinhTransformer(BaseTransformer):
     >>> "time" in X_t.columns
     True
 
+    References
+    ----------
+    [1] Johnson, N.L. (1949). "Systems of frequency curves generated
+        by methods of translation." Biometrika, 36(1-2), 149-176.
+        https://doi.org/10.1093/biomet/36.1-2.149
+
     See Also
     --------
     `BoxCoxTransformer` : Power transform for variance stabilization.
@@ -1188,39 +911,16 @@ class ASinhTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "scale": [Interval(numbers.Real, 0, None, closed="neither")],
     }
+
+    _tags = {"invertible": True}
 
     def __init__(self, scale: StrictFloat = 1.4826):
         self.scale = scale
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "ASinhTransformer":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        BaseTransformer.fit(self, X, y, **params)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         # Compute median and MAD for each column (excluding time)
         X_numeric = X.select(~cs.by_name("time"))
 
@@ -1245,29 +945,8 @@ class ASinhTransformer(BaseTransformer):
             # Avoid division by zero
             self.mad_[col] = mad_scaled if mad_scaled != 0.0 else 1.0
 
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
-        """Transform the input time series.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "median_", "mad_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Transform the input time series."""
         time = X.select(cs.by_name("time"))
         X_numeric = X.select(~cs.by_name("time"))
 
@@ -1284,26 +963,8 @@ class ASinhTransformer(BaseTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None) -> pl.DataFrame:
-        """Inverse-transform the time series.
-
-        Parameters
-        ----------
-        X_t : pl.DataFrame
-            Transformed time series.
-
-        X_p : pl.DataFrame or None
-            Untransformed time series corresponding to at least `observation_horizon` immediately
-            previous time stamps. Can be None if `observation_horizon == 0`.
-
-        Returns
-        -------
-        pl.DataFrame
-            Inverse-transformed time series, reversing the transformation
-            applied by ``transform``.
-
-        """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "median_", "mad_"])
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+        """Inverse-transform the time series."""
         X_t, _ = validate_transformer_data(
             self,
             X=X_t,

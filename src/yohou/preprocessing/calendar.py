@@ -2,11 +2,9 @@
 
 import numpy as np
 import polars as pl
-from sklearn.base import _fit_context
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
-from yohou.utils import validate_transformer_data
 
 ALL_FEATURES = (
     "year",
@@ -175,7 +173,6 @@ class CalendarFeatureTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "features": [list, None],
     }
 
@@ -185,27 +182,8 @@ class CalendarFeatureTransformer(BaseTransformer):
     ):
         self.features = features
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "CalendarFeatureTransformer":
-        """Fit the transformer by detecting the time interval and applicable features.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Feature time series with ``"time"`` column.
-        y : pl.DataFrame, optional
-            Target time series (unused, for API compatibility).
-        **params : dict
-            Metadata routing parameters.
-
-        Returns
-        -------
-        self
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         if self.features is not None:
             invalid = set(self.features) - set(ALL_FEATURES)
             if invalid:
@@ -231,17 +209,13 @@ class CalendarFeatureTransformer(BaseTransformer):
                 f"different features."
             )
 
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Extract calendar features from the time column.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Feature time series with ``"time"`` column.
-        **params : dict
-            Metadata routing parameters.
+            Validated input time series.
 
         Returns
         -------
@@ -249,9 +223,6 @@ class CalendarFeatureTransformer(BaseTransformer):
             DataFrame with ``"time"`` column and extracted calendar features.
 
         """
-        check_is_fitted(self, ["applicable_features_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         feature_exprs = [_extract_feature(f) for f in self.applicable_features_]
 
         return X.select(pl.col("time"), *feature_exprs)
@@ -334,7 +305,6 @@ class HolidayFeatureTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "holidays": "no_validation",
         "days_to_next": ["boolean"],
         "days_since_last": ["boolean"],
@@ -352,30 +322,8 @@ class HolidayFeatureTransformer(BaseTransformer):
         self.days_to_next = days_to_next
         self.days_since_last = days_since_last
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "HolidayFeatureTransformer":
-        """Fit the transformer by validating the holiday calendar.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Feature time series with ``"time"`` column.
-        y : pl.DataFrame, optional
-            Target time series (unused, for API compatibility).
-        **params : dict
-            Metadata routing parameters.
-
-        Returns
-        -------
-        self
-
-        Raises
-        ------
-        ValueError
-            If ``holidays`` DataFrame is missing a ``"date"`` column or has
-            wrong dtype.
-
-        """
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         if self.holidays is None:
             raise ValueError("holidays must be provided as a polars DataFrame, got None")
         if not isinstance(self.holidays, pl.DataFrame):
@@ -385,9 +333,6 @@ class HolidayFeatureTransformer(BaseTransformer):
         date_dtype = self.holidays["date"].dtype
         if date_dtype not in (pl.Date, pl.Datetime, pl.Datetime("us"), pl.Datetime("ns"), pl.Datetime("ms")):
             raise ValueError(f"holidays 'date' column must be Date or Datetime type, got {date_dtype}")
-
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
 
         dates_series = self.holidays["date"].cast(pl.Date)
         self.holiday_dates_ = sorted(dates_series.to_list())
@@ -402,17 +347,13 @@ class HolidayFeatureTransformer(BaseTransformer):
         if conflicts:
             raise ValueError(f"Generated column names {sorted(conflicts)} conflict with existing columns in X.")
 
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Extract holiday features from the time column.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Feature time series with ``"time"`` column.
-        **params : dict
-            Metadata routing parameters.
+            Validated input time series.
 
         Returns
         -------
@@ -420,9 +361,6 @@ class HolidayFeatureTransformer(BaseTransformer):
             DataFrame with ``"time"`` column and holiday indicator features.
 
         """
-        check_is_fitted(self, ["holiday_dates_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         dates = X["time"].cast(pl.Date)
         holiday_set = set(self.holiday_dates_)
         is_holiday = dates.map_elements(lambda d: 1 if d in holiday_set else 0, return_dtype=pl.Int32).alias(

@@ -6,12 +6,10 @@ import numbers
 import numpy as np
 import polars as pl
 from pydantic import StrictInt
-from sklearn.base import _fit_context
 from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
-from yohou.utils import validate_transformer_data
 
 
 class FourierFeatureTransformer(BaseTransformer):
@@ -75,7 +73,6 @@ class FourierFeatureTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "seasonality": [Interval(numbers.Real, 0, None, closed="neither")],
         "harmonics": [list, None],
     }
@@ -88,33 +85,8 @@ class FourierFeatureTransformer(BaseTransformer):
         self.seasonality = seasonality
         self.harmonics = harmonics
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "FourierFeatureTransformer":
-        """Fit the transformer by storing the reference time and validating harmonics.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Feature time series with ``"time"`` column.
-        y : pl.DataFrame, optional
-            Target time series (unused, for API compatibility).
-        **params : dict
-            Metadata routing parameters.
-
-        Returns
-        -------
-        self
-
-        Raises
-        ------
-        ValueError
-            If harmonics are invalid or generated names conflict with
-            existing columns.
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         self.harmonics_ = self.harmonics if self.harmonics is not None else [1]
 
         if not self.harmonics_:
@@ -141,17 +113,13 @@ class FourierFeatureTransformer(BaseTransformer):
         if conflicts:
             raise ValueError(f"Generated column names {sorted(conflicts)} conflict with existing columns in X.")
 
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Generate Fourier harmonic features from the time column.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Feature time series with ``"time"`` column.
-        **params : dict
-            Metadata routing parameters.
+            Validated input time series.
 
         Returns
         -------
@@ -159,9 +127,6 @@ class FourierFeatureTransformer(BaseTransformer):
             DataFrame with ``"time"`` column and Fourier feature columns.
 
         """
-        check_is_fitted(self, ["harmonics_", "first_time_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         interval = self.interval_
         time_diff = X["time"] - self.first_time_
         if interval.endswith("mo") or interval.endswith("y"):
@@ -271,7 +236,6 @@ class TimeIndexTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "normalize": ["boolean"],
         "degree": [Interval(numbers.Integral, 1, None, closed="left")],
     }
@@ -286,27 +250,8 @@ class TimeIndexTransformer(BaseTransformer):
         self.normalize = normalize
         self.degree = degree
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "TimeIndexTransformer":
-        """Fit the transformer by storing the reference time.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Feature time series with ``"time"`` column.
-        y : pl.DataFrame, optional
-            Target time series (unused, for API compatibility).
-        **params : dict
-            Metadata routing parameters.
-
-        Returns
-        -------
-        self
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         self.first_time_ = X["time"][0]
         self.n_steps_ = len(X)
 
@@ -318,8 +263,6 @@ class TimeIndexTransformer(BaseTransformer):
         conflicts = set(generated_names) & existing
         if conflicts:
             raise ValueError(f"Generated column names {sorted(conflicts)} conflict with existing columns in X.")
-
-        return self
 
     def _compute_index(self, X: pl.DataFrame) -> np.ndarray:
         """Compute the numeric time index for the given data.
@@ -359,15 +302,13 @@ class TimeIndexTransformer(BaseTransformer):
 
         return t
 
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Generate time index features from the time column.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Feature time series with ``"time"`` column.
-        **params : dict
-            Metadata routing parameters.
+            Validated input time series.
 
         Returns
         -------
@@ -375,9 +316,6 @@ class TimeIndexTransformer(BaseTransformer):
             DataFrame with ``"time"`` column and time index features.
 
         """
-        check_is_fitted(self, ["first_time_", "n_steps_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         t = self._compute_index(X)
 
         feature_cols = []

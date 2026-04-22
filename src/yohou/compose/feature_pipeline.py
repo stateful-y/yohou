@@ -282,7 +282,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             # String case - get by name
             return self.named_steps[ind]
 
-    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None, routed_params: Any) -> pl.DataFrame:
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None, routed_params: Any) -> pl.DataFrame:  # ty: ignore[invalid-method-override]
         """Fit the pipeline.
 
         Parameters
@@ -472,9 +472,6 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
                 # Invertible if all steps are invertible
                 tags.transformer_tags.invertible = all(
                     t.__sklearn_tags__().transformer_tags.invertible for t in transformers
-                )
-                tags.transformer_tags.invertible = all(
-                    hasattr(t, "inverse_transform") and callable(t.inverse_transform) for t in transformers
                 )
 
                 # min_value is the one of the first transformer
@@ -839,10 +836,14 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         Returns
         -------
         bool
-            True if all steps have `inverse_transform` method.
+            True if all steps are invertible.
 
         """
-        return all(hasattr(t, "inverse_transform") for _, _, t in self._iter())
+        return all(
+            t.__sklearn_tags__().transformer_tags.invertible
+            for _, _, t in self._iter()
+            if t.__sklearn_tags__().transformer_tags is not None
+        )
 
     @available_if(_can_inverse_transform)
     def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame, **params: Any) -> pl.DataFrame:

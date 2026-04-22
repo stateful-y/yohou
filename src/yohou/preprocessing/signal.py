@@ -13,8 +13,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.utils import validate_transformer_data
-from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in, _fit_context
-from yohou.utils.tags import Tags
+from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in
 from yohou.utils.validation import check_interval_consistency, interval_to_timedelta
 
 __all__ = ["NumericalDifferentiator", "NumericalFilter", "NumericalIntegrator"]
@@ -103,7 +102,6 @@ class NumericalFilter(BaseTransformer):
     _valid_modes = {"lowpass", "highpass", "bandpass", "bandstop"}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "design": [StrOptions(_valid_designs)],
         "mode": [StrOptions(_valid_modes)],
         "order": [Interval(numbers.Integral, 1, None, closed="left")],
@@ -111,6 +109,8 @@ class NumericalFilter(BaseTransformer):
         "passband_ripple": [Interval(numbers.Real, 0.0, None, closed="neither"), None],
         "stopband_attenuation": [Interval(numbers.Real, 0.0, None, closed="neither"), None],
     }
+
+    _tags = {"stateful": True}
 
     def __init__(
         self,
@@ -128,43 +128,8 @@ class NumericalFilter(BaseTransformer):
         self.passband_ripple = passband_ripple
         self.stopband_attenuation = stopband_attenuation
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "NumericalFilter":
-        """Fit transformer by designing the filter coefficients.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         # Get filter design function
         filter_funcs = {
             "butterworth": scipy.signal.butter,
@@ -198,8 +163,6 @@ class NumericalFilter(BaseTransformer):
         # Initialize filter state dict
         self.zi_: dict[str, np.ndarray] = {}
 
-        return self
-
     def rewind(self, X: pl.DataFrame) -> "NumericalFilter":
         """Rewind the filter state and observation horizon.
 
@@ -222,27 +185,20 @@ class NumericalFilter(BaseTransformer):
         BaseTransformer.rewind(self, X)
         return self
 
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Apply digital filter to time series.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Filtered time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "b_", "a_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Get data columns
         data_cols = [c for c in X.columns if c != "time"]
 
@@ -349,9 +305,10 @@ class NumericalIntegrator(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "method": [StrOptions({"cumulative_trapezoid", "cumulative_simpson"})],
     }
+
+    _tags = {"stateful": True, "invertible": True}
 
     def __init__(
         self,
@@ -359,45 +316,8 @@ class NumericalIntegrator(BaseTransformer):
     ):
         self.method = method
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "NumericalIntegrator":
-        """Fit the transformer by detecting sampling interval.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        # Validate input data
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        # Call parent fit (stores schema, memory, etc.)
-        BaseTransformer.fit(self, X, y)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         # Detect interval using utility function
         self.interval_ = check_interval_consistency(X)
         td = interval_to_timedelta(self.interval_)
@@ -412,8 +332,6 @@ class NumericalIntegrator(BaseTransformer):
         # _X_t_observed_: Last transformed value per column (running integral offset)
         self._last_X_value_: dict[str, float] = {}
         self._X_t_observed_: dict[str, float] = {}
-
-        return self
 
     def rewind(self, X: pl.DataFrame) -> "NumericalIntegrator":
         """Rewind the integration state and observation horizon.
@@ -438,29 +356,20 @@ class NumericalIntegrator(BaseTransformer):
         BaseTransformer.rewind(self, X)
         return self
 
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Integrate each feature column.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Integrated time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "sampling_interval_"])
-
-        # Validate input data
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         time = X.select(cs.by_name("time"))
         data = X.select(~cs.by_name("time"))
 
@@ -534,7 +443,7 @@ class NumericalIntegrator(BaseTransformer):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
+            Ignored.  Present for API compatibility.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -548,33 +457,22 @@ class NumericalIntegrator(BaseTransformer):
         self.fit(X, y)
         return self.transform(X, **params)
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
         """Differentiate to reverse integration.
 
         Parameters
         ----------
         X_t : pl.DataFrame
             Integrated time series.
-
         X_p : pl.DataFrame or None
-            Previous observations. Not used for this stateless transformer.
+            Not used for this stateless transformer.
 
         Returns
         -------
         pl.DataFrame
-            Inverse-transformed time series, reversing the transformation
-            applied by ``transform``.
-
-        Notes
-        -----
-        Due to the nature of numerical differentiation, the inverse is an
-        approximation. The differentiation uses np.gradient which estimates
-        derivatives at each point using central differences in the interior
-        and first differences at boundaries.
+            Inverse-transformed time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "sampling_interval_"])
-
         X_t, _ = validate_transformer_data(
             self,
             X=X_t,
@@ -672,38 +570,16 @@ class NumericalDifferentiator(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "order": [Interval(numbers.Integral, 1, 2, closed="both")],
     }
+
+    _tags = {"invertible": True}
 
     def __init__(self, order: StrictInt = 1):
         self.order = order
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "NumericalDifferentiator":
-        """Fit the transformer by detecting sampling interval.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        # Validate input data
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        # Call parent fit (stores schema, memory, etc.)
-        BaseTransformer.fit(self, X, y)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         # Detect interval using utility function
         self.interval_ = check_interval_consistency(X)
         td = interval_to_timedelta(self.interval_)
@@ -713,31 +589,20 @@ class NumericalDifferentiator(BaseTransformer):
             )
         self.sampling_interval_ = td.total_seconds()
 
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Differentiate each feature column.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Differentiated time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "sampling_interval_"])
-
-        # Validate input data
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         time = X.select(cs.by_name("time"))
         data = X.select(~cs.by_name("time"))
 
@@ -758,32 +623,22 @@ class NumericalDifferentiator(BaseTransformer):
 
         return X_t
 
-    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
         """Integrate to reverse differentiation.
 
         Parameters
         ----------
         X_t : pl.DataFrame
             Differentiated time series.
-
         X_p : pl.DataFrame or None
-            Previous observations. Not used for this stateless transformer.
+            Not used for this stateless transformer.
 
         Returns
         -------
         pl.DataFrame
-            Inverse-transformed time series, reversing the transformation
-            applied by ``transform``.
-
-        Notes
-        -----
-        The inverse uses cumulative trapezoidal integration. Since integration
-        requires a constant of integration, the result starts from 0 and may
-        differ from the original signal by an additive constant.
+            Inverse-transformed time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "sampling_interval_"])
-
         X_t, _ = validate_transformer_data(
             self,
             X=X_t,

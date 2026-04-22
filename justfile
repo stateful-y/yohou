@@ -29,8 +29,8 @@ test-cov:
 test-docstrings:
     uv run pytest --doctest-modules --doctest-continue-on-failure --no-cov src/yohou
 
-# Run fast tests after pinning dependency versions (e.g. just test-compat scikit-learn==1.6.0 scipy==1.13.0)
-test-compat +PINS='scikit-learn==1.6.0':
+# Run fast tests after pinning dependency versions (e.g. just test-compat some-package==1.0.0)
+test-compat +PINS='':
     uvx nox -s test_compat -- {{PINS}}
 
 # Run marimo example notebook interactively

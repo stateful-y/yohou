@@ -338,31 +338,13 @@ class SklearnScaler(SklearnTransformer):
     _estimator_default_class: type | None = None
 
     _parameter_constraints: dict = {
-        **SklearnTransformer._parameter_constraints,
         "scaler": [HasMethods(["fit", "transform"]), None],
     }
+
+    _tags = {"stateful": False, "invertible": True}
 
     def __init__(self, scaler=None, **params):
         if scaler is not None:
             super().__init__(scaler=scaler, **params)
         else:
             super().__init__(**params)
-
-    def __sklearn_tags__(self):
-        """Get estimator tags.
-
-        Override to ensure stateful=False before and after fit, since scalers
-        are stateless transformers (observation_horizon=0).
-
-        Returns
-        -------
-        Tags
-            Estimator tags with stateful=False and invertible=True.
-
-        """
-        tags = super().__sklearn_tags__()
-        # Scalers are always stateless (no memory / observation horizon)
-        if tags.transformer_tags is not None:
-            tags.transformer_tags.stateful = False
-            tags.transformer_tags.invertible = True
-        return tags

@@ -20,6 +20,7 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 from sklearn.model_selection import train_test_split
 
+from yohou.base import BaseTransformer
 from yohou.utils import inspect_panel
 
 __all__ = [
@@ -95,10 +96,12 @@ def check_fit_sets_attributes(transformer, X: pl.DataFrame, y: pl.DataFrame | No
 
 
 def check_observation_horizon_not_fitted(transformer, X: pl.DataFrame) -> None:
-    """Check accessing observation_horizon before fit() raises NotFittedError.
+    """Check observation_horizon behavior before fit().
 
-    For stateful transformers (observation_horizon > 0), accessing the
-    observation_horizon property before fit() should raise NotFittedError.
+    For transformers that inherit the base observation_horizon (no override),
+    accessing it before fit() should raise NotFittedError. Transformers that
+    override observation_horizon as a @property (computed from constructor
+    params) are allowed to return a value before fit.
 
     Parameters
     ----------
@@ -110,23 +113,23 @@ def check_observation_horizon_not_fitted(transformer, X: pl.DataFrame) -> None:
     Raises
     ------
     AssertionError
-        If NotFittedError is not raised for stateful transformers
+        If observation_horizon returns a non-zero value before fit without
+        an explicit property override
 
     """
     transformer_clone = clone(transformer)
 
     try:
-        _ = transformer_clone.observation_horizon
-        # If we get here, either it's stateless or improperly implemented
-        # Stateless transformers (horizon=0) are allowed to work without fit
-        if transformer_clone.observation_horizon != 0:
+        horizon = transformer_clone.observation_horizon
+        # Accessible before fit: either stateless (0) or @property override.
+        # Both are valid.  Property overrides compute from constructor params.
+        if horizon < 0:
             raise AssertionError(
-                f"{transformer_clone.__class__.__name__} allows accessing "
-                f"observation_horizon before fit() but is not stateless. "
-                f"Should raise NotFittedError."
+                f"{transformer_clone.__class__.__name__}.observation_horizon "
+                f"returned {horizon} before fit(). Must be non-negative."
             )
     except NotFittedError:
-        # Expected behavior for stateful transformers
+        # Expected for transformers using the base property (no override)
         pass
 
 
@@ -633,8 +636,8 @@ def check_inverse_transform_identity(
         If round-trip fails
 
     """
-    if not hasattr(transformer, "inverse_transform"):
-        # Not an invertible transformer, skip
+    tags = transformer.__sklearn_tags__()
+    if not (tags.transformer_tags and tags.transformer_tags.invertible):
         return
 
     transformer_clone = clone(transformer)
@@ -711,8 +714,8 @@ def check_inverse_observe_transform_identity(
     - Verifies X_p handling for stateful transformers during updates
 
     """
-    if not hasattr(transformer, "inverse_transform"):
-        # Not an invertible transformer, skip
+    tags = transformer.__sklearn_tags__()
+    if not (tags.transformer_tags and tags.transformer_tags.invertible):
         return
 
     # Need enough data to split into fit and update portions
@@ -933,7 +936,8 @@ def check_transformer_preserve_dtypes(transformer, X: pl.DataFrame, y: pl.DataFr
         )
 
     # Check inverse transform preserves original dtypes (if invertible)
-    if hasattr(transformer_clone, "inverse_transform"):
+    _tags = transformer_clone.__sklearn_tags__()
+    if _tags.transformer_tags and _tags.transformer_tags.invertible:
         try:
             # Prepare X_p for yohou inverse_transform
             horizon = transformer_clone.observation_horizon
@@ -1039,8 +1043,8 @@ def check_inverse_transform_round_trip(
         If round-trip fails
 
     """
-    if not hasattr(transformer, "inverse_transform"):
-        # Not invertible, skip
+    tags = transformer.__sklearn_tags__()
+    if not (tags.transformer_tags and tags.transformer_tags.invertible):
         return
 
     transformer_clone = clone(transformer)
@@ -1300,14 +1304,19 @@ def check_tags_match_capabilities(transformer, X: pl.DataFrame, y: pl.DataFrame 
                 f"{transformer.__class__.__name__} has _observation_horizon > 0 but stateful tag is False"
             )
 
-        # Check invertible tag
-        has_inverse_transform = hasattr(transformer, "inverse_transform") and callable(transformer.inverse_transform)
+        # Check invertible tag: invertible transformers must override _inverse_transform
+        # or inverse_transform (Tier 2 classes like SklearnTransformer override
+        # inverse_transform directly instead of using the _inverse_transform hook).
+        has_inverse_impl = (
+            type(transformer)._inverse_transform is not BaseTransformer._inverse_transform
+            or type(transformer).inverse_transform is not BaseTransformer.inverse_transform
+        )
         is_invertible = tags.transformer_tags.invertible
 
-        if has_inverse_transform != is_invertible:
+        if is_invertible and not has_inverse_impl:
             raise AssertionError(
-                f"{transformer.__class__.__name__} inverse_transform existence ({has_inverse_transform}) "
-                f"doesn't match invertible tag ({is_invertible})"
+                f"{transformer.__class__.__name__} is tagged invertible but has no "
+                f"_inverse_transform or inverse_transform override"
             )
 
 

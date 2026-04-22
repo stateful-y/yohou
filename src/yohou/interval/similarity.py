@@ -52,6 +52,18 @@ class DistanceSimilarity(BaseSimilarity):
     than nearby ones. The weights are further normalised so that each
     prediction row sums to a value in (0, 1).
 
+    References
+    ----------
+    [1] Lei, J., G'Sell, M., Rinaldo, A., Tibshirani, R.J., &
+        Wasserman, L. (2018). "Distribution-free predictive inference for
+        regression." Journal of the American Statistical Association,
+        113(523), 1094-1111.
+        https://doi.org/10.1080/01621459.2017.1307116
+    [2] Barber, R.F., Candes, E.J., Ramdas, A., & Tibshirani, R.J.
+        (2023). "Conformal prediction beyond exchangeability." Annals of
+        Statistics, 51(2), 816-845.
+        https://doi.org/10.1214/23-AOS2276
+
     See Also
     --------
     `BaseSimilarity` : Abstract similarity base class.

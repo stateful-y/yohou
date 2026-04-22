@@ -238,10 +238,10 @@ def fetch_tourism_monthly(
 
     References
     ----------
-    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
-       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
-       Neural Information Processing Systems Track on Datasets and
-       Benchmarks. https://doi.org/10.5281/zenodo.4656096
+    [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+        Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+        Neural Information Processing Systems Track on Datasets and
+        Benchmarks. https://doi.org/10.5281/zenodo.4656096
 
     Examples
     --------
@@ -315,10 +315,10 @@ def fetch_sunspot(
 
     References
     ----------
-    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
-       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
-       Neural Information Processing Systems Track on Datasets and
-       Benchmarks. https://doi.org/10.5281/zenodo.4654722
+    [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+        Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+        Neural Information Processing Systems Track on Datasets and
+        Benchmarks. https://doi.org/10.5281/zenodo.4654722
 
     Examples
     --------
@@ -397,10 +397,10 @@ def fetch_tourism_quarterly(
 
     References
     ----------
-    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
-       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
-       Neural Information Processing Systems Track on Datasets and
-       Benchmarks. https://doi.org/10.5281/zenodo.4656093
+    [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+        Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+        Neural Information Processing Systems Track on Datasets and
+        Benchmarks. https://doi.org/10.5281/zenodo.4656093
 
     Examples
     --------
@@ -476,10 +476,10 @@ def fetch_electricity_demand(
 
     References
     ----------
-    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
-       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
-       Neural Information Processing Systems Track on Datasets and
-       Benchmarks. https://doi.org/10.5281/zenodo.4659727
+    [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+        Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+        Neural Information Processing Systems Track on Datasets and
+        Benchmarks. https://doi.org/10.5281/zenodo.4659727
 
     Examples
     --------
@@ -560,10 +560,10 @@ def fetch_dominick(
 
     References
     ----------
-    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
-       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
-       Neural Information Processing Systems Track on Datasets and
-       Benchmarks. https://doi.org/10.5281/zenodo.4654802
+    [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+        Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+        Neural Information Processing Systems Track on Datasets and
+        Benchmarks. https://doi.org/10.5281/zenodo.4654802
 
     Examples
     --------
@@ -644,10 +644,10 @@ def fetch_pedestrian_counts(
 
     References
     ----------
-    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
-       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
-       Neural Information Processing Systems Track on Datasets and
-       Benchmarks. https://doi.org/10.5281/zenodo.4656626
+    [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+        Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+        Neural Information Processing Systems Track on Datasets and
+        Benchmarks. https://doi.org/10.5281/zenodo.4656626
 
     Examples
     --------
@@ -727,10 +727,10 @@ def fetch_hospital(
 
     References
     ----------
-    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
-       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
-       Neural Information Processing Systems Track on Datasets and
-       Benchmarks. https://doi.org/10.5281/zenodo.4656014
+    [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+        Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+        Neural Information Processing Systems Track on Datasets and
+        Benchmarks. https://doi.org/10.5281/zenodo.4656014
 
     Examples
     --------
@@ -846,10 +846,10 @@ def fetch_kdd_cup(
 
     References
     ----------
-    .. [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
-       Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
-       Neural Information Processing Systems Track on Datasets and
-       Benchmarks. https://doi.org/10.5281/zenodo.4656756
+    [1] Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., &
+        Montero-Manso, P. (2021). "Monash Time Series Forecasting Archive."
+        Neural Information Processing Systems Track on Datasets and
+        Benchmarks. https://doi.org/10.5281/zenodo.4656756
 
     Examples
     --------

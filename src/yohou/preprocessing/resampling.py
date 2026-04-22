@@ -7,8 +7,7 @@ import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
-from yohou.utils import Tags, validate_transformer_data
-from yohou.utils._compat import StrOptions, _check_feature_names_in, _fit_context
+from yohou.utils._compat import StrOptions, _check_feature_names_in
 from yohou.utils.validation import check_interval_consistency, interval_to_timedelta, parse_interval
 
 __all__ = ["Downsampler", "Upsampler"]
@@ -81,13 +80,14 @@ class Downsampler(BaseTransformer):
     _valid_aggregations = {"mean", "sum", "min", "max", "first", "last", "median"}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "interval": [str],
         "aggregation": [StrOptions(_valid_aggregations)],
         "closed": [StrOptions({"left", "right"})],
         "label": [StrOptions({"left", "right"})],
         "include_boundaries": ["boolean"],
     }
+
+    _tags = {"stateful": False}
 
     def __init__(
         self,
@@ -103,47 +103,8 @@ class Downsampler(BaseTransformer):
         self.label = label
         self.include_boundaries = include_boundaries
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags with stateful=False.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = False
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "Downsampler":
-        """Fit the downsampler by detecting input interval.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        Raises
-        ------
-        ValueError
-            If target interval is smaller than input interval (use Upsampler instead).
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         # Detect input interval
         self.input_interval_str_ = check_interval_consistency(X)
         self.input_interval_ = interval_to_timedelta(self.input_interval_str_)
@@ -165,30 +126,20 @@ class Downsampler(BaseTransformer):
             )
             raise ValueError(msg)
 
-        BaseTransformer.fit(self, X, y, **params)
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Downsample time series to target frequency.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Downsampled time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Get data columns
         data_cols = [c for c in X.columns if c != "time"]
 
@@ -303,10 +254,11 @@ class Upsampler(BaseTransformer):
     _valid_interpolations = {"linear", "nearest", "forward", "backward"}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "interval": [str],
         "interpolation": [StrOptions(_valid_interpolations)],
     }
+
+    _tags = {"stateful": False}
 
     def __init__(
         self,
@@ -316,47 +268,8 @@ class Upsampler(BaseTransformer):
         self.interval = interval
         self.interpolation = interpolation
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags with stateful=False.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = False
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "Upsampler":
-        """Fit the upsampler by detecting input interval.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        Raises
-        ------
-        ValueError
-            If target interval is larger than input interval (use Downsampler instead).
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         # Detect input interval
         self.input_interval_str_ = check_interval_consistency(X)
         self.input_interval_ = interval_to_timedelta(self.input_interval_str_)
@@ -378,30 +291,20 @@ class Upsampler(BaseTransformer):
             )
             raise ValueError(msg)
 
-        BaseTransformer.fit(self, X, y, **params)
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Upsample time series to target frequency.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
         pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
+            Upsampled time series.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Create new time range
         time_min = X["time"].min()
         time_max = X["time"].max()

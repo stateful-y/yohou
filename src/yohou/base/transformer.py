@@ -1,6 +1,7 @@
 """Base class for time series transformers."""
 
 import abc
+from typing import Any
 
 import polars as pl
 from sklearn.base import BaseEstimator
@@ -64,6 +65,17 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
     X_schema_: dict[str, pl.DataType]
     interval_: str
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Merge parameter constraints from all classes in the MRO."""
+        super().__init_subclass__(**kwargs)
+        # Auto-merge _parameter_constraints from all classes in the MRO.
+        merged: dict = {}
+        for klass in reversed(cls.__mro__):
+            own = klass.__dict__.get("_parameter_constraints")
+            if own and isinstance(own, dict):
+                merged.update(own)
+        cls._parameter_constraints = merged
+
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
 
@@ -78,8 +90,27 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
         assert tags.transformer_tags is not None
 
-        # Auto-detect invertible: check if inverse_transform method exists
-        tags.transformer_tags.invertible = hasattr(self, "inverse_transform")
+        # Default to non-invertible; subclasses set _tags = {"invertible": True}
+        tags.transformer_tags.invertible = False
+
+        # Merge class-level _tags dict (flat keys) into tag dataclasses.
+        # Walk MRO in reverse so most-derived class wins.
+        merged_tags: dict[str, Any] = {}
+        for klass in reversed(type(self).__mro__):
+            class_tags = klass.__dict__.get("_tags")
+            if class_tags and isinstance(class_tags, dict):
+                merged_tags.update(class_tags)
+
+        if merged_tags:
+            for key, value in merged_tags.items():
+                if tags.transformer_tags is not None and hasattr(tags.transformer_tags, key):
+                    setattr(tags.transformer_tags, key, value)
+                elif tags.input_tags is not None and hasattr(tags.input_tags, key):
+                    setattr(tags.input_tags, key, value)
+                elif tags.target_tags is not None and hasattr(tags.target_tags, key):
+                    setattr(tags.target_tags, key, value)
+                elif hasattr(tags, key):
+                    setattr(tags, key, value)
 
         return tags
 
@@ -135,7 +166,7 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
+            Ignored.  Present for API compatibility.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -159,9 +190,30 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
         # Router transformers would call process_routing() in their fit function
 
+        self._fit(X, y)
+
+        # Sync _observation_horizon with the property after _fit() completes.
+        # This handles @property overrides that compute from constructor params.
+        self._observation_horizon = self.observation_horizon
+
         self._update_X_observed(X)
 
         return self
+
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Subclass hook called at the end of ``fit()``.
+
+        Override this to implement custom fitting logic.  The default
+        implementation does nothing.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Validated input time series (with ``"time"`` column).
+        y : pl.DataFrame or None
+            Ignored.  Present for API compatibility.
+
+        """
 
     def fit_transform(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> pl.DataFrame:
         """Fit the transformer and return transformed data.
@@ -174,7 +226,7 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
+            Ignored.  Present for API compatibility.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -257,13 +309,8 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return self
 
-    @abc.abstractmethod
     def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
-        """Transform the input time series (stateless).
-
-        Performs a stateless transformation, treating the input independently
-        without using any pre-existing observations from the transformer's
-        memory.
+        """Transform the input time series.
 
         Parameters
         ----------
@@ -280,6 +327,67 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
             value columns.
 
         """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
+        return self._transform(X)
+
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Subclass hook called by ``transform()``.
+
+        Override this to implement the core transformation logic. The
+        input ``X`` has already been validated.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Validated input time series.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed time series.
+
+        """
+        raise NotImplementedError(f"{type(self).__name__} must implement _transform() or override transform().")
+
+    def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+        """Inverse-transform the data back to the original space.
+
+        Parameters
+        ----------
+        X_t : pl.DataFrame
+            Transformed time series to invert.
+        X_p : pl.DataFrame or None, default=None
+            Past observations needed by stateful transformers.
+
+        Returns
+        -------
+        pl.DataFrame
+            Data in the original (pre-transform) space.
+
+        """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        return self._inverse_transform(X_t, X_p=X_p)
+
+    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
+        """Subclass hook called by ``inverse_transform()``.
+
+        Override this to implement the inverse transformation logic.
+
+        Parameters
+        ----------
+        X_t : pl.DataFrame
+            Transformed time series to invert.
+        X_p : pl.DataFrame or None
+            Past observations needed by stateful transformers.
+
+        Returns
+        -------
+        pl.DataFrame
+            Data in the original space.
+
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support inverse_transform.")
 
     def observe_transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
         """Transform using pre-existing memory, then observe state.

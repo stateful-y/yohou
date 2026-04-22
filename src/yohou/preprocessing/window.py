@@ -83,68 +83,31 @@ class LagTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "lag": [Interval(numbers.Integral, 1, None, closed="left"), list],
     }
+
+    _tags = {"stateful": True}
 
     def __init__(self, lag: StrictInt | list[StrictInt] = 1):
         self.lag = lag
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
+    @property
+    def observation_horizon(self) -> int:  # noqa: D102
+        """Return the number of past observations needed."""
+        lags = self.lag if isinstance(self.lag, list) else [self.lag]
+        return max(lags)
 
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "LagTransformer":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         self.lags_: list[int] = self.lag if isinstance(self.lag, list) else [self.lag]
 
-        self._observation_horizon = max(self.lags_)
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        BaseTransformer.fit(self, X, y, **params)
-
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transform the input time series.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
@@ -153,9 +116,6 @@ class LagTransformer(BaseTransformer):
             value columns.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         X_t = tabularize(X, self.lags_)
 
         return X_t
@@ -431,11 +391,12 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "func": [callable],
         "window_size": [Interval(numbers.Integral, 1, None, closed="left")],
         "kw_args": [dict, None],
     }
+
+    _tags = {"stateful": True}
 
     def __init__(
         self,
@@ -448,55 +409,18 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
         self.window_size = window_size
         self.kw_args = kw_args
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
+    @property
+    def observation_horizon(self) -> int:  # noqa: D102
+        """Return the number of past observations needed."""
+        return self.window_size - 1
 
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SlidingWindowFunctionTransformer":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        self._observation_horizon = self.window_size - 1
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transform X by applying func to sliding windows.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
@@ -505,9 +429,6 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
             value columns.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Get data columns (excluding time)
         data_cols = [c for c in X.columns if c != "time"]
 
@@ -646,10 +567,11 @@ class RollingStatisticsTransformer(BaseTransformer):
     _valid_statistics = {"mean", "std", "min", "max", "median", "sum", "var", "q25", "q75"}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "window_size": [Interval(numbers.Integral, 1, None, closed="left")],
         "statistics": [str, list],
     }
+
+    _tags = {"stateful": True}
 
     def __init__(
         self,
@@ -659,40 +581,13 @@ class RollingStatisticsTransformer(BaseTransformer):
         self.window_size = window_size
         self.statistics = statistics
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
+    @property
+    def observation_horizon(self) -> int:  # noqa: D102
+        """Return the number of past observations needed."""
+        return self.window_size - 1
 
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "RollingStatisticsTransformer":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         # Normalize statistics to list
         if isinstance(self.statistics, str):
             self.statistics_ = [self.statistics]
@@ -704,11 +599,6 @@ class RollingStatisticsTransformer(BaseTransformer):
         if invalid:
             msg = f"Invalid statistics: {invalid}. Valid options: {self._valid_statistics}"
             raise ValueError(msg)
-
-        self._observation_horizon = self.window_size - 1
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-        return self
 
     def _apply_rolling_stat(self, col: pl.Expr, stat: str) -> pl.Expr:
         """Apply a rolling statistic to a column expression.
@@ -748,16 +638,13 @@ class RollingStatisticsTransformer(BaseTransformer):
             msg = f"Unknown statistic: {stat}"
             raise ValueError(msg)
 
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transform X by computing rolling statistics.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
@@ -766,9 +653,6 @@ class RollingStatisticsTransformer(BaseTransformer):
             value columns.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "statistics_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Get data columns
         data_cols = [c for c in X.columns if c != "time"]
 
@@ -869,7 +753,6 @@ class ExponentialMovingAverage(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
         "alpha": [Interval(numbers.Real, 0.0, 1.0, closed="right")],
         "adjust": ["boolean"],
         "ignore_nulls": ["boolean"],
@@ -885,40 +768,13 @@ class ExponentialMovingAverage(BaseTransformer):
         self.adjust = adjust
         self.ignore_nulls = ignore_nulls
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "ExponentialMovingAverage":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        """
-        X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
-        return self
-
-    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transform X by computing EWMA.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        **params : dict
-            Metadata to route to nested estimators.
+            Validated input time series.
 
         Returns
         -------
@@ -927,9 +783,6 @@ class ExponentialMovingAverage(BaseTransformer):
             value columns.
 
         """
-        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
-        X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
-
         # Get data columns
         data_cols = [c for c in X.columns if c != "time"]
 

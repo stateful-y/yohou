@@ -156,7 +156,54 @@ def test_slow(session: nox.Session) -> None:
     )
 
 
-@nox.session(venv_backend="uv")
+@nox.session(python=PYTHON_VERSIONS, venv_backend="uv")
+def test_compat(session: nox.Session) -> None:
+    """Run fast tests after pinning one or more dependency versions.
+
+    Usage::
+
+        uvx nox -s test_compat -- some-package==1.0.0
+        uvx nox -s test_compat -- some-package==1.0.0 other-package==2.0.0
+
+    Each positional argument must be a pip requirement specifier
+    (e.g. ``package==version``).  If none are given the session runs
+    with the default (latest compatible) versions.
+    """
+    # Install dependencies
+    session.run_install(
+        "uv",
+        "sync",
+        "--no-default-groups",
+        "--group",
+        "tests",
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+    )
+
+    # Downgrade / pin requested packages
+    if session.posargs:
+        session.run(
+            "uv",
+            "pip",
+            "install",
+            *session.posargs,
+            "--python",
+            session.virtualenv.location + "/bin/python",
+        )
+
+    # Run fast tests
+    session.run(
+        "pytest",
+        "tests",
+        "--no-cov",
+        "-m",
+        "not slow and not integration and not example",
+        "-n",
+        "auto",
+        "-v",
+    )
+
+
+@nox.session(venv_backend="uv", python=MIN_VERSION)
 def test_examples(session: nox.Session) -> None:
     """Run marimo notebook examples to validate they execute."""
     # Install dependencies (both tests and examples groups needed)
@@ -210,54 +257,6 @@ def test_docstrings(session: nox.Session) -> None:
         *_plotting_ignores(session),
         "src/yohou",
         *session.posargs,
-    )
-
-
-@nox.session(python=PYTHON_VERSIONS, venv_backend="uv")
-def test_compat(session: nox.Session) -> None:
-    """Run fast tests after pinning one or more dependency versions.
-
-    Usage::
-
-        uvx nox -s test_compat -- scikit-learn==1.6.0
-        uvx nox -s test_compat -- scikit-learn==1.6.0 scipy==1.13.0
-
-    Each positional argument must be a pip requirement specifier
-    (e.g. ``package==version``).  If none are given the session runs
-    with the default (latest compatible) versions.
-    """
-    # Install dependencies
-    session.run_install(
-        "uv",
-        "sync",
-        "--no-default-groups",
-        *_plotting_extras(session),
-        "--group",
-        "tests",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
-    )
-
-    # Downgrade / pin requested packages
-    if session.posargs:
-        session.run(
-            "uv",
-            "pip",
-            "install",
-            *session.posargs,
-            "--python",
-            session.virtualenv.location + "/bin/python",
-        )
-
-    # Run fast tests
-    session.run(
-        "pytest",
-        "tests",
-        "--no-cov",
-        "-m",
-        "not slow and not integration and not example",
-        "-n",
-        "auto",
-        "-v",
     )
 
 
