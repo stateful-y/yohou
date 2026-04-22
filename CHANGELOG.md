@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.0-alpha.5] - 2026-04-22
+
+This **minor release** includes 1 commit.
+
+
+### Refactoring
+- Type fixes, compat shims, and code cleanups  ([#45](https://github.com/stateful-y/yohou/pull/45)) by @gtauzin
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @gtauzin
+
 ## [0.1.0-alpha.4] - 2026-04-22
 
 This **minor release** includes 13 commits.
