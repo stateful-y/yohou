@@ -82,9 +82,6 @@ class TestCoverageRatesValidation:
 
         # Test invalid coverage_rates in predict_interval
         with pytest.raises(ValueError, match="coverage"):
-            forecaster.predict_interval(forecasting_horizon=3, coverage_rates=[0.0])
-
-        with pytest.raises(ValueError, match="coverage"):
             forecaster.predict_interval(forecasting_horizon=3, coverage_rates=[1.5])
 
         with pytest.raises(ValueError, match="coverage"):

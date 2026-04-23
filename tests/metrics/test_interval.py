@@ -302,6 +302,23 @@ class TestIntervalScore:
         assert "interval_score" in df.columns
         assert len(df) == 2
 
+    def test_interval_score_raises_for_zero_coverage_rate(self):
+        """Test IntervalScore raises ValueError for coverage_rate=0."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "value": [10.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "value_lower_0.0": [10.0],
+            "value_upper_0.0": [10.0],
+        })
+        scorer = IntervalScore(coverage_rates=[0.0])
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="coverage_rate=0"):
+            scorer.score(y_true, y_pred)
+
 
 class TestPinballLoss:
     def test_pinball_loss_perfect_predictions_zero_loss(self):

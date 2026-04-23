@@ -335,6 +335,11 @@ class IntervalScore(BaseIntervalScorer):
         """Compute per-row interval score values."""
         frames = []
         for rate in coverage_rates:
+            if rate == 0:
+                raise ValueError(
+                    "IntervalScore is undefined for coverage_rate=0 "
+                    "(the penalty term requires division by the coverage rate)."
+                )
             rate_data = {}
             for col in target_columns:
                 lower_col = f"{col}_lower_{rate}"

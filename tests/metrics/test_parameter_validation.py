@@ -300,18 +300,8 @@ class TestCoverageRates:
             scorer.fit(y)
 
     def test_coverage_rates_must_be_between_zero_and_one(self, y_X_factory):
-        """All coverage_rates must be between 0 and 1 (exclusive)."""
+        """All coverage_rates must be between 0 and 1 (inclusive)."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
-
-        # Test zero
-        scorer = EmpiricalCoverage(coverage_rates=[0.0, 0.9])
-        with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got 0.0"):
-            scorer.fit(y)
-
-        # Test one
-        scorer = EmpiricalCoverage(coverage_rates=[0.9, 1.0])
-        with pytest.raises(ValueError, match="All coverage rates must be between 0 and 1.*got 1.0"):
-            scorer.fit(y)
 
         # Test negative
         scorer = EmpiricalCoverage(coverage_rates=[-0.1, 0.9])
@@ -337,19 +327,17 @@ class TestCoverageRates:
         scorer = EmpiricalCoverage(coverage_rates=[0.5, 0.9])  # float
         scorer.fit(y)  # Should not raise
 
-    def test_coverage_rates_edge_case_boundary_values_excluded(self, y_X_factory):
-        """Boundary values 0 and 1 should be excluded."""
+    def test_coverage_rates_edge_case_boundary_values_included(self, y_X_factory):
+        """Boundary values 0 and 1 should be accepted."""
         y, _ = y_X_factory(length=50, n_targets=1, seed=42)
 
         # Test 0.0
         scorer = EmpiricalCoverage(coverage_rates=[0.0])
-        with pytest.raises(ValueError, match="must be between 0 and 1.*got 0.0"):
-            scorer.fit(y)
+        scorer.fit(y)  # Should not raise
 
         # Test 1.0
         scorer = EmpiricalCoverage(coverage_rates=[1.0])
-        with pytest.raises(ValueError, match="must be between 0 and 1.*got 1.0"):
-            scorer.fit(y)
+        scorer.fit(y)  # Should not raise
 
     def test_coverage_rates_edge_case_very_small_value(self, y_X_factory):
         """Very small valid coverage rates should be accepted."""

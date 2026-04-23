@@ -834,7 +834,7 @@ def _yield_yohou_scorer_checks(
     if tags.get("prediction_type") == "interval":
         validation_test_cases.extend([
             ("coverage_rates", [1.5], "coverage"),  # Out of range
-            ("coverage_rates", [0.0], "coverage"),  # Out of range
+            ("coverage_rates", [-0.5], "coverage"),  # Negative
             ("coverage_rates", [[]], "coverage"),  # Invalid type (nested list)
         ])
 

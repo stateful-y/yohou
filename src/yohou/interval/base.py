@@ -243,7 +243,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If ``forecasting_horizon`` < 1, ``coverage_rates`` not in (0, 1],
+            If ``forecasting_horizon`` < 1, ``coverage_rates`` not in [0, 1],
             or if ``y`` / ``X`` have invalid structure.
 
         """
@@ -270,7 +270,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If forecasting_horizon < 1 or coverage_rates not in (0, 1].
+            If forecasting_horizon < 1 or coverage_rates not in [0, 1].
 
         """
         if forecasting_horizon < 1:
@@ -281,8 +281,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         # Validate coverage rates
         for rate in coverage_rates:
-            if not (0 < rate <= 1):
-                raise ValueError(f"All coverage_rates must be in (0, 1], got {rate}")
+            if not (0 <= rate <= 1):
+                raise ValueError(f"All coverage_rates must be in [0, 1], got {rate}")
 
         return forecasting_horizon, coverage_rates
 
@@ -368,7 +368,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``X`` has invalid structure, ``coverage_rates`` not in (0, 1],
+            If ``X`` has invalid structure, ``coverage_rates`` not in [0, 1],
             or ``groups`` contains names not seen during fit.
 
         """
