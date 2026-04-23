@@ -133,11 +133,6 @@ def _get_fitted_estimator(forecaster):
     return est[0] if isinstance(est, list) else est
 
 
-# ---------------------------------------------------------------------------
-# Type contract at fit boundary
-# ---------------------------------------------------------------------------
-
-
 class TestFitReceivesDataFrames:
     """Verify that the estimator receives DataFrames at fit time."""
 
@@ -191,11 +186,6 @@ class TestFitReceivesDataFrames:
         assert forecaster.estimator_.fit_y_type is pl.DataFrame
 
 
-# ---------------------------------------------------------------------------
-# Type contract at predict boundary
-# ---------------------------------------------------------------------------
-
-
 class TestPredictReceivesDataFrames:
     """Verify that the estimator receives DataFrames at predict time."""
 
@@ -212,11 +202,6 @@ class TestPredictReceivesDataFrames:
         assert len(_SpyEstimator.predict_calls) > 0
         for call in _SpyEstimator.predict_calls:
             assert call["X_type"] is pl.DataFrame
-
-
-# ---------------------------------------------------------------------------
-# Feature name consistency between fit and predict
-# ---------------------------------------------------------------------------
 
 
 class TestFeatureNamesConsistency:
@@ -267,11 +252,6 @@ class TestFeatureNamesConsistency:
 
         fitted = _get_fitted_estimator(forecaster)
         assert _SpyEstimator.predict_calls[0]["X_columns"] == fitted.fit_X_columns
-
-
-# ---------------------------------------------------------------------------
-# Target (y) column names
-# ---------------------------------------------------------------------------
 
 
 class TestYTabColumnNames:
@@ -330,11 +310,6 @@ class TestYTabColumnNames:
         assert forecaster.estimator_[1].fit_y_columns == ["sales_step_2", "revenue_step_2"]
 
 
-# ---------------------------------------------------------------------------
-# Dir-rec augmented feature names
-# ---------------------------------------------------------------------------
-
-
 class TestDirRecAugmentedFeatureNames:
     """Verify that dir-rec augmentation adds named columns progressively."""
 
@@ -391,11 +366,6 @@ class TestDirRecAugmentedFeatureNames:
         assert len(last_predict_call["X_columns"]) == len(last_est.fit_X_columns)
 
 
-# ---------------------------------------------------------------------------
-# No sklearn feature-name warnings (regression test for the original bug)
-# ---------------------------------------------------------------------------
-
-
 class TestNoFeatureNameWarning:
     """Verify no sklearn 'feature names' UserWarning is raised."""
 
@@ -429,11 +399,6 @@ class TestNoFeatureNameWarning:
 
         feature_warnings = [w for w in record if "feature names" in str(w.message).lower()]
         assert len(feature_warnings) == 0
-
-
-# ---------------------------------------------------------------------------
-# Panel data pipeline
-# ---------------------------------------------------------------------------
 
 
 class TestPanelDataFramePipeline:
@@ -472,11 +437,6 @@ class TestPanelDataFramePipeline:
         forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
 
         assert _get_fitted_estimator(forecaster).fit_y_type in (pl.DataFrame, pl.Series)
-
-
-# ---------------------------------------------------------------------------
-# Prediction correctness (end-to-end)
-# ---------------------------------------------------------------------------
 
 
 class TestPredictionCorrectness:
