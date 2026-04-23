@@ -265,7 +265,9 @@ class TestYTabColumnNames:
         forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
 
         assert forecaster.estimator_.fit_y_columns == [
-            "value_step_1", "value_step_2", "value_step_3",
+            "value_step_1",
+            "value_step_2",
+            "value_step_3",
         ]
 
     def test_direct_y_has_step_column_per_estimator(self, reduction_data):
@@ -296,7 +298,10 @@ class TestYTabColumnNames:
         forecaster.fit(y=y_train, X=X_train, forecasting_horizon=2)
 
         assert forecaster.estimator_.fit_y_columns == [
-            "sales_step_1", "revenue_step_1", "sales_step_2", "revenue_step_2",
+            "sales_step_1",
+            "revenue_step_1",
+            "sales_step_2",
+            "revenue_step_2",
         ]
 
     def test_multi_target_direct_y_columns(self, multi_target_data):
@@ -325,11 +330,11 @@ class TestDirRecAugmentedFeatureNames:
         step2_cols = forecaster.estimator_[2].fit_X_columns
 
         # Step 1 has more columns than step 0
-        assert step1_cols[:len(base_cols)] == base_cols
+        assert step1_cols[: len(base_cols)] == base_cols
         assert len(step1_cols) > len(base_cols)
 
         # Step 2 has more columns than step 1
-        assert step2_cols[:len(base_cols)] == base_cols
+        assert step2_cols[: len(base_cols)] == base_cols
         assert len(step2_cols) > len(step1_cols)
 
         # All columns are strings (no integer indices)

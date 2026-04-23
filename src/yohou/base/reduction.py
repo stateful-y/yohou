@@ -716,14 +716,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             vintage_weight=vintage_weight,
         )
 
-        n_targets = (
-            len(self.local_y_t_schema_)
-            if self.groups_ is None
-            else len([c for c in next(iter(y_t.values())).columns if c != "time"])
-            if isinstance(y_t, dict)
-            else len(self.local_y_t_schema_)
-        )
-
         y_columns = (
             list(self.local_y_t_schema_.keys())
             if self.groups_ is None
@@ -808,14 +800,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             vintage_weight=vintage_weight,
         )
 
-        n_targets = (
-            len(self.local_y_t_schema_)
-            if self.groups_ is None
-            else len([c for c in next(iter(y_t.values())).columns if c != "time"])
-            if isinstance(y_t, dict)
-            else len(self.local_y_t_schema_)
-        )
-
         self._dir_rec_n_original_features_ = X_tab.shape[1]
 
         y_columns = (
@@ -847,10 +831,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 preds = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
                 if preds.ndim == 1:
                     preds = preds.reshape(-1, 1)
-                X_aug = X_aug.with_columns([
-                    pl.Series(f"__aug_{step}_{j}", preds[:, j])
-                    for j in range(preds.shape[1])
-                ])
+                X_aug = X_aug.with_columns([pl.Series(f"__aug_{step}_{j}", preds[:, j]) for j in range(preds.shape[1])])
 
         return estimators
 
@@ -1080,9 +1061,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
                 # Augment features for next model
-                X_aug = X_aug.with_columns([
-                    pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)
-                ])
+                X_aug = X_aug.with_columns([pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)])
             y_pred_arr = np.vstack(rows)
             y_pred = pl.DataFrame(y_pred_arr, schema=y_cols)
             return cast(y_pred, self.local_y_t_schema_)
@@ -1096,9 +1075,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 pred = est.predict(X_aug)
                 pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
-                X_aug = X_aug.with_columns([
-                    pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)
-                ])
+                X_aug = X_aug.with_columns([pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)])
             y_pred_arr = np.vstack(rows)
             y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
             y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
