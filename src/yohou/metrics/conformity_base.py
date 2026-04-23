@@ -84,6 +84,11 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
             )
 
         alpha = 1.0 - coverage_rate
+
+        if coverage_rate == 0:
+            median_val: float = np.quantile(scores_array, 0.5, method="lower")
+            return median_val, median_val
+
         lower_quantile: float = np.quantile(scores_array, alpha / 2.0, method="lower")
 
         upper_quantile: float = np.quantile(scores_array, 1.0 - alpha / 2.0, method="higher")

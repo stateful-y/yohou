@@ -1272,8 +1272,8 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
             # Check range
             for rate in coverage_filter:
-                if not 0 < rate < 1:
-                    raise ValueError(f"All coverage rates must be between 0 and 1 (exclusive), got {rate}")
+                if not 0 <= rate <= 1:
+                    raise ValueError(f"All coverage rates must be between 0 and 1 (inclusive), got {rate}")
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, y_train: pl.DataFrame, *, forecaster=None, **params) -> BaseIntervalScorer:

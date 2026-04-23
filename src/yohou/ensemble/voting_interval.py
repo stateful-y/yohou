@@ -242,8 +242,8 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
 
         if coverage_rates is not None:
             for rate in coverage_rates:
-                if rate <= 0 or rate > 1:
-                    raise ValueError(f"All coverage_rates must be in (0, 1], got {rate}")
+                if rate < 0 or rate > 1:
+                    raise ValueError(f"All coverage_rates must be in [0, 1], got {rate}")
 
         extra_fit_kwargs = {"coverage_rates": coverage_rates} if coverage_rates is not None else None
 

@@ -129,6 +129,22 @@ class TestSplitConformalFitPredict:
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 3
 
+    def test_predict_interval_zero_coverage_rate(self, conformal_data):
+        """Test coverage_rate=0 produces zero-width intervals (lower == upper)."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(conformal_data, forecasting_horizon=1, coverage_rates=[0.0])
+        y_pred = scf.predict_interval(coverage_rates=[0.0])
+        assert isinstance(y_pred, pl.DataFrame)
+        lower_cols = [c for c in y_pred.columns if "_lower_0.0" in c]
+        upper_cols = [c for c in y_pred.columns if "_upper_0.0" in c]
+        assert len(lower_cols) > 0
+        assert len(upper_cols) > 0
+        for lower_col, upper_col in zip(lower_cols, upper_cols, strict=True):
+            assert y_pred[lower_col].equals(y_pred[upper_col]), (
+                f"Expected lower == upper for coverage_rate=0, "
+                f"got lower={y_pred[lower_col].to_list()}, upper={y_pred[upper_col].to_list()}"
+            )
+
 
 class TestSplitConformalParameterValidation:
     """Test parameter validation."""

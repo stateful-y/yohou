@@ -162,7 +162,7 @@ def check_interval_prediction_types(forecaster) -> None:
 
 
 def check_coverage_rates_parameter(forecaster) -> None:
-    """Check coverage_rates is list of floats in (0, 1).
+    """Check coverage_rates is list of floats in [0, 1].
 
     Parameters
     ----------
@@ -183,7 +183,7 @@ def check_coverage_rates_parameter(forecaster) -> None:
 
     for rate in coverage_rates:
         assert isinstance(rate, int | float), f"Each coverage rate should be numeric, got {type(rate)} for {rate}"
-        assert 0 < rate < 1, f"Coverage rates should be in (0, 1), got {rate}"
+        assert 0 <= rate <= 1, f"Coverage rates should be in [0, 1], got {rate}"
 
 
 def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
@@ -204,16 +204,6 @@ def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame
         If invalid coverage_rates don't raise ValueError
 
     """
-    # Test rate = 0 (boundary - invalid)
-    forecaster_clone = clone(forecaster)
-    try:
-        forecaster_clone.fit(y, X, forecasting_horizon=3, coverage_rates=[0.0])
-        raise AssertionError(f"{forecaster_clone.__class__.__name__} should raise ValueError for coverage_rates=[0.0]")
-    except ValueError as e:
-        assert "coverage" in str(e).lower() or "0" in str(e).lower(), (
-            f"ValueError should mention coverage_rates, got: {e}"
-        )
-
     # Test rate = 1.5 (above 1 - invalid)
     forecaster_clone = clone(forecaster)
     try:
@@ -239,9 +229,9 @@ def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame
     forecaster_clone.fit(y, X, forecasting_horizon=3, coverage_rates=[0.95])
 
     try:
-        forecaster_clone.predict_interval(forecasting_horizon=3, coverage_rates=[0.0])
+        forecaster_clone.predict_interval(forecasting_horizon=3, coverage_rates=[1.5])
         raise AssertionError(
-            f"{forecaster_clone.__class__.__name__}.predict_interval() should raise ValueError for coverage_rates=[0.0]"
+            f"{forecaster_clone.__class__.__name__}.predict_interval() should raise ValueError for coverage_rates=[1.5]"
         )
     except ValueError as e:
         assert "coverage" in str(e).lower(), f"ValueError should mention coverage_rates, got: {e}"
