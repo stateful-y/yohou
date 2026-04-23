@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Literal, cast
 
-import numpy as np
 import polars as pl
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator
@@ -379,7 +378,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     def _predict_proba_and_reshape(
         self,
         estimator: BaseEstimator,
-        X_tab: np.ndarray,
+        X_tab: pl.DataFrame,
         panel_group_name: str | None = None,
     ) -> pl.DataFrame:
         """Call predict_proba and reshape to probability DataFrame.
@@ -392,8 +391,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ----------
         estimator : BaseEstimator
             Fitted classifier.
-        X_tab : np.ndarray
-            Feature array of shape ``(1, n_features)``.
+        X_tab : pl.DataFrame
+            Feature DataFrame of shape ``(1, n_features)``.
         panel_group_name : str or None
             Panel group prefix for column naming.
 
@@ -464,7 +463,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     def _predict_proba_and_reshape_single_step(
         self,
         estimator: BaseEstimator,
-        X_tab: np.ndarray,
+        X_tab: pl.DataFrame,
         panel_group_name: str | None = None,
     ) -> pl.DataFrame:
         """Call predict_proba for a single-step direct estimator.
@@ -473,8 +472,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ----------
         estimator : BaseEstimator
             Fitted single-step classifier.
-        X_tab : np.ndarray
-            Feature array of shape ``(1, n_features)``.
+        X_tab : pl.DataFrame
+            Feature DataFrame of shape ``(1, n_features)``.
         panel_group_name : str or None
             Panel group prefix for column naming.
 
