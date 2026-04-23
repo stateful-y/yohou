@@ -70,6 +70,25 @@ class TestPlotForecast:
         fig = plot_forecast(y_test, y_pred, coverage_rates=[0.9])
         assert len(fig.data) > 0
 
+    def test_with_zero_coverage_rate_renders_dashed_median(self):
+        """Test coverage_rate=0 renders a dashed median line instead of a band."""
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
+            "y": [191 + i for i in range(30)],
+        })
+        median_vals = [190 + i for i in range(30)]
+        y_pred = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
+            "y": median_vals,
+            "y_lower_0.0": median_vals,
+            "y_upper_0.0": median_vals,
+        })
+        fig = plot_forecast(y_test, y_pred, coverage_rates=[0.0])
+        assert len(fig.data) > 0
+        median_traces = [t for t in fig.data if t.name is not None and "Median" in t.name]
+        assert len(median_traces) == 1
+        assert median_traces[0].line.dash == "dash"
+
     def test_groups(self):
         """Test forecast with groups parameter."""
         y_test = pl.DataFrame({
@@ -1076,6 +1095,31 @@ class TestPlotForecastMultiModelIntervals:
         assert any("M2" in n for n in names)
         assert any("PI" in n for n in names)
 
+    def test_multi_model_zero_coverage_rate_renders_dashed_median(self):
+        """Multi-model with coverage_rate=0 renders dashed median lines."""
+        dates = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_test = pl.DataFrame({"time": dates, "y": [191 + i for i in range(30)]})
+        median_a = [190 + i for i in range(30)]
+        median_b = [192 + i for i in range(30)]
+        y_pred_a = pl.DataFrame({
+            "time": dates,
+            "y": median_a,
+            "y_lower_0.0": median_a,
+            "y_upper_0.0": median_a,
+        })
+        y_pred_b = pl.DataFrame({
+            "time": dates,
+            "y": median_b,
+            "y_lower_0.0": median_b,
+            "y_upper_0.0": median_b,
+        })
+        fig = plot_forecast(y_test, {"M1": y_pred_a, "M2": y_pred_b}, coverage_rates=[0.0])
+        assert_figure_valid(fig)
+        median_traces = [t for t in fig.data if t.name is not None and "Median" in t.name]
+        assert len(median_traces) == 2
+        for trace in median_traces:
+            assert trace.line.dash == "dash"
+
 
 class TestPlotForecastPanelSingleMember:
     """Tests for panel forecast with single member per group."""
@@ -1145,6 +1189,32 @@ class TestPlotForecastPanelTrainAndIntervals:
         names = [t.name for t in fig.data if t.name is not None]
         assert any("Train" in n for n in names)
         assert any("PI" in n for n in names)
+
+    def test_panel_with_zero_coverage_rate_renders_dashed_median(self):
+        """Panel forecast with coverage_rate=0 renders dashed median lines."""
+        dates_test = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_test = pl.DataFrame({
+            "time": dates_test,
+            "y__a": [191 + i for i in range(30)],
+            "y__b": [291 + i for i in range(30)],
+        })
+        median_a = [190 + i for i in range(30)]
+        median_b = [289 + i for i in range(30)]
+        y_pred = pl.DataFrame({
+            "time": dates_test,
+            "y__a": median_a,
+            "y__b": median_b,
+            "y__a_lower_0.0": median_a,
+            "y__a_upper_0.0": median_a,
+            "y__b_lower_0.0": median_b,
+            "y__b_upper_0.0": median_b,
+        })
+        fig = plot_forecast(y_test, y_pred, coverage_rates=[0.0], groups=["y"])
+        assert_figure_valid(fig)
+        median_traces = [t for t in fig.data if t.name is not None and "Median" in t.name]
+        assert len(median_traces) > 0
+        for trace in median_traces:
+            assert trace.line.dash == "dash"
 
 
 class TestPlotForecastMultiModelTrainHistory:
