@@ -1338,9 +1338,8 @@ def on_pre_build(config):
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
-    failed: list[str] = []
-
-    for notebook in notebooks:
+    def _export_notebook(notebook):
+        """Export a single marimo notebook to HTML. Returns (rel_path, error)."""
         rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
 
@@ -1368,16 +1367,34 @@ def on_pre_build(config):
                 capture_output=True,
                 text=True,
             )
-            print(f"[hooks] exported html {rel_path} -> {static_file.relative_to(project_root)}")
+            return str(rel_path), None
         except subprocess.CalledProcessError as e:
-            failed.append(str(rel_path))
-            print(f"[hooks] FAILED html {rel_path}: {e}", file=sys.stderr)
-            if e.stderr:
-                print(e.stderr, file=sys.stderr)
-            continue
+            return str(rel_path), e
         except FileNotFoundError:
-            print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
-            break
+            return str(rel_path), FileNotFoundError("marimo")
+
+    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min(os.cpu_count() or 2, 8)))
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    failed: list[str] = []
+    print(f"[hooks] exporting {len(notebooks)} notebooks with {max_workers} workers")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_export_notebook, nb): nb for nb in notebooks}
+        for future in as_completed(futures):
+            rel_path, error = future.result()
+            if error is None:
+                print(f"[hooks] exported html {rel_path}")
+            elif isinstance(error, FileNotFoundError):
+                print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
+                pool.shutdown(wait=False, cancel_futures=True)
+                return
+            else:
+                failed.append(rel_path)
+                print(f"[hooks] FAILED html {rel_path}: {error}", file=sys.stderr)
+                if hasattr(error, "stderr") and error.stderr:
+                    print(error.stderr, file=sys.stderr)
 
     if failed:
         msg = f"[hooks] {len(failed)} notebook(s) had cell execution errors:\n"
