@@ -1373,28 +1373,45 @@ def on_pre_build(config):
         except FileNotFoundError:
             return str(rel_path), FileNotFoundError("marimo")
 
-    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min(os.cpu_count() or 2, 8)))
+    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min(os.cpu_count() or 2, 4)))
 
+    import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     failed: list[str] = []
-    print(f"[hooks] exporting {len(notebooks)} notebooks with {max_workers} workers")
+    done_count = 0
+    total = len(notebooks)
+    print(f"[hooks] exporting {total} notebooks with {max_workers} workers", flush=True)
+
+    # Heartbeat thread to prevent RTD "inactivity" kills
+    heartbeat_stop = threading.Event()
+
+    def _heartbeat():
+        while not heartbeat_stop.wait(60):
+            print(f"[hooks] ... still exporting ({done_count}/{total} done)", flush=True)
+
+    heartbeat = threading.Thread(target=_heartbeat, daemon=True)
+    heartbeat.start()
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {pool.submit(_export_notebook, nb): nb for nb in notebooks}
         for future in as_completed(futures):
             rel_path, error = future.result()
+            done_count += 1
             if error is None:
-                print(f"[hooks] exported html {rel_path}")
+                print(f"[hooks] [{done_count}/{total}] exported {rel_path}", flush=True)
             elif isinstance(error, FileNotFoundError):
-                print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
+                print("[hooks] marimo not found, skipping notebook export", file=sys.stderr, flush=True)
                 pool.shutdown(wait=False, cancel_futures=True)
+                heartbeat_stop.set()
                 return
             else:
                 failed.append(rel_path)
-                print(f"[hooks] FAILED html {rel_path}: {error}", file=sys.stderr)
+                print(f"[hooks] [{done_count}/{total}] FAILED {rel_path}: {error}", file=sys.stderr, flush=True)
                 if hasattr(error, "stderr") and error.stderr:
-                    print(error.stderr, file=sys.stderr)
+                    print(error.stderr, file=sys.stderr, flush=True)
+
+    heartbeat_stop.set()
 
     if failed:
         msg = f"[hooks] {len(failed)} notebook(s) had cell execution errors:\n"
