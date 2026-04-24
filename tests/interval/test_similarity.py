@@ -1014,3 +1014,26 @@ class TestCompositeSimilarityIntegration:
         assert len(intervals) == 1
         non_time_cols = [c for c in intervals.columns if c != "time"]
         assert len(non_time_cols) >= 2
+
+
+class TestTemporalSimilaritySingleTimestamp:
+    """Tests for TemporalSimilarity with a single observation."""
+
+    def test_fit_single_timestamp(self):
+        """Test fit with a single timestamp sets interval_td_ to zero."""
+        y = pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]})
+        y_pred = pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.1]})
+        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim.fit(y, y_pred)
+        assert sim.interval_td_ == timedelta(0)
+
+    def test_predict_after_single_timestamp_fit(self):
+        """Test predict works after fitting with a single timestamp (zero interval)."""
+        y = pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]})
+        y_pred = pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.1]})
+        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim.fit(y, y_pred)
+
+        weights = sim.predict(y_pred)
+        assert weights.shape == (1, 1)
+        assert np.all(np.isfinite(weights))

@@ -386,6 +386,59 @@ class TestSplitConformalSimilarity:
         assert not hasattr(scf, "similarities_")
         assert not hasattr(scf, "weights_")
 
+    def test_predict_interval_after_observe_with_similarity(self, conformal_data):
+        """Test predict_interval after observe with similarity (vintage_time path)."""
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=1),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(conformal_data[:200], forecasting_horizon=1, coverage_rates=[0.9])
+
+        # Observe new data (this causes point_forecaster_ to track vintage_time)
+        scf.observe(conformal_data[200:210])
+
+        # predict_interval should handle vintage_time column from inner predict
+        intervals = scf.predict_interval(coverage_rates=[0.9])
+        assert isinstance(intervals, pl.DataFrame)
+        assert len(intervals) >= 1
+        assert "value_lower_0.9" in intervals.columns
+        assert "value_upper_0.9" in intervals.columns
+
+    def test_predict_interval_unsupported_scorer_fallback(self, conformal_data):
+        """Test that predict_interval falls back to unweighted for unrecognized scorer types."""
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=1),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(conformal_data[:200], forecasting_horizon=1, coverage_rates=[0.9])
+
+        # Replace the fitted scorer with a wrapper that is not one of the 4 recognized types
+        original_scorer = scf.conformity_scorers_["step_1"]
+
+        class _WrappedScorer:
+            """Scorer wrapper that delegates inverse_score but is not a recognized type."""
+
+            def __init__(self, inner):
+                self._inner = inner
+
+            def inverse_score(self, y_pred, conformity_scores, coverage_rate):
+                return self._inner.inverse_score(
+                    y_pred=y_pred,
+                    conformity_scores=conformity_scores,
+                    coverage_rate=coverage_rate,
+                )
+
+        scf.conformity_scorers_["step_1"] = _WrappedScorer(original_scorer)
+
+        y_pred = scf.predict_interval(coverage_rates=[0.9])
+        assert isinstance(y_pred, pl.DataFrame)
+        assert "value_lower_0.9" in y_pred.columns
+        assert "value_upper_0.9" in y_pred.columns
+
 
 class TestSplitConformalSystematicChecks:
     """Systematic checks for SplitConformalForecaster using the check generator."""
@@ -547,3 +600,160 @@ class TestSplitConformalObserveRewindSimilarity:
 
         assert len(sim_step._X_observed) == n_sim_before
         assert len(scf.conformity_scores_) == n_scores_before
+
+    def test_rewind_without_prior_observe(self, scf_with_similarity):
+        """Test that rewind with similarity when no data was observed is a no-op."""
+        scf, y_train, _y_test = scf_with_similarity
+        sim_step = scf.similarities_["step_1"]
+        n_before = len(sim_step._X_observed)
+        n_scores_before = len(scf.conformity_scores_)
+
+        # Rewind without any prior observe: n_post_fit_removed == 0
+        scf.rewind(y_train[190:200])
+
+        assert len(sim_step._X_observed) == n_before
+        assert len(scf.conformity_scores_) == n_scores_before
+
+
+class TestSplitConformalWithExogenousFeatures:
+    """Tests for X-forwarding in fit, observe, and predict_interval."""
+
+    @pytest.fixture
+    def conformal_data_with_X(self):
+        """Create data with exogenous features."""
+        n = 250
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        np.random.seed(42)
+        values = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        y = pl.DataFrame({"time": dates, "value": values})
+        X = pl.DataFrame({
+            "time": dates,
+            "feature_a": [float(i % 7) for i in range(n)],
+        })
+        return y, X
+
+    def test_fit_with_X_and_similarity(self, conformal_data_with_X):
+        """Test that fit with X and similarity stores similarities_ correctly."""
+        y, X = conformal_data_with_X
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(y[:200], X=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
+        assert hasattr(scf, "similarities_")
+        assert "step_1" in scf.similarities_
+
+    def test_predict_interval_with_X_and_similarity(self, conformal_data_with_X):
+        """Test predict_interval with X and similarity produces valid intervals."""
+        y, X = conformal_data_with_X
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(y[:200], X=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
+        intervals = scf.predict_interval(X=X[200:201], coverage_rates=[0.9])
+        assert isinstance(intervals, pl.DataFrame)
+        assert "value_lower_0.9" in intervals.columns
+        assert "value_upper_0.9" in intervals.columns
+
+    def test_observe_with_X_and_similarity(self, conformal_data_with_X):
+        """Test that observe with X forwards to similarity correctly."""
+        y, X = conformal_data_with_X
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(y[:200], X=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
+        sim_step = scf.similarities_["step_1"]
+        n_before = len(sim_step._X_observed)
+
+        scf.observe(y[200:201], X=X[200:201])
+        assert len(sim_step._X_observed) == n_before + 1
+
+
+class TestSplitConformalObservePredict:
+    """Tests for the observe_predict rolling method."""
+
+    def test_observe_predict_returns_point_predictions(self, conformal_data):
+        """Test that observe_predict returns valid point predictions."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(conformal_data[:200], forecasting_horizon=1)
+
+        y_test = conformal_data[200:205]
+        y_pred = scf.observe_predict(y=y_test)
+        assert isinstance(y_pred, pl.DataFrame)
+        # Initial prediction + one per stride step
+        assert len(y_pred) >= 1
+
+    def test_observe_predict_with_similarity(self, conformal_data):
+        """Test observe_predict with similarity enabled."""
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=1),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(conformal_data[:200], forecasting_horizon=1, coverage_rates=[0.9])
+
+        y_test = conformal_data[200:205]
+        y_pred = scf.observe_predict(y=y_test)
+        assert isinstance(y_pred, pl.DataFrame)
+        assert len(y_pred) >= 1
+
+    def test_observe_predict_with_X(self):
+        """Test observe_predict with exogenous features."""
+        n = 250
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        np.random.seed(42)
+        values = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        y = pl.DataFrame({"time": dates, "value": values})
+        X = pl.DataFrame({"time": dates, "feature_a": [float(i % 7) for i in range(n)]})
+
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(y[:200], X=X[:200], forecasting_horizon=1)
+
+        y_pred = scf.observe_predict(y=y[200:205], X=X[200:])
+        assert isinstance(y_pred, pl.DataFrame)
+        assert len(y_pred) >= 1
+
+    def test_observe_predict_interval_with_similarity(self, conformal_data):
+        """Test observe_predict_interval with similarity produces interval predictions."""
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=1),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(conformal_data[:200], forecasting_horizon=1, coverage_rates=[0.9])
+
+        y_test = conformal_data[200:205]
+        y_pred = scf.observe_predict_interval(y=y_test, coverage_rates=[0.9])
+        assert isinstance(y_pred, pl.DataFrame)
+        assert len(y_pred) >= 1
+        assert any("_lower_0.9" in c for c in y_pred.columns)
+        assert any("_upper_0.9" in c for c in y_pred.columns)
+
+    def test_observe_predict_with_explicit_stride(self, conformal_data):
+        """Test observe_predict with an explicit stride parameter."""
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=1),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+        )
+        scf.fit(conformal_data[:200], forecasting_horizon=1)
+
+        y_test = conformal_data[200:205]
+        y_pred = scf.observe_predict(y=y_test, stride=1)
+        assert isinstance(y_pred, pl.DataFrame)
+        assert len(y_pred) >= 1
