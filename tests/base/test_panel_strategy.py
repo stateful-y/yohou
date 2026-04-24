@@ -402,3 +402,50 @@ class TestGlobalOnlyExogenous:
 
         y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
         assert y_pred.shape[0] == 5
+
+    def test_lifecycle_with_target_transformer(self, panel_y_global_X):
+        """Observe and rewind with target_transformer exercises dict lookup paths."""
+        from yohou.stationarity import LogTransformer
+
+        y, X = panel_y_global_X
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            target_transformer=LogTransformer(offset=1.0),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+        )
+        f.fit(y[:80], X[:80], forecasting_horizon=5)
+        assert isinstance(f.target_transformer_, dict)
+
+        y_pred_1 = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred_1.shape[0] == 5
+
+        f.observe(y[80:85], X=X[80:85])
+        y_pred_2 = f.predict(X=X[85:90], forecasting_horizon=5)
+        assert y_pred_2.shape[0] == 5
+
+        f.rewind(y[:80], X=X[:80])
+        y_pred_3 = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred_3.shape[0] == 5
+
+        for col in [c for c in y_pred_1.columns if c not in {"time", "vintage_time"}]:
+            assert y_pred_1[col].to_list() == y_pred_3[col].to_list()
+
+    def test_mismatched_X_panel_suffixes_raises(self, y_X_factory):
+        """X with panel columns whose suffixes differ across groups raises."""
+        import numpy as np
+
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, panel=True, n_groups=2)
+        groups = sorted({col.split("__")[0] for col in y.columns if "__" in col})
+        rng = np.random.default_rng(0)
+        time = y["time"]
+        X = pl.DataFrame({
+            "time": time,
+            f"{groups[0]}__temp": rng.random(len(time)),
+            f"{groups[1]}__humidity": rng.random(len(time)),
+        })
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+        )
+        with pytest.raises(ValueError, match="do not have the same column suffixes"):
+            f.fit(y[:80], X[:80], forecasting_horizon=5)
