@@ -231,6 +231,33 @@ class TestSplitConformalObserveRewind:
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 1
 
+    def test_observe_syncs_observed_time(self, conformal_data):
+        """Test that observe updates observed_time_ on the outer forecaster."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(conformal_data[:200], forecasting_horizon=1)
+
+        fit_time = scf.observed_time_
+
+        y_update = conformal_data[200:210]
+        scf.observe(y_update)
+
+        assert scf.observed_time_ == scf.point_forecaster_.observed_time_
+        assert scf.observed_time_ != fit_time
+        assert scf.observed_time_ == y_update["time"][-1]
+
+    def test_rewind_syncs_observed_time(self, conformal_data):
+        """Test that rewind updates observed_time_ on the outer forecaster."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(conformal_data[:200], forecasting_horizon=1)
+
+        y_update = conformal_data[200:210]
+        scf.observe(y_update)
+
+        scf.rewind(conformal_data[190:200])
+
+        assert scf.observed_time_ == scf.point_forecaster_.observed_time_
+        assert scf.observed_time_ == conformal_data[199]["time"][0]
+
     def test_observe_not_fitted(self):
         """Test observe raises error when not fitted."""
         scf = SplitConformalForecaster()
@@ -342,8 +369,5 @@ class TestSplitConformalSystematicChecks:
         run_checks(
             forecaster,
             _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
-            expected_failures={
-                # observation_horizon=0 means rewind does not update observed_time_
-                "check_rewind_replaces_observations",
-            },
+            expected_failures=set(),
         )

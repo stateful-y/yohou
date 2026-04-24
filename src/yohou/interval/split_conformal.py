@@ -10,6 +10,8 @@ from sklearn.base import clone
 from sklearn.model_selection import train_test_split
 from sklearn.utils.validation import check_is_fitted
 
+from yohou.base.panel import BasePanelForecaster
+from yohou.base.standard import BaseStandardForecaster
 from yohou.metrics import AbsoluteResidual, BaseConformityScorer, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
@@ -262,6 +264,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y, X, groups = validate_forecaster_data(self, y, X, reset=False, groups=groups)
 
         self.point_forecaster_.observe(y=y, X=X, groups=groups)
+        if self.groups_ is None:
+            self._observe_standard(y, X)
+        else:
+            BasePanelForecaster._observe_panel(self, y, X, groups)
         return self
 
     def rewind(
@@ -301,6 +307,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y, X, groups = validate_forecaster_data(self, y, X, reset=False, groups=groups)
 
         self.point_forecaster_.rewind(y=y, X=X, groups=groups)
+        if self.groups_ is None:
+            self._rewind_standard(y, X)
+        else:
+            BasePanelForecaster._rewind_panel(self, y, X, groups)
         return self
 
     def predict(
