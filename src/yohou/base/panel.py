@@ -93,24 +93,31 @@ class BasePanelForecaster:
         if X is not None and X_panel_groups is not None:
             X_shared_names, _ = inspect_panel(X)
 
-            # Validate X groups have same suffixes
-            first_X_group_cols = X_panel_groups[self.groups_[0]]
-            first_X_suffixes = [col.split("__", 1)[1] for col in first_X_group_cols]
+            if X_panel_groups:
+                # X has panel columns: validate suffixes match across groups
+                first_X_group_cols = X_panel_groups[self.groups_[0]]
+                first_X_suffixes = [col.split("__", 1)[1] for col in first_X_group_cols]
 
-            for group_name in self.groups_[1:]:
-                group_cols = X_panel_groups[group_name]
-                group_suffixes = [col.split("__", 1)[1] for col in group_cols]
-                if sorted(group_suffixes) != sorted(first_X_suffixes):
-                    raise ValueError(
-                        f"The local groups in `X` do not have the same column suffixes. "
-                        f"Group '{self.groups_[0]}': {sorted(first_X_suffixes)}, "
-                        f"Group '{group_name}': {sorted(group_suffixes)}"
-                    )
+                for group_name in self.groups_[1:]:
+                    group_cols = X_panel_groups[group_name]
+                    group_suffixes = [col.split("__", 1)[1] for col in group_cols]
+                    if sorted(group_suffixes) != sorted(first_X_suffixes):
+                        raise ValueError(
+                            f"The local groups in `X` do not have the same column suffixes. "
+                            f"Group '{self.groups_[0]}': {sorted(first_X_suffixes)}, "
+                            f"Group '{group_name}': {sorted(group_suffixes)}"
+                        )
 
-            # Extract X schema
-            self.shared_X_schema_ = dict(X.select(X_shared_names).schema)
-            local_X = X.select(first_X_group_cols).rename({col: col.split("__", 1)[1] for col in first_X_group_cols})
-            self.local_X_schema_ = dict(local_X.schema)
+                # Extract X schema (local + shared)
+                self.shared_X_schema_ = dict(X.select(X_shared_names).schema)
+                local_X = X.select(first_X_group_cols).rename({
+                    col: col.split("__", 1)[1] for col in first_X_group_cols
+                })
+                self.local_X_schema_ = dict(local_X.schema)
+            else:
+                # Global-only X: all non-time columns are shared across groups
+                self.shared_X_schema_ = dict(X.select(X_shared_names).schema)
+                self.local_X_schema_ = {}
 
     def _fit_transform_inputs_panel(
         self, y: pl.DataFrame, X: pl.DataFrame | None
