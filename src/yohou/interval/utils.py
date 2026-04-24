@@ -26,6 +26,8 @@ def weighted_quantile(x: npt.NDArray[np.float64], q: float, weights: npt.NDArray
         The weighted quantile value, or infinity if insufficient weight.
 
     """
+    if len(x) != len(weights):
+        raise ValueError(f"x and weights must have the same length, got {len(x)} and {len(weights)}")
     if np.sum(weights) >= 1 - q:
         x_ordered = np.argsort(x)
         index_threshold = np.min(np.where(np.cumsum(weights[x_ordered]) >= 1 - q))

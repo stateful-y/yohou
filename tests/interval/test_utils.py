@@ -82,3 +82,10 @@ class TestWeightedQuantile:
         result = weighted_quantile(x, q=0.5, weights=weights)
         assert isinstance(result, float)
         assert np.isfinite(result)
+
+    def test_shape_mismatch_raises(self):
+        """Test that mismatched x and weights lengths raise ValueError."""
+        x = np.array([1.0, 2.0, 3.0])
+        weights = np.array([0.5, 0.5])
+        with pytest.raises(ValueError, match="same length"):
+            weighted_quantile(x, q=0.5, weights=weights)

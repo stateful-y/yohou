@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.panel import BasePanelForecaster
-from yohou.metrics import AbsoluteResidual, BaseConformityScorer, Residual
+from yohou.metrics import AbsoluteGammaResidual, AbsoluteResidual, BaseConformityScorer, GammaResidual, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
 from yohou.utils._compat import Interval, _fit_context
@@ -205,10 +205,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                     scored_times_df, on="time", how="semi"
                 )
 
-                similarity_step = clone(self.similarity)
-                similarity_step.fit(y=y_calib, y_pred=y_pred_for_sim)
+                X_for_sim = None
+                if X_calib is not None:
+                    X_for_sim = X_calib.join(scored_times_df, on="time", how="semi")
 
-                weights_array = similarity_step.predict(y_pred=y_pred_for_sim)
+                similarity_step = clone(self.similarity)
+                similarity_step.fit(y=y_calib, y_pred=y_pred_for_sim, X=X_for_sim)
+
+                weights_array = similarity_step.predict(y_pred=y_pred_for_sim, X=X_for_sim)
                 weight_col_names = [f"w_{i}" for i in range(weights_array.shape[1])]
                 weights_step = pl.DataFrame(weights_array, schema=weight_col_names)
                 weights_step = weights_step.with_columns(step=pl.lit(step))
@@ -222,6 +226,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         if self.similarity is not None:
             self.similarities_ = similarities
             self.weights_ = pl.concat(weights_list, how="diagonal")
+            # Track fit-time counts for correct rewind arithmetic
+            self._fit_score_counts_ = {}
+            for step in range(1, 1 + forecasting_horizon):
+                key = f"step_{step}"
+                self._fit_score_counts_[key] = conformity_scores.filter(pl.col("step") == step).height
 
         return self
 
@@ -262,11 +271,43 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         y, X, groups = validate_forecaster_data(self, y, X, reset=False, groups=groups)
 
+        # Capture predictions for the about-to-be-observed times before
+        # the point forecaster moves forward.  These are needed to update
+        # similarity weights and conformity scores.
+        if self.similarity is not None and hasattr(self, "similarities_"):
+            y_pred_captured = self.point_forecaster_.predict(
+                X=X,
+                forecasting_horizon=self.fit_forecasting_horizon_,
+                groups=groups,
+            )
+            y_pred_captured = y_pred_captured.drop("vintage_time", strict=False)
+
         self.point_forecaster_.observe(y=y, X=X, groups=groups)
         if self.groups_ is None:
             self._observe_standard(y, X)
         else:
             BasePanelForecaster._observe_panel(self, y, X, groups)
+
+        # Update similarity and conformity scores with new observations
+        if self.similarity is not None and hasattr(self, "similarities_"):
+            horizon = self.fit_forecasting_horizon_
+            for step in range(1, 1 + horizon):
+                similarity_step = self.similarities_[f"step_{step}"]
+                y_pred_step = y_pred_captured.slice(step - 1, 1)
+                X_step = None
+                if X is not None:
+                    X_step = X.slice(step - 1, 1) if len(X) >= step else None
+                similarity_step.observe(y=y, y_pred=y_pred_step, X=X_step)
+
+                # Score the new observation and append to conformity_scores_
+                scorer_step = self.conformity_scorers_[f"step_{step}"]
+                new_scores = scorer_step.score(y, y_pred_step)
+                new_scores = new_scores.with_columns(step=step)
+                self.conformity_scores_ = pl.concat(
+                    [self.conformity_scores_, new_scores],
+                    how="vertical_relaxed",
+                )
+
         return self
 
     def rewind(
@@ -310,6 +351,45 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             self._rewind_standard(y, X)
         else:
             BasePanelForecaster._rewind_panel(self, y, X, groups)
+
+        # Rewind similarity state and conformity scores
+        if self.similarity is not None and hasattr(self, "similarities_"):
+            target_time = y["time"][-1]
+            horizon = self.fit_forecasting_horizon_
+            for step in range(1, 1 + horizon):
+                key = f"step_{step}"
+                similarity_step = self.similarities_[key]
+
+                # Split conformity scores into calibration (fit-time) and
+                # post-fit portions, then discard post-fit scores whose
+                # time exceeds the rewind target.
+                step_mask = self.conformity_scores_["step"] == step
+                step_scores = self.conformity_scores_.filter(step_mask)
+                other_scores = self.conformity_scores_.filter(~step_mask)
+
+                n_fit = self._fit_score_counts_[key]
+                post_fit_scores = step_scores.slice(n_fit)
+                post_fit_to_keep = post_fit_scores.filter(pl.col("time") <= target_time)
+                n_post_fit_removed = len(post_fit_scores) - len(post_fit_to_keep)
+
+                step_scores = pl.concat(
+                    [step_scores.head(n_fit), post_fit_to_keep],
+                    how="vertical_relaxed",
+                )
+                self.conformity_scores_ = pl.concat(
+                    [other_scores, step_scores],
+                    how="vertical_relaxed",
+                )
+
+                # Each observe() call adds exactly 1 row to similarity
+                # per step, regardless of how many y rows were passed.
+                # Rewind the same number of similarity rows as observe
+                # events that were undone.
+                n_sim_rewind = max(0, n_post_fit_removed)
+                if n_sim_rewind > 0:
+                    dummy_y = y.head(n_sim_rewind)
+                    similarity_step.rewind(y=dummy_y, y_pred=y.slice(0, 1))
+
         return self
 
     def predict(
@@ -512,44 +592,42 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         scores_no_time = conformity_scores_step.drop("time", strict=False)
         y_pred_values = y_pred_step.drop("time")
 
-        if isinstance(conformity_scorer_step, AbsoluteResidual):
-            # Symmetric: ±quantile
-            lower_data: dict[str, list[float]] = {}
-            upper_data: dict[str, list[float]] = {}
-            for col in value_cols:
-                scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+        # Determine whether the scorer uses symmetric or asymmetric
+        # quantiles, and whether it applies a multiplicative scale.
+        symmetric = isinstance(conformity_scorer_step, (AbsoluteResidual, AbsoluteGammaResidual))
+        multiplicative = isinstance(conformity_scorer_step, (GammaResidual, AbsoluteGammaResidual))
+        epsilon = getattr(conformity_scorer_step, "epsilon", 0.0)
+
+        if not isinstance(conformity_scorer_step, (Residual, AbsoluteResidual, GammaResidual, AbsoluteGammaResidual)):
+            # Unsupported scorer type: fall back to unweighted inverse_score
+            return conformity_scorer_step.inverse_score(
+                y_pred=y_pred_step,
+                conformity_scores=conformity_scores_step,
+                coverage_rate=coverage_rate,
+            ).drop("time")
+
+        lower_data: dict[str, list[float]] = {}
+        upper_data: dict[str, list[float]] = {}
+
+        for col in value_cols:
+            scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+            pred_val = float(y_pred_values[col][0])
+            scale = (pred_val + epsilon) if multiplicative else 1.0
+
+            if symmetric:
                 q = weighted_quantile(scores_col, coverage_rate, weights)
-                pred_val = float(y_pred_values[col][0])
-                lower_data[col] = [pred_val - q]
-                upper_data[col] = [pred_val + q]
-
-            lower_bound = pl.DataFrame(lower_data)
-            upper_bound = pl.DataFrame(upper_data)
-            return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
-
-        if isinstance(conformity_scorer_step, Residual):
-            # Asymmetric: add lower/upper quantiles directly
-            lower_data = {}
-            upper_data = {}
-            for col in value_cols:
-                scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+                lower_data[col] = [pred_val - q * scale]
+                upper_data[col] = [pred_val + q * scale]
+            else:
                 alpha = 1.0 - coverage_rate
                 lower_q = weighted_quantile(scores_col, alpha / 2.0, weights)
                 upper_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
-                pred_val = float(y_pred_values[col][0])
-                lower_data[col] = [pred_val + lower_q]
-                upper_data[col] = [pred_val + upper_q]
+                lower_data[col] = [pred_val + lower_q * scale]
+                upper_data[col] = [pred_val + upper_q * scale]
 
-            lower_bound = pl.DataFrame(lower_data)
-            upper_bound = pl.DataFrame(upper_data)
-            return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
-
-        # Unsupported scorer type: fall back to unweighted inverse_score
-        return conformity_scorer_step.inverse_score(
-            y_pred=y_pred_step,
-            conformity_scores=conformity_scores_step,
-            coverage_rate=coverage_rate,
-        ).drop("time")
+        lower_bound = pl.DataFrame(lower_data)
+        upper_bound = pl.DataFrame(upper_data)
+        return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
     def predict_interval(
         self,
@@ -638,7 +716,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             for coverage_rate in coverage_rates:
                 if self.similarity is not None and hasattr(self, "similarities_"):
                     similarity_step = self.similarities_[f"step_{step}"]
-                    weights_array = similarity_step.predict(y_pred=y_pred_step)
+                    X_step = None
+                    if X is not None:
+                        X_step = X.slice(step - 1, 1)
+                    weights_array = similarity_step.predict(y_pred=y_pred_step, X=X_step)
                     step_weights = weights_array[0].astype(np.float64)
 
                     y_pred_interval_rate_step = self._weighted_inverse_score(

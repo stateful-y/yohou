@@ -10,6 +10,7 @@ from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks
 from yohou.interval import DistanceSimilarity, SplitConformalForecaster
+from yohou.interval.similarity import TemporalSimilarity
 from yohou.metrics import AbsoluteResidual, Residual
 from yohou.point import SeasonalNaive
 from yohou.testing import _yield_yohou_forecaster_checks
@@ -406,3 +407,143 @@ class TestSplitConformalSystematicChecks:
             _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
             expected_failures=set(),
         )
+
+
+class TestSplitConformalObserveRewindSimilarity:
+    """Tests for observe/rewind forwarding to similarity and conformity score updates."""
+
+    @pytest.fixture
+    def scf_with_similarity(self):
+        """Create fitted SplitConformalForecaster with DistanceSimilarity."""
+        n = 250
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        np.random.seed(42)
+        values = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        y = pl.DataFrame({"time": dates, "value": values})
+        y_train = y[:200]
+        y_test = y[200:]
+
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
+        return scf, y_train, y_test
+
+    def test_observe_updates_similarity_state(self, scf_with_similarity):
+        """Test that observe() forwards to similarity.observe() and grows state."""
+        scf, y_train, y_test = scf_with_similarity
+        sim_step = scf.similarities_["step_1"]
+        n_before = len(sim_step._X_observed)
+
+        scf.observe(y_test[:1])
+
+        assert len(sim_step._X_observed) == n_before + 1
+
+    def test_observe_updates_conformity_scores(self, scf_with_similarity):
+        """Test that observe() appends new conformity scores."""
+        scf, y_train, y_test = scf_with_similarity
+        n_scores_before = len(scf.conformity_scores_)
+
+        scf.observe(y_test[:1])
+
+        assert len(scf.conformity_scores_) == n_scores_before + 1
+
+    def test_rewind_restores_similarity_state(self, scf_with_similarity):
+        """Test that observe() then rewind() restores original similarity state."""
+        scf, y_train, y_test = scf_with_similarity
+        sim_step = scf.similarities_["step_1"]
+        n_before = len(sim_step._X_observed)
+        x_observed_before = sim_step._X_observed.clone()
+
+        # Observe new data one row at a time (standard streaming pattern)
+        for i in range(10):
+            scf.observe(y_test[i : i + 1])
+
+        assert len(sim_step._X_observed) == n_before + 10
+
+        # Rewind using training data (same pattern as existing rewind tests)
+        scf.rewind(y_train[190:200])
+
+        assert len(sim_step._X_observed) == n_before
+        assert sim_step._X_observed.equals(x_observed_before)
+
+    def test_rewind_restores_conformity_scores(self, scf_with_similarity):
+        """Test that observe() then rewind() restores original conformity scores count."""
+        scf, y_train, y_test = scf_with_similarity
+        n_scores_before = len(scf.conformity_scores_)
+
+        for i in range(10):
+            scf.observe(y_test[i : i + 1])
+        assert len(scf.conformity_scores_) == n_scores_before + 10
+
+        scf.rewind(y_train[190:200])
+        assert len(scf.conformity_scores_) == n_scores_before
+
+    def test_observe_without_similarity_unchanged(self):
+        """Test that observe() without similarity does not fail."""
+        n = 200
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        np.random.seed(42)
+        values = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) for i in range(n)]
+        y = pl.DataFrame({"time": dates, "value": values})
+        y_train = y[:180]
+        y_test = y[180:]
+
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+        )
+        scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
+        n_scores = len(scf.conformity_scores_)
+
+        scf.observe(y_test[:1])
+        # No similarity, so conformity scores should NOT be updated
+        assert len(scf.conformity_scores_) == n_scores
+
+    def test_observe_with_temporal_similarity(self):
+        """Test that observe() works with TemporalSimilarity."""
+        n = 200
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        np.random.seed(42)
+        values = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        y = pl.DataFrame({"time": dates, "value": values})
+        y_train = y[:180]
+        y_test = y[180:]
+
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=TemporalSimilarity(seasonalities=[7.0]),
+        )
+        scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
+
+        sim_step = scf.similarities_["step_1"]
+        n_features_before = sim_step._features_observed.shape[0]
+
+        scf.observe(y_test[:1])
+        assert sim_step._features_observed.shape[0] == n_features_before + 1
+
+    def test_multi_step_observe_rewind_symmetry(self, scf_with_similarity):
+        """Test that multiple observe() then rewind() restores state."""
+        scf, y_train, y_test = scf_with_similarity
+        sim_step = scf.similarities_["step_1"]
+        n_sim_before = len(sim_step._X_observed)
+        n_scores_before = len(scf.conformity_scores_)
+
+        # Observe 3 times
+        for i in range(3):
+            scf.observe(y_test[i : i + 1])
+
+        assert len(sim_step._X_observed) == n_sim_before + 3
+        assert len(scf.conformity_scores_) == n_scores_before + 3
+
+        # Rewind using training data rows (at least observation_horizon rows)
+        scf.rewind(y_train[190:200])
+
+        assert len(sim_step._X_observed) == n_sim_before
+        assert len(scf.conformity_scores_) == n_scores_before
