@@ -114,7 +114,7 @@ class TestSystematicChecks:
                     "refit": True,
                 },
                 {"search_type": "grid", "refit": True, "multimetric": False, "interval_scoring": True},
-                ["check_search_observe_delegates", "check_search_rewind_delegates"],
+                [],
             ),
             # GridSearchCV with list-of-dicts param_grid (multiple grid search spaces)
             (
