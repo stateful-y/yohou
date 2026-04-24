@@ -258,6 +258,41 @@ class TestSplitConformalObserveRewind:
         assert scf.observed_time_ == scf.point_forecaster_.observed_time_
         assert scf.observed_time_ == conformal_data[199]["time"][0]
 
+    def test_observe_syncs_observed_time_panel(self, y_X_factory):
+        """Test that observe updates observed_time_ on panel data."""
+        y, _ = y_X_factory(length=250, n_targets=1, n_features=0, seed=42, panel=True, n_groups=2)
+
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(y[:200], forecasting_horizon=1)
+
+        fit_time = scf.observed_time_
+
+        y_update = y[200:210]
+        scf.observe(y_update)
+
+        assert scf.observed_time_ == scf.point_forecaster_.observed_time_
+        assert scf.observed_time_ != fit_time
+        expected_time = y_update["time"][-1]
+        for group_time in scf.observed_time_.values():
+            assert group_time == expected_time
+
+    def test_rewind_syncs_observed_time_panel(self, y_X_factory):
+        """Test that rewind updates observed_time_ on panel data."""
+        y, _ = y_X_factory(length=250, n_targets=1, n_features=0, seed=42, panel=True, n_groups=2)
+
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(y[:200], forecasting_horizon=1)
+
+        y_update = y[200:210]
+        scf.observe(y_update)
+
+        scf.rewind(y[190:200])
+
+        assert scf.observed_time_ == scf.point_forecaster_.observed_time_
+        expected_time = y[199]["time"][0]
+        for group_time in scf.observed_time_.values():
+            assert group_time == expected_time
+
     def test_observe_not_fitted(self):
         """Test observe raises error when not fitted."""
         scf = SplitConformalForecaster()

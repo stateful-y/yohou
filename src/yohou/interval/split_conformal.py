@@ -11,7 +11,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.panel import BasePanelForecaster
-from yohou.base.standard import BaseStandardForecaster
 from yohou.metrics import AbsoluteResidual, BaseConformityScorer, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
