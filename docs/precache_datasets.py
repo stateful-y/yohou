@@ -35,8 +35,20 @@ _FETCHERS = [
 ]
 
 if __name__ == "__main__":
-    for name, fetcher in _FETCHERS:
-        print(f"[precache] Fetching {name} ...", flush=True)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _fetch_one(name, fetcher):
         bunch = fetcher()
-        print(f"[precache]   -> {bunch.n_series} series, {len(bunch.frame)} rows, cached to {bunch.filename}")
+        return name, bunch.n_series, len(bunch.frame), bunch.filename
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(_fetch_one, name, fn): name for name, fn in _FETCHERS}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                name, n_series, n_rows, filename = future.result()
+                print(f"[precache] {name}: {n_series} series, {n_rows} rows, cached to {filename}", flush=True)
+            except Exception as exc:
+                print(f"[precache] {name}: FAILED ({exc})", flush=True)
+
     print("[precache] All datasets cached.")

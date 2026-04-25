@@ -1338,9 +1338,8 @@ def on_pre_build(config):
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
-    failed: list[str] = []
-
-    for notebook in notebooks:
+    def _export_notebook(notebook):
+        """Export a single marimo notebook to HTML. Returns (rel_path, error)."""
         rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
 
@@ -1368,16 +1367,51 @@ def on_pre_build(config):
                 capture_output=True,
                 text=True,
             )
-            print(f"[hooks] exported html {rel_path} -> {static_file.relative_to(project_root)}")
+            return str(rel_path), None
         except subprocess.CalledProcessError as e:
-            failed.append(str(rel_path))
-            print(f"[hooks] FAILED html {rel_path}: {e}", file=sys.stderr)
-            if e.stderr:
-                print(e.stderr, file=sys.stderr)
-            continue
+            return str(rel_path), e
         except FileNotFoundError:
-            print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
-            break
+            return str(rel_path), FileNotFoundError("marimo")
+
+    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min(os.cpu_count() or 2, 4)))
+
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    failed: list[str] = []
+    done_count = 0
+    total = len(notebooks)
+    print(f"[hooks] exporting {total} notebooks with {max_workers} workers", flush=True)
+
+    # Heartbeat thread to prevent RTD "inactivity" kills
+    heartbeat_stop = threading.Event()
+
+    def _heartbeat():
+        while not heartbeat_stop.wait(60):
+            print(f"[hooks] ... still exporting ({done_count}/{total} done)", flush=True)
+
+    heartbeat = threading.Thread(target=_heartbeat, daemon=True)
+    heartbeat.start()
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_export_notebook, nb): nb for nb in notebooks}
+        for future in as_completed(futures):
+            rel_path, error = future.result()
+            done_count += 1
+            if error is None:
+                print(f"[hooks] [{done_count}/{total}] exported {rel_path}", flush=True)
+            elif isinstance(error, FileNotFoundError):
+                print("[hooks] marimo not found, skipping notebook export", file=sys.stderr, flush=True)
+                pool.shutdown(wait=False, cancel_futures=True)
+                heartbeat_stop.set()
+                return
+            else:
+                failed.append(rel_path)
+                print(f"[hooks] [{done_count}/{total}] FAILED {rel_path}: {error}", file=sys.stderr, flush=True)
+                if hasattr(error, "stderr") and error.stderr:
+                    print(error.stderr, file=sys.stderr, flush=True)
+
+    heartbeat_stop.set()
 
     if failed:
         msg = f"[hooks] {len(failed)} notebook(s) had cell execution errors:\n"
