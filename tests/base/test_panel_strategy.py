@@ -246,3 +246,206 @@ class TestPanelInverseTransform:
         target_cols = [c for c in y_pred.columns if c not in {"time", "vintage_time"}]
         for col in target_cols:
             assert y_pred[col].dtype.is_float()
+
+
+class TestGlobalOnlyExogenous:
+    """Test global-only X (no panel prefixes) with panel y."""
+
+    @pytest.fixture
+    def panel_y_global_X(self, y_X_factory):
+        """Panel y with global-only X (no __ prefixes)."""
+        import numpy as np
+
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, panel=True, n_groups=2)
+        rng = np.random.default_rng(42)
+        time = y["time"]
+        X = pl.DataFrame({
+            "time": time,
+            "weather": rng.random(len(time)),
+            "holiday": rng.choice([0.0, 1.0], size=len(time)),
+        })
+        return y, X
+
+    @pytest.fixture
+    def panel_y_mixed_X(self, y_X_factory):
+        """Panel y with mixed X (panel + global columns)."""
+        import numpy as np
+
+        y, X_panel = y_X_factory(length=100, n_targets=1, n_features=1, panel=True, n_groups=2)
+        rng = np.random.default_rng(99)
+        X = X_panel.with_columns(
+            pl.Series("weather", rng.random(len(y))),
+        )
+        return y, X
+
+    def test_point_forecaster_fit_predict(self, panel_y_global_X):
+        """PointReductionForecaster fit and predict with global-only X."""
+        y, X = panel_y_global_X
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+        )
+        f.fit(y[:80], X[:80], forecasting_horizon=5)
+
+        assert f.groups_ is not None
+        assert f.local_X_schema_ == {}
+        assert f.shared_X_schema_ is not None
+        assert "weather" in f.shared_X_schema_
+        assert "holiday" in f.shared_X_schema_
+
+        y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred.shape[0] == 5
+        pred_cols = set(y_pred.columns) - {"time", "vintage_time"}
+        y_cols = set(y.columns) - {"time"}
+        assert pred_cols == y_cols
+
+    def test_point_forecaster_full_lifecycle(self, panel_y_global_X):
+        """Full lifecycle: fit, predict, observe, rewind, predict."""
+        y, X = panel_y_global_X
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+        )
+        f.fit(y[:80], X[:80], forecasting_horizon=5)
+
+        y_pred_1 = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred_1.shape[0] == 5
+
+        f.observe(y[80:85], X=X[80:85])
+        y_pred_2 = f.predict(X=X[85:90], forecasting_horizon=5)
+        assert y_pred_2.shape[0] == 5
+
+        f.rewind(y[:80], X=X[:80])
+        y_pred_3 = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred_3.shape[0] == 5
+
+        # Predictions after rewind should match the first prediction
+        for col in [c for c in y_pred_1.columns if c not in {"time", "vintage_time"}]:
+            assert y_pred_1[col].to_list() == y_pred_3[col].to_list()
+
+    def test_interval_forecaster_fit_predict(self, panel_y_global_X):
+        """IntervalReductionForecaster fit and predict with global-only X."""
+        from yohou.interval import SplitConformalForecaster
+
+        y, X = panel_y_global_X
+        f = SplitConformalForecaster(
+            point_forecaster=PointReductionForecaster(
+                estimator=LinearRegression(),
+                feature_transformer=LagTransformer(lag=[1, 2]),
+            ),
+            calibration_size=20,
+        )
+        f.fit(y[:80], X[:80], forecasting_horizon=5)
+        y_pred = f.predict(X=X[80:85], forecasting_horizon=5, coverage_rates=[0.9])
+        assert y_pred.shape[0] == 5
+
+    def test_grid_search_cv(self, panel_y_global_X):
+        """GridSearchCV with global-only X and panel y."""
+        from yohou.metrics import MeanAbsoluteError
+        from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
+
+        y, X = panel_y_global_X
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+        )
+        cv = ExpandingWindowSplitter(n_splits=2, test_size=5)
+        search = GridSearchCV(
+            forecaster=f,
+            param_grid={"feature_transformer__lag": [[1, 2], [1, 2, 3]]},
+            scoring=MeanAbsoluteError(),
+            cv=cv,
+        )
+        search.fit(y[:80], X[:80])
+        assert hasattr(search, "best_params_")
+
+    def test_local_panel_forecaster(self, panel_y_global_X):
+        """LocalPanelForecaster with global-only X and panel y."""
+        from yohou.compose import LocalPanelForecaster
+
+        y, X = panel_y_global_X
+        f = LocalPanelForecaster(
+            forecaster=PointReductionForecaster(
+                estimator=LinearRegression(),
+                feature_transformer=LagTransformer(lag=[1, 2]),
+            ),
+        )
+        f.fit(y[:80], X[:80], forecasting_horizon=5)
+        y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred.shape[0] == 5
+        pred_cols = set(y_pred.columns) - {"time", "vintage_time"}
+        y_cols = set(y.columns) - {"time"}
+        assert pred_cols == y_cols
+
+    def test_splitter_with_global_X(self, panel_y_global_X):
+        """ExpandingWindowSplitter split with global-only X and panel y."""
+        from yohou.model_selection import ExpandingWindowSplitter
+
+        y, X = panel_y_global_X
+        splitter = ExpandingWindowSplitter(n_splits=3, test_size=5)
+        splits = list(splitter.split(y[:80], X[:80]))
+        assert len(splits) == 3
+
+    def test_mixed_X_regression(self, panel_y_mixed_X):
+        """Mixed X (panel + global columns) still works (regression test)."""
+        y, X = panel_y_mixed_X
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+        )
+        f.fit(y[:80], X[:80], forecasting_horizon=5)
+
+        assert f.local_X_schema_ is not None
+        assert len(f.local_X_schema_) > 0
+        assert f.shared_X_schema_ is not None
+        assert "weather" in f.shared_X_schema_
+
+        y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred.shape[0] == 5
+
+    def test_lifecycle_with_target_transformer(self, panel_y_global_X):
+        """Observe and rewind with target_transformer exercises dict lookup paths."""
+        from yohou.stationarity import LogTransformer
+
+        y, X = panel_y_global_X
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            target_transformer=LogTransformer(offset=1.0),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+        )
+        f.fit(y[:80], X[:80], forecasting_horizon=5)
+        assert isinstance(f.target_transformer_, dict)
+
+        y_pred_1 = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred_1.shape[0] == 5
+
+        f.observe(y[80:85], X=X[80:85])
+        y_pred_2 = f.predict(X=X[85:90], forecasting_horizon=5)
+        assert y_pred_2.shape[0] == 5
+
+        f.rewind(y[:80], X=X[:80])
+        y_pred_3 = f.predict(X=X[80:85], forecasting_horizon=5)
+        assert y_pred_3.shape[0] == 5
+
+        for col in [c for c in y_pred_1.columns if c not in {"time", "vintage_time"}]:
+            assert y_pred_1[col].to_list() == y_pred_3[col].to_list()
+
+    def test_mismatched_X_panel_suffixes_raises(self, y_X_factory):
+        """X with panel columns whose suffixes differ across groups raises."""
+        import numpy as np
+
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, panel=True, n_groups=2)
+        groups = sorted({col.split("__")[0] for col in y.columns if "__" in col})
+        rng = np.random.default_rng(0)
+        time = y["time"]
+        X = pl.DataFrame({
+            "time": time,
+            f"{groups[0]}__temp": rng.random(len(time)),
+            f"{groups[1]}__humidity": rng.random(len(time)),
+        })
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+        )
+        with pytest.raises(ValueError, match="do not have the same column suffixes"):
+            f.fit(y[:80], X[:80], forecasting_horizon=5)

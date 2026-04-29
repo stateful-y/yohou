@@ -21,8 +21,9 @@ build:
       - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --group docs --extra plotting
     post_install:
       # Pre-download all datasets so marimo HTML exports read from parquet cache
-      # instead of downloading and parsing large TSF archives during the build
-      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv run python docs/precache_datasets.py
+      # instead of downloading and parsing large TSF archives during the build.
+      # Use timeout to avoid build cancellation if Zenodo is slow.
+      - timeout 120 bash -c 'UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv run python docs/precache_datasets.py' || echo "[rtd] Dataset precache timed out or failed; notebooks will download on demand"
     post_build:
       # Check for broken links
       - uvx linkchecker "${READTHEDOCS_OUTPUT}html/index.html" --no-status --no-warnings --ignore-url material/overrides

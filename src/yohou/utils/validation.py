@@ -523,12 +523,15 @@ def check_panel_groups_match(
     y: pl.DataFrame | None,
     X: pl.DataFrame | None,
 ) -> None:
-    """Validate that y and X have matching panel group structures.
+    """Validate that y and X have compatible panel group structures.
 
-    Both DataFrames must have the same panel entity prefixes. For example,
-    if y has "store_1__sales" and "store_2__sales", then X must also have
-    panel columns with "store_1__" and "store_2__" prefixes (or both can
-    be global data).
+    When both DataFrames contain panel columns (using the ``__`` separator),
+    they must share the same entity prefixes. For example, if y has
+    ``"store_1__sales"`` and ``"store_2__sales"``, then X must also have
+    panel columns with ``"store_1__"`` and ``"store_2__"`` prefixes.
+
+    Global-only X (no ``__`` columns) is always valid regardless of y's
+    structure. Global features are broadcast to every panel group.
 
     Parameters
     ----------
@@ -540,13 +543,14 @@ def check_panel_groups_match(
     Raises
     ------
     ValueError
-        If y and X have different panel group structures.
+        If both y and X have panel columns but with different group prefixes,
+        or if y is global but X has panel columns.
 
     Examples
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> # Valid - both have same entity prefixes
+    >>> # Valid: both have same entity prefixes
     >>> y = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1)],
     ...     "store_1__sales": [10],
@@ -559,7 +563,14 @@ def check_panel_groups_match(
     ... })
     >>> check_panel_groups_match(y, X)  # No error
 
-    >>> # Invalid - different entity prefixes
+    >>> # Valid: panel y with global-only X (broadcast to all groups)
+    >>> X_global = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1)],
+    ...     "weather": [25.0],
+    ... })
+    >>> check_panel_groups_match(y, X_global)  # No error
+
+    >>> # Invalid: different entity prefixes
     >>> X_bad = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1)],
     ...     "sensor_1__temp": [25.0],
@@ -582,7 +593,9 @@ def check_panel_groups_match(
     _, y_groups = inspect_panel(y)
     _, X_groups = inspect_panel(X)
 
-    if set(y_groups.keys()) != set(X_groups.keys()):
+    # Global-only X (no panel columns) is valid with any y structure.
+    # Global features are broadcast to every panel group.
+    if X_groups and set(y_groups.keys()) != set(X_groups.keys()):
         raise ValueError(
             f"Panel groups mismatch between `y` and `X`. "
             f"`y` groups: {sorted(y_groups.keys())}, "

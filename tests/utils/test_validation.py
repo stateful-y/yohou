@@ -1018,8 +1018,8 @@ class TestCheckPanelGroupsMatch:
         })
         X = pl.DataFrame({"time": time, "feature": range(20, 30)})
 
-        with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X`"):
-            check_panel_groups_match(y, X)
+        # Global-only X is valid with panel y (broadcast to all groups)
+        check_panel_groups_match(y, X)
 
     def test_check_panel_groups_match_y_global_X_panel(self):
         """Test check_panel_groups_match when y is global but X is panel."""
