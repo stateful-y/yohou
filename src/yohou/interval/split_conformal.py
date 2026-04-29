@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.panel import BasePanelForecaster
-from yohou.metrics import AbsoluteGammaResidual, AbsoluteResidual, BaseConformityScorer, GammaResidual, Residual
+from yohou.metrics import BaseConformityScorer, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
 from yohou.utils._compat import Interval, _fit_context
@@ -592,19 +592,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         scores_no_time = conformity_scores_step.drop("time", strict=False)
         y_pred_values = y_pred_step.drop("time")
 
-        # Determine whether the scorer uses symmetric or asymmetric
-        # quantiles, and whether it applies a multiplicative scale.
-        symmetric = isinstance(conformity_scorer_step, (AbsoluteResidual, AbsoluteGammaResidual))
-        multiplicative = isinstance(conformity_scorer_step, (GammaResidual, AbsoluteGammaResidual))
+        # Read scorer characteristics from tags instead of checking types
+        tags = conformity_scorer_step.__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        symmetric = tags.scorer_tags.symmetric
+        multiplicative = tags.scorer_tags.multiplicative
         epsilon = getattr(conformity_scorer_step, "epsilon", 0.0)
-
-        if not isinstance(conformity_scorer_step, (Residual, AbsoluteResidual, GammaResidual, AbsoluteGammaResidual)):
-            # Unsupported scorer type: fall back to unweighted inverse_score
-            return conformity_scorer_step.inverse_score(
-                y_pred=y_pred_step,
-                conformity_scores=conformity_scores_step,
-                coverage_rate=coverage_rate,
-            ).drop("time")
 
         lower_data: dict[str, list[float]] = {}
         upper_data: dict[str, list[float]] = {}

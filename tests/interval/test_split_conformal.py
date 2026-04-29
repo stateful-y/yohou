@@ -406,33 +406,17 @@ class TestSplitConformalSimilarity:
         assert "value_lower_0.9" in intervals.columns
         assert "value_upper_0.9" in intervals.columns
 
-    def test_predict_interval_unsupported_scorer_fallback(self, conformal_data):
-        """Test that predict_interval falls back to unweighted for unrecognized scorer types."""
+    def test_predict_interval_with_gamma_scorer(self, conformal_data):
+        """Test that predict_interval uses multiplicative tag from GammaResidual."""
+        from yohou.metrics import GammaResidual
+
         scf = SplitConformalForecaster(
             point_forecaster=SeasonalNaive(seasonality=1),
             calibration_size=50,
-            conformity_scorer=AbsoluteResidual(),
+            conformity_scorer=GammaResidual(),
             similarity=DistanceSimilarity(metric="euclidean"),
         )
         scf.fit(conformal_data[:200], forecasting_horizon=1, coverage_rates=[0.9])
-
-        # Replace the fitted scorer with a wrapper that is not one of the 4 recognized types
-        original_scorer = scf.conformity_scorers_["step_1"]
-
-        class _WrappedScorer:
-            """Scorer wrapper that delegates inverse_score but is not a recognized type."""
-
-            def __init__(self, inner):
-                self._inner = inner
-
-            def inverse_score(self, y_pred, conformity_scores, coverage_rate):
-                return self._inner.inverse_score(
-                    y_pred=y_pred,
-                    conformity_scores=conformity_scores,
-                    coverage_rate=coverage_rate,
-                )
-
-        scf.conformity_scorers_["step_1"] = _WrappedScorer(original_scorer)
 
         y_pred = scf.predict_interval(coverage_rates=[0.9])
         assert isinstance(y_pred, pl.DataFrame)

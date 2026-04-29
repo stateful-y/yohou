@@ -140,6 +140,8 @@ class TestTagDefaults:
         assert t.prediction_type is None
         assert t.lower_is_better is True
         assert t.requires_calibration is False
+        assert t.symmetric is False
+        assert t.multiplicative is False
 
     def test_similarity_tags_defaults(self):
         """SimilarityTags defaults are correct."""

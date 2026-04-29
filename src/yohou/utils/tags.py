@@ -186,12 +186,24 @@ class ScorerTags:
         False for metrics where higher is better (e.g., R²).
     requires_calibration : bool, default=False
         Whether the scorer requires calibration data from fit().
+    symmetric : bool, default=False
+        Whether the scorer produces symmetric (absolute) conformity
+        scores.  Symmetric scorers yield equal width intervals on both
+        sides of the point prediction.  Asymmetric scorers (the default)
+        allow different widths above and below.
+    multiplicative : bool, default=False
+        Whether the scorer normalises residuals by the prediction
+        magnitude (e.g. gamma residuals).  When ``True``, weighted
+        interval reconstruction scales quantiles by
+        ``(prediction + epsilon)``.
 
     """
 
     prediction_type: Literal["point", "interval", "class_proba"] | None = None
     lower_is_better: bool = True
     requires_calibration: bool = False
+    symmetric: bool = False
+    multiplicative: bool = False
 
 
 @dataclass
