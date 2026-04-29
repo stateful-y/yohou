@@ -597,7 +597,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         assert tags.scorer_tags is not None
         symmetric = tags.scorer_tags.symmetric
         multiplicative = tags.scorer_tags.multiplicative
-        epsilon = getattr(conformity_scorer_step, "epsilon", 0.0)
+        epsilon = conformity_scorer_step.get_params().get("epsilon", 0.0)
 
         lower_data: dict[str, list[float]] = {}
         upper_data: dict[str, list[float]] = {}
