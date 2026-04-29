@@ -3404,6 +3404,7 @@ def _mstl_to_component_dict(
             raise ValueError(msg)
         sorted_periods = sorted(resolved)
     else:
+        assert not isinstance(periods, str)
         sorted_periods = sorted(periods)
 
     # Infer interval for human-readable labels (fall back to numeric if unknown)
