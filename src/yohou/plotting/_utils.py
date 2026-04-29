@@ -757,7 +757,7 @@ def _normalize_y_pred(
 DEFAULT_WIDTH: int = 1000
 """Default figure width in pixels applied when *width* is ``None``."""
 
-DEFAULT_LAYOUT = {
+DEFAULT_LAYOUT: dict[str, Any] = {
     "template": "plotly_white",
     "font": {"family": "Arial, sans-serif", "size": 12, "color": "#1e293b"},
     "title": {"font": {"size": 16, "color": "#0f172a"}, "x": 0.5, "xanchor": "center"},
@@ -836,14 +836,14 @@ def apply_default_layout(
     layout_update: dict[str, Any] = copy.deepcopy(DEFAULT_LAYOUT)
 
     if title is not None:
-        layout_update["title"]["text"] = title  # ty: ignore[invalid-assignment]
+        layout_update["title"]["text"] = title
     if x_label is not None:
-        layout_update["xaxis"]["title"] = x_label  # ty: ignore[invalid-assignment]
+        layout_update["xaxis"]["title"] = x_label
     if y_label is not None:
-        layout_update["yaxis"]["title"] = y_label  # ty: ignore[invalid-assignment]
-    layout_update["width"] = width if width is not None else DEFAULT_WIDTH  # ty: ignore[invalid-assignment]
+        layout_update["yaxis"]["title"] = y_label
+    layout_update["width"] = width if width is not None else DEFAULT_WIDTH
     if height is not None:
-        layout_update["height"] = height  # ty: ignore[invalid-assignment]
+        layout_update["height"] = height
     if hovermode is not None:
         layout_update["hovermode"] = hovermode
 

@@ -167,6 +167,13 @@ class AbsoluteResidual(Residual):
 
     """
 
+    def __sklearn_tags__(self):
+        """Get the tags for this estimator."""
+        tags = super().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        tags.scorer_tags.symmetric = True
+        return tags
+
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         """Compute absolute residual conformity scores.
 
@@ -301,6 +308,13 @@ class GammaResidual(BaseConformityScorer):
         )
         self.epsilon = epsilon
 
+    def __sklearn_tags__(self):
+        """Get the tags for this estimator."""
+        tags = super().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        tags.scorer_tags.multiplicative = True
+        return tags
+
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         """Compute gamma (relative) residual conformity scores.
 
@@ -415,6 +429,13 @@ class AbsoluteGammaResidual(GammaResidual):
     0.25
 
     """
+
+    def __sklearn_tags__(self):
+        """Get the tags for this estimator."""
+        tags = super().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        tags.scorer_tags.symmetric = True
+        return tags
 
     def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **score_params) -> pl.DataFrame:
         r"""Compute absolute gamma residual conformity scores.
