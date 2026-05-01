@@ -6,12 +6,12 @@ capture the evaluation criterion your domain requires.
 
 !!! tip "Interactive version available"
     Try this guide as an interactive notebook:
-    [View](/examples/metrics/custom_scorer/) · [Open in marimo](/examples/metrics/custom_scorer/edit/)
+    [View](/examples/custom_scorer/) · [Open in marimo](/examples/custom_scorer/edit/)
 
 ## Prerequisites
 
 - Familiarity with the fit/score API ([Evaluate Forecast Accuracy](/pages/how-to/evaluate-forecast-accuracy/))
-- Understanding of aggregation modes ([Point Metrics notebook](/examples/metrics/point_metrics/))
+- Understanding of aggregation modes ([Point Metrics notebook](/examples/point_metrics/))
 
 ## 1. Implement `_compute_raw_errors`
 
@@ -280,4 +280,4 @@ parameter validation, and fit state.
 - [Custom Estimator Reference](/pages/api/custom-estimators/): full API for all component types
 - [Extending Yohou](/pages/explanation/extending-yohou/): when to extend vs compose
 - [Evaluate Forecast Accuracy](/pages/how-to/evaluate-forecast-accuracy/): using built-in metrics
-- [Point Metrics](/examples/metrics/point_metrics/): interactive notebook showing all built-in point scorers
+- [Point Metrics](/examples/point_metrics/): interactive notebook showing all built-in point scorers
