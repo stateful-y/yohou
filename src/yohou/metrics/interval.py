@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 import polars as pl
 
-from .base import BaseIntervalScorer
 from yohou.utils._compat import StrOptions
+
+from .base import BaseIntervalScorer
 
 if TYPE_CHECKING:
     pass
@@ -22,9 +23,7 @@ __all__ = [
 ]
 
 
-def _pinball_loss(
-    tau: float, y: pl.Series | float, q: pl.Series | float
-) -> pl.Expr | pl.Series | float:
+def _pinball_loss(tau: float, y: pl.Series | float, q: pl.Series | float) -> pl.Expr | pl.Series | float:
     """Compute pinball (quantile) loss for a single quantile level.
 
     Parameters
@@ -82,10 +81,7 @@ def _trapezoidal_weights(coverage_rates: list[float]) -> dict[float, float]:
         right = 1.0 if i == n - 1 else (tau + all_taus[i + 1]) / 2
         tau_weights[tau] = right - left
 
-    return {
-        rate: tau_weights[tau_l] + tau_weights[tau_u]
-        for rate, (tau_l, tau_u) in rate_to_taus.items()
-    }
+    return {rate: tau_weights[tau_l] + tau_weights[tau_u] for rate, (tau_l, tau_u) in rate_to_taus.items()}
 
 
 class EmpiricalCoverage(BaseIntervalScorer):
@@ -759,10 +755,7 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
     >>> import polars as pl
     >>> from datetime import datetime
     >>> from yohou.metrics import ContinuousRankedProbabilityScore
-    >>> y_true = pl.DataFrame({
-    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
-    ...     "value": [10.0, 20.0]
-    ... })
+    >>> y_true = pl.DataFrame({"time": [datetime(2020, 1, 1), datetime(2020, 1, 2)], "value": [10.0, 20.0]})
     >>> y_pred = pl.DataFrame({
     ...     "vintage_time": [datetime(2019, 12, 31)] * 2,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
@@ -774,7 +767,7 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
     >>> crps = ContinuousRankedProbabilityScore()
     >>> _ = crps.fit(y_true)
     >>> crps.score(y_true, y_pred)  # doctest: +ELLIPSIS
-    0.2...
+    0.17...
 
     Notes
     -----
@@ -869,16 +862,17 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
         weights = _trapezoidal_weights(rates)
 
         df = df.with_columns(
-            pl.col("coverage_rate")
+            pl
+            .col("coverage_rate")
             .replace_strict(
                 {r: weights[r] for r in rates},
                 default=1.0,
             )
             .alias("_cw")
         )
-        result = df.group_by(group_cols, maintain_order=True).agg(
-            [(pl.col(c) * pl.col("_cw")).sum() / pl.col("_cw").sum() for c in val_cols]
-        )
+        result = df.group_by(group_cols, maintain_order=True).agg([
+            (pl.col(c) * pl.col("_cw")).sum() / pl.col("_cw").sum() for c in val_cols
+        ])
 
         return result.sort("_row_idx").drop("_row_idx")
 
