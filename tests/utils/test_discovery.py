@@ -18,7 +18,7 @@ class TestAllEstimators:
     def test_all_estimators_total_count(self):
         """Test all_estimators returns correct total count."""
         estimators = all_estimators()
-        assert len(estimators) == 86
+        assert len(estimators) == 87
 
     def test_all_estimators_forecaster_filter(self):
         """Test forecaster type filter (matches estimator_type == 'forecaster')."""
@@ -38,7 +38,7 @@ class TestAllEstimators:
     def test_all_estimators_scorer_filter(self):
         """Test scorer type filter."""
         scorers = all_estimators(type_filter="scorer")
-        assert len(scorers) == 20
+        assert len(scorers) == 21
 
     def test_all_estimators_transformer_filter(self):
         """Test transformer type filter."""

@@ -17,6 +17,7 @@ from .conformity import (
 from .conformity_base import BaseConformityScorer
 from .interval import (
     CalibrationError,
+    ContinuousRankedProbabilityScore,
     EmpiricalCoverage,
     IntervalScore,
     MeanIntervalWidth,
@@ -53,6 +54,7 @@ _SCORER_REGISTRY: dict[str, type[BaseScorer]] = {
     "interval_score": IntervalScore,
     "pinball_loss": PinballLoss,
     "calibration_error": CalibrationError,
+    "crps": ContinuousRankedProbabilityScore,
     # Class-probability scorers
     "accuracy": Accuracy,
     "log_loss": LogLoss,
@@ -150,6 +152,7 @@ __all__ = [
     "Residual",
     # Interval scorers
     "CalibrationError",
+    "ContinuousRankedProbabilityScore",
     "EmpiricalCoverage",
     "IntervalScore",
     "MeanIntervalWidth",
