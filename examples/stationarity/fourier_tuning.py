@@ -52,7 +52,7 @@ def _():
     import polars as pl
     from sklearn.base import clone
     from sklearn.linear_model import ElasticNet, Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -109,7 +109,7 @@ def _(fetch_electricity_demand, mo, pl, train_test_split):
     elec_daily = (
         _elec.group_by_dynamic("time", every="1d").agg(pl.col("vic__demand").mean().alias("demand")).drop_nulls()
     )
-    y_train, y_test = train_test_split(elec_daily, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(elec_daily, test_size=0.15)
     horizon = len(y_test)
     mo.md(
         f"**Daily electricity demand**: {len(elec_daily)} days\n\n"

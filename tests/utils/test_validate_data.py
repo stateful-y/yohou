@@ -201,10 +201,10 @@ class TestValidateForecasterData:
         y = pl.DataFrame({"time": time, "target": range(10)})
 
         forecaster = SeasonalNaive(seasonality=2)
-        forecaster.fit(y, X=None, forecasting_horizon=2)
+        forecaster.fit(y, X_actual=None, forecasting_horizon=2)
 
-        # Observe with X=None should work
-        forecaster.observe(y[-2:], X=None)
+        # Observe with X_actual=None should work
+        forecaster.observe(y[-2:], X_actual=None)
 
         assert forecaster._y_observed.shape[0] == 2
 
@@ -227,7 +227,7 @@ class TestValidateForecasterData:
         )
 
         with pytest.raises(ValueError, match="target_as_feature=None requires X to be provided"):
-            forecaster.fit(y, X=None, forecasting_horizon=3)
+            forecaster.fit(y, X_actual=None, forecasting_horizon=3)
 
     def test_validate_data_preserves_column_order(self):
         """Test that validate_data ensures time column is handled correctly."""
@@ -1083,16 +1083,16 @@ class TestValidateSplitterDataBothNonNone:
     """Tests for validate_splitter_data with both y and X provided."""
 
     def test_both_y_and_x_validated(self):
-        """Both y and X are validated and panel groups checked."""
+        """Both y and X_actual are validated and panel groups checked."""
         from yohou.utils.validate_data import validate_splitter_data
 
         times = [datetime(2024, 1, i) for i in range(1, 11)]
         y = pl.DataFrame({"time": times, "target": range(10)})
-        X = pl.DataFrame({"time": times, "feature": range(10, 20)})
+        X_actual = pl.DataFrame({"time": times, "feature": range(10, 20)})
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=2)
-        result_y, result_X = validate_splitter_data(splitter, y, X)
+        result_y, result_X_actual = validate_splitter_data(splitter, y, X_actual)
         assert result_y is not None
-        assert result_X is not None
+        assert result_X_actual is not None
 
 
 class TestValidateTransformerInversePaths:

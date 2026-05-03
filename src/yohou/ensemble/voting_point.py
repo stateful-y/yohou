@@ -154,8 +154,10 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> VotingPointForecaster:
         """Fit all base forecasters on the same data.
@@ -164,10 +166,14 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         ----------
         y : pl.DataFrame
             Target time series with ``"time"`` column.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features with ``"time"`` column.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
         **params : dict
             Metadata routing parameters forwarded to base forecasters.
 
@@ -200,38 +206,43 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
 
         self.forecasters_ = self._fit_forecasters_parallel(
             y=y,
-            X=X,
+            X=X_actual,
             forecasting_horizon=forecasting_horizon,
             routed_params=routed_params,
             n_jobs=self.n_jobs,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         self._validate_schemas_match()
-        self._derive_fitted_attributes(self.forecasters_[0][1], forecasting_horizon, y, X)
+        self._derive_fitted_attributes(self.forecasters_[0][1], forecasting_horizon, y, X_actual)
         self._compute_effective_weights()
 
         return self
 
-    def predict(
+    def predict(  # ty: ignore[invalid-method-override]
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate aggregated point predictions.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features for the forecast period.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
         groups : list of str or None, default=None
             Panel group prefixes to predict.
         predict_transformed : bool, default=False
             If ``True``, return predictions in transformed space.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts override.
         **params : dict
             Metadata routing parameters.
 
@@ -250,10 +261,11 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         for name, forecaster in self.forecasters_:
             forecaster_params = getattr(routed_params.get(name, Bunch(predict={})), "predict", {})
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
-                X=X,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 predict_transformed=predict_transformed,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params,
             )
             predictions.append(y_pred)
@@ -264,11 +276,13 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
     def observe_predict(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive observe and predict on each child, then aggregate.
@@ -280,7 +294,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         ----------
         y : pl.DataFrame
             New target observations.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead.
@@ -290,6 +304,10 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
             Step size for rolling update-predict.
         predict_transformed : bool, default=False
             If ``True``, return predictions in transformed space.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
         **params : dict
             Metadata routing parameters.
 
@@ -308,11 +326,13 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
             forecaster_params = getattr(routed_params.get(name, Bunch(predict={})), "predict", {})
             y_pred = forecaster.observe_predict(  # ty: ignore[unresolved-attribute]
                 y=y,
-                X=X,
+                X_actual=X_actual,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 stride=stride,
                 predict_transformed=predict_transformed,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params,
             )
             predictions.append(y_pred)

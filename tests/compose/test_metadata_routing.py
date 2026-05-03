@@ -416,7 +416,7 @@ class TestErrorHandling:
         y, X = y_X_factory(length=50, n_targets=1, n_features=1)
         forecaster = SeasonalNaive(seasonality=3)
 
-        forecaster.fit(y, X=X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual=X, forecasting_horizon=3)
 
     def test_cloning_preserves_routing_state(self, y_X_factory):
         """Cloning should preserve metadata routing configuration."""

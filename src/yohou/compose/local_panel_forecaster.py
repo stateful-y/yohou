@@ -58,6 +58,8 @@ def _fit_one_group(
     X_group: pl.DataFrame | None,
     forecasting_horizon: int,
     params: Any,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> tuple[str, BaseForecaster]:
     """Fit a cloned forecaster on a single panel group.
 
@@ -75,6 +77,11 @@ def _fit_one_group(
         Forecasting horizon.
     params : Bunch
         Routed parameters.
+    X_future : pl.DataFrame or None, default=None
+        Known future features with a ``"time"`` column.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts with ``"vintage_time"`` and ``"time"``
+        columns.
 
     Returns
     -------
@@ -83,7 +90,14 @@ def _fit_one_group(
 
     """
     forecaster_clone = clone(forecaster)
-    forecaster_clone.fit(y_group, X_group, forecasting_horizon=forecasting_horizon, **params.fit)
+    forecaster_clone.fit(
+        y_group,
+        X_group,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+        X_forecast=X_forecast,
+        **params.fit,
+    )
     return group_name, forecaster_clone
 
 
@@ -114,7 +128,7 @@ class LocalPanelForecaster(BaseForecaster):
         Names of panel groups discovered at fit time.
     local_y_schema_ : dict of str to DataType
         Schema of unprefixed target columns (shared across all groups).
-    local_X_schema_ : dict of str or None
+    local_X_actual_schema_ : dict of str or None
         Schema of unprefixed exogenous columns, or ``None`` if X was not
         provided.
     interval_ : timedelta
@@ -205,8 +219,10 @@ class LocalPanelForecaster(BaseForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> LocalPanelForecaster:
         """Fit independent forecaster clones per panel group.
@@ -216,10 +232,17 @@ class LocalPanelForecaster(BaseForecaster):
         y : pl.DataFrame
             Panel target time series with ``"time"`` column and columns
             following the ``<group>__<series>`` naming convention.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Panel exogenous features (same naming convention as ``y``).
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata routing parameters forwarded to the wrapped forecaster.
 
@@ -253,16 +276,18 @@ class LocalPanelForecaster(BaseForecaster):
         self.local_y_schema_ = {col.split("__", 1)[1]: y[col].dtype for col in y_panel_groups[first_group]}
 
         # Handle X panel structure
-        if X is not None:
-            _, X_panel_groups = inspect_panel(X)
+        if X_actual is not None:
+            _, X_panel_groups = inspect_panel(X_actual)
             if X_panel_groups:
                 first_X_group = sorted(X_panel_groups.keys())[0]
-                self.local_X_schema_ = {col.split("__", 1)[1]: X[col].dtype for col in X_panel_groups[first_X_group]}
+                self.local_X_actual_schema_ = {
+                    col.split("__", 1)[1]: X_actual[col].dtype for col in X_panel_groups[first_X_group]
+                }
             else:
                 # Global X shared across all groups
-                self.local_X_schema_ = {col: X[col].dtype for col in X.columns if col != "time"}
+                self.local_X_actual_schema_ = {col: X_actual[col].dtype for col in X_actual.columns if col != "time"}
         else:
-            self.local_X_schema_ = None
+            self.local_X_actual_schema_ = None
 
         # Compute interval
         self.interval_ = check_interval_consistency(y)
@@ -273,8 +298,8 @@ class LocalPanelForecaster(BaseForecaster):
         for group_name in groups_:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
             X_group = (
-                get_group_df(X, group_name, schema=self.local_X_schema_)
-                if X is not None and self.local_X_schema_ is not None
+                get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
+                if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
             group_data.append((group_name, y_group, X_group))
@@ -287,6 +312,8 @@ class LocalPanelForecaster(BaseForecaster):
                 X_group,
                 forecasting_horizon,
                 routed_params.forecaster,
+                X_future=X_future,
+                X_forecast=X_forecast,
             )
             for group_name, y_group, X_group in group_data
         )
@@ -297,21 +324,27 @@ class LocalPanelForecaster(BaseForecaster):
     @available_if(_forecaster_has("predict"))
     def predict(
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Predict from each per-group forecaster and reassemble.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features (panel format).
         forecasting_horizon : int or None, default=None
             Number of steps ahead.  If ``None``, uses the value from ``fit``.
         groups : list of str or None, default=None
             Subset of groups to predict.  ``None`` predicts all groups.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -328,29 +361,37 @@ class LocalPanelForecaster(BaseForecaster):
         groups: list[str] = groups if groups is not None else (self.groups_ or [])
         horizon = forecasting_horizon or self.fit_forecasting_horizon_
 
-        return self._predict_groups(groups, X, horizon, routed_params, method="predict")
+        return self._predict_groups(
+            groups, horizon, routed_params, method="predict", X_future=X_future, X_forecast=X_forecast
+        )
 
     @available_if(_forecaster_has("predict_interval"))
     def predict_interval(
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Predict intervals from each per-group forecaster and reassemble.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features (panel format).
         forecasting_horizon : int or None, default=None
             Number of steps ahead.  If ``None``, uses the value from ``fit``.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
         groups : list of str or None, default=None
             Subset of groups to predict.  ``None`` predicts all groups.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -368,14 +409,22 @@ class LocalPanelForecaster(BaseForecaster):
         horizon = forecasting_horizon or self.fit_forecasting_horizon_
 
         return self._predict_groups(
-            groups, X, horizon, routed_params, method="predict_interval", coverage_rates=coverage_rates
+            groups,
+            horizon,
+            routed_params,
+            method="predict_interval",
+            coverage_rates=coverage_rates,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
     def observe(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> LocalPanelForecaster:
         """Observe new data per group without refitting.
@@ -384,10 +433,15 @@ class LocalPanelForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             New panel target observations.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             New panel exogenous observations.
         groups : list of str or None, default=None
             Subset of groups to observe.  ``None`` observes all groups.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -403,19 +457,23 @@ class LocalPanelForecaster(BaseForecaster):
         for group_name in groups:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
             X_group = (
-                get_group_df(X, group_name, schema=self.local_X_schema_)
-                if X is not None and self.local_X_schema_ is not None
+                get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
+                if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
-            self.forecasters_[group_name].observe(y=y_group, X=X_group, **params)
+            self.forecasters_[group_name].observe(
+                y=y_group, X_actual=X_group, X_future=X_future, X_forecast=X_forecast, **params
+            )
 
         return self
 
     def rewind(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> LocalPanelForecaster:
         """Rewind each per-group forecaster's observation window.
@@ -424,10 +482,15 @@ class LocalPanelForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             Panel target data to rewind to.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Panel exogenous data to rewind to.
         groups : list of str or None, default=None
             Subset of groups to rewind.  ``None`` rewinds all groups.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -443,11 +506,13 @@ class LocalPanelForecaster(BaseForecaster):
         for group_name in groups:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
             X_group = (
-                get_group_df(X, group_name, schema=self.local_X_schema_)
-                if X is not None and self.local_X_schema_ is not None
+                get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
+                if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
-            self.forecasters_[group_name].rewind(y=y_group, X=X_group, **params)
+            self.forecasters_[group_name].rewind(
+                y=y_group, X_actual=X_group, X_future=X_future, X_forecast=X_forecast, **params
+            )
 
         return self
 
@@ -455,8 +520,10 @@ class LocalPanelForecaster(BaseForecaster):
     def observe_predict(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data then predict for each group.
@@ -465,10 +532,15 @@ class LocalPanelForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             New panel target observations.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Panel exogenous features.
         groups : list of str or None, default=None
             Subset of groups.  ``None`` means all groups.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -478,16 +550,18 @@ class LocalPanelForecaster(BaseForecaster):
             Predictions with prefixed panel columns.
 
         """
-        self.observe(y=y, X=X, groups=groups, **params)
-        return self.predict(X=X, groups=groups, **params)
+        self.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast, **params)
+        return self.predict(groups=groups, X_future=X_future, X_forecast=X_forecast, **params)
 
     @available_if(_forecaster_has("predict_interval"))
     def observe_predict_interval(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data then predict intervals for each group.
@@ -496,12 +570,17 @@ class LocalPanelForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             New panel target observations.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Panel exogenous features.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
         groups : list of str or None, default=None
             Subset of groups.  ``None`` means all groups.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -511,11 +590,12 @@ class LocalPanelForecaster(BaseForecaster):
             Interval predictions with prefixed panel columns.
 
         """
-        self.observe(y=y, X=X, groups=groups, **params)
+        self.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast, **params)
         return self.predict_interval(
-            X=X,
             coverage_rates=coverage_rates,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **params,
         )
 
@@ -545,11 +625,12 @@ class LocalPanelForecaster(BaseForecaster):
     def _predict_groups(
         self,
         groups: list[str],
-        X: pl.DataFrame | None,
         horizon: int,
         routed_params: Any,
         method: str,
         coverage_rates: list[float] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> pl.DataFrame:
         """Predict (point or interval) per group and concatenate.
 
@@ -557,8 +638,6 @@ class LocalPanelForecaster(BaseForecaster):
         ----------
         groups : list of str
             Panel group names to predict.
-        X : pl.DataFrame or None
-            Panel exogenous data.
         horizon : int
             Forecasting horizon.
         routed_params : Bunch
@@ -567,6 +646,13 @@ class LocalPanelForecaster(BaseForecaster):
             ``"predict"`` or ``"predict_interval"``.
         coverage_rates : list of float or None
             Coverage rates (only for ``predict_interval``).
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
 
         Returns
         -------
@@ -580,18 +666,15 @@ class LocalPanelForecaster(BaseForecaster):
         for group_name in groups:
             forecaster = self.forecasters_[group_name]
 
-            X_group = None
-            if X is not None and self.local_X_schema_ is not None:
-                X_group = get_group_df(X, group_name, schema=self.local_X_schema_)
-
             # Call the appropriate predict method
             predict_kwargs: dict[str, Any] = {"forecasting_horizon": horizon}
             predict_kwargs.update(routed_params.forecaster.get(method, {}))
             if method == "predict_interval" and coverage_rates is not None:
                 predict_kwargs["coverage_rates"] = coverage_rates
-
-            if X_group is not None:
-                predict_kwargs["X"] = X_group
+            if X_future is not None:
+                predict_kwargs["X_future"] = X_future
+            if X_forecast is not None:
+                predict_kwargs["X_forecast"] = X_forecast
 
             y_pred_group = getattr(forecaster, method)(**predict_kwargs)
 

@@ -954,8 +954,8 @@ class DummyPointForecaster(BasePointForecaster):
         super().__init__()
         self.constant = constant
 
-    def fit(self, y, X=None, forecasting_horizon=1):
-        super().fit(y, X, forecasting_horizon)
+    def fit(self, y, X_actual=None, forecasting_horizon=1):
+        super().fit(y, X_actual, forecasting_horizon)
         return self
 
     def _predict(self):
@@ -972,8 +972,8 @@ class DummyIntervalForecaster(BaseIntervalForecaster):
         super().__init__()
         self.width = width
 
-    def fit(self, y, X=None, forecasting_horizon=1):
-        super().fit(y, X, forecasting_horizon)
+    def fit(self, y, X_actual=None, forecasting_horizon=1):
+        super().fit(y, X_actual, forecasting_horizon)
         return self
 
     def _predict(self):

@@ -42,7 +42,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
     from sklearn.tree import DecisionTreeRegressor
 
     from yohou.compose import ColumnForecaster
@@ -92,7 +92,7 @@ def _(fetch_kdd_cup, inspect_panel, mo, plot_time_series, train_test_split):
     _target_cols = [c for c in _df.columns if c != "time"]
     y = _df.select("time", *_target_cols)
 
-    y_train, y_test = train_test_split(y, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.15)
     horizon = len(y_test)
 
     mo.vstack([

@@ -49,7 +49,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import QuantileRegressor
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
     from sklearn.multioutput import MultiOutputRegressor
 
     from copy import deepcopy
@@ -117,7 +117,7 @@ def _(
 ):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     fh = len(y_test)
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.8, 0.9, 0.95]
 

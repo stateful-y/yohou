@@ -67,6 +67,8 @@ def _fit_one_forecaster(
     X: pl.DataFrame | None,
     forecasting_horizon: int,
     params: Any,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> tuple[str, BaseForecaster]:
     """Fit a single forecaster.
 
@@ -84,6 +86,10 @@ def _fit_one_forecaster(
         Forecasting horizon.
     params : Bunch
         Routed parameters from process_routing.
+    X_future : pl.DataFrame or None, default=None
+        Known future features.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts.
 
     Returns
     -------
@@ -92,7 +98,9 @@ def _fit_one_forecaster(
 
     """
     forecaster_clone = clone(forecaster)
-    forecaster_clone.fit(y, X, forecasting_horizon=forecasting_horizon, **params.fit)
+    forecaster_clone.fit(
+        y, X, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast, **params.fit
+    )
     return name, forecaster_clone
 
 
@@ -425,8 +433,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: int = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "ColumnForecaster":
         """Fit all forecasters on their respective column subsets.
@@ -435,10 +445,17 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             Target time series with "time" column.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             Exogenous features with "time" column.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -456,7 +473,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         # Store fit parameters
         self.fit_forecasting_horizon_ = forecasting_horizon
         self._y_observed = y
-        self._X_observed = X
+        self._X_observed = X_actual
 
         # Get all non-time columns
         all_columns = [col for col in y.columns if col != "time"]
@@ -472,9 +489,11 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 forecaster,
                 name,
                 y.select(["time"] + cols),
-                X,
+                X_actual,
                 forecasting_horizon,
                 routed_params.get(name, Bunch(fit={})),
+                X_future=X_future,
+                X_forecast=X_forecast,
             )
             for name, forecaster, cols in self.forecasters  # ty: ignore[invalid-assignment]
             for cols in [column_map[name]]  # Normalize columns
@@ -489,7 +508,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             self.remainder_forecaster_ = clone(self.remainder)
             remainder_params = routed_params.get("remainder", Bunch(fit={}))
             self.remainder_forecaster_.fit(
-                y_remainder, X, forecasting_horizon=forecasting_horizon, **remainder_params.fit
+                y_remainder,
+                X_actual,
+                forecasting_horizon=forecasting_horizon,
+                X_future=X_future,
+                X_forecast=X_forecast,
+                **remainder_params.fit,
             )
         else:
             self.remainder_forecaster_ = None
@@ -507,13 +531,13 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         if self.remainder_forecaster_ is not None and hasattr(self.remainder_forecaster_, "local_y_schema_"):
             self.local_y_schema_.update(self.remainder_forecaster_.local_y_schema_)
 
-        self.local_X_schema_ = getattr(first_forecaster, "local_X_schema_", None)
-        self.shared_X_schema_ = getattr(first_forecaster, "shared_X_schema_", None)
+        self.local_X_actual_schema_ = getattr(first_forecaster, "local_X_actual_schema_", None)
+        self.shared_X_actual_schema_ = getattr(first_forecaster, "shared_X_actual_schema_", None)
 
         # Set transformed schema attributes (no transformation for meta-forecaster)
         self.local_y_t_schema_ = self.local_y_schema_
-        self.local_X_t_schema_ = self.local_X_schema_
-        self._X_t_observed = X
+        self.local_X_t_schema_ = self.local_X_actual_schema_
+        self._X_t_observed = X_actual
 
         return self
 
@@ -521,9 +545,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     def predict(
         self,
         forecasting_horizon: int | None = None,
-        X: pl.DataFrame | None = None,
         groups: list[str] | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Predict using all forecasters and concatenate results.
@@ -532,12 +557,17 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         forecasting_horizon : int, optional
             Forecasting horizon. If None, uses horizon from fit.
-        X : pl.DataFrame, optional
-            Exogenous features with "time" column.
         groups : list of str or None, default=None
             Group prefixes for panel data.
         predict_transformed : bool, default=False
             Return transformed predictions.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -563,9 +593,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             forecaster_params = routed_params.get(name, Bunch(predict={}))
             y_pred = forecaster.predict(
                 forecasting_horizon=forecasting_horizon,
-                X=X,
                 groups=groups,
                 predict_transformed=predict_transformed,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params.predict,
             )
 
@@ -581,9 +612,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             remainder_params = routed_params.get("remainder", Bunch(predict={}))
             y_pred_remainder = self.remainder_forecaster_.predict(
                 forecasting_horizon=forecasting_horizon,
-                X=X,
                 groups=groups,
                 predict_transformed=predict_transformed,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **remainder_params.predict,
             )
             predictions.append(y_pred_remainder.select(~cs.by_name("vintage_time", "time")))
@@ -597,8 +629,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     def observe(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "ColumnForecaster":
         """Observe all forecasters with new observations.
 
@@ -606,10 +640,15 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             New target data with "time" column.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             New exogenous features with "time" column.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
 
         Returns
         -------
@@ -621,26 +660,28 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         # Observe each forecaster with its column subset
         for _name, forecaster, cols in self.forecasters_:
             y_subset = y.select(["time"] + cols)
-            forecaster.observe(y_subset, X, groups)
+            forecaster.observe(y_subset, X_actual, groups, X_future=X_future, X_forecast=X_forecast)
 
         # Observe remainder forecaster if present
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
             y_remainder = y.select(["time"] + self.remainder_cols_)
-            self.remainder_forecaster_.observe(y_remainder, X, groups)
+            self.remainder_forecaster_.observe(y_remainder, X_actual, groups, X_future=X_future, X_forecast=X_forecast)
 
         # Observe observed data
         assert isinstance(self._y_observed, pl.DataFrame)
         self._y_observed = pl.concat([self._y_observed, y])
-        if X is not None:
-            self._X_observed = pl.concat([self._X_observed, X]) if self._X_observed is not None else X
+        if X_actual is not None:
+            self._X_observed = pl.concat([self._X_observed, X_actual]) if self._X_observed is not None else X_actual
 
         return self
 
     def rewind(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "ColumnForecaster":
         """Rewind all forecasters to new observation window.
 
@@ -648,10 +689,15 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             New target data with "time" column.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             New exogenous features with "time" column.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
 
         Returns
         -------
@@ -663,15 +709,15 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         # Rewind each forecaster with its column subset
         for _name, forecaster, cols in self.forecasters_:
             y_subset = y.select(["time"] + cols)
-            forecaster.rewind(y_subset, X, groups)
+            forecaster.rewind(y_subset, X_actual, groups, X_future=X_future, X_forecast=X_forecast)
 
         # Rewind remainder forecaster if present
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
             y_remainder = y.select(["time"] + self.remainder_cols_)
-            self.remainder_forecaster_.rewind(y_remainder, X, groups)
+            self.remainder_forecaster_.rewind(y_remainder, X_actual, groups, X_future=X_future, X_forecast=X_forecast)
 
         self._y_observed = y
-        self._X_observed = X
+        self._X_observed = X_actual
 
         return self
 
@@ -679,11 +725,13 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     def observe_predict(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: int | None = None,
         groups: list[str] | None = None,
         stride: int | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive predict and observe.
@@ -692,7 +740,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             Target time series for updates.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Feature time series for predictions.
         forecasting_horizon : int or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
@@ -703,6 +751,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             ``fit_forecasting_horizon_``.
         predict_transformed : bool, default=False
             If ``True``, return predictions in transformed space.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -718,49 +770,29 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         if stride is None:
             stride = self.fit_forecasting_horizon_
 
-        # Initial prediction
-        y_pred = self.predict(
-            forecasting_horizon=fh,
-            X=X,
+        return self._observe_predict_loop(
+            predict_fn=self.predict,
+            y=y,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
             groups=groups,
+            stride=stride,
+            observe_fn=self.observe,  # ty: ignore[invalid-argument-type]
+            forecasting_horizon=fh,
             predict_transformed=predict_transformed,
             **params,
         )
-
-        for i in range(0, len(y), stride):
-            y_slice = y[i : i + stride]
-
-            X_slice = None
-            if X is not None:
-                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
-
-            self.observe(y=y_slice, X=X_slice, groups=groups)
-
-            X_future = None
-            if X is not None:
-                last_time = y_slice["time"][-1]
-                X_future = X.filter(pl.col("time") > last_time)
-
-            y_pred_i = self.predict(
-                forecasting_horizon=fh,
-                X=X_future,
-                groups=groups,
-                predict_transformed=predict_transformed,
-                **params,
-            )
-
-            y_pred = pl.concat([y_pred, y_pred_i])
-
-        return y_pred
 
     @available_if(_column_forecaster_has("predict_interval"))
     def predict_interval(
         self,
         forecasting_horizon: int | None = None,
-        X: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
         groups: list[str] | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Predict intervals using all forecasters and concatenate results.
@@ -769,14 +801,19 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         forecasting_horizon : int, optional
             Forecasting horizon. If None, uses horizon from fit.
-        X : pl.DataFrame, optional
-            Exogenous features with "time" column.
         coverage_rates : list of float, optional
             Coverage rates for prediction intervals.
         groups : list of str or None, default=None
             Group prefixes for panel data.
         predict_transformed : bool, default=False
             Return transformed predictions.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -805,10 +842,11 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             forecaster_params = routed_params.get(name, Bunch(predict_interval={}))
             y_pred = forecaster.predict_interval(
                 forecasting_horizon=forecasting_horizon,
-                X=X,
                 coverage_rates=coverage_rates,
                 groups=groups,
                 predict_transformed=predict_transformed,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params.predict_interval,
             )
 
@@ -825,10 +863,11 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             remainder_params = routed_params.get("remainder", Bunch(predict_interval={}))
             y_pred_remainder = self.remainder_forecaster_.predict_interval(
                 forecasting_horizon=forecasting_horizon,
-                X=X,
                 coverage_rates=coverage_rates,
                 groups=groups,
                 predict_transformed=predict_transformed,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **remainder_params.predict_interval,
             )
             predictions.append(y_pred_remainder.select(~cs.by_name(*time_col_names)))
@@ -843,12 +882,14 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     def observe_predict_interval(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: int | None = None,
         coverage_rates: list[float] | None = None,
         groups: list[str] | None = None,
         stride: int | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive predict_interval and observe.
@@ -857,7 +898,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             Target time series for updates.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Feature time series for predictions.
         forecasting_horizon : int or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
@@ -870,6 +911,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             ``fit_forecasting_horizon_``.
         predict_transformed : bool, default=False
             If ``True``, return predictions in transformed space.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -885,49 +930,28 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         if stride is None:
             stride = self.fit_forecasting_horizon_
 
-        # Initial prediction
-        y_pred = self.predict_interval(
-            forecasting_horizon=fh,
-            X=X,
-            coverage_rates=coverage_rates,
+        return self._observe_predict_loop(
+            predict_fn=self.predict_interval,
+            y=y,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
             groups=groups,
+            stride=stride,
+            observe_fn=self.observe,  # ty: ignore[invalid-argument-type]
+            forecasting_horizon=fh,
+            coverage_rates=coverage_rates,
             predict_transformed=predict_transformed,
             **params,
         )
-
-        for i in range(0, len(y), stride):
-            y_slice = y[i : i + stride]
-
-            X_slice = None
-            if X is not None:
-                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
-
-            self.observe(y=y_slice, X=X_slice, groups=groups)
-
-            X_future = None
-            if X is not None:
-                last_time = y_slice["time"][-1]
-                X_future = X.filter(pl.col("time") > last_time)
-
-            y_pred_i = self.predict_interval(
-                forecasting_horizon=fh,
-                X=X_future,
-                coverage_rates=coverage_rates,
-                groups=groups,
-                predict_transformed=predict_transformed,
-                **params,
-            )
-
-            y_pred = pl.concat([y_pred, y_pred_i])
-
-        return y_pred
 
     @available_if(_column_forecaster_has("predict_class_proba"))
     def predict_class_proba(
         self,
         forecasting_horizon: int | None = None,
-        X: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Predict class probabilities using all forecasters and concatenate results.
@@ -936,10 +960,15 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         forecasting_horizon : int, optional
             Forecasting horizon. If None, uses horizon from fit.
-        X : pl.DataFrame, optional
-            Exogenous features with "time" column.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -962,8 +991,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             forecaster_params = routed_params.get(name, Bunch(predict_class_proba={}))
             y_pred = forecaster.predict_class_proba(
                 forecasting_horizon=forecasting_horizon,
-                X=X,
                 groups=groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params.predict_class_proba,
             )
 
@@ -978,8 +1008,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             remainder_params = routed_params.get("remainder", Bunch(predict_class_proba={}))
             y_pred_remainder = self.remainder_forecaster_.predict_class_proba(
                 forecasting_horizon=forecasting_horizon,
-                X=X,
                 groups=groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **remainder_params.predict_class_proba,
             )
             predictions.append(y_pred_remainder.select(~cs.by_name(*time_col_names)))
@@ -991,10 +1022,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     def observe_predict_class_proba(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: int | None = None,
         groups: list[str] | None = None,
         stride: int | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive predict_class_proba and observe.
@@ -1003,7 +1036,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             Target time series for updates.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Feature time series for predictions.
         forecasting_horizon : int or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
@@ -1012,6 +1045,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         stride : int or None, default=None
             Number of observations per update step. If None, uses
             ``fit_forecasting_horizon_``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1027,37 +1064,18 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         if stride is None:
             stride = self.fit_forecasting_horizon_
 
-        y_pred = self.predict_class_proba(
-            forecasting_horizon=fh,
-            X=X,
+        return self._observe_predict_loop(
+            predict_fn=self.predict_class_proba,
+            y=y,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
             groups=groups,
+            stride=stride,
+            observe_fn=self.observe,  # ty: ignore[invalid-argument-type]
+            forecasting_horizon=fh,
             **params,
         )
-
-        for i in range(0, len(y), stride):
-            y_slice = y[i : i + stride]
-
-            X_slice = None
-            if X is not None:
-                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
-
-            self.observe(y=y_slice, X=X_slice, groups=groups)
-
-            X_future = None
-            if X is not None:
-                last_time = y_slice["time"][-1]
-                X_future = X.filter(pl.col("time") > last_time)
-
-            y_pred_i = self.predict_class_proba(
-                forecasting_horizon=fh,
-                X=X_future,
-                groups=groups,
-                **params,
-            )
-
-            y_pred = pl.concat([y_pred, y_pred_i])
-
-        return y_pred
 
     def get_metadata_routing(self):
         """Get metadata routing for this estimator.

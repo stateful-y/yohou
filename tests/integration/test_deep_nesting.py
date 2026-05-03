@@ -505,7 +505,7 @@ class TestLevel4ForecastedFeatureForecaster:
         horizon = 5
         train_end = 700
         forecaster.fit(y[:train_end], X[:train_end], forecasting_horizon=horizon)
-        y_pred = forecaster.predict(X=X[:train_end], forecasting_horizon=horizon)
+        y_pred = forecaster.predict(forecasting_horizon=horizon)
 
         # Expected: y = 6t + 25 at t=700,...,704
         expected = 6.0 * np.arange(train_end, train_end + horizon) + 25.0
@@ -606,7 +606,7 @@ class TestLevel5FullTower:
         # Fit and predict
         horizon = 5
         full_tower_forecaster.fit(y[:80], X[:80], forecasting_horizon=horizon)
-        y_pred = full_tower_forecaster.predict(X=X, forecasting_horizon=horizon)
+        y_pred = full_tower_forecaster.predict(forecasting_horizon=horizon)
 
         # Verify structure
         assert "col_a" in y_pred.columns
@@ -656,7 +656,7 @@ class TestLevel5FullTower:
         full_tower_forecaster.observe(y[70:80], X[70:80])
 
         # Predict next 5 steps (80-84)
-        y_pred = full_tower_forecaster.predict(X=X, forecasting_horizon=horizon)
+        y_pred = full_tower_forecaster.predict(forecasting_horizon=horizon)
 
         # Verify predictions shifted correctly
         expected_a = 1.0 * np.arange(80, 85) + 10.0

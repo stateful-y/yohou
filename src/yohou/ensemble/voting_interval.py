@@ -193,9 +193,11 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         coverage_rates: list[float] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> VotingIntervalForecaster:
         """Fit all base forecasters on the same data.
@@ -204,12 +206,16 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         ----------
         y : pl.DataFrame
             Target time series with ``"time"`` column.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features with ``"time"`` column.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
         **params : dict
             Metadata routing parameters forwarded to base forecasters.
 
@@ -249,15 +255,17 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
 
         self.forecasters_ = self._fit_forecasters_parallel(
             y=y,
-            X=X,
+            X=X_actual,
             forecasting_horizon=forecasting_horizon,
             routed_params=routed_params,
             n_jobs=self.n_jobs,
             extra_fit_kwargs=extra_fit_kwargs,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         self._validate_schemas_match()
-        self._derive_fitted_attributes(self.forecasters_[0][1], forecasting_horizon, y, X)
+        self._derive_fitted_attributes(self.forecasters_[0][1], forecasting_horizon, y, X_actual)
         self._compute_effective_weights()
 
         # Copy coverage rates from first surviving child
@@ -293,21 +301,20 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             "VotingIntervalForecaster aggregates children's predictions directly via predict_interval()"
         )
 
-    def predict_interval(
+    def predict_interval(  # ty: ignore[invalid-method-override]
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate aggregated interval predictions.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features for the forecast period.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
         coverage_rates : list of float or None, default=None
@@ -316,6 +323,13 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Ignored for ensemble forecasters.
         groups : list of str or None, default=None
             Panel group prefixes to predict.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -338,10 +352,11 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
                 {},
             )
             y_pred = forecaster.predict_interval(  # ty: ignore[unresolved-attribute]
-                X=X,
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
                 groups=groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params,
             )
             predictions.append(y_pred)
@@ -352,10 +367,11 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
     @available_if(_ensemble_has("predict"))
     def predict(
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate aggregated point predictions.
@@ -364,14 +380,19 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features for the forecast period.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
         groups : list of str or None, default=None
             Panel group prefixes to predict.
         predict_transformed : bool, default=False
             If ``True``, return predictions in transformed space.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -390,10 +411,11 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         for name, forecaster in self.forecasters_:
             forecaster_params = getattr(routed_params.get(name, Bunch(predict={})), "predict", {})
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
-                X=X,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 predict_transformed=predict_transformed,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params,
             )
             predictions.append(y_pred)
@@ -405,11 +427,13 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
     def observe_predict(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive observe and predict on each child, then aggregate.
@@ -422,7 +446,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         ----------
         y : pl.DataFrame
             New target observations.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead.
@@ -432,6 +456,11 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Step size for rolling update-predict.
         predict_transformed : bool, default=False
             If ``True``, return predictions in transformed space.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -450,11 +479,13 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             forecaster_params = getattr(routed_params.get(name, Bunch(predict={})), "predict", {})
             y_pred = forecaster.observe_predict(  # ty: ignore[unresolved-attribute]
                 y=y,
-                X=X,
+                X_actual=X_actual,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 stride=stride,
                 predict_transformed=predict_transformed,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params,
             )
             predictions.append(y_pred)
@@ -465,12 +496,14 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
     def observe_predict_interval(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive observe and predict_interval on each child, then aggregate.
@@ -482,7 +515,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         ----------
         y : pl.DataFrame
             New target observations.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead.
@@ -495,6 +528,11 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Panel group prefixes.
         stride : int or None, default=None
             Step size for rolling update-predict.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -517,12 +555,14 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             )
             y_pred = forecaster.observe_predict_interval(  # ty: ignore[unresolved-attribute]
                 y=y,
-                X=X,
+                X_actual=X_actual,
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
                 strategy=strategy,
                 groups=groups,
                 stride=stride,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **forecaster_params,
             )
             predictions.append(y_pred)

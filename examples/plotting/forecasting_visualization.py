@@ -26,7 +26,7 @@ def _():
 @app.cell(hide_code=True)
 def _():
     import polars as pl
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -255,7 +255,6 @@ def _(
         cls_y,
         cls_X,
         test_size=200,
-        shuffle=False,
     )
     cls_fh = 24
 
@@ -266,11 +265,9 @@ def _(
     cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
 
     cls_y_pred_labels = cls_forecaster.predict(
-        X=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     cls_y_proba = cls_forecaster.predict_class_proba(
-        X=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     return cls_X_test, cls_fh, cls_forecaster, cls_y_pred_labels, cls_y_proba, cls_y_test, cls_y_train
@@ -303,13 +300,13 @@ def _(cls_X_test, cls_fh, cls_forecaster, cls_y_test, cls_y_train, plot_forecast
     cls_forecaster_obs = cls_forecaster
     cls_obs_labels = cls_forecaster_obs.observe_predict(
         cls_y_test[:cls_fh],
-        X=cls_X_test[:cls_fh],
+        X_actual=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     plot_forecast(
         cls_y_test,
         {
-            "Static": cls_forecaster.predict(X=cls_X_test[:cls_fh], forecasting_horizon=cls_fh),
+            "Static": cls_forecaster.predict(forecasting_horizon=cls_fh),
             "After Observe": cls_obs_labels,
         },
         y_train=cls_y_train,

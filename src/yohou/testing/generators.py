@@ -610,7 +610,7 @@ def _yield_yohou_forecaster_checks(
 def _yield_yohou_splitter_checks(
     splitter,
     y: pl.DataFrame,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     tags: dict[str, Any] | None = None,
 ) -> Generator[tuple[str, Callable, dict], None, None]:
     """Generate applicable checks for a splitter based on tags.
@@ -621,7 +621,7 @@ def _yield_yohou_splitter_checks(
         Splitter instance
     y : pl.DataFrame
         Target time series with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features
     tags : dict, optional
         Splitter metadata tags (if None, auto-detected from __sklearn_tags__):
@@ -663,37 +663,41 @@ def _yield_yohou_splitter_checks(
     yield (
         "check_splitter_tags_static_after_fit",
         check_splitter_tags_static_after_fit,
-        {"splitter": splitter, "y": y, "X": X},
+        {"splitter": splitter, "y": y, "X_actual": X_actual},
     )
     expected_tags = {k: v for k, v in tags.items() if k != "stateful"}  # stateful not usually tested
     yield (
         "check_splitter_tags_match_capabilities",
         check_splitter_tags_match_capabilities,
-        {"splitter": splitter, "y": y, "X": X, "expected_tags": expected_tags},
+        {"splitter": splitter, "y": y, "X_actual": X_actual, "expected_tags": expected_tags},
     )
 
     # Functionality checks (always yield)
     yield (
         "check_splitter_produces_valid_indices",
         check_splitter_produces_valid_indices,
-        {"y": y, "X": X},
+        {"y": y, "X_actual": X_actual},
     )
     yield (
         "check_splitter_n_splits_consistency",
         check_splitter_n_splits_consistency,
-        {"y": y, "X": X},
+        {"y": y, "X_actual": X_actual},
     )
     yield (
         "check_splitter_non_overlapping_tests",
         check_splitter_non_overlapping_tests,
-        {"y": y, "X": X},
+        {"y": y, "X_actual": X_actual},
     )
 
     # Panel data support check (conditional)
     if tags.get("supports_panel_data", False):
         # Generate panel data for testing
         y_panel = y.rename({col: f"{col}__group1" for col in y.columns if col != "time"})
-        X_panel = X.rename({col: f"{col}__group1" for col in X.columns if col != "time"}) if X is not None else None
+        X_panel = (
+            X_actual.rename({col: f"{col}__group1" for col in X_actual.columns if col != "time"})
+            if X_actual is not None
+            else None
+        )
         yield (
             "check_splitter_panel_data_support",
             check_splitter_panel_data_support,

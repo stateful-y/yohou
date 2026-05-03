@@ -658,7 +658,7 @@ class TestForecastedFeatureForecasterPanel:
         )
 
         forecaster.fit(y_train, X_train, forecasting_horizon=5)
-        y_pred = forecaster.predict(X=None, forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
 
         # Verify panel structure maintained
         global_cols, panel_groups = inspect_panel(y_pred)
@@ -687,7 +687,7 @@ class TestForecastedFeatureForecasterPanel:
 
         y_train = y[:80]
         X_train = X[:80]
-        X_future = X[80:85]  # Actual future features
+        _X_future = X[80:85]  # Actual future features
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
@@ -700,7 +700,7 @@ class TestForecastedFeatureForecasterPanel:
         )
 
         forecaster.fit(y_train, X_train, forecasting_horizon=5)
-        y_pred = forecaster.predict(X=X_future, forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
 
         # Verify panel structure
         global_cols, panel_groups = inspect_panel(y_pred)
@@ -871,7 +871,7 @@ class TestColumnTransformerPanel:
         X_train = X[:80]
         forecaster.fit(y_train, X_train, forecasting_horizon=5)
 
-        y_pred = forecaster.predict(X=None, forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
 
         # Verify panel structure maintained
         global_cols, panel_groups = inspect_panel(y_pred)

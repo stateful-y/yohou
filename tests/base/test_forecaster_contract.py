@@ -161,7 +161,7 @@ class TestBaseForecasterWithExogenous:
         f = PointReductionForecaster()
         f.fit(y, X, forecasting_horizon=1)
         # Verify the forecaster can produce predictions
-        result = f.predict(X=X[-3:])
+        result = f.predict()
         assert isinstance(result, pl.DataFrame)
 
     def test_observe_with_X(self, y_X_factory):

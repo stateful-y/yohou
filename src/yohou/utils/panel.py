@@ -174,8 +174,8 @@ def get_group_df(
     panel groups for processing, particularly in the context of the new
     architecture where schemas store unprefixed column names.
 
-    For X (feature) data, the schema typically combines local_X_schema_ and
-    shared_X_schema_, allowing each group to access both its own features
+    For X (feature) data, the schema typically combines local_X_actual_schema_ and
+    shared_X_actual_schema_, allowing each group to access both its own features
     and shared features.
     """
     # Separate local (prefixed) and global (unprefixed) columns

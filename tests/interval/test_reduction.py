@@ -71,9 +71,8 @@ class TestPredict:
     @pytest.mark.parametrize(
         "fit_forecasting_horizon, predict_forecasting_horizon, expected_a",
         [
-            (1, 5, [17, 17.4, 17.56, 17.624, 17.6496]),
-            (3, 5, [17, 18, 19, 18.2, 19.2]),
             (3, 2, [17, 18]),
+            (5, 5, [17, 18, 19, 20, 21]),
         ],
     )
     def test_predict(self, fit_forecasting_horizon, predict_forecasting_horizon, expected_a, standard_splits):
@@ -83,14 +82,13 @@ class TestPredict:
 
         forecaster.fit(
             y=y_train,
-            X=X_train,
+            X_actual=X_train,
             forecasting_horizon=fit_forecasting_horizon,
             coverage_rates=coverage_rates,
         )
 
         y_pred = forecaster.predict_interval(
             forecasting_horizon=predict_forecasting_horizon,
-            X=X_test,
             predict_transformed=False,
             coverage_rates=coverage_rates,
         )
@@ -107,31 +105,29 @@ class TestObservePredict:
     @pytest.mark.parametrize(
         "fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a",
         [
-            (1, 5, 1, [17, 17.4, 17.56, 17.624, 17.6496]),
-            (3, 5, 2, [17, 18, 19, 18.2, 19.2]),
+            (1, 1, 1, [17]),
+            (3, 3, 2, [17, 18, 19]),
             (3, 2, 1, [17, 18]),
         ],
     )
     def test_observe_predict(
         self, fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a, standard_splits
     ):
+        """Test interval observe_predict (non-recursive predict)."""
         y_train, y_test, X_train, X_test = standard_splits
         coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         forecaster = IntervalReductionForecaster()
 
         forecaster.fit(
             y=y_train,
-            X=X_train,
+            X_actual=X_train,
             forecasting_horizon=fit_forecasting_horizon,
             coverage_rates=coverage_rates,
         )
 
-        # Truncate y_test to ensure X_test covers the future horizon
-        y_test_truncated = y_test[:-predict_forecasting_horizon]
-
         y_pred = forecaster.observe_predict_interval(
-            y=y_test_truncated,
-            X=X_test,
+            y=y_test,
+            X_actual=X_test,
             forecasting_horizon=predict_forecasting_horizon,
             stride=stride,
             coverage_rates=coverage_rates,
@@ -149,31 +145,29 @@ class TestObservePredictGlobal:
     @pytest.mark.parametrize(
         "fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a",
         [
-            (1, 5, 1, [17, 17.4, 17.56, 17.624, 17.6496]),
-            (3, 5, 2, [17, 18, 19, 18.2, 19.2]),
+            (1, 1, 1, [17]),
+            (3, 3, 2, [17, 18, 19]),
             (3, 2, 1, [17, 18]),
         ],
     )
     def test_observe_predict_global(
         self, fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a, panel_splits
     ):
+        """Test panel interval observe_predict (non-recursive predict)."""
         y_train_panel, y_test_panel, X_train_panel, X_test_panel = panel_splits
         coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         forecaster = IntervalReductionForecaster()
 
         forecaster.fit(
             y=y_train_panel,
-            X=X_train_panel,
+            X_actual=X_train_panel,
             forecasting_horizon=fit_forecasting_horizon,
             coverage_rates=coverage_rates,
         )
 
-        # Truncate y_test to ensure X_test covers the future horizon
-        y_test_truncated = y_test_panel[:-predict_forecasting_horizon]
-
         y_pred = forecaster.observe_predict_interval(
-            y=y_test_truncated,
-            X=X_test_panel,
+            y=y_test_panel,
+            X_actual=X_test_panel,
             forecasting_horizon=predict_forecasting_horizon,
             stride=stride,
             coverage_rates=coverage_rates,
@@ -243,7 +237,7 @@ class TestDirectStrategyInterval:
         y_train, _y_test, X_train, _X_test = standard_splits
         coverage_rates = [0.5, 0.9]
         forecaster = IntervalReductionForecaster(reduction_strategy="direct")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
 
         for key, value in forecaster.estimator_.items():
             assert isinstance(value, list), f"Expected list for key {key}, got {type(value)}"
@@ -252,7 +246,7 @@ class TestDirectStrategyInterval:
     @pytest.mark.slow
     @pytest.mark.parametrize(
         "fit_forecasting_horizon, predict_forecasting_horizon",
-        [(1, 3), (3, 5), (3, 2)],
+        [(3, 2), (5, 5)],
     )
     def test_predict_shape_and_bounds(
         self,
@@ -266,14 +260,13 @@ class TestDirectStrategyInterval:
         forecaster = IntervalReductionForecaster(reduction_strategy="direct")
         forecaster.fit(
             y=y_train,
-            X=X_train,
+            X_actual=X_train,
             forecasting_horizon=fit_forecasting_horizon,
             coverage_rates=coverage_rates,
         )
 
         y_pred = forecaster.predict_interval(
             forecasting_horizon=predict_forecasting_horizon,
-            X=X_test,
             coverage_rates=coverage_rates,
         )
 
@@ -289,11 +282,10 @@ class TestDirectStrategyInterval:
         y_train, _y_test, X_train, X_test = panel_splits
         coverage_rates = [0.9]
         forecaster = IntervalReductionForecaster(reduction_strategy="direct")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
 
         y_pred = forecaster.predict_interval(
             forecasting_horizon=3,
-            X=X_test,
             coverage_rates=coverage_rates,
         )
 
@@ -314,7 +306,7 @@ class TestDirRecStrategyInterval:
         y_train, _y_test, X_train, _X_test = standard_splits
         coverage_rates = [0.5]
         forecaster = IntervalReductionForecaster(reduction_strategy="dir-rec")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
 
         for key, value in forecaster.estimator_.items():
             assert isinstance(value, list), f"Expected list for key {key}, got {type(value)}"
@@ -323,7 +315,7 @@ class TestDirRecStrategyInterval:
     @pytest.mark.slow
     @pytest.mark.parametrize(
         "fit_forecasting_horizon, predict_forecasting_horizon",
-        [(1, 3), (3, 5), (3, 2)],
+        [(3, 2), (5, 5)],
     )
     def test_predict_shape_and_bounds(
         self,
@@ -337,14 +329,13 @@ class TestDirRecStrategyInterval:
         forecaster = IntervalReductionForecaster(reduction_strategy="dir-rec")
         forecaster.fit(
             y=y_train,
-            X=X_train,
+            X_actual=X_train,
             forecasting_horizon=fit_forecasting_horizon,
             coverage_rates=coverage_rates,
         )
 
         y_pred = forecaster.predict_interval(
             forecasting_horizon=predict_forecasting_horizon,
-            X=X_test,
             coverage_rates=coverage_rates,
         )
 
@@ -360,11 +351,10 @@ class TestDirRecStrategyInterval:
         y_train, _y_test, X_train, X_test = panel_splits
         coverage_rates = [0.9]
         forecaster = IntervalReductionForecaster(reduction_strategy="dir-rec")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3, coverage_rates=coverage_rates)
 
         y_pred = forecaster.predict_interval(
             forecasting_horizon=3,
-            X=X_test,
             coverage_rates=coverage_rates,
         )
 
@@ -388,15 +378,14 @@ class TestObservePredictDirectDirRecInterval:
         forecaster = IntervalReductionForecaster(reduction_strategy=strategy)
         forecaster.fit(
             y=y_train,
-            X=X_train,
+            X_actual=X_train,
             forecasting_horizon=3,
             coverage_rates=coverage_rates,
         )
 
-        y_test_truncated = y_test[:-3]
         y_pred = forecaster.observe_predict_interval(
-            y=y_test_truncated,
-            X=X_test,
+            y=y_test,
+            X_actual=X_test,
             forecasting_horizon=3,
             stride=1,
             coverage_rates=coverage_rates,
@@ -680,15 +669,14 @@ class TestMultiStepPanelInterval:
 
     @pytest.mark.slow
     def test_multi_step_panel_predict_interval(self, panel_splits):
-        """Multi-step interval prediction works with panel data (triggers recursive path)."""
+        """Multi-step interval prediction works with panel data (recursive, no X)."""
         y_train, _y_test, X_train, X_test = panel_splits
         coverage_rates = [0.9]
         forecaster = IntervalReductionForecaster()
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=1, coverage_rates=coverage_rates)
+        forecaster.fit(y=y_train, forecasting_horizon=1, coverage_rates=coverage_rates)
 
         y_pred = forecaster.predict_interval(
             forecasting_horizon=3,
-            X=X_test,
             coverage_rates=coverage_rates,
         )
 
@@ -702,20 +690,18 @@ class TestMultiStepPanelInterval:
     @pytest.mark.slow
     @pytest.mark.parametrize("strategy", ["point", "mean"])
     def test_multi_step_interval_strategy(self, strategy, standard_splits):
-        """Multi-step interval prediction works with all derive strategies."""
+        """Multi-step interval prediction works with all derive strategies (no X)."""
         y_train, _y_test, X_train, X_test = standard_splits
         coverage_rates = [0.5]
         forecaster = IntervalReductionForecaster()
         forecaster.fit(
             y=y_train,
-            X=X_train,
             forecasting_horizon=1,
             coverage_rates=coverage_rates,
         )
 
         y_pred = forecaster.predict_interval(
             forecasting_horizon=3,
-            X=X_test,
             coverage_rates=coverage_rates,
             strategy=strategy,
         )

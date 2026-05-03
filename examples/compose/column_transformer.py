@@ -53,7 +53,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from yohou.compose import ColumnTransformer
     from yohou.datasets import fetch_dominick, fetch_electricity_demand
@@ -104,7 +104,7 @@ def _(fetch_electricity_demand, pl, train_test_split):
         .drop_nulls()
     )
 
-    _train_df, _test_df = train_test_split(vic_daily, test_size=0.15, shuffle=False)
+    _train_df, _test_df = train_test_split(vic_daily, test_size=0.15)
     y_train = _train_df.select("time", "Demand")
     X_train = _train_df.select("time", "NSW_Demand", "SA_Demand")
     y_test = _test_df.select("time", "Demand")
@@ -170,7 +170,7 @@ def _(mo):
 
 
 @app.cell
-def _(PointReductionForecaster, Ridge, X_test, X_train, ct, y_test, y_train):
+def _(PointReductionForecaster, Ridge, X_train, ct, y_test, y_train):
     forecaster_ct = PointReductionForecaster(
         estimator=Ridge(alpha=1e-3),
         feature_transformer=ct,
@@ -178,7 +178,7 @@ def _(PointReductionForecaster, Ridge, X_test, X_train, ct, y_test, y_train):
 
     forecasting_horizon = len(y_test)
     forecaster_ct.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
-    y_pred_ct = forecaster_ct.predict(X_test, forecasting_horizon=forecasting_horizon)
+    y_pred_ct = forecaster_ct.predict(forecasting_horizon=forecasting_horizon)
     return (y_pred_ct,)
 
 
@@ -297,7 +297,7 @@ def _(fetch_dominick, inspect_panel, mo, train_test_split):
     mo.md(f"**Panel groups**: {len(_groups)} groups\n\n**First group columns**: {list(_groups.values())[0]}")
 
     # Panel data: y contains all `__profit` columns, no separate X needed
-    y_train_panel, y_test_panel = train_test_split(store, test_size=0.1, shuffle=False)
+    y_train_panel, y_test_panel = train_test_split(store, test_size=0.1)
 
     y_train_panel.head()
     return y_test_panel, y_train_panel

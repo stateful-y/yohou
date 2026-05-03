@@ -189,7 +189,7 @@ class TestPanelData:
         search_cv = search_cv_class(forecaster=forecaster, **params)
         search_cv.fit(y_train, X_train, forecasting_horizon=3)
 
-        y_pred = search_cv.predict(forecasting_horizon=3, X=X_test)
+        y_pred = search_cv.predict(forecasting_horizon=3)
 
         assert "time" in y_pred.columns
         assert len(y_pred) == 3
@@ -257,13 +257,13 @@ class TestEdgeCases:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
-        y_pred = search.predict(forecasting_horizon=3, X=None)
+        y_pred = search.predict(forecasting_horizon=3)
         assert len(y_pred) == 3
 
-        search.observe(y_test[:5], X=None)
-        search.rewind(y_test[:10], X=None)
+        search.observe(y_test[:5], X_actual=None)
+        search.rewind(y_test[:10], X_actual=None)
 
 
 class TestMultiMetric:
@@ -356,7 +356,7 @@ class TestScorerDirectionCorrectness:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         # Compute actual MAE for each candidate to verify selection
         cv_results = search.cv_results_
@@ -387,7 +387,7 @@ class TestScorerDirectionCorrectness:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         # best_score_ is the mean cv score (negated MAE)
         assert search.best_score_ < 0
@@ -410,7 +410,7 @@ class TestScorerDirectionCorrectness:
             cv=2,
             refit="mae",
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         cv_results = search.cv_results_
 
@@ -440,7 +440,7 @@ class TestScorerDirectionCorrectness:
             n_iter=3,
             random_state=42,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         mean_scores = search.cv_results_["mean_test_score"]
 
@@ -464,7 +464,7 @@ class TestSearchRefitFalse:
             cv=2,
             refit=False,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
         assert not hasattr(search, "best_forecaster_")
 
     def test_refit_false_cv_results_available(self, y_X_factory):
@@ -477,7 +477,7 @@ class TestSearchRefitFalse:
             cv=2,
             refit=False,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
         assert "mean_test_score" in search.cv_results_
 
     def test_refit_false_predict_raises(self, y_X_factory):
@@ -490,7 +490,7 @@ class TestSearchRefitFalse:
             cv=2,
             refit=False,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
         with pytest.raises(AttributeError):
             search.predict(forecasting_horizon=3)
 
@@ -519,7 +519,7 @@ class TestSearchPropertyValidation:
             cv=2,
         )
         with pytest.raises(ValueError, match="scoring"):
-            search.fit(y[:80], X=None, forecasting_horizon=3)
+            search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
     def test_callable_refit_selects_index(self, y_X_factory):
         """Callable refit selects custom best index."""
@@ -531,7 +531,7 @@ class TestSearchPropertyValidation:
             cv=2,
             refit=lambda results: 0,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
         assert search.best_index_ == 0
 
     def test_invalid_multimetric_refit_raises(self, y_X_factory):
@@ -545,7 +545,7 @@ class TestSearchPropertyValidation:
             refit="nonexistent",
         )
         with pytest.raises(ValueError, match="refit"):
-            search.fit(y[:80], X=None, forecasting_horizon=3)
+            search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
 
 class TestBestParamsConsistency:
@@ -561,7 +561,7 @@ class TestBestParamsConsistency:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
         # best_params_ should match the params at best_index_
         cv_params = search.cv_results_["params"][search.best_index_]
@@ -577,7 +577,7 @@ class TestBestParamsConsistency:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
         best = search.best_forecaster_
         for param, value in search.best_params_.items():
@@ -593,7 +593,7 @@ class TestBestParamsConsistency:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
         expected = search.cv_results_["mean_test_score"][search.best_index_]
         assert search.best_score_ == expected
@@ -617,14 +617,14 @@ class TestIntervalSearch:
             scoring=IntervalScore(coverage_rates=[0.9]),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         assert hasattr(search, "best_params_")
         assert hasattr(search, "best_forecaster_")
         assert hasattr(search, "best_score_")
 
         # Predict interval from best forecaster
-        y_pred = search.predict_interval(X=None, coverage_rates=[0.9])
+        y_pred = search.predict_interval(coverage_rates=[0.9])
         assert "time" in y_pred.columns
         interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
         assert len(interval_cols) > 0, "Should have interval prediction columns"
@@ -644,7 +644,7 @@ class TestIntervalSearch:
             scoring=EmpiricalCoverage(coverage_rates=[0.9]),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         # EmpiricalCoverage is NOT lower_is_better, scores should be positive
         mean_scores = search.cv_results_["mean_test_score"]
@@ -667,7 +667,7 @@ class TestIntervalSearch:
             cv=2,
             random_state=42,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         assert hasattr(search, "best_params_")
 
@@ -686,10 +686,10 @@ class TestIntervalSearch:
             scoring=IntervalScore(coverage_rates=[0.9, 0.95]),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         # Verify the best forecaster was refit with coverage_rates
-        y_pred = search.predict_interval(X=None, coverage_rates=[0.9, 0.95])
+        y_pred = search.predict_interval(coverage_rates=[0.9, 0.95])
         lower_cols = [c for c in y_pred.columns if "_lower_" in c]
         upper_cols = [c for c in y_pred.columns if "_upper_" in c]
         assert len(lower_cols) >= 2, "Should have lower bounds for both coverage rates"
@@ -718,7 +718,7 @@ class TestMixedMultimetric:
             cv=2,
             refit="mae",
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         assert hasattr(search, "best_params_")
         assert "mean_test_mae" in search.cv_results_
@@ -743,7 +743,7 @@ class TestMixedMultimetric:
             cv=2,
             refit="interval_score",
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         expected_score = search.cv_results_["mean_test_interval_score"][search.best_index_]
         assert abs(search.best_score_ - expected_score) < 1e-6
@@ -764,7 +764,7 @@ class TestIncompatibleForecasterScorer:
             cv=2,
         )
         with pytest.raises(ValueError, match="does not support predict_interval"):
-            search.fit(y_train, X=None, forecasting_horizon=3)
+            search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
     def test_point_forecaster_with_multimetric_interval_raises(self, y_X_factory):
         """Point-only forecaster with multimetric containing interval scorer raises."""
@@ -782,7 +782,7 @@ class TestIncompatibleForecasterScorer:
             refit="mae",
         )
         with pytest.raises(ValueError, match="does not support predict_interval"):
-            search.fit(y_train, X=None, forecasting_horizon=3)
+            search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
     def test_both_type_forecaster_with_point_scorer_ok(self, y_X_factory):
         """Both-type forecaster with point-only scorer should work."""
@@ -798,7 +798,7 @@ class TestIncompatibleForecasterScorer:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
         assert hasattr(search, "best_params_")
 
 

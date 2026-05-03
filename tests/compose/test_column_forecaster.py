@@ -786,9 +786,9 @@ class TestExogenousFeatures:
         forecaster = ColumnForecaster([
             ("model", SeasonalNaive(seasonality=1), target_cols),
         ])
-        forecaster.fit(y[:30], X=X[:30], forecasting_horizon=5)
+        forecaster.fit(y[:30], X_actual=X[:30], forecasting_horizon=5)
 
-        y_pred = forecaster.predict(X=X[30:35], forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
 
@@ -802,9 +802,9 @@ class TestExogenousFeatures:
             ("model_0", SeasonalNaive(seasonality=1), target_cols[0]),
             ("model_1", SeasonalNaive(seasonality=1), target_cols[1]),
         ])
-        forecaster.fit(y[:30], X=X[:30], forecasting_horizon=5)
+        forecaster.fit(y[:30], X_actual=X[:30], forecasting_horizon=5)
 
-        y_pred = forecaster.predict(X=X[30:35], forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
         for col in target_cols:
@@ -1315,7 +1315,7 @@ class TestColumnForecasterObservePredictWithX:
         forecaster = ColumnForecaster(
             [("main", PointReductionForecaster(), "a")],
         )
-        forecaster.fit(y[:30], X=X[:30], forecasting_horizon=5)
+        forecaster.fit(y[:30], X_actual=X[:30], forecasting_horizon=5)
 
         time_ext = pl.datetime_range(
             start=datetime(2020, 1, 1),
@@ -1327,7 +1327,7 @@ class TestColumnForecasterObservePredictWithX:
             "time": time_ext,
             "feat": list(range(55)),
         })
-        y_pred = forecaster.observe_predict(y[30:35], X=X_ext)
+        y_pred = forecaster.observe_predict(y[30:35], X_actual=X_ext)
         assert len(y_pred) > 0
         assert "a" in y_pred.columns
 
@@ -1408,7 +1408,7 @@ class TestClassProbaColumnForecaster:
     def test_predict_class_proba(self, class_proba_column_setup):
         """predict_class_proba returns probabilities from all forecasters."""
         forecaster, _, _, _, X_test = class_proba_column_setup
-        y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X_test[:3])
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
 
         assert "time" in y_pred.columns
         animal_proba = [c for c in y_pred.columns if "animal_proba_" in c]
@@ -1422,7 +1422,7 @@ class TestClassProbaColumnForecaster:
         forecaster, _, y_test, _, X_test = class_proba_column_setup
         y_pred = forecaster.observe_predict_class_proba(
             y=y_test[:3],
-            X=X_test[:3],
+            X_actual=X_test[:3],
             forecasting_horizon=3,
         )
         assert "time" in y_pred.columns

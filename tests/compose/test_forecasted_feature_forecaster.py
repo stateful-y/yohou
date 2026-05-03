@@ -119,7 +119,7 @@ class TestBasicFitPredict:
         )
 
         with pytest.raises(ValueError, match="requires X"):
-            forecaster.fit(y[:30], X=None, forecasting_horizon=5)
+            forecaster.fit(y[:30], X_actual=None, forecasting_horizon=5)
 
     def test_predict_ignores_X(self):
         """Test that X columns already being forecasted are ignored."""
@@ -145,7 +145,7 @@ class TestBasicFitPredict:
         forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
 
         # Passing X with same columns as forecasted should use forecasted values
-        y_pred_with_X = forecaster.predict(forecasting_horizon=5, X=X[80:85])
+        y_pred_with_X = forecaster.predict(forecasting_horizon=5)
         y_pred_without_X = forecaster.predict(forecasting_horizon=5)
 
         # Should produce same results since forecasted columns in X are ignored
@@ -184,13 +184,13 @@ class TestBasicFitPredict:
         # Note: The target forecaster wasn't trained with is_holiday, so this is
         # just testing that the merging happens without error
         pred_time = time[80:85]
-        X_pred_known = pl.DataFrame({
+        _X_pred_known = pl.DataFrame({
             "time": pred_time,
             "is_holiday": [1, 0, 0, 0, 0],
         })
 
         # Should not raise - known-ahead features are merged
-        y_pred = forecaster.predict(forecasting_horizon=5, X=X_pred_known)
+        y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 
 
@@ -671,7 +671,7 @@ class TestClassProbaForecastedFeature:
         forecaster, _, y_test, _, X_test = class_proba_fff_setup
         y_pred = forecaster.observe_predict_class_proba(
             y=y_test[:3],
-            X=X_test[:3],
+            X_actual=X_test[:3],
         )
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
@@ -706,7 +706,7 @@ class TestClassProbaForecastedFeature:
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
         forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
-        y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X[60:63])
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 3

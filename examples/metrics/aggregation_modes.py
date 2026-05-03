@@ -47,7 +47,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -106,7 +106,7 @@ def _(
     _y = _bunch.frame.drop_nulls().tail(250)
 
     fh = 24
-    y_train, y_test = train_test_split(_y, test_size=fh, shuffle=False)
+    y_train, y_test = train_test_split(_y, test_size=fh)
 
     _, groups = inspect_panel(_y)
 

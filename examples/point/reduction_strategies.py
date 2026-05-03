@@ -48,7 +48,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.ensemble import RandomForestRegressor
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -96,7 +96,7 @@ def _(mo):
 def _(fetch_sunspot, pl, train_test_split):
     y = fetch_sunspot().frame.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
 
-    y_train, y_test = train_test_split(y, test_size=0.05, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.05)
     forecasting_horizon = 24
 
     print(f"Training: {len(y_train)} obs, Test: {len(y_test)} obs")

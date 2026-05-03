@@ -61,7 +61,7 @@ def _():
 
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -114,8 +114,8 @@ def _(fetch_tourism_monthly, plot_time_series, train_test_split):
     train_end = int(_n * 0.6)
     cal_end = int(_n * 0.85)
 
-    y_train, _rest = train_test_split(df, train_size=train_end, shuffle=False)
-    y_cal, y_test = train_test_split(_rest, train_size=cal_end - train_end, shuffle=False)
+    y_train, _rest = train_test_split(df, test_size=_n - train_end)
+    y_cal, y_test = train_test_split(_rest, test_size=len(_rest) - (cal_end - train_end))
 
     plot_time_series(df, title="Monthly Tourism (T1)")
     return y_cal, y_train
@@ -316,8 +316,8 @@ def _(mo):
 @app.cell
 def _(SeasonalNaive, SplitConformalForecaster, fetch_sunspot, train_test_split):
     sunspots = fetch_sunspot().frame
-    ss_train, _ss_rest = train_test_split(sunspots, test_size=0.3, shuffle=False)
-    ss_cal, ss_test = train_test_split(_ss_rest, test_size=0.5, shuffle=False)
+    ss_train, _ss_rest = train_test_split(sunspots, test_size=0.3)
+    ss_cal, ss_test = train_test_split(_ss_rest, test_size=0.5)
     ss_fh = 12
 
     conformal = SplitConformalForecaster(
@@ -380,10 +380,10 @@ def _(
     cls_train_end = len(cls_y) - 400
     cls_cal_end = len(cls_y) - 200
 
-    cls_y_train, _cls_rest_y = train_test_split(cls_y, train_size=cls_train_end, shuffle=False)
-    cls_y_cal, cls_y_test = train_test_split(_cls_rest_y, train_size=cls_cal_end - cls_train_end, shuffle=False)
-    cls_X_train, _cls_rest_X = train_test_split(cls_X, train_size=cls_train_end, shuffle=False)
-    cls_X_cal, cls_X_test = train_test_split(_cls_rest_X, train_size=cls_cal_end - cls_train_end, shuffle=False)
+    cls_y_train, _cls_rest_y = train_test_split(cls_y, test_size=400)
+    cls_y_cal, cls_y_test = train_test_split(_cls_rest_y, test_size=200)
+    cls_X_train, _cls_rest_X = train_test_split(cls_X, test_size=400)
+    cls_X_cal, cls_X_test = train_test_split(_cls_rest_X, test_size=200)
     cls_fh = 24
 
     cls_forecaster = ClassProbaReductionForecaster(
@@ -406,7 +406,7 @@ def _(cls_X_cal, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, plot_forecast):
     # Observe calibration data and predict class probabilities in one call
     cls_y_proba = cls_forecaster.observe_predict_class_proba(
         cls_y_cal,
-        X=cls_X_cal,
+        X_actual=cls_X_cal,
         forecasting_horizon=cls_fh,
     ).sort("time")
 
@@ -440,7 +440,7 @@ def _(cls_X_cal, cls_fh, cls_forecaster_hard, cls_y_cal, cls_y_test, cls_y_train
     # Same forecaster, but observe_predict returns hard labels
     cls_y_labels = cls_forecaster_hard.observe_predict(
         cls_y_cal,
-        X=cls_X_cal,
+        X_actual=cls_X_cal,
         forecasting_horizon=cls_fh,
     ).sort("time")
 
@@ -488,7 +488,7 @@ def _(
     )
     _profit_cols = [c for c in _panel.columns if c.endswith("__profit")]
     _selected = _panel.select("time", *_profit_cols)
-    _y_train_p, _y_rest_p = train_test_split(_selected, test_size=0.2, shuffle=False)
+    _y_train_p, _y_rest_p = train_test_split(_selected, test_size=0.2)
     _y_cal_p = _y_rest_p.head(int(len(_panel) * 0.1))
 
     _fc_panel = PointReductionForecaster(

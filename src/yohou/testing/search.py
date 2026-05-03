@@ -142,7 +142,7 @@ def check_search_not_fitted_error(search_cv, y: pl.DataFrame, X: pl.DataFrame | 
 
     # Should raise NotFittedError when calling predict before fit
     try:
-        search_cv_clone.predict(forecasting_horizon=1, X=X)
+        search_cv_clone.predict(forecasting_horizon=1)
         raise AssertionError(
             f"{search_cv_clone.__class__.__name__} should raise NotFittedError when calling predict() before fit()"
         )
@@ -262,7 +262,7 @@ def check_search_refit_false_no_forecaster(
 
     # predict() should not be available
     try:
-        search_cv_clone.predict(forecasting_horizon=1, X=X)
+        search_cv_clone.predict(forecasting_horizon=1)
         raise AssertionError(f"{search_cv_clone.__class__.__name__} should not have predict() when refit=False")
     except AttributeError:
         # Expected behavior
@@ -303,10 +303,10 @@ def check_search_predict_delegates(
     forecasting_horizon = min(3, len(y_test))
 
     # Make predictions from search CV
-    y_pred_search = search_cv.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred_search = search_cv.predict(forecasting_horizon=forecasting_horizon)
 
     # Make predictions from best_forecaster_ directly
-    y_pred_best = search_cv.best_forecaster_.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred_best = search_cv.best_forecaster_.predict(forecasting_horizon=forecasting_horizon)
 
     # Predictions should be identical
     assert_frame_equal(y_pred_search, y_pred_best, check_exact=False)
@@ -867,7 +867,7 @@ def check_search_panel_data(
     forecasting_horizon = min(3, len(y_test))
 
     # Test predict with groups
-    y_pred = search_cv.predict(forecasting_horizon=forecasting_horizon, X=X_test, groups=groups)
+    y_pred = search_cv.predict(forecasting_horizon=forecasting_horizon, groups=groups)
 
     # Check that predictions have panel structure if expected
     if groups is not None:
@@ -967,7 +967,7 @@ def check_search_interval_predict_delegates(
 
     coverage_rates = [0.9]
 
-    y_pred = search_cv.predict_interval(X=X_test, coverage_rates=coverage_rates)
+    y_pred = search_cv.predict_interval(coverage_rates=coverage_rates)
 
     assert isinstance(y_pred, pl.DataFrame), f"predict_interval should return pl.DataFrame, got {type(y_pred)}"
     assert "time" in y_pred.columns, "Interval predictions should have 'time' column"

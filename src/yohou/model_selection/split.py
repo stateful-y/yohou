@@ -19,6 +19,7 @@ __all__ = [
     "SlidingWindowSplitter",
     "check_cv",
     "check_cv_alignment",
+    "train_test_split",
 ]
 
 
@@ -57,7 +58,7 @@ class BaseSplitter(BaseEstimator, ABC):
     def split(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[tuple[np.ndarray[Any, np.dtype[np.intp]], np.ndarray[Any, np.dtype[np.intp]]]]:
         """Generate indices to split time series data.
 
@@ -66,9 +67,9 @@ class BaseSplitter(BaseEstimator, ABC):
         y : pl.DataFrame
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.  Not used for splitting but accepted for
-            API compatibility.
+            API consistency.
 
         Yields
         ------
@@ -83,7 +84,7 @@ class BaseSplitter(BaseEstimator, ABC):
     def _iter_test_indices(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[np.ndarray[Any, np.dtype[np.intp]]]:
         """Generate test indices for each split.
 
@@ -93,7 +94,7 @@ class BaseSplitter(BaseEstimator, ABC):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             Exogenous features.
 
         Yields
@@ -107,16 +108,16 @@ class BaseSplitter(BaseEstimator, ABC):
     def get_n_splits(
         self,
         y: pl.DataFrame | None = None,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> int:
         """Return the number of cross-validation folds.
 
         Parameters
         ----------
         y : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
-        X : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
+            Not used.  Accepted for API consistency.
+        X_actual : pl.DataFrame or None, default=None
+            Not used.  Accepted for API consistency.
 
         Returns
         -------
@@ -229,7 +230,7 @@ class ExpandingWindowSplitter(BaseSplitter):
     def split(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[tuple[np.ndarray[Any, np.dtype[np.intp]], np.ndarray[Any, np.dtype[np.intp]]]]:
         """Generate indices to split time series data with expanding windows.
 
@@ -238,9 +239,9 @@ class ExpandingWindowSplitter(BaseSplitter):
         y : pl.DataFrame
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.  Not used for splitting but accepted for
-            API compatibility.
+            API consistency.
 
         Yields
         ------
@@ -251,14 +252,14 @@ class ExpandingWindowSplitter(BaseSplitter):
 
         """
         # Validate data
-        y, X = validate_splitter_data(self, y=y, X=X)
+        y, X_actual = validate_splitter_data(self, y=y, X_actual=X_actual)
 
         n_samples = len(y)
         indices = np.arange(n_samples)
         max_train_size = self.max_train_size
 
         # Delegate to concrete implementation
-        for test_index in self._iter_test_indices(y, X):
+        for test_index in self._iter_test_indices(y, X_actual):
             train_end = test_index[0]
             train_index = indices[indices < train_end]
 
@@ -271,7 +272,7 @@ class ExpandingWindowSplitter(BaseSplitter):
     def _iter_test_indices(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[np.ndarray[Any, np.dtype[np.intp]]]:
         """Generate test indices for expanding window splits.
 
@@ -279,7 +280,7 @@ class ExpandingWindowSplitter(BaseSplitter):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             Exogenous features (not used).
 
         Yields
@@ -309,16 +310,16 @@ class ExpandingWindowSplitter(BaseSplitter):
     def get_n_splits(
         self,
         y: pl.DataFrame | None = None,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> int:
         """Return the number of cross-validation folds.
 
         Parameters
         ----------
         y : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
-        X : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
+            Not used.  Accepted for API consistency.
+        X_actual : pl.DataFrame or None, default=None
+            Not used.  Accepted for API consistency.
 
         Returns
         -------
@@ -441,7 +442,7 @@ class SlidingWindowSplitter(BaseSplitter):
     def split(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[tuple[np.ndarray[Any, np.dtype[np.intp]], np.ndarray[Any, np.dtype[np.intp]]]]:
         """Generate indices to split time series data with sliding windows.
 
@@ -450,9 +451,9 @@ class SlidingWindowSplitter(BaseSplitter):
         y : pl.DataFrame
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.  Not used for splitting but accepted for
-            API compatibility.
+            API consistency.
 
         Yields
         ------
@@ -463,13 +464,13 @@ class SlidingWindowSplitter(BaseSplitter):
 
         """
         # Validate data
-        y, X = validate_splitter_data(self, y=y, X=X)
+        y, X_actual = validate_splitter_data(self, y=y, X_actual=X_actual)
 
         # Resolve train_size (may compute from n_splits) and store as fitted attr
         self.train_size_ = self._resolve_train_size(len(y))
 
         # Delegate to concrete implementation for test indices
-        for test_index in self._iter_test_indices(y, X):
+        for test_index in self._iter_test_indices(y, X_actual):
             # For sliding window, train indices are the fixed-size window
             # ending at the start of the test set
             train_end = test_index[0]
@@ -481,7 +482,7 @@ class SlidingWindowSplitter(BaseSplitter):
     def _iter_test_indices(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[np.ndarray[Any, np.dtype[np.intp]]]:
         """Generate test indices for sliding window splits.
 
@@ -489,7 +490,7 @@ class SlidingWindowSplitter(BaseSplitter):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             Exogenous features (not used).
 
         Yields
@@ -580,16 +581,16 @@ class SlidingWindowSplitter(BaseSplitter):
     def get_n_splits(
         self,
         y: pl.DataFrame | None = None,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> int:
         """Return the number of cross-validation folds.
 
         Parameters
         ----------
         y : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
-        X : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
+            Not used.  Accepted for API consistency.
+        X_actual : pl.DataFrame or None, default=None
+            Not used.  Accepted for API consistency.
 
         Returns
         -------
@@ -730,3 +731,137 @@ def check_cv_alignment(
         "step_counts": step_counts,
         "is_balanced": is_balanced,
     }
+
+
+def train_test_split(
+    *arrays: pl.DataFrame,
+    test_size: int | float,
+    X_forecast: pl.DataFrame | None = None,
+) -> list[pl.DataFrame]:
+    """Split time series data into temporal train and test sets.
+
+    A time series counterpart to :func:`sklearn.model_selection.train_test_split`.
+    Data is always split in temporal order (no shuffling): the earliest rows
+    form the training set and the most recent rows form the test set.
+
+    Row-indexed arrays (``y``, ``X_actual``) are split by position.
+    ``X_forecast``, when provided, is split by ``vintage_time`` range using
+    the cutoff time inferred from the first positional array.
+
+    Parameters
+    ----------
+    *arrays : pl.DataFrame
+        One or more Polars DataFrames to split by row index. All must
+        have the same number of rows. The first array must contain a
+        ``"time"`` column (used to derive the vintage cutoff when
+        ``X_forecast`` is provided).
+    test_size : int or float
+        If ``int``, the number of rows to allocate to the test set.
+        If ``float``, the fraction of total rows for testing (must be
+        in ``(0.0, 1.0)``).
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+        Split by ``vintage_time`` range: training receives vintages where
+        ``vintage_time <= cutoff_time``, testing receives vintages where
+        ``cutoff_time < vintage_time <= test_end_time``. The cutoff and
+        test end times are derived from the ``"time"`` column of the first
+        positional array.
+
+    Returns
+    -------
+    list of pl.DataFrame
+        Alternating train/test pairs for each positional array, followed
+        by the X_forecast train/test pair if ``X_forecast`` is provided.
+
+        With one array: ``[arr_train, arr_test]``.
+
+        With two arrays: ``[arr1_train, arr1_test, arr2_train, arr2_test]``.
+
+        With ``X_forecast``:
+        ``[..., X_forecast_train, X_forecast_test]`` appended.
+
+    Raises
+    ------
+    ValueError
+        If no arrays are provided, arrays have different lengths,
+        ``test_size`` is invalid, or the first array is missing a
+        ``"time"`` column when ``X_forecast`` is provided.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from yohou.model_selection import train_test_split
+
+    Split y and X_actual (80/20):
+
+    >>> y = pl.DataFrame({
+    ...     "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), eager=True),
+    ...     "value": list(range(10)),
+    ... })
+    >>> y_train, y_test = train_test_split(y, test_size=2)
+    >>> len(y_train), len(y_test)
+    (8, 2)
+
+    Split with a fractional test_size:
+
+    >>> y_train, y_test = train_test_split(y, test_size=0.3)
+    >>> len(y_train), len(y_test)
+    (7, 3)
+    """
+    if len(arrays) == 0:
+        msg = "At least one array is required."
+        raise ValueError(msg)
+
+    n_samples = len(arrays[0])
+    for i, arr in enumerate(arrays[1:], start=1):
+        if len(arr) != n_samples:
+            msg = (
+                f"All arrays must have the same number of rows. "
+                f"Array 0 has {n_samples} rows but array {i} has {len(arr)} rows."
+            )
+            raise ValueError(msg)
+
+    if isinstance(test_size, float):
+        if not 0.0 < test_size < 1.0:
+            msg = f"test_size as a float must be in (0.0, 1.0), got {test_size}."
+            raise ValueError(msg)
+        n_test = max(1, round(n_samples * test_size))
+    elif isinstance(test_size, int):
+        if test_size < 1 or test_size >= n_samples:
+            msg = f"test_size as an int must be in [1, {n_samples - 1}], got {test_size}."
+            raise ValueError(msg)
+        n_test = test_size
+    else:
+        msg = f"test_size must be int or float, got {type(test_size).__name__}."
+        raise TypeError(msg)
+
+    split_idx = n_samples - n_test
+    result: list[pl.DataFrame] = []
+    for arr in arrays:
+        result.append(arr[:split_idx])
+        result.append(arr[split_idx:])
+
+    if X_forecast is not None:
+        first = arrays[0]
+        if "time" not in first.columns:
+            msg = (
+                "The first positional array must contain a 'time' column "
+                "when X_forecast is provided (needed to derive the vintage "
+                "cutoff time)."
+            )
+            raise ValueError(msg)
+        if "vintage_time" not in X_forecast.columns or "time" not in X_forecast.columns:
+            msg = (
+                "X_forecast must contain both 'vintage_time' and 'time' columns. "
+                f"Found columns: {list(X_forecast.columns)}"
+            )
+            raise ValueError(msg)
+
+        cutoff_time = first["time"][split_idx - 1]
+        test_end_time = first["time"][-1]
+        result.append(X_forecast.filter(pl.col("vintage_time") <= cutoff_time))
+        result.append(
+            X_forecast.filter((pl.col("vintage_time") > cutoff_time) & (pl.col("vintage_time") <= test_end_time))
+        )
+
+    return result

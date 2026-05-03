@@ -54,7 +54,7 @@ def _():
     import numpy as np
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -91,7 +91,7 @@ def _(mo):
     ## 1. Load Data
 
     We load the monthly tourism series and split it into train and test sets.
-    `train_test_split` with `shuffle=False` preserves temporal order, which is
+    `train_test_split` preserves temporal order, which is
     essential for time series work.
     """)
 
@@ -99,7 +99,7 @@ def _(mo):
 @app.cell
 def _(fetch_tourism_monthly, plot_time_series, train_test_split):
     df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
-    y_train, y_test = train_test_split(df, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(df, test_size=0.15)
     plot_time_series(y_train, title="Training Data")
     return df, y_test, y_train
 

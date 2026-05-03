@@ -31,7 +31,7 @@ def check_point_prediction_structure(forecaster, y_test: pl.DataFrame, X_test: p
 
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon)
 
     # Should have vintage_time, time, and target columns
     assert "vintage_time" in y_pred.columns, "Point predictions must have 'vintage_time'"

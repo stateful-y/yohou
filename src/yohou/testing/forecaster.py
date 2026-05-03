@@ -68,11 +68,11 @@ def check_fit_sets_forecaster_attributes(
     assert hasattr(forecaster_clone, "local_y_schema_"), (
         "fit() must set local_y_schema_ attribute (dict[str, pl.DataType])"
     )
-    assert hasattr(forecaster_clone, "local_X_schema_"), (
-        "fit() must set local_X_schema_ attribute (dict[str, pl.DataType])"
+    assert hasattr(forecaster_clone, "local_X_actual_schema_"), (
+        "fit() must set local_X_actual_schema_ attribute (dict[str, pl.DataType])"
     )
-    assert hasattr(forecaster_clone, "shared_X_schema_"), (
-        "fit() must set shared_X_schema_ attribute (None or dict[str, pl.DataType])"
+    assert hasattr(forecaster_clone, "shared_X_actual_schema_"), (
+        "fit() must set shared_X_actual_schema_ attribute (None or dict[str, pl.DataType])"
     )
     assert hasattr(forecaster_clone, "local_y_t_schema_"), (
         "fit() must set local_y_t_schema_ attribute (None or dict[str, pl.DataType])"
@@ -151,9 +151,9 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_test: pl.Data
 
     # Check if forecaster is an interval forecaster
     if hasattr(forecaster, "predict_interval"):
-        y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon, X=X_test)
+        y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon)
     else:
-        y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+        y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon)
 
     assert "vintage_time" in y_pred.columns, "Predictions must have 'vintage_time' column"
     assert "time" in y_pred.columns, "Predictions must have 'time' column"
@@ -440,7 +440,7 @@ def check_rewind_propagates_to_transformers(
         return  # Nothing to check
 
     # Rewind the forecaster
-    forecaster.rewind(y_reset, X=X_reset)
+    forecaster.rewind(y_reset, X_actual=X_reset)
 
     # Check target transformer is reset
     if hasattr(forecaster, "target_transformer_") and forecaster.target_transformer_ is not None:
@@ -900,12 +900,11 @@ def check_forecaster_methods_call_check_is_fitted(
         if is_interval:
             forecaster_clone.predict_interval(
                 forecasting_horizon=forecasting_horizon,
-                X=X[50:53] if X is not None else None,
                 coverage_rates=[0.9],
             )
             method_name = "predict_interval"
         else:
-            forecaster_clone.predict(forecasting_horizon=forecasting_horizon, X=X[50:53] if X is not None else None)
+            forecaster_clone.predict(forecasting_horizon=forecasting_horizon)
             method_name = "predict"
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__}.{method_name}() must raise NotFittedError when called on unfitted forecaster"
@@ -955,19 +954,19 @@ def check_fit_predict_without_exogenous(
     target_as_feature: str | None = "transformed",
     forecasting_horizon: int = 3,
 ) -> None:
-    """Check forecaster behavior when X=None at fit time.
+    """Check forecaster behavior when X_actual=None at fit time.
 
     Validates two clear-cut scenarios based on ``ignores_exogenous`` tag
     and ``target_as_feature`` parameter:
 
-    * ``ignores_exogenous=True``: fit(y, X=None) succeeds and predict()
+    * ``ignores_exogenous=True``: fit(y, X_actual=None) succeeds and predict()
       returns valid output.
     * ``ignores_exogenous=False`` + ``target_as_feature=None``:
-      fit(y, X=None) raises ``ValueError``.
+      fit(y, X_actual=None) raises ``ValueError``.
 
     When ``ignores_exogenous=False`` and ``target_as_feature`` is not
     ``None``, the check is skipped because behaviour depends on the
-    specific forecaster (some compositions always require X).
+    specific forecaster (some compositions always require X_actual).
 
     Parameters
     ----------
@@ -987,19 +986,21 @@ def check_fit_predict_without_exogenous(
     name = forecaster_clone.__class__.__name__
 
     if ignores_exogenous:
-        # Forecasters that ignore exogenous must succeed with X=None
-        forecaster_clone.fit(y, X=None, forecasting_horizon=forecasting_horizon)
+        # Forecasters that ignore exogenous must succeed with X_actual=None
+        forecaster_clone.fit(y, X_actual=None, forecasting_horizon=forecasting_horizon)
         y_pred = forecaster_clone.predict(forecasting_horizon=forecasting_horizon)
         assert isinstance(y_pred, pl.DataFrame), (
-            f"{name}.predict() must return pl.DataFrame after fit(y, X=None), got {type(y_pred).__name__}"
+            f"{name}.predict() must return pl.DataFrame after fit(y, X_actual=None), got {type(y_pred).__name__}"
         )
-        assert "time" in y_pred.columns, f"{name}.predict() output must contain 'time' column after fit(y, X=None)"
+        assert "time" in y_pred.columns, (
+            f"{name}.predict() output must contain 'time' column after fit(y, X_actual=None)"
+        )
     elif target_as_feature is None:
         # target_as_feature=None and ignores_exogenous=False → must raise
         try:
-            forecaster_clone.fit(y, X=None, forecasting_horizon=forecasting_horizon)
+            forecaster_clone.fit(y, X_actual=None, forecasting_horizon=forecasting_horizon)
             raise AssertionError(
-                f"{name}.fit(y, X=None) must raise ValueError when target_as_feature=None and ignores_exogenous=False"
+                f"{name}.fit(y, X_actual=None) must raise ValueError when target_as_feature=None and ignores_exogenous=False"
             )
         except ValueError:
             pass  # Expected

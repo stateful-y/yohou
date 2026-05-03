@@ -81,7 +81,7 @@ class TestBasicFitPredict:
             forecaster=PointReductionForecaster(estimator=Ridge()),
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
-        y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
+        y_pred = f.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
         assert "store_a__sales" in y_pred.columns

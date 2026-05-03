@@ -45,7 +45,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -119,7 +119,7 @@ def _(
 ):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     fh = len(y_test)
 
     naive = SeasonalNaive(seasonality=12)
@@ -487,7 +487,6 @@ def _(
         cls_y,
         cls_X,
         test_size=200,
-        shuffle=False,
     )
     cls_fh = 24
 
@@ -499,12 +498,10 @@ def _(
 
     # predict() returns hard class labels (argmax of probabilities)
     cls_y_pred_labels = cls_forecaster.predict(
-        X=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     # predict_class_proba() returns the full probability distribution
     cls_y_proba = cls_forecaster.predict_class_proba(
-        X=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
 

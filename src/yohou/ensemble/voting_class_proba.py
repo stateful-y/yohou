@@ -189,8 +189,10 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> VotingClassProbaForecaster:
         """Fit all base class-probability forecasters.
@@ -200,10 +202,14 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         y : pl.DataFrame
             Target time series with ``"time"`` column and categorical
             value columns.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features with ``"time"`` column.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
         **params : dict
             Metadata routing parameters.
 
@@ -237,17 +243,19 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         self.forecasters_ = self._fit_forecasters_parallel(
             y=y,
-            X=X,
+            X=X_actual,
             forecasting_horizon=forecasting_horizon,
             routed_params=routed_params,
             n_jobs=self.n_jobs,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         self._validate_classes_consistent()
 
         # Derive fitted attributes from first surviving forecaster
         _first_name, first_forecaster = self.forecasters_[0]
-        self._derive_fitted_attributes(first_forecaster, forecasting_horizon, y, X)
+        self._derive_fitted_attributes(first_forecaster, forecasting_horizon, y, X_actual)
 
         self.classes_ = dict(first_forecaster.classes_)  # ty: ignore[unresolved-attribute]
         self.n_classes_ = dict(first_forecaster.n_classes_)  # ty: ignore[unresolved-attribute]
@@ -329,23 +337,29 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         return result
 
-    def predict_class_proba(
+    def predict_class_proba(  # ty: ignore[invalid-method-override]
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate aggregated class-probability forecasts.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
         groups : list of str or None, default=None
             Panel group prefixes to predict.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -360,35 +374,40 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         if self.method == "soft":
             return self._soft_vote_predict_class_proba(
-                X=X,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **params,
             )
         return self._hard_vote_predict_class_proba(
-            X=X,
             forecasting_horizon=forecasting_horizon,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **params,
         )
 
     def _soft_vote_predict_class_proba(
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Soft vote: weighted average of class probabilities.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features.
         forecasting_horizon : int or None, default=None
             Forecasting horizon.
         groups : list of str or None, default=None
             Panel group prefixes.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override.
         **params : dict
             Routing parameters.
 
@@ -401,9 +420,10 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         predictions = []
         for _name, forecaster in self.forecasters_:
             y_proba = forecaster.predict_class_proba(  # ty: ignore[unresolved-attribute]
-                X=X,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **params,
             )
             predictions.append(y_proba)
@@ -426,21 +446,24 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
     def _hard_vote_predict_class_proba(
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Hard vote: majority vote converted to one-hot probabilities.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features.
         forecasting_horizon : int or None, default=None
             Forecasting horizon.
         groups : list of str or None, default=None
             Panel group prefixes.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override.
         **params : dict
             Routing parameters.
 
@@ -453,9 +476,10 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         predictions = []
         for _name, forecaster in self.forecasters_:
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
-                X=X,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **params,
             )
             predictions.append(y_pred)
@@ -483,23 +507,29 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         return result
 
-    def predict(
+    def predict(  # ty: ignore[invalid-method-override]
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate argmax class predictions from the ensemble.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features.
         forecasting_horizon : int or None, default=None
             Number of steps ahead. If ``None``, uses value from ``fit``.
         groups : list of str or None, default=None
             Panel group prefixes.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -514,16 +544,18 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         if self.method == "hard":
             return self._hard_vote_predict(
-                X=X,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **params,
             )
 
         y_proba = self.predict_class_proba(
-            X=X,
             forecasting_horizon=forecasting_horizon,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **params,
         )
         return self._ensemble_argmax_from_proba(y_proba)
@@ -572,21 +604,24 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
     def _hard_vote_predict(
         self,
-        X: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Hard vote: majority vote of argmax predictions.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features.
         forecasting_horizon : int or None, default=None
             Forecasting horizon.
         groups : list of str or None, default=None
             Panel group prefixes.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override.
         **params : dict
             Routing parameters.
 
@@ -599,9 +634,10 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         predictions = []
         for _name, forecaster in self.forecasters_:
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
-                X=X,
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **params,
             )
             predictions.append(y_pred)

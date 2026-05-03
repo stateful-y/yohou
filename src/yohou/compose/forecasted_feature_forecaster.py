@@ -204,8 +204,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> ForecastedFeatureForecaster:
         """Fit feature and target forecasters.
@@ -214,10 +216,17 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             Target time series with "time" column.
-        X : pl.DataFrame
+        X_actual : pl.DataFrame
             Exogenous features with "time" column. Required.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata routing parameters.
 
@@ -232,9 +241,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
             If X is None (exogenous features are required).
 
         """
-        if X is None:
+        if X_actual is None:
             raise ValueError(
-                "ForecastedFeatureForecaster requires X (exogenous features). "
+                "ForecastedFeatureForecaster requires X_actual (exogenous features). "
                 "Pass exogenous features that need to be forecasted."
             )
 
@@ -255,8 +264,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
         if self.strategy == "actual":
             # Fit feature forecaster: X is treated as y (what to forecast)
             self.feature_forecaster_.fit(
-                y=X,
-                X=None,
+                y=X_actual,
+                X_actual=None,
                 forecasting_horizon=forecasting_horizon,
                 **routed_params.feature_forecaster.fit,
             )
@@ -264,16 +273,18 @@ class ForecastedFeatureForecaster(BaseForecaster):
             # Fit target forecaster with actual X
             self.target_forecaster_.fit(
                 y=y,
-                X=X,
+                X_actual=X_actual,
                 forecasting_horizon=forecasting_horizon,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **routed_params.target_forecaster.fit,
             )
 
         elif self.strategy == "rewind":
             # Fit feature forecaster on full data
             self.feature_forecaster_.fit(
-                y=X,
-                X=None,
+                y=X_actual,
+                X_actual=None,
                 forecasting_horizon=forecasting_horizon,
                 **routed_params.feature_forecaster.fit,
             )
@@ -282,16 +293,16 @@ class ForecastedFeatureForecaster(BaseForecaster):
             obs_horizon = self.feature_forecaster_.observation_horizon
             # Need obs_horizon + 1 rows: obs_horizon for transformer memory + 1 for transform
             rewind_size = obs_horizon + 1
-            if obs_horizon <= 0 or len(X) <= rewind_size:
+            if obs_horizon <= 0 or len(X_actual) <= rewind_size:
                 raise ValueError(
                     f"Cannot use strategy='rewind': observation_horizon={obs_horizon} "
-                    f"but len(X)={len(X)}. Need len(X) > observation_horizon + 1 to rewind."
+                    f"but len(X_actual)={len(X_actual)}. Need len(X_actual) > observation_horizon + 1 to rewind."
                 )
-            self.feature_forecaster_.rewind(y=X[:rewind_size], X=None)
+            self.feature_forecaster_.rewind(y=X_actual[:rewind_size], X_actual=None)
 
             # Predict X from rewind point to end
             X_pred = self.feature_forecaster_.predict(
-                forecasting_horizon=len(X) - rewind_size,
+                forecasting_horizon=len(X_actual) - rewind_size,
             )
 
             # Prepare X for target forecaster (drop vintage_time, keep time)
@@ -300,13 +311,15 @@ class ForecastedFeatureForecaster(BaseForecaster):
             # Fit target forecaster with predicted X
             self.target_forecaster_.fit(
                 y=y[rewind_size:],
-                X=X_for_target,
+                X_actual=X_for_target,
                 forecasting_horizon=forecasting_horizon,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **routed_params.target_forecaster.fit,
             )
 
             # Sync feature_forecaster to same observation time as target_forecaster
-            self.feature_forecaster_.observe(y=X[rewind_size:], X=None)
+            self.feature_forecaster_.observe(y=X_actual[rewind_size:], X_actual=None)
 
         else:  # strategy == "predicted"
             n_split = int(len(y) * self.split_ratio)
@@ -325,8 +338,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
 
             # Fit feature forecaster on first portion
             self.feature_forecaster_.fit(
-                y=X[:n_split],
-                X=None,
+                y=X_actual[:n_split],
+                X_actual=None,
                 forecasting_horizon=len(y) - n_split,
                 **routed_params.feature_forecaster.fit,
             )
@@ -342,8 +355,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
             # Fit target forecaster on second portion with predicted X
             self.target_forecaster_.fit(
                 y=y[n_split:],
-                X=X_for_target,
+                X_actual=X_for_target,
                 forecasting_horizon=forecasting_horizon,
+                X_future=X_future,
+                X_forecast=X_forecast,
                 **routed_params.target_forecaster.fit,
             )
 
@@ -357,7 +372,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             # TODO: This might be more complicated than just predict+observe. It depends on
             # how predictions are going to be made (e.g., rolling vs single-shot, whether
             # actual X becomes available after prediction, etc.)
-            self.feature_forecaster_.observe(y=X[n_split:], X=None)
+            self.feature_forecaster_.observe(y=X_actual[n_split:], X_actual=None)
 
         # Store standard fitted attributes
         self.fit_forecasting_horizon_ = forecasting_horizon
@@ -365,20 +380,20 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self.groups_ = self.target_forecaster_.groups_
         if hasattr(self.target_forecaster_, "local_y_schema_"):
             self.local_y_schema_ = self.target_forecaster_.local_y_schema_
-        if hasattr(self.target_forecaster_, "local_X_schema_"):
-            self.local_X_schema_ = self.target_forecaster_.local_X_schema_
+        if hasattr(self.target_forecaster_, "local_X_actual_schema_"):
+            self.local_X_actual_schema_ = self.target_forecaster_.local_X_actual_schema_
         else:
-            # Build local_X_schema_ from X columns (excluding time)
-            self.local_X_schema_ = {col: X.schema[col] for col in X.columns if col != "time"}
-        self.shared_X_schema_ = None  # No shared X features for this forecaster
+            # Build local_X_actual_schema_ from X columns (excluding time)
+            self.local_X_actual_schema_ = {col: X_actual.schema[col] for col in X_actual.columns if col != "time"}
+        self.shared_X_actual_schema_ = None  # No shared X features for this forecaster
 
         # Set transformed schema attributes (no transformation for meta-forecaster)
         self.local_y_t_schema_ = self.local_y_schema_
-        self.local_X_t_schema_ = self.local_X_schema_
+        self.local_X_t_schema_ = self.local_X_actual_schema_
 
         # Set observation buffers for observe/rewind
         self._y_observed = y
-        self._X_t_observed = X
+        self._X_t_observed = X_actual
 
         return self
 
@@ -386,9 +401,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
     def predict(
         self,
         forecasting_horizon: StrictInt | None = None,
-        X: pl.DataFrame | None = None,
         groups: list[str] | None = None,
         predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate point forecasts.
@@ -400,15 +416,18 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         forecasting_horizon : int, optional
             Number of steps ahead to forecast. If None, uses value from fit().
-        X : pl.DataFrame, optional
-            Known-ahead exogenous features (e.g., holidays, promotions) that don't
-            need forecasting. These will be merged with the forecasted features.
-            Must have "time" column matching the forecast period.
         groups : list of str or None, default=None
             Group prefixes for panel data prediction.
         predict_transformed : bool, default=False
             If True, return predictions in the transformed space without
             applying inverse target transformation.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -429,33 +448,15 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # Process metadata routing
         routed_params = process_routing(self, "predict", **params)
 
-        # Forecast X using feature forecaster
-        X_pred = self.feature_forecaster_.predict(
-            forecasting_horizon=forecasting_horizon,
-            groups=groups,
-            **routed_params.feature_forecaster.predict,
-        )
-
-        # Prepare X for target forecaster (drop vintage_time, keep time)
-        X_for_target = X_pred.drop(["vintage_time"], strict=False)
-
-        # Merge with known-ahead features from X if provided
-        if X is not None:
-            # Add columns from X that aren't already in X_for_target (excluding time)
-            known_ahead_cols = [c for c in X.columns if c != "time" and c not in X_for_target.columns]
-            if known_ahead_cols:
-                X_for_target = X_for_target.join(
-                    X.select(["time", *known_ahead_cols]),
-                    on="time",
-                    how="left",
-                )
-
-        # Predict y using forecasted X
+        # Predict y using target forecaster (feature predictions flow
+        # through observe; at predict time target_forecaster uses its
+        # observation window set during fit/observe)
         return self.target_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
-            X=X_for_target,
             groups=groups,
             predict_transformed=predict_transformed,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **routed_params.target_forecaster.predict,
         )
 
@@ -463,9 +464,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
     def predict_interval(
         self,
         forecasting_horizon: StrictInt | None = None,
-        X: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate interval forecasts.
@@ -477,14 +479,17 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         forecasting_horizon : int, optional
             Number of steps ahead to forecast. If None, uses value from fit().
-        X : pl.DataFrame, optional
-            Known-ahead exogenous features (e.g., holidays, promotions) that don't
-            need forecasting. These will be merged with the forecasted features.
-            Must have "time" column matching the forecast period.
         coverage_rates : list of float, optional
             Coverage levels for prediction intervals (e.g., [0.9, 0.95]).
         groups : list of str or None, default=None
             Group prefixes for panel data prediction.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -505,41 +510,22 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # Process metadata routing
         routed_params = process_routing(self, "predict_interval", **params)
 
-        # Forecast X using feature forecaster (always point predictions)
-        X_pred = self.feature_forecaster_.predict(
-            forecasting_horizon=forecasting_horizon,
-            groups=groups,
-            **routed_params.feature_forecaster.predict,
-        )
-
-        # Prepare X for target forecaster
-        X_for_target = X_pred.drop(["vintage_time"], strict=False)
-
-        # Merge with known-ahead features from X if provided
-        if X is not None:
-            # Add columns from X that aren't already in X_for_target (excluding time)
-            known_ahead_cols = [c for c in X.columns if c != "time" and c not in X_for_target.columns]
-            if known_ahead_cols:
-                X_for_target = X_for_target.join(
-                    X.select(["time", *known_ahead_cols]),
-                    on="time",
-                    how="left",
-                )
-
-        # Predict interval for y using forecasted X
         return self.target_forecaster_.predict_interval(
             forecasting_horizon=forecasting_horizon,
-            X=X_for_target,
             coverage_rates=coverage_rates,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **routed_params.target_forecaster.predict_interval,
         )
 
     def observe(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> ForecastedFeatureForecaster:
         """Observe new data for both forecasters.
 
@@ -547,10 +533,15 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             New target observations with "time" column.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             New exogenous feature observations with "time" column.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
 
         Returns
         -------
@@ -561,18 +552,20 @@ class ForecastedFeatureForecaster(BaseForecaster):
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
 
         # Observe new X for feature forecaster (X is y for feature forecaster)
-        if X is not None:
+        if X_actual is not None:
             self.feature_forecaster_.observe(
-                y=X,
-                X=None,
+                y=X_actual,
+                X_actual=None,
                 groups=groups,
             )
 
         # Observe new y and X for target forecaster
         self.target_forecaster_.observe(
             y=y,
-            X=X,
+            X_actual=X_actual,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         return self
@@ -580,8 +573,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
     def rewind(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> ForecastedFeatureForecaster:
         """Rewind both forecasters to last observation_horizon rows.
 
@@ -589,10 +584,15 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             Target data to rewind to (last observation_horizon rows kept).
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             Exogenous features to rewind to.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
 
         Returns
         -------
@@ -603,18 +603,20 @@ class ForecastedFeatureForecaster(BaseForecaster):
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
 
         # Rewind feature forecaster (X is y for feature forecaster)
-        if X is not None:
+        if X_actual is not None:
             self.feature_forecaster_.rewind(
-                y=X,
-                X=None,
+                y=X_actual,
+                X_actual=None,
                 groups=groups,
             )
 
         # Rewind target forecaster
         self.target_forecaster_.rewind(
             y=y,
-            X=X,
+            X_actual=X_actual,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         return self
@@ -623,8 +625,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
     def observe_predict(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data and generate point forecasts.
@@ -633,10 +637,15 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             New target observations with "time" column.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             New exogenous feature observations with "time" column.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -646,16 +655,18 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Point predictions with "vintage_time", "time", and target columns.
 
         """
-        self.observe(y=y, X=X, groups=groups)
-        return self.predict(groups=groups, **params)
+        self.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)
+        return self.predict(groups=groups, X_future=X_future, X_forecast=X_forecast, **params)
 
     @available_if(_target_forecaster_has("predict_interval"))
     def observe_predict_interval(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data and generate interval forecasts.
@@ -664,12 +675,17 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             New target observations with "time" column.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             New exogenous feature observations with "time" column.
         coverage_rates : list of float, optional
             Coverage levels for prediction intervals.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -679,10 +695,12 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Interval predictions with lower/upper bounds.
 
         """
-        self.observe(y=y, X=X, groups=groups)
+        self.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)
         return self.predict_interval(
             coverage_rates=coverage_rates,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **params,
         )
 
@@ -690,8 +708,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
     def predict_class_proba(
         self,
         forecasting_horizon: StrictInt | None = None,
-        X: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate class-probability forecasts.
@@ -703,11 +722,15 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         forecasting_horizon : int, optional
             Number of steps ahead to forecast. If None, uses value from fit().
-        X : pl.DataFrame, optional
-            Known-ahead exogenous features that don't need forecasting.
-            Must have "time" column matching the forecast period.
         groups : list of str or None, default=None
             Group prefixes for panel data prediction.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         **params : dict
             Metadata routing parameters.
 
@@ -726,27 +749,11 @@ class ForecastedFeatureForecaster(BaseForecaster):
         _raise_for_params(params, self, "predict_class_proba")
         routed_params = process_routing(self, "predict_class_proba", **params)
 
-        X_pred = self.feature_forecaster_.predict(
-            forecasting_horizon=forecasting_horizon,
-            groups=groups,
-            **routed_params.feature_forecaster.predict,
-        )
-
-        X_for_target = X_pred.drop(["vintage_time"], strict=False)
-
-        if X is not None:
-            known_ahead_cols = [c for c in X.columns if c != "time" and c not in X_for_target.columns]
-            if known_ahead_cols:
-                X_for_target = X_for_target.join(
-                    X.select(["time", *known_ahead_cols]),
-                    on="time",
-                    how="left",
-                )
-
         return self.target_forecaster_.predict_class_proba(
             forecasting_horizon=forecasting_horizon,
-            X=X_for_target,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **routed_params.target_forecaster.predict_class_proba,
         )
 
@@ -754,8 +761,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
     def observe_predict_class_proba(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data and generate class-probability forecasts.
@@ -764,10 +773,15 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             New target observations with "time" column.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             New exogenous feature observations with "time" column.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata routing parameters.
 
@@ -777,9 +791,11 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Class-probability predictions.
 
         """
-        self.observe(y=y, X=X, groups=groups)
+        self.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)
         return self.predict_class_proba(
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **params,
         )
 

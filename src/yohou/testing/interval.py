@@ -39,7 +39,7 @@ def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame, X_test: 
     forecasting_horizon = min(3, len(y_test))
 
     # Call predict_interval for interval forecasters
-    y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon)
 
     # Get coverage rates - use fit_coverage_rates_ (set during fit)
     coverage_rates = forecaster.fit_coverage_rates_
@@ -94,7 +94,7 @@ def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame
 
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon)
 
     coverage_rates = forecaster.fit_coverage_rates_
 

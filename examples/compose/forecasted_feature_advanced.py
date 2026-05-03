@@ -46,7 +46,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from yohou.compose import ForecastedFeatureForecaster
     from yohou.datasets import fetch_hospital
@@ -92,7 +92,7 @@ def _(fetch_hospital, mo, pl, train_test_split):
         pl.col("T3__patients").alias("feature_2"),
         pl.col("T4__patients").alias("feature_3"),
     )
-    _train_df, _test_df = train_test_split(hospital, test_size=0.15, shuffle=False)
+    _train_df, _test_df = train_test_split(hospital, test_size=0.15)
     y_train = _train_df.select("time", "target")
     y_test = _test_df.select("time", "target")
     X_train = _train_df.select("time", "feature_1", "feature_2", "feature_3")

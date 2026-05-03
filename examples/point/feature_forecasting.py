@@ -370,7 +370,7 @@ def _(
 
     # Pass known calendar features via X at predict time
     X_known = X_test.select("time", "day_of_week", "month")
-    y_pred_known = ff_known.predict(forecasting_horizon=forecasting_horizon, X=X_known)
+    y_pred_known = ff_known.predict(forecasting_horizon=forecasting_horizon, X_future=X_known)
 
     mae_known = MeanAbsoluteError()
     mae_known.fit(y_train)

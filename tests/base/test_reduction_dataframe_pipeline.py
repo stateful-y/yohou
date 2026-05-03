@@ -142,7 +142,7 @@ class TestFitReceivesDataFrames:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         assert _get_fitted_estimator(forecaster).fit_X_type is pl.DataFrame
 
@@ -152,7 +152,7 @@ class TestFitReceivesDataFrames:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         assert _get_fitted_estimator(forecaster).fit_y_type in (pl.DataFrame, pl.Series)
 
@@ -161,7 +161,7 @@ class TestFitReceivesDataFrames:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="direct")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         for est in forecaster.estimator_:
             assert est.fit_y_type is pl.Series
@@ -171,7 +171,7 @@ class TestFitReceivesDataFrames:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="dir-rec")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         for est in forecaster.estimator_:
             assert est.fit_y_type is pl.Series
@@ -181,7 +181,7 @@ class TestFitReceivesDataFrames:
         y_train, _, X_train, _ = multi_target_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="multi-output")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         assert forecaster.estimator_.fit_y_type is pl.DataFrame
 
@@ -196,8 +196,8 @@ class TestPredictReceivesDataFrames:
         spy = _SpyEstimator()
         _SpyEstimator.reset_predict_calls()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
-        forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
+        forecaster.predict(forecasting_horizon=3)
 
         assert len(_SpyEstimator.predict_calls) > 0
         for call in _SpyEstimator.predict_calls:
@@ -214,8 +214,8 @@ class TestFeatureNamesConsistency:
         spy = _SpyEstimator()
         _SpyEstimator.reset_predict_calls()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
-        forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
+        forecaster.predict(forecasting_horizon=3)
 
         fitted = _get_fitted_estimator(forecaster)
         # The first predict call corresponds to the first estimator
@@ -226,7 +226,7 @@ class TestFeatureNamesConsistency:
         y_train, _, X_train, X_test = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, target_as_feature="transformed")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=2)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=2)
 
         columns = forecaster.estimator_.fit_X_columns
         assert any("value" in c for c in columns), f"Expected lagged target in columns: {columns}"
@@ -236,7 +236,7 @@ class TestFeatureNamesConsistency:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=2)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=2)
 
         assert "time" not in _get_fitted_estimator(forecaster).fit_X_columns
 
@@ -247,8 +247,8 @@ class TestFeatureNamesConsistency:
         spy = _SpyEstimator()
         _SpyEstimator.reset_predict_calls()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
-        forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
+        forecaster.predict(forecasting_horizon=3)
 
         fitted = _get_fitted_estimator(forecaster)
         assert _SpyEstimator.predict_calls[0]["X_columns"] == fitted.fit_X_columns
@@ -262,7 +262,7 @@ class TestYTabColumnNames:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="multi-output")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         assert forecaster.estimator_.fit_y_columns == [
             "value_step_1",
@@ -275,7 +275,7 @@ class TestYTabColumnNames:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="direct")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         for step, est in enumerate(forecaster.estimator_):
             assert est.fit_y_columns == [f"value_step_{step + 1}"]
@@ -285,7 +285,7 @@ class TestYTabColumnNames:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="dir-rec")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         for step, est in enumerate(forecaster.estimator_):
             assert est.fit_y_columns == [f"value_step_{step + 1}"]
@@ -295,7 +295,7 @@ class TestYTabColumnNames:
         y_train, _, X_train, _ = multi_target_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="multi-output")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=2)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=2)
 
         assert forecaster.estimator_.fit_y_columns == [
             "sales_step_1",
@@ -309,7 +309,7 @@ class TestYTabColumnNames:
         y_train, _, X_train, _ = multi_target_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="direct")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=2)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=2)
 
         assert forecaster.estimator_[0].fit_y_columns == ["sales_step_1", "revenue_step_1"]
         assert forecaster.estimator_[1].fit_y_columns == ["sales_step_2", "revenue_step_2"]
@@ -323,7 +323,7 @@ class TestDirRecAugmentedFeatureNames:
         y_train, _, X_train, _ = reduction_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="dir-rec")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         base_cols = forecaster.estimator_[0].fit_X_columns
         step1_cols = forecaster.estimator_[1].fit_X_columns
@@ -347,8 +347,8 @@ class TestDirRecAugmentedFeatureNames:
         spy = _SpyEstimator()
         _SpyEstimator.reset_predict_calls()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="dir-rec")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
-        forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
+        forecaster.predict(forecasting_horizon=3)
 
         # All predict calls should receive DataFrames
         assert all(c["X_type"] is pl.DataFrame for c in _SpyEstimator.predict_calls)
@@ -363,8 +363,8 @@ class TestDirRecAugmentedFeatureNames:
         spy = _SpyEstimator()
         _SpyEstimator.reset_predict_calls()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy="dir-rec")
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
-        forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
+        forecaster.predict(forecasting_horizon=3)
 
         last_est = forecaster.estimator_[-1]
         last_predict_call = _SpyEstimator.predict_calls[-1]
@@ -381,11 +381,11 @@ class TestNoFeatureNameWarning:
 
         y_train, _, X_train, X_test = reduction_data
         forecaster = PointReductionForecaster(estimator=Ridge(), reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         with warnings.catch_warnings(record=True) as record:
             warnings.simplefilter("always")
-            forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+            forecaster.predict(forecasting_horizon=3)
 
         feature_warnings = [w for w in record if "feature names" in str(w.message).lower()]
         assert len(feature_warnings) == 0
@@ -396,11 +396,11 @@ class TestNoFeatureNameWarning:
 
         y_train, _, X_train, X_test = reduction_data
         forecaster = PointReductionForecaster(estimator=LinearRegression())
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         with warnings.catch_warnings(record=True) as record:
             warnings.simplefilter("always")
-            forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+            forecaster.predict(forecasting_horizon=3)
 
         feature_warnings = [w for w in record if "feature names" in str(w.message).lower()]
         assert len(feature_warnings) == 0
@@ -415,7 +415,7 @@ class TestPanelDataFramePipeline:
         y_train, _, X_train, _ = panel_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         assert _get_fitted_estimator(forecaster).fit_X_type is pl.DataFrame
 
@@ -426,8 +426,8 @@ class TestPanelDataFramePipeline:
         spy = _SpyEstimator()
         _SpyEstimator.reset_predict_calls()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
-        forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
+        forecaster.predict(forecasting_horizon=3)
 
         assert len(_SpyEstimator.predict_calls) > 0
         for call in _SpyEstimator.predict_calls:
@@ -439,7 +439,7 @@ class TestPanelDataFramePipeline:
         y_train, _, X_train, _ = panel_data
         spy = _SpyEstimator()
         forecaster = PointReductionForecaster(estimator=spy, reduction_strategy=strategy)
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
 
         assert _get_fitted_estimator(forecaster).fit_y_type in (pl.DataFrame, pl.Series)
 
@@ -494,8 +494,8 @@ class TestPredictionCorrectness:
         """Multi-target predictions have correct shape and column names."""
         y_train, _, X_train, X_test = multi_target_data
         forecaster = PointReductionForecaster(estimator=LinearRegression())
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=3)
-        y_pred = forecaster.predict(X=X_test[:3], forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=3)
+        y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert y_pred.shape[0] == 3
         assert "sales" in y_pred.columns

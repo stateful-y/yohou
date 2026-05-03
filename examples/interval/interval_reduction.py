@@ -46,7 +46,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import QuantileRegressor
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     import plotly.graph_objects as go
 
@@ -92,7 +92,7 @@ def _(mo):
 def _(fetch_tourism_monthly, train_test_split):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     forecasting_horizon = len(y_test)
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")

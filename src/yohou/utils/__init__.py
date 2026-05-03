@@ -11,6 +11,7 @@ from .panel import (
     panel_aware_suffix,
     select_panel_columns,
 )
+from .pivot import pivot_forecasts, window_future
 from .polars import cast, get_numeric_columns
 from .tabularization import tabularize
 from .tags import (
@@ -111,6 +112,7 @@ __all__ = [
     "panel_aware_rename",
     "panel_aware_suffix",
     "parse_interval",
+    "pivot_forecasts",
     "resolve_dict_weights",
     "resolve_weight_to_array",
     "seasonal_emphasis_weight",
@@ -127,4 +129,5 @@ __all__ = [
     "validate_time_weight",
     "validate_transformer_data",
     "validate_weight_array",
+    "window_future",
 ]

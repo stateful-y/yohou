@@ -139,11 +139,13 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         time_weight: Callable | pl.DataFrame | dict | None = None,
         vintage_weight: Callable | pl.DataFrame | dict | None = None,
         sample_weight_alignment: str = "first_step",
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> ClassProbaReductionForecaster:
         """Fit the forecaster to historical data.
@@ -156,7 +158,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more categorical (String, Categorical, or Enum) value columns.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
         forecasting_horizon : int, default=1
@@ -176,6 +178,13 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             Strategy for converting ``time_weight`` to sklearn
             ``sample_weight`` across forecast horizons. Does not apply
             to ``vintage_weight`` (which uses direct lookup).
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -211,8 +220,10 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         y_t, X_t = self._pre_fit(
             y=y_encoded,
-            X=X,
+            X=X_actual,
             forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         self.estimator_ = self._estimator_fit_one(

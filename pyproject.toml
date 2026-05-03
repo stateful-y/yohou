@@ -80,6 +80,9 @@ Documentation = "https://yohou.readthedocs.io"
 Repository = "https://github.com/stateful-y/yohou"
 "Bug Tracker" = "https://github.com/stateful-y/yohou/issues"
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"

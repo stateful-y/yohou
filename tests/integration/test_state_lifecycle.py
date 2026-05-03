@@ -154,7 +154,7 @@ class TestStateMachineProtocol:
         fh = 3
 
         # State 1: fit → predict
-        forecaster.fit(y_train, X=X_train, forecasting_horizon=fh)
+        forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=fh)
         check_is_fitted(forecaster)
         predictions_1 = forecaster.predict(forecasting_horizon=fh)
 
@@ -162,7 +162,7 @@ class TestStateMachineProtocol:
         assert "time" in predictions_1.columns
 
         # State 2: observe → predict (state should change)
-        forecaster.observe(y_test, X=X_test)
+        forecaster.observe(y_test, X_actual=X_test)
         predictions_2 = forecaster.predict(forecasting_horizon=fh)
 
         assert len(predictions_2) == fh
@@ -170,7 +170,7 @@ class TestStateMachineProtocol:
         assert not predictions_1["vintage_time"].equals(predictions_2["vintage_time"])
 
         # State 3: second observe → predict
-        forecaster.observe(y_test2, X=X_test2)
+        forecaster.observe(y_test2, X_actual=X_test2)
         predictions_3 = forecaster.predict(forecasting_horizon=fh)
 
         assert len(predictions_3) == fh
@@ -186,7 +186,7 @@ class TestStateMachineProtocol:
         y_train_tail = y_train.tail(reset_rows)
         if needs_X:
             X_train_tail = X_train.tail(reset_rows)
-            forecaster.rewind(y_train_tail, X=X_train_tail)
+            forecaster.rewind(y_train_tail, X_actual=X_train_tail)
         else:
             forecaster.rewind(y_train_tail)
         predictions_4 = forecaster.predict(forecasting_horizon=fh)
@@ -198,7 +198,7 @@ class TestStateMachineProtocol:
         # State 5: observe_predict (atomic operation)
         # Create continuation from current state (after rewind to train tail)
         y_for_up = _make_continuation(y_train, length=10, seed=55)
-        result_observe_predict = forecaster.observe_predict(y_for_up, X=X_test)
+        result_observe_predict = forecaster.observe_predict(y_for_up, X_actual=X_test)
 
         # observe_predict returns predictions accumulated over incremental observes
         assert len(result_observe_predict) >= fh
@@ -706,7 +706,7 @@ class TestCloneAndSerialization:
                 X_train = y_train.select("time").with_columns(
                     pl.Series("feature1", np.random.randn(len(y_train))),
                 )
-            estimator.fit(y_train, X=X_train, forecasting_horizon=5)
+            estimator.fit(y_train, X_actual=X_train, forecasting_horizon=5)
             pred_before = estimator.predict(forecasting_horizon=5)
         elif is_transformer:
             # Transformer (may also be in a pipeline)

@@ -611,7 +611,7 @@ class TestVotingClassProbaObserveRewind:
             method="soft",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
-        forecaster.observe(y=y[80:100], X=X[80:100])
+        forecaster.observe(y=y[80:100], X_actual=X[80:100])
         y_pred = forecaster.predict(forecasting_horizon=3)
         assert len(y_pred) == 3
 
@@ -632,8 +632,8 @@ class TestVotingClassProbaObserveRewind:
             method="soft",
         )
         forecaster.fit(y[:90], X[:90], forecasting_horizon=3)
-        forecaster.observe(y=y[90:100], X=X[90:100])
-        forecaster.rewind(y=y[:90], X=X[:90])
+        forecaster.observe(y=y[90:100], X_actual=X[90:100])
+        forecaster.rewind(y=y[:90], X_actual=X[:90])
         y_pred = forecaster.predict(forecasting_horizon=3)
         assert len(y_pred) == 3
 
@@ -654,7 +654,7 @@ class TestVotingClassProbaObserveRewind:
             method="soft",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
-        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X=X[80:90], forecasting_horizon=3)
+        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X_actual=X[80:90], forecasting_horizon=3)
         assert len(y_proba) > 0
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
         assert len(proba_cols) > 0
@@ -682,7 +682,7 @@ class TestVotingClassProbaObserveRewind:
             method="hard",
         )
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
-        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X=X[80:90], forecasting_horizon=3)
+        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X_actual=X[80:90], forecasting_horizon=3)
         assert len(y_proba) > 0
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
         assert len(proba_cols) > 0

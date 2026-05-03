@@ -55,7 +55,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -143,7 +143,7 @@ def _(plot_time_series, store):
 def _(mo, store, train_test_split):
     _target_cols = [c for c in store.columns if c != "time"]
     y = store.select("time", *_target_cols)
-    y_train, y_test = train_test_split(y, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.15)
     horizon = len(y_test)
 
     mo.md(

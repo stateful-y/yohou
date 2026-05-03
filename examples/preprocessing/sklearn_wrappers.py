@@ -53,7 +53,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -103,7 +103,7 @@ def _(mo):
     ## 1. Prepare Data
 
     We load a single monthly tourism series and split it into training and
-    test sets with `train_test_split(shuffle=False)` to preserve temporal
+    test sets with `train_test_split` to preserve temporal
     ordering.
     """)
 
@@ -111,7 +111,7 @@ def _(mo):
 @app.cell
 def _(fetch_tourism_monthly, plot_time_series, train_test_split):
     df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
-    y_train, y_test = train_test_split(df, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(df, test_size=0.15)
     plot_time_series(y_train, title="Training Data")
     return y_test, y_train
 
@@ -357,7 +357,7 @@ def _(
     )
     _profit_cols = [c for c in _panel.columns if c.endswith("__profit")]
     _selected = _panel.select("time", *_profit_cols)
-    _y_train_p, _y_test_p = train_test_split(_selected, test_size=0.1, shuffle=False)
+    _y_train_p, _y_test_p = train_test_split(_selected, test_size=0.1)
 
     _fc_panel = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),

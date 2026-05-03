@@ -43,7 +43,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -99,7 +99,7 @@ def _(fetch_tourism_quarterly, inspect_panel, mo, train_test_split):
     _selected = [f"T{i}__tourists" for i in range(3, 11)]
     tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_panel(tourism)
-    y_train, y_test = train_test_split(tourism, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(tourism, test_size=0.2)
     horizon = len(y_test)
 
     mo.md(

@@ -274,14 +274,14 @@ class ConsumingForecaster(BasePointForecaster):
         self._observation_horizon = 1
         super().__init__()
 
-    def fit(self, y, X=None, forecasting_horizon=1, time_weight=None, **kwargs):
+    def fit(self, y, X_actual=None, forecasting_horizon=1, time_weight=None, **kwargs):
         """Fit forecaster and record metadata.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame, optional
+        X_actual : pl.DataFrame, optional
             Exogenous features.
         forecasting_horizon : int
             Forecasting horizon.
@@ -300,7 +300,7 @@ class ConsumingForecaster(BasePointForecaster):
         record_metadata(self, **metadata)
         if self.registry is not None:
             self.registry.append(self)
-        BasePointForecaster.fit(self, y=y, X=X, forecasting_horizon=forecasting_horizon)
+        BasePointForecaster.fit(self, y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon)
         return self
 
     def _predict_one(self, groups, **kwargs):
@@ -339,13 +339,11 @@ class ConsumingForecaster(BasePointForecaster):
         y_pred = self._add_time_columns(y_pred)
         return y_pred
 
-    def predict(self, X=None, forecasting_horizon=None, groups=None, **kwargs):
+    def predict(self, forecasting_horizon=None, groups=None, **kwargs):
         """Predict and record metadata.
 
         Parameters
         ----------
-        X : pl.DataFrame, optional
-            Future exogenous features.
         forecasting_horizon : int, optional
             Forecasting horizon.
         groups : list of str, optional
@@ -363,7 +361,7 @@ class ConsumingForecaster(BasePointForecaster):
         record_metadata(self, **metadata)
         if self.registry is not None:
             self.registry.append(self)
-        return BasePointForecaster.predict(self, X=X, forecasting_horizon=forecasting_horizon, groups=groups, **kwargs)
+        return BasePointForecaster.predict(self, forecasting_horizon=forecasting_horizon, groups=groups, **kwargs)
 
 
 @pytest.mark.integration

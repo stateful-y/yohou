@@ -53,7 +53,7 @@ def _():
     from copy import deepcopy
 
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -108,7 +108,6 @@ def _(fetch_air_quality_classification, train_test_split):
         y,
         X,
         test_size=200,
-        shuffle=False,
     )
 
     print(f"Classes: {data.classes}")
@@ -185,7 +184,7 @@ def _(
     )
     dt.fit(y_train, X_train, forecasting_horizon=fh)
     dt_hard = deepcopy(dt)
-    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X=X_test).sort("time")
+    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X_actual=X_test).sort("time")
 
     rf = ClassProbaReductionForecaster(
         estimator=RandomForestClassifier(n_estimators=50, random_state=42),
@@ -193,7 +192,7 @@ def _(
     )
     rf.fit(y_train, X_train, forecasting_horizon=fh)
     rf_hard = deepcopy(rf)
-    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X=X_test).sort("time")
+    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X_actual=X_test).sort("time")
 
     print(f"DT predictions: {len(y_proba_dt)} rows")
     print(f"RF predictions: {len(y_proba_rf)} rows")
@@ -213,8 +212,8 @@ def _(mo):
 
 @app.cell
 def _(X_test, dt_hard, fh, plot_forecast, rf_hard, y_test):
-    y_pred_dt = dt_hard.observe_predict(y=y_test, X=X_test).sort("time")
-    y_pred_rf = rf_hard.observe_predict(y=y_test, X=X_test).sort("time")
+    y_pred_dt = dt_hard.observe_predict(y=y_test, X_actual=X_test).sort("time")
+    y_pred_rf = rf_hard.observe_predict(y=y_test, X_actual=X_test).sort("time")
     plot_forecast(
         y_test,
         {"Decision Tree": y_pred_dt, "Random Forest": y_pred_rf},

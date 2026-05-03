@@ -89,7 +89,7 @@ class TestSeasonalNaive:
         y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2, shuffle=False)
         forecaster = SeasonalNaive(seasonality=seasonality)
 
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=fit_forecasting_horizon)
 
         y_pred = forecaster.predict(forecasting_horizon=predict_forecasting_horizon)
 
@@ -114,7 +114,7 @@ class TestSeasonalNaiveWithoutExogenous:
         """SeasonalNaive should work without exogenous features (ignores_exogenous=True)."""
         y, _ = naive_data
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y[:17], X=None, forecasting_horizon=3)
+        forecaster.fit(y[:17], X_actual=None, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert isinstance(y_pred, pl.DataFrame)
@@ -125,8 +125,8 @@ class TestSeasonalNaiveWithoutExogenous:
         """SeasonalNaive observe_predict should work without exogenous features."""
         y, _ = naive_data
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y[:17], X=None, forecasting_horizon=3)
-        y_pred = forecaster.observe_predict(y[17:19], X=None)
+        forecaster.fit(y[:17], X_actual=None, forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(y[17:19], X_actual=None)
 
         assert isinstance(y_pred, pl.DataFrame)
         assert "time" in y_pred.columns
@@ -135,9 +135,9 @@ class TestSeasonalNaiveWithoutExogenous:
         """SeasonalNaive rewind should work without exogenous features."""
         y, _ = naive_data
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y[:17], X=None, forecasting_horizon=3)
-        forecaster.observe(y[17:19], X=None)
-        forecaster.rewind(y[:17], X=None)
+        forecaster.fit(y[:17], X_actual=None, forecasting_horizon=3)
+        forecaster.observe(y[17:19], X_actual=None)
+        forecaster.rewind(y[:17], X_actual=None)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert isinstance(y_pred, pl.DataFrame)
@@ -281,7 +281,7 @@ class TestMeanSeasonalNaive:
         y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2, shuffle=False)
         forecaster = MeanSeasonalNaive(seasonality=seasonality, n_seasons=n_seasons)
 
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_fh)
+        forecaster.fit(y=y_train, X_actual=X_train, forecasting_horizon=fit_fh)
 
         y_pred = forecaster.predict(forecasting_horizon=predict_fh)
 
@@ -307,11 +307,11 @@ class TestMeanSeasonalNaive:
 
         for seasonality in [1, 3, 7]:
             naive = SeasonalNaive(seasonality=seasonality)
-            naive.fit(y=y_train, X=X_train, forecasting_horizon=5)
+            naive.fit(y=y_train, X_actual=X_train, forecasting_horizon=5)
             y_naive = naive.predict(forecasting_horizon=5)
 
             mean_naive = MeanSeasonalNaive(seasonality=seasonality, n_seasons=1)
-            mean_naive.fit(y=y_train, X=X_train, forecasting_horizon=5)
+            mean_naive.fit(y=y_train, X_actual=X_train, forecasting_horizon=5)
             y_mean = mean_naive.predict(forecasting_horizon=5)
 
             pl.testing.assert_frame_equal(y_mean, y_naive)
@@ -324,7 +324,7 @@ class TestMeanSeasonalNaiveWithoutExogenous:
         """MeanSeasonalNaive should work without exogenous features."""
         y, _ = mean_naive_data
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
-        forecaster.fit(y[:40], X=None, forecasting_horizon=3)
+        forecaster.fit(y[:40], X_actual=None, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert isinstance(y_pred, pl.DataFrame)
@@ -335,8 +335,8 @@ class TestMeanSeasonalNaiveWithoutExogenous:
         """MeanSeasonalNaive observe_predict should work without exogenous features."""
         y, _ = mean_naive_data
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
-        forecaster.fit(y[:40], X=None, forecasting_horizon=3)
-        y_pred = forecaster.observe_predict(y[40:42], X=None)
+        forecaster.fit(y[:40], X_actual=None, forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(y[40:42], X_actual=None)
 
         assert isinstance(y_pred, pl.DataFrame)
         assert "time" in y_pred.columns
@@ -345,9 +345,9 @@ class TestMeanSeasonalNaiveWithoutExogenous:
         """MeanSeasonalNaive rewind should work without exogenous features."""
         y, _ = mean_naive_data
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
-        forecaster.fit(y[:40], X=None, forecasting_horizon=3)
-        forecaster.observe(y[40:42], X=None)
-        forecaster.rewind(y[:40], X=None)
+        forecaster.fit(y[:40], X_actual=None, forecasting_horizon=3)
+        forecaster.observe(y[40:42], X_actual=None)
+        forecaster.rewind(y[:40], X_actual=None)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert isinstance(y_pred, pl.DataFrame)

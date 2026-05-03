@@ -43,7 +43,7 @@ def check_class_proba_prediction_structure(
 
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict_class_proba(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred = forecaster.predict_class_proba(forecasting_horizon=forecasting_horizon)
 
     assert "vintage_time" in y_pred.columns, "Class-proba predictions must have 'vintage_time'"
     assert "time" in y_pred.columns, "Class-proba predictions must have 'time'"
@@ -87,7 +87,7 @@ def check_class_proba_prediction_bounds(forecaster, y_test: pl.DataFrame, X_test
 
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict_class_proba(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred = forecaster.predict_class_proba(forecasting_horizon=forecasting_horizon)
 
     proba_cols = [col for col in y_pred.columns if "_proba_" in col]
     assert len(proba_cols) > 0, "No probability columns found"
@@ -119,7 +119,7 @@ def check_class_proba_prediction_sums(forecaster, y_test: pl.DataFrame, X_test: 
 
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict_class_proba(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred = forecaster.predict_class_proba(forecasting_horizon=forecasting_horizon)
 
     _, y_panel_groups = inspect_panel(y_test)
 
@@ -235,7 +235,7 @@ def check_class_proba_predict_returns_labels(
 
     """
     forecasting_horizon = min(3, len(y_test))
-    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon)
 
     assert "vintage_time" in y_pred.columns, "predict() must have 'vintage_time'"
     assert "time" in y_pred.columns, "predict() must have 'time'"

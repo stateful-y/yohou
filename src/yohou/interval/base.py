@@ -11,7 +11,7 @@ from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, BaseTransformer
-from yohou.utils import INTERVAL, Tags, cast, select_panel_columns, validate_forecaster_data
+from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
 
 __all__ = ["BaseIntervalForecaster", "BaseSimilarity"]
 
@@ -211,9 +211,11 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         coverage_rates: list[float] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "BaseIntervalForecaster":
         """Fit the forecaster to historical data.
@@ -223,7 +225,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
         forecasting_horizon : int, default=1
@@ -232,6 +234,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to
             ``[0.95]``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -244,7 +253,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ------
         ValueError
             If ``forecasting_horizon`` < 1, ``coverage_rates`` not in [0, 1],
-            or if ``y`` / ``X`` have invalid structure.
+            or if ``y`` / ``X_actual`` have invalid structure.
 
         """
 
@@ -320,7 +329,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def predict_interval(
         self,
-        X: pl.DataFrame | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
@@ -331,9 +341,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
@@ -368,17 +382,19 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``X`` has invalid structure, ``coverage_rates`` not in [0, 1],
+            If ``coverage_rates`` not in [0, 1],
             or ``groups`` contains names not seen during fit.
 
         """
         check_is_fitted(self, ["groups_", "local_y_schema_", "fit_forecasting_horizon_"])
-        _, X, groups = validate_forecaster_data(
+        _, _, groups = validate_forecaster_data(
             self,
             y=None,
-            X=X,
+            X=None,
             reset=False,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(forecasting_horizon, coverage_rates)
@@ -387,19 +403,12 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if groups is not None:
             y_columns = [f"{panel_group}__{col}" for panel_group in groups for col in self.local_y_schema_]
 
-            if X is not None:
-                X = select_panel_columns(
-                    X,
-                    self.groups_,
-                    include_global=True,
-                )
-
         def step_fn(forecaster, groups):
             """Produce one interval-prediction block."""
             y_pred_step, y_pred_step_inv = forecaster._predict(groups, coverage_rates=coverage_rates)
             return y_pred_step_inv, y_pred_step_inv
 
-        def derive_observation_fn(forecaster, y_pred_step_inv, X, step):
+        def derive_observation_fn(forecaster, y_pred_step_inv):
             """Derive observation from interval bounds."""
             time = y_pred_step_inv.select(cs.by_name("time"))
 
@@ -431,48 +440,47 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             y = cast(y.select(~cs.by_name("time")), cast_schema)
             y = pl.concat([y_data["time"].to_frame(), y], how="horizontal")
+            return y
 
-            X_slice = None
-            if X is not None:
-                X_slice = X.join(y.select("time"), on="time", how="semi")
+        def predict_fn():
+            """Run recursive predict with step columns."""
+            return self._recursive_predict(
+                forecasting_horizon=forecasting_horizon,
+                groups=groups,
+                step_fn=step_fn,
+                derive_observation_fn=derive_observation_fn,
+            )
 
-                if len(X_slice) != len(y):
-                    raise ValueError(
-                        f"Missing X for future steps. Needed {len(y)} rows, but X slice has {len(X_slice)} rows."
-                    )
-
-            return y, X_slice
-
-        return self._recursive_predict(
-            X=X,
-            forecasting_horizon=forecasting_horizon,
-            groups=groups,
-            step_fn=step_fn,
-            derive_observation_fn=derive_observation_fn,
+        return self._predict_with_step_override(
+            X_future=X_future,
+            X_forecast=X_forecast,
+            predict_fn=predict_fn,
         )
 
     def observe_predict_interval(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive predict_interval and observe.
 
-        Equivalent to calling ``observe(y, X)`` then
-        ``predict_interval(X)``.  Returns interval predictions.
+        Equivalent to calling ``observe(y, X_actual)`` then
+        ``predict_interval()``.  Returns interval predictions.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
         forecasting_horizon : int or None, default=None
@@ -498,6 +506,11 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         stride : int or None, default=None
             Step size for rolling update-predict.  If ``None``, defaults to
             ``forecasting_horizon``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -512,17 +525,19 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure, ``coverage_rates`` not in
+            If ``y`` / ``X_actual`` have invalid structure, ``coverage_rates`` not in
             (0, 1], or ``groups`` contains names not seen during fit.
 
         """
         check_is_fitted(self, ["groups_", "local_y_schema_", "fit_forecasting_horizon_"])
-        y, X, groups = validate_forecaster_data(
+        y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X,
+            X=X_actual,
             reset=False,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         forecasting_horizon, _ = self._validate_predict_params(forecasting_horizon, coverage_rates)
@@ -533,7 +548,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         return self._observe_predict_loop(
             predict_fn=self.predict_interval,
             y=y,
-            X=X,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
             groups=groups,
             stride=stride,
             forecasting_horizon=forecasting_horizon,

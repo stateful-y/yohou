@@ -51,7 +51,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -106,7 +106,7 @@ def _(mo):
 def _(fetch_tourism_monthly, train_test_split):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train, y_test = train_test_split(y, test_size=24, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=24)
     forecasting_horizon = len(y_test)
     return forecasting_horizon, y_test, y_train
 

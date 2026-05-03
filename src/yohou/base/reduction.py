@@ -46,6 +46,16 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Transformer used to transform the target time series into features.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
+    step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
+        Controls which step-indexed feature columns each direct estimator
+        sees. Only affects the ``"direct"`` strategy.
+
+        - ``"all"``: every estimator receives all step columns
+          (``*_step_1..H``). Backward compatible, maximum information.
+        - ``"matched"``: estimator for step h receives only ``*_step_h``
+          columns. Cleanest signal, no cross-horizon leakage.
+        - ``"cumulative"``: estimator for step h receives columns
+          ``*_step_1..h``. All information up to horizon h.
     n_jobs : int or None, default=None
         Number of jobs to run in parallel for the ``"direct"`` strategy
         (fitting and predicting H independent models). ``None`` means 1
@@ -87,6 +97,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         **BaseForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
+        "step_feature_alignment": [StrOptions({"all", "matched", "cumulative"})],
         "n_jobs": [Interval(numbers.Integral, -1, None, closed="left"), None],
     }
 
@@ -98,6 +109,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
+        step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         n_jobs: int | None = None,
     ):
         BaseForecaster.__init__(
@@ -110,6 +122,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         self.estimator = estimator
         self.reduction_strategy = reduction_strategy
+        self.step_feature_alignment = step_feature_alignment
         self.n_jobs = n_jobs
 
     def __sklearn_tags__(self) -> Tags:
@@ -660,6 +673,50 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             estimator_fit_params,
         )
 
+    def _filter_step_features(
+        self,
+        X_tab: pl.DataFrame,
+        step: int,
+    ) -> pl.DataFrame:
+        """Filter step-indexed feature columns for a direct estimator.
+
+        When ``step_feature_alignment`` is ``"all"`` (default), returns
+        ``X_tab`` unchanged. For ``"matched"``, keeps only step columns
+        matching the given step number. For ``"cumulative"``, keeps step
+        columns from 1 through the given step number. Non-step columns
+        are always kept.
+
+        Parameters
+        ----------
+        X_tab : pl.DataFrame
+            Feature matrix containing observation features and possibly
+            step-indexed columns from X_future/X_forecast.
+        step : int
+            1-based horizon step index.
+
+        Returns
+        -------
+        pl.DataFrame
+            Filtered feature matrix.
+
+        """
+        if self.step_feature_alignment == "all" or not self._step_column_names_:
+            return X_tab
+
+        step_cols_in_tab = [c for c in X_tab.columns if c in self._step_column_names_]
+        if not step_cols_in_tab:
+            return X_tab
+
+        if self.step_feature_alignment == "matched":
+            keep_suffix = f"_step_{step}"
+            drop = [c for c in step_cols_in_tab if not c.endswith(keep_suffix)]
+        else:
+            # cumulative: keep _step_1 .. _step_{step}
+            keep_suffixes = {f"_step_{s}" for s in range(1, step + 1)}
+            drop = [c for c in step_cols_in_tab if not any(c.endswith(s) for s in keep_suffixes)]
+
+        return X_tab.drop(drop) if drop else X_tab
+
     def _estimator_fit_direct(
         self,
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
@@ -730,8 +787,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             y_step: pl.DataFrame | pl.Series = y_tab.select(step_col_names)
             if y_step.shape[1] == 1:
                 y_step = y_step.to_series()
+            X_tab_step = self._filter_step_features(X_tab, step + 1)
             return self._fit_single_estimator(
-                X_tab,
+                X_tab_step,
                 y_step,
                 sample_weight,
                 estimator_params,
@@ -1008,7 +1066,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if self.groups_ is None:
             X_tab = self._get_predict_features()
             rows: list[np.ndarray] = Parallel(n_jobs=self.n_jobs)(
-                delayed(_predict_step)(est, X_tab) for est in estimators
+                delayed(_predict_step)(est, self._filter_step_features(X_tab, step + 1))
+                for step, est in enumerate(estimators)
             )
             y_pred_arr = np.vstack(rows)
             y_pred = pl.DataFrame(y_pred_arr, schema=y_cols)
@@ -1017,7 +1076,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_pred_dict = {}
         for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
-            rows = Parallel(n_jobs=self.n_jobs)(delayed(_predict_step)(est, X_tab) for est in estimators)
+            rows = Parallel(n_jobs=self.n_jobs)(
+                delayed(_predict_step)(est, self._filter_step_features(X_tab, step + 1))
+                for step, est in enumerate(estimators)
+            )
             y_pred_arr = np.vstack(rows)
             y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
             y_pred_local = cast(y_pred_local, self.local_y_t_schema_)

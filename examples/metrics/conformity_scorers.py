@@ -59,7 +59,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -120,7 +120,7 @@ def _(mo):
 @app.cell
 def _(fetch_tourism_monthly, train_test_split):
     df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
-    y_train, _y_rest = train_test_split(df, test_size=0.15, shuffle=False)
+    y_train, _y_rest = train_test_split(df, test_size=0.15)
     # Cap test size at 24 so it fits within calibration_size
     y_test = _y_rest.head(24)
     return df, y_test, y_train

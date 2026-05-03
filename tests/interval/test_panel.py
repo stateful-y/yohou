@@ -26,7 +26,7 @@ class TestIntervalReductionPanelChecks:
         y_train, y_test = y[:80], y[80:]
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
+        forecaster_fitted.fit(y_train, X_actual=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
 
         run_checks(
             forecaster_fitted,
@@ -43,10 +43,10 @@ class TestIntervalReductionPanelBehavior:
 
         forecaster = IntervalReductionForecaster()
 
-        forecaster.fit(y=y_train, X=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
+        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
 
         # Predict with groups=None (default)
-        y_pred = forecaster.predict_interval(X=None, forecasting_horizon=3, groups=None)
+        y_pred = forecaster.predict_interval(forecasting_horizon=3, groups=None)
 
         # Should have predictions for all 3 series with intervals (flat columns)
         assert "panel__series_0_lower_0.1" in y_pred.columns
@@ -61,7 +61,7 @@ class TestIntervalReductionPanelBehavior:
 
         forecaster = IntervalReductionForecaster()
 
-        forecaster.fit(y=y_train, X=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
+        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
 
         # Predict only for panel group
         y_pred = forecaster.predict_interval(forecasting_horizon=3, groups=["panel"])
@@ -76,11 +76,11 @@ class TestIntervalReductionPanelBehavior:
 
         forecaster = IntervalReductionForecaster()
 
-        forecaster.fit(y=y_train, X=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
+        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
 
         # Try to predict with invalid group name
         with pytest.raises(ValueError, match="not found in fitted forecaster"):
-            forecaster.predict_interval(X=None, forecasting_horizon=3, groups=["invalid_group"])
+            forecaster.predict_interval(forecasting_horizon=3, groups=["invalid_group"])
 
     def test_panel_interval_global_data(self, time_series_factory):
         """Test that groups has no effect on global data."""
@@ -89,11 +89,11 @@ class TestIntervalReductionPanelBehavior:
 
         forecaster = IntervalReductionForecaster()
 
-        forecaster.fit(y=y_train, X=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
+        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3, coverage_rates=[0.1, 0.5, 0.9])
 
         # Should work the same with or without groups
-        y_pred_default = forecaster.predict_interval(X=None, forecasting_horizon=3, groups=None)
-        y_pred_explicit = forecaster.predict_interval(X=None, forecasting_horizon=3, groups=None)
+        y_pred_default = forecaster.predict_interval(forecasting_horizon=3, groups=None)
+        y_pred_explicit = forecaster.predict_interval(forecasting_horizon=3, groups=None)
 
         assert y_pred_default.equals(y_pred_explicit)
         assert "feature_0_lower_0.1" in y_pred_default.columns

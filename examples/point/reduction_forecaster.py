@@ -46,7 +46,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
@@ -134,7 +134,7 @@ def _(mo):
 
 @app.cell
 def _(train_test_split, y):
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     forecasting_horizon = 12
 
     print(f"Training: {len(y_train)} obs ({y_train['time'].min()} to {y_train['time'].max()})")

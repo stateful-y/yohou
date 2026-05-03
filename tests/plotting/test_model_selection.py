@@ -99,7 +99,7 @@ class TestPlotSplits:
             "feature": list(range(len(sample_y))),
         })
         splitter = ExpandingWindowSplitter(n_splits=2, test_size=30)
-        fig = plot_splits(sample_y, splitter, X=X)
+        fig = plot_splits(sample_y, splitter, X_actual=X)
         assert len(fig.data) > 0
 
     def test_invalid_splitter_type(self, sample_y):

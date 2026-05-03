@@ -599,7 +599,7 @@ class TestForecastedFeatureForecasterInterval:
         X_update = X_test.head(5)
         y_pred_interval = forecaster.observe_predict_interval(
             y_update,
-            X=X_update,
+            X_actual=X_update,
             coverage_rates=[0.9],
         )
 

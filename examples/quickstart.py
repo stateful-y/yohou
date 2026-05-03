@@ -62,7 +62,7 @@ def _():
     from scipy.stats import randint, uniform
     from sklearn.base import clone
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from yohou.compose import DecompositionPipeline, FeaturePipeline, LocalPanelForecaster
     from yohou.datasets import fetch_dominick, fetch_tourism_monthly
@@ -188,7 +188,7 @@ def _(mo):
 
 @app.cell
 def _(train_test_split, y):
-    y_train, y_test = train_test_split(y, test_size=24, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=24)
     forecasting_horizon = len(y_test)
 
     print(f"Train: {len(y_train)} rows  |  Test: {len(y_test)} rows  |  Horizon: {forecasting_horizon}")
@@ -211,7 +211,7 @@ def _(mo):
 @app.cell
 def _(MeanAbsoluteError, SeasonalNaive, forecasting_horizon, y_test, y_train):
     baseline = SeasonalNaive(seasonality=12)
-    baseline.fit(y_train, X=None, forecasting_horizon=forecasting_horizon)
+    baseline.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_baseline = baseline.predict(forecasting_horizon=forecasting_horizon)
 
     scorer = MeanAbsoluteError()
@@ -286,7 +286,7 @@ def _(
         target_transformer=pipeline_target,
         feature_transformer=pipeline_feature,
     )
-    reduction.fit(y_train, X=None, forecasting_horizon=forecasting_horizon)
+    reduction.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_reduction = reduction.predict(forecasting_horizon=forecasting_horizon)
 
     mae_reduction = scorer.score(y_test, y_pred_reduction)
@@ -518,7 +518,7 @@ def _(
         return_train_score=False,
         n_jobs=1,
     )
-    random_search.fit(y_train, X=None, forecasting_horizon=forecasting_horizon)
+    random_search.fit(y_train, forecasting_horizon=forecasting_horizon)
 
     print(f"Best params: {random_search.best_params_}")
     print(f"Best CV MAE:  {random_search.best_score_:.2f}")
@@ -557,7 +557,7 @@ def _(
         return_train_score=False,
         n_jobs=1,
     )
-    grid_search.fit(y_train, X=None, forecasting_horizon=forecasting_horizon)
+    grid_search.fit(y_train, forecasting_horizon=forecasting_horizon)
 
     print(f"Best params: {grid_search.best_params_}")
     print(f"Best CV MAE:  {grid_search.best_score_:.2f}")
@@ -1097,7 +1097,6 @@ def _(MeanAbsoluteError, SeasonalNaive, train_test_split, y_panel):
     y_panel_train, y_panel_test = train_test_split(
         y_panel,
         test_size=13,
-        shuffle=False,
     )
 
     panel_baseline = SeasonalNaive(seasonality=52)

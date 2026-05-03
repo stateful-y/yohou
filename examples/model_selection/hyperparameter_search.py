@@ -53,7 +53,7 @@ def _():
     import polars as pl
     from scipy.stats import uniform
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from copy import deepcopy
@@ -310,7 +310,6 @@ def _(fetch_air_quality_classification, train_test_split):
         cls_y,
         cls_X,
         test_size=200,
-        shuffle=False,
     )
     cls_fh = 24
 
@@ -401,9 +400,8 @@ def _(mo):
 
 
 @app.cell
-def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecast):
+def _(cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecast):
     cls_y_pred_labels = cls_grid_search.predict(
-        X=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     plot_forecast(
@@ -416,9 +414,8 @@ def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecas
 
 
 @app.cell
-def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, plot_forecast):
+def _(cls_fh, cls_grid_search, cls_y_test, plot_forecast):
     cls_y_proba = cls_grid_search.predict_class_proba(
-        X=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     plot_forecast(

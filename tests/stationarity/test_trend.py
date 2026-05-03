@@ -221,7 +221,7 @@ class TestPolynomialTrendWithoutExogenous:
         y = pl.DataFrame({"time": time, "value": [float(i) for i in range(50)]})
 
         forecaster = PolynomialTrendForecaster(degree=1)
-        forecaster.fit(y[:40], X=None, forecasting_horizon=5)
+        forecaster.fit(y[:40], X_actual=None, forecasting_horizon=5)
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert isinstance(y_pred, pl.DataFrame)

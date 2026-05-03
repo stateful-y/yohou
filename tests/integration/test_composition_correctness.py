@@ -584,8 +584,8 @@ class TestForecastedFeatureForecaster:
             split_ratio=0.8,
         )
 
-        forecaster.fit(y_train, X=x_train, forecasting_horizon=5)
-        y_pred = forecaster.predict(X=None, forecasting_horizon=5)  # X=None uses forecasted features
+        forecaster.fit(y_train, X_actual=x_train, forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)  # X=None uses forecasted features
 
         # Expected: y = 6*t + 25 for t=200..204
         expected = analytical_forecast("linear", {"slope": 6.0, "intercept": 25.0}, horizon=5, last_index=199)
@@ -615,7 +615,7 @@ class TestForecastedFeatureForecaster:
             split_ratio=split_ratio,
         )
 
-        forecaster.fit(y_train, X=x_train, forecasting_horizon=5)
+        forecaster.fit(y_train, X_actual=x_train, forecasting_horizon=5)
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         # Verify prediction shape and values are reasonable
@@ -629,7 +629,7 @@ class TestForecastedFeatureForecaster:
         y_train = linear_series(slope=2.0, intercept=10.0, length=80)
 
         # Known future X
-        x_future = linear_series(slope=1.0, intercept=5.0, length=85).tail(5).rename({"value": "feature"})
+        _x_future = linear_series(slope=1.0, intercept=5.0, length=85).tail(5).rename({"value": "feature"})
 
         feature_forecaster = PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1]))
         target_forecaster = PointReductionForecaster(LinearRegression())
@@ -641,8 +641,8 @@ class TestForecastedFeatureForecaster:
             split_ratio=0.5,
         )
 
-        forecaster.fit(y_train, X=x_train, forecasting_horizon=5)
-        y_pred = forecaster.predict(X=x_future, forecasting_horizon=5)
+        forecaster.fit(y_train, X_actual=x_train, forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
 
         # With known X, predictions should be very accurate
         assert len(y_pred) == 5

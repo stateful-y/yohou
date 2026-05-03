@@ -45,10 +45,10 @@ class TestExpandingWindowBasic:
 
     def test_expanding_window_basic_split(self, y_X_factory):
         """Test basic expanding window split."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
 
         splitter = ExpandingWindowSplitter(n_splits=5, test_size=10)
-        splits = list(splitter.split(y, X))
+        splits = list(splitter.split(y, X_actual))
 
         assert len(splits) == 5
 
@@ -66,10 +66,10 @@ class TestExpandingWindowBasic:
 
     def test_expanding_window_max_train_size(self, y_X_factory):
         """Test max_train_size parameter limits training set."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
 
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=10, max_train_size=30)
-        splits = list(splitter.split(y, X))
+        splits = list(splitter.split(y, X_actual))
 
         for train_idx, _test_idx in splits:
             assert len(train_idx) <= 30
@@ -122,10 +122,10 @@ class TestSlidingWindowBasic:
 
     def test_sliding_window_basic_split(self, y_X_factory):
         """Test basic sliding window split."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
 
         splitter = SlidingWindowSplitter(n_splits=7, test_size=10)
-        splits = list(splitter.split(y, X))
+        splits = list(splitter.split(y, X_actual))
 
         assert len(splits) == 7
 
@@ -136,10 +136,10 @@ class TestSlidingWindowBasic:
 
     def test_sliding_window_step_parameter(self, y_X_factory):
         """Test stride parameter controls slide amount."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
 
         splitter = SlidingWindowSplitter(n_splits=4, train_size=30, test_size=10, stride=20)
-        splits = list(splitter.split(y, X))
+        splits = list(splitter.split(y, X_actual))
 
         assert len(splits) == 4
 
@@ -220,18 +220,18 @@ class TestSplitterIntegration:
         """Test ExpandingWindowSplitter with forecaster."""
         from yohou.point.naive import SeasonalNaive
 
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
 
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=10)
         forecaster = SeasonalNaive(seasonality=1)
 
         scores = []
-        for train_idx, test_idx in splitter.split(y, X):
-            y_train, X_train = y[train_idx], X[train_idx]
-            y_test, X_test = y[test_idx], X[test_idx]
+        for train_idx, test_idx in splitter.split(y, X_actual):
+            y_train, X_train = y[train_idx], X_actual[train_idx]
+            y_test, _X_test = y[test_idx], X_actual[test_idx]
 
             forecaster.fit(y_train, X_train, forecasting_horizon=len(test_idx))
-            y_pred = forecaster.predict(forecasting_horizon=len(test_idx), X=X_test)
+            y_pred = forecaster.predict(forecasting_horizon=len(test_idx))
 
             y_test_cols = [c for c in y_test.columns if c != "time"]
             y_pred_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time")]
@@ -245,18 +245,18 @@ class TestSplitterIntegration:
         """Test SlidingWindowSplitter with forecaster."""
         from yohou.point.naive import SeasonalNaive
 
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
 
         splitter = SlidingWindowSplitter(n_splits=7, test_size=10)
         forecaster = SeasonalNaive(seasonality=1)
 
         scores = []
-        for train_idx, test_idx in splitter.split(y, X):
-            y_train, X_train = y[train_idx], X[train_idx]
-            y_test, X_test = y[test_idx], X[test_idx]
+        for train_idx, test_idx in splitter.split(y, X_actual):
+            y_train, X_train = y[train_idx], X_actual[train_idx]
+            y_test, _X_test = y[test_idx], X_actual[test_idx]
 
             forecaster.fit(y_train, X_train, forecasting_horizon=len(test_idx))
-            y_pred = forecaster.predict(forecasting_horizon=len(test_idx), X=X_test)
+            y_pred = forecaster.predict(forecasting_horizon=len(test_idx))
 
             y_test_cols = [c for c in y_test.columns if c != "time"]
             y_pred_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time")]

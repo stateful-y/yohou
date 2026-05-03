@@ -48,7 +48,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -172,7 +172,7 @@ def _(mo):
 
 @app.cell
 def _(X, train_test_split, y):
-    y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=200, shuffle=False)
+    y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=200)
     forecasting_horizon = 24
 
     print(f"Training: {len(y_train)} obs")
@@ -227,9 +227,8 @@ def _(mo):
 
 
 @app.cell
-def _(X_test, forecaster, forecasting_horizon):
+def _(forecaster, forecasting_horizon):
     y_proba = forecaster.predict_class_proba(
-        X=X_test[:forecasting_horizon],
         forecasting_horizon=forecasting_horizon,
     )
     print("Probability predictions (first 12 steps):")
@@ -238,9 +237,8 @@ def _(X_test, forecaster, forecasting_horizon):
 
 
 @app.cell
-def _(X_test, forecaster, forecasting_horizon):
+def _(forecaster, forecasting_horizon):
     y_pred = forecaster.predict(
-        X=X_test[:forecasting_horizon],
         forecasting_horizon=forecasting_horizon,
     )
     print("Class label predictions:")
@@ -379,7 +377,7 @@ def _(mo):
 def _(X_test, forecaster, y_test):
     y_rolling_proba = forecaster.observe_predict_class_proba(
         y=y_test,
-        X=X_test,
+        X_actual=X_test,
     ).sort("time")
     print(f"Rolling predictions: {len(y_rolling_proba)} rows")
     return (y_rolling_proba,)

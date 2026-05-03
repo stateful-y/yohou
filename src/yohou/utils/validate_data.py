@@ -765,22 +765,22 @@ def validate_scorer_data(
 
 @overload
 def validate_splitter_data(
-    splitter: BaseSplitter, y: pl.DataFrame, X: pl.DataFrame | None
+    splitter: BaseSplitter, y: pl.DataFrame, X_actual: pl.DataFrame | None
 ) -> tuple[pl.DataFrame, pl.DataFrame | None]: ...
 
 
 @overload
 def validate_splitter_data(
-    splitter: BaseSplitter, y: None, X: pl.DataFrame | None
+    splitter: BaseSplitter, y: None, X_actual: pl.DataFrame | None
 ) -> tuple[None, pl.DataFrame | None]: ...
 
 
 def validate_splitter_data(
-    splitter: BaseSplitter, y: pl.DataFrame | None, X: pl.DataFrame | None
+    splitter: BaseSplitter, y: pl.DataFrame | None, X_actual: pl.DataFrame | None
 ) -> tuple[pl.DataFrame | None, pl.DataFrame | None]:
     """Validate and prepare input data for time series splitters.
 
-    Checks that ``y`` and ``X`` have valid ``"time"`` columns, consistent
+    Checks that ``y`` and ``X_actual`` have valid ``"time"`` columns, consistent
     panel structure, and matching panel groups.  When ``y`` is provided the
     time interval is inferred and stored on the splitter as ``interval_``.
 
@@ -790,14 +790,14 @@ def validate_splitter_data(
         The splitter instance.  ``interval_`` will be set on it when
         ``y`` is not ``None``.
     y : pl.DataFrame or None
-        Target time series.  When ``None``, only ``X`` is validated.
-    X : pl.DataFrame or None
+        Target time series.  When ``None``, only ``X_actual`` is validated.
+    X_actual : pl.DataFrame or None
         Exogenous features.  When ``None``, only ``y`` is validated.
 
     Returns
     -------
     tuple of (pl.DataFrame or None, pl.DataFrame or None)
-        Validated ``(y, X)`` pair.
+        Validated ``(y, X_actual)`` pair.
 
     Raises
     ------
@@ -815,19 +815,55 @@ def validate_splitter_data(
         check_time_column(y)
         check_panel_internal_consistency(y, "y")
 
-    if X is not None:
-        check_time_column(X)
-        check_panel_internal_consistency(X, "X")
+    if X_actual is not None:
+        check_time_column(X_actual)
+        check_panel_internal_consistency(X_actual, "X")
 
         if y is not None:
-            check_panel_groups_match(y, X)
+            check_panel_groups_match(y, X_actual)
 
     # Type narrowing: check_inputs requires non-None y
     if y is not None:
-        interval = check_inputs(y, X)
+        interval = check_inputs(y, X_actual)
         splitter.interval_ = interval
 
-    return y, X
+    return y, X_actual
+
+
+def _validate_X_future_structure(X_future: pl.DataFrame) -> None:
+    """Validate X_future has a time column of Date/Datetime type."""
+    if "time" not in X_future.columns:
+        raise ValueError(f"X_future must contain a 'time' column. Found columns: {list(X_future.columns)}")
+    if not isinstance(X_future["time"].dtype, pl.Datetime | pl.Date):
+        raise ValueError(
+            f"'time' column in X_future must have dtype pl.Datetime or pl.Date, but got {X_future['time'].dtype}"
+        )
+
+
+def _validate_X_forecast_structure(X_forecast: pl.DataFrame) -> None:
+    """Validate X_forecast has vintage_time and time columns of Date/Datetime type."""
+    for col_name in ("vintage_time", "time"):
+        if col_name not in X_forecast.columns:
+            raise ValueError(
+                f"X_forecast must contain a '{col_name}' column. Found columns: {list(X_forecast.columns)}"
+            )
+        if not isinstance(X_forecast[col_name].dtype, pl.Datetime | pl.Date):
+            raise ValueError(
+                f"'{col_name}' column in X_forecast must have dtype pl.Datetime or pl.Date, "
+                f"but got {X_forecast[col_name].dtype}"
+            )
+
+
+def _validate_step_source_schema(
+    df: pl.DataFrame,
+    expected_schema: dict[str, pl.DataType],
+    name: str,
+    exclude_cols: set[str],
+) -> None:
+    """Validate that a step source DataFrame matches the fitted schema."""
+    actual_schema = {col: dtype for col, dtype in df.schema.items() if col not in exclude_cols}
+    if actual_schema != expected_schema:
+        raise ValueError(f"{name} schema mismatch. Expected: {expected_schema}, got: {actual_schema}")
 
 
 @overload
@@ -838,6 +874,8 @@ def validate_forecaster_data(
     *,
     reset: Literal[True] = True,
     groups: list[str] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, None]: ...
 
 
@@ -849,6 +887,8 @@ def validate_forecaster_data(
     *,
     reset: Literal[True] = True,
     groups: list[str] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> tuple[None, pl.DataFrame | None, None]: ...
 
 
@@ -860,6 +900,8 @@ def validate_forecaster_data(
     *,
     reset: Literal[False],
     groups: list[str] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, list[str] | None]: ...
 
 
@@ -871,6 +913,8 @@ def validate_forecaster_data(
     *,
     reset: Literal[False],
     groups: list[str] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> tuple[None, pl.DataFrame | None, list[str] | None]: ...
 
 
@@ -881,6 +925,8 @@ def validate_forecaster_data(
     *,
     reset: bool = True,
     groups: list[str] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame | None, pl.DataFrame | None, list[str] | None]:
     """Validate and prepare input data for forecasters.
 
@@ -904,6 +950,12 @@ def validate_forecaster_data(
     groups : list of str or None, default=None
         Panel groups to validate. Normalized against the fitted groups
         when ``reset=False``.
+    X_future : pl.DataFrame or None, default=None
+        Known future features with a ``"time"`` column. Validated for
+        structure and, when fitted, schema consistency.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+        Validated for structure and, when fitted, schema consistency.
 
     Returns
     -------
@@ -924,6 +976,14 @@ def validate_forecaster_data(
     `check_inputs` : Low-level input validation helper.
 
     """
+    # Validate X_future structure
+    if X_future is not None:
+        _validate_X_future_structure(X_future)
+
+    # Validate X_forecast structure
+    if X_forecast is not None:
+        _validate_X_forecast_structure(X_forecast)
+
     if reset:
         # Fit context: validate and set interval
         # Type narrowing: check_inputs requires non-None y
@@ -958,37 +1018,49 @@ def validate_forecaster_data(
         # Handle panel data X (local + global schemas)
         if forecaster.groups_ is not None:
             # Validate local X columns (with panel prefixes)
-            if hasattr(forecaster, "local_X_schema_") and forecaster.local_X_schema_:
+            if hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_:
                 X_local = check_schema(
                     X,
-                    forecaster.local_X_schema_,
+                    forecaster.local_X_actual_schema_,
                     groups=forecaster.groups_,
                 )
 
             # Validate shared X columns (no prefixes)
             X_shared = None
-            if hasattr(forecaster, "shared_X_schema_") and forecaster.shared_X_schema_:
-                X_shared = check_schema(X, forecaster.shared_X_schema_)
+            if hasattr(forecaster, "shared_X_actual_schema_") and forecaster.shared_X_actual_schema_:
+                X_shared = check_schema(X, forecaster.shared_X_actual_schema_)
 
             # Reconstruct X with both local and shared columns
             if (
-                hasattr(forecaster, "local_X_schema_")
-                and forecaster.local_X_schema_
-                and hasattr(forecaster, "shared_X_schema_")
-                and forecaster.shared_X_schema_
+                hasattr(forecaster, "local_X_actual_schema_")
+                and forecaster.local_X_actual_schema_
+                and hasattr(forecaster, "shared_X_actual_schema_")
+                and forecaster.shared_X_actual_schema_
             ):
                 assert X_shared is not None
                 X = pl.concat(
                     [X_local, X_shared.select(~cs.by_name("time"))],
                     how="horizontal",
                 )
-            elif hasattr(forecaster, "local_X_schema_") and forecaster.local_X_schema_:
+            elif hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_:
                 X = X_local
-            elif hasattr(forecaster, "shared_X_schema_") and forecaster.shared_X_schema_:
+            elif hasattr(forecaster, "shared_X_actual_schema_") and forecaster.shared_X_actual_schema_:
                 X = X_shared
         # Non-panel data: simple schema check (if schema exists)
-        elif X is not None and hasattr(forecaster, "local_X_schema_") and forecaster.local_X_schema_:
-            X = check_schema(X, forecaster.local_X_schema_)
+        elif X is not None and hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_:
+            X = check_schema(X, forecaster.local_X_actual_schema_)
+
+    # Validate X_future schema against fitted state
+    if X_future is not None:
+        fitted_schema = getattr(forecaster, "_X_future_schema_", None)
+        if fitted_schema is not None:
+            _validate_step_source_schema(X_future, fitted_schema, "X_future", exclude_cols={"time"})
+
+    # Validate X_forecast schema against fitted state
+    if X_forecast is not None:
+        fitted_schema = getattr(forecaster, "_X_forecast_schema_", None)
+        if fitted_schema is not None:
+            _validate_step_source_schema(X_forecast, fitted_schema, "X_forecast", exclude_cols={"time", "vintage_time"})
 
     return y, X, groups
 

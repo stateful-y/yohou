@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -299,3 +300,101 @@ def _rewind_transformers_one(
         X_t = X_t_all[[-1]]
 
     return X_t
+
+
+def _derive_step_columns(
+    X_future: pl.DataFrame | None,
+    X_forecast: pl.DataFrame | None,
+    observation_times: pl.Series,
+    forecasting_horizon: int,
+    interval: str | timedelta,
+    *,
+    existing_columns: set[str] | None = None,
+) -> pl.DataFrame | None:
+    """Derive step-indexed columns from X_future and X_forecast.
+
+    Pure function with no forecaster dependency. Pivots raw X_future
+    (via windowing) and X_forecast (via ordinal ranking) into wide
+    step-indexed columns (``col_step_1`` through ``col_step_H``).
+
+    Parameters
+    ----------
+    X_future : pl.DataFrame or None
+        Known-future features with a ``"time"`` column. Deterministic
+        values that are windowed forward from each observation time.
+    X_forecast : pl.DataFrame or None
+        External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+        Pivoted by ordinal rank within each vintage group.
+    observation_times : pl.Series
+        Observation timestamps to derive step columns from.
+    forecasting_horizon : int
+        Number of forward steps (H) per observation time.
+    interval : str or timedelta
+        Time frequency between consecutive steps.
+    existing_columns : set of str or None, default=None
+        Column names already present (e.g., X_actual columns). Used for
+        collision detection against generated step column names.
+
+    Returns
+    -------
+    pl.DataFrame or None
+        Wide DataFrame with ``[time, <col>_step_1, ..., <col>_step_H]``
+        combining step columns from both sources. Returns ``None`` when
+        both ``X_future`` and ``X_forecast`` are ``None``.
+
+    Raises
+    ------
+    ValueError
+        If any generated step column name collides with ``existing_columns``
+        or appears in both X_future and X_forecast sources.
+
+    """
+    from yohou.utils.pivot import pivot_forecasts, window_future  # noqa: PLC0415
+
+    if X_future is None and X_forecast is None:
+        return None
+
+    parts: list[pl.DataFrame] = []
+    source_names: dict[str, str] = {}  # col_name → source label
+
+    if X_future is not None:
+        future_pivoted = window_future(X_future, observation_times, forecasting_horizon, interval)
+        step_cols = [c for c in future_pivoted.columns if c != "time"]
+        for c in step_cols:
+            source_names[c] = "X_future"
+        parts.append(future_pivoted)
+
+    if X_forecast is not None:
+        forecast_pivoted = pivot_forecasts(X_forecast)
+        # Filter to observation_times only (left join preserves order)
+        obs_df = pl.DataFrame({"time": observation_times})
+        forecast_pivoted = obs_df.join(forecast_pivoted, on="time", how="left")
+        step_cols = [c for c in forecast_pivoted.columns if c != "time"]
+        for c in step_cols:
+            if c in source_names:
+                msg = f"Column name collision between X_future and X_forecast: '{c}' is produced by both sources."
+                raise ValueError(msg)
+            source_names[c] = "X_forecast"
+        parts.append(forecast_pivoted)
+
+    # Check collisions against existing columns (e.g., X_actual)
+    if existing_columns is not None:
+        collisions = set(source_names.keys()) & existing_columns
+        if collisions:
+            details = ", ".join(f"'{c}' (from {source_names[c]})" for c in sorted(collisions))
+            msg = (
+                f"Step column names collide with existing columns: {details}. "
+                f"Rename the source columns to avoid conflicts."
+            )
+            raise ValueError(msg)
+
+    # Combine parts horizontally
+    if len(parts) == 1:
+        return parts[0]
+
+    # Both X_future and X_forecast present: concat horizontally
+    result = pl.concat(
+        [parts[0], parts[1].select(~cs.by_name("time"))],
+        how="horizontal",
+    )
+    return result

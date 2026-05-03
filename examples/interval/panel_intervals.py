@@ -45,7 +45,7 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
+    from yohou.model_selection import train_test_split
 
     from copy import deepcopy
 
@@ -96,7 +96,7 @@ def _(fetch_kdd_cup, inspect_panel, mo, train_test_split):
     _bunch = fetch_kdd_cup(n_groups=3)
     aq = _bunch.frame.drop_nulls().tail(300)
     _globals, groups = inspect_panel(aq)
-    y_train, y_test = train_test_split(aq, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(aq, test_size=0.15)
     horizon = len(y_test)
     coverage_rates = [0.9]
 
