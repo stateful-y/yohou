@@ -1909,7 +1909,7 @@ class BaseHardLabelScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
             out.append(pl.Series(f"{prefix}_fn_{cls}", fn))
 
     def _aggregate_scores(
-        self, raw_indicators: pl.DataFrame, context: ScoringContext | None = None
+        self, raw_scores: pl.DataFrame, context: ScoringContext | None = None
     ) -> float | pl.DataFrame:
         """Aggregate confusion indicators into final metric scores.
 
@@ -1921,7 +1921,7 @@ class BaseHardLabelScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         dims = self._normalize_agg_methods(self.aggregation_method)
 
         # 1. Collapse rows via SUM (not mean)
-        result = self._collapse_rows_sum(raw_indicators, context, dims)
+        result = self._collapse_rows_sum(raw_scores, context, dims)
 
         # 2 & 3. Compute metric from counts and apply class averaging
         result = self._compute_and_average(result)

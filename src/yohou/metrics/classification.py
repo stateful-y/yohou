@@ -83,6 +83,7 @@ class Precision(BaseHardLabelScorer):
     _lower_is_better = False
 
     def _compute_metric_from_counts(self, counts: pl.DataFrame) -> pl.DataFrame:
+        """Compute precision from confusion counts."""
         return counts.select(
             pl
             .when(pl.col("tp") + pl.col("fp") == 0)
@@ -156,6 +157,7 @@ class Recall(BaseHardLabelScorer):
     _lower_is_better = False
 
     def _compute_metric_from_counts(self, counts: pl.DataFrame) -> pl.DataFrame:
+        """Compute recall from confusion counts."""
         return counts.select(
             pl
             .when(pl.col("tp") + pl.col("fn") == 0)
@@ -233,6 +235,7 @@ class FBetaScore(BaseHardLabelScorer):
 
     @property
     def _metric_name(self) -> str:
+        """Return metric name based on beta value."""
         if self.beta == 1.0:
             return "f1"
         if self.beta == 2.0:
@@ -258,6 +261,7 @@ class FBetaScore(BaseHardLabelScorer):
         self.beta = beta
 
     def _compute_metric_from_counts(self, counts: pl.DataFrame) -> pl.DataFrame:
+        """Compute F-beta score from confusion counts."""
         b2 = self.beta**2
         return counts.select(
             pl
@@ -352,6 +356,7 @@ class Accuracy(BaseHardLabelScorer):
         )
 
     def _compute_metric_from_counts(self, counts: pl.DataFrame) -> pl.DataFrame:
+        """Compute accuracy from confusion counts."""
         return counts.select(
             pl
             .when(pl.col("tp") + pl.col("fp") == 0)
@@ -424,6 +429,7 @@ class RocAuc(BaseRankingScorer):
         y_proba: np.ndarray,
         sample_weight: np.ndarray | None = None,
     ) -> float:
+        """Compute ROC AUC via sklearn."""
         return float(roc_auc_score(y_true_binary, y_proba, sample_weight=sample_weight))
 
 
@@ -491,4 +497,5 @@ class PrAuc(BaseRankingScorer):
         y_proba: np.ndarray,
         sample_weight: np.ndarray | None = None,
     ) -> float:
+        """Compute PR AUC via sklearn."""
         return float(average_precision_score(y_true_binary, y_proba, sample_weight=sample_weight))
