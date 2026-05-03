@@ -820,7 +820,26 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Concatenated predictions with ``"vintage_time"`` set to the
             first step's value and tail-trimmed to ``forecasting_horizon``.
 
+        Raises
+        ------
+        ValueError
+            If ``forecasting_horizon > fit_forecasting_horizon_`` and the
+            forecaster was fitted with ``X_forecast``. Recursive prediction
+            cannot re-derive vintage-dependent forecast columns across
+            blocks. Use ``ForecastedFeatureForecaster`` instead.
+
         """
+        if forecasting_horizon > self.fit_forecasting_horizon_ and self._X_forecast_raw_ is not None:
+            msg = (
+                f"Recursive prediction (forecasting_horizon={forecasting_horizon} > "
+                f"fit_forecasting_horizon={self.fit_forecasting_horizon_}) is not "
+                f"supported when X_forecast was provided at fit time. X_forecast "
+                f"step columns are vintage-dependent and cannot be re-derived "
+                f"across recursive blocks. Use ForecastedFeatureForecaster to "
+                f"compose a forecaster that generates its own step forecasts."
+            )
+            raise ValueError(msg)
+
         forecaster = deepcopy(self)
 
         y_pred = pl.DataFrame()

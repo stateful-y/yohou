@@ -369,9 +369,6 @@ class ForecastedFeatureForecaster(BaseForecaster):
             #    forecaster should always base its state on actuals.
             # 3. The "predicted" strategy only governs what X the target_forecaster was
             #    *trained* on: the feature_forecaster's runtime state should track reality.
-            # TODO: This might be more complicated than just predict+observe. It depends on
-            # how predictions are going to be made (e.g., rolling vs single-shot, whether
-            # actual X becomes available after prediction, etc.)
             self.feature_forecaster_.observe(y=X_actual[n_split:], X_actual=None)
 
         # Store standard fitted attributes

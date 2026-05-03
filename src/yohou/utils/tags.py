@@ -128,10 +128,10 @@ class ForecasterTags:
     supports_vintage_weight : bool, default=False
         Whether the forecaster supports vintage-based weighting of observations.
     ignores_exogenous : bool, default=False
-        Whether the forecaster ignores exogenous features ``X``.
+        Whether the forecaster ignores exogenous features ``X_actual``.
         When ``True``, the forecaster does not use exogenous features
-        and ``X=None`` is always valid at fit time.  When ``False``
-        (default), ``X=None`` is only valid when ``target_as_feature``
+        and ``X_actual=None`` is always valid at fit time. When ``False``
+        (default), ``X_actual=None`` is only valid when ``target_as_feature``
         is not ``None`` (so the target itself provides features).
     tracks_observations : bool, default=True
         Whether the forecaster tracks observations in the standard way

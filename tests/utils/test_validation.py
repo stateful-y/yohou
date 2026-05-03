@@ -1575,16 +1575,16 @@ class TestCheckExogenousRequired:
     """Tests for check_exogenous_required."""
 
     def test_none_X_with_positive_horizon_raises(self):
-        """X=None with observation_horizon > 0 raises ValueError."""
+        """X_actual=None with observation_horizon > 0 raises ValueError."""
         with pytest.raises(ValueError):
             check_exogenous_required(None, observation_horizon=5, context="predict")
 
     def test_none_X_with_zero_horizon_passes(self):
-        """X=None with observation_horizon=0 passes without error."""
+        """X_actual=None with observation_horizon=0 passes without error."""
         check_exogenous_required(None, observation_horizon=0, context="predict")
 
     def test_provided_X_with_positive_horizon_passes(self):
-        """X provided with positive horizon passes without error."""
+        """X_actual provided with positive horizon passes without error."""
         X = pl.DataFrame({"time": [datetime(2020, 1, 1)], "val": [1.0]})
         check_exogenous_required(X, observation_horizon=5, context="predict")
 

@@ -669,3 +669,40 @@ class TestEdgeCases:
         schema_cols = set(f.local_X_t_schema_.keys())
         # Step columns must be a subset of the schema
         assert f._step_column_names_.issubset(schema_cols), f"Missing step cols: {f._step_column_names_ - schema_cols}"
+
+    def test_recursive_predict_raises_with_X_forecast(self, electricity_data):
+        """Recursive predict raises ValueError when X_forecast was used at fit."""
+        d = electricity_data
+        f, fh = _build_forecaster()
+        f.fit(
+            y=d["y_train"],
+            X_actual=d["X_actual_train"],
+            forecasting_horizon=fh,
+            X_future=d["X_future_full"],
+            X_forecast=d["X_forecast_train"],
+        )
+
+        with pytest.raises(ValueError, match="Recursive prediction"):
+            f.predict(forecasting_horizon=fh + 1)
+
+    def test_recursive_predict_allowed_with_X_future_only(self, electricity_data):
+        """Recursive predict works when only X_future was used (no X_forecast)."""
+        d = electricity_data
+        _, fh = _build_forecaster()
+        # Build a forecaster without X_actual (recursive observe cannot
+        # supply X_actual, so the feature_transformer must not depend on
+        # external actual features).
+        f = PointReductionForecaster(
+            estimator=HistGradientBoostingRegressor(random_state=SEED),
+            feature_transformer=LagTransformer([1, 2, 3]),
+            reduction_strategy="direct",
+        )
+        f.fit(
+            y=d["y_train"],
+            forecasting_horizon=fh,
+            X_future=d["X_future_full"],
+        )
+
+        # Should NOT raise
+        result = f.predict(forecasting_horizon=fh + 1)
+        assert len(result) == fh + 1

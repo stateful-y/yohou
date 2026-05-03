@@ -641,14 +641,14 @@ def check_exogenous_required(
     observation_horizon: int,
     context: str,
 ) -> None:
-    """Validate X is provided when required for recursive prediction.
+    """Validate X_actual is provided when required for recursive prediction.
 
     Consolidates duplicated validation in point and interval forecasters.
 
     Parameters
     ----------
     X : pl.DataFrame or None
-        Exogenous features.
+        Actual exogenous features (``X_actual``).
     observation_horizon : int
         Observation horizon value.
     context : str
@@ -657,7 +657,8 @@ def check_exogenous_required(
     Raises
     ------
     ValueError
-        If X is None but observation_horizon > 0 (recursive prediction needs X).
+        If X is None but observation_horizon > 0 (recursive prediction needs
+        X_actual).
 
     See Also
     --------
@@ -668,8 +669,8 @@ def check_exogenous_required(
     if observation_horizon > 0 and X is None:
         raise ValueError(
             f"For recursive predictions with observation_horizon > 0, "
-            f"X must be provided for {context}. "
-            f"Got observation_horizon={observation_horizon} but X=None."
+            f"X_actual must be provided for {context}. "
+            f"Got observation_horizon={observation_horizon} but X_actual=None."
         )
 
 
