@@ -9,11 +9,14 @@ from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks as _run_checks_base
 from yohou.metrics import (
+    MaxAbsoluteError,
     MeanAbsoluteError,
     MeanAbsolutePercentageError,
     MeanAbsoluteScaledError,
+    MeanDirectionalAccuracy,
     MeanSquaredError,
     MedianAbsoluteError,
+    R2Score,
     RootMeanSquaredError,
     RootMeanSquaredScaledError,
     SymmetricMeanAbsolutePercentageError,
@@ -1032,3 +1035,306 @@ class TestMAETimeWeight:
         score = mae.score(y_true, y_pred, time_weight=weight_df)
         assert isinstance(score, float)
         assert score > 0
+
+
+class TestMaxAbsoluteErrorSystematic:
+    def test_max_ae_systematic(self, y_true_y_pred):
+        """Run systematic checks for MaxAbsoluteError."""
+        y_truth, y_pred = y_true_y_pred
+        scorer = MaxAbsoluteError()
+        run_checks(scorer, y_truth, y_pred)
+
+
+class TestMaxAbsoluteError:
+    def test_max_ae_basic_computation(self, y_true_y_pred):
+        """MaxAbsoluteError should return the largest absolute error."""
+        y_true, y_pred = y_true_y_pred
+        # Errors: |10-12|=2, |20-19|=1, |30-28|=2
+        max_ae = MaxAbsoluteError()
+        max_ae.fit(y_true)
+        score = max_ae.score(y_true, y_pred)
+        assert score == 2.0
+
+    def test_max_ae_large_outlier(self):
+        """MaxAbsoluteError should capture the outlier error."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
+            "value": [10.0, 20.0, 30.0, 40.0, 50.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
+            "value": [11.0, 21.0, 31.0, 41.0, 100.0],
+        })
+
+        max_ae = MaxAbsoluteError()
+        max_ae.fit(y_true)
+        score = max_ae.score(y_true, y_pred)
+
+        # Max error is |50 - 100| = 50
+        assert score == 50.0
+
+    def test_max_ae_perfect_prediction(self):
+        """MaxAbsoluteError should be zero for perfect predictions."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+
+        max_ae = MaxAbsoluteError()
+        max_ae.fit(y_true)
+        score = max_ae.score(y_true, y_pred)
+        assert np.isclose(score, 0.0)
+
+    def test_max_ae_vs_mae(self, y_true_y_pred):
+        """MaxAbsoluteError should always be >= MAE."""
+        y_true, y_pred = y_true_y_pred
+
+        max_ae = MaxAbsoluteError()
+        max_ae.fit(y_true)
+        max_score = max_ae.score(y_true, y_pred)
+
+        mae = MeanAbsoluteError()
+        mae.fit(y_true)
+        mae_score = mae.score(y_true, y_pred)
+
+        assert max_score >= mae_score
+
+    def test_max_ae_componentwise(self, y_true_y_pred):
+        """MaxAbsoluteError with componentwise returns per-timestep max."""
+        y_true, y_pred = y_true_y_pred
+        max_ae = MaxAbsoluteError(aggregation_method=["componentwise"])
+        max_ae.fit(y_true)
+        result = max_ae.score(y_true, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+        assert "max_ae" in result.columns
+
+    def test_max_ae_stepwise_vintagewise(self, y_true_y_pred):
+        """MaxAbsoluteError with stepwise+vintagewise returns per-component max."""
+        y_true, y_pred = y_true_y_pred
+        max_ae = MaxAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+        max_ae.fit(y_true)
+        result = max_ae.score(y_true, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        assert result.shape == (1, 1)
+        # Max of |2, 1, 2| = 2
+        assert result["value"][0] == 2.0
+
+
+class TestR2ScoreSystematic:
+    def test_r2_systematic(self, y_true_y_pred):
+        """Run systematic checks for R2Score."""
+        y_truth, y_pred = y_true_y_pred
+        scorer = R2Score()
+        run_checks(scorer, y_truth, y_pred)
+
+
+class TestR2Score:
+    def test_r2_perfect_prediction(self):
+        """R2 should be 1.0 for perfect predictions."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        r2 = R2Score()
+        r2.fit(y_true)
+        score = r2.score(y_true, y_pred)
+        assert np.isclose(score, 1.0)
+
+    def test_r2_mean_prediction(self):
+        """R2 should be 0.0 when predictions equal the mean."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        mean_val = 20.0
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [mean_val, mean_val, mean_val],
+        })
+        r2 = R2Score()
+        r2.fit(y_true)
+        score = r2.score(y_true, y_pred)
+        assert np.isclose(score, 0.0)
+
+    def test_r2_worse_than_mean(self):
+        """R2 should be negative when predictions are worse than the mean."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [30.0, 10.0, 10.0],
+        })
+        r2 = R2Score()
+        r2.fit(y_true)
+        score = r2.score(y_true, y_pred)
+        assert score < 0
+
+    def test_r2_constant_true_values(self):
+        """R2 should return 0.0 when true values are constant (SS_tot=0)."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [20.0, 20.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "value": [19.0, 21.0, 20.0],
+        })
+        r2 = R2Score()
+        r2.fit(y_true)
+        score = r2.score(y_true, y_pred)
+        assert score == 0.0
+
+    def test_r2_higher_is_better(self):
+        """R2Score should have lower_is_better=False."""
+        r2 = R2Score()
+        tags = r2.__sklearn_tags__()
+        assert tags.scorer_tags.lower_is_better is False
+
+    def test_r2_multiple_columns(self, scorer_data_factory):
+        """R2 should work with multiple target columns."""
+        y, _ = scorer_data_factory(length=50, n_targets=3, seed=42)
+        y_pred = y.clone()
+        y_pred = y_pred.with_columns([
+            (pl.col(col) + np.random.randn(50) * 0.5).alias(col) for col in y_pred.columns if col != "time"
+        ])
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y["time"][0]))
+
+        r2 = R2Score()
+        r2.fit(y)
+        score = r2.score(y, y_pred)
+        assert isinstance(score, float)
+        # Small noise → high R2
+        assert score > 0.9
+
+    def test_r2_stepwise_vintagewise(self, y_true_y_pred):
+        """R2 with stepwise+vintagewise returns per-component DataFrame."""
+        y_true, y_pred = y_true_y_pred
+        r2 = R2Score(aggregation_method=["stepwise", "vintagewise"])
+        r2.fit(y_true)
+        result = r2.score(y_true, y_pred)
+
+        assert isinstance(result, pl.DataFrame)
+        assert result.shape == (1, 1)
+
+
+class TestMDASystematic:
+    def test_mda_systematic(self):
+        """Run systematic checks for MeanDirectionalAccuracy."""
+        y_truth = pl.DataFrame({
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)],
+            "value": np.cumsum(np.random.randn(10)).tolist(),
+        })
+        y_pred = y_truth.clone()
+        y_pred = y_pred.with_columns((pl.col("value") + np.random.randn(10) * 0.1).alias("value"))
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y_truth["time"][0]))
+        scorer = MeanDirectionalAccuracy()
+        run_checks(scorer, y_truth, y_pred)
+
+
+class TestMDA:
+    def test_mda_perfect_direction(self):
+        """MDA should be 1.0 when all directions match."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "value": [10.0, 15.0, 12.0, 18.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "value": [10.0, 16.0, 11.0, 19.0, 21.0],
+        })
+        mda = MeanDirectionalAccuracy()
+        mda.fit(y_true)
+        score = mda.score(y_true, y_pred)
+        assert score == 1.0
+
+    def test_mda_all_wrong(self):
+        """MDA should be 0.0 when all directions are wrong."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "value": [10.0, 15.0, 12.0, 18.0, 20.0],
+        })
+        # Reverse every direction
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "value": [10.0, 8.0, 13.0, 11.0, 9.0],
+        })
+        mda = MeanDirectionalAccuracy()
+        mda.fit(y_true)
+        score = mda.score(y_true, y_pred)
+        assert score == 0.0
+
+    def test_mda_partial(self):
+        """MDA should return correct fraction for partial match."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "value": [10.0, 15.0, 12.0, 18.0, 20.0],
+        })
+        # diffs: +5, -3, +6, +2
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "value": [10.0, 14.0, 15.0, 17.0, 19.0],
+        })
+        # pred diffs: +4, +1, +2, +2  → match: [T, F, T, T] = 3/4
+        mda = MeanDirectionalAccuracy()
+        mda.fit(y_true)
+        score = mda.score(y_true, y_pred)
+        assert score == 0.75
+
+    def test_mda_too_few_rows(self):
+        """MDA should return 0.0 with fewer than 2 rows."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "value": [10.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "value": [12.0],
+        })
+        mda = MeanDirectionalAccuracy()
+        mda.fit(y_true)
+        score = mda.score(y_true, y_pred)
+        assert score == 0.0
+
+    def test_mda_higher_is_better(self):
+        """MDA should have lower_is_better=False."""
+        mda = MeanDirectionalAccuracy()
+        tags = mda.__sklearn_tags__()
+        assert tags.scorer_tags.lower_is_better is False
+
+    def test_mda_multiple_columns(self, scorer_data_factory):
+        """MDA should work with multiple target columns."""
+        y, _ = scorer_data_factory(length=50, n_targets=2, seed=42)
+        y_pred = y.clone()
+        y_pred = y_pred.with_columns([
+            (pl.col(col) + np.random.randn(50) * 0.1).alias(col) for col in y_pred.columns if col != "time"
+        ])
+        y_pred = y_pred.with_columns(vintage_time=pl.lit(y["time"][0]))
+
+        mda = MeanDirectionalAccuracy()
+        mda.fit(y)
+        score = mda.score(y, y_pred)
+        assert isinstance(score, float)
+        assert 0 <= score <= 1

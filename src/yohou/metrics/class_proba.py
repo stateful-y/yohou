@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BrierScore",
-    "Accuracy",
     "LogLoss",
+    "RankedProbabilityScore",
 ]
 
 
@@ -235,37 +235,46 @@ class BrierScore(BaseClassProbaScorer):
         return pl.DataFrame(scores_dict)
 
 
-class Accuracy(BaseClassProbaScorer):
-    r"""Categorical accuracy from class-probability forecasts.
+class RankedProbabilityScore(BaseClassProbaScorer):
+    r"""Ranked Probability Score for class-probability forecasts.
 
-    Computes the fraction of time steps where the predicted class (argmax
-    of probabilities) matches the true class.
+    Measures the quality of predicted probability distributions for ordered
+    (ordinal) classes by comparing cumulative probability distributions.
+    Generalizes the Brier score to ordinal multi-class settings by penalizing
+    predictions that place probability mass far from the true class.
 
-    $$\\text{Accuracy} = \\frac{1}{n}\\sum_{i=1}^{n}\\mathbb{1}[\\hat{y}_i = y_i]$$
+    The RPS for a single observation is:
 
-    where $\\hat{y}_i = \\arg\\max_k \\hat{p}_{ik}$ is the predicted class.
+    $$\text{RPS} = \frac{1}{K-1}\sum_{k=1}^{K-1}\left(\sum_{j=1}^{k}\hat{p}_{j} - \sum_{j=1}^{k}o_{j}\right)^2$$
+
+    where $\hat{p}_j$ is the predicted probability for class $j$, $o_j$ is
+    1 if the true class is $j$ and 0 otherwise, and $K$ is the number of
+    classes. The normalization by $K-1$ follows the standard forecasting
+    convention.
 
     Parameters
     ----------
+    class_order : list of str or None, default=None
+        Explicit ordering of class labels for the cumulative sum. When
+        None, classes are ordered by their column order in ``y_pred``
+        (i.e. the ``{target}_proba_{class}`` column order).
     aggregation_method : list of str or str, default="all"
         Dimensions to aggregate over. See `BaseClassProbaScorer`.
-    groups : list of str or None, default=None
-        Panel groups to include. See `BaseClassProbaScorer`.
-    component_names : list of str or None, default=None
-        Components to include. See `BaseClassProbaScorer`.
-    group_weight : dict or None, default=None
-        Panel group weights. See `BaseClassProbaScorer`.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
 
     Attributes
     ----------
     lower_is_better : bool
-        Always False for accuracy (higher is better).
+        Always True for RPS.
 
     Examples
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.metrics import Accuracy
+    >>> from yohou.metrics import RankedProbabilityScore
     >>> y_true = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
     ...     "weather": ["sunny", "rainy", "cloudy"],
@@ -277,34 +286,38 @@ class Accuracy(BaseClassProbaScorer):
     ...     "weather_proba_rainy": [0.2, 0.8, 0.1],
     ...     "weather_proba_cloudy": [0.1, 0.1, 0.7],
     ... })
-    >>> scorer = Accuracy()
+    >>> scorer = RankedProbabilityScore()
     >>> _ = scorer.fit(y_true)
-    >>> scorer.score(y_true, y_pred)
-    1.0
+    >>> scorer.score(y_true, y_pred)  # doctest: +ELLIPSIS
+    0.041...
 
     Notes
     -----
-    - Returns 1.0 for perfect predictions, 0.0 for all wrong.
-    - Does not penalize prediction confidence, only correctness.
-    - For proper scoring that rewards calibration, use `LogLoss` or
-      `BrierScore` instead.
+    - RPS is a proper scoring rule for ordinal outcomes.
+    - For K=2, RPS equals the Brier score (up to normalization).
+    - Sensitive to the distance between predicted and true class in the
+      ordinal ranking, unlike Brier score which treats all misclassifications
+      equally.
+    - The ``class_order`` parameter lets you specify a meaningful ordering
+      for ordinal variables (e.g. ``["low", "medium", "high"]``).
 
     See Also
     --------
+    `BrierScore` : Brier score (unordered multi-class).
     `LogLoss` : Logarithmic loss (cross-entropy).
-    `BrierScore` : Multi-class Brier score.
 
     """
 
     _parameter_constraints: dict = {
         **BaseClassProbaScorer._parameter_constraints,
+        "class_order": [list, None],
     }
 
-    _metric_name = "accuracy"
-    _lower_is_better = False
+    _metric_name = "rps"
 
     def __init__(
         self,
+        class_order: list[str] | None = None,
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
@@ -314,9 +327,10 @@ class Accuracy(BaseClassProbaScorer):
             groups=groups,
             components=components,
         )
+        self.class_order = class_order
 
     def _compute_raw_errors(self, y_truth, y_pred):
-        """Compute per-row accuracy values."""
+        """Compute per-row RPS values."""
         target_cols = self._extract_target_columns(y_truth)
         scores_dict: dict[str, list[float]] = {}
 
@@ -324,12 +338,32 @@ class Accuracy(BaseClassProbaScorer):
             proba_cols, class_labels = self._extract_class_proba_columns(y_pred, target_col)
             true_labels = y_truth[target_col].cast(pl.String)
 
+            # Determine class order
+            if self.class_order is not None:
+                order = self.class_order
+                # Reorder proba_cols to match class_order
+                label_to_col = dict(zip(class_labels, proba_cols, strict=True))
+                ordered_cols = [label_to_col[label] for label in order]
+                ordered_labels = order
+            else:
+                ordered_cols = proba_cols
+                ordered_labels = class_labels
+
+            k = len(ordered_labels)
+            norm = max(k - 1, 1)  # Avoid division by zero for K=1
+
             per_row_scores = []
             for row_idx in range(len(y_truth)):
                 true_label = true_labels[row_idx]
-                probs = [float(y_pred[pc][row_idx]) for pc in proba_cols]
-                pred_label = class_labels[int(np.argmax(probs))]
-                per_row_scores.append(1.0 if pred_label == true_label else 0.0)
+                probs = np.array([float(y_pred[c][row_idx]) for c in ordered_cols])
+                one_hot = np.array([1.0 if label == true_label else 0.0 for label in ordered_labels])
+
+                # Cumulative sums
+                cum_pred = np.cumsum(probs)[:-1]  # K-1 values
+                cum_true = np.cumsum(one_hot)[:-1]
+
+                rps = float(np.sum((cum_pred - cum_true) ** 2)) / norm
+                per_row_scores.append(rps)
 
             scores_dict[target_col] = per_row_scores
 

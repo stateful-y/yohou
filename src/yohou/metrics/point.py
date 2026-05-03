@@ -11,7 +11,7 @@ import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
 if TYPE_CHECKING:
-    pass
+    from yohou.metrics._context import ScoringContext
 
 from yohou.utils import validate_scorer_data
 from yohou.utils._compat import Interval, _fit_context
@@ -19,11 +19,14 @@ from yohou.utils._compat import Interval, _fit_context
 from .base import BasePointScorer
 
 __all__ = [
+    "MaxAbsoluteError",
     "MeanAbsoluteError",
     "MeanAbsolutePercentageError",
     "MeanAbsoluteScaledError",
+    "MeanDirectionalAccuracy",
     "MeanSquaredError",
     "MedianAbsoluteError",
+    "R2Score",
     "RootMeanSquaredError",
     "RootMeanSquaredScaledError",
     "SymmetricMeanAbsolutePercentageError",
@@ -1096,3 +1099,492 @@ class MedianAbsoluteError(BasePointScorer):
             result = self._rename_metric_columns(result)
 
         return result
+
+
+class MaxAbsoluteError(BasePointScorer):
+    r"""Maximum Absolute Error metric for point forecasts.
+
+    Computes the maximum of absolute differences between predictions and actual
+    values. This metric captures worst case prediction error, providing a bound
+    on how far off the forecast can be.
+
+    The MaxAE is defined as:
+
+    $$\text{MaxAE} = \max_{i=1}^{n}|y_i - \hat{y}_i|$$
+
+    where $y_i$ is the actual value, $\hat{y}_i$ is the predicted value, and
+    $n$ is the number of observations.
+
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "stepwise": Aggregate across forecasting steps.
+        - "vintagewise": Aggregate across vintages (observed times).
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["stepwise", "vintagewise", "componentwise", "groupwise"].
+        Example outputs:
+        - ["stepwise", "vintagewise"]: Per-component (and per-group) DataFrame.
+        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
+        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
+        - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
+        - "all": Scalar float (hierarchically aggregated for panel data).
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
+
+    Attributes
+    ----------
+    lower_is_better : bool
+        Always True for MaxAE.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MaxAbsoluteError
+    >>> y_true = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [10.0, 20.0, 30.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [12.0, 19.0, 25.0],
+    ... })
+    >>> max_ae = MaxAbsoluteError()
+    >>> _ = max_ae.fit(y_true)
+    >>> max_ae.score(y_true, y_pred)
+    5.0
+
+    Notes
+    -----
+    - MaxAE captures the worst case prediction error in a forecast
+    - Highly sensitive to outliers by design
+    - Interpretable in the same units as the target variable
+    - Row collapse uses ``max`` (not ``mean``), while component and group collapse
+      use weighted ``mean`` (consistent with the pipeline convention)
+
+    See Also
+    --------
+    `MeanAbsoluteError` : Mean Absolute Error, average case measure
+    `MedianAbsoluteError` : Median Absolute Error, robust central tendency measure
+
+    """
+
+    _parameter_constraints: dict = {
+        **BasePointScorer._parameter_constraints,
+    }
+
+    _metric_name = "max_ae"
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method,
+            groups=groups,
+            components=components,
+        )
+
+    def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute per-row absolute errors."""
+        return (y_truth - y_pred).select(pl.all().abs())
+
+    def _collapse_rows(
+        self,
+        df: pl.DataFrame,
+        context: ScoringContext | None,
+        dims: set[str],
+    ) -> pl.DataFrame:
+        """Collapse row dimensions using max instead of mean."""
+        collapse_steps = "stepwise" in dims
+        collapse_vintages = "vintagewise" in dims
+
+        if not collapse_steps and not collapse_vintages:
+            return df
+
+        meta_names = {"coverage_rate"}
+        meta_cols = [c for c in df.columns if c in meta_names]
+        val_cols = [c for c in df.columns if c not in meta_names]
+
+        if collapse_steps and collapse_vintages:
+            if meta_cols:
+                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).max() for c in val_cols])
+            return df.select(pl.all().max())
+
+        # Partial collapse: keep one dimension, collapse the other
+        keep_dim = "forecasting_step" if collapse_vintages else "vintage_time"
+        dim_values = getattr(context, keep_dim, None) if context is not None else None
+
+        if dim_values is None:
+            if meta_cols:
+                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).max() for c in val_cols])
+            return df.select(pl.all().max())
+
+        # Tile context values for interval data (coverage_rate repeats rows)
+        dim_list = dim_values.to_list()
+        if "coverage_rate" in df.columns:
+            n_rates = df["coverage_rate"].n_unique()
+            dim_list = dim_list * n_rates
+
+        group_cols = [keep_dim] + meta_cols
+
+        return (
+            df
+            .with_columns(pl.Series(keep_dim, dim_list))
+            .group_by(group_cols, maintain_order=True)
+            .agg([pl.col(c).max() for c in val_cols])
+            .sort(keep_dim)
+        )
+
+
+class R2Score(BasePointScorer):
+    r"""R-squared (Coefficient of Determination) metric for point forecasts.
+
+    Computes the proportion of variance in the true values that is explained
+    by the predictions. A score of 1.0 indicates perfect prediction, 0.0
+    indicates performance equivalent to predicting the mean, and negative
+    values indicate worse performance than predicting the mean.
+
+    The R² is defined as:
+
+    $$R^2 = 1 - \frac{\sum_{i=1}^{n}(y_i - \hat{y}_i)^2}{\sum_{i=1}^{n}(y_i - \bar{y})^2}$$
+
+    where $y_i$ is the actual value, $\hat{y}_i$ is the predicted value,
+    $\bar{y}$ is the mean of actual values, and $n$ is the number of observations.
+
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "stepwise": Aggregate across forecasting steps.
+        - "vintagewise": Aggregate across vintages (observed times).
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["stepwise", "vintagewise", "componentwise", "groupwise"].
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
+
+    Attributes
+    ----------
+    lower_is_better : bool
+        Always False for R². Higher values indicate better fit.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import R2Score
+    >>> y_true = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [10.0, 20.0, 30.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [12.0, 18.0, 31.0],
+    ... })
+    >>> r2 = R2Score()
+    >>> _ = r2.fit(y_true)
+    >>> r2.score(y_true, y_pred)  # doctest: +ELLIPSIS
+    0.955
+
+    Notes
+    -----
+    - R² = 1.0 means perfect prediction
+    - R² = 0.0 means predictions are as good as predicting the mean
+    - R² < 0 means predictions are worse than predicting the mean
+    - When SS_tot = 0 (constant true values), returns 0.0 by convention
+    - Overrides ``score()`` because computing the denominator (SS_tot) requires
+      access to the full ``y_truth`` column, not just per-row errors
+
+    See Also
+    --------
+    `MeanSquaredError` : Mean Squared Error, the numerator component of R²
+    `MeanAbsoluteError` : Mean Absolute Error, alternative regression metric
+
+    """
+
+    _parameter_constraints: dict = {
+        **BasePointScorer._parameter_constraints,
+    }
+
+    _metric_name = "r2"
+
+    lower_is_better = False
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method,
+            groups=groups,
+            components=components,
+        )
+
+    def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Not used directly. R² overrides score()."""
+        return (y_truth - y_pred).select(pl.all().pow(2))
+
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:  # type: ignore
+        """Compute R-squared score.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True values with "time" column.
+        y_pred : pl.DataFrame
+            Predicted values with "time" column.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        float or pl.DataFrame
+            R² score. 1.0 for perfect predictions, 0.0 for mean-level predictions.
+
+        """
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, context = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
+
+        # Compute R² per component
+        r2_values = {}
+        for col in y_truth.columns:
+            truth = y_truth[col].to_numpy().astype(np.float64)
+            pred = y_pred[col].to_numpy().astype(np.float64)
+            ss_res = np.sum((truth - pred) ** 2)
+            ss_tot = np.sum((truth - np.mean(truth)) ** 2)
+            r2_values[col] = 1.0 - ss_res / ss_tot if ss_tot != 0 else 0.0
+
+        # Build result DataFrame (1 row, 1 col per component)
+        result = pl.DataFrame(r2_values).select(y_truth.columns)
+
+        # Aggregate per the requested aggregation method
+        dims = self._normalize_agg_methods(self.aggregation_method)
+
+        # Collapse components
+        if "componentwise" in dims:
+            result = self._collapse_components(result)
+
+        # Collapse groups
+        if "groupwise" in dims:
+            result = self._collapse_groups(result)
+
+        # Finalize
+        result = self._finalize(result, context, dims)
+
+        if isinstance(result, pl.DataFrame):
+            result = self._rename_metric_columns(result)
+
+        return result
+
+    def __sklearn_tags__(self):
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with lower_is_better=False.
+
+        """
+        tags = super().__sklearn_tags__()
+        if tags.scorer_tags is not None:
+            tags.scorer_tags.lower_is_better = False
+        return tags
+
+
+class MeanDirectionalAccuracy(BasePointScorer):
+    r"""Mean Directional Accuracy metric for point forecasts.
+
+    Computes the proportion of time steps where the predicted direction of
+    change matches the actual direction of change. This metric evaluates
+    whether the forecast correctly predicts upward or downward movements.
+
+    The MDA is defined as:
+
+    $$\text{MDA} = \frac{1}{n-1}\sum_{i=2}^{n}\mathbf{1}[\text{sign}(\Delta y_i) = \text{sign}(\Delta \hat{y}_i)]$$
+
+    where $\Delta y_i = y_i - y_{i-1}$ and $\Delta \hat{y}_i = \hat{y}_i - \hat{y}_{i-1}$.
+
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "stepwise": Aggregate across forecasting steps.
+        - "vintagewise": Aggregate across vintages (observed times).
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["stepwise", "vintagewise", "componentwise", "groupwise"].
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
+
+    Attributes
+    ----------
+    lower_is_better : bool
+        Always False for MDA. Higher values indicate better directional prediction.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MeanDirectionalAccuracy
+    >>> y_true = pl.DataFrame({
+    ...     "time": [
+    ...         datetime(2020, 1, 1),
+    ...         datetime(2020, 1, 2),
+    ...         datetime(2020, 1, 3),
+    ...         datetime(2020, 1, 4),
+    ...         datetime(2020, 1, 5),
+    ...     ],
+    ...     "value": [10.0, 15.0, 12.0, 18.0, 20.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 5,
+    ...     "time": [
+    ...         datetime(2020, 1, 1),
+    ...         datetime(2020, 1, 2),
+    ...         datetime(2020, 1, 3),
+    ...         datetime(2020, 1, 4),
+    ...         datetime(2020, 1, 5),
+    ...     ],
+    ...     "value": [10.0, 14.0, 15.0, 17.0, 19.0],
+    ... })
+    >>> mda = MeanDirectionalAccuracy()
+    >>> _ = mda.fit(y_true)
+    >>> mda.score(y_true, y_pred)
+    0.75
+
+    Notes
+    -----
+    - MDA = 1.0 means all directional changes were predicted correctly
+    - MDA = 0.5 is equivalent to random guessing for direction
+    - MDA = 0.0 means all directional predictions were wrong
+    - Requires at least 2 time steps (N-1 comparisons from ``.diff()``)
+    - Returns 0.0 when fewer than 2 rows are available
+    - Overrides ``score()`` because computing direction requires ``.diff()``
+      on the full columns, not per-row errors
+
+    See Also
+    --------
+    `MeanAbsoluteError` : Error magnitude metric (not directional)
+    `R2Score` : Variance explained metric
+
+    """
+
+    _parameter_constraints: dict = {
+        **BasePointScorer._parameter_constraints,
+    }
+
+    _metric_name = "mda"
+
+    lower_is_better = False
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method,
+            groups=groups,
+            components=components,
+        )
+
+    def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Not used directly. MDA overrides score()."""
+        return (y_truth - y_pred).select(pl.all().abs())
+
+    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:  # type: ignore
+        """Compute Mean Directional Accuracy.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True values with "time" column.
+        y_pred : pl.DataFrame
+            Predicted values with "time" column.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        float or pl.DataFrame
+            MDA score between 0 and 1. 1.0 for perfect directional prediction.
+
+        """
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, context = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
+
+        if len(y_truth) < 2:
+            return 0.0
+
+        # Compute directional accuracy per component
+        mda_values = {}
+        for col in y_truth.columns:
+            truth_diff = np.diff(y_truth[col].to_numpy().astype(np.float64))
+            pred_diff = np.diff(y_pred[col].to_numpy().astype(np.float64))
+            matches = (np.sign(truth_diff) == np.sign(pred_diff)).astype(np.float64)
+            mda_values[col] = float(np.mean(matches))
+
+        # Build result DataFrame (1 row, 1 col per component)
+        result = pl.DataFrame(mda_values).select(y_truth.columns)
+
+        # Aggregate per the requested aggregation method
+        dims = self._normalize_agg_methods(self.aggregation_method)
+
+        # Collapse components
+        if "componentwise" in dims:
+            result = self._collapse_components(result)
+
+        # Collapse groups
+        if "groupwise" in dims:
+            result = self._collapse_groups(result)
+
+        # Finalize
+        result = self._finalize(result, context, dims)
+
+        if isinstance(result, pl.DataFrame):
+            result = self._rename_metric_columns(result)
+
+        return result
+
+    def __sklearn_tags__(self):
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with lower_is_better=False.
+
+        """
+        tags = super().__sklearn_tags__()
+        if tags.scorer_tags is not None:
+            tags.scorer_tags.lower_is_better = False
+        return tags

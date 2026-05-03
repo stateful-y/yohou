@@ -624,8 +624,8 @@ class TestMakeScorerGetScorer:
         with pytest.raises(ValueError, match="Unknown scorer"):
             make_scorer("nonexistent")
 
-    def test_registry_has_17_scorers(self):
-        """Registry contains exactly 17 scoring scorers."""
+    def test_registry_has_27_scorers(self):
+        """Registry contains exactly 27 scoring scorers (26 + f1 alias)."""
         from yohou.metrics import _SCORER_REGISTRY
 
-        assert len(_SCORER_REGISTRY) == 17
+        assert len(_SCORER_REGISTRY) == 27

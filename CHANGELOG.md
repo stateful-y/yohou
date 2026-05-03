@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+- **9 new metrics**: MaxAE, R2Score, MDA (point), RPS (class proba), Precision, Recall, FBetaScore, RocAuc, PrAuc (classification)
+- **2 new abstract base classes**: `BaseHardLabelScorer` (confusion matrix metrics), `BaseRankingScorer` (ranking metrics)
+- New `classification.py` module for hard-label and ranking classification scorers
+- Registry entries: `max_ae`, `r2`, `mda`, `rps`, `precision`, `recall`, `fbeta`, `f1` (alias), `roc_auc`, `pr_auc` (17 → 27 total)
+
+### Changed
+- **Breaking**: `Accuracy` moved from `class_proba.py` to `classification.py`, now extends `BaseHardLabelScorer` instead of `BaseClassProbaScorer`. Import from `yohou.metrics` still works.
+
 ## [0.1.0-alpha.5] - 2026-04-22
 
 This **minor release** includes 2 commits.

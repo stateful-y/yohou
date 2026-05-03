@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import BaseClassProbaScorer, BaseIntervalScorer, BasePointScorer, BaseScorer
-from .class_proba import Accuracy, BrierScore, LogLoss
+from .base import (
+    BaseClassProbaScorer,
+    BaseHardLabelScorer,
+    BaseIntervalScorer,
+    BasePointScorer,
+    BaseRankingScorer,
+    BaseScorer,
+)
+from .class_proba import BrierScore, LogLoss, RankedProbabilityScore
+from .classification import Accuracy, FBetaScore, PrAuc, Precision, Recall, RocAuc
 from .conformity import (
     AbsoluteGammaResidual,
     AbsoluteQuantileResidual,
@@ -24,11 +32,14 @@ from .interval import (
     PinballLoss,
 )
 from .point import (
+    MaxAbsoluteError,
     MeanAbsoluteError,
     MeanAbsolutePercentageError,
     MeanAbsoluteScaledError,
+    MeanDirectionalAccuracy,
     MeanSquaredError,
     MedianAbsoluteError,
+    R2Score,
     RootMeanSquaredError,
     RootMeanSquaredScaledError,
     SymmetricMeanAbsolutePercentageError,
@@ -48,6 +59,9 @@ _SCORER_REGISTRY: dict[str, type[BaseScorer]] = {
     "smape": SymmetricMeanAbsolutePercentageError,
     "mase": MeanAbsoluteScaledError,
     "median_ae": MedianAbsoluteError,
+    "max_ae": MaxAbsoluteError,
+    "r2": R2Score,
+    "mda": MeanDirectionalAccuracy,
     # Interval scorers
     "coverage": EmpiricalCoverage,
     "width": MeanIntervalWidth,
@@ -59,6 +73,15 @@ _SCORER_REGISTRY: dict[str, type[BaseScorer]] = {
     "accuracy": Accuracy,
     "log_loss": LogLoss,
     "brier_score": BrierScore,
+    "rps": RankedProbabilityScore,
+    # Hard-label classification scorers
+    "precision": Precision,
+    "recall": Recall,
+    "fbeta": FBetaScore,
+    "f1": FBetaScore,
+    # Ranking classification scorers
+    "roc_auc": RocAuc,
+    "pr_auc": PrAuc,
 }
 
 
@@ -131,8 +154,10 @@ __all__ = [
     # Base classes
     "BaseClassProbaScorer",
     "BaseConformityScorer",
+    "BaseHardLabelScorer",
     "BaseIntervalScorer",
     "BasePointScorer",
+    "BaseRankingScorer",
     "BaseScorer",
     # Point scorers
     "MeanAbsoluteError",
@@ -161,6 +186,13 @@ __all__ = [
     "BrierScore",
     "Accuracy",
     "LogLoss",
+    "RankedProbabilityScore",
+    # Classification scorers
+    "FBetaScore",
+    "Precision",
+    "PrAuc",
+    "Recall",
+    "RocAuc",
     # Registry and factories
     "get_scorer",
     "make_scorer",
