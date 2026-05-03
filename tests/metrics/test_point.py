@@ -1338,3 +1338,141 @@ class TestMDA:
         score = mda.score(y, y_pred)
         assert isinstance(score, float)
         assert 0 <= score <= 1
+
+    def test_mda_stepwise_vintagewise(self):
+        """MDA with stepwise+vintagewise returns per-component DataFrame."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "value": [10.0, 15.0, 12.0, 18.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "value": [10.0, 16.0, 11.0, 19.0, 21.0],
+        })
+        mda = MeanDirectionalAccuracy(aggregation_method=["stepwise", "vintagewise"])
+        mda.fit(y_true)
+        result = mda.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert result.shape == (1, 1)
+
+
+# ---------------------------------------------------------------------------
+# Coverage: MaxAE partial collapse with stepwise only (point.py:1219, 1227-1229)
+# ---------------------------------------------------------------------------
+class TestMaxAEPartialCollapse:
+    def test_max_ae_stepwise_only(self):
+        """MaxAbsoluteError with stepwise only exercises partial collapse."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "value": [12.0, 19.0, 28.0],
+        })
+        max_ae = MaxAbsoluteError(aggregation_method=["stepwise", "componentwise"])
+        max_ae.fit(y_true)
+        result = max_ae.score(y_true, y_pred)
+        assert isinstance(result, (float, pl.DataFrame))
+
+    def test_max_ae_vintagewise_only(self):
+        """MaxAbsoluteError with vintagewise only exercises partial collapse."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "value": [12.0, 19.0, 28.0],
+        })
+        max_ae = MaxAbsoluteError(aggregation_method=["vintagewise", "componentwise"])
+        max_ae.fit(y_true)
+        result = max_ae.score(y_true, y_pred)
+        assert isinstance(result, (float, pl.DataFrame))
+
+    def test_max_ae_collapse_all_rows(self):
+        """MaxAbsoluteError with stepwise+vintagewise collapses all rows."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "a": [10.0, 20.0, 30.0],
+            "b": [15.0, 25.0, 35.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "a": [12.0, 19.0, 28.0],
+            "b": [14.0, 24.0, 34.0],
+        })
+        max_ae = MaxAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+        max_ae.fit(y_true)
+        result = max_ae.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+
+
+# ---------------------------------------------------------------------------
+# Coverage: MedianAbsoluteError componentwise (point.py:1085, 1092-1098)
+# ---------------------------------------------------------------------------
+class TestMedianAEComponentwise:
+    def test_median_ae_componentwise(self):
+        """MedianAbsoluteError with componentwise returns per-timestep scores."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "a": [10.0, 20.0, 30.0],
+            "b": [15.0, 25.0, 35.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "a": [12.0, 19.0, 28.0],
+            "b": [14.0, 24.0, 34.0],
+        })
+        medae = MedianAbsoluteError(aggregation_method=["componentwise"])
+        medae.fit(y_true)
+        result = medae.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "time" in result.columns
+
+    def test_median_ae_per_component(self):
+        """MedianAbsoluteError with stepwise+vintagewise returns per-component medians."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "a": [10.0, 20.0, 30.0],
+            "b": [15.0, 25.0, 35.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": [datetime(2020, 1, i) for i in range(1, 4)],
+            "a": [12.0, 19.0, 28.0],
+            "b": [14.0, 24.0, 34.0],
+        })
+        medae = MedianAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+        medae.fit(y_true)
+        result = medae.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+
+
+# ---------------------------------------------------------------------------
+# Coverage: R2Score and MDA _compute_raw_errors stubs (point.py:1340, 1517)
+# ---------------------------------------------------------------------------
+class TestScoreOverrideStubs:
+    def test_r2_compute_raw_errors_callable(self):
+        """R2Score._compute_raw_errors returns squared differences."""
+        y_true = pl.DataFrame({"value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({"value": [12.0, 19.0, 28.0]})
+        r2 = R2Score()
+        result = r2._compute_raw_errors(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        # (10-12)^2=4, (20-19)^2=1, (30-28)^2=4
+        assert result["value"].to_list() == [4.0, 1.0, 4.0]
+
+    def test_mda_compute_raw_errors_callable(self):
+        """MDA._compute_raw_errors returns absolute differences."""
+        y_true = pl.DataFrame({"value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({"value": [12.0, 19.0, 28.0]})
+        mda = MeanDirectionalAccuracy()
+        result = mda._compute_raw_errors(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert result["value"].to_list() == [2.0, 1.0, 2.0]

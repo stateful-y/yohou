@@ -721,3 +721,23 @@ class TestContinuousRankedProbabilityScore:
         score = crps.score(y_true, y_pred)
         assert isinstance(score, float)
         assert score >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# Coverage: CRPS trapezoidal with edge cases (interval.py:845, 848)
+# ---------------------------------------------------------------------------
+class TestCRPSTrapezoidalEdgeCases:
+    def test_crps_trapezoidal_no_coverage_rate_column(self):
+        """_collapse_coverage_rates returns df unchanged when no coverage_rate column."""
+        crps = ContinuousRankedProbabilityScore(integration="trapezoidal")
+        df = pl.DataFrame({"value": [1.0, 2.0, 3.0]})
+        result = crps._collapse_coverage_rates(df)
+        assert result.equals(df)
+
+    def test_crps_trapezoidal_empty_dataframe(self):
+        """_collapse_coverage_rates drops coverage_rate from empty df."""
+        crps = ContinuousRankedProbabilityScore(integration="trapezoidal")
+        df = pl.DataFrame({"value": pl.Series([], dtype=pl.Float64), "coverage_rate": pl.Series([], dtype=pl.Float64)})
+        result = crps._collapse_coverage_rates(df)
+        assert "coverage_rate" not in result.columns
+        assert len(result) == 0

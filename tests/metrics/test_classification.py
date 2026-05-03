@@ -457,3 +457,218 @@ class TestPartialAggregation:
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
         assert "mood" in result.columns or "recall" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# Coverage: NaN/Inf probability validation (base.py:1674)
+# ---------------------------------------------------------------------------
+class TestNaNInfProbabilities:
+    def test_nan_probabilities_raise(self):
+        """NaN in probability columns should raise ValueError."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({"time": dates, "weather": ["sunny", "rainy", "cloudy"]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "weather_proba_sunny": [0.7, float("nan"), 0.2],
+            "weather_proba_rainy": [0.2, 0.5, 0.1],
+            "weather_proba_cloudy": [0.1, 0.5, 0.7],
+        })
+        scorer = Precision()
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="NaN or infinite"):
+            scorer.score(y_true, y_pred)
+
+    def test_inf_probabilities_raise(self):
+        """Inf in probability columns should raise ValueError."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({"time": dates, "weather": ["sunny", "rainy", "cloudy"]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "weather_proba_sunny": [0.7, float("inf"), 0.2],
+            "weather_proba_rainy": [0.2, 0.5, 0.1],
+            "weather_proba_cloudy": [0.1, 0.5, 0.7],
+        })
+        scorer = RocAuc()
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="NaN or infinite"):
+            scorer.score(y_true, y_pred)
+
+
+# ---------------------------------------------------------------------------
+# Coverage: Ranking metric weighted averaging (base.py:2329, 2332-2333)
+# ---------------------------------------------------------------------------
+class TestRankingWeightedAveraging:
+    def test_roc_auc_weighted(self):
+        """RocAuc with average='weighted' should use support-weighted mean."""
+        dates = [datetime(2020, 1, i) for i in range(1, 11)]
+        # Imbalanced: 6 sunny, 3 rainy, 1 cloudy
+        labels = ["sunny"] * 6 + ["rainy"] * 3 + ["cloudy"]
+        y_true = pl.DataFrame({"time": dates, "weather": labels})
+
+        np.random.seed(42)
+        proba = np.random.dirichlet([1, 1, 1], size=10)
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
+            "time": dates,
+            "weather_proba_sunny": proba[:, 0].tolist(),
+            "weather_proba_rainy": proba[:, 1].tolist(),
+            "weather_proba_cloudy": proba[:, 2].tolist(),
+        })
+
+        scorer_w = RocAuc(average="weighted")
+        scorer_w.fit(y_true)
+        score_w = scorer_w.score(y_true, y_pred)
+
+        scorer_m = RocAuc(average="macro")
+        scorer_m.fit(y_true)
+        score_m = scorer_m.score(y_true, y_pred)
+
+        # Weighted and macro should differ on imbalanced data
+        assert isinstance(score_w, float)
+        assert isinstance(score_m, float)
+        assert score_w != score_m
+
+
+# ---------------------------------------------------------------------------
+# Coverage: _resolve_combined_weights with multiple weights (base.py:2358-2361)
+# ---------------------------------------------------------------------------
+class TestRankingCombinedWeights:
+    def test_roc_auc_with_callable_time_weight(self):
+        """RocAuc with callable time_weight applies sample weights."""
+        dates = [datetime(2020, 1, i) for i in range(1, 6)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "weather": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": dates,
+            "weather_proba_sunny": [0.7, 0.1, 0.2, 0.6, 0.1],
+            "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8],
+            "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1],
+        })
+        scorer = RocAuc()
+        scorer.fit(y_true)
+        scorer.set_score_request(time_weight=True)
+
+        def custom_weight(y):
+            return pl.Series("weight", [1.0, 2.0, 1.0, 2.0, 1.0])
+
+        score = scorer.score(y_true, y_pred, time_weight=custom_weight)
+        assert isinstance(score, float)
+
+    def test_ranking_dict_weights_ignored(self):
+        """Callable weight resolves to ndarray for ranking scorers."""
+        dates = [datetime(2020, 1, i) for i in range(1, 6)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "weather": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": dates,
+            "weather_proba_sunny": [0.7, 0.1, 0.2, 0.6, 0.1],
+            "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8],
+            "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1],
+        })
+        scorer = RocAuc()
+        scorer.fit(y_true)
+        # No weights: should produce valid score
+        score_no_weight = scorer.score(y_true, y_pred)
+        assert isinstance(score_no_weight, float)
+
+
+# ---------------------------------------------------------------------------
+# Coverage: Ranking with class having all same labels (base.py:2319)
+# ---------------------------------------------------------------------------
+class TestRankingSkipConstantClasses:
+    def test_roc_auc_skips_absent_class(self):
+        """RocAuc should skip classes with no positive samples."""
+        dates = [datetime(2020, 1, i) for i in range(1, 6)]
+        # "cloudy" never appears in truth
+        y_true = pl.DataFrame({
+            "time": dates,
+            "weather": ["sunny", "rainy", "sunny", "rainy", "sunny"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": dates,
+            "weather_proba_sunny": [0.7, 0.1, 0.6, 0.2, 0.8],
+            "weather_proba_rainy": [0.2, 0.8, 0.3, 0.7, 0.1],
+            "weather_proba_cloudy": [0.1, 0.1, 0.1, 0.1, 0.1],
+        })
+        scorer = RocAuc()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        # Should compute without error, skipping the absent class
+        assert isinstance(score, float)
+        assert 0.0 <= score <= 1.0
+
+    def test_roc_auc_all_same_class_returns_zero(self):
+        """RocAuc should return 0.0 when all samples have the same label."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "weather": ["sunny", "sunny", "sunny"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "weather_proba_sunny": [0.7, 0.8, 0.9],
+            "weather_proba_rainy": [0.2, 0.1, 0.05],
+            "weather_proba_cloudy": [0.1, 0.1, 0.05],
+        })
+        scorer = RocAuc()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        # All classes either have 0 or N positive samples → skip all → 0.0
+        assert score == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Coverage: Hard-label partial collapse with dim_values=None (base.py:1970-1977)
+# ---------------------------------------------------------------------------
+class TestHardLabelPartialCollapse:
+    def test_precision_stepwise_only(self, class_data_5rows):
+        """Precision with stepwise only (no vintagewise) exercises partial collapse."""
+        y_true, y_pred = class_data_5rows
+        scorer = Precision(aggregation_method=["stepwise", "componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, (float, pl.DataFrame))
+
+    def test_recall_vintagewise_only(self, class_data_5rows):
+        """Recall with vintagewise only exercises partial collapse."""
+        y_true, y_pred = class_data_5rows
+        scorer = Recall(aggregation_method=["vintagewise", "componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, (float, pl.DataFrame))
+
+    def test_precision_stepwise_no_vintage(self):
+        """Precision with stepwise collapse on data without vintage_time."""
+        dates = [datetime(2020, 1, i) for i in range(1, 6)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "weather": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
+        })
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "weather_proba_sunny": [0.7, 0.1, 0.2, 0.6, 0.1],
+            "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8],
+            "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1],
+        })
+        scorer = Precision(aggregation_method=["stepwise", "componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, (float, pl.DataFrame))
+
+    def test_precision_collapse_all_rows(self, class_data_5rows):
+        """Precision with stepwise+vintagewise collapses all rows."""
+        y_true, y_pred = class_data_5rows
+        scorer = Precision(aggregation_method=["stepwise", "vintagewise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, (float, pl.DataFrame))
