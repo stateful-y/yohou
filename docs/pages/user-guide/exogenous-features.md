@@ -55,33 +55,31 @@ produces step-indexed columns. Unlike `X_future`, different vintages produce
 different step values, enabling multi-vintage prediction from a single
 observation state.
 
-## Why Three Parameters, Not One
+## Benefits of the Three-Parameter API
 
-The single-`X` API creates four problems that cannot be fixed without
-separating the data categories:
+Separating exogenous data into three parameters unlocks four capabilities:
 
-**Data leakage in walk-forward evaluation.** The `observe_predict` loop
-passes the full `X` to `predict()` at each step. If `X` contains actual
-temperature measurements alongside holiday indicators, future temperature
-values leak into each prediction. Separating `X_actual` (observation-only)
-from `X_future` (predict-safe) eliminates this class of leakage.
+**Leakage-free walk-forward evaluation.** The `observe_predict` loop
+separates `X_actual` (observation-only, never passed to `predict`) from
+`X_future` (predict-safe). This eliminates an entire class of data leakage
+where future actual measurements (e.g., tomorrow's temperature) would
+otherwise appear in each prediction step.
 
-**No partial features at predict time.** With a single `X`, calling
-`predict(X=holidays)` fails schema validation because the model was fitted
-with temperature columns too. The three-parameter API lets you pass
-`predict(X_future=holidays)` without providing observation features.
+**Partial features at predict time.** `predict(X_future=holidays)` works
+without providing observation features. The API accepts only the data
+categories that are relevant at prediction time, so schema validation
+passes cleanly.
 
-**Silent ignoring of X in predict.** The current `_X_t_observed` buffer
-from fit is what the estimator actually uses for prediction; `X` passed to
-`predict()` is silently ignored in non-recursive mode. Users pass future
-actuals thinking they improve predictions, but the values are never used.
-The three-parameter API makes this explicit: `predict()` does not accept
-`X_actual` at all.
+**Explicit predict-time semantics.** `predict()` does not accept `X_actual`
+at all. The estimator uses the stored `_X_t_observed` buffer from fit, and
+step columns from `X_future`/`X_forecast` are the only features that can be
+overridden at predict time. There is no ambiguity about which features are
+used.
 
-**No support for vintage-indexed data.** Weather model output arrives as
-tidy tables with issuance timestamps. A single `X` parameter has no place
-for `vintage_time`, forcing users to manually pivot and join before calling
-`fit()`.
+**Native support for vintage-indexed data.** `X_forecast` accepts tidy
+tables with `vintage_time` columns directly. The framework handles the
+pivot from `[vintage_time, time, col]` to step-indexed format internally,
+removing manual preprocessing.
 
 ## Step-Indexed Columns
 
@@ -149,12 +147,12 @@ When `predict(X_forecast=...)` is called with new vintage data, the framework
 temporarily replaces all step columns in `_X_t_observed` with freshly derived
 values. The save-swap-restore flow:
 
-1. Compute effective raws (provided override or stored `_X_future_raw_`/`_X_forecast_raw_`)
+1. Resolve effective raws (provided override or stored `_X_future_raw_`/`_X_forecast_raw_`)
 2. Re-derive ALL step columns via `_derive_step_columns()`
-3. Save current step columns from `_X_t_observed`
-4. Replace step columns
+3. Save current step columns and raws from `_X_t_observed`
+4. Swap raws and step columns into `_X_t_observed`
 5. Call the estimator's predict
-6. Restore saved step columns
+6. Restore saved raws and step columns (in a `finally` block)
 
 The forecaster's state is unchanged after the call. Five consecutive
 `predict()` calls with five different `X_forecast` values return five different
@@ -200,8 +198,10 @@ All composition forecasters propagate the three parameters:
 - **DecompositionPipeline**: Passes all three parameters to the residual
   forecaster after trend/seasonality removal.
 
-- **ForecastedFeatureForecaster**: The feature forecaster receives `X_actual`
-  and `X_future`. Its predictions become the main forecaster's `X_forecast`.
+- **ForecastedFeatureForecaster**: `X_actual` is passed as the feature
+  forecaster's *target* (what to forecast). The target forecaster receives
+  all three parameters directly, plus the feature forecaster's predictions
+  as additional features.
 
 - **VotingForecaster**: All ensemble members receive the same three parameters.
 

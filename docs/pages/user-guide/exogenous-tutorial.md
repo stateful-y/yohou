@@ -168,9 +168,9 @@ vintage should produce predictions closer to the true prices.
 
 ## 5. Walk-Forward Evaluation
 
-The `observe_predict` loop handles all three parameters correctly, observing
-`X_actual` at each step while using `X_future` and `X_forecast` for
-step column derivation:
+The `observe_predict` loop observes `X_actual` at each step and uses
+`X_future` for step column derivation. Here we omit `X_forecast` so the
+loop uses the training forecasts stored at fit time:
 
 ```python
 from yohou.metrics import MeanAbsoluteError

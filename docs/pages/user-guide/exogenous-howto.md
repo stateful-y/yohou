@@ -181,19 +181,20 @@ pipeline.fit(
 
 ### ForecastedFeatureForecaster
 
-The feature forecaster's predictions become the main forecaster's input. Pass
-`X_actual` and `X_future` to the feature forecaster:
+The feature forecaster's predictions become additional features for the target
+forecaster. `X_actual` is used as the feature forecaster's target (what to
+forecast), while the target forecaster receives all three exogenous parameters:
 
 ```python
 from yohou.compose import ForecastedFeatureForecaster
 
 fff = ForecastedFeatureForecaster(
+    target_forecaster=price_forecaster,
     feature_forecaster=temperature_forecaster,
-    forecaster=price_forecaster,
 )
 
-# The feature forecaster receives X_actual and X_future;
-# its predictions flow as features to the main forecaster
+# X_actual becomes the feature forecaster's target (what to forecast);
+# the target forecaster receives all three exogenous parameters directly
 fff.fit(
     y=y_train,
     X_actual=X_actual_train,
