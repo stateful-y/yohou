@@ -445,8 +445,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             Target time series with "time" column.
-        X_actual : pl.DataFrame, optional
-            Exogenous features with "time" column.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Forwarded to each child forecaster.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         X_future : pl.DataFrame or None, default=None
@@ -640,8 +641,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             New target data with "time" column.
-        X_actual : pl.DataFrame, optional
-            New exogenous features with "time" column.
+        X_actual : pl.DataFrame or None, default=None
+            New actual feature observations with a ``"time"`` column
+            aligned with ``y``. Forwarded to each child forecaster.
         groups : list of str or None, default=None
             Group prefixes for panel data.
         X_future : pl.DataFrame or None, default=None
@@ -689,8 +691,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         ----------
         y : pl.DataFrame
             New target data with "time" column.
-        X_actual : pl.DataFrame, optional
-            New exogenous features with "time" column.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations to restore the observation
+            state to. Must align with ``y``.
         groups : list of str or None, default=None
             Group prefixes for panel data.
         X_future : pl.DataFrame or None, default=None
@@ -741,7 +744,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         y : pl.DataFrame
             Target time series for updates.
         X_actual : pl.DataFrame or None, default=None
-            Feature time series for predictions.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
         groups : list of str or None, default=None
@@ -899,7 +904,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         y : pl.DataFrame
             Target time series for updates.
         X_actual : pl.DataFrame or None, default=None
-            Feature time series for predictions.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
         coverage_rates : list of float or None, default=None
@@ -1037,7 +1044,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         y : pl.DataFrame
             Target time series for updates.
         X_actual : pl.DataFrame or None, default=None
-            Feature time series for predictions.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Horizon to forecast. If None, uses ``fit_forecasting_horizon_``.
         groups : list of str or None, default=None

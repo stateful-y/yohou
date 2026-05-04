@@ -226,8 +226,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Processed by the feature transformer to produce
+            lags, rolling statistics, and other derived features. If
+            ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
         coverage_rates : list of float or None, default=None
@@ -481,8 +483,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.

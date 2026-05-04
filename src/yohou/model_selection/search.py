@@ -774,8 +774,10 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Processed by the feature transformer to produce
+            lags, rolling statistics, and other derived features. If
+            ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
         X_future : pl.DataFrame or None, default=None
@@ -1065,8 +1067,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            New actual feature observations with a ``"time"`` column
+            aligned with ``y``. Forwarded to the best forecaster.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
@@ -1103,8 +1105,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations to restore the observation state
+            to. Must align with ``y``.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
@@ -1147,8 +1149,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
@@ -1212,8 +1215,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         coverage_rates : list of float or None, default=None
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
@@ -1313,8 +1317,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Target time series with a ``"time"`` column (datetime) and one
             or more categorical value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.

@@ -45,8 +45,9 @@ def plot_splits(
         Target time series with mandatory "time" column.
     splitter : BaseSplitter
         A yohou splitter instance (e.g., ExpandingWindowSplitter, SlidingWindowSplitter).
-    X_actual : pl.DataFrame | None, default=None
-        Optional exogenous features (passed to splitter.split()).
+    X_actual : pl.DataFrame or None, default=None
+        Actual features passed to ``splitter.split()``. Not used for
+        splitting but accepted for API consistency.
     train_color : str | None, default=None
         Color for train segments. If None, uses first color from yohou palette.
     test_color : str | None, default=None

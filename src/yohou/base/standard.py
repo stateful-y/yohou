@@ -249,7 +249,8 @@ class BaseStandardForecaster:
         y : pl.DataFrame
             Target time series (standard data).
         X_actual : pl.DataFrame or None
-            Feature time series (standard data).
+            Actual feature observations to restore the observation
+            state to (standard data).
         X_future : pl.DataFrame or None, default=None
             Known future features. If None, re-derived from stored raws.
         X_forecast : pl.DataFrame or None, default=None
@@ -290,7 +291,7 @@ class BaseStandardForecaster:
         y : pl.DataFrame
             New target observations (standard data).
         X_actual : pl.DataFrame or None
-            New feature observations (standard data).
+            New actual feature observations (standard data).
         X_future : pl.DataFrame or None, default=None
             Known future features. If None, re-derived from stored raws.
         X_forecast : pl.DataFrame or None, default=None
@@ -374,7 +375,7 @@ class BaseStandardForecaster:
         y : pl.DataFrame
             New target observations (standard data).
         X_actual : pl.DataFrame or None
-            New feature observations (standard data).
+            New actual feature observations (standard data).
         X_step_precomputed : pl.DataFrame or None
             Pre-computed step columns for this slice (already semi-joined
             to the slice's time range). ``None`` when no step columns exist.

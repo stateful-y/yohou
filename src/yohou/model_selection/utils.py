@@ -258,7 +258,8 @@ def _fit_and_score(
     y : pl.DataFrame
         Target time series with a ``"time"`` column.
     X_actual : pl.DataFrame or None
-        Exogenous features with a ``"time"`` column, or ``None``.
+        Actual feature observations with a ``"time"`` column, or
+        ``None``.
     forecasting_horizon : int
         Number of time steps to forecast.
     X_future : pl.DataFrame or None, default=None
@@ -593,7 +594,7 @@ def _score(
     y_test : pl.DataFrame
         Test target time series.
     X_test : pl.DataFrame or None
-        Test exogenous features, or ``None``.
+        Test actual feature observations, or ``None``.
     predict_func_params : dict or None
         Routed metadata for the prediction function.
     scorer : BaseScorer or _MultimetricScorer

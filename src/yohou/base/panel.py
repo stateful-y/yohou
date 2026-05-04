@@ -368,7 +368,8 @@ class BasePanelForecaster:
         y : pl.DataFrame
             Target time series with panel columns.
         X_actual : pl.DataFrame or None
-            Feature time series with panel columns.
+            Actual feature observations to restore the observation
+            state to (with panel columns).
         groups : list[str]
             Panel group names to reset.
         X_future : pl.DataFrame or None, default=None
@@ -441,7 +442,7 @@ class BasePanelForecaster:
         y : pl.DataFrame
             New target observations with panel columns.
         X_actual : pl.DataFrame or None
-            New feature observations with panel columns.
+            New actual feature observations with panel columns.
         groups : list[str]
             Panel group names to update.
         X_future : pl.DataFrame or None, default=None
@@ -567,7 +568,7 @@ class BasePanelForecaster:
         y : pl.DataFrame
             New target observations with panel columns.
         X_actual : pl.DataFrame or None
-            New feature observations with panel columns.
+            New actual feature observations with panel columns.
         X_step_precomputed : pl.DataFrame or None
             Pre-computed step columns for this slice (already semi-joined
             to the slice's time range). ``None`` when no step columns exist.

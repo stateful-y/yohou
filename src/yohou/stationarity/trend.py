@@ -115,8 +115,10 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         ----------
         y : pl.DataFrame
             Target time series with "time" column.
-        X_actual : pl.DataFrame, optional
-            Exogenous features (currently not used, reserved for future).
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Not used by this forecaster but accepted for API
+            consistency.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         X_future : pl.DataFrame or None, default=None

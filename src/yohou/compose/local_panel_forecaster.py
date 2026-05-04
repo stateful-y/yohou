@@ -233,7 +233,8 @@ class LocalPanelForecaster(BaseForecaster):
             Panel target time series with ``"time"`` column and columns
             following the ``<group>__<series>`` naming convention.
         X_actual : pl.DataFrame or None, default=None
-            Panel exogenous features (same naming convention as ``y``).
+            Actual feature observations with panel columns (same naming
+            convention as ``y``). Forwarded to each local forecaster.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         X_future : pl.DataFrame or None, default=None
@@ -434,7 +435,8 @@ class LocalPanelForecaster(BaseForecaster):
         y : pl.DataFrame
             New panel target observations.
         X_actual : pl.DataFrame or None, default=None
-            New panel exogenous observations.
+            New actual feature observations with panel columns.
+            Forwarded to each local forecaster.
         groups : list of str or None, default=None
             Subset of groups to observe.  ``None`` observes all groups.
         X_future : pl.DataFrame or None, default=None
@@ -483,7 +485,8 @@ class LocalPanelForecaster(BaseForecaster):
         y : pl.DataFrame
             Panel target data to rewind to.
         X_actual : pl.DataFrame or None, default=None
-            Panel exogenous data to rewind to.
+            Actual feature observations to restore the observation
+            state to. Must align with ``y``.
         groups : list of str or None, default=None
             Subset of groups to rewind.  ``None`` rewinds all groups.
         X_future : pl.DataFrame or None, default=None
@@ -533,7 +536,9 @@ class LocalPanelForecaster(BaseForecaster):
         y : pl.DataFrame
             New panel target observations.
         X_actual : pl.DataFrame or None, default=None
-            Panel exogenous features.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         groups : list of str or None, default=None
             Subset of groups.  ``None`` means all groups.
         X_future : pl.DataFrame or None, default=None
@@ -571,7 +576,9 @@ class LocalPanelForecaster(BaseForecaster):
         y : pl.DataFrame
             New panel target observations.
         X_actual : pl.DataFrame or None, default=None
-            Panel exogenous features.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
         groups : list of str or None, default=None

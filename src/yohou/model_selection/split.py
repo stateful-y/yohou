@@ -68,7 +68,7 @@ class BaseSplitter(BaseEstimator, ABC):
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features.  Not used for splitting but accepted for
+            Actual features.  Not used for splitting but accepted for
             API consistency.
 
         Yields
@@ -94,8 +94,9 @@ class BaseSplitter(BaseEstimator, ABC):
         ----------
         y : pl.DataFrame
             Target time series.
-        X_actual : pl.DataFrame, optional
-            Exogenous features.
+        X_actual : pl.DataFrame or None, default=None
+            Actual features. Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------
@@ -240,7 +241,7 @@ class ExpandingWindowSplitter(BaseSplitter):
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features.  Not used for splitting but accepted for
+            Actual features.  Not used for splitting but accepted for
             API consistency.
 
         Yields
@@ -280,8 +281,9 @@ class ExpandingWindowSplitter(BaseSplitter):
         ----------
         y : pl.DataFrame
             Target time series.
-        X_actual : pl.DataFrame, optional
-            Exogenous features (not used).
+        X_actual : pl.DataFrame or None, default=None
+            Actual features. Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------
@@ -452,7 +454,7 @@ class SlidingWindowSplitter(BaseSplitter):
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features.  Not used for splitting but accepted for
+            Actual features.  Not used for splitting but accepted for
             API consistency.
 
         Yields
@@ -490,8 +492,9 @@ class SlidingWindowSplitter(BaseSplitter):
         ----------
         y : pl.DataFrame
             Target time series.
-        X_actual : pl.DataFrame, optional
-            Exogenous features (not used).
+        X_actual : pl.DataFrame or None, default=None
+            Actual features. Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------

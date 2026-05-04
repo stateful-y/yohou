@@ -137,7 +137,8 @@ class _BaseTrendForecaster(BasePointForecaster):
         y : pl.DataFrame
             Target time series.
         X_actual : pl.DataFrame or None
-            Feature time series.
+            Actual feature observations to restore the observation
+            state to. Must align with ``y``.
         groups : list of str or None, default=None
             Group prefixes for panel data:
             - If None: predict for all groups

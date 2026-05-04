@@ -436,8 +436,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Processed by the feature transformer to produce
+            lags, rolling statistics, and other derived features. If
+            ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
         X_future : pl.DataFrame or None, default=None
@@ -482,8 +484,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            Actual feature observations to restore the observation state
+            to. Must align with ``y``.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
@@ -556,8 +558,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+            New actual feature observations with a ``"time"`` column
+            aligned with ``y``. Passed through the feature transformer to
+            update the internal observation state.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
@@ -895,7 +898,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         y : pl.DataFrame
             Historical target observations to incrementally observe.
         X_actual : pl.DataFrame or None
-            Actual feature observations aligned with ``y``.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step of
+            the rolling loop.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None

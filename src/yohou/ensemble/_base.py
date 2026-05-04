@@ -478,7 +478,8 @@ class _BaseEnsembleForecaster:
         y : pl.DataFrame
             New target observations.
         X_actual : pl.DataFrame or None, default=None
-            New exogenous observations.
+            New actual feature observations with a ``"time"`` column
+            aligned with ``y``. Forwarded to each child forecaster.
         groups : list of str or None, default=None
             Panel group prefixes to observe.
         X_future : pl.DataFrame or None, default=None
@@ -516,7 +517,8 @@ class _BaseEnsembleForecaster:
         y : pl.DataFrame
             Target data to rewind to.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous data to rewind to.
+            Actual feature observations to restore the observation
+            state to. Must align with ``y``.
         groups : list of str or None, default=None
             Panel group prefixes to rewind.
         X_future : pl.DataFrame or None, default=None

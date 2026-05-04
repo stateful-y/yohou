@@ -203,7 +203,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Target time series with ``"time"`` column and categorical
             value columns.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with ``"time"`` column.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Forwarded to each child forecaster.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         X_future : pl.DataFrame or None, default=None

@@ -167,7 +167,8 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         y : pl.DataFrame
             Target time series with ``"time"`` column.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features with ``"time"`` column.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Forwarded to each child forecaster.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         X_future : pl.DataFrame or None, default=None
@@ -295,7 +296,9 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         y : pl.DataFrame
             New target observations.
         X_actual : pl.DataFrame or None, default=None
-            Exogenous features.
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Number of steps ahead.
         groups : list of str or None, default=None
