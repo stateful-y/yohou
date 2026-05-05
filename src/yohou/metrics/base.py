@@ -308,6 +308,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         val_cols = [c for c in df.columns if c not in meta_names]
 
         def _agg_exprs(cols: list[str]) -> list[pl.Expr]:
+            """Build aggregation expressions for the given columns."""
             return [getattr(pl.col(c), agg_fn)() for c in cols]
 
         if collapse_steps and collapse_vintages:
@@ -1144,12 +1145,12 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         if "groupwise" in dims:
             result = self._collapse_groups(result)
 
-        result = self._finalize(result, context, dims)
+        finalized = self._finalize(result, context, dims)
 
-        if isinstance(result, pl.DataFrame):
-            result = self._rename_metric_columns(result)
+        if isinstance(finalized, pl.DataFrame):
+            finalized = self._rename_metric_columns(finalized)
 
-        return result
+        return finalized
 
     def score(
         self,
