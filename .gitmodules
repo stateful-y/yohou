@@ -1,6 +1,0 @@
-[submodule "packages/yohou-nixtla"]
-	path = packages/yohou-nixtla
-	url = git@github.com:stateful-y/yohou-nixtla.git
-[submodule "packages/yohou-optuna"]
-	path = packages/yohou-optuna
-	url = git@github.com:stateful-y/yohou-optuna.git
