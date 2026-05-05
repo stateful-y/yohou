@@ -220,14 +220,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                     scored_times_df, on="time", how="semi"
                 )
 
-                X_for_sim = None
-                if X_calib is not None:
-                    X_for_sim = X_calib.join(scored_times_df, on="time", how="semi")
-
                 similarity_step = clone(self.similarity)
-                similarity_step.fit(y=y_calib, y_pred=y_pred_for_sim, X=X_for_sim)
+                similarity_step.fit(y=y_calib, y_pred=y_pred_for_sim)
 
-                weights_array = similarity_step.predict(y_pred=y_pred_for_sim, X=X_for_sim)
+                weights_array = similarity_step.predict(y_pred=y_pred_for_sim)
                 weight_col_names = [f"w_{i}" for i in range(weights_array.shape[1])]
                 weights_step = pl.DataFrame(weights_array, schema=weight_col_names)
                 weights_step = weights_step.with_columns(step=pl.lit(step))
@@ -248,6 +244,116 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 self._fit_score_counts_[key] = conformity_scores.filter(pl.col("step") == step).height
 
         return self
+
+    def _observe_standard(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+    ) -> "SplitConformalForecaster":
+        """Update similarity state and conformity scores for new observations.
+
+        Called during ``observe()`` before the point forecaster absorbs
+        the new data so that ``predict()`` still reflects the pre-observe
+        state.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations.
+        X_actual : pl.DataFrame or None
+            Exogenous features aligned with ``y``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features (unused, accepted for API consistency).
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts (unused, accepted for API consistency).
+
+        Returns
+        -------
+        self
+
+        """
+        if not hasattr(self, "similarities_"):
+            return super()._observe_standard(y, X_actual, X_future, X_forecast)  # ty: ignore[invalid-return-type]
+
+        # Generate predictions *before* the point forecaster is updated
+        y_pred = self.point_forecaster_.predict(
+            forecasting_horizon=self.fit_forecasting_horizon_,
+        )
+
+        for step in range(1, 1 + self.fit_forecasting_horizon_):
+            key = f"step_{step}"
+            similarity_step = self.similarities_[key]
+            conformity_scorer_step = self.conformity_scorers_[key]
+
+            y_pred_step = y_pred[step - 1 :: self.fit_forecasting_horizon_]
+            # Drop vintage_time if present (conformity scorer expects time + value cols)
+            y_pred_step = y_pred_step.drop("vintage_time", strict=False)
+
+            similarity_step.observe(y=y, y_pred=y_pred_step)
+
+            conformity_scores_step = conformity_scorer_step.score(y, y_pred_step)
+            conformity_scores_step = conformity_scores_step.with_columns(step=step)
+            self.conformity_scores_ = pl.concat([self.conformity_scores_, conformity_scores_step])
+
+        return super()._observe_standard(y, X_actual, X_future, X_forecast)  # ty: ignore[invalid-return-type]
+
+    def _rewind_standard(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+    ) -> "SplitConformalForecaster":
+        """Rewind similarity state and conformity scores.
+
+        Removes post-fit observations from similarity and conformity
+        score state.  The number of rows removed equals the number
+        added by ``_observe_standard`` since fit (capped so we never
+        remove fit-time data).
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target observations to rewind (used for row count).
+        X_actual : pl.DataFrame or None
+            Exogenous features (passed through to similarity rewind).
+        X_future : pl.DataFrame or None, default=None
+            Known future features (unused, accepted for API consistency).
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts (unused, accepted for API consistency).
+
+        Returns
+        -------
+        self
+
+        """
+        if not hasattr(self, "similarities_"):
+            return super()._rewind_standard(y, X_actual, X_future, X_forecast)  # ty: ignore[invalid-return-type]
+
+        n_rewind = len(y)
+
+        for step in range(1, 1 + self.fit_forecasting_horizon_):
+            key = f"step_{step}"
+            fit_count = self._fit_score_counts_[key]
+            step_scores = self.conformity_scores_.filter(pl.col("step") == step)
+            n_post_fit = len(step_scores) - fit_count
+            n_remove = min(n_rewind, n_post_fit)
+
+            if n_remove > 0:
+                # Remove the last n_remove rows for this step
+                other_steps = self.conformity_scores_.filter(pl.col("step") != step)
+                kept = step_scores.head(len(step_scores) - n_remove)
+                self.conformity_scores_ = pl.concat([other_steps, kept])
+
+                # Rewind similarity state
+                similarity_step = self.similarities_[key]
+                # Build a dummy y/y_pred with correct length for rewind
+                y_rewind = y.head(n_remove)
+                similarity_step.rewind(y=y_rewind, y_pred=y_rewind, X_actual=X_actual)
+
+        return super()._rewind_standard(y, X_actual, X_future, X_forecast)  # ty: ignore[invalid-return-type]
 
     def observe(
         self,
@@ -295,11 +401,16 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         y, X_actual, groups = validate_forecaster_data(self, y, X_actual, reset=False, groups=groups)
 
-        self.point_forecaster_.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)
+        # Update similarity / conformity scores *before* the point
+        # forecaster absorbs the new data so we can still call predict()
+        # to obtain the prediction-vs-actual residual.
         if self.groups_ is None:
             self._observe_standard(y, X_actual=X_actual)
         else:
             BasePanelForecaster._observe_panel(self, y, X_actual=X_actual, groups=groups)
+
+        self.point_forecaster_.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)
+        self.observed_time_ = self.point_forecaster_.observed_time_
         return self
 
     def rewind(
@@ -350,6 +461,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             self._rewind_standard(y, X_actual=X_actual)
         else:
             BasePanelForecaster._rewind_panel(self, y, X_actual=X_actual, groups=groups)
+        self.observed_time_ = self.point_forecaster_.observed_time_
         return self
 
     def predict(
@@ -668,10 +780,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             for coverage_rate in coverage_rates:
                 if self.similarity is not None and hasattr(self, "similarities_"):
                     similarity_step = self.similarities_[f"step_{step}"]
-                    X_step = None
-                    if X is not None:
-                        X_step = X.slice(step - 1, 1)
-                    weights_array = similarity_step.predict(y_pred=y_pred_step, X=X_step)
+                    weights_array = similarity_step.predict(y_pred=y_pred_step)
                     step_weights = weights_array[0].astype(np.float64)
 
                     y_pred_interval_rate_step = self._weighted_inverse_score(

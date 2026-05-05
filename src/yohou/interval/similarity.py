@@ -146,8 +146,20 @@ class DistanceSimilarity(BaseSimilarity):
 
         """
         if X_actual is not None:
-            return pl.concat([y_pred, X_actual], how="horizontal")
-        return y_pred
+            X_no_time = X_actual.drop("time", strict=False)
+            result = pl.concat([y_pred, X_no_time], how="horizontal")
+        else:
+            result = y_pred
+
+        for col in result.columns:
+            if col == "time":
+                continue
+            series = result[col]
+            if series.null_count() > 0 or series.cast(pl.Float64, strict=False).is_nan().sum() > 0:
+                raise ValueError(
+                    f"Column '{col}' contains null or NaN values. DistanceSimilarity requires complete data."
+                )
+        return result
 
     def fit(
         self,
@@ -174,7 +186,7 @@ class DistanceSimilarity(BaseSimilarity):
 
         """
         X_features = self._get_X(y_pred, X_actual)
-        self._X_observed = X_features.drop_nulls()
+        self._X_observed = X_features
 
         self._n_discarded_indices = len(y_pred) - len(X_features)
 
@@ -214,7 +226,7 @@ class DistanceSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "DistanceSimilarity":
         """Rewind the most recently observed data.
 
@@ -230,7 +242,7 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             Predictions to rewind (used only for row count).
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features to rewind (unused).
 
         Returns
@@ -425,7 +437,7 @@ class TemporalSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "TemporalSimilarity":
         """Fit the temporal similarity from calibration predictions.
 
@@ -439,7 +451,7 @@ class TemporalSimilarity(BaseSimilarity):
             Target time series (unused, accepted for API consistency).
         y_pred : pl.DataFrame
             Point forecast time series with a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features (unused, accepted for API consistency).
 
         Returns
@@ -467,7 +479,7 @@ class TemporalSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "TemporalSimilarity":
         """Observe new data and extend the reference feature matrix.
 
@@ -478,7 +490,7 @@ class TemporalSimilarity(BaseSimilarity):
             consistency).
         y_pred : pl.DataFrame
             New predictions with a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features (unused, accepted for API consistency).
 
         Returns
@@ -494,7 +506,7 @@ class TemporalSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "TemporalSimilarity":
         """Rewind the most recently observed data.
 
@@ -508,7 +520,7 @@ class TemporalSimilarity(BaseSimilarity):
             Target observations to rewind (used only for row count).
         y_pred : pl.DataFrame
             Predictions to rewind (used only for row count).
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features to rewind (unused).
 
         Returns
@@ -523,7 +535,7 @@ class TemporalSimilarity(BaseSimilarity):
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute temporal similarity weights for new predictions.
 
@@ -531,7 +543,7 @@ class TemporalSimilarity(BaseSimilarity):
         ----------
         y_pred : pl.DataFrame
             New predictions with a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features (unused).
 
         Returns
@@ -663,7 +675,7 @@ class CompositeSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "CompositeSimilarity":
         """Fit all sub-similarities on the calibration data.
 
@@ -673,7 +685,7 @@ class CompositeSimilarity(BaseSimilarity):
             Target time series.
         y_pred : pl.DataFrame
             Point forecast time series.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
 
         Returns
@@ -682,14 +694,14 @@ class CompositeSimilarity(BaseSimilarity):
 
         """
         self._validate_params()
-        self.similarities_ = [clone(sim).fit(y=y, y_pred=y_pred, X=X) for sim in self.similarities]  # ty: ignore[not-iterable]
+        self.similarities_ = [clone(sim).fit(y=y, y_pred=y_pred, X_actual=X_actual) for sim in self.similarities]  # ty: ignore[not-iterable]
         return self
 
     def observe(
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "CompositeSimilarity":
         """Forward observation to all sub-similarities.
 
@@ -699,7 +711,7 @@ class CompositeSimilarity(BaseSimilarity):
             New target observations.
         y_pred : pl.DataFrame
             New predictions.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             New exogenous features.
 
         Returns
@@ -708,14 +720,14 @@ class CompositeSimilarity(BaseSimilarity):
 
         """
         for sim in self.similarities_:
-            sim.observe(y=y, y_pred=y_pred, X=X)
+            sim.observe(y=y, y_pred=y_pred, X_actual=X_actual)
         return self
 
     def rewind(
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "CompositeSimilarity":
         """Forward rewind to all sub-similarities.
 
@@ -725,7 +737,7 @@ class CompositeSimilarity(BaseSimilarity):
             Target observations to rewind.
         y_pred : pl.DataFrame
             Predictions to rewind.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features to rewind.
 
         Returns
@@ -734,13 +746,13 @@ class CompositeSimilarity(BaseSimilarity):
 
         """
         for sim in self.similarities_:
-            sim.rewind(y=y, y_pred=y_pred, X=X)
+            sim.rewind(y=y, y_pred=y_pred, X_actual=X_actual)
         return self
 
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Combine sub-similarity weights into a single weight matrix.
 
@@ -748,7 +760,7 @@ class CompositeSimilarity(BaseSimilarity):
         ----------
         y_pred : pl.DataFrame
             Predictions to compute similarities for.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
 
         Returns
@@ -759,7 +771,7 @@ class CompositeSimilarity(BaseSimilarity):
 
         """
         alphas = self._resolved_weights()
-        weight_matrices = [sim.predict(y_pred=y_pred, X=X) for sim in self.similarities_]
+        weight_matrices = [sim.predict(y_pred=y_pred, X_actual=X_actual) for sim in self.similarities_]
 
         if self.combination == "multiply":
             combined = np.ones_like(weight_matrices[0])

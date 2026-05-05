@@ -625,7 +625,7 @@ class TestSplitConformalWithExogenousFeatures:
             conformity_scorer=AbsoluteResidual(),
             similarity=DistanceSimilarity(metric="euclidean"),
         )
-        scf.fit(y[:200], X=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
+        scf.fit(y[:200], X_actual=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
         assert hasattr(scf, "similarities_")
         assert "step_1" in scf.similarities_
 
@@ -638,8 +638,8 @@ class TestSplitConformalWithExogenousFeatures:
             conformity_scorer=AbsoluteResidual(),
             similarity=DistanceSimilarity(metric="euclidean"),
         )
-        scf.fit(y[:200], X=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
-        intervals = scf.predict_interval(X=X[200:201], coverage_rates=[0.9])
+        scf.fit(y[:200], X_actual=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
+        intervals = scf.predict_interval(coverage_rates=[0.9])
         assert isinstance(intervals, pl.DataFrame)
         assert "value_lower_0.9" in intervals.columns
         assert "value_upper_0.9" in intervals.columns
@@ -653,11 +653,11 @@ class TestSplitConformalWithExogenousFeatures:
             conformity_scorer=AbsoluteResidual(),
             similarity=DistanceSimilarity(metric="euclidean"),
         )
-        scf.fit(y[:200], X=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
+        scf.fit(y[:200], X_actual=X[:200], forecasting_horizon=1, coverage_rates=[0.9])
         sim_step = scf.similarities_["step_1"]
         n_before = len(sim_step._X_observed)
 
-        scf.observe(y[200:201], X=X[200:201])
+        scf.observe(y[200:201], X_actual=X[200:201])
         assert len(sim_step._X_observed) == n_before + 1
 
 
@@ -705,9 +705,9 @@ class TestSplitConformalObservePredict:
             conformity_scorer=AbsoluteResidual(),
             similarity=DistanceSimilarity(metric="euclidean"),
         )
-        scf.fit(y[:200], X=X[:200], forecasting_horizon=1)
+        scf.fit(y[:200], X_actual=X[:200], forecasting_horizon=1)
 
-        y_pred = scf.observe_predict(y=y[200:205], X=X[200:])
+        y_pred = scf.observe_predict(y=y[200:205], X_actual=X[200:])
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) >= 1
 

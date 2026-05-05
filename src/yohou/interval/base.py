@@ -158,7 +158,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Rewind observed data from the similarity measure.
 
@@ -174,7 +174,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predictions to rewind.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features to rewind.
 
         Returns
