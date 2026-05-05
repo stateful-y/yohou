@@ -1055,7 +1055,13 @@ class MedianAbsoluteError(BasePointScorer):
             If aggregation_method includes "componentwise", returns DataFrame with "time" and "median_ae" columns.
             If aggregation_method="all", returns scalar float.
 
+        Raises
+        ------
+        TypeError
+            If weight arguments are passed (median is not weight-compatible).
+
         """
+        self._reject_weights(**params)
         check_is_fitted(self, ["_is_fitted"])
 
         y_truth, y_pred, context = validate_scorer_data(
@@ -1175,10 +1181,6 @@ class MaxAbsoluteError(BasePointScorer):
 
     """
 
-    _parameter_constraints: dict = {
-        **BasePointScorer._parameter_constraints,
-    }
-
     _metric_name = "max_ae"
 
     def __init__(
@@ -1204,45 +1206,7 @@ class MaxAbsoluteError(BasePointScorer):
         dims: set[str],
     ) -> pl.DataFrame:
         """Collapse row dimensions using max instead of mean."""
-        collapse_steps = "stepwise" in dims
-        collapse_vintages = "vintagewise" in dims
-
-        if not collapse_steps and not collapse_vintages:
-            return df
-
-        meta_names = {"coverage_rate"}
-        meta_cols = [c for c in df.columns if c in meta_names]
-        val_cols = [c for c in df.columns if c not in meta_names]
-
-        if collapse_steps and collapse_vintages:
-            if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).max() for c in val_cols])
-            return df.select(pl.all().max())
-
-        # Partial collapse: keep one dimension, collapse the other
-        keep_dim = "forecasting_step" if collapse_vintages else "vintage_time"
-        dim_values = getattr(context, keep_dim, None) if context is not None else None
-
-        if dim_values is None:
-            if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).max() for c in val_cols])
-            return df.select(pl.all().max())
-
-        # Tile context values for interval data (coverage_rate repeats rows)
-        dim_list = dim_values.to_list()
-        if "coverage_rate" in df.columns:
-            n_rates = df["coverage_rate"].n_unique()
-            dim_list = dim_list * n_rates
-
-        group_cols = [keep_dim] + meta_cols
-
-        return (
-            df
-            .with_columns(pl.Series(keep_dim, dim_list))
-            .group_by(group_cols, maintain_order=True)
-            .agg([pl.col(c).max() for c in val_cols])
-            .sort(keep_dim)
-        )
+        return self._collapse_rows_with(df, context, dims, agg_fn="max")
 
 
 class R2Score(BasePointScorer):
@@ -1315,10 +1279,6 @@ class R2Score(BasePointScorer):
 
     """
 
-    _parameter_constraints: dict = {
-        **BasePointScorer._parameter_constraints,
-    }
-
     _metric_name = "r2"
 
     lower_is_better = False
@@ -1356,7 +1316,13 @@ class R2Score(BasePointScorer):
         float or pl.DataFrame
             R² score. 1.0 for perfect predictions, 0.0 for mean-level predictions.
 
+        Raises
+        ------
+        TypeError
+            If weight arguments are passed (R² does not support sample weights).
+
         """
+        self._reject_weights(**params)
         check_is_fitted(self, ["_is_fitted"])
 
         y_truth, y_pred, context = validate_scorer_data(
@@ -1377,24 +1343,7 @@ class R2Score(BasePointScorer):
         # Build result DataFrame (1 row, 1 col per component)
         result = pl.DataFrame(r2_values).select(y_truth.columns)
 
-        # Aggregate per the requested aggregation method
-        dims = self._normalize_agg_methods(self.aggregation_method)
-
-        # Collapse components
-        if "componentwise" in dims:
-            result = self._collapse_components(result)
-
-        # Collapse groups
-        if "groupwise" in dims:
-            result = self._collapse_groups(result)
-
-        # Finalize
-        result = self._finalize(result, context, dims)
-
-        if isinstance(result, pl.DataFrame):
-            result = self._rename_metric_columns(result)
-
-        return result
+        return self._aggregate_precomputed(result, context)
 
     def __sklearn_tags__(self):
         """Get estimator tags.
@@ -1492,10 +1441,6 @@ class MeanDirectionalAccuracy(BasePointScorer):
 
     """
 
-    _parameter_constraints: dict = {
-        **BasePointScorer._parameter_constraints,
-    }
-
     _metric_name = "mda"
 
     lower_is_better = False
@@ -1533,7 +1478,13 @@ class MeanDirectionalAccuracy(BasePointScorer):
         float or pl.DataFrame
             MDA score between 0 and 1. 1.0 for perfect directional prediction.
 
+        Raises
+        ------
+        TypeError
+            If weight arguments are passed (MDA does not support sample weights).
+
         """
+        self._reject_weights(**params)
         check_is_fitted(self, ["_is_fitted"])
 
         y_truth, y_pred, context = validate_scorer_data(
@@ -1556,24 +1507,7 @@ class MeanDirectionalAccuracy(BasePointScorer):
         # Build result DataFrame (1 row, 1 col per component)
         result = pl.DataFrame(mda_values).select(y_truth.columns)
 
-        # Aggregate per the requested aggregation method
-        dims = self._normalize_agg_methods(self.aggregation_method)
-
-        # Collapse components
-        if "componentwise" in dims:
-            result = self._collapse_components(result)
-
-        # Collapse groups
-        if "groupwise" in dims:
-            result = self._collapse_groups(result)
-
-        # Finalize
-        result = self._finalize(result, context, dims)
-
-        if isinstance(result, pl.DataFrame):
-            result = self._rename_metric_columns(result)
-
-        return result
+        return self._aggregate_precomputed(result, context)
 
     def __sklearn_tags__(self):
         """Get estimator tags.

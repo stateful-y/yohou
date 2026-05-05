@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import re
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -272,11 +273,29 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         context: ScoringContext | None,
         dims: set[str],
     ) -> pl.DataFrame:
-        """Collapse row dimensions (stepwise and/or vintagewise).
+        """Collapse row dimensions (stepwise and/or vintagewise) using mean."""
+        return self._collapse_rows_with(df, context, dims, agg_fn="mean")
 
-        When both stepwise and vintagewise are in *dims*, all rows are
-        averaged (within each coverage_rate group if present). For partial
-        collapse, rows are grouped by the non-collapsed dimension.
+    def _collapse_rows_with(
+        self,
+        df: pl.DataFrame,
+        context: ScoringContext | None,
+        dims: set[str],
+        agg_fn: str = "mean",
+    ) -> pl.DataFrame:
+        """Collapse row dimensions using the specified aggregation function.
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            DataFrame with per-row scores.
+        context : ScoringContext or None
+            Scoring context with time values and metadata.
+        dims : set of str
+            Aggregation dimensions.
+        agg_fn : str, default="mean"
+            Polars aggregation function name ("mean", "sum", "max").
+
         """
         collapse_steps = "stepwise" in dims
         collapse_vintages = "vintagewise" in dims
@@ -288,10 +307,15 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         meta_cols = [c for c in df.columns if c in meta_names]
         val_cols = [c for c in df.columns if c not in meta_names]
 
+        def _agg_exprs(cols: list[str]) -> list[pl.Expr]:
+            return [getattr(pl.col(c), agg_fn)() for c in cols]
+
         if collapse_steps and collapse_vintages:
             if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
-            return df.select(pl.all().mean())
+                return df.group_by(meta_cols, maintain_order=True).agg(_agg_exprs(val_cols))
+            if agg_fn == "mean":
+                return df.select(pl.all().mean())
+            return df.select(_agg_exprs(val_cols))
 
         # Partial collapse: keep one dimension, collapse the other
         keep_dim = "forecasting_step" if collapse_vintages else "vintage_time"
@@ -299,8 +323,10 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         if dim_values is None:
             if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
-            return df.select(pl.all().mean())
+                return df.group_by(meta_cols, maintain_order=True).agg(_agg_exprs(val_cols))
+            if agg_fn == "mean":
+                return df.select(pl.all().mean())
+            return df.select(_agg_exprs(val_cols))
 
         # Tile context values for interval data (coverage_rate repeats rows)
         dim_list = dim_values.to_list()
@@ -314,7 +340,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             df
             .with_columns(pl.Series(keep_dim, dim_list))
             .group_by(group_cols, maintain_order=True)
-            .agg([pl.col(c).mean() for c in val_cols])
+            .agg(_agg_exprs(val_cols))
             .sort(keep_dim)
         )
 
@@ -1084,6 +1110,45 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
             Transformed scores.
 
         """
+        return result
+
+    @staticmethod
+    def _reject_weights(**params: object) -> None:
+        """Raise if any weight kwargs are passed to a scorer that doesn't support them."""
+        weight_keys = [
+            k for k in params if k in {"time_weight", "step_weight", "vintage_weight"} and params[k] is not None
+        ]
+        if weight_keys:
+            raise TypeError(
+                f"This scorer does not support sample weights, "
+                f"but received: {', '.join(sorted(weight_keys))}. "
+                f"Remove the weight arguments or use a scorer that supports weighting."
+            )
+
+    def _aggregate_precomputed(
+        self,
+        result: pl.DataFrame,
+        context: ScoringContext | None,
+    ) -> float | pl.DataFrame:
+        """Aggregate a single-row DataFrame of precomputed per-component values.
+
+        Applies component collapse, group collapse, finalization, and
+        metric column renaming. Used by scorers that compute whole-column
+        metrics (R², MDA) instead of per-row errors.
+        """
+        dims = self._normalize_agg_methods(self.aggregation_method)
+
+        if "componentwise" in dims:
+            result = self._collapse_components(result)
+
+        if "groupwise" in dims:
+            result = self._collapse_groups(result)
+
+        result = self._finalize(result, context, dims)
+
+        if isinstance(result, pl.DataFrame):
+            result = self._rename_metric_columns(result)
+
         return result
 
     def score(
@@ -1943,48 +2008,8 @@ class BaseHardLabelScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         context: ScoringContext | None,
         dims: set[str],
     ) -> pl.DataFrame:
-        """Collapse row dimensions using sum (for confusion counts).
-
-        Mirrors :meth:`_collapse_rows` but uses ``.sum()`` instead of
-        ``.mean()`` so confusion indicators accumulate correctly.
-        """
-        collapse_steps = "stepwise" in dims
-        collapse_vintages = "vintagewise" in dims
-
-        if not collapse_steps and not collapse_vintages:
-            return df
-
-        meta_names = {"coverage_rate"}
-        meta_cols = [c for c in df.columns if c in meta_names]
-        val_cols = [c for c in df.columns if c not in meta_names]
-
-        if collapse_steps and collapse_vintages:
-            if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).sum() for c in val_cols])
-            return df.select([pl.col(c).sum() for c in val_cols])
-
-        keep_dim = "forecasting_step" if collapse_vintages else "vintage_time"
-        dim_values = getattr(context, keep_dim, None) if context is not None else None
-
-        if dim_values is None:
-            if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).sum() for c in val_cols])
-            return df.select([pl.col(c).sum() for c in val_cols])
-
-        dim_list = dim_values.to_list()
-        if "coverage_rate" in df.columns:
-            n_rates = df["coverage_rate"].n_unique()
-            dim_list = dim_list * n_rates
-
-        group_cols = [keep_dim] + meta_cols
-
-        return (
-            df
-            .with_columns(pl.Series(keep_dim, dim_list))
-            .group_by(group_cols, maintain_order=True)
-            .agg([pl.col(c).sum() for c in val_cols])
-            .sort(keep_dim)
-        )
+        """Collapse row dimensions using sum (for confusion counts)."""
+        return self._collapse_rows_with(df, context, dims, agg_fn="sum")
 
     def _compute_and_average(self, df: pl.DataFrame) -> pl.DataFrame:
         """Compute metric from counts and apply class averaging.
@@ -2344,11 +2369,20 @@ class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         """Combine resolved weight arrays into a single sample weight vector.
 
         For simplicity, ranking scorers use a single combined weight array.
-        Dict (panel-aware) weights are not supported and are ignored.
+        Dict (panel-aware) weights are not supported and are skipped
+        with a warning.
         """
         arrays = []
         for w in (tw, sw, vw):
-            if w is None or isinstance(w, dict):
+            if w is None:
+                continue
+            if isinstance(w, dict):
+                warnings.warn(
+                    "Panel-aware (dict) weights are not supported by ranking scorers and will be ignored. "
+                    "Use a flat callable or DataFrame weight instead.",
+                    UserWarning,
+                    stacklevel=3,
+                )
                 continue
             arrays.append(w)
 

@@ -352,19 +352,15 @@ class RankedProbabilityScore(BaseClassProbaScorer):
             k = len(ordered_labels)
             norm = max(k - 1, 1)  # Avoid division by zero for K=1
 
-            per_row_scores = []
-            for row_idx in range(len(y_truth)):
-                true_label = true_labels[row_idx]
-                probs = np.array([float(y_pred[c][row_idx]) for c in ordered_cols])
-                one_hot = np.array([1.0 if label == true_label else 0.0 for label in ordered_labels])
+            # Vectorized computation
+            proba_arr = y_pred.select(ordered_cols).to_numpy()  # (n, K)
+            true_arr = true_labels.to_numpy().astype(str)
+            labels_arr = np.array(ordered_labels)
+            one_hot = (true_arr[:, None] == labels_arr[None, :]).astype(np.float64)  # (n, K)
 
-                # Cumulative sums
-                cum_pred = np.cumsum(probs)[:-1]  # K-1 values
-                cum_true = np.cumsum(one_hot)[:-1]
+            cum_pred = np.cumsum(proba_arr, axis=1)[:, :-1]  # (n, K-1)
+            cum_true = np.cumsum(one_hot, axis=1)[:, :-1]
 
-                rps = float(np.sum((cum_pred - cum_true) ** 2)) / norm
-                per_row_scores.append(rps)
-
-            scores_dict[target_col] = per_row_scores
+            scores_dict[target_col] = (np.sum((cum_pred - cum_true) ** 2, axis=1) / norm).tolist()
 
         return pl.DataFrame(scores_dict)

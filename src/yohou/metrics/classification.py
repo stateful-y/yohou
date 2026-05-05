@@ -75,10 +75,6 @@ class Precision(BaseHardLabelScorer):
 
     """
 
-    _parameter_constraints: dict = {
-        **BaseHardLabelScorer._parameter_constraints,
-    }
-
     _metric_name = "precision"
     _lower_is_better = False
 
@@ -148,10 +144,6 @@ class Recall(BaseHardLabelScorer):
     `FBetaScore` : Weighted harmonic mean of precision and recall.
 
     """
-
-    _parameter_constraints: dict = {
-        **BaseHardLabelScorer._parameter_constraints,
-    }
 
     _metric_name = "recall"
     _lower_is_better = False
@@ -416,10 +408,6 @@ class RocAuc(BaseRankingScorer):
 
     """
 
-    _parameter_constraints: dict = {
-        **BaseRankingScorer._parameter_constraints,
-    }
-
     _metric_name = "roc_auc"
     _lower_is_better = False
 
@@ -483,10 +471,6 @@ class PrAuc(BaseRankingScorer):
     `RocAuc` : ROC AUC.
 
     """
-
-    _parameter_constraints: dict = {
-        **BaseRankingScorer._parameter_constraints,
-    }
 
     _metric_name = "pr_auc"
     _lower_is_better = False
