@@ -817,7 +817,7 @@ def validate_splitter_data(
 
     if X_actual is not None:
         check_time_column(X_actual)
-        check_panel_internal_consistency(X_actual, "X")
+        check_panel_internal_consistency(X_actual, "X_actual")
 
         if y is not None:
             check_panel_groups_match(y, X_actual)
@@ -870,7 +870,7 @@ def _validate_step_source_schema(
 def validate_forecaster_data(
     forecaster: BaseForecaster,
     y: pl.DataFrame,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     *,
     reset: Literal[True] = True,
     groups: list[str] | None = None,
@@ -883,7 +883,7 @@ def validate_forecaster_data(
 def validate_forecaster_data(
     forecaster: BaseForecaster,
     y: None,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     *,
     reset: Literal[True] = True,
     groups: list[str] | None = None,
@@ -896,7 +896,7 @@ def validate_forecaster_data(
 def validate_forecaster_data(
     forecaster: BaseForecaster,
     y: pl.DataFrame,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
     groups: list[str] | None = None,
@@ -909,7 +909,7 @@ def validate_forecaster_data(
 def validate_forecaster_data(
     forecaster: BaseForecaster,
     y: None,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
     groups: list[str] | None = None,
@@ -921,7 +921,7 @@ def validate_forecaster_data(
 def validate_forecaster_data(
     forecaster: BaseForecaster,
     y: pl.DataFrame | None = None,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     *,
     reset: bool = True,
     groups: list[str] | None = None,
@@ -942,7 +942,7 @@ def validate_forecaster_data(
         set during fit context.
     y : pl.DataFrame or None
         Target time series with ``"time"`` column.
-    X : pl.DataFrame or None, default=None
+    X_actual : pl.DataFrame or None, default=None
         Exogenous features with ``"time"`` column.
     reset : bool, default=True
         If ``True``, validate in fit context (infer interval, set schemas).
@@ -960,7 +960,7 @@ def validate_forecaster_data(
     Returns
     -------
     tuple of (pl.DataFrame or None, pl.DataFrame or None, list of str or None)
-        Validated ``(y, X, groups)``.  ``groups`` is
+        Validated ``(y, X_actual, groups)``.  ``groups`` is
         ``None`` in fit context.
 
     Raises
@@ -988,17 +988,17 @@ def validate_forecaster_data(
         # Fit context: validate and set interval
         # Type narrowing: check_inputs requires non-None y
         if y is not None:
-            interval = check_inputs(y, X)
+            interval = check_inputs(y, X_actual)
             forecaster.interval_ = interval
-        return y, X, None
+        return y, X_actual, None
 
     # Predict/Update context (reset=False)
 
     # Validate time columns
     if y is not None:
         check_time_column(y)
-    if X is not None:
-        check_time_column(X)
+    if X_actual is not None:
+        check_time_column(X_actual)
 
     # Validate and normalize groups parameter
     groups = check_groups(
@@ -1014,23 +1014,23 @@ def validate_forecaster_data(
             groups=groups,
         )
 
-    if X is not None:
-        # Handle panel data X (local + global schemas)
+    if X_actual is not None:
+        # Handle panel data X_actual (local + global schemas)
         if forecaster.groups_ is not None:
-            # Validate local X columns (with panel prefixes)
+            # Validate local X_actual columns (with panel prefixes)
             if hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_:
                 X_local = check_schema(
-                    X,
+                    X_actual,
                     forecaster.local_X_actual_schema_,
                     groups=forecaster.groups_,
                 )
 
-            # Validate shared X columns (no prefixes)
+            # Validate shared X_actual columns (no prefixes)
             X_shared = None
             if hasattr(forecaster, "shared_X_actual_schema_") and forecaster.shared_X_actual_schema_:
-                X_shared = check_schema(X, forecaster.shared_X_actual_schema_)
+                X_shared = check_schema(X_actual, forecaster.shared_X_actual_schema_)
 
-            # Reconstruct X with both local and shared columns
+            # Reconstruct X_actual with both local and shared columns
             if (
                 hasattr(forecaster, "local_X_actual_schema_")
                 and forecaster.local_X_actual_schema_
@@ -1038,17 +1038,19 @@ def validate_forecaster_data(
                 and forecaster.shared_X_actual_schema_
             ):
                 assert X_shared is not None
-                X = pl.concat(
+                X_actual = pl.concat(
                     [X_local, X_shared.select(~cs.by_name("time"))],
                     how="horizontal",
                 )
             elif hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_:
-                X = X_local
+                X_actual = X_local
             elif hasattr(forecaster, "shared_X_actual_schema_") and forecaster.shared_X_actual_schema_:
-                X = X_shared
+                X_actual = X_shared
         # Non-panel data: simple schema check (if schema exists)
-        elif X is not None and hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_:
-            X = check_schema(X, forecaster.local_X_actual_schema_)
+        elif (
+            X_actual is not None and hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_
+        ):
+            X_actual = check_schema(X_actual, forecaster.local_X_actual_schema_)
 
     # Validate X_future schema against fitted state
     if X_future is not None:
@@ -1062,7 +1064,7 @@ def validate_forecaster_data(
         if fitted_schema is not None:
             _validate_step_source_schema(X_forecast, fitted_schema, "X_forecast", exclude_cols={"time", "vintage_time"})
 
-    return y, X, groups
+    return y, X_actual, groups
 
 
 @overload

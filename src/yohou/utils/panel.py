@@ -115,19 +115,20 @@ def get_group_df(
     df: pl.DataFrame,
     group_name: str,
     schema: dict[str, pl.DataType],
+    key_cols: tuple[str, ...] = ("time",),
 ) -> pl.DataFrame:
     """Extract and rename columns for a specific panel group.
 
     Selects columns matching the group prefix pattern (<group_name>__*),
-    renames them to remove the prefix, and returns a DataFrame with "time"
-    and the unprefixed columns. Also handles global columns (no prefix) that
-    are shared across all groups.
+    renames them to remove the prefix, and returns a DataFrame with key
+    columns and the unprefixed columns. Also handles global columns (no
+    prefix) that are shared across all groups.
 
     Parameters
     ----------
     df : pl.DataFrame
         Input DataFrame with panel data columns.
-        Must contain a "time" column.
+        Must contain columns listed in ``key_cols``.
     group_name : str
         Group prefix to extract (e.g., "sales", "inventory").
         Columns matching <group_name>__* will be selected.
@@ -137,6 +138,9 @@ def get_group_df(
         Can contain both local columns (will have group prefix in df) and
         global columns (no prefix in df).
         Example: {"store_1": pl.Int64, "store_2": pl.Int64, "holiday": pl.Boolean}
+    key_cols : tuple of str, default=("time",)
+        Index columns to preserve in the output (e.g. ``("time",)`` for
+        y/X_actual/X_future, ``("vintage_time", "time")`` for X_forecast).
 
     Returns
     -------
@@ -200,8 +204,8 @@ def get_group_df(
                 f"Available columns: {df.columns}"
             )
 
-    # Select time + local + global columns
-    df_group = df.select(["time"] + local_cols + global_cols)
+    # Select key + local + global columns
+    df_group = df.select(list(key_cols) + local_cols + global_cols)
 
     # Rename only local columns to remove prefix (global columns keep their names)
     if rename_map:

@@ -47,18 +47,18 @@ class TestSystematicChecks:
         Note: check_observe_extends_observations and check_rewind_replaces_observations
         are not yielded because DecompositionPipeline sets tracks_observations=False.
         """
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
         y = y.with_columns([(pl.col(col).abs() + 1).alias(col) for col in y.columns if col != "time"])
 
         y_train, y_test = y[:80], y[80:]
-        X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (X_actual[:80], X_actual[80:]) if X_actual is not None else (None, None)
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
         )
 
 
@@ -350,7 +350,7 @@ class TestExogenousFeatures:
     """Tests for exogenous feature support."""
 
     @pytest.mark.xfail(
-        reason="DecompositionPipeline passes X through recursive predict; will be fixed in Phase 4 (compose refactor)",
+        reason="DecompositionPipeline passes X_actual through recursive predict; will be fixed in Phase 4 (compose refactor)",
         strict=True,
     )
     def test_with_exogenous_features(self):
@@ -362,7 +362,7 @@ class TestExogenousFeatures:
             eager=True,
         )
         y = pl.DataFrame({"time": time, "value": range(50)})
-        X = pl.DataFrame({"time": time, "feature": range(50, 100)})
+        X_actual = pl.DataFrame({"time": time, "feature": range(50, 100)})
 
         from sklearn.linear_model import Ridge
 
@@ -377,7 +377,7 @@ class TestExogenousFeatures:
             ),
         ])
         fit_forecasting_horizon = 5
-        forecaster.fit(y[:30], X_actual=X[:30], forecasting_horizon=fit_forecasting_horizon)
+        forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=fit_forecasting_horizon)
 
         predict_forecasting_horizon = 5
         y_pred = forecaster.predict(forecasting_horizon=predict_forecasting_horizon)
@@ -386,7 +386,7 @@ class TestExogenousFeatures:
 
 
 class TestDecompositionPipelineWithoutExogenous:
-    """Tests for DecompositionPipeline with X=None throughout the lifecycle."""
+    """Tests for DecompositionPipeline with X_actual=None throughout the lifecycle."""
 
     @pytest.fixture
     def daily_y(self):
@@ -543,15 +543,15 @@ class TestDecompositionPipelineObserveRewind:
         """Observe with feature_transformer exercises feature transform path."""
         from yohou.preprocessing import LagTransformer
 
-        y, X = y_X_factory(length=80, n_targets=1, n_features=2)
+        y, X_actual = y_X_factory(length=80, n_targets=1, n_features=2)
 
         forecaster = DecompositionPipeline(
             [("trend", PolynomialTrendForecaster(degree=1))],
             feature_transformer=LagTransformer(lag=[1]),
         )
-        forecaster.fit(y[:60], X[:60], forecasting_horizon=5)
+        forecaster.fit(y[:60], X_actual[:60], forecasting_horizon=5)
 
-        forecaster.observe(y=y[60:70], X_actual=X[60:70])
+        forecaster.observe(y=y[60:70], X_actual=X_actual[60:70])
         y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 
@@ -599,8 +599,8 @@ class TestDecompositionPipelineFeatureTransformer:
         from yohou.preprocessing import FunctionTransformer
 
         y = time_series_factory(length=80, n_components=1)
-        X = time_series_factory(length=80, n_components=1, seed=99)
-        X = X.rename({c: f"feat_{c}" if c != "time" else c for c in X.columns})
+        X_actual = time_series_factory(length=80, n_components=1, seed=99)
+        X_actual = X_actual.rename({c: f"feat_{c}" if c != "time" else c for c in X_actual.columns})
 
         forecaster = DecompositionPipeline(
             [
@@ -609,9 +609,9 @@ class TestDecompositionPipelineFeatureTransformer:
             ],
             feature_transformer=FunctionTransformer(),
         )
-        forecaster.fit(y[:60], X_actual=X[:60], forecasting_horizon=5)
+        forecaster.fit(y[:60], X_actual=X_actual[:60], forecasting_horizon=5)
 
-        forecaster.rewind(y=y[:60], X_actual=X[:60])
+        forecaster.rewind(y=y[:60], X_actual=X_actual[:60])
         y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 

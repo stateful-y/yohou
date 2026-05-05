@@ -11,7 +11,7 @@ from .panel import (
     panel_aware_suffix,
     select_panel_columns,
 )
-from .pivot import pivot_forecasts, window_future
+from .pivot import pivot_forecasts, window_futures
 from .polars import cast, get_numeric_columns
 from .tabularization import tabularize
 from .tags import (
@@ -38,7 +38,6 @@ from .validate_data import (
 from .validation import (
     add_interval,
     check_continuity,
-    check_exogenous_required,
     check_forecasting_horizon_positive,
     check_groups,
     check_groups_exist,
@@ -50,6 +49,7 @@ from .validation import (
     check_scorer_column_selection,
     check_sufficient_rows,
     check_time_column,
+    check_X_actual_required,
     interval_to_timedelta,
     parse_interval,
     validate_column_names,
@@ -85,7 +85,7 @@ __all__ = [
     "all_functions",
     "cast",
     "check_continuity",
-    "check_exogenous_required",
+    "check_X_actual_required",
     "check_forecasting_horizon_positive",
     "check_inputs",
     "check_interval_consistency",
@@ -129,5 +129,5 @@ __all__ = [
     "validate_time_weight",
     "validate_transformer_data",
     "validate_weight_array",
-    "window_future",
+    "window_futures",
 ]

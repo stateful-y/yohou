@@ -41,17 +41,15 @@ def _(mo):
         ([Quickstart](/examples/quickstart/)).
         """
     )
-    return
 
 
 @app.cell(hide_code=True)
 def _():
-    from datetime import datetime, timedelta
-
     import numpy as np
     import polars as pl
     from sklearn.ensemble import HistGradientBoostingRegressor
 
+    from yohou.datasets import make_exogenous_regression
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
@@ -62,12 +60,11 @@ def _():
         LagTransformer,
         MeanAbsoluteError,
         PointReductionForecaster,
-        datetime,
+        make_exogenous_regression,
         np,
         pl,
         plot_forecast,
         plot_time_series,
-        timedelta,
     )
 
 
@@ -75,92 +72,42 @@ def _():
 def _(mo):
     mo.md(
         r"""
-        ## 1. Create the Synthetic Data
+        ## 1. Load the Synthetic Data
 
-        We create hourly electricity prices with a known linear relationship:
-        `price = 50 + 2·temperature + 10·is_holiday + noise`. This makes
-        the model's job transparent.
+        `make_exogenous_regression()` generates hourly electricity prices
+        with a known linear relationship:
+        `price = 50 + 2·temperature + 10·is_holiday + noise`, plus
+        weather forecasts with a small systematic bias.
         """
     )
-    return
 
 
 @app.cell
-def _(datetime, np, pl, timedelta):
-    rng = np.random.default_rng(42)
-    n = 200
+def _(make_exogenous_regression):
+    data = make_exogenous_regression(n_samples=200, forecasting_horizon=6)
+    y = data.y
+    X_actual = data.X_actual
+    X_future = data.X_future
+    X_forecast = data.X_forecast
     H = 6
 
-    times = pl.Series(
-        "time", [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(n)]
-    )
-    t = np.arange(n, dtype=float)
-    actual_temp = 15.0 + 5.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 0.5, n)
-
-    # X_actual: realized temperature readings
-    X_actual = pl.DataFrame({"time": times, "temperature": actual_temp})
-
-    # X_future: holiday indicator (Sundays = 1.0)
-    holidays = [
-        1.0 if (datetime(2024, 1, 1) + timedelta(hours=i)).weekday() == 6 else 0.0
-        for i in range(n)
-    ]
-    X_future = pl.DataFrame({"time": times, "is_holiday": holidays})
-
-    # y: price with known linear relationship
-    price = 50.0 + 2.0 * actual_temp + 10.0 * np.array(holidays) + rng.normal(0, 0.1, n)
-    y = pl.DataFrame({"time": times, "price": price})
-
-    print(f"Dataset: {n} hourly observations, forecast horizon H={H}")
-    y.head()
-    return H, X_actual, X_future, actual_temp, holidays, n, rng, t, times, y
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(
-        r"""
-        ## 2. Create Weather Forecasts (X_forecast)
-
-        External forecasts carry a `vintage_time` column. We create one vintage
-        per training observation, each covering the next H steps. The forecasts
-        have a small systematic bias (0.5°C) compared to actuals.
-        """
-    )
-    return
-
-
-@app.cell
-def _(H, actual_temp, n, np, pl, rng, times):
-    forecast_rows = []
-    for i in range(H, n):
-        for step in range(1, H + 1):
-            if i + step < n:
-                forecast_rows.append({
-                    "vintage_time": times[i],
-                    "time": times[i + step],
-                    "wx_temp": float(
-                        actual_temp[i + step] + 0.5 + rng.normal(0, 0.3)
-                    ),
-                })
-    X_forecast = pl.DataFrame(forecast_rows)
+    print(f"Dataset: {len(y)} hourly observations, forecast horizon H={H}")
     print(f"X_forecast: {len(X_forecast)} rows, {X_forecast['vintage_time'].n_unique()} vintages")
-    X_forecast.head()
-    return (X_forecast,)
+    y.head()
+    return H, X_actual, X_forecast, X_future, data, y
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
         r"""
-        ## 3. Fit the Forecaster
+        ## 2. Fit the Forecaster
 
         We use `PointReductionForecaster` with the `"direct"` strategy and
         `HistGradientBoostingRegressor` (handles nulls from partial forecast
         coverage). All three exogenous types go to `fit()`.
         """
     )
-    return
 
 
 @app.cell
@@ -207,7 +154,7 @@ def _(mo):
         These sit alongside the lag features from `LagTransformer` in the
         internal feature matrix.
 
-        ## 4. Predict with Multiple Vintages
+        ## 3. Predict with Multiple Vintages
 
         We create two weather forecast vintages at the test boundary: one
         accurate (small bias) and one deliberately wrong (large bias).
@@ -215,20 +162,20 @@ def _(mo):
         mutating the forecaster's state.
         """
     )
-    return
 
 
 @app.cell
-def _(H, actual_temp, np, pl, times, train_size):
-    last_obs = times[train_size - 1]
-    test_times = [times[train_size + i] for i in range(H)]
+def _(H, X_actual, np, pl, train_size, y):
+    _times = y["time"]
+    _actual_temp = X_actual["temperature"].to_numpy()
+    last_obs = _times[train_size - 1]
+    test_times = [_times[train_size + i] for i in range(H)]
 
     X_forecast_accurate = pl.DataFrame({
         "vintage_time": [last_obs] * H,
         "time": test_times,
         "wx_temp": [
-            float(actual_temp[train_size + i] + 0.1 + np.random.default_rng(100).normal(0, 0.1))
-            for i in range(H)
+            float(_actual_temp[train_size + i] + 0.1 + np.random.default_rng(100).normal(0, 0.1)) for i in range(H)
         ],
     })
 
@@ -236,8 +183,7 @@ def _(H, actual_temp, np, pl, times, train_size):
         "vintage_time": [last_obs] * H,
         "time": test_times,
         "wx_temp": [
-            float(actual_temp[train_size + i] + 5.0 + np.random.default_rng(200).normal(0, 0.1))
-            for i in range(H)
+            float(_actual_temp[train_size + i] + 5.0 + np.random.default_rng(200).normal(0, 0.1)) for i in range(H)
         ],
     })
 
@@ -252,7 +198,9 @@ def _(X_forecast_accurate, X_forecast_biased, forecaster, np):
 
     print("Accurate vintage prices:", [f"{v:.1f}" for v in pred_accurate["price"].to_list()])
     print("Biased vintage prices:  ", [f"{v:.1f}" for v in pred_biased["price"].to_list()])
-    print(f"\nMax difference: {np.max(np.abs(pred_accurate['price'].to_numpy() - pred_biased['price'].to_numpy())):.2f}")
+    print(
+        f"\nMax difference: {np.max(np.abs(pred_accurate['price'].to_numpy() - pred_biased['price'].to_numpy())):.2f}"
+    )
     return pred_accurate, pred_biased
 
 
@@ -266,7 +214,6 @@ def _(mo):
         confirming no internal state mutation occurred.
         """
     )
-    return
 
 
 @app.cell
@@ -287,7 +234,7 @@ def _(X_forecast_accurate, forecaster, np, pred_accurate):
 def _(mo):
     mo.md(
         r"""
-        ## 5. Walk-Forward Evaluation
+        ## 4. Walk-Forward Evaluation
 
         The `observe_predict` loop handles all three parameter types.
         `X_actual` is observed at each step (through the transformer),
@@ -295,39 +242,39 @@ def _(mo):
         prediction. We build forecast vintages covering the test period.
         """
     )
-    return
 
 
 @app.cell
 def _(
     H,
     MeanAbsoluteError,
+    X_actual,
     X_actual_test,
+    X_forecast,
     X_future,
-    actual_temp,
     forecaster,
-    n,
     np,
     pl,
-    rng,
-    times,
     train_size,
+    y,
     y_test,
     y_train,
 ):
     import copy
 
     # Build X_forecast vintages covering the test period
+    _times = y["time"]
+    _actual_temp = X_actual["temperature"].to_numpy()
+    _rng = np.random.default_rng(42)
+    _n = len(y)
     test_forecast_rows = []
-    for _i in range(train_size, n):
+    for _i in range(train_size, _n):
         for _step in range(1, H + 1):
-            if _i + _step < n:
+            if _i + _step < _n:
                 test_forecast_rows.append({
-                    "vintage_time": times[_i],
-                    "time": times[_i + _step],
-                    "wx_temp": float(
-                        actual_temp[_i + _step] + 0.5 + rng.normal(0, 0.3)
-                    ),
+                    "vintage_time": _times[_i],
+                    "time": _times[_i + _step],
+                    "wx_temp": float(_actual_temp[_i + _step] + 0.5 + _rng.normal(0, 0.3)),
                 })
     X_forecast_test = pl.DataFrame(test_forecast_rows)
 
@@ -353,13 +300,12 @@ def _(
 def _(mo):
     mo.md(
         r"""
-        ## 6. Visualize the Results
+        ## 5. Visualize the Results
 
         We compare the accurate and biased vintage predictions against
         the actual test prices.
         """
     )
-    return
 
 
 @app.cell
@@ -370,7 +316,6 @@ def _(plot_forecast, pred_accurate, y_test, y_train):
         y_train=y_train[-48:],
         title="Electricity Price Forecast (Accurate Weather Vintage)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -392,7 +337,6 @@ def _(mo):
         [About Exogenous Features](/pages/user-guide/exogenous-features/)
         """
     )
-    return
 
 
 if __name__ == "__main__":

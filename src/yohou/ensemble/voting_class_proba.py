@@ -244,7 +244,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         self.forecasters_ = self._fit_forecasters_parallel(
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
             routed_params=routed_params,
             n_jobs=self.n_jobs,

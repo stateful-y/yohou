@@ -192,12 +192,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         self_observation_horizon = getattr(self, "_observation_horizon", 0)
         return max(self_observation_horizon, target_observation_horizon, feature_observation_horizon)
 
-    def _set_input_attributes(self, y: pl.DataFrame, X: pl.DataFrame | None) -> None:
+    def _set_input_attributes(self, y: pl.DataFrame, X_actual: pl.DataFrame | None) -> None:
         """Detect and validate panel data structure across target and features.
 
         Inspects whether the data contains global (single time series) or local
         (panel columns with multiple time series) and ensures consistency
-        across y and X. Sets instance attributes for downstream use.
+        across y and X_actual. Sets instance attributes for downstream use.
 
             Sets the following attributes:
             - `groups_` : list of str or None
@@ -207,14 +207,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             - `local_X_actual_schema_` : dict of str to pl.DataType
                 Schema (column names -> dtypes) for feature columns
             - `shared_X_actual_schema_` : dict of str to pl.DataType or None
-                Schema (column names -> dtypes) for shared feature columns found in X
+                Schema (column names -> dtypes) for shared feature columns found in X_actual
                 alongside local groups.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series.
 
         Raises
@@ -222,7 +222,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ValueError
             If y contains both global and local columns (ambiguous structure),
             or if group column suffixes don't match across groups,
-            or if X local groups don't match y's structure.
+            or if X_actual local groups don't match y's structure.
 
         Notes
         -----
@@ -244,26 +244,26 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         """
         y_global_names, y_panel_groups = inspect_panel(y)
         X_panel_groups = None
-        if X is not None:
-            _, X_panel_groups = inspect_panel(X)
+        if X_actual is not None:
+            _, X_panel_groups = inspect_panel(X_actual)
 
             if len(X_panel_groups) and list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
-                raise ValueError("`X` and `y` do not have the same local group names.")
+                raise ValueError("`X_actual` and `y` do not have the same local group names.")
 
         # Non-panel data or multivariate strategy: dispatch to standard mixin
         if self.panel_strategy == "multivariate" or not y_panel_groups:
-            BaseStandardForecaster._set_input_attributes_standard(self, y, X)
+            BaseStandardForecaster._set_input_attributes_standard(self, y, X_actual)
         # Panel data with global strategy: dispatch to panel mixin
         else:
             # Check for ambiguous structure (both standard and local columns)
             if len(y_global_names):
                 raise ValueError("`y` contains both local and standard columns.")
-            BasePanelForecaster._set_input_attributes_panel(self, y, X, y_panel_groups, X_panel_groups)
+            BasePanelForecaster._set_input_attributes_panel(self, y, X_actual, y_panel_groups, X_panel_groups)
 
     def _validate_pre_fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -282,7 +282,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Features time series.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
@@ -295,18 +295,18 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         -------
         y : pl.DataFrame
             Validated target time series.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Validated feature time series.
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (empty dict if global data).
         X_panel_groups : dict[str, list[str]] or None
-            Panel groups from X (None if X is None).
+            Panel groups from X_actual (None if X_actual is None).
 
         """
-        y, X, _ = validate_forecaster_data(
+        y, X_actual, _ = validate_forecaster_data(
             self,
             y,
-            X,
+            X_actual,
             reset=True,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -315,47 +315,47 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         _, y_panel_groups = inspect_panel(y)
         X_panel_groups = None
-        if X is not None:
-            _, X_panel_groups = inspect_panel(X)
+        if X_actual is not None:
+            _, X_panel_groups = inspect_panel(X_actual)
 
             if len(X_panel_groups) and list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
-                raise ValueError("`X` and `y` do not have the same local group names.")
+                raise ValueError("`X_actual` and `y` do not have the same local group names.")
 
-        # Validate that X is provided when target_as_feature=None
+        # Validate that X_actual is provided when target_as_feature=None
         # and a feature transformer is configured.  Failing early here avoids
         # a confusing error at predict time inside _build_feature_input().
         if (
             getattr(self, "target_as_feature", None) is None
             and getattr(self, "feature_transformer", None) is not None
-            and X is None
+            and X_actual is None
         ):
             raise ValueError(
-                "target_as_feature=None with a feature_transformer requires X to be provided, but X is None."
+                "target_as_feature=None with a feature_transformer requires X_actual to be provided, but X_actual is None."
             )
 
-        # Validate that X is provided when target_as_feature=None and the
+        # Validate that X_actual is provided when target_as_feature=None and the
         # forecaster actually needs exogenous features.  Forecasters with
         # ignores_exogenous=True (e.g. SeasonalNaive, stationarity, decomposition)
         # work without any feature matrix.
         sklearn_tags = self.__sklearn_tags__()
         if (
             getattr(self, "target_as_feature", None) is None
-            and X is None
+            and X_actual is None
             and sklearn_tags.forecaster_tags is not None
             and not sklearn_tags.forecaster_tags.ignores_exogenous
         ):
             raise ValueError(
-                "target_as_feature=None requires X to be provided when the "
+                "target_as_feature=None requires X_actual to be provided when the "
                 "forecaster uses exogenous features (ignores_exogenous=False), "
-                "but X is None."
+                "but X_actual is None."
             )
 
-        return y, X, y_panel_groups, X_panel_groups
+        return y, X_actual, y_panel_groups, X_panel_groups
 
     def _pre_fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -366,7 +366,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Features time series.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
@@ -390,9 +390,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         - `BasePanelForecaster._pre_fit_panel(self, ...)` -> `tuple[dict, dict | None]`
 
         """
-        y, X, y_panel_groups, X_panel_groups = self._validate_pre_fit(
+        y, X_actual, y_panel_groups, X_panel_groups = self._validate_pre_fit(
             y,
-            X,
+            X_actual,
             forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -402,14 +402,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         if self.panel_strategy == "multivariate" or not y_panel_groups:
             # Standard data or multivariate strategy (skip panel detection)
             return BaseStandardForecaster._pre_fit_standard(
-                self, y, X, forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+                self, y, X_actual, forecasting_horizon, X_future=X_future, X_forecast=X_forecast
             )
         else:
             # Panel data with global strategy
             return BasePanelForecaster._pre_fit_panel(
                 self,
                 y,
-                X,
+                X_actual,
                 forecasting_horizon,
                 y_panel_groups,
                 X_panel_groups,

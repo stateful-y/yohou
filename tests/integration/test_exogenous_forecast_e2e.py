@@ -23,6 +23,7 @@ import numpy as np
 import polars as pl
 import pytest
 from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.exceptions import NotFittedError
 
 from yohou.metrics import MeanAbsoluteError
 from yohou.point import PointReductionForecaster
@@ -706,3 +707,91 @@ class TestEdgeCases:
         # Should NOT raise
         result = f.predict(forecasting_horizon=fh + 1)
         assert len(result) == fh + 1
+
+
+@pytest.mark.integration
+class TestEdgeCasesExtended:
+    """Additional edge cases for exogenous forecast API."""
+
+    def test_target_as_feature_none_with_X_future_only(self, electricity_data):
+        """target_as_feature=None with X_actual and X_future produces step columns alongside actual features."""
+        d = electricity_data
+        f = PointReductionForecaster(
+            estimator=HistGradientBoostingRegressor(random_state=SEED, max_iter=50),
+            target_as_feature=None,
+            reduction_strategy="direct",
+        )
+        f.fit(
+            y=d["y_train"],
+            X_actual=d["X_actual_train"],
+            forecasting_horizon=H,
+            X_future=d["X_future_full"],
+        )
+
+        y_pred = f.predict()
+        assert len(y_pred) == H
+        assert len(f._step_column_names_) > 0
+
+    def test_predict_X_future_on_unfitted_raises(self, electricity_data):
+        """predict(X_future=...) on unfitted forecaster raises NotFittedError."""
+        d = electricity_data
+        f, _ = _build_forecaster()
+        with pytest.raises(NotFittedError):
+            f.predict(X_future=d["X_future_full"])
+
+    def test_predict_X_forecast_on_unfitted_raises(self, electricity_data):
+        """predict(X_forecast=...) on unfitted forecaster raises NotFittedError."""
+        d = electricity_data
+        f, _ = _build_forecaster()
+        with pytest.raises(NotFittedError):
+            f.predict(X_forecast=d["X_forecast_test_accurate"])
+
+    def test_predict_partial_override_X_future_only(self, electricity_data):
+        """Fitted with both X_future+X_forecast, predict with only X_future override uses stored X_forecast."""
+        d = electricity_data
+        f, fh = _build_forecaster()
+        f.fit(
+            y=d["y_train"],
+            X_actual=d["X_actual_train"],
+            forecasting_horizon=fh,
+            X_future=d["X_future_full"],
+            X_forecast=d["X_forecast_train"],
+        )
+
+        pred_default = f.predict()
+
+        # Override only X_future (all holidays)
+        all_holiday = d["X_future_full"].with_columns(pl.lit(1.0).alias("is_holiday"))
+        pred_override = f.predict(X_future=all_holiday)
+
+        # Predictions differ (X_future changed, X_forecast unchanged)
+        assert not np.allclose(
+            pred_default["price"].to_numpy(),
+            pred_override["price"].to_numpy(),
+            atol=0.01,
+        )
+        # Stored X_forecast_raw_ unchanged
+        assert f._X_forecast_raw_ is not None
+
+    def test_observe_auto_rederives_step_columns(self, electricity_data):
+        """observe() without X_future/X_forecast auto-rederives from stored raws."""
+        d = electricity_data
+        f, fh = _build_forecaster()
+        f.fit(
+            y=d["y_train"],
+            X_actual=d["X_actual_train"],
+            forecasting_horizon=fh,
+            X_future=d["X_future_full"],
+            X_forecast=d["X_forecast_train"],
+        )
+
+        step_cols_before = f._step_column_names_
+
+        # observe with only y and X_actual (no X_future/X_forecast)
+        y_update = d["y_test"][:6]
+        X_actual_update = d["X_actual_test"][:6]
+        f.observe(y_update, X_actual=X_actual_update)
+
+        # Step columns should still be non-empty (auto-rederived)
+        assert len(f._step_column_names_) > 0
+        assert f._step_column_names_ == step_cols_before

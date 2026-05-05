@@ -31,7 +31,7 @@ def class_proba_data():
         "weather": values,
     })
 
-    X = pl.DataFrame({
+    X_actual = pl.DataFrame({
         "time": pl.datetime_range(
             start=start,
             end=start + timedelta(seconds=length - 1),
@@ -43,8 +43,8 @@ def class_proba_data():
     })
 
     y_train, y_test = y[:80], y[80:]
-    X_train, X_test = X[:80], X[80:]
-    return y_train, y_test, X_train, X_test
+    X_actual_train, X_actual_test = X_actual[:80], X_actual[80:]
+    return y_train, y_test, X_actual_train, X_actual_test
 
 
 class TestClassProbaReductionSystematic:
@@ -65,21 +65,21 @@ class TestClassProbaReductionSystematic:
     )
     def test_systematic_checks(self, forecaster, class_proba_y_X_factory):
         """Run all systematic checks on ClassProbaReductionForecaster."""
-        y, X = class_proba_y_X_factory(length=200, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=200, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train, y_test = y[:160], y[160:]
-        X_train, X_test = X[:160], X[160:]
+        X_actual_train, X_actual_test = X_actual[:160], X_actual[160:]
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
         )
 
     def test_systematic_checks_panel(self, class_proba_y_X_factory):
         """Run systematic checks with panel data."""
-        y, X = class_proba_y_X_factory(
+        y, X_actual = class_proba_y_X_factory(
             length=200,
             n_targets=1,
             n_features=2,
@@ -89,16 +89,16 @@ class TestClassProbaReductionSystematic:
             n_groups=2,
         )
         y_train, y_test = y[:160], y[160:]
-        X_train, X_test = (X[:160], X[160:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (X_actual[:160], X_actual[160:]) if X_actual is not None else (None, None)
 
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster,
-            _yield_yohou_forecaster_checks(forecaster, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster, y_train, X_actual_train, y_test, X_actual_test),
             expected_failures={
                 "check_predict_time_columns",
                 "check_class_proba_predict_returns_labels",
@@ -113,11 +113,11 @@ class TestClassProbaReductionFitPredict:
 
     def test_predict_class_proba_returns_probabilities(self, class_proba_data):
         """predict_class_proba returns probability columns."""
-        y_train, y_test, X_train, X_test = class_proba_data
+        y_train, y_test, X_actual_train, X_actual_test = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
 
         assert "vintage_time" in y_pred.columns
@@ -127,11 +127,11 @@ class TestClassProbaReductionFitPredict:
 
     def test_predict_returns_string_labels(self, class_proba_data):
         """predict returns argmax class labels."""
-        y_train, y_test, X_train, X_test = class_proba_data
+        y_train, y_test, X_actual_train, X_actual_test = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert "weather" in y_pred.columns
@@ -144,11 +144,11 @@ class TestClassProbaReductionFitPredict:
 
     def test_classes_discovered_at_fit(self, class_proba_data):
         """classes_ and label_to_code_ populated correctly after fit."""
-        y_train, _, X_train, _ = class_proba_data
+        y_train, _, X_actual_train, _ = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=1)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=1)
 
         assert "weather" in forecaster.classes_
         assert sorted(forecaster.classes_["weather"]) == forecaster.classes_["weather"]
@@ -159,11 +159,11 @@ class TestClassProbaReductionFitPredict:
 
     def test_probabilities_sum_to_one(self, class_proba_data):
         """Per-row probabilities sum to approximately 1.0."""
-        y_train, _, X_train, _ = class_proba_data
+        y_train, _, X_actual_train, _ = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=1)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=1)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=1)
 
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
@@ -173,11 +173,11 @@ class TestClassProbaReductionFitPredict:
 
     def test_probabilities_in_bounds(self, class_proba_data):
         """All probability values in [0, 1]."""
-        y_train, _, X_train, _ = class_proba_data
+        y_train, _, X_actual_train, _ = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=1)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=1)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=1)
 
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
@@ -187,12 +187,12 @@ class TestClassProbaReductionFitPredict:
 
     def test_direct_strategy(self, class_proba_data):
         """Direct strategy produces correct output."""
-        y_train, _, X_train, _ = class_proba_data
+        y_train, _, X_actual_train, _ = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
             reduction_strategy="direct",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
 
         assert len(y_pred) == 3
@@ -208,13 +208,13 @@ class TestObservePredictClassProba:
 
     def test_observe_predict_class_proba(self, class_proba_data):
         """observe_predict_class_proba returns probability predictions."""
-        y_train, y_test, X_train, X_test = class_proba_data
+        y_train, y_test, X_actual_train, X_actual_test = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
 
-        y_pred = forecaster.observe_predict_class_proba(y=y_test[:3], X_actual=X_test[:3], forecasting_horizon=3)
+        y_pred = forecaster.observe_predict_class_proba(y=y_test[:3], X_actual=X_actual_test[:3], forecasting_horizon=3)
         assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
@@ -222,13 +222,13 @@ class TestObservePredictClassProba:
 
     def test_observe_predict_returns_labels(self, class_proba_data):
         """observe_predict returns argmax labels."""
-        y_train, y_test, X_train, X_test = class_proba_data
+        y_train, y_test, X_actual_train, X_actual_test = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
 
-        y_pred = forecaster.observe_predict(y=y_test[:3], X_actual=X_test[:3], forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(y=y_test[:3], X_actual=X_actual_test[:3], forecasting_horizon=3)
         assert "weather" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 0
@@ -254,8 +254,8 @@ class TestRecursivePredict:
     """Tests for recursive prediction with horizon > fit horizon."""
 
     def test_predict_longer_horizon_than_fit(self, class_proba_data):
-        """predict_class_proba with horizon > fit horizon uses recursive prediction (no X)."""
-        y_train, _, X_train, X_test = class_proba_data
+        """predict_class_proba with horizon > fit horizon uses recursive prediction (no X_actual)."""
+        y_train, _, X_actual_train, X_actual_test = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
@@ -269,7 +269,7 @@ class TestRecursivePredict:
 
     def test_predict_longer_horizon_without_X(self, class_proba_data):
         """Recursive prediction works without exogenous features."""
-        y_train, _, X_train, _ = class_proba_data
+        y_train, _, X_actual_train, _ = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
@@ -279,8 +279,8 @@ class TestRecursivePredict:
         assert len(y_pred) == 6
 
     def test_predict_argmax_longer_horizon(self, class_proba_data):
-        """predict (argmax) works with recursive prediction (no X)."""
-        y_train, _, X_train, X_test = class_proba_data
+        """predict (argmax) works with recursive prediction (no X_actual)."""
+        y_train, _, X_actual_train, X_actual_test = class_proba_data
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
@@ -299,7 +299,7 @@ class TestDirectStrategyPanelData:
 
     def test_direct_strategy_panel(self, class_proba_y_X_factory):
         """Direct strategy works with panel data."""
-        y, X = class_proba_y_X_factory(
+        y, X_actual = class_proba_y_X_factory(
             length=100,
             n_targets=1,
             n_features=2,
@@ -309,13 +309,13 @@ class TestDirectStrategyPanelData:
             n_groups=2,
         )
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
             reduction_strategy="direct",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
 
         assert len(y_pred) == 3
@@ -324,7 +324,7 @@ class TestDirectStrategyPanelData:
 
     def test_multi_output_strategy_panel(self, class_proba_y_X_factory):
         """Multi-output strategy works with panel data."""
-        y, X = class_proba_y_X_factory(
+        y, X_actual = class_proba_y_X_factory(
             length=100,
             n_targets=1,
             n_features=2,
@@ -334,13 +334,13 @@ class TestDirectStrategyPanelData:
             n_groups=2,
         )
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
             reduction_strategy="multi-output",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
 
         assert len(y_pred) == 3
@@ -353,7 +353,7 @@ class TestMultiTargetReduction:
 
     def test_multi_target_multi_output(self, class_proba_y_X_factory):
         """Multi-target with multi-output strategy predicts all targets."""
-        y, X = class_proba_y_X_factory(
+        y, X_actual = class_proba_y_X_factory(
             length=100,
             n_targets=2,
             n_features=2,
@@ -361,13 +361,13 @@ class TestMultiTargetReduction:
             seed=42,
         )
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
             reduction_strategy="multi-output",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=1)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=1)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=1)
 
         assert len(y_pred) == 1
@@ -377,7 +377,7 @@ class TestMultiTargetReduction:
 
     def test_multi_target_direct(self, class_proba_y_X_factory):
         """Multi-target with direct strategy predicts all targets."""
-        y, X = class_proba_y_X_factory(
+        y, X_actual = class_proba_y_X_factory(
             length=100,
             n_targets=2,
             n_features=2,
@@ -385,13 +385,13 @@ class TestMultiTargetReduction:
             seed=42,
         )
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
             reduction_strategy="direct",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
 
         assert len(y_pred) == 3
@@ -400,7 +400,7 @@ class TestMultiTargetReduction:
 
     def test_multi_target_predict_returns_labels(self, class_proba_y_X_factory):
         """Multi-target predict returns argmax labels for each target."""
-        y, X = class_proba_y_X_factory(
+        y, X_actual = class_proba_y_X_factory(
             length=100,
             n_targets=2,
             n_features=2,
@@ -408,12 +408,12 @@ class TestMultiTargetReduction:
             seed=42,
         )
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=1)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=1)
         y_pred = forecaster.predict(forecasting_horizon=1)
 
         assert "y_0" in y_pred.columns

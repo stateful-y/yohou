@@ -46,11 +46,11 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from yohou.model_selection import train_test_split
 
     from yohou.compose import DecompositionPipeline, FeaturePipeline, FeatureUnion
     from yohou.datasets import fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import (

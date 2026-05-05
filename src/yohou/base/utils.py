@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 def _fit_transform_transformers_one(
     y: pl.DataFrame,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
     target_transformer: BaseTransformer | None,
     feature_transformer: BaseTransformer | None,
     target_as_feature: str | None,
@@ -30,7 +30,7 @@ def _fit_transform_transformers_one(
     ----------
     y : pl.DataFrame
         Target time series with "time" column.
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         Feature time series with "time" column.
     target_transformer : BaseTransformer or None
         Target transformer to apply.
@@ -47,7 +47,7 @@ def _fit_transform_transformers_one(
     y_t : pl.DataFrame
         Transformed target time series.
     X_t : pl.DataFrame or None
-        Transformed feature matrix (includes transformed y if no separate X provided).
+        Transformed feature matrix (includes transformed y if no separate X_actual provided).
     target_transformer : BaseTransformer or None
         Fitted target transformer.
     feature_transformer : BaseTransformer or None
@@ -57,7 +57,7 @@ def _fit_transform_transformers_one(
     -----
     Transformation order matters:
     1. Apply target_transformer to y → y_t
-    2. Concatenate y_t with X (aligned by observation horizon)
+    2. Concatenate y_t with X_actual (aligned by observation horizon)
     3. Apply feature_transformer to combined → X_t
     4. Trim y_t if feature transformer has its own observation horizon
 
@@ -74,7 +74,7 @@ def _fit_transform_transformers_one(
         target_transformer_fitted = clone(target_transformer)
         y_t = target_transformer_fitted.fit_transform(y)
 
-    X_feat_in = _build_feature_input(y, y_t, X, target_as_feature, feature_transformer)
+    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, feature_transformer)
 
     X_t = X_feat_in
     feature_transformer_fitted = None
@@ -98,14 +98,14 @@ def _fit_transform_transformers_one(
 def _build_feature_input(
     y: pl.DataFrame,
     y_t: pl.DataFrame,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
     target_as_feature: str | None,
     feature_transformer: BaseTransformer | None,
 ) -> pl.DataFrame | None:
     """Build feature input based on target_as_feature parameter.
 
     Constructs the input to the feature_transformer by combining original y,
-    transformed y_t, and exogenous features X according to the
+    transformed y_t, and exogenous features X_actual according to the
     target_as_feature configuration.
 
     Parameters
@@ -114,7 +114,7 @@ def _build_feature_input(
         Original target time series (untransformed).
     y_t : pl.DataFrame
         Transformed target time series.
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         Exogenous feature time series.
     target_as_feature : {"transformed", "raw"} or None
         Controls whether the target is included as a feature.
@@ -144,9 +144,9 @@ def _build_feature_input(
     if target_as_feature == "transformed":
         # Default: use transformed target
         X_feat_in = y_t
-        if X is not None:
-            # Align X to y_t timestamps before concatenation (y_t may be shorter after transformations)
-            X_aligned = X.join(y_t.select("time"), on="time", how="semi")
+        if X_actual is not None:
+            # Align X_actual to y_t timestamps before concatenation (y_t may be shorter after transformations)
+            X_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
             X_feat_in = pl.concat(
                 [y_t, X_aligned.select(~cs.by_name("time"))],
                 how="horizontal",
@@ -156,28 +156,28 @@ def _build_feature_input(
         # Align y to y_t length (y_t might be shorter after transformations)
         y_aligned = y.join(y_t.select("time"), on="time", how="semi")
         X_feat_in = y_aligned
-        if X is not None:
-            # Also align X to y_t timestamps
-            X_aligned = X.join(y_t.select("time"), on="time", how="semi")
+        if X_actual is not None:
+            # Also align X_actual to y_t timestamps
+            X_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
             X_feat_in = pl.concat(
                 [y_aligned, X_aligned.select(~cs.by_name("time"))],
                 how="horizontal",
             )
     elif target_as_feature is None:
         # Only exogenous features
-        if X is None:
+        if X_actual is None:
             if feature_transformer is not None:
                 # This should not happen since _validate_pre_fit checks at fit
                 # time, but guard against direct calls.
                 raise ValueError(
-                    "target_as_feature=None requires X to be provided when a feature_transformer is set, but X is None."
+                    "target_as_feature=None requires X_actual to be provided when a feature_transformer is set, but X_actual is None."
                 )
             else:
                 X_feat_in = None
         else:
-            # Align X to y_t timestamps (y_t may be shorter after target
+            # Align X_actual to y_t timestamps (y_t may be shorter after target
             # transformer), consistent with the "transformed"/"raw" branches.
-            X_aligned = X.join(y_t.select("time"), on="time", how="semi")
+            X_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
             X_feat_in = X_aligned
     else:
         raise ValueError(
@@ -189,7 +189,7 @@ def _build_feature_input(
 
 def _observe_transformers_one(
     y: pl.DataFrame,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
     target_transformer: BaseTransformer | None,
     feature_transformer: BaseTransformer | None,
     target_as_feature: str | None,
@@ -200,7 +200,7 @@ def _observe_transformers_one(
     ----------
     y : pl.DataFrame
         New target observations.
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         New features.
     target_transformer : BaseTransformer or None
         Target transformer to observe.
@@ -219,7 +219,7 @@ def _observe_transformers_one(
     if target_transformer is not None:
         y_t = target_transformer.observe_transform(y)
 
-    X_feat_in = _build_feature_input(y, y_t, X, target_as_feature, feature_transformer)
+    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, feature_transformer)
 
     X_t = X_feat_in
     if feature_transformer is not None and X_feat_in is not None:
@@ -230,7 +230,7 @@ def _observe_transformers_one(
 
 def _rewind_transformers_one(
     y: pl.DataFrame,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
     target_transformer: BaseTransformer | None,
     feature_transformer: BaseTransformer | None,
     observation_horizon: int,
@@ -242,7 +242,7 @@ def _rewind_transformers_one(
     ----------
     y : pl.DataFrame
         New target observations.
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         New features.
     target_transformer : BaseTransformer or None
         Target transformer to rewind.
@@ -265,7 +265,7 @@ def _rewind_transformers_one(
         target_transformer.rewind(X=y[:-observation_horizon])
         y_t = target_transformer.observe_transform(y[-observation_horizon:])
 
-    X_feat_in = _build_feature_input(y, y_t, X, target_as_feature, feature_transformer)
+    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, feature_transformer)
 
     X_t = X_feat_in
     if feature_transformer is not None and X_feat_in is not None:
@@ -283,7 +283,7 @@ def _rewind_transformers_one(
             start = max(0, len(y) - observation_horizon - deficit - target_obs)
             end = len(y) - observation_horizon
             y_extra = y[start:end]
-            X_extra = X[start:end] if X is not None else None
+            X_extra = X_actual[start:end] if X_actual is not None else None
             y_t_extra = target_transformer.rewind_transform(y_extra) if len(y_extra) > target_obs else y_extra
             X_feat_extra = _build_feature_input(y_extra, y_t_extra, X_extra, target_as_feature, feature_transformer)
             if X_feat_extra is not None:
@@ -349,7 +349,7 @@ def _derive_step_columns(
         or appears in both X_future and X_forecast sources.
 
     """
-    from yohou.utils.pivot import pivot_forecasts, window_future  # noqa: PLC0415
+    from yohou.utils.pivot import pivot_forecasts, window_futures  # noqa: PLC0415
 
     if X_future is None and X_forecast is None:
         return None
@@ -358,7 +358,7 @@ def _derive_step_columns(
     source_names: dict[str, str] = {}  # col_name → source label
 
     if X_future is not None:
-        future_pivoted = window_future(X_future, observation_times, forecasting_horizon, interval)
+        future_pivoted = window_futures(X_future, observation_times, forecasting_horizon, interval)
         step_cols = [c for c in future_pivoted.columns if c != "time"]
         for c in step_cols:
             source_names[c] = "X_future"

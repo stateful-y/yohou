@@ -39,22 +39,18 @@ def _(mo):
 
     Understanding of [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) and prediction intervals.
     """)
-    return
 
 
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
-    from sklearn.linear_model import QuantileRegressor
-    from yohou.model_selection import train_test_split
+    from copy import deepcopy
 
     import plotly.graph_objects as go
-
-    from copy import deepcopy
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_heatmap,
@@ -85,7 +81,6 @@ def _(mo):
 
     We load the Monthly Tourism dataset and split it into training and test sets.
     """)
-    return
 
 
 @app.cell
@@ -109,7 +104,6 @@ def _(mo):
     two models are trained: one for the lower quantile and one for the upper quantile.
     `coverage_rates` are specified at **fit time** to train the needed quantile models.
     """)
-    return
 
 
 @app.cell
@@ -147,7 +141,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) renders the quantile regression intervals as shaded
     bands. Each `coverage_rates` entry produces a separate band.
     """)
-    return
 
 
 @app.cell
@@ -159,7 +152,6 @@ def _(coverage_rates, plot_forecast, y_pred_int, y_test, y_train):
         coverage_rates=coverage_rates,
         title="Quantile Regression Intervals",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -169,7 +161,6 @@ def _(mo):
 
     We assess how well the prediction intervals capture the true values using interval-specific metrics.
     """)
-    return
 
 
 @app.cell
@@ -187,7 +178,6 @@ def _(
         scorer.fit(y_train)
         score = scorer.score(y_test, y_pred_int)
         print(f"{_scorer_cls.__name__}: {score}")
-    return
 
 
 @app.cell(hide_code=True)
@@ -198,7 +188,6 @@ def _(mo):
     You can train and predict with as many coverage rates as needed.
     Each rate adds lower/upper columns to the prediction.
     """)
-    return
 
 
 @app.cell
@@ -236,7 +225,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) overlays all four coverage bands, showing how wider
     rates produce broader intervals.
     """)
-    return
 
 
 @app.cell
@@ -248,7 +236,6 @@ def _(many_rates, plot_forecast, y_pred_many, y_test, y_train):
         coverage_rates=many_rates,
         title="Multiple Coverage Rates",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -260,7 +247,6 @@ def _(mo):
     We score [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) once per rate and compare them
     side-by-side in a grouped bar chart.
     """)
-    return
 
 
 @app.cell
@@ -294,7 +280,6 @@ def _(
         xaxis_title="Coverage Rate",
     )
     fig
-    return
 
 
 @app.cell(hide_code=True)
@@ -308,9 +293,6 @@ def _(mo):
     - More coverage rates = more quantile models to train
     - Evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
     """)
-    return
-
-
 
 
 @app.cell(hide_code=True)
@@ -323,7 +305,6 @@ def _(mo):
     Each vintage represents a different forecast origin, so you can analyse
     how interval quality evolves as the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -357,7 +338,6 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
-    return
 
 
 @app.cell
@@ -368,7 +348,7 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Score Heatmap (Step x Vintage)",
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):
@@ -380,7 +360,6 @@ def _(mo):
     - **Calibration plots**: Use [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) from `yohou.plotting`
     - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval metrics
     """)
-    return
 
 
 if __name__ == "__main__":

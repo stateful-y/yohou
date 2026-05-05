@@ -64,7 +64,7 @@ def _fit_one_forecaster(
     forecaster: BaseForecaster,
     name: str,
     y: pl.DataFrame,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
     forecasting_horizon: int,
     params: Any,
     X_future: pl.DataFrame | None = None,
@@ -80,7 +80,7 @@ def _fit_one_forecaster(
         Name of the forecaster.
     y : pl.DataFrame
         Target time series.
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features.
     forecasting_horizon : int
         Forecasting horizon.
@@ -99,7 +99,7 @@ def _fit_one_forecaster(
     """
     forecaster_clone = clone(forecaster)
     forecaster_clone.fit(
-        y, X, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast, **params.fit
+        y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast, **params.fit
     )
     return name, forecaster_clone
 
@@ -205,7 +205,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
       ``remainder``: dropped, or forecasted by an estimator
     - Forecasters are fitted in parallel when ``n_jobs > 1``
     - Predictions are concatenated in the order: forecasters, then remainder
-    - All forecasters receive the same exogenous features X
+    - All forecasters receive the same exogenous features X_actual
 
     """
 

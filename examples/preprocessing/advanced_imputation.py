@@ -41,10 +41,8 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    import polars as pl
-
-    from yohou.datasets import fetch_tourism_monthly
     import plotly.graph_objects as go
+    import polars as pl
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.plotting import plot_time_series

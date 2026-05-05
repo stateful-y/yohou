@@ -144,7 +144,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
 
         # Pre-fit: validate inputs, apply target transformer, set attributes
         y_t, X_t = self._pre_fit(
-            y=y, X=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
         )
 
         # Validate sufficient data for seasonality
@@ -516,7 +516,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
 
         # Pre-fit: validate inputs, apply target transformer, set attributes
         y_t, X_t = self._pre_fit(
-            y=y, X=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
         )
 
         # Validate sufficient data (at least one cycle)

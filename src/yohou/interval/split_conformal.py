@@ -168,15 +168,15 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # Handle splitting with optional X
         if X_actual is None:
             y_train, y_calib = train_test_split(y, test_size=self.calibration_size, shuffle=False)
-            X_train, X_calib = None, None
+            X_actual_train, X_actual_calib = None, None
         else:
-            y_train, y_calib, X_train, X_calib = train_test_split(
+            y_train, y_calib, X_actual_train, X_actual_calib = train_test_split(
                 y, X_actual, test_size=self.calibration_size, shuffle=False
             )
 
         self.point_forecaster_ = clone(self.point_forecaster).fit(
             y=y_train,
-            X_actual=X_train,
+            X_actual=X_actual_train,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -190,7 +190,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # quantiles that are stable and well-separated.
         y_pred_calib = self.point_forecaster_.observe_predict(
             y=y_calib,
-            X_actual=X_calib,
+            X_actual=X_actual_calib,
             forecasting_horizon=None,
             stride=1,
             predict_transformed=False,
@@ -393,7 +393,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         _, _, groups = validate_forecaster_data(
             self,
             y=None,
-            X=None,
+            X_actual=None,
             reset=False,
             groups=groups,
         )
@@ -476,7 +476,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             reset=False,
             groups=groups,
             X_future=X_future,
@@ -633,7 +633,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         _, _, groups = validate_forecaster_data(
             self,
             y=None,
-            X=None,
+            X_actual=None,
             reset=False,
             groups=groups,
         )

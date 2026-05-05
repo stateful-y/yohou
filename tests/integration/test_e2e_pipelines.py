@@ -841,8 +841,8 @@ class TestFeatureForecastedPipeline:
 
         # Fit
         y_train = df_y[:150]
-        X_train = df_X[:150]
-        forecaster.fit(y_train, X_train, forecasting_horizon=10)
+        X_actual_train = df_X[:150]
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=10)
 
         # Predict with actual features
         y_pred = forecaster.predict(forecasting_horizon=10)
@@ -966,9 +966,9 @@ class TestFeatureForecastedPipeline:
 
         # Fit both
         y_train = df_y[:150]
-        X_train = df_X[:150]
-        forecaster_actual.fit(y_train, X_train, forecasting_horizon=10)
-        forecaster_predicted.fit(y_train, X_train, forecasting_horizon=10)
+        X_actual_train = df_X[:150]
+        forecaster_actual.fit(y_train, X_actual_train, forecasting_horizon=10)
+        forecaster_predicted.fit(y_train, X_actual_train, forecasting_horizon=10)
 
         # Predict with actual features
         y_pred_actual = forecaster_actual.predict(forecasting_horizon=10)
@@ -1338,7 +1338,7 @@ class TestMaxNestingPipeline:
         assert params["auxiliary__seasonality"] == 7
 
     @pytest.mark.xfail(
-        reason="DecompositionPipeline passes X through recursive predict; Phase 4 fix",
+        reason="DecompositionPipeline passes X_actual through recursive predict; Phase 4 fix",
         strict=True,
     )
     def test_pipeline_f_full_lifecycle_no_crash(self):
@@ -1398,7 +1398,7 @@ class TestMaxNestingPipeline:
             ("auxiliary", SeasonalNaive(7), ["auxiliary"]),
         ])
 
-        # Fit with X
+        # Fit with X_actual
         forecaster.fit(df[:400], X_actual=df_X[:400], forecasting_horizon=7)
 
         # Predict point
@@ -1412,7 +1412,7 @@ class TestMaxNestingPipeline:
         # Interval prediction is tested in test_pipeline_f_mixed_metrics.
 
     @pytest.mark.xfail(
-        reason="DecompositionPipeline passes X through recursive predict; Phase 4 fix",
+        reason="DecompositionPipeline passes X_actual through recursive predict; Phase 4 fix",
         strict=True,
     )
     def test_pipeline_f_clone_deep_structure(self):
@@ -1456,7 +1456,7 @@ class TestMaxNestingPipeline:
         # But same structure
         assert forecaster.get_params(deep=False).keys() == forecaster_cloned.get_params(deep=False).keys()
 
-        # Fit original (needs X for ForecastedFeatureForecaster)
+        # Fit original (needs X_actual for ForecastedFeatureForecaster)
         # Need enough data so ForecastedFeatureForecaster's feature_forecaster (20% split)
         # has sufficient rows after tabularization with LagTransformer([1,7])
         n = 500
@@ -1609,7 +1609,7 @@ class TestMaxNestingPipeline:
         assert params_final["auxiliary__seasonality"] == 7
 
     @pytest.mark.xfail(
-        reason="DecompositionPipeline passes X through recursive predict; Phase 4 fix",
+        reason="DecompositionPipeline passes X_actual through recursive predict; Phase 4 fix",
         strict=True,
     )
     def test_pipeline_f_mixed_metrics(self):
@@ -1663,11 +1663,11 @@ class TestMaxNestingPipeline:
             split_ratio=0.8,
         )
 
-        # Fit with X
+        # Fit with X_actual
         y_train = df[:400]
         y_test = df[400:407]
-        X_train = df_X[:400]
-        forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=7)
+        X_actual_train = df_X[:400]
+        forecaster.fit(y_train, X_actual=X_actual_train, forecasting_horizon=7)
 
         # Point predictions and scoring
         y_pred_point = forecaster.predict(forecasting_horizon=7)

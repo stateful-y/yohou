@@ -21,7 +21,7 @@ def _fit_one_forecaster(
     forecaster: BaseForecaster,
     name: str,
     y: pl.DataFrame,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
     forecasting_horizon: int,
     fit_params: dict[str, Any],
     extra_fit_kwargs: dict[str, Any] | None = None,
@@ -38,7 +38,7 @@ def _fit_one_forecaster(
         Name of the forecaster.
     y : pl.DataFrame
         Target time series.
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         Exogenous features.
     forecasting_horizon : int
         Forecasting horizon.
@@ -66,7 +66,7 @@ def _fit_one_forecaster(
             all_params.update(extra_fit_kwargs)
         forecaster_clone.fit(
             y,
-            X,
+            X_actual,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -143,7 +143,7 @@ class _BaseEnsembleForecaster:
     def _fit_forecasters_parallel(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         forecasting_horizon: int,
         routed_params: Any,
         n_jobs: int | None,
@@ -159,7 +159,7 @@ class _BaseEnsembleForecaster:
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Exogenous features.
         forecasting_horizon : int
             Forecasting horizon.
@@ -191,7 +191,7 @@ class _BaseEnsembleForecaster:
                 forecaster,
                 name,
                 y,
-                X,
+                X_actual,
                 forecasting_horizon,
                 getattr(routed_params.get(name, Bunch(fit={})), "fit", {}),
                 extra_fit_kwargs,
@@ -282,7 +282,7 @@ class _BaseEnsembleForecaster:
         first_forecaster: BaseForecaster,
         forecasting_horizon: int,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
     ) -> None:
         """Copy fitted attributes from the first surviving child forecaster.
 
@@ -294,7 +294,7 @@ class _BaseEnsembleForecaster:
             Forecasting horizon used during fitting.
         y : pl.DataFrame
             Training target data.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Training exogenous data.
 
         """
@@ -307,8 +307,8 @@ class _BaseEnsembleForecaster:
         self.local_y_t_schema_ = self.local_y_schema_
         self.local_X_t_schema_ = self.local_X_actual_schema_
         self._y_observed = y
-        self._X_observed = X
-        self._X_t_observed = X
+        self._X_observed = X_actual
+        self._X_t_observed = X_actual
 
     def _compute_effective_weights(self) -> None:
         """Compute effective weights for surviving forecasters.

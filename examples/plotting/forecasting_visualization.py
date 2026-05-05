@@ -26,7 +26,6 @@ def _():
 @app.cell(hide_code=True)
 def _():
     import polars as pl
-    from yohou.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
@@ -37,6 +36,7 @@ def _():
         fetch_tourism_monthly,
     )
     from yohou.interval import SplitConformalForecaster
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_calibration,
         plot_decomposition,
@@ -74,6 +74,7 @@ def _():
         plot_decomposition,
         plot_forecast,
         plot_time_weight,
+        train_test_split,
     )
 
 
@@ -250,7 +251,7 @@ def _(
     train_test_split,
 ):
     cls_data = fetch_air_quality_classification()
-    cls_y, cls_X = cls_data.y, cls_data.X
+    cls_y, cls_X = cls_data.y, cls_data.X_actual
     cls_y_train, cls_y_test, cls_X_train, cls_X_test = train_test_split(
         cls_y,
         cls_X,

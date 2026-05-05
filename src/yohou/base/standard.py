@@ -47,14 +47,14 @@ class BaseStandardForecaster:
     observed_time_: datetime
     interval_: timedelta | str
 
-    def _set_input_attributes_standard(self, y: pl.DataFrame, X: pl.DataFrame | None) -> None:
+    def _set_input_attributes_standard(self, y: pl.DataFrame, X_actual: pl.DataFrame | None) -> None:
         """Set input attributes for standard (non-panel) data.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series (standard data).
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series (standard data).
 
         """
@@ -63,11 +63,11 @@ class BaseStandardForecaster:
         self.shared_X_actual_schema_ = None
 
         self.local_X_actual_schema_ = None
-        if X is not None:
-            self.local_X_actual_schema_ = dict(X.select(~cs.by_name("time")).schema)
+        if X_actual is not None:
+            self.local_X_actual_schema_ = dict(X_actual.select(~cs.by_name("time")).schema)
 
     def _fit_transform_inputs_standard(
-        self, y: pl.DataFrame, X: pl.DataFrame | None
+        self, y: pl.DataFrame, X_actual: pl.DataFrame | None
     ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
         """Fit transformers and transform inputs for standard data.
 
@@ -75,7 +75,7 @@ class BaseStandardForecaster:
         ----------
         y : pl.DataFrame
             Target time series (standard data).
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series (standard data).
 
         Returns
@@ -89,12 +89,12 @@ class BaseStandardForecaster:
         # Standard data: schemas contain actual column names
         y = y.select(["time"] + list(self.local_y_schema_.keys()))
 
-        if X is not None and self.local_X_actual_schema_ is not None:
-            X = X.select(["time"] + list(self.local_X_actual_schema_.keys()))
+        if X_actual is not None and self.local_X_actual_schema_ is not None:
+            X_actual = X_actual.select(["time"] + list(self.local_X_actual_schema_.keys()))
 
         y_t, X_t, target_transformer, feature_transformer = _fit_transform_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=self.target_transformer,
             feature_transformer=self.feature_transformer,
             target_as_feature=self.target_as_feature,
@@ -171,7 +171,7 @@ class BaseStandardForecaster:
     def _pre_fit_standard(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         forecasting_horizon: int,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -182,7 +182,7 @@ class BaseStandardForecaster:
         ----------
         y : pl.DataFrame
             Target time series (standard data, already validated).
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series (standard data, already validated).
         forecasting_horizon : int
             Number of steps ahead to forecast.
@@ -199,8 +199,8 @@ class BaseStandardForecaster:
             Transformed features.
 
         """
-        self._set_input_attributes_standard(y, X)
-        y_t, X_t = self._fit_transform_inputs_standard(y, X)
+        self._set_input_attributes_standard(y, X_actual)
+        y_t, X_t = self._fit_transform_inputs_standard(y, X_actual)
 
         # Inject step columns from X_future / X_forecast
         X_step = _derive_step_columns(
@@ -327,8 +327,8 @@ class BaseStandardForecaster:
     ) -> None:
         """Re-derive step columns and append to _X_t_observed after state update.
 
-        Uses stored raws as fallback when X_future or X_forecast is omitted
-        (Decision 21). Updates stored raws when new data is provided.
+        Uses stored raws as fallback when X_future or X_forecast is omitted.
+        Updates stored raws when new data is provided.
 
         """
         if not self._step_column_names_:

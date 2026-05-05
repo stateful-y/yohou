@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from numbers import Integral
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 from pydantic import StrictInt
@@ -129,7 +129,7 @@ class LocalPanelForecaster(BaseForecaster):
     local_y_schema_ : dict of str to DataType
         Schema of unprefixed target columns (shared across all groups).
     local_X_actual_schema_ : dict of str or None
-        Schema of unprefixed exogenous columns, or ``None`` if X was not
+        Schema of unprefixed exogenous columns, or ``None`` if X_actual was not
         provided.
     interval_ : timedelta
         Time interval between observations.
@@ -233,8 +233,9 @@ class LocalPanelForecaster(BaseForecaster):
             Panel target time series with ``"time"`` column and columns
             following the ``<group>__<series>`` naming convention.
         X_actual : pl.DataFrame or None, default=None
-            Actual feature observations with panel columns (same naming
-            convention as ``y``). Forwarded to each local forecaster.
+            Actual feature observations with ``"time"`` column and columns
+            following the ``<group>__<series>`` naming convention.
+            Forwarded to each local forecaster.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         X_future : pl.DataFrame or None, default=None
@@ -276,7 +277,7 @@ class LocalPanelForecaster(BaseForecaster):
         first_group = groups_[0]
         self.local_y_schema_ = {col.split("__", 1)[1]: y[col].dtype for col in y_panel_groups[first_group]}
 
-        # Handle X panel structure
+        # Handle X_actual panel structure
         if X_actual is not None:
             _, X_panel_groups = inspect_panel(X_actual)
             if X_panel_groups:
@@ -285,7 +286,7 @@ class LocalPanelForecaster(BaseForecaster):
                     col.split("__", 1)[1]: X_actual[col].dtype for col in X_panel_groups[first_X_group]
                 }
             else:
-                # Global X shared across all groups
+                # Global X_actual shared across all groups
                 self.local_X_actual_schema_ = {col: X_actual[col].dtype for col in X_actual.columns if col != "time"}
         else:
             self.local_X_actual_schema_ = None
@@ -293,6 +294,36 @@ class LocalPanelForecaster(BaseForecaster):
         # Compute interval
         self.interval_ = check_interval_consistency(y)
         self.fit_forecasting_horizon_ = forecasting_horizon
+
+        # Derive X_future / X_forecast local schemas (unprefixed names + dtypes)
+        prefix = f"{first_group}__"
+        if X_future is not None:
+            local_future = {
+                col.removeprefix(prefix): X_future[col].dtype for col in X_future.columns if col.startswith(prefix)
+            }
+            global_future = {col: X_future[col].dtype for col in X_future.columns if col != "time" and "__" not in col}
+            self._local_X_future_schema_ = {**local_future, **global_future}
+            self._X_future_schema_ = {col: X_future[col].dtype for col in X_future.columns if col != "time"}
+        else:
+            self._local_X_future_schema_ = None
+            self._X_future_schema_ = None
+
+        if X_forecast is not None:
+            local_forecast = {
+                col.removeprefix(prefix): X_forecast[col].dtype for col in X_forecast.columns if col.startswith(prefix)
+            }
+            global_forecast = {
+                col: X_forecast[col].dtype
+                for col in X_forecast.columns
+                if col not in ("time", "vintage_time") and "__" not in col
+            }
+            self._local_X_forecast_schema_ = {**local_forecast, **global_forecast}
+            self._X_forecast_schema_ = {
+                col: X_forecast[col].dtype for col in X_forecast.columns if col not in ("time", "vintage_time")
+            }
+        else:
+            self._local_X_forecast_schema_ = None
+            self._X_forecast_schema_ = None
 
         # Extract per-group DataFrames and fit in parallel
         group_data = []
@@ -303,7 +334,8 @@ class LocalPanelForecaster(BaseForecaster):
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
-            group_data.append((group_name, y_group, X_group))
+            X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
+            group_data.append((group_name, y_group, X_group, X_future_group, X_forecast_group))
 
         results = Parallel(n_jobs=self.n_jobs)(
             delayed(_fit_one_group)(
@@ -313,10 +345,10 @@ class LocalPanelForecaster(BaseForecaster):
                 X_group,
                 forecasting_horizon,
                 routed_params.forecaster,
-                X_future=X_future,
-                X_forecast=X_forecast,
+                X_future=X_future_group,
+                X_forecast=X_forecast_group,
             )
-            for group_name, y_group, X_group in group_data
+            for group_name, y_group, X_group, X_future_group, X_forecast_group in group_data
         )
 
         self.forecasters_ = dict(results)
@@ -463,8 +495,9 @@ class LocalPanelForecaster(BaseForecaster):
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
+            X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             self.forecasters_[group_name].observe(
-                y=y_group, X_actual=X_group, X_future=X_future, X_forecast=X_forecast, **params
+                y=y_group, X_actual=X_group, X_future=X_future_group, X_forecast=X_forecast_group, **params
             )
 
         return self
@@ -513,8 +546,9 @@ class LocalPanelForecaster(BaseForecaster):
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
+            X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             self.forecasters_[group_name].rewind(
-                y=y_group, X_actual=X_group, X_future=X_future, X_forecast=X_forecast, **params
+                y=y_group, X_actual=X_group, X_future=X_future_group, X_forecast=X_forecast_group, **params
             )
 
         return self
@@ -524,12 +558,18 @@ class LocalPanelForecaster(BaseForecaster):
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
+        stride: StrictInt | None = None,
+        predict_transformed: bool = False,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data then predict for each group.
+
+        Delegates to each clone's ``observe_predict`` so the rolling
+        loop with ``stride`` is preserved per group.
 
         Parameters
         ----------
@@ -539,8 +579,17 @@ class LocalPanelForecaster(BaseForecaster):
             Actual feature observations with a ``"time"`` column aligned
             with ``y``. Sliced and observed incrementally at each step
             of the rolling loop.
+        forecasting_horizon : int or None, default=None
+            Number of steps ahead. If ``None``, uses the value from
+            ``fit``.
         groups : list of str or None, default=None
             Subset of groups.  ``None`` means all groups.
+        stride : int or None, default=None
+            Step size for rolling update and predict. If ``None``,
+            defaults to ``fit_forecasting_horizon_``.
+        predict_transformed : bool, default=False
+            If ``True``, return predictions in the transformed space
+            without applying inverse target transformation.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
@@ -555,21 +604,52 @@ class LocalPanelForecaster(BaseForecaster):
             Predictions with prefixed panel columns.
 
         """
-        self.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast, **params)
-        return self.predict(groups=groups, X_future=X_future, X_forecast=X_forecast, **params)
+        check_is_fitted(self, ["forecasters_"])
+        _raise_for_params(params, self, "observe_predict")
+        routed_params = process_routing(self, "observe_predict", **params)
+
+        groups_: list[str] = groups if groups is not None else (self.groups_ or [])
+
+        group_predictions: dict[str, pl.DataFrame] = {}
+        for group_name in groups_:
+            y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
+            X_group = (
+                get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
+                if X_actual is not None and self.local_X_actual_schema_ is not None
+                else None
+            )
+            X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
+            group_predictions[group_name] = self.forecasters_[group_name].observe_predict(
+                y=y_group,
+                X_actual=X_group,
+                forecasting_horizon=forecasting_horizon,
+                stride=stride,
+                predict_transformed=predict_transformed,
+                X_future=X_future_group,
+                X_forecast=X_forecast_group,
+                **routed_params.forecaster.observe_predict,
+            )
+
+        return self._reassemble_panel_predictions(group_predictions)
 
     @available_if(_forecaster_has("predict_interval"))
     def observe_predict_interval(
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
+        strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
+        stride: StrictInt | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data then predict intervals for each group.
+
+        Delegates to each clone's ``observe_predict_interval`` so the
+        rolling loop with ``stride`` is preserved per group.
 
         Parameters
         ----------
@@ -579,10 +659,19 @@ class LocalPanelForecaster(BaseForecaster):
             Actual feature observations with a ``"time"`` column aligned
             with ``y``. Sliced and observed incrementally at each step
             of the rolling loop.
+        forecasting_horizon : int or None, default=None
+            Number of steps ahead. If ``None``, uses the value from
+            ``fit``.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
+        strategy : {"mean", "median", "point"} or None, default=None
+            Strategy for deriving point predictions from prediction
+            intervals during recursive multi-step forecasting.
         groups : list of str or None, default=None
             Subset of groups.  ``None`` means all groups.
+        stride : int or None, default=None
+            Step size for rolling update and predict. If ``None``,
+            defaults to ``fit_forecasting_horizon_``.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
@@ -597,14 +686,144 @@ class LocalPanelForecaster(BaseForecaster):
             Interval predictions with prefixed panel columns.
 
         """
-        self.observe(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast, **params)
-        return self.predict_interval(
-            coverage_rates=coverage_rates,
-            groups=groups,
-            X_future=X_future,
-            X_forecast=X_forecast,
-            **params,
-        )
+        check_is_fitted(self, ["forecasters_"])
+        _raise_for_params(params, self, "observe_predict_interval")
+        routed_params = process_routing(self, "observe_predict_interval", **params)
+
+        groups_: list[str] = groups if groups is not None else (self.groups_ or [])
+
+        group_predictions: dict[str, pl.DataFrame] = {}
+        for group_name in groups_:
+            y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
+            X_group = (
+                get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
+                if X_actual is not None and self.local_X_actual_schema_ is not None
+                else None
+            )
+            X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
+            group_predictions[group_name] = self.forecasters_[group_name].observe_predict_interval(
+                y=y_group,
+                X_actual=X_group,
+                forecasting_horizon=forecasting_horizon,
+                coverage_rates=coverage_rates,
+                strategy=strategy,
+                stride=stride,
+                X_future=X_future_group,
+                X_forecast=X_forecast_group,
+                **routed_params.forecaster.observe_predict_interval,
+            )
+
+        return self._reassemble_panel_predictions(group_predictions)
+
+    def _split_exogenous_for_group(
+        self,
+        group_name: str,
+        X_future: pl.DataFrame | None,
+        X_forecast: pl.DataFrame | None,
+    ) -> tuple[pl.DataFrame | None, pl.DataFrame | None]:
+        """Split X_future and X_forecast for a single panel group.
+
+        Uses stored schemas from ``fit()`` to extract the group's local
+        (prefixed) columns plus global (unprefixed) columns. When a
+        schema is ``None`` but the DataFrame is provided (predict-time
+        override after ``fit(X_future=None)``), derives the schema on
+        the fly.
+
+        Parameters
+        ----------
+        group_name : str
+            Panel group name.
+        X_future : pl.DataFrame or None
+            Known future features (panel-level).
+        X_forecast : pl.DataFrame or None
+            External forecasts (panel-level).
+
+        Returns
+        -------
+        tuple of (pl.DataFrame or None, pl.DataFrame or None)
+            ``(X_future_group, X_forecast_group)`` with unprefixed
+            columns for this group.
+
+        """
+        groups = self.groups_
+        assert groups is not None, "fit() must be called before _split_exogenous_for_group()"
+
+        X_future_group = None
+        if X_future is not None:
+            schema = self._local_X_future_schema_
+            if schema is None:
+                # On-the-fly schema derivation for predict-time overrides
+                prefix = f"{groups[0]}__"
+                local = {
+                    col.removeprefix(prefix): X_future[col].dtype for col in X_future.columns if col.startswith(prefix)
+                }
+                global_ = {col: X_future[col].dtype for col in X_future.columns if col != "time" and "__" not in col}
+                schema = {**local, **global_}
+            if schema:
+                X_future_group = get_group_df(X_future, group_name, schema=schema)
+
+        X_forecast_group = None
+        if X_forecast is not None:
+            schema = self._local_X_forecast_schema_
+            if schema is None:
+                prefix = f"{groups[0]}__"
+                local = {
+                    col.removeprefix(prefix): X_forecast[col].dtype
+                    for col in X_forecast.columns
+                    if col.startswith(prefix)
+                }
+                global_ = {
+                    col: X_forecast[col].dtype
+                    for col in X_forecast.columns
+                    if col not in ("time", "vintage_time") and "__" not in col
+                }
+                schema = {**local, **global_}
+            if schema:
+                X_forecast_group = get_group_df(
+                    X_forecast, group_name, schema=schema, key_cols=("vintage_time", "time")
+                )
+
+        return X_future_group, X_forecast_group
+
+    def _reassemble_panel_predictions(
+        self,
+        group_predictions: dict[str, pl.DataFrame],
+    ) -> pl.DataFrame:
+        """Reassemble per-group predictions into a panel DataFrame.
+
+        Extracts time columns from the first group, prefixes all other
+        columns with ``<group_name>__``, and concatenates horizontally.
+
+        Parameters
+        ----------
+        group_predictions : dict of str to pl.DataFrame
+            Mapping from group name to prediction DataFrame. Each
+            DataFrame must have the same time index.
+
+        Returns
+        -------
+        pl.DataFrame
+            Panel predictions with prefixed columns.
+
+        """
+        all_preds: list[pl.DataFrame] = []
+        time_col: pl.DataFrame | None = None
+
+        for group_name, df in group_predictions.items():
+            if time_col is None:
+                time_cols = [c for c in ["time", "vintage_time"] if c in df.columns]
+                if time_cols:
+                    time_col = df.select(time_cols)
+
+            non_time = [c for c in df.columns if c not in ("time", "vintage_time")]
+            prefixed = df.select(non_time).rename({c: f"{group_name}__{c}" for c in non_time})
+            all_preds.append(prefixed)
+
+        result = pl.concat(all_preds, how="horizontal")
+        if time_col is not None:
+            result = pl.concat([time_col, result], how="horizontal")
+
+        return result
 
     def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing for this meta-estimator.
@@ -667,40 +886,24 @@ class LocalPanelForecaster(BaseForecaster):
             Reassembled panel predictions.
 
         """
-        all_preds: list[pl.DataFrame] = []
-        time_col: pl.DataFrame | None = None
+        group_predictions: dict[str, pl.DataFrame] = {}
 
         for group_name in groups:
             forecaster = self.forecasters_[group_name]
+
+            # Split exogenous overrides per group
+            X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
 
             # Call the appropriate predict method
             predict_kwargs: dict[str, Any] = {"forecasting_horizon": horizon}
             predict_kwargs.update(routed_params.forecaster.get(method, {}))
             if method == "predict_interval" and coverage_rates is not None:
                 predict_kwargs["coverage_rates"] = coverage_rates
-            if X_future is not None:
-                predict_kwargs["X_future"] = X_future
-            if X_forecast is not None:
-                predict_kwargs["X_forecast"] = X_forecast
+            if X_future_group is not None:
+                predict_kwargs["X_future"] = X_future_group
+            if X_forecast_group is not None:
+                predict_kwargs["X_forecast"] = X_forecast_group
 
-            y_pred_group = getattr(forecaster, method)(**predict_kwargs)
+            group_predictions[group_name] = getattr(forecaster, method)(**predict_kwargs)
 
-            # Extract time column from first group only
-            if time_col is None:
-                time_cols = [c for c in ["time", "vintage_time"] if c in y_pred_group.columns]
-                if time_cols:
-                    time_col = y_pred_group.select(time_cols)
-
-            # Prefix column names and drop time columns
-            non_time_cols = [c for c in y_pred_group.columns if c not in ("time", "vintage_time")]
-            y_pred_prefixed = y_pred_group.select(non_time_cols).rename({
-                col: f"{group_name}__{col}" for col in non_time_cols
-            })
-            all_preds.append(y_pred_prefixed)
-
-        # Concatenate all group predictions horizontally, prepend time columns
-        result = pl.concat(all_preds, how="horizontal")
-        if time_col is not None:
-            result = pl.concat([time_col, result], how="horizontal")
-
-        return result
+        return self._reassemble_panel_predictions(group_predictions)

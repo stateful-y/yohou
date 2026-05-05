@@ -26,6 +26,8 @@ from .common import (
 )
 from .forecaster import (
     check_clone_preserves_forecaster_params,
+    check_fit_predict_with_X_forecast,
+    check_fit_predict_with_X_future,
     check_fit_predict_without_exogenous,
     check_fit_sets_forecaster_attributes,
     check_forecaster_methods_call_check_is_fitted,
@@ -34,8 +36,12 @@ from .forecaster import (
     check_forecaster_tags_match_capabilities,
     check_forecaster_tags_static_after_fit,
     check_forecasting_horizon_validation,
+    check_ignores_exogenous_warns_on_X_future_X_forecast,
+    check_observe_auto_rederives_step_columns,
     check_observe_extends_observations,
+    check_observe_predict_with_step_columns,
     check_predict_time_columns,
+    check_predict_X_forecast_override,
     check_prediction_types_property,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
@@ -347,10 +353,15 @@ def _yield_yohou_transformer_checks(
 def _yield_yohou_forecaster_checks(
     forecaster,
     y_train: pl.DataFrame,
-    X_train: pl.DataFrame | None,
+    X_actual_train: pl.DataFrame | None,
     y_test: pl.DataFrame,
-    X_test: pl.DataFrame | None,
+    X_actual_test: pl.DataFrame | None,
     tags: dict[str, Any] | None = None,
+    *,
+    X_future_train: pl.DataFrame | None = None,
+    X_future_test: pl.DataFrame | None = None,
+    X_forecast_train: pl.DataFrame | None = None,
+    X_forecast_test: pl.DataFrame | None = None,
 ) -> Generator[tuple[str, Callable, dict], None, None]:
     """Generate applicable checks for a forecaster based on tags.
 
@@ -360,11 +371,11 @@ def _yield_yohou_forecaster_checks(
         Fitted forecaster instance
     y_train : pl.DataFrame
         Training target data with "time" column
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Training features
     y_test : pl.DataFrame
         Test target data
-    X_test : pl.DataFrame, optional
+    X_actual_test : pl.DataFrame, optional
         Test features
     tags : dict, optional
         Forecaster metadata tags (if None, auto-detected from __sklearn_tags__):
@@ -415,29 +426,41 @@ def _yield_yohou_forecaster_checks(
     yield (
         "check_fit_sets_forecaster_attributes",
         check_fit_sets_forecaster_attributes,
-        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        {
+            "y": y_train,
+            "X_actual": X_actual_train,
+            "forecasting_horizon": 3,
+            "X_future": X_future_train,
+            "X_forecast": X_forecast_train,
+        },
     )
     yield (
         "check_forecaster_not_fitted_error",
         check_forecaster_not_fitted_error,
-        {"y": y_train, "X": X_train},
+        {"y": y_train, "X_actual": X_actual_train},
     )
     yield (
         "check_predict_time_columns",
         check_predict_time_columns,
-        {"y_test": y_test, "X_test": X_test},
+        {"y_test": y_test, "X_actual_test": X_actual_test},
     )
     yield (
         "check_forecasting_horizon_validation",
         check_forecasting_horizon_validation,
-        {"y": y_train, "X": X_train},
+        {"y": y_train, "X_actual": X_actual_train, "X_future": X_future_train, "X_forecast": X_forecast_train},
     )
     yield "check_prediction_types_property", check_prediction_types_property, {}
     yield "check_clone_preserves_forecaster_params", check_clone_preserves_forecaster_params, {}
     yield (
         "check_forecaster_methods_call_check_is_fitted",
         check_forecaster_methods_call_check_is_fitted,
-        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        {
+            "y": y_train,
+            "X_actual": X_actual_train,
+            "forecasting_horizon": 3,
+            "X_future": X_future_train,
+            "X_forecast": X_forecast_train,
+        },
     )
     yield (
         "check_fit_predict_without_exogenous",
@@ -453,17 +476,23 @@ def _yield_yohou_forecaster_checks(
     yield (
         "check_forecaster_tags_accessible_before_fit",
         check_forecaster_tags_accessible_before_fit,
-        {"y": y_train, "X": X_train},
+        {"y": y_train, "X_actual": X_actual_train},
     )
     yield (
         "check_forecaster_tags_static_after_fit",
         check_forecaster_tags_static_after_fit,
-        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        {
+            "y": y_train,
+            "X_actual": X_actual_train,
+            "forecasting_horizon": 3,
+            "X_future": X_future_train,
+            "X_forecast": X_forecast_train,
+        },
     )
     yield (
         "check_forecaster_tags_match_capabilities",
         check_forecaster_tags_match_capabilities,
-        {"y": y_train, "X": X_train},
+        {"y": y_train, "X_actual": X_actual_train},
     )
 
     # Update/reset checks (if enough data and forecaster tracks observations)
@@ -472,17 +501,19 @@ def _yield_yohou_forecaster_checks(
     if len(y_test) >= 10 and tags.get("tracks_observations", True):
         y_update = y_test[:3]
         y_reset = y_test[:10]
-        X_update = X_test[:3] if X_test is not None else None
-        X_reset = X_test[:10] if X_test is not None else None
+        X_actual_update = X_actual_test[:3] if X_actual_test is not None else None
+        X_actual_reset = X_actual_test[:10] if X_actual_test is not None else None
 
         yield (
             "check_observe_extends_observations",
             check_observe_extends_observations,
             {
                 "y_train": y_train,
-                "y_update": y_update,
-                "X_train": X_train,
-                "X_update": X_update,
+                "y_observe": y_update,
+                "X_actual_train": X_actual_train,
+                "X_actual_observe": X_actual_update,
+                "X_future": X_future_test,
+                "X_forecast": X_forecast_test,
             },
         )
         yield (
@@ -491,23 +522,27 @@ def _yield_yohou_forecaster_checks(
             {
                 "y_train": y_train,
                 "y_reset": y_reset,
-                "X_train": X_train,
-                "X_reset": X_reset,
+                "X_actual_train": X_actual_train,
+                "X_actual_reset": X_actual_reset,
+                "X_future": X_future_test,
+                "X_forecast": X_forecast_test,
             },
         )
 
     # Transformer composition checks
     if (tags.get("uses_target_transformer", False) or tags.get("uses_feature_transformer", False)) and len(y_test) >= 5:
         y_reset = y_test[:10] if len(y_test) >= 10 else y_test
-        X_reset = X_test[:10] if X_test is not None and len(X_test) >= 10 else X_test
+        X_actual_reset = X_actual_test[:10] if X_actual_test is not None and len(X_actual_test) >= 10 else X_actual_test
         yield (
             "check_rewind_propagates_to_transformers",
             check_rewind_propagates_to_transformers,
             {
                 "y_train": y_train,
                 "y_reset": y_reset,
-                "X_train": X_train,
-                "X_reset": X_reset,
+                "X_actual_train": X_actual_train,
+                "X_actual_reset": X_actual_reset,
+                "X_future": X_future_test,
+                "X_forecast": X_forecast_test,
             },
         )
 
@@ -517,7 +552,7 @@ def _yield_yohou_forecaster_checks(
         yield (
             "check_point_prediction_structure",
             check_point_prediction_structure,
-            {"y_test": y_test, "X_test": X_test},
+            {"y_test": y_test, "X_actual_test": X_actual_test},
         )
         yield "check_point_prediction_types", check_point_prediction_types, {}
 
@@ -526,19 +561,19 @@ def _yield_yohou_forecaster_checks(
         yield (
             "check_interval_prediction_columns",
             check_interval_prediction_columns,
-            {"y_test": y_test, "X_test": X_test},
+            {"y_test": y_test, "X_actual_test": X_actual_test},
         )
         yield (
             "check_interval_bounds",
             check_interval_bounds,
-            {"y_test": y_test, "X_test": X_test},
+            {"y_test": y_test, "X_actual_test": X_actual_test},
         )
         yield "check_interval_prediction_types", check_interval_prediction_types, {}
         yield "check_coverage_rates_parameter", check_coverage_rates_parameter, {}
         yield (
             "check_coverage_rates_validation",
             check_coverage_rates_validation,
-            {"y": y_train, "X": X_train},
+            {"y": y_train, "X_actual": X_actual_train, "X_future": X_future_train, "X_forecast": X_forecast_train},
         )
 
     # Class-probability forecaster checks
@@ -546,24 +581,24 @@ def _yield_yohou_forecaster_checks(
         yield (
             "check_class_proba_prediction_structure",
             check_class_proba_prediction_structure,
-            {"y_test": y_test, "X_test": X_test},
+            {"y_test": y_test, "X_actual_test": X_actual_test},
         )
         yield (
             "check_class_proba_prediction_bounds",
             check_class_proba_prediction_bounds,
-            {"y_test": y_test, "X_test": X_test},
+            {"y_test": y_test, "X_actual_test": X_actual_test},
         )
         yield (
             "check_class_proba_prediction_sums",
             check_class_proba_prediction_sums,
-            {"y_test": y_test, "X_test": X_test},
+            {"y_test": y_test, "X_actual_test": X_actual_test},
         )
         yield "check_class_proba_prediction_types", check_class_proba_prediction_types, {}
         yield "check_class_proba_classes_attribute", check_class_proba_classes_attribute, {}
         yield (
             "check_class_proba_predict_returns_labels",
             check_class_proba_predict_returns_labels,
-            {"y_test": y_test, "X_test": X_test},
+            {"y_test": y_test, "X_actual_test": X_actual_test},
         )
 
     # Reduction forecaster checks
@@ -581,18 +616,100 @@ def _yield_yohou_forecaster_checks(
             yield (
                 "check_panel_data",
                 check_panel_data,
-                {"y_panel": y_test, "X_panel": X_test},
+                {"y_panel": y_test, "X_panel": X_actual_test},
             )
             yield (
                 "check_panel_single_group",
                 check_panel_single_group,
-                {"y_panel": y_test, "X_panel": X_test},
+                {"y_panel": y_test, "X_panel": X_actual_test},
             )
             yield (
                 "check_panel_invalid_group_raises",
                 check_panel_invalid_group_raises,
-                {"y_panel": y_test, "X_panel": X_test},
+                {"y_panel": y_test, "X_panel": X_actual_test},
             )
+
+    # X_future / X_forecast dedicated checks
+    _has_step_data = X_future_train is not None or X_forecast_train is not None
+    _ignores_exogenous = tags.get("ignores_exogenous", False)
+
+    if _has_step_data and not _ignores_exogenous:
+        if X_future_train is not None:
+            yield (
+                "check_fit_predict_with_X_future",
+                check_fit_predict_with_X_future,
+                {
+                    "y_train": y_train,
+                    "X_actual_train": X_actual_train,
+                    "y_test": y_test,
+                    "X_future": X_future_train,
+                    "forecasting_horizon": 3,
+                },
+            )
+
+        if X_forecast_train is not None:
+            yield (
+                "check_fit_predict_with_X_forecast",
+                check_fit_predict_with_X_forecast,
+                {
+                    "y_train": y_train,
+                    "X_actual_train": X_actual_train,
+                    "y_test": y_test,
+                    "X_forecast": X_forecast_train,
+                    "forecasting_horizon": 3,
+                },
+            )
+
+            yield (
+                "check_predict_X_forecast_override",
+                check_predict_X_forecast_override,
+                {
+                    "y_test": y_test,
+                    "X_forecast": X_forecast_test if X_forecast_test is not None else X_forecast_train,
+                    "forecasting_horizon": 3,
+                },
+            )
+
+        if len(y_test) >= 3 and tags.get("tracks_observations", True):
+            y_update = y_test[:3]
+            X_actual_update = X_actual_test[:3] if X_actual_test is not None else None
+            yield (
+                "check_observe_auto_rederives_step_columns",
+                check_observe_auto_rederives_step_columns,
+                {
+                    "y_observe": y_update,
+                    "X_actual_observe": X_actual_update,
+                    "X_future": X_future_test,
+                    "X_forecast": X_forecast_test,
+                },
+            )
+
+        if len(y_test) >= 10:
+            yield (
+                "check_observe_predict_with_step_columns",
+                check_observe_predict_with_step_columns,
+                {
+                    "y_train": y_train,
+                    "X_actual_train": X_actual_train,
+                    "y_test": y_test,
+                    "X_actual_test": X_actual_test,
+                    "X_future": X_future_train,
+                    "X_forecast": X_forecast_train,
+                    "forecasting_horizon": 3,
+                },
+            )
+
+    if _has_step_data and _ignores_exogenous:
+        yield (
+            "check_ignores_exogenous_warns_on_X_future_X_forecast",
+            check_ignores_exogenous_warns_on_X_future_X_forecast,
+            {
+                "y_train": y_train,
+                "X_future": X_future_train,
+                "X_forecast": X_forecast_train,
+                "forecasting_horizon": 3,
+            },
+        )
 
     # Metadata routing checks (always applicable)
     yield (
@@ -858,10 +975,15 @@ def _yield_yohou_scorer_checks(
 def _yield_yohou_search_checks(
     search_cv,
     y_train: pl.DataFrame,
-    X_train: pl.DataFrame | None,
+    X_actual_train: pl.DataFrame | None,
     y_test: pl.DataFrame,
-    X_test: pl.DataFrame | None,
+    X_actual_test: pl.DataFrame | None,
     tags: dict[str, Any] | None = None,
+    *,
+    X_future_train: pl.DataFrame | None = None,
+    X_future_test: pl.DataFrame | None = None,
+    X_forecast_train: pl.DataFrame | None = None,
+    X_forecast_test: pl.DataFrame | None = None,
 ) -> Generator[tuple[str, Callable, dict], None, None]:
     """Generate applicable checks for a search CV instance based on tags.
 
@@ -871,11 +993,11 @@ def _yield_yohou_search_checks(
         Fitted search CV instance (GridSearchCV or RandomizedSearchCV)
     y_train : pl.DataFrame
         Training target data with "time" column
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Training features
     y_test : pl.DataFrame
         Test target data
-    X_test : pl.DataFrame, optional
+    X_actual_test : pl.DataFrame, optional
         Test features
     tags : dict, optional
         Search CV metadata tags:
@@ -919,17 +1041,29 @@ def _yield_yohou_search_checks(
     yield (
         "check_search_fit_sets_attributes",
         check_search_fit_sets_attributes,
-        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        {
+            "y": y_train,
+            "X_actual": X_actual_train,
+            "forecasting_horizon": 3,
+            "X_future": X_future_train,
+            "X_forecast": X_forecast_train,
+        },
     )
     yield (
         "check_search_not_fitted_error",
         check_search_not_fitted_error,
-        {"y": y_train, "X": X_train},
+        {"y": y_train, "X_actual": X_actual_train},
     )
     yield (
         "check_search_cv_results_structure",
         check_search_cv_results_structure,
-        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        {
+            "y": y_train,
+            "X_actual": X_actual_train,
+            "forecasting_horizon": 3,
+            "X_future": X_future_train,
+            "X_forecast": X_forecast_train,
+        },
     )
     yield (
         "check_search_clone_preserves_params",
@@ -939,7 +1073,13 @@ def _yield_yohou_search_checks(
     yield (
         "check_search_error_score_handling",
         check_search_error_score_handling,
-        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        {
+            "y": y_train,
+            "X_actual": X_actual_train,
+            "forecasting_horizon": 3,
+            "X_future": X_future_train,
+            "X_forecast": X_forecast_train,
+        },
     )
 
     # refit checks
@@ -948,21 +1088,30 @@ def _yield_yohou_search_checks(
         yield (
             "check_search_predict_delegates",
             check_search_predict_delegates,
-            {"y_train": y_train, "y_test": y_test, "X_train": X_train, "X_test": X_test},
+            {
+                "y_train": y_train,
+                "y_test": y_test,
+                "X_actual_train": X_actual_train,
+                "X_actual_test": X_actual_test,
+                "X_future": X_future_test,
+                "X_forecast": X_forecast_test,
+            },
         )
 
         # Update/reset checks (need enough data)
         if len(y_test) >= 10:
             y_update = y_test[:3]
-            X_update = X_test[:3] if X_test is not None else None
+            X_actual_update = X_actual_test[:3] if X_actual_test is not None else None
             yield (
                 "check_search_observe_delegates",
                 check_search_observe_delegates,
                 {
                     "y_train": y_train,
                     "y_update": y_update,
-                    "X_train": X_train,
-                    "X_update": X_update,
+                    "X_actual_train": X_actual_train,
+                    "X_actual_update": X_actual_update,
+                    "X_future": X_future_test,
+                    "X_forecast": X_forecast_test,
                 },
             )
 
@@ -973,25 +1122,44 @@ def _yield_yohou_search_checks(
             reset_len = max(10, min_reset)
             if len(y_test) >= reset_len:
                 y_reset = y_test[:reset_len]
-                X_reset = X_test[:reset_len] if X_test is not None else None
+                X_actual_reset = X_actual_test[:reset_len] if X_actual_test is not None else None
                 yield (
                     "check_search_rewind_delegates",
                     check_search_rewind_delegates,
-                    {"y_train": y_train, "y_reset": y_reset, "X_train": X_train, "X_reset": X_reset},
+                    {
+                        "y_train": y_train,
+                        "y_reset": y_reset,
+                        "X_actual_train": X_actual_train,
+                        "X_actual_reset": X_actual_reset,
+                        "X_future": X_future_test,
+                        "X_forecast": X_forecast_test,
+                    },
                 )
     else:
         # refit=False checks
         yield (
             "check_search_refit_false_no_forecaster",
             check_search_refit_false_no_forecaster,
-            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+            {
+                "y": y_train,
+                "X_actual": X_actual_train,
+                "forecasting_horizon": 3,
+                "X_future": X_future_train,
+                "X_forecast": X_forecast_train,
+            },
         )
 
     # Method availability checks (always yield)
     yield (
         "check_search_method_availability",
         check_search_method_availability,
-        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        {
+            "y": y_train,
+            "X_actual": X_actual_train,
+            "forecasting_horizon": 3,
+            "X_future": X_future_train,
+            "X_forecast": X_forecast_train,
+        },
     )
 
     # Multi-metric checks
@@ -999,7 +1167,13 @@ def _yield_yohou_search_checks(
         yield (
             "check_search_multimetric_scoring",
             check_search_multimetric_scoring,
-            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+            {
+                "y": y_train,
+                "X_actual": X_actual_train,
+                "forecasting_horizon": 3,
+                "X_future": X_future_train,
+                "X_forecast": X_forecast_train,
+            },
         )
 
     # Interval scoring checks (when interval scorers are used)
@@ -1007,14 +1181,27 @@ def _yield_yohou_search_checks(
         yield (
             "check_search_interval_predict_delegates",
             check_search_interval_predict_delegates,
-            {"y_train": y_train, "y_test": y_test, "X_train": X_train, "X_test": X_test},
+            {
+                "y_train": y_train,
+                "y_test": y_test,
+                "X_actual_train": X_actual_train,
+                "X_actual_test": X_actual_test,
+                "X_future": X_future_test,
+                "X_forecast": X_forecast_test,
+            },
         )
 
     # Return train score check (parameterized)
     yield (
         "check_search_return_train_score",
         check_search_return_train_score,
-        {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+        {
+            "y": y_train,
+            "X_actual": X_actual_train,
+            "forecasting_horizon": 3,
+            "X_future": X_future_train,
+            "X_forecast": X_forecast_train,
+        },
     )
 
     # GridSearchCV-specific checks
@@ -1022,7 +1209,13 @@ def _yield_yohou_search_checks(
         yield (
             "check_grid_search_exhaustive",
             check_grid_search_exhaustive,
-            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+            {
+                "y": y_train,
+                "X_actual": X_actual_train,
+                "forecasting_horizon": 3,
+                "X_future": X_future_train,
+                "X_forecast": X_forecast_train,
+            },
         )
         yield (
             "check_grid_search_param_grid_validation",
@@ -1035,7 +1228,13 @@ def _yield_yohou_search_checks(
         yield (
             "check_randomized_search_n_iter",
             check_randomized_search_n_iter,
-            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+            {
+                "y": y_train,
+                "X_actual": X_actual_train,
+                "forecasting_horizon": 3,
+                "X_future": X_future_train,
+                "X_forecast": X_forecast_train,
+            },
         )
 
         # Reproducibility check (only if random_state is set)
@@ -1043,13 +1242,25 @@ def _yield_yohou_search_checks(
             yield (
                 "check_randomized_search_reproducibility",
                 check_randomized_search_reproducibility,
-                {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+                {
+                    "y": y_train,
+                    "X_actual": X_actual_train,
+                    "forecasting_horizon": 3,
+                    "X_future": X_future_train,
+                    "X_forecast": X_forecast_train,
+                },
             )
 
         yield (
             "check_randomized_search_distributions",
             check_randomized_search_distributions,
-            {"y": y_train, "X": X_train, "forecasting_horizon": 3},
+            {
+                "y": y_train,
+                "X_actual": X_actual_train,
+                "forecasting_horizon": 3,
+                "X_future": X_future_train,
+                "X_forecast": X_forecast_train,
+            },
         )
 
     # Panel data checks (if panel data available)
@@ -1064,8 +1275,10 @@ def _yield_yohou_search_checks(
                 {
                     "y_train": y_train,
                     "y_test": y_test,
-                    "X_train": X_train,
-                    "X_test": X_test,
+                    "X_actual_train": X_actual_train,
+                    "X_actual_test": X_actual_test,
                     "groups": groups,
+                    "X_future": X_future_test,
+                    "X_forecast": X_forecast_test,
                 },
             )

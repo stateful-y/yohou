@@ -24,9 +24,9 @@ def _():
     from yohou.datasets import fetch_hospital
     from yohou.plotting import (
         plot_autocorrelation,
-        plot_decomposition,
         plot_correlation_heatmap,
         plot_cross_correlation,
+        plot_decomposition,
         plot_lag_scatter,
         plot_rolling_statistics,
         plot_scatter_matrix,

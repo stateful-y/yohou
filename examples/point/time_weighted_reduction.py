@@ -57,10 +57,10 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from yohou.model_selection import train_test_split
 
     from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_score_per_step, plot_score_summary, plot_time_weight
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
@@ -72,6 +72,7 @@ def _():
     )
 
     return (
+        LagTransformer,
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,

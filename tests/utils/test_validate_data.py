@@ -226,7 +226,7 @@ class TestValidateForecasterData:
             target_as_feature=None,
         )
 
-        with pytest.raises(ValueError, match="target_as_feature=None requires X to be provided"):
+        with pytest.raises(ValueError, match="target_as_feature=None requires X_actual to be provided"):
             forecaster.fit(y, X_actual=None, forecasting_horizon=3)
 
     def test_validate_data_preserves_column_order(self):

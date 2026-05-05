@@ -1,4 +1,4 @@
-"""Tests for train_test_split and _split_forecast_data."""
+"""Tests for train_test_split and _split_X_forecast."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 
 from yohou.model_selection import train_test_split
-from yohou.model_selection.utils import _split_forecast_data
+from yohou.model_selection.utils import _split_X_forecast
 
 
 @pytest.fixture()
@@ -61,18 +61,18 @@ class TestTrainTestSplitRowIndex:
         assert len(y_test) == 3
 
     def test_two_arrays(self, y_daily, X_daily):
-        y_train, y_test, X_train, X_test = train_test_split(
+        y_train, y_test, X_actual_train, X_actual_test = train_test_split(
             y_daily,
             X_daily,
             test_size=2,
         )
         assert len(y_train) == 8
         assert len(y_test) == 2
-        assert len(X_train) == 8
-        assert len(X_test) == 2
+        assert len(X_actual_train) == 8
+        assert len(X_actual_test) == 2
         # Temporal order preserved
         assert y_train["time"][-1] < y_test["time"][0]
-        assert X_train["time"][-1] < X_test["time"][0]
+        assert X_actual_train["time"][-1] < X_actual_test["time"][0]
 
     def test_three_arrays(self, y_daily, X_daily):
         third = pl.DataFrame({"z": list(range(10))})
@@ -174,11 +174,11 @@ class TestTrainTestSplitXForecast:
             test_size=3,
             X_forecast=X_forecast_daily,
         )
-        # y_train, y_test, X_train, X_test, Xf_train, Xf_test
+        # y_train, y_test, X_actual_train, X_actual_test, Xf_train, Xf_test
         assert len(result) == 6
-        y_train, y_test, X_train, X_test, Xf_train, Xf_test = result
+        y_train, y_test, X_actual_train, X_actual_test, Xf_train, Xf_test = result
         assert len(y_train) == 7
-        assert len(X_train) == 7
+        assert len(X_actual_train) == 7
         assert len(Xf_train) > 0
         assert len(Xf_test) > 0
 
@@ -248,7 +248,7 @@ class TestTrainTestSplitXForecast:
 
 
 class TestSplitForecastData:
-    """Tests for the internal _split_forecast_data function."""
+    """Tests for the internal _split_X_forecast function."""
 
     @pytest.fixture()
     def y_100(self):
@@ -275,7 +275,7 @@ class TestSplitForecastData:
         # Train indices 0..59, test 60..79 → cutoff = day 60, test_end = day 80
         train = np.arange(60, dtype=np.intp)
         test = np.arange(60, 80, dtype=np.intp)
-        Xf_train, Xf_test = _split_forecast_data(xf_multi_vintage, y_100, train, test)
+        Xf_train, Xf_test = _split_X_forecast(xf_multi_vintage, y_100, train, test)
 
         # Vintages: day 20 (Jan 20), day 40 (Feb 9), day 60 (Feb 29) → train (<=cutoff)
         # day 80 (Mar 20) → test (> cutoff and <= test_end)
@@ -289,14 +289,14 @@ class TestSplitForecastData:
     def test_none_returns_none(self, y_100):
         train = np.arange(60, dtype=np.intp)
         test = np.arange(60, 80, dtype=np.intp)
-        result = _split_forecast_data(None, y_100, train, test)
+        result = _split_X_forecast(None, y_100, train, test)
         assert result == (None, None)
 
     def test_no_future_leakage(self, y_100, xf_multi_vintage):
         """Training set must not contain vintages after the cutoff."""
         train = np.arange(30, dtype=np.intp)  # cutoff = day 30
         test = np.arange(30, 50, dtype=np.intp)
-        Xf_train, Xf_test = _split_forecast_data(xf_multi_vintage, y_100, train, test)
+        Xf_train, Xf_test = _split_X_forecast(xf_multi_vintage, y_100, train, test)
 
         cutoff = y_100["time"][29]
         assert Xf_train is not None
@@ -306,7 +306,7 @@ class TestSplitForecastData:
         """Test set must not contain vintages beyond test_end."""
         train = np.arange(30, dtype=np.intp)
         test = np.arange(30, 50, dtype=np.intp)  # test_end = day 50
-        Xf_train, Xf_test = _split_forecast_data(xf_multi_vintage, y_100, train, test)
+        Xf_train, Xf_test = _split_X_forecast(xf_multi_vintage, y_100, train, test)
 
         test_end = y_100["time"][49]
         assert Xf_test is not None
@@ -323,7 +323,7 @@ class TestSplitForecastData:
         })
         train = np.arange(50, dtype=np.intp)
         test = np.arange(50, 70, dtype=np.intp)
-        Xf_train, Xf_test = _split_forecast_data(xf, y_100, train, test)
+        Xf_train, Xf_test = _split_X_forecast(xf, y_100, train, test)
         assert Xf_train is not None
         assert len(Xf_train) == 1
         assert Xf_test is not None
@@ -339,7 +339,7 @@ class TestSplitForecastData:
         })
         train = np.arange(50, dtype=np.intp)
         test = np.arange(50, 80, dtype=np.intp)
-        Xf_train, Xf_test = _split_forecast_data(xf, y_100, train, test)
+        Xf_train, Xf_test = _split_X_forecast(xf, y_100, train, test)
         assert Xf_train is not None
         assert Xf_test is not None
         assert set(Xf_train.columns) == {"vintage_time", "time", "temp", "wind"}
@@ -359,7 +359,7 @@ class TestSplitForecastData:
         })
         train = np.arange(50, dtype=np.intp)
         test = np.arange(50, 80, dtype=np.intp)
-        Xf_train, Xf_test = _split_forecast_data(xf, y, train, test)
+        Xf_train, Xf_test = _split_X_forecast(xf, y, train, test)
         assert Xf_train is not None
         assert len(Xf_train) == 1  # hour 30 <= hour 49 cutoff
         assert Xf_test is not None

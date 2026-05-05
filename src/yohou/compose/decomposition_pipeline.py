@@ -330,7 +330,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         # Apply transformers and get transformed data
         y_t, X_t = self._pre_fit(
-            y=y, X=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
         )
 
         y_t = dict_to_panel(y_t)
@@ -476,7 +476,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         _, _, groups = validate_forecaster_data(
             self,
             y=None,
-            X=None,
+            X_actual=None,
             reset=False,
             groups=groups,
         )
@@ -650,7 +650,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             reset=False,
             groups=groups,
         )
@@ -675,7 +675,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         for name, forecaster in self.forecasters_:
             # Get predictions on new data, then observe state
             # Use separate predict + observe instead of observe_predict to avoid
-            # the rolling predict-observe loop which requires future X data
+            # the rolling predict-observe loop which requires future X_actual data
             y_pred = forecaster.predict(
                 forecasting_horizon=len(residuals),
             )
@@ -753,7 +753,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             reset=False,
             groups=groups,
         )

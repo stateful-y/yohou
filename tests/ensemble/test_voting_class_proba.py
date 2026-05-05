@@ -78,17 +78,17 @@ class TestVotingClassProbaSystematicChecks:
     )
     def test_systematic_checks(self, forecaster, class_proba_y_X_factory):
         """Run systematic checks on VotingClassProbaForecaster."""
-        y, X = class_proba_y_X_factory(length=200, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=200, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         y_train, y_test = y[:160], y[160:]
-        X_train, X_test = X[:160], X[160:]
+        X_actual_train, X_actual_test = X_actual[:160], X_actual[160:]
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
             expected_failures=set(),
         )
 
@@ -98,9 +98,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_soft_voting_probabilities(self, class_proba_y_X_factory):
         """Test that soft voting produces averaged probabilities."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         base_1 = _make_class_proba_forecaster()
         base_2 = _make_class_proba_forecaster(
@@ -111,12 +111,12 @@ class TestVotingClassProbaFitPredict:
             forecasters=[("dt_1", base_1), ("dt_2", base_2)],
             method="soft",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
         # Compute expected mean from individual predictions
-        b1 = clone(base_1).fit(y_train, X_train, forecasting_horizon=3)
-        b2 = clone(base_2).fit(y_train, X_train, forecasting_horizon=3)
+        b1 = clone(base_1).fit(y_train, X_actual_train, forecasting_horizon=3)
+        b2 = clone(base_2).fit(y_train, X_actual_train, forecasting_horizon=3)
         p1 = b1.predict_class_proba(forecasting_horizon=3)
         p2 = b2.predict_class_proba(forecasting_horizon=3)
 
@@ -127,9 +127,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_weighted_soft_voting_probabilities(self, class_proba_y_X_factory):
         """Test that weighted soft voting uses numpy.average."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         base_1 = _make_class_proba_forecaster()
         base_2 = _make_class_proba_forecaster(
@@ -142,12 +142,12 @@ class TestVotingClassProbaFitPredict:
             method="soft",
             weights=weights,
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
         # Compute expected weighted average
-        b1 = clone(base_1).fit(y_train, X_train, forecasting_horizon=3)
-        b2 = clone(base_2).fit(y_train, X_train, forecasting_horizon=3)
+        b1 = clone(base_1).fit(y_train, X_actual_train, forecasting_horizon=3)
+        b2 = clone(base_2).fit(y_train, X_actual_train, forecasting_horizon=3)
         p1 = b1.predict_class_proba(forecasting_horizon=3)
         p2 = b2.predict_class_proba(forecasting_horizon=3)
 
@@ -159,9 +159,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_probabilities_sum_to_one(self, class_proba_y_X_factory):
         """Test that probabilities from soft voting sum to 1.0."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -175,7 +175,7 @@ class TestVotingClassProbaFitPredict:
             ],
             method="soft",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
         proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
@@ -184,9 +184,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_probabilities_bounded_zero_one(self, class_proba_y_X_factory):
         """Test that all probabilities are in [0, 1]."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -200,7 +200,7 @@ class TestVotingClassProbaFitPredict:
             ],
             method="soft",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
         proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
@@ -211,9 +211,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_hard_voting_predict(self, class_proba_y_X_factory):
         """Test that hard voting predict returns valid class labels."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -233,7 +233,7 @@ class TestVotingClassProbaFitPredict:
             ],
             method="hard",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         target_col = [c for c in y_pred.columns if c not in ("vintage_time", "time")][0]
@@ -246,9 +246,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_hard_voting_one_hot_probabilities(self, class_proba_y_X_factory):
         """Test that hard voting probabilities are one-hot."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -268,7 +268,7 @@ class TestVotingClassProbaFitPredict:
             ],
             method="hard",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
         proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
@@ -282,9 +282,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_soft_predict_returns_argmax(self, class_proba_y_X_factory):
         """Test that soft predict returns argmax of probabilities."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -298,7 +298,7 @@ class TestVotingClassProbaFitPredict:
             ],
             method="soft",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
 
@@ -314,9 +314,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_classes_attribute(self, class_proba_y_X_factory):
         """Test that classes_ is set correctly after fit."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -330,7 +330,7 @@ class TestVotingClassProbaFitPredict:
             ],
             method="soft",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         assert hasattr(forecaster, "classes_")
         assert isinstance(forecaster.classes_, dict)
@@ -340,9 +340,9 @@ class TestVotingClassProbaFitPredict:
 
     def test_weights_ignored_with_hard_voting(self, class_proba_y_X_factory):
         """Test that weights are silently ignored with method='hard'."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         forecasters = [
             ("dt_1", _make_class_proba_forecaster()),
@@ -370,8 +370,8 @@ class TestVotingClassProbaFitPredict:
             weights=[0.1, 0.2, 0.7],
         )
 
-        f_no_w.fit(y_train, X_train, forecasting_horizon=3)
-        f_w.fit(y_train, X_train, forecasting_horizon=3)
+        f_no_w.fit(y_train, X_actual_train, forecasting_horizon=3)
+        f_w.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         p_no_w = f_no_w.predict(forecasting_horizon=3)
         p_w = f_w.predict(forecasting_horizon=3)
@@ -385,7 +385,7 @@ class TestVotingClassProbaPanelData:
 
     def test_panel_data_predictions(self, class_proba_y_X_factory):
         """Test VotingClassProbaForecaster works with panel data."""
-        y, X = class_proba_y_X_factory(
+        y, X_actual = class_proba_y_X_factory(
             length=100,
             n_targets=1,
             n_features=2,
@@ -395,7 +395,7 @@ class TestVotingClassProbaPanelData:
             n_groups=2,
         )
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -409,7 +409,7 @@ class TestVotingClassProbaPanelData:
             ],
             method="soft",
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
@@ -426,22 +426,22 @@ class TestVotingClassProbaErrorHandling:
 
     def test_single_forecaster_failure_skipped(self, class_proba_y_X_factory):
         """Test that a single failing forecaster is skipped with warning."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         # Use a tiny data slice so one forecaster with large lag requirements
         # fails while the other succeeds
         from sklearn.base import BaseEstimator, ClassifierMixin
 
         class AlwaysFailClassifier(ClassifierMixin, BaseEstimator):
-            def fit(self, X, y):
+            def fit(self, X_actual, y):
                 raise ValueError("Intentional failure in classifier")
 
-            def predict(self, X):
+            def predict(self, X_actual):
                 pass
 
-            def predict_proba(self, X):
+            def predict_proba(self, X_actual):
                 pass
 
         forecaster = VotingClassProbaForecaster(
@@ -459,7 +459,7 @@ class TestVotingClassProbaErrorHandling:
         )
 
         with pytest.warns(UserWarning, match="failed during fit"):
-            forecaster.fit(y_train, X_train, forecasting_horizon=3)
+            forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         assert len(forecaster.forecasters_) == 1
         y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
@@ -495,7 +495,7 @@ class TestVotingClassProbaErrorHandling:
 
     def test_weights_length_mismatch_raises(self, class_proba_y_X_factory):
         """Test that mismatched weights length raises ValueError."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -512,11 +512,11 @@ class TestVotingClassProbaErrorHandling:
         )
 
         with pytest.raises(ValueError, match="Number of weights"):
-            forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+            forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
 
     def test_duplicate_names_raises(self, class_proba_y_X_factory):
         """Test that duplicate forecaster names raise ValueError."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -532,7 +532,7 @@ class TestVotingClassProbaErrorHandling:
         )
 
         with pytest.raises(ValueError, match="Duplicate forecaster names"):
-            forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+            forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
 
 
 class TestVotingClassProbaConsistency:
@@ -596,7 +596,7 @@ class TestVotingClassProbaObserveRewind:
 
     def test_observe_and_predict(self, class_proba_y_X_factory):
         """Test that observe delegates to all base forecasters."""
-        y, X = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -610,14 +610,14 @@ class TestVotingClassProbaObserveRewind:
             ],
             method="soft",
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
-        forecaster.observe(y=y[80:100], X_actual=X[80:100])
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
+        forecaster.observe(y=y[80:100], X_actual=X_actual[80:100])
         y_pred = forecaster.predict(forecasting_horizon=3)
         assert len(y_pred) == 3
 
     def test_rewind_and_predict(self, class_proba_y_X_factory):
         """Test that rewind delegates to all base forecasters."""
-        y, X = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -631,15 +631,15 @@ class TestVotingClassProbaObserveRewind:
             ],
             method="soft",
         )
-        forecaster.fit(y[:90], X[:90], forecasting_horizon=3)
-        forecaster.observe(y=y[90:100], X_actual=X[90:100])
-        forecaster.rewind(y=y[:90], X_actual=X[:90])
+        forecaster.fit(y[:90], X_actual[:90], forecasting_horizon=3)
+        forecaster.observe(y=y[90:100], X_actual=X_actual[90:100])
+        forecaster.rewind(y=y[:90], X_actual=X_actual[:90])
         y_pred = forecaster.predict(forecasting_horizon=3)
         assert len(y_pred) == 3
 
     def test_observe_predict_class_proba_soft(self, class_proba_y_X_factory):
         """Test observe_predict_class_proba exercises _predict_class_proba_one (soft)."""
-        y, X = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -653,15 +653,15 @@ class TestVotingClassProbaObserveRewind:
             ],
             method="soft",
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
-        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X_actual=X[80:90], forecasting_horizon=3)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
+        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X_actual=X_actual[80:90], forecasting_horizon=3)
         assert len(y_proba) > 0
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
         assert len(proba_cols) > 0
 
     def test_observe_predict_class_proba_hard(self, class_proba_y_X_factory):
         """Test observe_predict_class_proba exercises _predict_class_proba_one (hard)."""
-        y, X = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=120, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -681,15 +681,15 @@ class TestVotingClassProbaObserveRewind:
             ],
             method="hard",
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
-        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X_actual=X[80:90], forecasting_horizon=3)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
+        y_proba = forecaster.observe_predict_class_proba(y=y[80:90], X_actual=X_actual[80:90], forecasting_horizon=3)
         assert len(y_proba) > 0
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
         assert len(proba_cols) > 0
 
     def test_predict_class_proba_one_soft(self, class_proba_y_X_factory):
         """Test _predict_class_proba_one directly for soft voting."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -704,7 +704,7 @@ class TestVotingClassProbaObserveRewind:
             method="soft",
             weights=[1.0, 3.0],
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
 
         y_proba = forecaster._predict_class_proba_one(groups=None)
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
@@ -713,7 +713,7 @@ class TestVotingClassProbaObserveRewind:
 
     def test_predict_class_proba_one_soft_unweighted(self, class_proba_y_X_factory):
         """Test _predict_class_proba_one for soft voting without weights."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -727,7 +727,7 @@ class TestVotingClassProbaObserveRewind:
             ],
             method="soft",
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
 
         y_proba = forecaster._predict_class_proba_one(groups=None)
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
@@ -736,7 +736,7 @@ class TestVotingClassProbaObserveRewind:
 
     def test_predict_class_proba_one_hard(self, class_proba_y_X_factory):
         """Test _predict_class_proba_one directly for hard voting."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -756,7 +756,7 @@ class TestVotingClassProbaObserveRewind:
             ],
             method="hard",
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
 
         y_proba = forecaster._predict_class_proba_one(groups=None)
         proba_cols = [c for c in y_proba.columns if "_proba_" in c]
@@ -772,7 +772,7 @@ class TestVotingClassProbaSklearn:
 
     def test_clone(self, class_proba_y_X_factory):
         """Test that VotingClassProbaForecaster can be cloned."""
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
 
         forecaster = VotingClassProbaForecaster(
             forecasters=[
@@ -786,7 +786,7 @@ class TestVotingClassProbaSklearn:
             ],
             method="soft",
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
 
         cloned = clone(forecaster)
         with pytest.raises(NotFittedError):

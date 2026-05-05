@@ -181,9 +181,20 @@ pipeline.fit(
 
 ### ForecastedFeatureForecaster
 
-The feature forecaster's predictions become additional features for the target
-forecaster. `X_actual` is used as the feature forecaster's target (what to
-forecast), while the target forecaster receives all three exogenous parameters:
+`X_actual` trains the feature forecaster (treated as its y) and provides
+lag features for the target forecaster. `X_future` and `X_forecast` pass
+through to the target forecaster directly.
+
+At predict time, the feature forecaster is **not called**. Instead, the
+target forecaster uses X_actual values stored in its observation window
+(set during fit and updated by `observe`). This means the target
+forecaster's X_actual lag features always reflect the latest observed
+actuals, not forecasted values.
+
+The `strategy` parameter controls what X_actual the target forecaster is
+**trained** on: `"actual"` uses real values, `"predicted"` and `"rewind"`
+use the feature forecaster's predictions so the target learns from inputs
+similar to what it would see if actuals were unavailable.
 
 ```python
 from yohou.compose import ForecastedFeatureForecaster
@@ -191,69 +202,16 @@ from yohou.compose import ForecastedFeatureForecaster
 fff = ForecastedFeatureForecaster(
     target_forecaster=price_forecaster,
     feature_forecaster=temperature_forecaster,
+    strategy="rewind",  # train target on predicted X_actual
 )
 
-# X_actual becomes the feature forecaster's target (what to forecast);
-# the target forecaster receives all three exogenous parameters directly
+# X_actual trains feature_forecaster (as y) and target_forecaster (as X_actual)
+# X_future passes through to target_forecaster directly
 fff.fit(
     y=y_train,
     X_actual=X_actual_train,
     forecasting_horizon=H,
     X_future=holidays,
-)
-```
-
----
-
-## How to Use step_feature_alignment
-
-When using the `"direct"` reduction strategy, `step_feature_alignment`
-controls which step columns each horizon-specific estimator sees:
-
-```python
-# Each estimator h sees only step_h columns
-forecaster = PointReductionForecaster(
-    estimator=HistGradientBoostingRegressor(),
-    reduction_strategy="direct",
-    step_feature_alignment="matched",
-)
-
-# Each estimator h sees step_1..step_h columns
-forecaster_cumulative = PointReductionForecaster(
-    estimator=HistGradientBoostingRegressor(),
-    reduction_strategy="direct",
-    step_feature_alignment="cumulative",
-)
-```
-
-Use `"matched"` when each horizon's forecast should depend only on the
-corresponding external forecast (cleanest signal). Use `"cumulative"` when
-nearer-term forecasts should also inform longer-term predictions.
-
----
-
-## How to Handle Partial Forecast Coverage
-
-If your `X_forecast` doesn't cover the full time range (common when forecast
-archives start later than the target series), the resulting step columns
-contain null values for uncovered rows. Tree-based estimators handle this
-natively:
-
-```python
-# HistGradientBoostingRegressor handles nulls
-forecaster = PointReductionForecaster(
-    estimator=HistGradientBoostingRegressor(),
-    reduction_strategy="direct",
-)
-
-# LinearRegression does NOT handle nulls; use imputation
-from sklearn.pipeline import make_pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression
-
-forecaster_linear = PointReductionForecaster(
-    estimator=make_pipeline(SimpleImputer(), LinearRegression()),
-    reduction_strategy="direct",
 )
 ```
 
@@ -282,11 +240,6 @@ pred = restored.predict(X_forecast=new_vintage)
 ---
 
 ## Troubleshooting
-
-**Problem: `ValueError: Input X contains NaN` during fit**
-: Your estimator does not handle null values. Use `HistGradientBoostingRegressor`,
-  XGBoost, or LightGBM, or wrap your estimator in a pipeline with
-  `SimpleImputer`.
 
 **Problem: `ValueError` about column name collisions**
 : `X_future` and `X_forecast` produce step columns with the same name. Rename

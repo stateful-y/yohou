@@ -41,6 +41,13 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         If ``"transformed"``, the transformed target is used. If ``"raw"``,
         the raw target is used. If ``None``, the target is not included as
         a feature.
+    step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
+        Controls which step-indexed feature columns each direct estimator
+        sees. Only affects the ``"direct"`` strategy.
+
+        - ``"all"``: every estimator receives all step columns.
+        - ``"matched"``: estimator for step h receives only ``*_step_h``.
+        - ``"cumulative"``: estimator for step h receives ``*_step_1..h``.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     n_jobs : int or None, default=None
@@ -115,6 +122,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
+        step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ) -> None:
@@ -123,6 +131,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             estimator=estimator,
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
+            step_feature_alignment=step_feature_alignment,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
         )
@@ -222,7 +231,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         y_t, X_t = self._pre_fit(
             y=y_encoded,
-            X=X_actual,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,

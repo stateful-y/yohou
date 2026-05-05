@@ -18,7 +18,9 @@ __all__ = [
 ]
 
 
-def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
+def check_interval_prediction_columns(
+    forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None
+) -> None:
     """Check interval predictions have {col}_lower_{rate} and {col}_upper_{rate} format.
 
     Parameters
@@ -27,7 +29,7 @@ def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame, X_test: 
         Fitted interval forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_test : pl.DataFrame, optional
+    X_actual_test : pl.DataFrame, optional
         Test features
 
     Raises
@@ -75,7 +77,7 @@ def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame, X_test: 
                 assert upper_col in y_pred.columns, f"Missing upper bound column: {upper_col}"
 
 
-def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
+def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None) -> None:
     """Check upper >= lower for all coverage rates and time steps.
 
     Parameters
@@ -84,7 +86,7 @@ def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame
         Fitted interval forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_test : pl.DataFrame, optional
+    X_actual_test : pl.DataFrame, optional
         Test features
 
     Raises
@@ -186,7 +188,13 @@ def check_coverage_rates_parameter(forecaster) -> None:
         assert 0 <= rate <= 1, f"Coverage rates should be in [0, 1], got {rate}"
 
 
-def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_coverage_rates_validation(
+    forecaster,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+) -> None:
     """Check invalid coverage_rates raise ValueError during fit and predict.
 
     Parameters
@@ -195,7 +203,7 @@ def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame
         Unfitted interval forecaster instance
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
 
     Raises
@@ -207,7 +215,9 @@ def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame
     # Test rate = 1.5 (above 1 - invalid)
     forecaster_clone = clone(forecaster)
     try:
-        forecaster_clone.fit(y, X, forecasting_horizon=3, coverage_rates=[1.5])
+        forecaster_clone.fit(
+            y, X_actual, forecasting_horizon=3, coverage_rates=[1.5], X_future=X_future, X_forecast=X_forecast
+        )
         raise AssertionError(f"{forecaster_clone.__class__.__name__} should raise ValueError for coverage_rates=[1.5]")
     except ValueError as e:
         assert "coverage" in str(e).lower() or "1" in str(e).lower(), (
@@ -217,7 +227,9 @@ def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame
     # Test negative rate (invalid)
     forecaster_clone = clone(forecaster)
     try:
-        forecaster_clone.fit(y, X, forecasting_horizon=3, coverage_rates=[-0.5])
+        forecaster_clone.fit(
+            y, X_actual, forecasting_horizon=3, coverage_rates=[-0.5], X_future=X_future, X_forecast=X_forecast
+        )
         raise AssertionError(f"{forecaster_clone.__class__.__name__} should raise ValueError for coverage_rates=[-0.5]")
     except ValueError as e:
         assert "coverage" in str(e).lower() or "negative" in str(e).lower(), (
@@ -226,7 +238,9 @@ def check_coverage_rates_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame
 
     # Test predict_interval also validates
     forecaster_clone = clone(forecaster)
-    forecaster_clone.fit(y, X, forecasting_horizon=3, coverage_rates=[0.95])
+    forecaster_clone.fit(
+        y, X_actual, forecasting_horizon=3, coverage_rates=[0.95], X_future=X_future, X_forecast=X_forecast
+    )
 
     try:
         forecaster_clone.predict_interval(forecasting_horizon=3, coverage_rates=[1.5])

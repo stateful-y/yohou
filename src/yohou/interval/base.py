@@ -72,7 +72,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Fit the similarity measure.
 
@@ -84,7 +84,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Point predictions.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
 
         Returns
@@ -98,7 +98,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Observe new data and update the similarity measure.
 
@@ -110,7 +110,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             New predictions.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             New exogenous features.
 
         Returns
@@ -123,7 +123,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute similarity weights for predictions.
 
@@ -132,7 +132,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predictions to compute similarities for.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
 
         Returns
@@ -392,7 +392,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         _, _, groups = validate_forecaster_data(
             self,
             y=None,
-            X=None,
+            X_actual=None,
             reset=False,
             groups=groups,
             X_future=X_future,
@@ -536,7 +536,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             reset=False,
             groups=groups,
             X_future=X_future,

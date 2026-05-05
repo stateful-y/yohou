@@ -158,7 +158,7 @@ def check_scorer_prediction_type_compatibility(
     scorer,
     forecaster,
     y: pl.DataFrame,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
 ) -> None:
     """Check scorer works with correct forecaster output type.
 
@@ -173,7 +173,7 @@ def check_scorer_prediction_type_compatibility(
         Fitted forecaster
     y : pl.DataFrame
         Target time series
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features
 
     Raises

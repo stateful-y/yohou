@@ -49,11 +49,11 @@ def _():
     import polars as pl
     from sklearn.ensemble import GradientBoostingRegressor
     from sklearn.linear_model import Ridge
-    from yohou.model_selection import train_test_split
 
     from yohou.datasets import fetch_sunspot
     from yohou.ensemble import VotingIntervalForecaster
     from yohou.interval import SplitConformalForecaster
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer

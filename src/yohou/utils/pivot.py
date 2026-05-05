@@ -8,11 +8,11 @@ import polars as pl
 
 from yohou.utils.validation import add_interval
 
-__all__ = ["pivot_forecasts", "window_future"]
+__all__ = ["pivot_forecasts", "window_futures"]
 
 
 def pivot_forecasts(
-    df: pl.DataFrame,
+    X_forecast: pl.DataFrame,
     *,
     vintage_col: str = "vintage_time",
     time_col: str = "time",
@@ -27,7 +27,7 @@ def pivot_forecasts(
 
     Parameters
     ----------
-    df : pl.DataFrame
+    X_forecast : pl.DataFrame
         Tidy forecast DataFrame. Must contain ``vintage_col`` and ``time_col``
         columns plus one or more value columns.
     vintage_col : str, default="vintage_time"
@@ -45,7 +45,7 @@ def pivot_forecasts(
     Raises
     ------
     ValueError
-        If ``vintage_col`` or ``time_col`` is not in ``df``.
+        If ``vintage_col`` or ``time_col`` is not in ``X_forecast``.
     ValueError
         If no value columns remain after removing ``vintage_col`` and ``time_col``.
 
@@ -53,12 +53,12 @@ def pivot_forecasts(
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> df = pl.DataFrame({
+    >>> X_forecast = pl.DataFrame({
     ...     "vintage_time": [datetime(2020, 1, 1)] * 3 + [datetime(2020, 1, 2)] * 3,
     ...     "time": [datetime(2020, 1, 2), datetime(2020, 1, 3), datetime(2020, 1, 4)] * 2,
     ...     "temp": [10.0, 11.0, 12.0, 15.0, 16.0, 17.0],
     ... })
-    >>> pivot_forecasts(df)
+    >>> pivot_forecasts(X_forecast)
     shape: (2, 4)
     ┌─────────────────────┬─────────────┬─────────────┬─────────────┐
     │ time                ┆ temp_step_1 ┆ temp_step_2 ┆ temp_step_3 │
@@ -70,14 +70,14 @@ def pivot_forecasts(
     └─────────────────────┴─────────────┴─────────────┴─────────────┘
 
     """
-    if vintage_col not in df.columns:
-        msg = f"Column '{vintage_col}' not found in DataFrame. Available columns: {df.columns}"
+    if vintage_col not in X_forecast.columns:
+        msg = f"Column '{vintage_col}' not found in DataFrame. Available columns: {X_forecast.columns}"
         raise ValueError(msg)
-    if time_col not in df.columns:
-        msg = f"Column '{time_col}' not found in DataFrame. Available columns: {df.columns}"
+    if time_col not in X_forecast.columns:
+        msg = f"Column '{time_col}' not found in DataFrame. Available columns: {X_forecast.columns}"
         raise ValueError(msg)
 
-    value_cols = [c for c in df.columns if c not in (vintage_col, time_col)]
+    value_cols = [c for c in X_forecast.columns if c not in (vintage_col, time_col)]
     if not value_cols:
         msg = (
             f"No value columns found. DataFrame has only '{vintage_col}' and "
@@ -86,9 +86,11 @@ def pivot_forecasts(
         raise ValueError(msg)
 
     # Assign ordinal step index within each vintage group (1-based).
-    df_ranked = df.with_columns(pl.col(time_col).rank("ordinal").over(vintage_col).cast(pl.Int32).alias("_step"))
+    X_forecast_ranked = X_forecast.with_columns(
+        pl.col(time_col).rank("ordinal").over(vintage_col).cast(pl.Int32).alias("_step")
+    )
 
-    max_step = int(df_ranked["_step"].max())  # ty: ignore[invalid-argument-type]
+    max_step = int(X_forecast_ranked["_step"].max())  # ty: ignore[invalid-argument-type]
 
     # Build pivot expressions: one column per (value_col, step) pair.
     pivot_exprs: list[pl.Expr] = []
@@ -103,7 +105,7 @@ def pivot_forecasts(
                 .alias(f"{col}_step_{step}")
             )
 
-    result = df_ranked.group_by(vintage_col, maintain_order=True).agg(pivot_exprs)
+    result = X_forecast_ranked.group_by(vintage_col, maintain_order=True).agg(pivot_exprs)
 
     # Rename vintage_col → "time"
     result = result.rename({vintage_col: "time"})
@@ -111,8 +113,8 @@ def pivot_forecasts(
     return result
 
 
-def window_future(
-    df: pl.DataFrame,
+def window_futures(
+    X_future: pl.DataFrame,
     observation_times: pl.Series,
     forecasting_horizon: int,
     interval: str | timedelta,
@@ -122,7 +124,7 @@ def window_future(
     """Window known-future features into step-indexed columns.
 
     For each observation time T and forecast horizon H, extracts values at
-    ``T + 1*interval`` through ``T + H*interval`` from ``df``, producing
+    ``T + 1*interval`` through ``T + H*interval`` from ``X_future``, producing
     step-indexed columns ``<col>_step_1`` through ``<col>_step_H``.
 
     The output has one row per observation time and uses ``"time"`` as the
@@ -130,7 +132,7 @@ def window_future(
 
     Parameters
     ----------
-    df : pl.DataFrame
+    X_future : pl.DataFrame
         Known-future data with a ``time_col`` column and one or more value
         columns. Values are deterministic (e.g., holidays, day-of-week).
     observation_times : pl.Series
@@ -140,7 +142,7 @@ def window_future(
     interval : str or timedelta
         Time frequency between steps (e.g., ``"1d"``, ``"1h"``).
     time_col : str, default="time"
-        Name of the time column in ``df``.
+        Name of the time column in ``X_future``.
 
     Returns
     -------
@@ -151,7 +153,7 @@ def window_future(
     Raises
     ------
     ValueError
-        If ``time_col`` is not in ``df``.
+        If ``time_col`` is not in ``X_future``.
     ValueError
         If ``forecasting_horizon`` is not positive.
     ValueError
@@ -172,7 +174,7 @@ def window_future(
     ...     "is_holiday": [1, 0, 0, 1, 0],
     ... })
     >>> obs_times = pl.Series([datetime(2020, 1, 1), datetime(2020, 1, 2)])
-    >>> window_future(holidays, obs_times, forecasting_horizon=3, interval="1d")
+    >>> window_futures(holidays, obs_times, forecasting_horizon=3, interval="1d")
     shape: (2, 4)
     ┌─────────────────────┬───────────────────┬───────────────────┬───────────────────┐
     │ time                ┆ is_holiday_step_1 ┆ is_holiday_step_2 ┆ is_holiday_step_3 │
@@ -184,15 +186,15 @@ def window_future(
     └─────────────────────┴───────────────────┴───────────────────┴───────────────────┘
 
     """
-    if time_col not in df.columns:
-        msg = f"Column '{time_col}' not found in DataFrame. Available columns: {df.columns}"
+    if time_col not in X_future.columns:
+        msg = f"Column '{time_col}' not found in DataFrame. Available columns: {X_future.columns}"
         raise ValueError(msg)
 
     if forecasting_horizon < 1:
         msg = f"forecasting_horizon must be positive, got {forecasting_horizon}."
         raise ValueError(msg)
 
-    value_cols = [c for c in df.columns if c != time_col]
+    value_cols = [c for c in X_future.columns if c != time_col]
     if not value_cols:
         msg = f"No value columns found. DataFrame has only '{time_col}'. At least one value column is required."
         raise ValueError(msg)
@@ -210,14 +212,14 @@ def window_future(
         cols = {"time": pl.Series([], dtype=observation_times.dtype)}
         for col in value_cols:
             for step in range(1, forecasting_horizon + 1):
-                cols[f"{col}_step_{step}"] = pl.Series([], dtype=df[col].dtype)
+                cols[f"{col}_step_{step}"] = pl.Series([], dtype=X_future[col].dtype)
         return pl.DataFrame(cols)
 
     lookup = pl.DataFrame(rows)
 
-    # Join lookup with df on time to get values at each target time
+    # Join lookup with X_future on time to get values at each target time
     joined = lookup.join(
-        df.select([time_col] + value_cols),
+        X_future.select([time_col] + value_cols),
         left_on="time",
         right_on=time_col,
         how="left",

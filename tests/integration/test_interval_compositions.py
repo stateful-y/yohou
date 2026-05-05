@@ -542,20 +542,20 @@ class TestForecastedFeatureForecasterInterval:
     def test_forecasted_feature_interval_target(self, ar1_series):
         """Test ForecastedFeatureForecaster with interval target forecaster."""
         y_full = ar1_series(phi=0.5, c=10.0, length=300)
-        # Create separate y (target) and X (exogenous features)
+        # Create separate y (target) and X_actual (exogenous features)
         y = y_full.select("time", "value")
-        X = y_full.select("time").with_columns(
+        X_actual = y_full.select("time").with_columns(
             pl.Series("feature1", np.linspace(0, 1, 300)),
         )
         y_train = y[:250]
-        X_train = X[:250]
+        X_actual_train = X_actual[:250]
         forecasting_horizon = 10
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1)),
             feature_forecaster=PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Predict intervals
         y_pred_interval = forecaster.predict_interval(
@@ -579,27 +579,27 @@ class TestForecastedFeatureForecasterInterval:
         """Test ForecastedFeatureForecaster observe_predict_interval with interval target."""
         y_full = ar1_series(phi=0.5, c=10.0, length=300)
         y = y_full.select("time", "value")
-        X = y_full.select("time").with_columns(
+        X_actual = y_full.select("time").with_columns(
             pl.Series("feature1", np.linspace(0, 1, 300)),
         )
         y_train = y[:250]
-        X_train = X[:250]
+        X_actual_train = X_actual[:250]
         y_test = y[250:]
-        X_test = X[250:]
+        X_actual_test = X_actual[250:]
         forecasting_horizon = 10
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1)),
             feature_forecaster=PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Update and predict
         y_update = y_test.head(5)
-        X_update = X_test.head(5)
+        X_actual_update = X_actual_test.head(5)
         y_pred_interval = forecaster.observe_predict_interval(
             y_update,
-            X_actual=X_update,
+            X_actual=X_actual_update,
             coverage_rates=[0.9],
         )
 
@@ -624,11 +624,11 @@ class TestForecastedFeatureForecasterInterval:
         """Test ForecastedFeatureForecaster with interval target and different strategies."""
         y_full = ar1_series(phi=0.5, c=10.0, length=500)
         y = y_full.select("time", "value")
-        X = y_full.select("time").with_columns(
+        X_actual = y_full.select("time").with_columns(
             pl.Series("feature1", np.linspace(0, 1, 500)),
         )
         y_train = y[:400]
-        X_train = X[:400]
+        X_actual_train = X_actual[:400]
         forecasting_horizon = 5
 
         forecaster = ForecastedFeatureForecaster(
@@ -639,7 +639,7 @@ class TestForecastedFeatureForecasterInterval:
             strategy=strategy,
             split_ratio=0.8,
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Predict intervals
         y_pred_interval = forecaster.predict_interval(
@@ -663,18 +663,18 @@ class TestForecastedFeatureForecasterInterval:
         """Test ForecastedFeatureForecaster with interval target and multiple coverage rates."""
         y_full = ar1_series(phi=0.5, c=10.0, length=300)
         y = y_full.select("time", "value")
-        X = y_full.select("time").with_columns(
+        X_actual = y_full.select("time").with_columns(
             pl.Series("feature1", np.linspace(0, 1, 300)),
         )
         y_train = y[:250]
-        X_train = X[:250]
+        X_actual_train = X_actual[:250]
         forecasting_horizon = 10
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1)),
             feature_forecaster=PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
         )
-        forecaster.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Predict with multiple coverage rates
         coverage_rates = [0.5, 0.9, 0.95]

@@ -70,17 +70,17 @@ class TestVotingIntervalForecasterSystematicChecks:
     )
     def test_voting_interval_systematic_checks(self, forecaster, y_X_factory):
         """Run systematic checks on VotingIntervalForecaster."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
 
         y_train, y_test = y[:80], y[80:]
-        X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (X_actual[:80], X_actual[80:]) if X_actual is not None else (None, None)
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=5)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=5)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
             expected_failures=set(),
         )
 

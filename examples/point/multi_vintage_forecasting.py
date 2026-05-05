@@ -41,17 +41,15 @@ def _(mo):
         ([Tutorial](/examples/point/exogenous_features/)).
         """
     )
-    return
 
 
 @app.cell(hide_code=True)
 def _():
-    from datetime import datetime, timedelta
-
     import numpy as np
     import polars as pl
     from sklearn.ensemble import HistGradientBoostingRegressor
 
+    from yohou.datasets import make_exogenous_regression
     from yohou.metrics import MeanAbsoluteError
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster
@@ -62,11 +60,10 @@ def _():
         LagTransformer,
         MeanAbsoluteError,
         PointReductionForecaster,
-        datetime,
+        make_exogenous_regression,
         np,
         pl,
         plot_forecast,
-        timedelta,
     )
 
 
@@ -80,7 +77,6 @@ def _(mo):
         and fit a forecaster with all three exogenous types.
         """
     )
-    return
 
 
 @app.cell
@@ -88,33 +84,14 @@ def _(
     HistGradientBoostingRegressor,
     LagTransformer,
     PointReductionForecaster,
-    datetime,
-    np,
-    pl,
-    timedelta,
+    make_exogenous_regression,
 ):
-    rng = np.random.default_rng(42)
-    n, H = 300, 12
-    times = pl.Series("time", [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(n)])
-    t = np.arange(n, dtype=float)
-    actual_temp = 15.0 + 5.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 0.5, n)
-
-    X_actual = pl.DataFrame({"time": times, "temperature": actual_temp})
-    holidays = [1.0 if (datetime(2024, 1, 1) + timedelta(hours=i)).weekday() == 6 else 0.0 for i in range(n)]
-    X_future = pl.DataFrame({"time": times, "is_holiday": holidays})
-    price = 50.0 + 2.0 * actual_temp + 10.0 * np.array(holidays) + rng.normal(0, 0.1, n)
-    y = pl.DataFrame({"time": times, "price": price})
-
-    # Training X_forecast
-    forecast_rows = []
-    for i in range(H, 250):
-        for step in range(1, H + 1):
-            if i + step < n:
-                forecast_rows.append({
-                    "vintage_time": times[i],
-                    "time": times[i + step],
-                    "wx_temp": float(actual_temp[i + step] + 0.5 + rng.normal(0, 0.3)),
-                })
+    H = 12
+    data = make_exogenous_regression(n_samples=300, forecasting_horizon=H)
+    y = data.y
+    X_actual = data.X_actual
+    X_future = data.X_future
+    X_forecast = data.X_forecast
 
     train_size = 250
     forecaster = PointReductionForecaster(
@@ -127,20 +104,15 @@ def _(
         X_actual=X_actual[:train_size],
         forecasting_horizon=H,
         X_future=X_future,
-        X_forecast=pl.DataFrame(forecast_rows),
+        X_forecast=X_forecast,
     )
     print(f"Fitted: observed_time_ = {forecaster.observed_time_}")
     return (
         H,
         X_actual,
         X_future,
-        actual_temp,
+        data,
         forecaster,
-        holidays,
-        n,
-        rng,
-        t,
-        times,
         train_size,
         y,
     )
@@ -157,13 +129,14 @@ def _(mo):
         observation point.
         """
     )
-    return
 
 
 @app.cell
-def _(H, actual_temp, np, pl, times, train_size):
-    last_obs = times[train_size - 1]
-    test_times = [times[train_size + i] for i in range(H)]
+def _(H, X_actual, np, pl, train_size, y):
+    _times = y["time"]
+    _actual_temp = X_actual["temperature"].to_numpy()
+    last_obs = _times[train_size - 1]
+    test_times = [_times[train_size + i] for i in range(H)]
 
     vintage_configs = [
         ("06:00", 3.0),
@@ -180,10 +153,7 @@ def _(H, actual_temp, np, pl, times, train_size):
         vintages[_name] = pl.DataFrame({
             "vintage_time": [last_obs] * H,
             "time": test_times,
-            "wx_temp": [
-                float(actual_temp[train_size + i] + _bias + _local_rng.normal(0, 0.2))
-                for i in range(H)
-            ],
+            "wx_temp": [float(_actual_temp[train_size + i] + _bias + _local_rng.normal(0, 0.2)) for i in range(H)],
         })
 
     print(f"Created {len(vintages)} vintages at observation point {last_obs}")
@@ -200,7 +170,6 @@ def _(mo):
         columns and restores them after each call.
         """
     )
-    return
 
 
 @app.cell
@@ -238,7 +207,6 @@ def _(mo):
         forecaster's internal state.
         """
     )
-    return
 
 
 @app.cell
@@ -269,11 +237,10 @@ def _(mo):
         latest vintage.
         """
     )
-    return
 
 
 @app.cell
-def _(H, X_actual, X_future, forecaster, np, pl, times, train_size, vintages, y):
+def _(H, X_actual, X_future, forecaster, np, pl, train_size, vintages, y):
     # Observe 12 new hours
     n_new = 12
     forecaster.observe(
@@ -283,8 +250,9 @@ def _(H, X_actual, X_future, forecaster, np, pl, times, train_size, vintages, y)
     print(f"After observe: observed_time_ = {forecaster.observed_time_}")
 
     # Create fresh vintage at the new observation point
+    _times = y["time"]
     new_obs = forecaster.observed_time_
-    new_test_times = [times[train_size + n_new + i] for i in range(H)]
+    new_test_times = [_times[train_size + n_new + i] for i in range(H)]
     rng_new = np.random.default_rng(999)
 
     new_vintage = pl.DataFrame({
@@ -319,7 +287,6 @@ def _(mo):
         [Exogenous Tutorial](/examples/point/exogenous_features/)
         """
     )
-    return
 
 
 if __name__ == "__main__":

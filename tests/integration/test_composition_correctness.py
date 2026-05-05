@@ -629,7 +629,7 @@ class TestForecastedFeatureForecaster:
         y_train = linear_series(slope=2.0, intercept=10.0, length=80)
 
         # Known future X
-        _x_future = linear_series(slope=1.0, intercept=5.0, length=85).tail(5).rename({"value": "feature"})
+        _X_future = linear_series(slope=1.0, intercept=5.0, length=85).tail(5).rename({"value": "feature"})
 
         feature_forecaster = PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1]))
         target_forecaster = PointReductionForecaster(LinearRegression())

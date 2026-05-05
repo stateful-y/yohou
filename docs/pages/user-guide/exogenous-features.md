@@ -103,7 +103,7 @@ Two public utilities handle this pivoting:
 
 - `pivot_forecasts()` converts tidy `[vintage_time, time, col1, col2]` to
   wide `[time, col1_step_1, col1_step_2, ...]`
-- `window_future()` converts flat `[time, col1, col2]` to wide format by
+- `window_futures()` converts flat `[time, col1, col2]` to wide format by
   windowing forward from each observation time
 
 Both are called internally by `_derive_step_columns()`, but are available as
@@ -198,10 +198,11 @@ All composition forecasters propagate the three parameters:
 - **DecompositionPipeline**: Passes all three parameters to the residual
   forecaster after trend/seasonality removal.
 
-- **ForecastedFeatureForecaster**: `X_actual` is passed as the feature
-  forecaster's *target* (what to forecast). The target forecaster receives
-  all three parameters directly, plus the feature forecaster's predictions
-  as additional features.
+- **ForecastedFeatureForecaster**: `X_actual` trains the feature forecaster
+  (treated as its y) and provides lag features for the target forecaster.
+  `X_future` and `X_forecast` pass through to the target forecaster directly.
+  At predict time, the target forecaster uses its stored observation window
+  for X_actual features; the feature forecaster is not called.
 
 - **VotingForecaster**: All ensemble members receive the same three parameters.
 
@@ -217,5 +218,5 @@ All composition forecasters propagate the three parameters:
 - [Forecasting](forecasting.md): general forecasting concepts
 - [`pivot_forecasts` API Reference](../api/utils.md): utility for pivoting
   vintage data
-- [`window_future` API Reference](../api/utils.md): utility for windowing
+- [`window_futures` API Reference](../api/utils.md): utility for windowing
   known-future data

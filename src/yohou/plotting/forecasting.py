@@ -331,7 +331,7 @@ def plot_forecast(
     pred_value_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)]
     test_value_cols = [c for c in y_test.columns if c != "time"]
 
-    # Apply columns filter (Decision #8: columns param on plot_forecast)
+    # Apply columns filter
     if columns is not None:
         col_list = [columns] if isinstance(columns, str) else list(columns)
         test_value_cols = [c for c in col_list if c in test_value_cols]
@@ -846,7 +846,7 @@ def _plot_forecast_class_proba(
     proba_cols = [c for c in first_pred.columns if "_proba_" in c]  # ty: ignore[unresolved-attribute]
     all_targets = _discover_proba_targets(proba_cols)
 
-    # Filter targets by columns parameter (Decision #10)
+    # Filter targets by columns parameter
     if columns is not None:
         col_list = [columns] if isinstance(columns, str) else list(columns)
         all_targets = {t: cols for t, cols in all_targets.items() if t in col_list}

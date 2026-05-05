@@ -24,7 +24,7 @@ from yohou.metrics.base import BaseIntervalScorer, BaseScorer
 from yohou.utils._compat import _check_method_params, _num_samples, _safe_split
 
 
-def _split_forecast_data(
+def _split_X_forecast(
     X_forecast: pl.DataFrame | None,
     y: pl.DataFrame,
     train_indices: np.ndarray[Any, Any],
@@ -360,8 +360,9 @@ def _fit_and_score(
 
     start_time = time.time()
 
-    y_train, X_train = _safe_split(forecaster, y, X_actual, train)
-    y_test, X_test = _safe_split(forecaster, y, X_actual, test, train)
+    y_train, X_actual_train = _safe_split(forecaster, y, X_actual, train)
+    y_test, X_actual_test = _safe_split(forecaster, y, X_actual, test, train)
+    X_forecast_train, X_forecast_test = _split_X_forecast(X_forecast, y, train, test)
 
     result: dict[str, object] = {}
     test_scores: dict[str, float | str] | float | str
@@ -373,10 +374,10 @@ def _fit_and_score(
             fit_params["coverage_rates"] = coverage_rates
         forecaster.fit(
             y=y_train,
-            X_actual=X_train,
+            X_actual=X_actual_train,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
-            X_forecast=X_forecast,
+            X_forecast=X_forecast_train,
             **fit_params,
         )
 
@@ -404,13 +405,13 @@ def _fit_and_score(
             forecaster,
             y_train,
             y_test,
-            X_test,
+            X_actual_test,
             predict_func_params,
             scorer,
             score_params_test,
             error_score,
             X_future=X_future,
-            X_forecast=X_forecast,
+            X_forecast=X_forecast_test,
         )
         score_time = time.time() - start_time - fit_time
 
@@ -419,20 +420,24 @@ def _fit_and_score(
             score_params_train = _check_method_params(y, params=score_params, indices=train)
             train_rewind = train[: -len(test)]
             test_rewind = train[-len(test) :]
-            y_train_rewind, X_train_rewind = _safe_split(forecaster, y_train, X_train, train_rewind)
-            y_train_test, X_train_test = _safe_split(forecaster, y_train, X_train, test_rewind, train_rewind)
-            forecaster.rewind(y_train_rewind, X_actual=X_train_rewind, X_future=X_future, X_forecast=X_forecast)
+            y_train_rewind, X_actual_train_rewind = _safe_split(forecaster, y_train, X_actual_train, train_rewind)
+            y_train_test, X_actual_train_test = _safe_split(
+                forecaster, y_train, X_actual_train, test_rewind, train_rewind
+            )
+            forecaster.rewind(
+                y_train_rewind, X_actual=X_actual_train_rewind, X_future=X_future, X_forecast=X_forecast_train
+            )
             train_scores = _score(
                 forecaster,
                 y_train_rewind,
                 y_train_test,
-                X_train_test,
+                X_actual_train_test,
                 predict_func_params,
                 scorer,
                 score_params_train,
                 error_score,
                 X_future=X_future,
-                X_forecast=X_forecast,
+                X_forecast=X_forecast_train,
             )
 
     if verbose > 1:
@@ -574,7 +579,7 @@ def _score(
     forecaster: BaseForecaster,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_test: pl.DataFrame | None,
+    X_actual_test: pl.DataFrame | None,
     predict_func_params: dict[str, object] | None,
     scorer: BaseScorer | _MultimetricScorer,
     score_params: dict[str, object] | None,
@@ -593,7 +598,7 @@ def _score(
         Fitted forecaster to evaluate.
     y_test : pl.DataFrame
         Test target time series.
-    X_test : pl.DataFrame or None
+    X_actual_test : pl.DataFrame or None
         Test actual feature observations, or ``None``.
     predict_func_params : dict or None
         Routed metadata for the prediction function.
@@ -622,7 +627,7 @@ def _score(
             coverage_rates_for_predict = _collect_coverage_rates(scorer)
             y_pred = getattr(forecaster, observe_method)(
                 y_test,
-                X_test,
+                X_actual_test,
                 coverage_rates=coverage_rates_for_predict,
                 X_future=X_future,
                 X_forecast=X_forecast,
@@ -631,7 +636,7 @@ def _score(
         else:
             y_pred = getattr(forecaster, observe_method)(
                 y_test,
-                X_test,
+                X_actual_test,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 **predict_func_params,

@@ -50,10 +50,9 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    from sklearn.linear_model import Ridge
-    from yohou.model_selection import train_test_split
-
     from copy import deepcopy
+
+    from sklearn.linear_model import Ridge
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import DistanceSimilarity, SplitConformalForecaster
@@ -62,6 +61,7 @@ def _():
         IntervalScore,
         MeanIntervalWidth,
     )
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_calibration,
         plot_forecast,
@@ -451,8 +451,6 @@ def _(plot_forecast, y_pred_minkowski, y_test, y_train):
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -463,7 +461,6 @@ def _(mo):
     Each vintage represents a different forecast origin, so you can analyse
     how interval quality evolves as the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -497,7 +494,6 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
-    return
 
 
 @app.cell
@@ -508,7 +504,7 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Score Heatmap (Step x Vintage)",
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

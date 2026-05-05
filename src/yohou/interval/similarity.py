@@ -134,7 +134,7 @@ class DistanceSimilarity(BaseSimilarity):
     def _get_X(
         self,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
     ) -> pl.DataFrame:
         """Combine predictions and features into single feature matrix.
 
@@ -143,7 +143,7 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             Predictions.
 
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Exogenous features.
 
         Returns
@@ -152,15 +152,15 @@ class DistanceSimilarity(BaseSimilarity):
             Combined feature matrix.
 
         """
-        if X is not None:
-            return pl.concat([y_pred, X], how="horizontal")
+        if X_actual is not None:
+            return pl.concat([y_pred, X_actual], how="horizontal")
         return y_pred
 
     def fit(
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "DistanceSimilarity":
         """Fits the similarity model.
 
@@ -172,7 +172,7 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             Point forecasts time series.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous feature time series.
 
         Returns
@@ -180,7 +180,7 @@ class DistanceSimilarity(BaseSimilarity):
         self
 
         """
-        X_features = self._get_X(y_pred, X)
+        X_features = self._get_X(y_pred, X_actual)
         self._X_observed = X_features.drop_nulls()
 
         self._n_discarded_indices = len(y_pred) - len(X_features)
@@ -191,7 +191,7 @@ class DistanceSimilarity(BaseSimilarity):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "DistanceSimilarity":
         """Observe new data and update similarity model.
 
@@ -203,7 +203,7 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             New predictions.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             New exogenous features.
 
         Returns
@@ -211,7 +211,7 @@ class DistanceSimilarity(BaseSimilarity):
         self
 
         """
-        X_features = self._get_X(y_pred, X)
+        X_features = self._get_X(y_pred, X_actual)
 
         self._X_observed = pl.concat([self._X_observed, X_features])
 
@@ -220,7 +220,7 @@ class DistanceSimilarity(BaseSimilarity):
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute similarity weights for new predictions.
 
@@ -229,7 +229,7 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred : pl.DataFrame
             New predictions to compute similarities for.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
 
         Returns
@@ -238,7 +238,7 @@ class DistanceSimilarity(BaseSimilarity):
             Similarity weight matrix.
 
         """
-        X_features = self._get_X(y_pred, X)
+        X_features = self._get_X(y_pred, X_actual)
 
         XA = X_features.select(pl.exclude("time")).to_numpy()
         XB = self._X_observed.select(pl.exclude("time")).to_numpy()

@@ -6,6 +6,7 @@ specific meta-forecaster tests for column-wise composition behavior.
 
 from datetime import datetime, timedelta
 
+import numpy as np
 import polars as pl
 import pytest
 from sklearn.base import clone
@@ -54,17 +55,23 @@ class TestSystematicChecks:
         are not yielded for ColumnForecaster because it sets tracks_observations=False.
         ColumnForecaster delegates observation tracking to child forecasters.
         """
-        y, X = y_X_factory(length=100, n_targets=2, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=2, n_features=0, seed=42)
 
         y_train, y_test = y[:80], y[80:]
-        X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (X_actual[:80], X_actual[80:]) if X_actual is not None else (None, None)
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(
+                forecaster_fitted,
+                y_train,
+                X_actual_train,
+                y_test,
+                X_actual_test,
+            ),
             expected_failures=set(),
         )
 
@@ -779,14 +786,14 @@ class TestExogenousFeatures:
 
     def test_with_exogenous(self, y_X_factory):
         """Test with exogenous features."""
-        y, X = y_X_factory(length=50, n_targets=2, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=50, n_targets=2, n_features=2, seed=42)
 
         target_cols = [c for c in y.columns if c != "time"]
 
         forecaster = ColumnForecaster([
             ("model", SeasonalNaive(seasonality=1), target_cols),
         ])
-        forecaster.fit(y[:30], X_actual=X[:30], forecasting_horizon=5)
+        forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=5)
 
         y_pred = forecaster.predict(forecasting_horizon=5)
 
@@ -794,7 +801,7 @@ class TestExogenousFeatures:
 
     def test_with_exogenous_multiple_forecasters(self, y_X_factory):
         """Test exogenous features shared across multiple forecasters."""
-        y, X = y_X_factory(length=50, n_targets=2, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=50, n_targets=2, n_features=2, seed=42)
 
         target_cols = [c for c in y.columns if c != "time"]
 
@@ -802,7 +809,7 @@ class TestExogenousFeatures:
             ("model_0", SeasonalNaive(seasonality=1), target_cols[0]),
             ("model_1", SeasonalNaive(seasonality=1), target_cols[1]),
         ])
-        forecaster.fit(y[:30], X_actual=X[:30], forecasting_horizon=5)
+        forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=5)
 
         y_pred = forecaster.predict(forecasting_horizon=5)
 
@@ -1308,14 +1315,14 @@ class TestColumnForecasterObservePredictWithX:
             "time": time,
             "a": range(50),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "feat": list(range(50)),
         })
         forecaster = ColumnForecaster(
             [("main", PointReductionForecaster(), "a")],
         )
-        forecaster.fit(y[:30], X_actual=X[:30], forecasting_horizon=5)
+        forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=5)
 
         time_ext = pl.datetime_range(
             start=datetime(2020, 1, 1),
@@ -1379,7 +1386,7 @@ class TestClassProbaColumnForecaster:
             "animal": [classes_a[i % 3] for i in range(80)],
             "color": [classes_b[i % 3] for i in range(80)],
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "temp": [20.0 + (i % 10) for i in range(80)],
         })
@@ -1401,13 +1408,13 @@ class TestClassProbaColumnForecaster:
             ),
         ])
         y_train, y_test = y[:60], y[60:]
-        X_train, X_test = X[:60], X[60:]
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
-        return forecaster, y_train, y_test, X_train, X_test
+        X_actual_train, X_actual_test = X_actual[:60], X_actual[60:]
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
+        return forecaster, y_train, y_test, X_actual_train, X_actual_test
 
     def test_predict_class_proba(self, class_proba_column_setup):
         """predict_class_proba returns probabilities from all forecasters."""
-        forecaster, _, _, _, X_test = class_proba_column_setup
+        forecaster, _, _, _, X_actual_test = class_proba_column_setup
         y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
 
         assert "time" in y_pred.columns
@@ -1419,10 +1426,10 @@ class TestClassProbaColumnForecaster:
 
     def test_observe_predict_class_proba(self, class_proba_column_setup):
         """observe_predict_class_proba observes and predicts probabilities."""
-        forecaster, _, y_test, _, X_test = class_proba_column_setup
+        forecaster, _, y_test, _, X_actual_test = class_proba_column_setup
         y_pred = forecaster.observe_predict_class_proba(
             y=y_test[:3],
-            X_actual=X_test[:3],
+            X_actual=X_actual_test[:3],
             forecasting_horizon=3,
         )
         assert "time" in y_pred.columns
@@ -1468,3 +1475,80 @@ class TestClassProbaColumnForecaster:
         assert len(animal_proba) == 3
         assert len(color_proba) == 2
         assert len(y_pred) == 3
+
+
+class TestColumnForecasterExogenous:
+    """Tests for ColumnForecaster with X_future and X_forecast."""
+
+    def test_fit_predict_with_X_future_and_X_forecast(self):
+        """ColumnForecaster passes X_future/X_forecast to child forecasters."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=59),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "a": [float(i) for i in range(60)],
+        })
+
+        # X_future covers beyond y's range
+        time_ext = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=69),
+            interval="1d",
+            eager=True,
+        )
+        X_future = pl.DataFrame({
+            "time": time_ext,
+            "holiday": [1.0 if t.weekday() == 6 else 0.0 for t in time_ext],
+        })
+
+        forecaster = ColumnForecaster(
+            [("main", PointReductionForecaster(), "a")],
+        )
+        forecaster.fit(y[:40], forecasting_horizon=5, X_future=X_future)
+
+        y_pred = forecaster.predict()
+        assert len(y_pred) == 5
+        assert "a" in y_pred.columns
+
+    def test_predict_X_forecast_override(self):
+        """ColumnForecaster passes X_forecast override to children's predict."""
+        rng = np.random.default_rng(42)
+        n_obs = 60
+        fh = 5
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=n_obs - 1),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "a": rng.random(n_obs).tolist(),
+        })
+
+        # Build X_forecast with vintage coverage beyond y range
+        rows = []
+        for v_idx in range(n_obs):
+            vt = time[v_idx]
+            for step in range(1, fh + 1):
+                target_idx = v_idx + step
+                if target_idx < n_obs + fh + 5:
+                    tt = time[target_idx] if target_idx < n_obs else time[-1] + timedelta(days=target_idx - n_obs + 1)
+                    rows.append({"vintage_time": vt, "time": tt, "wx": float(rng.random())})
+        X_forecast = pl.DataFrame(rows)
+
+        forecaster = ColumnForecaster(
+            [("main", PointReductionForecaster(), "a")],
+        )
+        forecaster.fit(y[:40], forecasting_horizon=fh, X_forecast=X_forecast)
+
+        pred1 = forecaster.predict()
+        pred2 = forecaster.predict(X_forecast=X_forecast)
+
+        # Both should produce valid predictions
+        assert len(pred1) == fh
+        assert len(pred2) == fh

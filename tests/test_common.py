@@ -121,14 +121,14 @@ def _make_time_series(length: int = 100, n_targets: int = 1, n_features: int = 1
     y = pl.DataFrame(y_cols)
 
     X_cols: dict | None = None
-    X: pl.DataFrame | None = None
+    X_actual: pl.DataFrame | None = None
     if n_features > 0:
         X_cols = {"time": time}
         for i in range(n_features):
             X_cols[f"feature_{i}"] = [float(j + i * 5) for j in range(length)]
-        X = pl.DataFrame(X_cols)
+        X_actual = pl.DataFrame(X_cols)
 
-    return y, X
+    return y, X_actual
 
 
 def _make_scorer_data():
@@ -197,9 +197,9 @@ class TestTransformerCommon:
     )
     def test_transformer_checks(self, name, cls):
         """Run all applicable check-generator checks for a transformer."""
-        y, X = _make_time_series(length=100, n_targets=1, n_features=1)
+        y, X_actual = _make_time_series(length=100, n_targets=1, n_features=1)
 
-        # Use X as the transformer input data (transformers operate on X)
+        # Use X_actual as the transformer input data (transformers operate on X_actual)
         X_data = y  # transformers in yohou operate on a DataFrame with time + values
 
         # Handle transformers with min_value constraints
@@ -214,20 +214,20 @@ class TestTransformerCommon:
             offset = max(0.0, tags.input_tags.min_value + 1.0)
             X_data = X_data.select([pl.col("time"), (pl.all().exclude("time") + offset)])
 
-        X_train = X_data[:80]
-        X_test = X_data[80:]
+        X_actual_train = X_data[:80]
+        X_actual_test = X_data[80:]
 
         # Fit transformer
         transformer = clone(instance)
         try:
-            transformer.fit(X_train)
+            transformer.fit(X_actual_train)
         except Exception as e:
             pytest.skip(f"{name} fit failed: {e}")
             return
 
         run_checks(
             transformer,
-            _yield_yohou_transformer_checks(transformer, X_train, None, X_test),
+            _yield_yohou_transformer_checks(transformer, X_actual_train, None, X_actual_test),
             expected_failures=_XFAIL_CHECKS.get(name, set()),
         )
 
@@ -242,11 +242,11 @@ class TestForecasterCommon:
     )
     def test_forecaster_checks(self, name, cls):
         """Run all applicable check-generator checks for a forecaster."""
-        y, X = _make_time_series(length=200, n_targets=1, n_features=2)
+        y, X_actual = _make_time_series(length=200, n_targets=1, n_features=2)
 
         y_train, y_test = y[:160], y[160:]
-        X_train = X[:160] if X is not None else None
-        X_test = X[160:] if X is not None else None
+        X_actual_train = X_actual[:160] if X_actual is not None else None
+        X_actual_test = X_actual[160:] if X_actual is not None else None
 
         try:
             instance = cls()
@@ -256,14 +256,14 @@ class TestForecasterCommon:
 
         forecaster = clone(instance)
         try:
-            forecaster.fit(y_train, X_train, forecasting_horizon=3)
+            forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
         except Exception as e:
             pytest.skip(f"{name} fit failed: {e}")
             return
 
         run_checks(
             forecaster,
-            _yield_yohou_forecaster_checks(forecaster, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster, y_train, X_actual_train, y_test, X_actual_test),
         )
 
 

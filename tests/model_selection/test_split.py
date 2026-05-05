@@ -227,10 +227,10 @@ class TestSplitterIntegration:
 
         scores = []
         for train_idx, test_idx in splitter.split(y, X_actual):
-            y_train, X_train = y[train_idx], X_actual[train_idx]
-            y_test, _X_test = y[test_idx], X_actual[test_idx]
+            y_train, X_actual_train = y[train_idx], X_actual[train_idx]
+            y_test, _X_actual_test = y[test_idx], X_actual[test_idx]
 
-            forecaster.fit(y_train, X_train, forecasting_horizon=len(test_idx))
+            forecaster.fit(y_train, X_actual_train, forecasting_horizon=len(test_idx))
             y_pred = forecaster.predict(forecasting_horizon=len(test_idx))
 
             y_test_cols = [c for c in y_test.columns if c != "time"]
@@ -252,10 +252,10 @@ class TestSplitterIntegration:
 
         scores = []
         for train_idx, test_idx in splitter.split(y, X_actual):
-            y_train, X_train = y[train_idx], X_actual[train_idx]
+            y_train, X_actual_train = y[train_idx], X_actual[train_idx]
             y_test, _X_test = y[test_idx], X_actual[test_idx]
 
-            forecaster.fit(y_train, X_train, forecasting_horizon=len(test_idx))
+            forecaster.fit(y_train, X_actual_train, forecasting_horizon=len(test_idx))
             y_pred = forecaster.predict(forecasting_horizon=len(test_idx))
 
             y_test_cols = [c for c in y_test.columns if c != "time"]

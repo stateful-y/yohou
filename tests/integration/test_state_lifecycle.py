@@ -134,17 +134,17 @@ class TestStateMachineProtocol:
         y_test = _make_continuation(y_train, length=10, seed=43)
         y_test2 = _make_continuation(pl.concat([y_train, y_test], how="vertical"), length=10, seed=44)
 
-        # For ForecastedFeatureForecaster, create X with feature columns
+        # For ForecastedFeatureForecaster, create X_actual with feature columns
         needs_X = isinstance(forecaster, ForecastedFeatureForecaster)
-        X_train = None
-        X_test = None
+        X_actual_train = None
+        X_actual_test = None
         X_test2 = None
         if needs_X:
             np.random.seed(99)
-            X_train = y_train.select("time").with_columns(
+            X_actual_train = y_train.select("time").with_columns(
                 pl.Series("feature1", np.random.randn(len(y_train))),
             )
-            X_test = y_test.select("time").with_columns(
+            X_actual_test = y_test.select("time").with_columns(
                 pl.Series("feature1", np.random.randn(len(y_test))),
             )
             X_test2 = y_test2.select("time").with_columns(
@@ -154,7 +154,7 @@ class TestStateMachineProtocol:
         fh = 3
 
         # State 1: fit → predict
-        forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=fh)
+        forecaster.fit(y_train, X_actual=X_actual_train, forecasting_horizon=fh)
         check_is_fitted(forecaster)
         predictions_1 = forecaster.predict(forecasting_horizon=fh)
 
@@ -162,7 +162,7 @@ class TestStateMachineProtocol:
         assert "time" in predictions_1.columns
 
         # State 2: observe → predict (state should change)
-        forecaster.observe(y_test, X_actual=X_test)
+        forecaster.observe(y_test, X_actual=X_actual_test)
         predictions_2 = forecaster.predict(forecasting_horizon=fh)
 
         assert len(predictions_2) == fh
@@ -185,7 +185,7 @@ class TestStateMachineProtocol:
         reset_rows = max(obs_horizon, 10)
         y_train_tail = y_train.tail(reset_rows)
         if needs_X:
-            X_train_tail = X_train.tail(reset_rows)
+            X_train_tail = X_actual_train.tail(reset_rows)
             forecaster.rewind(y_train_tail, X_actual=X_train_tail)
         else:
             forecaster.rewind(y_train_tail)
@@ -198,7 +198,7 @@ class TestStateMachineProtocol:
         # State 5: observe_predict (atomic operation)
         # Create continuation from current state (after rewind to train tail)
         y_for_up = _make_continuation(y_train, length=10, seed=55)
-        result_observe_predict = forecaster.observe_predict(y_for_up, X_actual=X_test)
+        result_observe_predict = forecaster.observe_predict(y_for_up, X_actual=X_actual_test)
 
         # observe_predict returns predictions accumulated over incremental observes
         assert len(result_observe_predict) >= fh
@@ -700,13 +700,13 @@ class TestCloneAndSerialization:
         if is_forecaster and not is_transformer:
             # Pure forecaster
             needs_X = isinstance(estimator, ForecastedFeatureForecaster)
-            X_train = None
+            X_actual_train = None
             if needs_X:
                 np.random.seed(77)
-                X_train = y_train.select("time").with_columns(
+                X_actual_train = y_train.select("time").with_columns(
                     pl.Series("feature1", np.random.randn(len(y_train))),
                 )
-            estimator.fit(y_train, X_actual=X_train, forecasting_horizon=5)
+            estimator.fit(y_train, X_actual=X_actual_train, forecasting_horizon=5)
             pred_before = estimator.predict(forecasting_horizon=5)
         elif is_transformer:
             # Transformer (may also be in a pipeline)

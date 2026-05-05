@@ -621,7 +621,7 @@ class TestForecastedFeatureForecasterPanel:
 
     @pytest.mark.integration
     def test_forecasted_feature_forecaster_panel_matching_structure(self):
-        """Test ForecastedFeatureForecaster with matching panel structure for y and X."""
+        """Test ForecastedFeatureForecaster with matching panel structure for y and X_actual."""
         n = 200
         time_index = pl.datetime_range(
             start=pl.datetime(2020, 1, 1),
@@ -641,10 +641,10 @@ class TestForecastedFeatureForecasterPanel:
             X_data[f"g{group_idx}__feature"] = (group_idx + 1) * 0.5 * np.arange(n) + 5
 
         y = pl.DataFrame(y_data)
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         y_train = y[:160]
-        X_train = X[:160]
+        X_actual_train = X_actual[:160]
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
@@ -657,7 +657,7 @@ class TestForecastedFeatureForecasterPanel:
             split_ratio=0.8,
         )
 
-        forecaster.fit(y_train, X_train, forecasting_horizon=5)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=5)
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         # Verify panel structure maintained
@@ -683,11 +683,11 @@ class TestForecastedFeatureForecasterPanel:
             X_data[f"g{group_idx}__feature"] = (group_idx + 1) * 0.5 * np.arange(n)
 
         y = pl.DataFrame(y_data)
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         y_train = y[:80]
-        X_train = X[:80]
-        _X_future = X[80:85]  # Actual future features
+        X_actual_train = X_actual[:80]
+        _X_future = X_actual[80:85]  # Actual future features
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
@@ -699,7 +699,7 @@ class TestForecastedFeatureForecasterPanel:
             strategy="actual",
         )
 
-        forecaster.fit(y_train, X_train, forecasting_horizon=5)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=5)
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         # Verify panel structure
@@ -725,7 +725,7 @@ class TestForecastedFeatureForecasterPanel:
             X_data[f"g{group_idx}__feature"] = np.arange(n) * (group_idx + 1) * 0.5
 
         y = pl.DataFrame(y_data)
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
@@ -739,13 +739,13 @@ class TestForecastedFeatureForecasterPanel:
         )
 
         y_train = y[:120]
-        X_train = X[:120]
-        forecaster.fit(y_train, X_train, forecasting_horizon=5)
+        X_actual_train = X_actual[:120]
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=5)
 
         # Update
         y_update = y[120:160]
-        X_update = X[120:160]
-        forecaster.observe(y_update, X_update)
+        X_actual_update = X_actual[120:160]
+        forecaster.observe(y_update, X_actual_update)
 
         y_pred = forecaster.predict(forecasting_horizon=5)
 
@@ -776,7 +776,7 @@ class TestColumnTransformerPanel:
             "feat2__group_1": np.arange(n) * 0.5,
             "feat2__group_2": np.arange(n) * 1.5,
         }
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         # Apply different scaling to feat1 vs feat2
         transformer = ColumnTransformer(
@@ -787,8 +787,8 @@ class TestColumnTransformerPanel:
             verbose_feature_names_out=False,
         )
 
-        X_train = X[:80]
-        X_transformed = transformer.fit_transform(X_train)
+        X_actual_train = X_actual[:80]
+        X_transformed = transformer.fit_transform(X_actual_train)
 
         # Verify panel structure maintained
         assert "feat1__group_1" in X_transformed.columns
@@ -821,11 +821,11 @@ class TestColumnTransformerPanel:
             "feat__group_1": np.arange(n) * 1.0,  # Range [0, 99]
             "feat__group_2": np.arange(n) * 10.0,  # Range [0, 990]
         }
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         transformer = StandardScaler()
-        X_train = X[:80]
-        X_transformed = transformer.fit_transform(X_train)
+        X_actual_train = X_actual[:80]
+        X_transformed = transformer.fit_transform(X_actual_train)
 
         # Each group should be independently standardized
         for col in ["feat__group_1", "feat__group_2"]:
@@ -852,7 +852,7 @@ class TestColumnTransformerPanel:
             X_data[f"g{group_idx}__feature"] = np.arange(n) * (group_idx + 1) * 100
 
         y = pl.DataFrame(y_data)
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         # Use ColumnTransformer to scale features before forecasting
         feature_transformer = ColumnTransformer(
@@ -868,8 +868,8 @@ class TestColumnTransformerPanel:
         )
 
         y_train = y[:80]
-        X_train = X[:80]
-        forecaster.fit(y_train, X_train, forecasting_horizon=5)
+        X_actual_train = X_actual[:80]
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=5)
 
         y_pred = forecaster.predict(forecasting_horizon=5)
 
@@ -1143,7 +1143,7 @@ class TestPanelGroupPreservation:
             "group_1__feat": np.arange(n) * 1.0,
             "group_2__feat": np.arange(n) * 2.0,
         }
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         transformer = FeatureUnion(
             transformer_list=[
@@ -1152,8 +1152,8 @@ class TestPanelGroupPreservation:
             verbose_feature_names_out=True,
         )
 
-        X_train = X[:80]
-        X_transformed = transformer.fit_transform(X_train)
+        X_actual_train = X_actual[:80]
+        X_transformed = transformer.fit_transform(X_actual_train)
 
         # Panel groups must be preserved
         _, panel_groups = inspect_panel(X_transformed)
@@ -1184,7 +1184,7 @@ class TestPanelGroupPreservation:
             "group_1__feat2": np.arange(n) * 0.5,
             "group_2__feat2": np.arange(n) * 1.5,
         }
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         transformer = ColumnTransformer(
             transformers=[
@@ -1194,8 +1194,8 @@ class TestPanelGroupPreservation:
             verbose_feature_names_out=True,
         )
 
-        X_train = X[:80]
-        X_transformed = transformer.fit_transform(X_train)
+        X_actual_train = X_actual[:80]
+        X_transformed = transformer.fit_transform(X_actual_train)
 
         # Panel groups must be preserved
         _, panel_groups = inspect_panel(X_transformed)
@@ -1226,7 +1226,7 @@ class TestPanelGroupPreservation:
             "store_1__sales": np.abs(np.arange(n) * 1.0) + 1.0,
             "store_2__sales": np.abs(np.arange(n) * 2.0) + 1.0,
         }
-        X = pl.DataFrame(X_data)
+        X_actual = pl.DataFrame(X_data)
 
         for transformer_cls, kwargs in [
             (LogTransformer, {"offset": 0.0}),
@@ -1234,7 +1234,7 @@ class TestPanelGroupPreservation:
             (SeasonalDifferencing, {"seasonality": 7}),
         ]:
             transformer = transformer_cls(**kwargs)
-            X_transformed = transformer.fit_transform(X)
+            X_transformed = transformer.fit_transform(X_actual)
 
             _, panel_groups = inspect_panel(X_transformed)
             assert set(panel_groups.keys()) == {"store_1", "store_2"}, (

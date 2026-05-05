@@ -54,7 +54,7 @@ Validation, panel data, weighting, tags, discovery, and other utility functions.
 | [`check_sufficient_rows`](generated/yohou.utils.validation.check_sufficient_rows.md) | Validate DataFrame has sufficient rows for operation. |
 | [`check_inputs`](generated/yohou.utils.validation.check_inputs.md) | Validate that target and feature DataFrames have consistent time intervals. |
 | [`check_schema`](generated/yohou.utils.validation.check_schema.md) | Validate DataFrame schema and return with proper column ordering. |
-| [`check_exogenous_required`](generated/yohou.utils.validation.check_exogenous_required.md) | Validate X_actual is provided when required for recursive prediction. |
+| [`check_X_actual_required`](generated/yohou.utils.validation.check_X_actual_required.md) | Validate X_actual is provided when required for recursive prediction. |
 | [`check_forecasting_horizon_positive`](generated/yohou.utils.validation.check_forecasting_horizon_positive.md) | Validate forecasting horizon is positive. |
 | [`check_scorer_column_selection`](generated/yohou.utils.validation.check_scorer_column_selection.md) | Subselect columns based on scorer configuration. |
 

@@ -291,7 +291,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         y_t, X_t = BaseIntervalForecaster._pre_fit(
             self,
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,

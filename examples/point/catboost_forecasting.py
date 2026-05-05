@@ -44,12 +44,12 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from catboost import CatBoostRegressor
     from sklearn.linear_model import Ridge
     from sklearn.multioutput import MultiOutputRegressor
-
-    from copy import deepcopy
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
@@ -263,8 +263,6 @@ def _(
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -275,7 +273,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -308,7 +305,6 @@ def _(vintage_scorer, plot_score_per_step, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
 
 
 @app.cell
@@ -321,7 +317,7 @@ def _(vintage_scorer, plot_score_time_series, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

@@ -113,7 +113,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         BaseForecaster._pre_fit(
             self,
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -245,7 +245,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         _, _, groups = validate_forecaster_data(
             self,
             y=None,
-            X=None,
+            X_actual=None,
             reset=False,
             groups=groups,
             X_future=X_future,
@@ -580,7 +580,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             reset=False,
             groups=groups,
             X_future=X_future,
@@ -671,7 +671,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X_actual,
+            X_actual=X_actual,
             reset=False,
             groups=groups,
             X_future=X_future,

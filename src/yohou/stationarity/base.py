@@ -74,7 +74,7 @@ class _BaseTrendForecaster(BasePointForecaster):
     def _pre_fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -85,7 +85,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Features time series.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
@@ -104,7 +104,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         """
         y_t, X_t = super()._pre_fit(
             y=y,
-            X=X,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,

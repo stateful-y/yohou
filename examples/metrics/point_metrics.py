@@ -39,15 +39,13 @@ def _(mo):
 
     Basic understanding of forecast error metrics.
     """)
-    return
 
 
 @app.cell(hide_code=True)
 def _():
-    from sklearn.linear_model import Ridge
-    from yohou.model_selection import train_test_split
-
     from copy import deepcopy
+
+    from sklearn.linear_model import Ridge
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import (
@@ -60,9 +58,9 @@ def _():
         RootMeanSquaredScaledError,
         SymmetricMeanAbsolutePercentageError,
     )
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
-        plot_score_per_step,
         plot_score_per_vintage,
         plot_score_summary,
         plot_score_time_series,
@@ -105,7 +103,6 @@ def _(mo):
     produce predictions over the same test horizon, giving us two sets of
     forecasts to compare across all metrics.
     """)
-    return
 
 
 @app.cell
@@ -140,7 +137,6 @@ def _(
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(y, title="Tourism Monthly")
-    return
 
 
 @app.cell
@@ -151,7 +147,6 @@ def _(plot_forecast, y_pred_naive, y_pred_ridge, y_test, y_train):
         y_train=y_train,
         title="Forecasts for Evaluation",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -162,7 +157,6 @@ def _(mo):
     The average absolute difference between prediction and actual value.
     Easy to interpret: measured in the same units as the target.
     """)
-    return
 
 
 @app.cell
@@ -171,7 +165,6 @@ def _(MeanAbsoluteError, y_pred_naive, y_pred_ridge, y_test, y_train):
     mae.fit(y_train)
     print(f"MAE  Naive: {mae.score(y_test, y_pred_naive):.2f}")
     print(f"MAE  Ridge: {mae.score(y_test, y_pred_ridge):.2f}")
-    return
 
 
 @app.cell
@@ -188,7 +181,6 @@ def _(
         {"Naive": y_pred_naive, "Ridge": y_pred_ridge},
         title="MAE per Timestep",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -199,7 +191,6 @@ def _(mo):
     MSE penalizes large errors more heavily (squared). RMSE is its square
     root, bringing units back to the original scale.
     """)
-    return
 
 
 @app.cell
@@ -220,7 +211,6 @@ def _(
     rmse.fit(y_train)
     print(f"RMSE  Naive: {rmse.score(y_test, y_pred_naive):.2f}")
     print(f"RMSE  Ridge: {rmse.score(y_test, y_pred_ridge):.2f}")
-    return
 
 
 @app.cell
@@ -237,7 +227,6 @@ def _(
         {"Naive": y_pred_naive, "Ridge": y_pred_ridge},
         title="RMSE per Timestep",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -247,7 +236,6 @@ def _(mo):
 
     The median of absolute errors which is more robust to outliers than MAE.
     """)
-    return
 
 
 @app.cell
@@ -256,7 +244,6 @@ def _(MedianAbsoluteError, y_pred_naive, y_pred_ridge, y_test, y_train):
     medae.fit(y_train)
     print(f"MedianAE  Naive: {medae.score(y_test, y_pred_naive):.2f}")
     print(f"MedianAE  Ridge: {medae.score(y_test, y_pred_ridge):.2f}")
-    return
 
 
 @app.cell
@@ -273,7 +260,6 @@ def _(
         {"Naive": y_pred_naive, "Ridge": y_pred_ridge},
         title="MedianAE per Timestep",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -285,7 +271,6 @@ def _(mo):
     sMAPE (symmetric MAPE) avoids the asymmetry of standard MAPE by
     normalizing by the average of actual and predicted values.
     """)
-    return
 
 
 @app.cell
@@ -306,7 +291,6 @@ def _(
     smape.fit(y_train)
     print(f"sMAPE  Naive: {smape.score(y_test, y_pred_naive):.4f}")
     print(f"sMAPE  Ridge: {smape.score(y_test, y_pred_ridge):.4f}")
-    return
 
 
 @app.cell
@@ -323,7 +307,6 @@ def _(
         {"Naive": y_pred_naive, "Ridge": y_pred_ridge},
         title="MAPE per Timestep",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -335,7 +318,6 @@ def _(mo):
     They require `fit(y_train)` to compute the scaling factor.
     A score < 1 means the model outperforms the naive baseline.
     """)
-    return
 
 
 @app.cell
@@ -356,7 +338,6 @@ def _(
     rmsse.fit(y_train)
     print(f"RMSSE  Naive: {rmsse.score(y_test, y_pred_naive):.3f}")
     print(f"RMSSE  Ridge: {rmsse.score(y_test, y_pred_ridge):.3f}")
-    return
 
 
 @app.cell
@@ -373,7 +354,6 @@ def _(
         {"Naive": y_pred_naive, "Ridge": y_pred_ridge},
         title="MASE per Timestep",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -384,7 +364,6 @@ def _(mo):
     By default `aggregation_method="all"` returns a single scalar.
     Choose `["stepwise", "vintagewise"]` or `"componentwise"` for more granular results.
     """)
-    return
 
 
 @app.cell
@@ -394,7 +373,6 @@ def _(MeanAbsoluteError, y_pred_ridge, y_test, y_train):
     scores_tw = mae_sv.score(y_test, y_pred_ridge)
     print("Stepwise+vintagewise MAE (first 5 steps):")
     print(scores_tw.head())
-    return
 
 
 @app.cell
@@ -403,7 +381,6 @@ def _(MeanAbsoluteError, y_pred_ridge, y_test, y_train):
     mae_cw.fit(y_train)
     scores_cw = mae_cw.score(y_test, y_pred_ridge)
     print(f"Componentwise MAE: {scores_cw}")
-    return
 
 
 @app.cell(hide_code=True)
@@ -415,7 +392,6 @@ def _(mo):
     scorer(s), ground truth, and a dict of predictions, then renders a grouped bar chart
     making it easy to spot which model performs best on each metric.
     """)
-    return
 
 
 @app.cell
@@ -434,7 +410,6 @@ def _(
         {"Naive": y_pred_naive, "Ridge": y_pred_ridge},
         title="Model Comparison",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -454,7 +429,6 @@ def _(mo):
     > which evaluate the full probability distribution and penalize overconfident
     > wrong predictions.
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -482,7 +456,7 @@ def _(
     train_test_split,
 ):
     cls_data = fetch_air_quality_classification()
-    cls_y, cls_X = cls_data.y, cls_data.X
+    cls_y, cls_X = cls_data.y, cls_data.X_actual
     cls_y_train, cls_y_test, cls_X_train, cls_X_test = train_test_split(
         cls_y,
         cls_X,
@@ -506,9 +480,9 @@ def _(
     )
 
     print(f"Classes: {cls_data.classes}")
-    print(f"\nHard predictions (predict):")
+    print("\nHard predictions (predict):")
     print(cls_y_pred_labels)
-    print(f"\nSoft predictions (predict_class_proba):")
+    print("\nSoft predictions (predict_class_proba):")
     print(cls_y_proba)
     return cls_y_pred_labels, cls_y_proba, cls_y_test, cls_y_train
 
@@ -521,7 +495,6 @@ def _(mo):
     `plot_forecast` auto-detects categorical columns and renders a step chart.
     Here we visualize the training and test target side by side.
     """)
-    return
 
 
 @app.cell
@@ -533,7 +506,6 @@ def _(cls_y_test, cls_y_train, plot_forecast):
         n_history=100,
         title="Air Quality Target (Categorical Time Series)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -544,7 +516,6 @@ def _(mo):
     The hard-label predictions from `predict()` are compared against the
     true classes. Dashed lines show the forecast, solid lines the actual.
     """)
-    return
 
 
 @app.cell
@@ -554,7 +525,6 @@ def _(cls_y_pred_labels, cls_y_test, plot_forecast):
         cls_y_pred_labels,
         title="Categorical Forecast vs Actual",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -565,7 +535,6 @@ def _(mo):
     The full probability distribution from `predict_class_proba()` is shown
     as a stacked area chart. Diamond markers indicate the true class.
     """)
-    return
 
 
 @app.cell
@@ -575,7 +544,6 @@ def _(cls_y_proba, cls_y_test, plot_forecast):
         cls_y_proba,
         title="Class Probability Forecast",
     )
-    return
 
 
 @app.cell
@@ -602,7 +570,6 @@ def _(mo):
     Per-timestep accuracy for the 24-hour forecast window. A score of 1.0
     means the argmax prediction matched the true class at that step.
     """)
-    return
 
 
 @app.cell
@@ -613,7 +580,6 @@ def _(Accuracy, cls_y_proba, cls_y_truth, plot_score_time_series):
         cls_y_proba,
         title="Accuracy per Timestep",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -625,7 +591,6 @@ def _(mo):
     > For calibration-aware evaluation, see the [soft classification metrics](/examples/metrics/class_proba_metrics/)
     > (`LogLoss`, `BrierScore`).
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -641,7 +606,6 @@ def _(mo):
     - Use [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) for temporal error analysis
     - Use [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) for multi-model comparison
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -654,7 +618,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -687,7 +650,6 @@ def _(plot_score_per_vintage, vintage_scorer, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
 
 
 @app.cell
@@ -701,7 +663,6 @@ def _(plot_score_time_series, vintage_scorer, y_pred_vintages, y_test):
         height=500,
         facet_by="member",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -714,7 +675,6 @@ def _(mo):
     - **Time weighting**: See [`time_weighted_scoring.py`](/examples/metrics/time_weighted_scoring/)
     - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for soft classification metrics (LogLoss, BrierScore) and reliability diagrams
     """)
-    return
 
 
 if __name__ == "__main__":

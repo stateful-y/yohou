@@ -50,7 +50,7 @@ class BasePanelForecaster:
     def _set_input_attributes_panel(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         y_panel_groups: dict[str, list[str]],
         X_panel_groups: dict[str, list[str]] | None,
     ) -> None:
@@ -60,12 +60,12 @@ class BasePanelForecaster:
         ----------
         y : pl.DataFrame
             Target time series with panel columns.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series with panel columns.
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (group_name -> column_names).
         X_panel_groups : dict[str, list[str]] or None
-            Panel groups from X.
+            Panel groups from X_actual.
 
         """
         self.groups_ = list(y_panel_groups.keys())
@@ -91,11 +91,11 @@ class BasePanelForecaster:
 
         self.local_X_actual_schema_ = None
         self.shared_X_actual_schema_ = None
-        if X is not None and X_panel_groups is not None:
-            X_shared_names, _ = inspect_panel(X)
+        if X_actual is not None and X_panel_groups is not None:
+            X_shared_names, _ = inspect_panel(X_actual)
 
             if X_panel_groups:
-                # X has panel columns: validate suffixes match across groups
+                # X_actual has panel columns: validate suffixes match across groups
                 first_X_group_cols = X_panel_groups[self.groups_[0]]
                 first_X_suffixes = [col.split("__", 1)[1] for col in first_X_group_cols]
 
@@ -104,24 +104,24 @@ class BasePanelForecaster:
                     group_suffixes = [col.split("__", 1)[1] for col in group_cols]
                     if sorted(group_suffixes) != sorted(first_X_suffixes):
                         raise ValueError(
-                            f"The local groups in `X` do not have the same column suffixes. "
+                            f"The local groups in `X_actual` do not have the same column suffixes. "
                             f"Group '{self.groups_[0]}': {sorted(first_X_suffixes)}, "
                             f"Group '{group_name}': {sorted(group_suffixes)}"
                         )
 
-                # Extract X schema (local + shared)
-                self.shared_X_actual_schema_ = dict(X.select(X_shared_names).schema)
-                local_X = X.select(first_X_group_cols).rename({
+                # Extract X_actual schema (local + shared)
+                self.shared_X_actual_schema_ = dict(X_actual.select(X_shared_names).schema)
+                local_X = X_actual.select(first_X_group_cols).rename({
                     col: col.split("__", 1)[1] for col in first_X_group_cols
                 })
                 self.local_X_actual_schema_ = dict(local_X.schema)
             else:
-                # Global-only X: all non-time columns are shared across groups
-                self.shared_X_actual_schema_ = dict(X.select(X_shared_names).schema)
+                # Global-only X_actual: all non-time columns are shared across groups
+                self.shared_X_actual_schema_ = dict(X_actual.select(X_shared_names).schema)
                 self.local_X_actual_schema_ = {}
 
     def _fit_transform_inputs_panel(
-        self, y: pl.DataFrame, X: pl.DataFrame | None
+        self, y: pl.DataFrame, X_actual: pl.DataFrame | None
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame] | None]:
         """Fit transformers and transform inputs for panel data.
 
@@ -129,7 +129,7 @@ class BasePanelForecaster:
         ----------
         y : pl.DataFrame
             Target time series with panel columns.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series with panel columns.
 
         Returns
@@ -150,12 +150,12 @@ class BasePanelForecaster:
             y_local = get_group_df(df=y, group_name=group_name, schema=self.local_y_schema_)
 
             X_local = None
-            if X is not None and self.local_X_actual_schema_ is not None:
-                # Build schema for X (local + shared columns)
+            if X_actual is not None and self.local_X_actual_schema_ is not None:
+                # Build schema for X_actual (local + shared columns)
                 X_schema = dict(self.local_X_actual_schema_)
                 if self.shared_X_actual_schema_:
                     X_schema.update(self.shared_X_actual_schema_)
-                X_local = get_group_df(df=X, group_name=group_name, schema=X_schema)
+                X_local = get_group_df(df=X_actual, group_name=group_name, schema=X_schema)
 
             (
                 y_t_local,
@@ -164,7 +164,7 @@ class BasePanelForecaster:
                 feature_transformer_local,
             ) = _fit_transform_transformers_one(
                 y=y_local,
-                X=X_local,
+                X_actual=X_local,
                 target_transformer=self.target_transformer,
                 feature_transformer=self.feature_transformer,
                 target_as_feature=self.target_as_feature,
@@ -248,7 +248,7 @@ class BasePanelForecaster:
     def _pre_fit_panel(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         forecasting_horizon: int,
         y_panel_groups: dict[str, list[str]],
         X_panel_groups: dict[str, list[str]] | None,
@@ -261,14 +261,14 @@ class BasePanelForecaster:
         ----------
         y : pl.DataFrame
             Target time series with panel columns (already validated).
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series with panel columns (already validated).
         forecasting_horizon : int
             Number of steps ahead to forecast.
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (group_name -> column_names).
         X_panel_groups : dict[str, list[str]] or None
-            Panel groups from X.
+            Panel groups from X_actual.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
@@ -282,8 +282,8 @@ class BasePanelForecaster:
             Transformed features per group.
 
         """
-        self._set_input_attributes_panel(y, X, y_panel_groups, X_panel_groups)
-        y_t, X_t = self._fit_transform_inputs_panel(y, X)
+        self._set_input_attributes_panel(y, X_actual, y_panel_groups, X_panel_groups)
+        y_t, X_t = self._fit_transform_inputs_panel(y, X_actual)
 
         # Inject step columns from X_future / X_forecast
         # Use first group's observation times (all groups share the same time index)
@@ -390,7 +390,7 @@ class BasePanelForecaster:
 
             X_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                # Build schema for X (local + shared columns)
+                # Build schema for X_actual (local + shared columns)
                 X_schema = dict(self.local_X_actual_schema_)
                 if self.shared_X_actual_schema_:
                     X_schema.update(self.shared_X_actual_schema_)
@@ -464,7 +464,7 @@ class BasePanelForecaster:
 
             X_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                # Build schema for X (local + shared columns)
+                # Build schema for X_actual (local + shared columns)
                 X_schema = dict(self.local_X_actual_schema_)
                 if self.shared_X_actual_schema_:
                     X_schema.update(self.shared_X_actual_schema_)
@@ -516,8 +516,8 @@ class BasePanelForecaster:
     ) -> None:
         """Re-derive step columns and append to per-group _X_t_observed.
 
-        Uses stored raws as fallback when X_future or X_forecast is omitted
-        (Decision 21). Updates stored raws when new data is provided.
+        Uses stored raws as fallback when X_future or X_forecast is omitted.
+        Updates stored raws when new data is provided.
 
         """
         if not self._step_column_names_:

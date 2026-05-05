@@ -11,7 +11,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Observe-Predict Workflow",
-    "description": "Incrementally observe new data and predict without refitting, including rewind for memory management and selective panel group update operations.",
+    "description": "Incrementally observe new data and predict without refitting, with exogenous features (X_actual, X_future, X_forecast) flowing through every step.",
 }
 app = marimo.App(width="medium")
 
@@ -35,13 +35,14 @@ def _(mo):
 
     ## What You'll Learn
 
-    - `observe(y, X)`: push new observations into the forecaster's memory
-    - `predict(forecasting_horizon)`: generate forecasts recursively from observed state
-    - `observe_predict(y, X)`: atomic observe + predict in a single call
-    - `observe_predict_interval(y, X)`: observe + predict prediction intervals
-    - `observe_predict_class_proba(y, X)`: observe + predict class probabilities
-    - `observe_predict(y, X)` on a class-proba forecaster: observe + predict hard labels
-    - `rewind(y, X)`: reset state to a specific window without refitting
+    - `fit(y, X_actual, X_future=, X_forecast=)`: train with all three exogenous types
+    - `observe(y, X_actual, X_future=, X_forecast=)`: push new observations into the forecaster's memory
+    - `predict(X_future=, X_forecast=)`: generate forecasts from observed state
+    - `observe_predict(y, X_actual, X_future=, X_forecast=)`: atomic observe + predict in a single call
+    - `observe_predict_interval(y, X_actual)`: observe + predict prediction intervals
+    - `observe_predict_class_proba(y, X_actual, X_future=, X_forecast=)`: observe + predict class probabilities
+    - `observe_predict(y, X_actual)` on a class-proba forecaster: observe + predict hard labels
+    - `rewind(y, X_actual)`: reset state to a specific window without refitting
     - Panel data: selective group observation with `groups`
 
     > **Note**: The observe/predict API is **independent of `reduction_strategy`**.
@@ -59,19 +60,21 @@ def _(mo):
 def _():
     from copy import deepcopy
 
+    import numpy as np
     import polars as pl
+    from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.linear_model import Ridge
-    from yohou.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
     from yohou.datasets import (
-        fetch_air_quality_classification,
         fetch_dominick,
         fetch_sunspot,
-        fetch_tourism_monthly,
+        make_exogenous_classification,
+        make_exogenous_regression,
     )
     from yohou.interval import SplitConformalForecaster
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
@@ -79,16 +82,18 @@ def _():
     return (
         ClassProbaReductionForecaster,
         DecisionTreeClassifier,
+        HistGradientBoostingRegressor,
         LagTransformer,
         PointReductionForecaster,
         Ridge,
         SeasonalNaive,
         SplitConformalForecaster,
         deepcopy,
-        fetch_air_quality_classification,
         fetch_dominick,
         fetch_sunspot,
-        fetch_tourism_monthly,
+        make_exogenous_classification,
+        make_exogenous_regression,
+        np,
         pl,
         plot_forecast,
         plot_time_series,
@@ -101,24 +106,44 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We split into train / calibration / test. The model is fitted on train,
-    then we use the calibration set to demonstrate `observe` and `predict`
-    incrementally.
+    We use `make_exogenous_regression()` to generate synthetic hourly
+    electricity prices with three exogenous feature types:
+
+    - **X_actual**: realized temperature readings (observation features)
+    - **X_future**: holiday indicator (known future, deterministic)
+    - **X_forecast**: weather temperature forecasts (external, with `vintage_time`)
+
+    We split into train / calibration / test using two sequential
+    `train_test_split` calls (the function supports 2-way splits).
+    `X_future` covers the full time range and needs no splitting.
     """)
 
 
 @app.cell
-def _(fetch_tourism_monthly, plot_time_series, train_test_split):
-    df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
-    _n = len(df)
-    train_end = int(_n * 0.6)
-    cal_end = int(_n * 0.85)
+def _(make_exogenous_regression, plot_time_series, train_test_split):
+    data = make_exogenous_regression(n_samples=200, forecasting_horizon=6)
+    y, X_actual, X_future, X_forecast = data.y, data.X_actual, data.X_future, data.X_forecast
+    forecasting_horizon = 6
 
-    y_train, _rest = train_test_split(df, test_size=_n - train_end)
-    y_cal, y_test = train_test_split(_rest, test_size=len(_rest) - (cal_end - train_end))
+    # First split: train+cal / test (X_forecast not split for test; predict cells
+    # construct fresh test-time vintages, matching real-world usage)
+    y_tr, y_test, X_tr, X_test = train_test_split(
+        y,
+        X_actual,
+        test_size=forecasting_horizon,
+    )
+    # Second split: train / cal
+    y_train, y_cal, X_train, X_cal, Xf_train, Xf_cal = train_test_split(
+        y_tr,
+        X_tr,
+        test_size=forecasting_horizon,
+        X_forecast=X_forecast,
+    )
 
-    plot_time_series(df, title="Monthly Tourism (T1)")
-    return y_cal, y_train
+    print(f"Train: {len(y_train)}, Cal: {len(y_cal)}, Test: {len(y_test)}")
+    print(f"X_forecast train vintages: {Xf_train['vintage_time'].n_unique()}")
+    plot_time_series(y, title="Synthetic Hourly Electricity Prices")
+    return X_actual, X_cal, X_future, X_test, X_train, Xf_cal, Xf_train, forecasting_horizon, y_cal, y_test, y_train
 
 
 @app.cell(hide_code=True)
@@ -131,14 +156,29 @@ def _(mo):
 
 
 @app.cell
-def _(LagTransformer, PointReductionForecaster, Ridge, y_train):
+def _(
+    HistGradientBoostingRegressor,
+    LagTransformer,
+    PointReductionForecaster,
+    X_future,
+    X_train,
+    Xf_train,
+    forecasting_horizon,
+    y_train,
+):
     forecaster = PointReductionForecaster(
-        estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3, random_state=42),
+        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+        reduction_strategy="direct",
     )
-    forecasting_horizon = 6
-    forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
-    return forecaster, forecasting_horizon
+    forecaster.fit(
+        y_train,
+        X_actual=X_train,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+        X_forecast=Xf_train,
+    )
+    return (forecaster,)
 
 
 @app.cell(hide_code=True)
@@ -153,15 +193,14 @@ def _(mo):
 
 
 @app.cell
-def _(forecaster, mo, y_cal):
-    # Feed the first 6 months of calibration data
-    _y_observe_1 = y_cal.head(6)
-    forecaster.observe(_y_observe_1)
+def _(X_cal, X_future, Xf_cal, forecaster, mo, y_cal):
+    # Feed calibration data into the forecaster's memory
+    forecaster.observe(y_cal, X_actual=X_cal, X_future=X_future, X_forecast=Xf_cal)
 
     mo.md(
-        f"**Observed time after first observe**: "
+        f"**Observed time after observe**: "
         f"`{forecaster.observed_time_}`\n\n"
-        f"The model now knows about 6 additional months without refitting."
+        f"The model now knows about {len(y_cal)} additional hours without refitting."
     )
 
 
@@ -171,21 +210,36 @@ def _(mo):
     ## 4. Predict After Observing
 
     Now `predict()` produces forecasts starting from the newly observed
-    position, 6 months ahead of where the original training ended.
+    position. We construct a fresh test-time X_forecast at the current
+    observation point (in production, this comes from an external forecast
+    provider).
     """)
 
 
 @app.cell
-def _(forecaster, forecasting_horizon, pl, plot_forecast, y_cal, y_train):
-    y_pred_after_obs = forecaster.predict(forecasting_horizon=forecasting_horizon)
-    _y_truth = y_cal.slice(6, forecasting_horizon)
-    _y_history = pl.concat([y_train, y_cal.head(6)])
+def _(X_future, forecaster, forecasting_horizon, np, pl, plot_forecast, y_cal, y_test, y_train):
+    # Build a fresh X_forecast vintage at the current observation point
+    _obs_time = forecaster.observed_time_
+    _test_times = y_test["time"].to_list()
+    _rng = np.random.default_rng(77)
+    _Xf_predict = pl.DataFrame({
+        "vintage_time": [_obs_time] * forecasting_horizon,
+        "time": _test_times[:forecasting_horizon],
+        "wx_temp": [float(15.0 + _rng.normal(0, 1.0)) for _ in range(forecasting_horizon)],
+    })
+
+    y_pred_after_obs = forecaster.predict(
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+        X_forecast=_Xf_predict,
+    )
+    _y_history = pl.concat([y_train, y_cal])
     plot_forecast(
-        _y_truth,
+        y_test,
         y_pred_after_obs,
         y_train=_y_history,
         n_history=24,
-        title="Predict After Observing 6 Months",
+        title="Predict After Observing Calibration Data",
     )
 
 
@@ -201,31 +255,45 @@ def _(mo):
 
 @app.cell
 def _(
+    HistGradientBoostingRegressor,
     LagTransformer,
     PointReductionForecaster,
-    Ridge,
+    X_cal,
+    X_future,
+    X_train,
+    Xf_cal,
+    Xf_test,
+    Xf_train,
     forecasting_horizon,
-    pl,
     plot_forecast,
     y_cal,
+    y_test,
     y_train,
 ):
     # Fresh forecaster for clean demo
     fc_op = PointReductionForecaster(
-        estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3, random_state=42),
+        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+        reduction_strategy="direct",
     )
-    fc_op.fit(y_train, forecasting_horizon=forecasting_horizon)
-
-    # Observe first 6 months and predict in one call
-    y_pred_op = fc_op.observe_predict(
-        y_cal.head(6),
+    fc_op.fit(
+        y_train,
+        X_actual=X_train,
         forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+        X_forecast=Xf_train,
     )
-    _y_truth_op = y_cal.slice(6, forecasting_horizon)
-    _y_history_op = pl.concat([y_train, y_cal.head(6)])
+
+    # Observe calibration and predict in one call
+    y_pred_op = fc_op.observe_predict(
+        y_cal,
+        X_actual=X_cal,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+        X_forecast=Xf_cal,
+    )
     plot_forecast(
-        _y_truth_op,
+        y_test,
         y_pred_op,
         y_train=y_train,
         n_history=24,
@@ -246,35 +314,66 @@ def _(mo):
 
 @app.cell
 def _(
+    HistGradientBoostingRegressor,
     LagTransformer,
     PointReductionForecaster,
-    Ridge,
+    X_cal,
+    X_future,
+    X_train,
+    Xf_cal,
+    Xf_train,
     forecasting_horizon,
     mo,
+    np,
     pl,
     plot_forecast,
     y_cal,
+    y_test,
     y_train,
 ):
     fc_rw = PointReductionForecaster(
-        estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3, random_state=42),
+        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+        reduction_strategy="direct",
     )
-    fc_rw.fit(y_train, forecasting_horizon=forecasting_horizon)
+    fc_rw.fit(
+        y_train,
+        X_actual=X_train,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+        X_forecast=Xf_train,
+    )
 
-    # Observe full calibration set
-    fc_rw.observe(y_cal)
+    # Observe calibration data
+    fc_rw.observe(y_cal, X_actual=X_cal, X_future=X_future, X_forecast=Xf_cal)
     _time_after_obs = fc_rw.observed_time_
 
     # Rewind to just the first half of calibration data
+    # rewind() needs the full data window (train + partial cal)
     _half = len(y_cal) // 2
-    _rewind_data = y_cal.head(_half)
-    fc_rw.rewind(_rewind_data)
+    _rewind_y = pl.concat([y_train, y_cal.head(_half)])
+    _rewind_X = pl.concat([X_train, X_cal.head(_half)])
+    fc_rw.rewind(_rewind_y, X_actual=_rewind_X)
     _time_after_rewind = fc_rw.observed_time_
 
+    # Build fresh X_forecast at the rewound observation point
+    _rng_rw = np.random.default_rng(88)
+    # Predict H steps from the rewind point: remaining cal + start of test
+    _remaining_cal = y_cal.tail(len(y_cal) - _half)["time"].to_list()
+    _start_test = y_test["time"].to_list()
+    _rw_target_times = (_remaining_cal + _start_test)[:forecasting_horizon]
+    _Xf_rw = pl.DataFrame({
+        "vintage_time": [_time_after_rewind] * forecasting_horizon,
+        "time": _rw_target_times,
+        "wx_temp": [float(15.0 + _rng_rw.normal(0, 1.0)) for _ in range(forecasting_horizon)],
+    })
+
     # Predict from the rewound position
-    y_pred_rw = fc_rw.predict(forecasting_horizon=forecasting_horizon)
-    _y_truth_rw = y_cal.slice(_half, forecasting_horizon)
+    y_pred_rw = fc_rw.predict(
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+        X_forecast=_Xf_rw,
+    )
     _y_history_rw = pl.concat([y_train, y_cal.head(_half)])
 
     mo.vstack([
@@ -282,11 +381,11 @@ def _(
             f"**After observing all cal data**: `{_time_after_obs}`\n\n"
             f"**After rewind to half**: `{_time_after_rewind}`\n\n"
             f"The forecaster state is now as if we had only observed "
-            f"the first {_half} calibration months. Predictions start "
+            f"the first {_half} calibration steps. Predictions start "
             f"from the rewound position."
         ),
         plot_forecast(
-            _y_truth_rw,
+            y_test,
             y_pred_rw,
             y_train=_y_history_rw,
             n_history=24,
@@ -372,25 +471,41 @@ def _(
     DecisionTreeClassifier,
     LagTransformer,
     deepcopy,
-    fetch_air_quality_classification,
+    make_exogenous_classification,
     train_test_split,
 ):
-    cls_data = fetch_air_quality_classification()
-    cls_y, cls_X = cls_data.y, cls_data.X
-    cls_train_end = len(cls_y) - 400
-    cls_cal_end = len(cls_y) - 200
+    cls_data = make_exogenous_classification(n_samples=400, forecasting_horizon=6)
+    cls_y = cls_data.y
+    cls_X = cls_data.X_actual
+    cls_X_future = cls_data.X_future
+    cls_X_forecast = cls_data.X_forecast
+    cls_fh = 6
 
-    cls_y_train, _cls_rest_y = train_test_split(cls_y, test_size=400)
-    cls_y_cal, cls_y_test = train_test_split(_cls_rest_y, test_size=200)
-    cls_X_train, _cls_rest_X = train_test_split(cls_X, test_size=400)
-    cls_X_cal, cls_X_test = train_test_split(_cls_rest_X, test_size=200)
-    cls_fh = 24
+    # Two-step split: train+cal / test, then train / cal
+    cls_y_tr, cls_y_test, cls_X_tr, cls_X_test, cls_Xf_tr, cls_Xf_test = train_test_split(
+        cls_y,
+        cls_X,
+        test_size=cls_fh,
+        X_forecast=cls_X_forecast,
+    )
+    cls_y_train, cls_y_cal, cls_X_train, cls_X_cal, cls_Xf_train, cls_Xf_cal = train_test_split(
+        cls_y_tr,
+        cls_X_tr,
+        test_size=cls_fh,
+        X_forecast=cls_Xf_tr,
+    )
 
     cls_forecaster = ClassProbaReductionForecaster(
         estimator=DecisionTreeClassifier(random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
+    cls_forecaster.fit(
+        cls_y_train,
+        X_actual=cls_X_train,
+        forecasting_horizon=cls_fh,
+        X_future=cls_X_future,
+        X_forecast=cls_Xf_train,
+    )
 
     # Independent copy for hard-label demo (section 9) so both cells
     # can call observe_predict_* on their own fitted forecaster.
@@ -398,16 +513,31 @@ def _(
 
     print(f"Classes: {cls_data.classes}")
     print(f"Train: {len(cls_y_train)}, Cal: {len(cls_y_cal)}, Test: {len(cls_y_test)}")
-    return cls_X_cal, cls_X_test, cls_fh, cls_forecaster, cls_forecaster_hard, cls_y_cal, cls_y_test, cls_y_train
+    return (
+        cls_X_cal,
+        cls_X_future,
+        cls_X_test,
+        cls_Xf_cal,
+        cls_Xf_test,
+        cls_Xf_train,
+        cls_fh,
+        cls_forecaster,
+        cls_forecaster_hard,
+        cls_y_cal,
+        cls_y_test,
+        cls_y_train,
+    )
 
 
 @app.cell
-def _(cls_X_cal, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, plot_forecast):
+def _(cls_X_cal, cls_X_future, cls_Xf_cal, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, plot_forecast):
     # Observe calibration data and predict class probabilities in one call
     cls_y_proba = cls_forecaster.observe_predict_class_proba(
         cls_y_cal,
         X_actual=cls_X_cal,
         forecasting_horizon=cls_fh,
+        X_future=cls_X_future,
+        X_forecast=cls_Xf_cal,
     ).sort("time")
 
     print("Probability columns:", [c for c in cls_y_proba.columns if "_proba_" in c])
@@ -436,12 +566,16 @@ def _(mo):
 
 
 @app.cell
-def _(cls_X_cal, cls_fh, cls_forecaster_hard, cls_y_cal, cls_y_test, cls_y_train, plot_forecast):
+def _(
+    cls_X_cal, cls_X_future, cls_Xf_cal, cls_fh, cls_forecaster_hard, cls_y_cal, cls_y_test, cls_y_train, plot_forecast
+):
     # Same forecaster, but observe_predict returns hard labels
     cls_y_labels = cls_forecaster_hard.observe_predict(
         cls_y_cal,
         X_actual=cls_X_cal,
         forecasting_horizon=cls_fh,
+        X_future=cls_X_future,
+        X_forecast=cls_Xf_cal,
     ).sort("time")
 
     print("Hard-label dtypes:", cls_y_labels.dtypes)
@@ -528,12 +662,13 @@ def _(mo):
     | `observe_predict_interval()` | Interval | Lower/upper bounds per coverage rate |
     | `observe_predict_class_proba()` | Class-proba | Probability per class (float) |
 
-    - **`observe(y, X)`** appends new data to the forecaster's memory without refitting (cheap, incremental)
-    - **`predict(forecasting_horizon)`** generates forecasts from the current observed state
-    - **`observe_predict(y, X)`** is the atomic combination: the workhorse of rolling evaluation
-    - **`observe_predict_interval(y, X)`** returns prediction intervals with `coverage_rates`
-    - **`observe_predict_class_proba(y, X)`** returns full probability distributions over classes
-    - **`rewind(y, X)`** resets state to a specific window without refitting (useful for backtesting)
+    - **`fit(y, X_actual, X_future=, X_forecast=)`** trains the model with all three exogenous feature types
+    - **`observe(y, X_actual, X_future=, X_forecast=)`** appends new data to the forecaster's memory without refitting (cheap, incremental)
+    - **`predict(X_future=, X_forecast=)`** generates forecasts from the current observed state
+    - **`observe_predict(y, X_actual, X_future=, X_forecast=)`** is the atomic combination: the workhorse of rolling evaluation
+    - **`observe_predict_interval(y, X_actual)`** returns prediction intervals with `coverage_rates`
+    - **`observe_predict_class_proba(y, X_actual, X_future=, X_forecast=)`** returns full probability distributions over classes
+    - **`rewind(y, X_actual)`** resets state to a specific window without refitting (useful for backtesting)
     - **Panel selective observation**: Use `groups` to observe/predict subsets of groups independently
     - Observations update transformer state (buffers) but **do not refit the model**
 

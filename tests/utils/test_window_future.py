@@ -1,15 +1,15 @@
-"""Tests for window_future utility."""
+"""Tests for window_futures utility."""
 
 from datetime import datetime, timedelta
 
 import polars as pl
 import pytest
 
-from yohou.utils.pivot import window_future
+from yohou.utils.pivot import window_futures
 
 
 class TestWindowFuture:
-    """Tests for the window_future utility function."""
+    """Tests for the window_futures utility function."""
 
     def test_basic_daily(self):
         """Window daily holidays with H=3."""
@@ -18,7 +18,7 @@ class TestWindowFuture:
             "is_holiday": [1, 0, 0, 1, 0, 0, 0],
         })
         obs_times = pl.Series([datetime(2020, 1, 1), datetime(2020, 1, 2)])
-        result = window_future(holidays, obs_times, forecasting_horizon=3, interval="1d")
+        result = window_futures(holidays, obs_times, forecasting_horizon=3, interval="1d")
 
         assert result.columns == ["time", "is_holiday_step_1", "is_holiday_step_2", "is_holiday_step_3"]
         assert result.shape == (2, 4)
@@ -34,7 +34,7 @@ class TestWindowFuture:
             "val": [10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
         })
         obs_times = pl.Series([datetime(2020, 1, 1, 0)])
-        result = window_future(df, obs_times, forecasting_horizon=2, interval="1h")
+        result = window_futures(df, obs_times, forecasting_horizon=2, interval="1h")
 
         assert result["val_step_1"].to_list() == [11.0]
         assert result["val_step_2"].to_list() == [12.0]
@@ -46,7 +46,7 @@ class TestWindowFuture:
             "val": [10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
         })
         obs_times = pl.Series([datetime(2020, 1, 1, 0)])
-        result = window_future(df, obs_times, forecasting_horizon=2, interval=timedelta(hours=1))
+        result = window_futures(df, obs_times, forecasting_horizon=2, interval=timedelta(hours=1))
 
         assert result["val_step_1"].to_list() == [11.0]
         assert result["val_step_2"].to_list() == [12.0]
@@ -59,7 +59,7 @@ class TestWindowFuture:
             "day_type": [0, 1, 1, 0],
         })
         obs_times = pl.Series([datetime(2020, 1, 1)])
-        result = window_future(df, obs_times, forecasting_horizon=2, interval="1d")
+        result = window_futures(df, obs_times, forecasting_horizon=2, interval="1d")
 
         assert "holiday_step_1" in result.columns
         assert "holiday_step_2" in result.columns
@@ -75,7 +75,7 @@ class TestWindowFuture:
             "val": [10.0, 20.0],
         })
         obs_times = pl.Series([datetime(2020, 1, 1)])
-        result = window_future(df, obs_times, forecasting_horizon=3, interval="1d")
+        result = window_futures(df, obs_times, forecasting_horizon=3, interval="1d")
 
         assert result["val_step_1"].to_list() == [20.0]
         assert result["val_step_2"].to_list() == [None]
@@ -88,7 +88,7 @@ class TestWindowFuture:
             "val": list(range(5)),
         })
         obs_times = pl.Series([datetime(2020, 1, 1), datetime(2020, 1, 3)])
-        result = window_future(df, obs_times, forecasting_horizon=2, interval="1d")
+        result = window_futures(df, obs_times, forecasting_horizon=2, interval="1d")
 
         assert result["time"].to_list() == [datetime(2020, 1, 1), datetime(2020, 1, 3)]
 
@@ -97,28 +97,28 @@ class TestWindowFuture:
         df = pl.DataFrame({"val": [1.0]})
         obs = pl.Series([datetime(2020, 1, 1)])
         with pytest.raises(ValueError, match="'time' not found"):
-            window_future(df, obs, forecasting_horizon=1, interval="1d")
+            window_futures(df, obs, forecasting_horizon=1, interval="1d")
 
     def test_zero_horizon_raises(self):
         """Zero forecasting_horizon raises ValueError."""
         df = pl.DataFrame({"time": [datetime(2020, 1, 1)], "val": [1.0]})
         obs = pl.Series([datetime(2020, 1, 1)])
         with pytest.raises(ValueError, match="forecasting_horizon must be positive"):
-            window_future(df, obs, forecasting_horizon=0, interval="1d")
+            window_futures(df, obs, forecasting_horizon=0, interval="1d")
 
     def test_negative_horizon_raises(self):
         """Negative forecasting_horizon raises ValueError."""
         df = pl.DataFrame({"time": [datetime(2020, 1, 1)], "val": [1.0]})
         obs = pl.Series([datetime(2020, 1, 1)])
         with pytest.raises(ValueError, match="forecasting_horizon must be positive"):
-            window_future(df, obs, forecasting_horizon=-2, interval="1d")
+            window_futures(df, obs, forecasting_horizon=-2, interval="1d")
 
     def test_no_value_columns_raises(self):
         """Only time column, no values, raises ValueError."""
         df = pl.DataFrame({"time": [datetime(2020, 1, 1)]})
         obs = pl.Series([datetime(2020, 1, 1)])
         with pytest.raises(ValueError, match="No value columns found"):
-            window_future(df, obs, forecasting_horizon=1, interval="1d")
+            window_futures(df, obs, forecasting_horizon=1, interval="1d")
 
     def test_empty_observation_times(self):
         """Empty observation_times produces empty result with correct schema."""
@@ -127,7 +127,7 @@ class TestWindowFuture:
             "val": [10.0, 20.0],
         })
         obs = pl.Series("obs", [], dtype=pl.Datetime)
-        result = window_future(df, obs, forecasting_horizon=2, interval="1d")
+        result = window_futures(df, obs, forecasting_horizon=2, interval="1d")
 
         assert result.shape[0] == 0
         assert "val_step_1" in result.columns
@@ -140,7 +140,7 @@ class TestWindowFuture:
             "x": list(range(5)),
         })
         obs = pl.Series([datetime(2020, 1, 1)])
-        result = window_future(df, obs, forecasting_horizon=4, interval="1d")
+        result = window_futures(df, obs, forecasting_horizon=4, interval="1d")
 
         step_cols = [c for c in result.columns if c != "time"]
         assert step_cols == ["x_step_1", "x_step_2", "x_step_3", "x_step_4"]
@@ -152,7 +152,7 @@ class TestWindowFuture:
             "val": [1, 2, 3, 4],
         })
         obs = pl.Series([datetime(2020, 1, 1)])
-        result = window_future(df, obs, forecasting_horizon=2, interval="1d", time_col="target_date")
+        result = window_futures(df, obs, forecasting_horizon=2, interval="1d", time_col="target_date")
 
         assert "time" in result.columns
         assert result["val_step_1"].to_list() == [2]
@@ -165,7 +165,7 @@ class TestWindowFuture:
             "store_A__temp": [10.0, 11.0, 12.0, 13.0],
         })
         obs = pl.Series([datetime(2020, 1, 1)])
-        result = window_future(df, obs, forecasting_horizon=2, interval="1d")
+        result = window_futures(df, obs, forecasting_horizon=2, interval="1d")
 
         assert "store_A__temp_step_1" in result.columns
         assert "store_A__temp_step_2" in result.columns
@@ -177,7 +177,7 @@ class TestWindowFuture:
             "val": list(range(6)),
         })
         obs = pl.Series([datetime(2020, 1, 1)])
-        result = window_future(df, obs, forecasting_horizon=3, interval="1mo")
+        result = window_futures(df, obs, forecasting_horizon=3, interval="1mo")
 
         assert result["val_step_1"].to_list() == [1]  # Feb
         assert result["val_step_2"].to_list() == [2]  # Mar
