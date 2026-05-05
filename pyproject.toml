@@ -97,6 +97,9 @@ fallback-version = "0.0.0"
 [tool.hatch.build.hooks.vcs]
 version-file = "src/yohou/_version.py"
 
+[tool.ty.rules]
+unused-ignore-comment = "ignore"
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"

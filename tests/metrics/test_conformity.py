@@ -169,3 +169,35 @@ class TestInverseScore:
         assert lower > -float("inf")
         assert upper < float("inf")
         assert lower <= upper
+
+
+class TestConformityScorerTags:
+    """Test that conformity scorer tags correctly declare symmetric and multiplicative."""
+
+    def test_residual_tags(self):
+        """Residual is asymmetric and additive."""
+        tags = Residual().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        assert tags.scorer_tags.symmetric is False
+        assert tags.scorer_tags.multiplicative is False
+
+    def test_absolute_residual_tags(self):
+        """AbsoluteResidual is symmetric and additive."""
+        tags = AbsoluteResidual().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        assert tags.scorer_tags.symmetric is True
+        assert tags.scorer_tags.multiplicative is False
+
+    def test_gamma_residual_tags(self):
+        """GammaResidual is asymmetric and multiplicative."""
+        tags = ConcreteGammaResidual().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        assert tags.scorer_tags.symmetric is False
+        assert tags.scorer_tags.multiplicative is True
+
+    def test_absolute_gamma_residual_tags(self):
+        """AbsoluteGammaResidual is symmetric and multiplicative."""
+        tags = AbsoluteGammaResidual().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        assert tags.scorer_tags.symmetric is True
+        assert tags.scorer_tags.multiplicative is True

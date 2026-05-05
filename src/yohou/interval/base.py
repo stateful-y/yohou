@@ -37,6 +37,29 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
 
     _parameter_constraints: dict = {}
 
+    @staticmethod
+    def _validate_no_nulls(df: pl.DataFrame, method_name: str) -> None:
+        """Raise if any column contains null or NaN values.
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            DataFrame to validate.
+        method_name : str
+            Name of the calling method (for the error message).
+
+        Raises
+        ------
+        ValueError
+            If any column contains null or NaN values.
+
+        """
+        null_cols = [col for col in df.columns if df[col].is_null().any()]
+        nan_cols = [col for col in df.select(cs.numeric()).columns if df[col].is_nan().any()]
+        bad_cols = sorted(set(null_cols + nan_cols))
+        if bad_cols:
+            raise ValueError(f"{method_name}() received data with null or NaN values in columns: {bad_cols}")
+
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
 
@@ -55,17 +78,6 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         tags.similarity_tags.produces_weights = True
 
         return tags
-
-    @property
-    def discarded_time_stamps(self) -> None:
-        """Get discarded timestamps (placeholder property).
-
-        Returns
-        -------
-        None
-
-        """
-        return None
 
     @abc.abstractmethod
     def fit(
@@ -141,6 +153,36 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
             Similarity weights.
 
         """
+
+    def rewind(
+        self,
+        y: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        X: pl.DataFrame | None = None,
+    ) -> "BaseSimilarity":
+        """Rewind observed data from the similarity measure.
+
+        Default implementation is a no-op. Concrete subclasses that
+        track observed data should override this to remove the most
+        recently observed rows.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target observations to rewind.
+
+        y_pred : pl.DataFrame
+            Predictions to rewind.
+
+        X : pl.DataFrame or None, default=None
+            Exogenous features to rewind.
+
+        Returns
+        -------
+        self
+
+        """
+        return self
 
 
 class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):

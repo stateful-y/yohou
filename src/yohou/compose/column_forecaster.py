@@ -260,7 +260,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         try:
             self.forecasters = [
                 (name, forecaster, col)
-                for ((name, forecaster), (_, _, col)) in zip(value, self.forecasters, strict=True)
+                for ((name, forecaster), (_, _, col)) in zip(value, self.forecasters, strict=True)  # ty: ignore[invalid-assignment]
             ]
         except (TypeError, ValueError):
             self.forecasters = value

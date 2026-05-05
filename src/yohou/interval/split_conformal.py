@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.panel import BasePanelForecaster
-from yohou.metrics import AbsoluteResidual, BaseConformityScorer, Residual
+from yohou.metrics import BaseConformityScorer, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
 from yohou.utils._compat import Interval, _fit_context
@@ -220,10 +220,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                     scored_times_df, on="time", how="semi"
                 )
 
-                similarity_step = clone(self.similarity)
-                similarity_step.fit(y=y_calib, y_pred=y_pred_for_sim)
+                X_for_sim = None
+                if X_calib is not None:
+                    X_for_sim = X_calib.join(scored_times_df, on="time", how="semi")
 
-                weights_array = similarity_step.predict(y_pred=y_pred_for_sim)
+                similarity_step = clone(self.similarity)
+                similarity_step.fit(y=y_calib, y_pred=y_pred_for_sim, X=X_for_sim)
+
+                weights_array = similarity_step.predict(y_pred=y_pred_for_sim, X=X_for_sim)
                 weight_col_names = [f"w_{i}" for i in range(weights_array.shape[1])]
                 weights_step = pl.DataFrame(weights_array, schema=weight_col_names)
                 weights_step = weights_step.with_columns(step=pl.lit(step))
@@ -237,6 +241,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         if self.similarity is not None:
             self.similarities_ = similarities
             self.weights_ = pl.concat(weights_list, how="diagonal")
+            # Track fit-time counts for correct rewind arithmetic
+            self._fit_score_counts_ = {}
+            for step in range(1, 1 + forecasting_horizon):
+                key = f"step_{step}"
+                self._fit_score_counts_[key] = conformity_scores.filter(pl.col("step") == step).height
 
         return self
 
@@ -537,44 +546,35 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         scores_no_time = conformity_scores_step.drop("time", strict=False)
         y_pred_values = y_pred_step.drop("time")
 
-        if isinstance(conformity_scorer_step, AbsoluteResidual):
-            # Symmetric: ±quantile
-            lower_data: dict[str, list[float]] = {}
-            upper_data: dict[str, list[float]] = {}
-            for col in value_cols:
-                scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+        # Read scorer characteristics from tags instead of checking types
+        tags = conformity_scorer_step.__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        symmetric = tags.scorer_tags.symmetric
+        multiplicative = tags.scorer_tags.multiplicative
+        epsilon = conformity_scorer_step.get_params().get("epsilon", 0.0)
+
+        lower_data: dict[str, list[float]] = {}
+        upper_data: dict[str, list[float]] = {}
+
+        for col in value_cols:
+            scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+            pred_val = float(y_pred_values[col][0])
+            scale = (pred_val + epsilon) if multiplicative else 1.0
+
+            if symmetric:
                 q = weighted_quantile(scores_col, coverage_rate, weights)
-                pred_val = float(y_pred_values[col][0])
-                lower_data[col] = [pred_val - q]
-                upper_data[col] = [pred_val + q]
-
-            lower_bound = pl.DataFrame(lower_data)
-            upper_bound = pl.DataFrame(upper_data)
-            return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
-
-        if isinstance(conformity_scorer_step, Residual):
-            # Asymmetric: add lower/upper quantiles directly
-            lower_data = {}
-            upper_data = {}
-            for col in value_cols:
-                scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+                lower_data[col] = [pred_val - q * scale]
+                upper_data[col] = [pred_val + q * scale]
+            else:
                 alpha = 1.0 - coverage_rate
                 lower_q = weighted_quantile(scores_col, alpha / 2.0, weights)
                 upper_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
-                pred_val = float(y_pred_values[col][0])
-                lower_data[col] = [pred_val + lower_q]
-                upper_data[col] = [pred_val + upper_q]
+                lower_data[col] = [pred_val + lower_q * scale]
+                upper_data[col] = [pred_val + upper_q * scale]
 
-            lower_bound = pl.DataFrame(lower_data)
-            upper_bound = pl.DataFrame(upper_data)
-            return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
-
-        # Unsupported scorer type: fall back to unweighted inverse_score
-        return conformity_scorer_step.inverse_score(
-            y_pred=y_pred_step,
-            conformity_scores=conformity_scores_step,
-            coverage_rate=coverage_rate,
-        ).drop("time")
+        lower_bound = pl.DataFrame(lower_data)
+        upper_bound = pl.DataFrame(upper_data)
+        return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
     def predict_interval(  # ty: ignore[invalid-method-override]
         self,
@@ -668,7 +668,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             for coverage_rate in coverage_rates:
                 if self.similarity is not None and hasattr(self, "similarities_"):
                     similarity_step = self.similarities_[f"step_{step}"]
-                    weights_array = similarity_step.predict(y_pred=y_pred_step)
+                    X_step = None
+                    if X is not None:
+                        X_step = X.slice(step - 1, 1)
+                    weights_array = similarity_step.predict(y_pred=y_pred_step, X=X_step)
                     step_weights = weights_array[0].astype(np.float64)
 
                     y_pred_interval_rate_step = self._weighted_inverse_score(
