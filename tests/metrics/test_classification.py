@@ -80,9 +80,6 @@ def run_checks(scorer, y_truth, y_pred):
     _run_checks_base(scorer, _yield_yohou_scorer_checks(scorer, y_truth, y_pred))
 
 
-# ---------------------------------------------------------------------------
-# Systematic scorer checks
-# ---------------------------------------------------------------------------
 class TestPrecisionSystematic:
     def test_systematic_checks(self, class_data_5rows):
         y_true, y_pred = class_data_5rows
@@ -113,9 +110,6 @@ class TestPrAucSystematic:
         run_checks(PrAuc(), y_true, y_pred)
 
 
-# ---------------------------------------------------------------------------
-# Precision tests
-# ---------------------------------------------------------------------------
 class TestPrecision:
     def test_perfect_prediction(self):
         dates = [datetime(2020, 1, i) for i in range(1, 4)]
@@ -179,9 +173,6 @@ class TestPrecision:
         assert 0.0 <= score <= 1.0
 
 
-# ---------------------------------------------------------------------------
-# Recall tests
-# ---------------------------------------------------------------------------
 class TestRecall:
     def test_matches_sklearn_macro(self, class_data_5rows):
         y_true, y_pred = class_data_5rows
@@ -208,9 +199,6 @@ class TestRecall:
         assert np.isclose(scorer.score(y_true, y_pred), expected, atol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# FBetaScore tests
-# ---------------------------------------------------------------------------
 class TestFBetaScore:
     def test_f1_matches_sklearn(self, class_data_5rows):
         y_true, y_pred = class_data_5rows
@@ -255,9 +243,6 @@ class TestFBetaScore:
         assert "f1" in result.columns
 
 
-# ---------------------------------------------------------------------------
-# Accuracy migration parity
-# ---------------------------------------------------------------------------
 class TestAccuracyMigration:
     def test_perfect_prediction(self):
         dates = [datetime(2020, 1, i) for i in range(1, 4)]
@@ -313,9 +298,6 @@ class TestAccuracyMigration:
         assert isinstance(scorer, Accuracy)
 
 
-# ---------------------------------------------------------------------------
-# RocAuc tests
-# ---------------------------------------------------------------------------
 class TestRocAuc:
     def test_perfect_prediction(self):
         dates = [datetime(2020, 1, i) for i in range(1, 6)]
@@ -363,9 +345,6 @@ class TestRocAuc:
         assert 0.0 <= score <= 1.0
 
 
-# ---------------------------------------------------------------------------
-# PrAuc tests
-# ---------------------------------------------------------------------------
 class TestPrAuc:
     def test_matches_sklearn(self, class_data_5rows):
         y_true, y_pred = class_data_5rows
@@ -395,9 +374,6 @@ class TestPrAuc:
         assert 0.0 <= score <= 1.0
 
 
-# ---------------------------------------------------------------------------
-# Registry tests
-# ---------------------------------------------------------------------------
 class TestRegistry:
     @pytest.mark.parametrize(
         "name,cls",
@@ -424,9 +400,6 @@ class TestRegistry:
         assert scorer.beta == 1.0
 
 
-# ---------------------------------------------------------------------------
-# Stepwise / vintagewise partial aggregation
-# ---------------------------------------------------------------------------
 class TestPartialAggregation:
     def test_precision_stepwise(self, class_data_5rows):
         y_true, y_pred = class_data_5rows
@@ -459,9 +432,6 @@ class TestPartialAggregation:
         assert "mood" in result.columns or "recall" in result.columns
 
 
-# ---------------------------------------------------------------------------
-# Coverage: NaN/Inf probability validation (base.py:1674)
-# ---------------------------------------------------------------------------
 class TestNaNInfProbabilities:
     def test_nan_probabilities_raise(self):
         """NaN in probability columns should raise ValueError."""
@@ -496,9 +466,6 @@ class TestNaNInfProbabilities:
             scorer.score(y_true, y_pred)
 
 
-# ---------------------------------------------------------------------------
-# Coverage: Ranking metric weighted averaging (base.py:2329, 2332-2333)
-# ---------------------------------------------------------------------------
 class TestRankingWeightedAveraging:
     def test_roc_auc_weighted(self):
         """RocAuc with average='weighted' should use support-weighted mean."""
@@ -531,9 +498,6 @@ class TestRankingWeightedAveraging:
         assert score_w != score_m
 
 
-# ---------------------------------------------------------------------------
-# Coverage: _resolve_combined_weights with multiple weights (base.py:2358-2361)
-# ---------------------------------------------------------------------------
 class TestRankingCombinedWeights:
     def test_roc_auc_with_callable_time_weight(self):
         """RocAuc with callable time_weight applies sample weights."""
@@ -580,9 +544,6 @@ class TestRankingCombinedWeights:
         assert isinstance(score_no_weight, float)
 
 
-# ---------------------------------------------------------------------------
-# Coverage: Ranking with class having all same labels (base.py:2319)
-# ---------------------------------------------------------------------------
 class TestRankingSkipConstantClasses:
     def test_roc_auc_skips_absent_class(self):
         """RocAuc should skip classes with no positive samples."""
@@ -627,9 +588,6 @@ class TestRankingSkipConstantClasses:
         assert score == 0.0
 
 
-# ---------------------------------------------------------------------------
-# Coverage: Hard-label partial collapse with dim_values=None (base.py:1970-1977)
-# ---------------------------------------------------------------------------
 class TestHardLabelPartialCollapse:
     def test_precision_stepwise_only(self, class_data_5rows):
         """Precision with stepwise only (no vintagewise) exercises partial collapse."""

@@ -662,11 +662,6 @@ class TestNormalizeAggMethodsAll:
         assert "coveragewise" in modes
 
 
-# ---------------------------------------------------------------------------
-# Interval scorer: time_weight + step_weight / vintage_weight with coverage rates
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture()
 def interval_train():
     """Training data for interval scorer tests."""

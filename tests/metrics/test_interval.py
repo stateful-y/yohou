@@ -723,9 +723,6 @@ class TestContinuousRankedProbabilityScore:
         assert score >= 0.0
 
 
-# ---------------------------------------------------------------------------
-# Coverage: CRPS trapezoidal with edge cases (interval.py:845, 848)
-# ---------------------------------------------------------------------------
 class TestCRPSTrapezoidalEdgeCases:
     def test_crps_trapezoidal_no_coverage_rate_column(self):
         """_collapse_coverage_rates returns df unchanged when no coverage_rate column."""

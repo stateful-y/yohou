@@ -1357,9 +1357,6 @@ class TestMDA:
         assert result.shape == (1, 1)
 
 
-# ---------------------------------------------------------------------------
-# Coverage: MaxAE partial collapse with stepwise only (point.py:1219, 1227-1229)
-# ---------------------------------------------------------------------------
 class TestMaxAEPartialCollapse:
     def test_max_ae_stepwise_only(self):
         """MaxAbsoluteError with stepwise only exercises partial collapse."""
@@ -1412,9 +1409,6 @@ class TestMaxAEPartialCollapse:
         assert isinstance(result, pl.DataFrame)
 
 
-# ---------------------------------------------------------------------------
-# Coverage: MedianAbsoluteError componentwise (point.py:1085, 1092-1098)
-# ---------------------------------------------------------------------------
 class TestMedianAEComponentwise:
     def test_median_ae_componentwise(self):
         """MedianAbsoluteError with componentwise returns per-timestep scores."""
@@ -1454,9 +1448,6 @@ class TestMedianAEComponentwise:
         assert isinstance(result, pl.DataFrame)
 
 
-# ---------------------------------------------------------------------------
-# Coverage: R2Score and MDA _compute_raw_errors stubs (point.py:1340, 1517)
-# ---------------------------------------------------------------------------
 class TestScoreOverrideStubs:
     def test_r2_compute_raw_errors_callable(self):
         """R2Score._compute_raw_errors returns squared differences."""
