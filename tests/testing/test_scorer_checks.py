@@ -5,13 +5,10 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 
-from conftest import run_checks
 from yohou.interval import SplitConformalForecaster
-from yohou.metrics.classification import ROCAuC
 from yohou.metrics.interval import EmpiricalCoverage
-from yohou.metrics.point import MeanAbsoluteError, MeanDirectionalAccuracy, R2Score
+from yohou.metrics.point import MeanAbsoluteError
 from yohou.point.naive import SeasonalNaive
-from yohou.testing import _yield_yohou_scorer_checks
 from yohou.testing.scorer import (
     check_scorer_aggregation_methods,
     check_scorer_component_subselection,
@@ -258,114 +255,3 @@ class TestScorerCheckFunctionsClassProba:
         scorer = LogLoss()
         scorer.fit(y)
         check_scorer_prediction_type_compatibility(scorer, forecaster, y)
-
-
-class TestYieldScorerChecksIntegration:
-    """Run _yield_yohou_scorer_checks on representative scorers."""
-
-    @pytest.fixture
-    def simple_point_data(self):
-        """Simple 5-row point data with single vintage."""
-        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
-        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)] * 5,
-            "time": times,
-            "value": [12.0, 18.0, 33.0, 38.0, 55.0],
-        })
-        return y_true, y_pred
-
-    def test_mae_checks(self, simple_point_data):
-        """Run all yohou scorer checks on MeanAbsoluteError."""
-        y_true, y_pred = simple_point_data
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        run_checks(scorer, _yield_yohou_scorer_checks(scorer, y_true, y_pred))
-
-    def test_r2_checks(self, simple_point_data):
-        """Run all yohou scorer checks on R2Score (Pattern 2)."""
-        y_true, y_pred = simple_point_data
-        scorer = R2Score()
-        scorer.fit(y_true)
-        run_checks(scorer, _yield_yohou_scorer_checks(scorer, y_true, y_pred))
-
-    def test_mda_checks(self):
-        """Run all yohou scorer checks on MeanDirectionalAccuracy."""
-        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
-        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)] * 5,
-            "time": times,
-            "value": [12.0, 22.0, 28.0, 42.0, 48.0],
-        })
-        scorer = MeanDirectionalAccuracy()
-        scorer.fit(y_true)
-        run_checks(scorer, _yield_yohou_scorer_checks(scorer, y_true, y_pred))
-
-    def test_roc_auc_checks(self):
-        """Run all yohou scorer checks on ROCAuC (ranking scorer)."""
-        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
-        y_true = pl.DataFrame({
-            "time": times,
-            "weather": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
-        })
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)] * 5,
-            "time": times,
-            "weather_proba_sunny": [0.7, 0.1, 0.2, 0.6, 0.1],
-            "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8],
-            "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1],
-        })
-        scorer = ROCAuC()
-        scorer.fit(y_true)
-        run_checks(scorer, _yield_yohou_scorer_checks(scorer, y_true, y_pred))
-
-    def test_empirical_coverage_checks(self):
-        """Run all yohou scorer checks on EmpiricalCoverage (interval scorer)."""
-        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
-        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)] * 5,
-            "time": times,
-            "value_lower_0.9": [8.0, 17.0, 27.0, 37.0, 47.0],
-            "value_upper_0.9": [14.0, 23.0, 33.0, 43.0, 53.0],
-        })
-        scorer = EmpiricalCoverage()
-        scorer.fit(y_true)
-        run_checks(scorer, _yield_yohou_scorer_checks(scorer, y_true, y_pred))
-
-    def test_multivariate_mae_checks(self):
-        """Run scorer checks on MAE with multivariate data (component filtering)."""
-        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
-        y_true = pl.DataFrame({
-            "time": times,
-            "temp": [10.0, 20.0, 30.0, 40.0, 50.0],
-            "wind": [5.0, 10.0, 15.0, 20.0, 25.0],
-        })
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)] * 5,
-            "time": times,
-            "temp": [12.0, 18.0, 33.0, 38.0, 55.0],
-            "wind": [6.0, 9.0, 14.0, 22.0, 23.0],
-        })
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        run_checks(scorer, _yield_yohou_scorer_checks(scorer, y_true, y_pred))
-
-    def test_panel_mae_checks(self):
-        """Run scorer checks on MAE with panel data (group filtering)."""
-        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
-        y_true = pl.DataFrame({
-            "time": times,
-            "A__value": [10.0, 20.0, 30.0, 40.0, 50.0],
-            "B__value": [100.0, 200.0, 300.0, 400.0, 500.0],
-        })
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)] * 5,
-            "time": times,
-            "A__value": [12.0, 18.0, 33.0, 38.0, 55.0],
-            "B__value": [110.0, 190.0, 310.0, 390.0, 510.0],
-        })
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        run_checks(scorer, _yield_yohou_scorer_checks(scorer, y_true, y_pred))

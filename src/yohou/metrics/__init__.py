@@ -70,11 +70,11 @@ _SCORER_REGISTRY: dict[str, type[BaseScorer]] = {
     "calibration_error": CalibrationError,
     "crps": ContinuousRankedProbabilityScore,
     # Class-probability scorers
-    "accuracy": Accuracy,
     "log_loss": LogLoss,
     "brier_score": BrierScore,
     "rps": RankedProbabilityScore,
     # Hard-label classification scorers
+    "accuracy": Accuracy,
     "precision": Precision,
     "recall": Recall,
     "fbeta": FBetaScore,
