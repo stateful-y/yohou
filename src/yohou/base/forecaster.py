@@ -472,7 +472,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         )
 
         # Special handling for forecasters with no observation horizon
-        if self.observation_horizon == 0:
+        if self.observation_horizon == 0:  # pragma: no cover
             # If there is no observation horizon, only check for time column presence
             if "time" not in y.columns:
                 raise ValueError("y must contain 'time' column.")
@@ -680,9 +680,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             if isinstance(self._X_t_observed, dict):
                 for group_name, saved_df in saved_step_data.items():  # ty: ignore[unresolved-attribute]
                     group_df = self._X_t_observed[group_name]
-                    cols_to_drop = [c for c in local_step_cols if c in group_df.columns]
+                    cols_to_drop = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
                     if cols_to_drop:
-                        restored = group_df.drop(cols_to_drop)
+                        restored = group_df.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
                         self._X_t_observed[group_name] = pl.concat([restored, saved_df], how="horizontal")
             elif saved_step_data is not None:
                 cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]

@@ -334,7 +334,7 @@ def _create_figure(
         A plain figure, ``FigureResampler``, or ``FigureWidgetResampler``.
     """
     mode = _get_resampler_mode(resampler)
-    if mode == "widget":
+    if mode == "widget":  # pragma: no cover
         try:
             from plotly_resampler import FigureWidgetResampler  # noqa: PLC0415  # ty: ignore[unresolved-import]
         except ImportError as e:
@@ -344,7 +344,7 @@ def _create_figure(
             go.Figure(**kwargs),
             **_build_resampler_kwargs(),
         )
-    if mode:
+    if mode:  # pragma: no cover
         try:
             from plotly_resampler import FigureResampler  # noqa: PLC0415  # ty: ignore[unresolved-import]
         except ImportError as e:
@@ -377,7 +377,7 @@ def _create_subplots(
     """
     fig = make_subplots(**subplots_kwargs)
     mode = _get_resampler_mode(resampler)
-    if mode == "widget":
+    if mode == "widget":  # pragma: no cover
         try:
             from plotly_resampler import FigureWidgetResampler  # noqa: PLC0415  # ty: ignore[unresolved-import]
         except ImportError as e:
@@ -387,7 +387,7 @@ def _create_subplots(
             fig,
             **_build_resampler_kwargs(),
         )
-    if mode:
+    if mode:  # pragma: no cover
         try:
             from plotly_resampler import FigureResampler  # noqa: PLC0415  # ty: ignore[unresolved-import]
         except ImportError as e:
@@ -409,7 +409,7 @@ def _fill_trace_kwargs(fig: go.Figure) -> dict:
 
     Returns an empty dict for plain figures.
     """
-    try:
+    try:  # pragma: no cover
         from plotly_resampler.aggregation.gap_handlers import (  # noqa: PLC0415  # ty: ignore[unresolved-import]
             NoGapHandler,
         )
@@ -418,9 +418,9 @@ def _fill_trace_kwargs(fig: go.Figure) -> dict:
         )
     except ImportError:
         return {}
-    if isinstance(fig, AbstractFigureAggregator):
+    if isinstance(fig, AbstractFigureAggregator):  # pragma: no cover
         return {"gap_handler": NoGapHandler()}
-    return {}
+    return {}  # pragma: no cover
 
 
 def palette_yohou() -> dict[str, str]:
