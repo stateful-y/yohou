@@ -276,9 +276,10 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # DecompositionPipeline delegates observation tracking to child forecasters with
         # custom residual-based logic, so standard observe/rewind behavior doesn't apply
         tags.forecaster_tags.tracks_observations = False
-        tags.forecaster_tags.ignores_exogenous = all(
-            getattr(f.__sklearn_tags__().forecaster_tags, "ignores_exogenous", True) for _, f in self.forecasters
-        )
+        # The pipeline accepts X_actual/X_future/X_forecast and forwards them to inner
+        # forecasters, but does not require them. Each inner forecaster manages its own
+        # feature needs independently.
+        tags.forecaster_tags.ignores_exogenous = True
 
         return tags
 

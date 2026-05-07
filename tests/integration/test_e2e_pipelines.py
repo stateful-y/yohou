@@ -1337,10 +1337,6 @@ class TestMaxNestingPipeline:
         assert "auxiliary__seasonality" in params
         assert params["auxiliary__seasonality"] == 7
 
-    @pytest.mark.xfail(
-        reason="DecompositionPipeline passes X_actual through recursive predict; Phase 4 fix",
-        strict=True,
-    )
     def test_pipeline_f_full_lifecycle_no_crash(self):
         """Pipeline F: fit → predict → predict_interval without crash."""
         # Generate 2-column data with exogenous feature for ForecastedFeatureForecaster
@@ -1411,10 +1407,6 @@ class TestMaxNestingPipeline:
         # sub-forecaster is point-only (SeasonalNaive doesn't support intervals).
         # Interval prediction is tested in test_pipeline_f_mixed_metrics.
 
-    @pytest.mark.xfail(
-        reason="DecompositionPipeline passes X_actual through recursive predict; Phase 4 fix",
-        strict=True,
-    )
     def test_pipeline_f_clone_deep_structure(self):
         """Pipeline F: clone() works on deeply nested structure."""
         forecaster = ColumnForecaster([
@@ -1608,10 +1600,6 @@ class TestMaxNestingPipeline:
         assert params_final["demand__target_forecaster__calibration_size"] == 30
         assert params_final["auxiliary__seasonality"] == 7
 
-    @pytest.mark.xfail(
-        reason="DecompositionPipeline passes X_actual through recursive predict; Phase 4 fix",
-        strict=True,
-    )
     def test_pipeline_f_mixed_metrics(self):
         """Pipeline F: Score with both point and interval metrics."""
         # Generate data with exogenous feature for ForecastedFeatureForecaster
