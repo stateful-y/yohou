@@ -52,6 +52,7 @@ def _():
     from yohou.class_proba import ClassProbaReductionForecaster
     from yohou.datasets import fetch_air_quality_classification
     from yohou.metrics import Accuracy, BrierScore, LogLoss
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_calibration,
         plot_forecast,
@@ -72,6 +73,7 @@ def _():
         plot_forecast,
         plot_score_time_series,
         plot_time_series,
+        train_test_split,
     )
 
 
@@ -296,6 +298,41 @@ def _(Accuracy, BrierScore, LogLoss, y_proba, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 7. Rolling Observe-Predict
+
+    The `observe_predict_class_proba()` method performs rolling evaluation:
+    observe new data, then predict the next horizon. This simulates real-world
+    deployment where predictions are updated as new observations arrive.
+    """)
+
+
+@app.cell
+def _(X_actual_test, forecaster, y_test):
+    y_rolling_proba = forecaster.observe_predict_class_proba(
+        y=y_test,
+        X_actual=X_actual_test,
+    ).sort("time")
+    print(f"Rolling predictions: {len(y_rolling_proba)} rows")
+    return (y_rolling_proba,)
+
+
+@app.cell
+def _(y_rolling_proba):
+    y_rolling_proba
+
+
+@app.cell
+def _(plot_forecast, y_rolling_proba, y_test):
+    plot_forecast(
+        y_test,
+        y_rolling_proba,
+        title="Rolling Probability Forecast",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Score Evolution Over Time
 
     Per-timestep LogLoss and BrierScore reveal when the model is most
@@ -336,41 +373,6 @@ def _(Accuracy, plot_score_time_series, y_rolling_proba, y_test):
         y_test,
         y_rolling_proba,
         title="Accuracy Over Time (Rolling Predictions)",
-    )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 7. Rolling Observe-Predict
-
-    The `observe_predict_class_proba()` method performs rolling evaluation:
-    observe new data, then predict the next horizon. This simulates real-world
-    deployment where predictions are updated as new observations arrive.
-    """)
-
-
-@app.cell
-def _(X_actual_test, forecaster, y_test):
-    y_rolling_proba = forecaster.observe_predict_class_proba(
-        y=y_test,
-        X_actual=X_actual_test,
-    ).sort("time")
-    print(f"Rolling predictions: {len(y_rolling_proba)} rows")
-    return (y_rolling_proba,)
-
-
-@app.cell
-def _(y_rolling_proba):
-    y_rolling_proba
-
-
-@app.cell
-def _(plot_forecast, y_rolling_proba, y_test):
-    plot_forecast(
-        y_test,
-        y_rolling_proba,
-        title="Rolling Probability Forecast",
     )
 
 

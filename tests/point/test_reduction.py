@@ -1017,6 +1017,89 @@ class TestDirectDirRecChecks:
         )
 
 
+class TestPanelStepColumnChecks:
+    """Run systematic checks for panel data with X_future / X_forecast."""
+
+    @pytest.mark.parametrize(
+        "forecaster,expected_failures",
+        [
+            (PointReductionForecaster(), []),
+            (PointReductionForecaster(reduction_strategy="direct"), []),
+        ],
+    )
+    def test_panel_checks_with_step_data(self, forecaster, expected_failures, y_X_factory):
+        """Run systematic checks on panel PointReductionForecaster with step columns."""
+        y, X_actual, X_future, X_forecast = y_X_factory(
+            length=100,
+            seed=42,
+            panel=True,
+            n_groups=2,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        y_train, y_test = y[:80], y[80:]
+        X_actual_train, X_actual_test = X_actual[:80], X_actual[80:]
+
+        forecaster_fitted = clone(forecaster)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3, X_future=X_future, X_forecast=X_forecast)
+
+        run_checks(
+            forecaster_fitted,
+            _yield_yohou_forecaster_checks(
+                forecaster_fitted,
+                y_train,
+                X_actual_train,
+                y_test,
+                X_actual_test,
+                X_future_train=X_future,
+                X_future_test=X_future,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+            ),
+            expected_failures=set(expected_failures),
+        )
+
+
+class TestPanelGroupMismatchErrors:
+    """Error paths for mismatched panel group names."""
+
+    def test_fit_raises_on_mismatched_panel_groups(self):
+        """Cover forecaster.py lines 251, 322: X_actual groups != y groups."""
+        time = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 12, 16),
+                end=datetime(2021, 12, 16, 0, 0, 19),
+                interval="1s",
+                eager=True,
+            )
+        })
+        y = pl.concat(
+            [
+                time,
+                pl.DataFrame({
+                    "group_a__y_0": np.random.default_rng(42).random(20),
+                    "group_b__y_0": np.random.default_rng(42).random(20),
+                }),
+            ],
+            how="horizontal",
+        )
+        X_actual = pl.concat(
+            [
+                time,
+                pl.DataFrame({
+                    "group_c__X_0": np.random.default_rng(42).random(20),
+                    "group_d__X_0": np.random.default_rng(42).random(20),
+                }),
+            ],
+            how="horizontal",
+        )
+
+        forecaster = PointReductionForecaster()
+        with pytest.raises(ValueError, match="do not have the same local group names"):
+            forecaster.fit(y, X_actual=X_actual, forecasting_horizon=3)
+
+
 class TestEmptyTrainingData:
     """Tests for error handling when training data is too short."""
 

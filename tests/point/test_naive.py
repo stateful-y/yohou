@@ -149,6 +149,38 @@ class TestSeasonalNaiveWithoutExogenous:
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags.ignores_exogenous is True
 
+    def test_seasonal_naive_checks_with_step_data(self, y_X_factory):
+        """Systematic checks include ignores_exogenous warning when step data provided."""
+        y, X_actual, X_future, X_forecast = y_X_factory(
+            length=200,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        y_train, y_test = y[:160], y[160:]
+        X_actual_train, X_actual_test = (X_actual[:160], X_actual[160:]) if X_actual is not None else (None, None)
+
+        forecaster = SeasonalNaive(seasonality=7)
+        forecaster_fitted = clone(forecaster)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
+
+        run_checks(
+            forecaster_fitted,
+            _yield_yohou_forecaster_checks(
+                forecaster_fitted,
+                y_train,
+                X_actual_train,
+                y_test,
+                X_actual_test,
+                X_future_train=X_future,
+                X_future_test=X_future,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+            ),
+            expected_failures=set(),
+        )
+
 
 class TestSeasonalNaivePanel:
     """Tests for SeasonalNaive with panel data."""

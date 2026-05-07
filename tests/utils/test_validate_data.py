@@ -1430,3 +1430,85 @@ class TestTruncatePartialVintage:
         assert len(remaining) == 3
         assert datetime(2020, 1, 19) not in remaining.to_list()
         assert len(y_true_out) == 9  # 3 vintages × 3 time points
+
+
+class TestValidateXFutureStructure:
+    """Tests for _validate_X_future_structure."""
+
+    def test_missing_time_column_raises(self):
+        """X_future without 'time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_future_structure
+
+        df = pl.DataFrame({"value": [1.0, 2.0]})
+        with pytest.raises(ValueError, match="time"):
+            _validate_X_future_structure(df)
+
+    def test_wrong_time_dtype_raises(self):
+        """X_future with non-date 'time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_future_structure
+
+        df = pl.DataFrame({"time": [1, 2], "value": [1.0, 2.0]})
+        with pytest.raises(ValueError, match="dtype"):
+            _validate_X_future_structure(df)
+
+    def test_valid_passes(self):
+        """X_future with valid structure passes."""
+        from yohou.utils.validate_data import _validate_X_future_structure
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
+        _validate_X_future_structure(df)
+
+
+class TestValidateXForecastStructure:
+    """Tests for _validate_X_forecast_structure."""
+
+    def test_missing_vintage_time_raises(self):
+        """X_forecast without 'vintage_time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_forecast_structure
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
+        with pytest.raises(ValueError, match="vintage_time"):
+            _validate_X_forecast_structure(df)
+
+    def test_missing_time_raises(self):
+        """X_forecast without 'time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_forecast_structure
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"vintage_time": time, "value": [1.0] * len(time)})
+        with pytest.raises(ValueError, match="time"):
+            _validate_X_forecast_structure(df)
+
+    def test_wrong_vintage_time_dtype_raises(self):
+        """X_forecast with non-date 'vintage_time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_forecast_structure
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"vintage_time": [1, 2, 3, 4, 5], "time": time, "value": [1.0] * len(time)})
+        with pytest.raises(ValueError, match="dtype"):
+            _validate_X_forecast_structure(df)
+
+
+class TestValidateStepSourceSchema:
+    """Tests for _validate_step_source_schema."""
+
+    def test_schema_mismatch_raises(self):
+        """Mismatched schema raises ValueError."""
+        from yohou.utils.validate_data import _validate_step_source_schema
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
+        expected = {"wrong_col": pl.Float64}
+        with pytest.raises(ValueError, match="schema mismatch"):
+            _validate_step_source_schema(df, expected, "X_future", exclude_cols={"time"})
+
+    def test_matching_schema_passes(self):
+        """Matching schema passes validation."""
+        from yohou.utils.validate_data import _validate_step_source_schema
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
+        expected = {"value": pl.Float64}
+        _validate_step_source_schema(df, expected, "X_future", exclude_cols={"time"})

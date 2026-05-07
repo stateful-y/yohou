@@ -139,6 +139,21 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
     - Components are fitted sequentially (not in parallel) to maintain
       residual consistency.
     - All forecasters must be point forecasters (no interval forecasters).
+    - Training residuals are computed by rewinding each inner forecaster
+      clone to the start of the training data, then calling
+      ``observe_predict`` with the real residuals and ``X_actual``.
+      This produces rolling predictions conditioned on observed data
+      (matching inference-time behavior) and avoids ``_recursive_predict``
+      which would crash exogenous-aware inner forecasters.
+    - ``observe()`` decomposes new observations across components:
+      for each inner forecaster, it collects predictions via
+      ``observe_predict``, then subtracts them to compute residuals
+      for the next component.
+    - ``observe_predict()`` is overridden to pass
+      ``observe_fn=self.observe`` to ``_observe_predict_loop``,
+      ensuring the rolling loop calls this pipeline's custom
+      ``observe()`` (which performs sequential residual
+      decomposition) rather than the base class's flat observe.
 
     Raises
     ------
@@ -261,7 +276,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # DecompositionPipeline delegates observation tracking to child forecasters with
         # custom residual-based logic, so standard observe/rewind behavior doesn't apply
         tags.forecaster_tags.tracks_observations = False
-        tags.forecaster_tags.ignores_exogenous = True
+        tags.forecaster_tags.ignores_exogenous = all(
+            getattr(f.__sklearn_tags__().forecaster_tags, "ignores_exogenous", True) for _, f in self.forecasters
+        )
 
         return tags
 
@@ -366,16 +383,16 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             )
             self.forecasters_.append((name, forecaster_clone))
 
-            # Store predictions on training data (needed for residuals)
-            # Use predict_transformed=True to avoid inverse transform
+            # Compute training residuals via rolling observe_predict on a
+            # clone rewound to the start.  This avoids _recursive_predict
+            # (which calls observe with X_actual=None, crashing exogenous
+            # inner forecasters) and produces predictions conditioned on
+            # real observations rather than synthetic feedback.
             forecaster_clone_pred = deepcopy(forecaster_clone)
             forecaster_observation_horizon = forecaster_clone_pred.observation_horizon
             if forecaster_clone_pred.feature_transformer is not None:
-                # If there is a feature transformer, we need enough data to
-                # rewind it and observe_transform for the last point
                 ft_ = forecaster_clone_pred.feature_transformer_
                 if isinstance(ft_, dict):
-                    # Panel data: feature_transformer_ is a dict of fitted transformers per group
                     feature_observation_horizon = max(ft.observation_horizon for ft in ft_.values()) + 1
                 else:
                     feature_observation_horizon = ft_.observation_horizon + 1
@@ -401,8 +418,15 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
             forecaster_clone_pred.rewind(y=y_rewind, X_actual=X_rewind, X_future=X_future, X_forecast=X_forecast)
 
-            y_pred_train = forecaster_clone_pred.predict(
-                forecasting_horizon=len(residuals) - forecaster_observation_horizon,
+            # Rolling observe_predict: observe real residuals in stride-
+            # sized blocks, predict after each.  The inner join below
+            # filters out predictions beyond the training range.
+            residuals_remaining = residuals[forecaster_observation_horizon:]
+            X_remaining = X_t[forecaster_observation_horizon:] if X_t is not None else None
+            y_pred_train = forecaster_clone_pred.observe_predict(
+                y=residuals_remaining,
+                X_actual=X_remaining,
+                forecasting_horizon=forecasting_horizon,
                 X_future=X_future,
                 X_forecast=X_forecast,
             )
@@ -609,6 +633,92 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         return y_pred
 
+    def observe_predict(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        groups: list[str] | None = None,
+        stride: StrictInt | None = None,
+        predict_transformed: bool = False,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Alternate recursive predict and observe with residual decomposition.
+
+        Overrides the base ``observe_predict`` to ensure the rolling loop
+        calls this pipeline's custom ``observe()`` at each stride step.
+        Without this override, the base implementation bypasses
+        ``DecompositionPipeline.observe()`` and treats the pipeline as a
+        flat forecaster, leaving inner forecasters' states stale.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series with a ``"time"`` column (datetime) and one
+            or more numeric value columns.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step of
+            the rolling loop.
+        forecasting_horizon : int or None, default=None
+            Number of time steps to forecast into the future. If ``None``,
+            uses the horizon specified at fit time.
+        groups : list of str or None, default=None
+            Panel group prefixes to operate on. If ``None``, all groups
+            are used.
+        stride : int or None, default=None
+            Step size for rolling update then predict. If ``None``,
+            defaults to ``forecasting_horizon``.
+        predict_transformed : bool, default=False
+            If ``True``, return predictions in the transformed space without
+            applying inverse target transformation.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Point predictions with ``"vintage_time"``, ``"time"``, and one
+            column per target variable.
+
+        """
+        check_is_fitted(self, ["forecasters_", "groups_"])
+
+        y, X_actual, groups = validate_forecaster_data(
+            self,
+            y=y,
+            X_actual=X_actual,
+            reset=False,
+            groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
+
+        fh = self._validate_predict_params(forecasting_horizon)
+        if stride is None:
+            stride = self.fit_forecasting_horizon_
+
+        return self._observe_predict_loop(
+            predict_fn=self.predict,
+            y=y,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            groups=groups,
+            stride=stride,
+            observe_fn=self.observe,
+            forecasting_horizon=fh,
+            predict_transformed=predict_transformed,
+            **params,
+        )
+
     def observe(
         self,
         y: pl.DataFrame,
@@ -673,15 +783,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # Observe all forecasters
         residuals = y_t
         for name, forecaster in self.forecasters_:
-            # Get predictions on new data, then observe state
-            # Use separate predict + observe instead of observe_predict to avoid
-            # the rolling predict-observe loop which requires future X_actual data
-            y_pred = forecaster.predict(
-                forecasting_horizon=len(residuals),
-            )
-            forecaster.observe(
+            # Rolling observe_predict: observes the inner forecaster while
+            # collecting predictions for residual computation.  This avoids
+            # _recursive_predict (which calls observe with X_actual=None)
+            # when len(residuals) > fit_forecasting_horizon.
+            y_pred = forecaster.observe_predict(
                 y=residuals,
                 X_actual=X_t,
+                forecasting_horizon=forecaster.fit_forecasting_horizon_,
                 X_future=X_future,
                 X_forecast=X_forecast,
             )
