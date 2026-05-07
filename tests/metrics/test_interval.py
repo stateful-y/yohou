@@ -782,46 +782,35 @@ def multi_vintage_interval_data():
 class TestIntervalMultiVintageCoverage:
     """Cover interval scorer paths with multi-vintage data and coverage_rate."""
 
-    def test_stepwise_vintagewise_componentwise_no_coveragewise(
-        self, multi_vintage_interval_data
-    ):
+    def test_stepwise_vintagewise_componentwise_no_coveragewise(self, multi_vintage_interval_data):
         """Collapse steps+vintages+components but keep coverage_rate."""
         y_true, y_pred = multi_vintage_interval_data
-        scorer = EmpiricalCoverage(
-            aggregation_method=["stepwise", "vintagewise", "componentwise"]
-        )
+        scorer = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
         assert "coverage_rate" in result.columns
 
-    def test_stepwise_vintagewise_componentwise_weighted(
-        self, multi_vintage_interval_data
-    ):
+    def test_stepwise_vintagewise_componentwise_weighted(self, multi_vintage_interval_data):
         """Weighted vintage collapse with coverage_rate meta column."""
         y_true, y_pred = multi_vintage_interval_data
         vt1 = datetime(2019, 12, 31)
         vt2 = datetime(2019, 12, 30)
-        scorer = EmpiricalCoverage(
-            aggregation_method=["stepwise", "vintagewise", "componentwise"]
-        )
+        scorer = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise"])
         scorer.fit(y_true)
         scorer.set_score_request(vintage_weight=True)
         result = scorer.score(
-            y_true, y_pred,
+            y_true,
+            y_pred,
             vintage_weight={vt1: 2.0, vt2: 1.0},
         )
         assert isinstance(result, pl.DataFrame)
         assert "coverage_rate" in result.columns
 
-    def test_vintagewise_componentwise_partial_collapse(
-        self, multi_vintage_interval_data
-    ):
+    def test_vintagewise_componentwise_partial_collapse(self, multi_vintage_interval_data):
         """Partial collapse: vintagewise without stepwise, coverage_rate as meta."""
         y_true, y_pred = multi_vintage_interval_data
-        scorer = EmpiricalCoverage(
-            aggregation_method=["vintagewise", "componentwise"]
-        )
+        scorer = EmpiricalCoverage(aggregation_method=["vintagewise", "componentwise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)

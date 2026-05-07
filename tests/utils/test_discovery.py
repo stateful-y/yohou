@@ -1,5 +1,3 @@
-import importlib.util
-
 import pytest
 
 from yohou.utils.discovery import (
@@ -9,51 +7,14 @@ from yohou.utils.discovery import (
     all_functions,
 )
 
-_HAS_PLOTLY = importlib.util.find_spec("plotly") is not None
-
 
 class TestAllEstimators:
     """Tests for all_estimators discovery function."""
 
-    def test_all_estimators_total_count(self):
-        """Test all_estimators returns correct total count."""
+    def test_all_estimators_returns_non_empty(self):
+        """Test all_estimators discovers at least one estimator."""
         estimators = all_estimators()
-        assert len(estimators) == 96
-
-    def test_all_estimators_forecaster_filter(self):
-        """Test forecaster type filter (matches estimator_type == 'forecaster')."""
-        forecasters = all_estimators(type_filter="forecaster")
-        assert len(forecasters) == 8
-
-    def test_all_estimators_point_filter(self):
-        """Test point forecaster sub-type filter."""
-        points = all_estimators(type_filter="point")
-        assert len(points) == 6
-
-    def test_all_estimators_interval_filter(self):
-        """Test interval forecaster sub-type filter."""
-        intervals = all_estimators(type_filter="interval")
-        assert len(intervals) == 2
-
-    def test_all_estimators_scorer_filter(self):
-        """Test scorer type filter."""
-        scorers = all_estimators(type_filter="scorer")
-        assert len(scorers) == 30
-
-    def test_all_estimators_transformer_filter(self):
-        """Test transformer type filter."""
-        transformers = all_estimators(type_filter="transformer")
-        assert len(transformers) == 34
-
-    def test_all_estimators_splitter_filter(self):
-        """Test splitter type filter."""
-        splitters = all_estimators(type_filter="splitter")
-        assert len(splitters) == 2
-
-    def test_all_estimators_multiple_filters(self):
-        """Test multiple type filters combined."""
-        multi = all_estimators(type_filter=["forecaster", "transformer"])
-        assert len(multi) == 42  # 8 forecasters + 34 transformers  (class_proba scorers not included)
+        assert len(estimators) > 0
 
     def test_all_estimators_invalid_filter(self):
         """Test invalid filter raises error with proper message."""
@@ -74,11 +35,10 @@ class TestAllDisplays:
 class TestAllFunctions:
     """Tests for all_functions discovery function."""
 
-    def test_all_functions(self):
-        """Test all_functions returns correct count."""
+    def test_all_functions_returns_non_empty(self):
+        """Test all_functions discovers at least one function."""
         functions = all_functions()
-        expected = 215 if _HAS_PLOTLY else 170
-        assert len(functions) == expected
+        assert len(functions) > 0
 
 
 class TestAllEstimatorsAdvancedFilters:

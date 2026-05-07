@@ -408,7 +408,8 @@ class TestCollapseVintageDimensionWithMeta:
         scorer.fit(y_true)
         scorer.set_score_request(vintage_weight=True)
         result = scorer.score(
-            y_true, y_pred,
+            y_true,
+            y_pred,
             vintage_weight={vt1: 2.0, vt2: 1.0},
         )
         assert isinstance(result, pl.DataFrame)
@@ -429,7 +430,8 @@ class TestCollapseVintageDimensionWithMeta:
         scorer.fit(y_true)
         scorer.set_score_request(vintage_weight=True)
         result = scorer.score(
-            y_true, y_pred,
+            y_true,
+            y_pred,
             vintage_weight={vt1: 2.0, vt2: 1.0},
         )
         assert isinstance(result, float)

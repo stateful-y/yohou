@@ -2207,7 +2207,9 @@ class BaseHardLabelScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         for col in val_cols:
             for indicator in ("_tp_", "_fp_", "_fn_"):
                 if indicator in col:
-                    idx = col.index(indicator)
+                    # Use rindex to match the last occurrence, so class
+                    # labels containing "_tp_" etc. are handled correctly.
+                    idx = col.rindex(indicator)
                     prefix = col[:idx]
                     cls = col[idx + len(indicator) :]
                     if prefix not in targets:
