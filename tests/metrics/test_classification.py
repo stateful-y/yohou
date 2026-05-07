@@ -1,5 +1,6 @@
 """Tests for hard-label and ranking classification metrics."""
 
+import warnings
 from datetime import datetime
 
 import numpy as np
@@ -630,3 +631,58 @@ class TestHardLabelPartialCollapse:
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, (float, pl.DataFrame))
+
+
+@pytest.fixture
+def multi_vintage_class_data():
+    """Multi-vintage classification data."""
+    times = [datetime(2020, 1, i) for i in range(1, 6)]
+    vt1 = datetime(2019, 12, 31)
+    vt2 = datetime(2019, 12, 30)
+    y_true = pl.DataFrame({
+        "time": times,
+        "weather": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
+    })
+    y_pred = pl.DataFrame({
+        "vintage_time": [vt1] * 5 + [vt2] * 5,
+        "time": times * 2,
+        "weather_proba_sunny": [0.7, 0.1, 0.2, 0.6, 0.1, 0.8, 0.2, 0.1, 0.7, 0.05],
+        "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8, 0.1, 0.7, 0.2, 0.2, 0.85],
+        "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1, 0.1, 0.1, 0.7, 0.1, 0.1],
+    })
+    return y_true, y_pred
+
+
+class TestRankingScorerCoverage:
+    """Cover BaseRankingScorer uncovered paths."""
+
+    def test_roc_auc_resolve_combined_weights_dict_only_skipped(self):
+        """_resolve_combined_weights returns None when only dict weights are provided."""
+        result = ROCAuC._resolve_combined_weights(
+            tw={"group_A": np.array([1.0, 2.0])},
+            sw=None,
+            n=2,
+        )
+        assert result is None
+
+    def test_roc_auc_resolve_combined_weights_dict_warns(self):
+        """_resolve_combined_weights warns when receiving dict weights."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = ROCAuC._resolve_combined_weights(
+                tw={"group_A": np.array([1.0, 2.0])},
+                sw=np.array([1.0, 2.0]),
+                n=2,
+            )
+        assert len(w) == 1
+        assert "Panel-aware (dict) weights are not supported" in str(w[0].message)
+        assert result is not None
+
+    def test_roc_auc_multi_vintage(self, multi_vintage_class_data):
+        """ROCAuC computes across multiple vintages."""
+        y_true, y_pred = multi_vintage_class_data
+        scorer = ROCAuC()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert isinstance(score, float)
+        assert np.isfinite(score)

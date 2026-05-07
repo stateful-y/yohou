@@ -1,6 +1,6 @@
 """Tests for interval forecast metrics."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -738,3 +738,90 @@ class TestCRPSTrapezoidalEdgeCases:
         result = crps._collapse_coverage_rates(df)
         assert "coverage_rate" not in result.columns
         assert len(result) == 0
+
+
+class TestCollapseCoverageRatesEdgeCases:
+    """Cover _collapse_coverage_rates with interval scorers."""
+
+    def test_interval_all_dims_collapses_coverage(self):
+        """EmpiricalCoverage with all dims including coveragewise produces scalar."""
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(3)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": times,
+            "value_lower_0.5": [7.0, 15.0, 25.0],
+            "value_upper_0.5": [13.0, 25.0, 35.0],
+            "value_lower_0.9": [5.0, 12.0, 22.0],
+            "value_upper_0.9": [15.0, 28.0, 38.0],
+        })
+        scorer = EmpiricalCoverage()
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, float)
+
+
+@pytest.fixture
+def multi_vintage_interval_data():
+    """Multi-vintage interval data (2 vintages, 3 rows each, 2 rates)."""
+    times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(3)]
+    vt1 = datetime(2019, 12, 31)
+    vt2 = datetime(2019, 12, 30)
+    y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+    y_pred = pl.DataFrame({
+        "vintage_time": [vt1] * 3 + [vt2] * 3,
+        "time": times * 2,
+        "value_lower_0.5": [8.0, 17.0, 27.0, 8.5, 17.5, 27.5],
+        "value_upper_0.5": [14.0, 23.0, 33.0, 14.5, 23.5, 33.5],
+        "value_lower_0.9": [5.0, 12.0, 22.0, 5.5, 12.5, 22.5],
+        "value_upper_0.9": [15.0, 28.0, 38.0, 15.5, 28.5, 38.5],
+    })
+    return y_true, y_pred
+
+
+class TestIntervalMultiVintageCoverage:
+    """Cover interval scorer paths with multi-vintage data and coverage_rate."""
+
+    def test_stepwise_vintagewise_componentwise_no_coveragewise(
+        self, multi_vintage_interval_data
+    ):
+        """Collapse steps+vintages+components but keep coverage_rate."""
+        y_true, y_pred = multi_vintage_interval_data
+        scorer = EmpiricalCoverage(
+            aggregation_method=["stepwise", "vintagewise", "componentwise"]
+        )
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "coverage_rate" in result.columns
+
+    def test_stepwise_vintagewise_componentwise_weighted(
+        self, multi_vintage_interval_data
+    ):
+        """Weighted vintage collapse with coverage_rate meta column."""
+        y_true, y_pred = multi_vintage_interval_data
+        vt1 = datetime(2019, 12, 31)
+        vt2 = datetime(2019, 12, 30)
+        scorer = EmpiricalCoverage(
+            aggregation_method=["stepwise", "vintagewise", "componentwise"]
+        )
+        scorer.fit(y_true)
+        scorer.set_score_request(vintage_weight=True)
+        result = scorer.score(
+            y_true, y_pred,
+            vintage_weight={vt1: 2.0, vt2: 1.0},
+        )
+        assert isinstance(result, pl.DataFrame)
+        assert "coverage_rate" in result.columns
+
+    def test_vintagewise_componentwise_partial_collapse(
+        self, multi_vintage_interval_data
+    ):
+        """Partial collapse: vintagewise without stepwise, coverage_rate as meta."""
+        y_true, y_pred = multi_vintage_interval_data
+        scorer = EmpiricalCoverage(
+            aggregation_method=["vintagewise", "componentwise"]
+        )
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)

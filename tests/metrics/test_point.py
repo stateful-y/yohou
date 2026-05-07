@@ -1467,3 +1467,56 @@ class TestScoreOverrideStubs:
         result = mda._compute_raw_errors(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
         assert result["value"].to_list() == [2.0, 1.0, 2.0]
+
+
+class TestMapPerVintageEdgeCases:
+    """Cover _map_per_vintage None return paths."""
+
+    def test_mda_single_row_returns_zero(self):
+        """MDA returns 0.0 for single-row data."""
+        times = [datetime(2020, 1, 1)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)],
+            "time": times,
+            "value": [12.0],
+        })
+        scorer = MeanDirectionalAccuracy()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert score == 0.0
+
+    def test_mda_multi_vintage_one_skipped(self):
+        """MDA skips vintages with <2 rows."""
+        times_3 = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(3)]
+        vt1 = datetime(2019, 12, 31)
+        vt2 = datetime(2019, 12, 30)
+
+        y_true = pl.DataFrame({"time": times_3, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [vt1] * 3 + [vt2],
+            "time": times_3 + [times_3[0]],
+            "value": [12.0, 22.0, 28.0, 11.0],
+        })
+        scorer = MeanDirectionalAccuracy()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert isinstance(score, float)
+
+    def test_mda_all_vintages_skipped_raises(self):
+        """All vintages skipped raises ValueError."""
+        t1 = datetime(2020, 1, 1)
+        t2 = datetime(2020, 1, 2)
+        vt1 = datetime(2019, 12, 31)
+        vt2 = datetime(2019, 12, 30)
+
+        y_true = pl.DataFrame({"time": [t1, t2], "value": [10.0, 20.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [vt1, vt2],
+            "time": [t1, t2],
+            "value": [12.0, 21.0],
+        })
+        scorer = MeanDirectionalAccuracy()
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="All vintage groups were skipped"):
+            scorer.score(y_true, y_pred)
