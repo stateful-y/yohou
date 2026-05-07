@@ -8,7 +8,7 @@ and run a walk-forward evaluation.
 
 !!! tip "Interactive version available"
     Try this tutorial as an interactive notebook:
-    [View](/examples/point/exogenous_features/) · [Open in marimo](/examples/point/exogenous_features/edit/)
+    [View](/examples/exogenous_features/) · [Open in marimo](/examples/point/exogenous_features/edit/)
 
 ## Prerequisites
 

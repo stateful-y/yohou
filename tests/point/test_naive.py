@@ -111,7 +111,7 @@ class TestSeasonalNaiveWithoutExogenous:
     """Tests for SeasonalNaive with X_actual=None throughout the lifecycle."""
 
     def test_fit_predict_without_exogenous(self, naive_data):
-        """SeasonalNaive should work without exogenous features (ignores_exogenous=True)."""
+        """SeasonalNaive should work without exogenous features (requires_exogenous=False)."""
         y, _ = naive_data
         forecaster = SeasonalNaive(seasonality=3)
         forecaster.fit(y[:17], X_actual=None, forecasting_horizon=3)
@@ -143,14 +143,14 @@ class TestSeasonalNaiveWithoutExogenous:
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 3
 
-    def test_ignores_exogenous_tag(self):
-        """SeasonalNaive should have ignores_exogenous=True tag."""
+    def test_requires_exogenous_tag(self):
+        """SeasonalNaive should have requires_exogenous=False tag."""
         forecaster = SeasonalNaive(seasonality=3)
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.ignores_exogenous is True
+        assert tags.forecaster_tags.requires_exogenous is False
 
     def test_seasonal_naive_checks_with_step_data(self, y_X_factory):
-        """Systematic checks include ignores_exogenous warning when step data provided."""
+        """Systematic checks include requires_exogenous warning when step data provided."""
         y, X_actual, X_future, X_forecast = y_X_factory(
             length=200,
             seed=42,
@@ -385,11 +385,11 @@ class TestMeanSeasonalNaiveWithoutExogenous:
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 3
 
-    def test_ignores_exogenous_tag(self):
-        """MeanSeasonalNaive should have ignores_exogenous=True tag."""
+    def test_requires_exogenous_tag(self):
+        """MeanSeasonalNaive should have requires_exogenous=False tag."""
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.ignores_exogenous is True
+        assert tags.forecaster_tags.requires_exogenous is False
 
 
 class TestMeanSeasonalNaivePanel:

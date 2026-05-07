@@ -258,7 +258,7 @@ class ConsumingForecaster(BasePointForecaster):
     _tags = {
         "forecaster_type": frozenset({"point"}),
         "uses_reduction": False,
-        "ignores_exogenous_X": True,
+        "requires_exogenous_X": True,
     }
 
     def __init__(self, registry=None):

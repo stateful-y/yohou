@@ -228,8 +228,8 @@ class TestPolynomialTrendWithoutExogenous:
         assert "time" in y_pred.columns
         assert len(y_pred) == 5
 
-    def test_ignores_exogenous_tag(self):
-        """PolynomialTrendForecaster should have ignores_exogenous=True tag."""
+    def test_requires_exogenous_tag(self):
+        """PolynomialTrendForecaster should have requires_exogenous=False tag."""
         forecaster = PolynomialTrendForecaster(degree=1)
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.ignores_exogenous is True
+        assert tags.forecaster_tags.requires_exogenous is False

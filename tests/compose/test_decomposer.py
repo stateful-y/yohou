@@ -420,8 +420,8 @@ class TestDecompositionPipelineWithoutExogenous:
         assert isinstance(y_pred, pl.DataFrame)
         assert "time" in y_pred.columns
 
-    def test_ignores_exogenous_tag(self):
-        """DecompositionPipeline always reports ignores_exogenous=True.
+    def test_requires_exogenous_tag(self):
+        """DecompositionPipeline always reports requires_exogenous=False.
 
         The pipeline accepts but does not require X_actual. Inner forecasters
         manage their own features internally.
@@ -431,7 +431,7 @@ class TestDecompositionPipelineWithoutExogenous:
             ("seasonality", SeasonalNaive(seasonality=7)),
         ])
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.ignores_exogenous is True
+        assert tags.forecaster_tags.requires_exogenous is False
 
         from sklearn.linear_model import Ridge
 
@@ -442,7 +442,7 @@ class TestDecompositionPipelineWithoutExogenous:
             ("ml", PointReductionForecaster(estimator=Ridge())),
         ])
         tags_mixed = forecaster_mixed.__sklearn_tags__()
-        assert tags_mixed.forecaster_tags.ignores_exogenous is True
+        assert tags_mixed.forecaster_tags.requires_exogenous is False
 
 
 class TestFeatureTransformerParam:

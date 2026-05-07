@@ -197,6 +197,6 @@ class TestGeneratorChecks:
             "check_predict_X_forecast_override",
             "check_observe_auto_rederives_step_columns",
             "check_observe_predict_with_step_columns",
-            "check_ignores_exogenous_warns_on_X_future_X_forecast",
+            "check_requires_exogenous_warns_on_X_future_X_forecast",
         }
         assert step_checks.isdisjoint(check_names)

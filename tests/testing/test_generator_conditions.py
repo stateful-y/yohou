@@ -323,7 +323,7 @@ class TestForecasterGeneratorConditions:
         assert "check_panel_data" not in names
 
     def test_step_column_checks_yielded_with_X_future(self, y_X_factory):
-        """X_future provided should yield step-column checks (non-ignores_exogenous)."""
+        """X_future provided should yield step-column checks (non-requires_exogenous)."""
         y, X, X_future, X_forecast = y_X_factory(
             length=80,
             n_targets=1,
@@ -358,7 +358,7 @@ class TestForecasterGeneratorConditions:
             "check_observe_predict_with_step_columns",
         }
         assert step_checks.issubset(set(names)), f"Missing step checks: {step_checks - set(names)}"
-        assert "check_ignores_exogenous_warns_on_X_future_X_forecast" not in names
+        assert "check_requires_exogenous_warns_on_X_future_X_forecast" not in names
 
     def test_step_column_checks_not_yielded_without_exogenous(self, y_X_factory):
         """Without X_future/X_forecast, step-column checks should not be yielded."""
@@ -382,12 +382,12 @@ class TestForecasterGeneratorConditions:
             "check_predict_X_forecast_override",
             "check_observe_auto_rederives_step_columns",
             "check_observe_predict_with_step_columns",
-            "check_ignores_exogenous_warns_on_X_future_X_forecast",
+            "check_requires_exogenous_warns_on_X_future_X_forecast",
         }
         assert step_checks.isdisjoint(set(names)), f"Unexpected step checks: {step_checks & set(names)}"
 
-    def test_ignores_exogenous_yields_warning_check(self, y_X_factory):
-        """ignores_exogenous=True with step data should yield warning check only."""
+    def test_requires_exogenous_yields_warning_check(self, y_X_factory):
+        """requires_exogenous=False with step data should yield warning check only."""
         y, X, X_future, X_forecast = y_X_factory(
             length=80,
             n_targets=1,
@@ -411,17 +411,17 @@ class TestForecasterGeneratorConditions:
                 X_future_test=X_future,
                 X_forecast_train=X_forecast,
                 X_forecast_test=X_forecast,
-                tags={"forecaster_type": frozenset({"point"}), "ignores_exogenous": True},
+                tags={"forecaster_type": frozenset({"point"}), "requires_exogenous": False},
             )
         )
-        assert "check_ignores_exogenous_warns_on_X_future_X_forecast" in names
+        assert "check_requires_exogenous_warns_on_X_future_X_forecast" in names
         non_warning_step_checks = {
             "check_fit_predict_with_X_future",
             "check_fit_predict_with_X_forecast",
             "check_predict_X_forecast_override",
         }
         assert non_warning_step_checks.isdisjoint(set(names)), (
-            f"Unexpected step checks for ignores_exogenous: {non_warning_step_checks & set(names)}"
+            f"Unexpected step checks for requires_exogenous: {non_warning_step_checks & set(names)}"
         )
 
 

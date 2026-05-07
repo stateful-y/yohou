@@ -258,14 +258,14 @@ class TestForecasterTagsWithTransformers:
 class TestForecasterFitPredictWithoutX:
     """Tests for check_fit_predict_without_exogenous."""
 
-    def test_ignores_exogenous_forecaster_succeeds(self, y_X_factory):
-        """Forecaster with ignores_exogenous=True succeeds without X."""
+    def test_requires_exogenous_forecaster_succeeds(self, y_X_factory):
+        """Forecaster with requires_exogenous=False succeeds without X."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
         forecaster = SeasonalNaive(seasonality=7)
         check_fit_predict_without_exogenous(
             forecaster,
             y[:40],
-            ignores_exogenous=True,
+            requires_exogenous=False,
             forecasting_horizon=3,
         )
 
@@ -276,7 +276,7 @@ class TestForecasterFitPredictWithoutX:
         check_fit_predict_without_exogenous(
             forecaster,
             y[:40],
-            ignores_exogenous=False,
+            requires_exogenous=True,
             target_as_feature=None,
             forecasting_horizon=3,
         )

@@ -23,7 +23,7 @@ __all__ = [
     "check_forecaster_tags_match_capabilities",
     "check_forecaster_tags_static_after_fit",
     "check_forecasting_horizon_validation",
-    "check_ignores_exogenous_warns_on_X_future_X_forecast",
+    "check_requires_exogenous_warns_on_X_future_X_forecast",
     "check_observe_auto_rederives_step_columns",
     "check_observe_extends_observations",
     "check_observe_predict_with_step_columns",
@@ -1018,21 +1018,21 @@ def check_forecaster_methods_call_check_is_fitted(
 def check_fit_predict_without_exogenous(
     forecaster,
     y: pl.DataFrame,
-    ignores_exogenous: bool = False,
+    requires_exogenous: bool = False,
     target_as_feature: str | None = "transformed",
     forecasting_horizon: int = 3,
 ) -> None:
     """Check forecaster behavior when X_actual=None at fit time.
 
-    Validates two clear-cut scenarios based on ``ignores_exogenous`` tag
+    Validates two clear-cut scenarios based on ``requires_exogenous`` tag
     and ``target_as_feature`` parameter:
 
-    * ``ignores_exogenous=True``: fit(y, X_actual=None) succeeds and predict()
+    * ``requires_exogenous=False``: fit(y, X_actual=None) succeeds and predict()
       returns valid output.
-    * ``ignores_exogenous=False`` + ``target_as_feature=None``:
+    * ``requires_exogenous=True`` + ``target_as_feature=None``:
       fit(y, X_actual=None) raises ``ValueError``.
 
-    When ``ignores_exogenous=False`` and ``target_as_feature`` is not
+    When ``requires_exogenous=True`` and ``target_as_feature`` is not
     ``None``, the check is skipped because behaviour depends on the
     specific forecaster (some compositions always require X_actual).
 
@@ -1042,8 +1042,8 @@ def check_fit_predict_without_exogenous(
         Fitted forecaster instance (will be cloned).
     y : pl.DataFrame
         Target time series with ``"time"`` column.
-    ignores_exogenous : bool, default=False
-        Value of the ``ignores_exogenous`` forecaster tag.
+    requires_exogenous : bool, default=False
+        Value of the ``requires_exogenous`` forecaster tag.
     target_as_feature : str or None, default="transformed"
         Value of the ``target_as_feature`` forecaster parameter.
     forecasting_horizon : int, default=3
@@ -1053,8 +1053,8 @@ def check_fit_predict_without_exogenous(
     forecaster_clone = clone(forecaster)
     name = forecaster_clone.__class__.__name__
 
-    if ignores_exogenous:
-        # Forecasters that ignore exogenous must succeed with X_actual=None
+    if not requires_exogenous:
+        # Forecasters that don't require exogenous must succeed with X_actual=None
         forecaster_clone.fit(y, X_actual=None, forecasting_horizon=forecasting_horizon)
         y_pred = forecaster_clone.predict(forecasting_horizon=forecasting_horizon)
         assert isinstance(y_pred, pl.DataFrame), (
@@ -1064,15 +1064,15 @@ def check_fit_predict_without_exogenous(
             f"{name}.predict() output must contain 'time' column after fit(y, X_actual=None)"
         )
     elif target_as_feature is None:
-        # target_as_feature=None and ignores_exogenous=False → must raise
+        # target_as_feature=None and requires_exogenous=True → must raise
         try:
             forecaster_clone.fit(y, X_actual=None, forecasting_horizon=forecasting_horizon)
             raise AssertionError(
-                f"{name}.fit(y, X_actual=None) must raise ValueError when target_as_feature=None and ignores_exogenous=False"
+                f"{name}.fit(y, X_actual=None) must raise ValueError when target_as_feature=None and requires_exogenous=True"
             )
         except ValueError:
             pass  # Expected
-    # else: ignores_exogenous=False + target_as_feature is not None
+    # else: requires_exogenous=True + target_as_feature is not None
     # → skip: behaviour is forecaster-specific
 
 
@@ -1325,22 +1325,22 @@ def check_observe_predict_with_step_columns(
     assert len(y_pred) > 0, "observe_predict() must return non-empty DataFrame"
 
 
-def check_ignores_exogenous_warns_on_X_future_X_forecast(
+def check_requires_exogenous_warns_on_X_future_X_forecast(
     forecaster,
     y_train: pl.DataFrame,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
     forecasting_horizon: int = 3,
 ) -> None:
-    """Check ignores_exogenous forecaster warns when X_future/X_forecast provided.
+    """Check that a forecaster with requires_exogenous=False warns when X_future/X_forecast provided.
 
-    Forecasters with ``ignores_exogenous=True`` should emit a UserWarning
+    Forecasters with ``requires_exogenous=False`` should emit a UserWarning
     when X_future or X_forecast is passed to fit().
 
     Parameters
     ----------
     forecaster : BaseForecaster
-        Unfitted forecaster with ignores_exogenous=True.
+        Unfitted forecaster with requires_exogenous=False.
     y_train : pl.DataFrame
         Training target data.
     X_future : pl.DataFrame or None
@@ -1365,6 +1365,6 @@ def check_ignores_exogenous_warns_on_X_future_X_forecast(
 
     user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
     assert len(user_warnings) > 0, (
-        f"{forecaster_clone.__class__.__name__} with ignores_exogenous=True "
+        f"{forecaster_clone.__class__.__name__} with requires_exogenous=False "
         f"should emit UserWarning when X_future/X_forecast provided"
     )

@@ -36,13 +36,13 @@ from .forecaster import (
     check_forecaster_tags_match_capabilities,
     check_forecaster_tags_static_after_fit,
     check_forecasting_horizon_validation,
-    check_ignores_exogenous_warns_on_X_future_X_forecast,
     check_observe_auto_rederives_step_columns,
     check_observe_extends_observations,
     check_observe_predict_with_step_columns,
     check_predict_time_columns,
     check_predict_X_forecast_override,
     check_prediction_types_property,
+    check_requires_exogenous_warns_on_X_future_X_forecast,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
 )
@@ -414,9 +414,9 @@ def _yield_yohou_forecaster_checks(
             "tracks_observations": sklearn_tags.forecaster_tags.tracks_observations
             if sklearn_tags.forecaster_tags
             else True,
-            "ignores_exogenous": sklearn_tags.forecaster_tags.ignores_exogenous
+            "requires_exogenous": sklearn_tags.forecaster_tags.requires_exogenous
             if sklearn_tags.forecaster_tags
-            else False,
+            else True,
             "supports_scoring": True,  # Default assumption
         }
 
@@ -467,7 +467,7 @@ def _yield_yohou_forecaster_checks(
         check_fit_predict_without_exogenous,
         {
             "y": y_train,
-            "ignores_exogenous": tags.get("ignores_exogenous", False),
+            "requires_exogenous": tags.get("requires_exogenous", True),
             "target_as_feature": getattr(forecaster, "target_as_feature", "transformed"),
         },
     )
@@ -631,9 +631,9 @@ def _yield_yohou_forecaster_checks(
 
     # X_future / X_forecast dedicated checks
     _has_step_data = X_future_train is not None or X_forecast_train is not None
-    _ignores_exogenous = tags.get("ignores_exogenous", False)
+    _requires_exogenous = tags.get("requires_exogenous", True)
 
-    if _has_step_data and not _ignores_exogenous:
+    if _has_step_data and _requires_exogenous:
         if X_future_train is not None:
             yield (
                 "check_fit_predict_with_X_future",
@@ -699,10 +699,10 @@ def _yield_yohou_forecaster_checks(
                 },
             )
 
-    if _has_step_data and _ignores_exogenous:
+    if _has_step_data and not _requires_exogenous:
         yield (
-            "check_ignores_exogenous_warns_on_X_future_X_forecast",
-            check_ignores_exogenous_warns_on_X_future_X_forecast,
+            "check_requires_exogenous_warns_on_X_future_X_forecast",
+            check_requires_exogenous_warns_on_X_future_X_forecast,
             {
                 "y_train": y_train,
                 "X_future": X_future_train,

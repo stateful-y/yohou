@@ -267,30 +267,30 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             )
 
         # Validate that X_actual is provided when target_as_feature=None and the
-        # forecaster actually needs exogenous features.  Forecasters with
-        # ignores_exogenous=True (e.g. SeasonalNaive, stationarity, decomposition)
+        # forecaster requires exogenous features.  Forecasters with
+        # requires_exogenous=False (e.g. SeasonalNaive, stationarity, decomposition)
         # work without any feature matrix.
         sklearn_tags = self.__sklearn_tags__()
         if (
             getattr(self, "target_as_feature", None) is None
             and X_actual is None
             and sklearn_tags.forecaster_tags is not None
-            and not sklearn_tags.forecaster_tags.ignores_exogenous
+            and sklearn_tags.forecaster_tags.requires_exogenous
         ):
             raise ValueError(
                 "target_as_feature=None requires X_actual to be provided when the "
-                "forecaster uses exogenous features (ignores_exogenous=False), "
+                "forecaster uses exogenous features (requires_exogenous=True), "
                 "but X_actual is None."
             )
 
-        # Warn when ignores_exogenous forecaster receives X_future/X_forecast
+        # Warn when a forecaster that does not use exogenous receives X_future/X_forecast
         if (
             sklearn_tags.forecaster_tags is not None
-            and sklearn_tags.forecaster_tags.ignores_exogenous
+            and not sklearn_tags.forecaster_tags.requires_exogenous
             and (X_future is not None or X_forecast is not None)
         ):
             warnings.warn(
-                f"{self.__class__.__name__} has ignores_exogenous=True. X_future and X_forecast will be ignored.",
+                f"{self.__class__.__name__} has requires_exogenous=False. X_future and X_forecast will be ignored.",
                 UserWarning,
                 stacklevel=4,
             )
@@ -678,16 +678,16 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
             # Restore step columns
             if isinstance(self._X_t_observed, dict):
-                for group_name, saved_df in saved_step_data.items():
+                for group_name, saved_df in saved_step_data.items():  # ty: ignore[unresolved-attribute]
                     group_df = self._X_t_observed[group_name]
                     cols_to_drop = [c for c in local_step_cols if c in group_df.columns]
                     if cols_to_drop:
                         restored = group_df.drop(cols_to_drop)
                         self._X_t_observed[group_name] = pl.concat([restored, saved_df], how="horizontal")
             elif saved_step_data is not None:
-                cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]
+                cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
                 if cols_to_drop:
-                    restored = self._X_t_observed.drop(cols_to_drop)
+                    restored = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
                     self._X_t_observed = pl.concat([restored, saved_step_data], how="horizontal")
 
     def _recursive_predict(

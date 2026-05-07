@@ -6,7 +6,7 @@ that should influence your forecasts.
 
 !!! tip "Interactive version available"
     Try the multi-vintage recipe as an interactive notebook:
-    [View](/examples/point/multi_vintage_forecasting/) · [Open in marimo](/examples/point/multi_vintage_forecasting/edit/)
+    [View](/examples/multi_vintage_forecasting/) · [Open in marimo](/examples/point/multi_vintage_forecasting/edit/)
 
 ## Prerequisites
 

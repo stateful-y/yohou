@@ -193,7 +193,7 @@ All composition forecasters propagate the three parameters:
 
 - **ColumnForecaster**: Routes `X_actual`, `X_future`, `X_forecast` to each
   child forecaster. Children that don't use exogenous features ignore the
-  parameters via `ignores_exogenous` tag.
+  parameters via `requires_exogenous` tag.
 
 - **DecompositionPipeline**: Passes all three parameters to the residual
   forecaster after trend/seasonality removal.

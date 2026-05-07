@@ -68,7 +68,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.ignores_exogenous = True
+        tags.forecaster_tags.requires_exogenous = False
         return tags
 
     def _pre_fit(

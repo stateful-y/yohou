@@ -209,7 +209,7 @@ class TestValidateForecasterData:
         assert forecaster._y_observed.shape[0] == 2
 
     def test_validate_pre_fit_raises_when_no_features(self):
-        """Test that fit raises ValueError when target_as_feature=None, X=None, and ignores_exogenous=False."""
+        """Test that fit raises ValueError when target_as_feature=None, X=None, and requires_exogenous=True."""
         from sklearn.linear_model import QuantileRegressor
         from sklearn.multioutput import MultiOutputRegressor
 
