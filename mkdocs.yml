@@ -184,6 +184,8 @@ nav:
     - Model Selection: pages/examples/model-selection.md
     - Datasets: pages/examples/datasets.md
     - Plotting: pages/examples/plotting.md
+  - How-to Guides:
+    - Creating a Custom Scorer: pages/how-to/creating-a-scorer.md
   - Development:
     - pages/development/index.md
     - Contributing: pages/development/contributing.md

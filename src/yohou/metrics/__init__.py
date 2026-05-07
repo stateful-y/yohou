@@ -13,7 +13,7 @@ from .base import (
     BaseScorer,
 )
 from .class_proba import BrierScore, LogLoss, RankedProbabilityScore
-from .classification import Accuracy, FBetaScore, PrAuc, Precision, Recall, RocAuc
+from .classification import Accuracy, FBetaScore, PRAuC, Precision, Recall, ROCAuC
 from .conformity import (
     AbsoluteGammaResidual,
     AbsoluteQuantileResidual,
@@ -80,8 +80,8 @@ _SCORER_REGISTRY: dict[str, type[BaseScorer]] = {
     "fbeta": FBetaScore,
     "f1": FBetaScore,
     # Ranking classification scorers
-    "roc_auc": RocAuc,
-    "pr_auc": PrAuc,
+    "roc_auc": ROCAuC,
+    "pr_auc": PRAuC,
 }
 
 
@@ -190,9 +190,9 @@ __all__ = [
     # Classification scorers
     "FBetaScore",
     "Precision",
-    "PrAuc",
+    "PRAuC",
     "Recall",
-    "RocAuc",
+    "ROCAuC",
     # Registry and factories
     "get_scorer",
     "make_scorer",

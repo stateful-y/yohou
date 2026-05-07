@@ -12,9 +12,9 @@ __all__ = [
     "Accuracy",
     "FBetaScore",
     "Precision",
-    "PrAuc",
+    "PRAuC",
     "Recall",
-    "RocAuc",
+    "ROCAuC",
 ]
 
 
@@ -358,7 +358,7 @@ class Accuracy(BaseHardLabelScorer):
         )
 
 
-class RocAuc(BaseRankingScorer):
+class ROCAuC(BaseRankingScorer):
     r"""ROC AUC from class-probability forecasts.
 
     Computes the Area Under the Receiver Operating Characteristic curve
@@ -385,7 +385,7 @@ class RocAuc(BaseRankingScorer):
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.metrics.classification import RocAuc
+    >>> from yohou.metrics.classification import ROCAuC
     >>> y_true = pl.DataFrame({
     ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
     ...     "weather": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
@@ -397,14 +397,14 @@ class RocAuc(BaseRankingScorer):
     ...     "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8],
     ...     "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1],
     ... })
-    >>> scorer = RocAuc()
+    >>> scorer = ROCAuC()
     >>> _ = scorer.fit(y_true)
     >>> scorer.score(y_true, y_pred)
     1.0
 
     See Also
     --------
-    `PrAuc` : Precision-Recall AUC.
+    `PRAuC` : Precision-Recall AUC.
 
     """
 
@@ -421,7 +421,7 @@ class RocAuc(BaseRankingScorer):
         return float(roc_auc_score(y_true_binary, y_proba, sample_weight=sample_weight))
 
 
-class PrAuc(BaseRankingScorer):
+class PRAuC(BaseRankingScorer):
     r"""Precision-Recall AUC from class-probability forecasts.
 
     Computes the Area Under the Precision-Recall curve using a one-vs-rest
@@ -449,7 +449,7 @@ class PrAuc(BaseRankingScorer):
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.metrics.classification import PrAuc
+    >>> from yohou.metrics.classification import PRAuC
     >>> y_true = pl.DataFrame({
     ...     "time": [datetime(2020, 1, i) for i in range(1, 6)],
     ...     "weather": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
@@ -461,14 +461,14 @@ class PrAuc(BaseRankingScorer):
     ...     "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8],
     ...     "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1],
     ... })
-    >>> scorer = PrAuc()
+    >>> scorer = PRAuC()
     >>> _ = scorer.fit(y_true)
     >>> scorer.score(y_true, y_pred)
     1.0
 
     See Also
     --------
-    `RocAuc` : ROC AUC.
+    `ROCAuC` : ROC AUC.
 
     """
 

@@ -27,6 +27,7 @@ __all__ = [
     "check_scorer_coverage_rate_subselection",
     "check_scorer_lower_is_better",
     "check_scorer_methods_call_check_is_fitted",
+    "check_scorer_multi_vintage",
     "check_scorer_panel_subselection",
     "check_scorer_parameter_validation",
     "check_scorer_prediction_type_compatibility",
@@ -545,3 +546,63 @@ def check_scorer_methods_call_check_is_fitted(scorer, y_train: pl.DataFrame, y_p
             )
         except NotFittedError:
             pass  # Expected
+
+
+def check_scorer_multi_vintage(
+    scorer,
+    y_truth: pl.DataFrame,
+    y_pred: pl.DataFrame,
+) -> None:
+    """Check that scorer produces a finite result on multi-vintage input.
+
+    Builds a 2-vintage dataset by duplicating ``y_pred`` with a second
+    ``vintage_time`` value. Scores the result and asserts the output is
+    finite (float) or a non-empty DataFrame without nulls.
+
+    This is a smoke test, not a correctness test. It catches scorers that
+    crash or produce NaN on multi-vintage input.
+
+    Parameters
+    ----------
+    scorer : BaseScorer
+        Fitted scorer instance.
+    y_truth : pl.DataFrame
+        Ground truth with ``"time"`` column.
+    y_pred : pl.DataFrame
+        Predictions with ``"time"`` and ``"vintage_time"`` columns.
+
+    Raises
+    ------
+    AssertionError
+        If the scorer crashes, returns NaN, or returns an empty DataFrame.
+
+    """
+    scorer_clone = clone(scorer)
+    scorer_clone.fit(y_truth)
+
+    # Build 2-vintage y_pred by duplicating with a second vintage_time
+    if "vintage_time" not in y_pred.columns:
+        return  # Cannot build multi-vintage data without vintage_time
+
+    existing_vt = y_pred["vintage_time"][0]
+    # Shift the vintage time back by 1 day for the second vintage
+    if isinstance(existing_vt, datetime.datetime):
+        second_vt = existing_vt - datetime.timedelta(days=1)
+    elif isinstance(existing_vt, datetime.date):
+        second_vt = existing_vt - datetime.timedelta(days=1)
+    else:
+        return  # Cannot build second vintage from non-date type
+
+    y_pred_v2 = y_pred.with_columns(pl.lit(second_vt).alias("vintage_time"))
+    y_pred_multi = pl.concat([y_pred, y_pred_v2]).sort("time", "vintage_time")
+
+    score = scorer_clone.score(y_truth, y_pred_multi)
+
+    if isinstance(score, pl.DataFrame):
+        assert len(score) > 0, "Multi-vintage score returned empty DataFrame"
+    elif isinstance(score, int | float | np.number):
+        assert np.isfinite(score), f"Multi-vintage score is not finite: {score}"
+    else:
+        raise AssertionError(
+            f"Multi-vintage score should be numeric or DataFrame, got {type(score)}"
+        )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numbers
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -323,12 +324,9 @@ class RootMeanSquaredError(BasePointScorer):
         """Compute per-row squared errors for RMSE."""
         return (y_truth - y_pred).select(pl.all().pow(2))
 
-    def _post_aggregate(self, result: float | pl.DataFrame) -> float | pl.DataFrame:
+    def _transform_scores(self, df: pl.DataFrame) -> pl.DataFrame:
         """Apply square root to aggregated squared errors."""
-        if isinstance(result, pl.DataFrame):
-            numeric_cols = [c for c in result.columns if c != "time"]
-            return result.with_columns([pl.col(c).sqrt() for c in numeric_cols])
-        return float(np.sqrt(result))
+        return df.select(pl.all().sqrt())
 
 
 class RootMeanSquaredScaledError(BasePointScorer):
@@ -522,12 +520,9 @@ class RootMeanSquaredScaledError(BasePointScorer):
             scaled_squared_errors_data[col] = (errors / np.sqrt(scale)) ** 2
         return pl.DataFrame(scaled_squared_errors_data)
 
-    def _post_aggregate(self, result: float | pl.DataFrame) -> float | pl.DataFrame:
+    def _transform_scores(self, df: pl.DataFrame) -> pl.DataFrame:
         """Apply square root to aggregated scaled squared errors."""
-        if isinstance(result, pl.DataFrame):
-            numeric_cols = [c for c in result.columns if c != "time"]
-            return result.with_columns([pl.col(c).sqrt() for c in numeric_cols])
-        return float(np.sqrt(result))
+        return df.select(pl.all().sqrt())
 
 
 class MeanAbsolutePercentageError(BasePointScorer):
@@ -1036,7 +1031,14 @@ class MedianAbsoluteError(BasePointScorer):
         """Compute per-row absolute errors for median aggregation."""
         return (y_truth - y_pred).select(pl.all().abs())
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:  # type: ignore
+    def score(  # type: ignore
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        /,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
+        **params,
+    ) -> float | pl.DataFrame:
         """Compute median absolute error.
 
         Parameters
@@ -1045,20 +1047,20 @@ class MedianAbsoluteError(BasePointScorer):
             True values with "time" column.
         y_pred : pl.DataFrame
             Predicted values with "time" column.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights for cross-vintage aggregation.
         **params : dict
             Metadata to route to nested estimators.
 
         Returns
         -------
         float or pl.DataFrame
-            If aggregation_method includes stepwise+vintagewise, returns DataFrame with per-component MedianAE values.
-            If aggregation_method includes "componentwise", returns DataFrame with "time" and "median_ae" columns.
-            If aggregation_method="all", returns scalar float.
+            Aggregated median absolute error.
 
         Raises
         ------
         TypeError
-            If weight arguments are passed (median is not weight-compatible).
+            If time_weight or step_weight are passed (median is not weight-compatible).
 
         """
         self._reject_weights(**params)
@@ -1070,41 +1072,36 @@ class MedianAbsoluteError(BasePointScorer):
             y_pred,
         )
 
-        abs_errors = self._compute_raw_errors(y_truth, y_pred)
+        # Resolve vintage_weight into context
+        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
 
-        # Apply median aggregation
-        agg_method = self.aggregation_method
-        if isinstance(agg_method, str):
-            agg_method = [agg_method]
+        dims = self._normalize_agg_methods(self.aggregation_method)
+        collapse_steps = "stepwise" in dims
+        collapse_vintages = "vintagewise" in dims
 
-        collapse_steps = "stepwise" in agg_method
-        collapse_vintages = "vintagewise" in agg_method
-        collapse_all_rows = collapse_steps and collapse_vintages
-
-        if "all" in agg_method or (
-            collapse_all_rows and "componentwise" in agg_method and ("groupwise" in agg_method or self.groups is None)
-        ):
-            # Fully aggregated: global median
-            result = float(abs_errors.select(pl.all().median()).to_numpy().flatten().mean())
-        elif collapse_all_rows:
-            # Per-component: median across time
-            result = abs_errors.select(pl.all().median())
-        elif "componentwise" in agg_method:
-            # Per-timestep: median across components
-            result = abs_errors.select(pl.concat_list(pl.all()).alias("errors")).select(
-                pl.col("errors").list.eval(pl.element().median()).list.first().alias("score")
+        if not collapse_steps and not collapse_vintages:
+            # Componentwise/groupwise only: keep per-row scores, let
+            # _aggregate_per_vintage_scores handle component/group collapse.
+            abs_errors = self._compute_raw_errors(y_truth, y_pred)
+            # Per-row median across columns (components)
+            result = abs_errors.select(
+                pl.concat_list(pl.all()).alias("_err")
+            ).select(
+                pl.col("_err").list.eval(pl.element().median()).list.first().alias("score")
             )
             time_values = context.time_values if context is not None else None
             if time_values is not None:
                 result = result.with_columns(pl.Series("time", time_values).cast(pl.Datetime))
                 result = result.select(["time"] + [c for c in result.columns if c != "time"])
-        else:
-            result = abs_errors.select(pl.all().median())
-
-        if isinstance(result, pl.DataFrame):
             result = self._rename_metric_columns(result)
+            return result
 
-        return result
+        def _compute_median(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame:
+            errors = (yt_slice - yp_slice).select(pl.all().abs())
+            return errors.select(pl.all().median())
+
+        result = self._map_per_vintage(y_truth, y_pred, context, _compute_median)
+        return self._aggregate_per_vintage_scores(result, context)
 
 
 class MaxAbsoluteError(BasePointScorer):
@@ -1299,7 +1296,14 @@ class R2Score(BasePointScorer):
         """Not used directly. R² overrides score()."""
         return (y_truth - y_pred).select(pl.all().pow(2))
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:  # type: ignore
+    def score(  # type: ignore
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        /,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
+        **params,
+    ) -> float | pl.DataFrame:
         """Compute R-squared score.
 
         Parameters
@@ -1308,6 +1312,8 @@ class R2Score(BasePointScorer):
             True values with "time" column.
         y_pred : pl.DataFrame
             Predicted values with "time" column.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights for cross-vintage aggregation.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1319,7 +1325,7 @@ class R2Score(BasePointScorer):
         Raises
         ------
         TypeError
-            If weight arguments are passed (R² does not support sample weights).
+            If time_weight or step_weight are passed.
 
         """
         self._reject_weights(**params)
@@ -1331,19 +1337,21 @@ class R2Score(BasePointScorer):
             y_pred,
         )
 
-        # Compute R² per component
-        r2_values = {}
-        for col in y_truth.columns:
-            truth = y_truth[col].to_numpy().astype(np.float64)
-            pred = y_pred[col].to_numpy().astype(np.float64)
-            ss_res = np.sum((truth - pred) ** 2)
-            ss_tot = np.sum((truth - np.mean(truth)) ** 2)
-            r2_values[col] = 1.0 - ss_res / ss_tot if ss_tot != 0 else 0.0
+        # Resolve vintage_weight into context
+        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
 
-        # Build result DataFrame (1 row, 1 col per component)
-        result = pl.DataFrame(r2_values).select(y_truth.columns)
+        def _compute_r2(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame:
+            r2_values = {}
+            for col in yt_slice.columns:
+                truth = yt_slice[col].to_numpy().astype(np.float64)
+                pred = yp_slice[col].to_numpy().astype(np.float64)
+                ss_res = np.sum((truth - pred) ** 2)
+                ss_tot = np.sum((truth - np.mean(truth)) ** 2)
+                r2_values[col] = 1.0 - ss_res / ss_tot if ss_tot != 0 else 0.0
+            return pl.DataFrame(r2_values).select(yt_slice.columns)
 
-        return self._aggregate_precomputed(result, context)
+        result = self._map_per_vintage(y_truth, y_pred, context, _compute_r2)
+        return self._aggregate_per_vintage_scores(result, context)
 
     def __sklearn_tags__(self):
         """Get estimator tags.
@@ -1461,7 +1469,14 @@ class MeanDirectionalAccuracy(BasePointScorer):
         """Not used directly. MDA overrides score()."""
         return (y_truth - y_pred).select(pl.all().abs())
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:  # type: ignore
+    def score(  # type: ignore
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        /,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
+        **params,
+    ) -> float | pl.DataFrame:
         """Compute Mean Directional Accuracy.
 
         Parameters
@@ -1470,6 +1485,8 @@ class MeanDirectionalAccuracy(BasePointScorer):
             True values with "time" column.
         y_pred : pl.DataFrame
             Predicted values with "time" column.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights for cross-vintage aggregation.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1481,7 +1498,7 @@ class MeanDirectionalAccuracy(BasePointScorer):
         Raises
         ------
         TypeError
-            If weight arguments are passed (MDA does not support sample weights).
+            If time_weight or step_weight are passed.
 
         """
         self._reject_weights(**params)
@@ -1496,18 +1513,22 @@ class MeanDirectionalAccuracy(BasePointScorer):
         if len(y_truth) < 2:
             return 0.0
 
-        # Compute directional accuracy per component
-        mda_values = {}
-        for col in y_truth.columns:
-            truth_diff = np.diff(y_truth[col].to_numpy().astype(np.float64))
-            pred_diff = np.diff(y_pred[col].to_numpy().astype(np.float64))
-            matches = (np.sign(truth_diff) == np.sign(pred_diff)).astype(np.float64)
-            mda_values[col] = float(np.mean(matches))
+        # Resolve vintage_weight into context
+        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
 
-        # Build result DataFrame (1 row, 1 col per component)
-        result = pl.DataFrame(mda_values).select(y_truth.columns)
+        def _compute_mda(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame | None:
+            if len(yt_slice) < 2:
+                return None
+            mda_values = {}
+            for col in yt_slice.columns:
+                truth_diff = np.diff(yt_slice[col].to_numpy().astype(np.float64))
+                pred_diff = np.diff(yp_slice[col].to_numpy().astype(np.float64))
+                matches = (np.sign(truth_diff) == np.sign(pred_diff)).astype(np.float64)
+                mda_values[col] = float(np.mean(matches))
+            return pl.DataFrame(mda_values).select(yt_slice.columns)
 
-        return self._aggregate_precomputed(result, context)
+        result = self._map_per_vintage(y_truth, y_pred, context, _compute_mda)
+        return self._aggregate_per_vintage_scores(result, context)
 
     def __sklearn_tags__(self):
         """Get estimator tags.
