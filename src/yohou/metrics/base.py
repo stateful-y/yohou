@@ -13,6 +13,7 @@ import polars as pl
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
+from yohou.metrics._context import ScoringContext
 from yohou.utils import Tags, inspect_panel, validate_scorer_data
 from yohou.utils._compat import StrOptions, _fit_context
 from yohou.utils.validation import check_interval_consistency
@@ -21,8 +22,6 @@ from yohou.utils.weighting import (
     resolve_weight_to_array,
     validate_callable_signature,
 )
-
-from yohou.metrics._context import ScoringContext
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -321,7 +320,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     vt_list = vt_list * n_rates
                 group_cols = ["vintage_time"] + meta_cols
                 return (
-                    df.with_columns(pl.Series("vintage_time", vt_list))
+                    df
+                    .with_columns(pl.Series("vintage_time", vt_list))
                     .group_by(group_cols, maintain_order=True)
                     .agg(_agg_exprs(val_cols))
                     .sort("vintage_time")
@@ -391,26 +391,19 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     f"number of unique vintages ({len(unique_vintages)})"
                 )
             weight_map = dict(zip(unique_vintages, vintage_weight.tolist(), strict=True))
-            df = df.with_columns(
-                pl.col("vintage_time").replace_strict(weight_map, default=1.0).alias("_vw")
-            )
+            df = df.with_columns(pl.col("vintage_time").replace_strict(weight_map, default=1.0).alias("_vw"))
             if meta_cols:
                 result = df.group_by(meta_cols, maintain_order=True).agg([
                     (pl.col(c) * pl.col("_vw")).sum() / pl.col("_vw").sum() for c in val_cols
                 ])
             else:
                 total = df["_vw"].sum()
-                result = df.select([
-                    (pl.col(c) * pl.col("_vw")).sum() / total for c in val_cols
-                ])
+                result = df.select([(pl.col(c) * pl.col("_vw")).sum() / total for c in val_cols])
+        # Unweighted mean across vintages
+        elif meta_cols:
+            result = df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
         else:
-            # Unweighted mean across vintages
-            if meta_cols:
-                result = df.group_by(meta_cols, maintain_order=True).agg([
-                    pl.col(c).mean() for c in val_cols
-                ])
-            else:
-                result = df.select([pl.col(c).mean() for c in val_cols])
+            result = df.select([pl.col(c).mean() for c in val_cols])
 
         return result
 
@@ -676,8 +669,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         if isinstance(vw_resolved, dict) and context.vintage_time is not None:
             # Panel-aware vintage_weight: all groups share the same vintage_time
             # axis, so use the first group's weights for cross-vintage weighting.
-            first_group_weights = next(iter(vw_resolved.values()))
-            context = self._set_vintage_weight_on_context(context, first_group_weights)
+            first_group_weights = next(iter(vw_resolved.values()))  # ty: ignore[invalid-assignment]
+            context = self._set_vintage_weight_on_context(context, first_group_weights)  # ty: ignore[invalid-argument-type]
             vw_resolved = None
         elif isinstance(vw_resolved, np.ndarray) and context.vintage_time is not None:
             context = self._set_vintage_weight_on_context(context, vw_resolved)
@@ -696,10 +689,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             "vintage_time": context.vintage_time,
             "_vw": vw_array,
         })
-        per_vintage = (
-            vt_df.group_by("vintage_time", maintain_order=True)
-            .agg(pl.col("_vw").first())
-        )
+        per_vintage = vt_df.group_by("vintage_time", maintain_order=True).agg(pl.col("_vw").first())
         return ScoringContext(
             time_values=context.time_values,
             vintage_time=context.vintage_time,
@@ -981,7 +971,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         components → groups → strip meta → _transform_scores → reattach meta
         → _collapse_vintage_dimension → finalize → rename.
         """
-        dims = self._normalize_agg_methods(self.aggregation_method)
+        dims = self._normalize_agg_methods(self.aggregation_method)  # ty: ignore[unresolved-attribute]
 
         # Input validation: multi-vintage context but no vintage_time column.
         # Only fires when both stepwise and vintagewise are requested, because
@@ -1016,13 +1006,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         if val_cols:
             transformed = self._transform_scores(result.select(val_cols))
-            if meta_cols:
-                result = pl.concat(
-                    [result.select(meta_cols), transformed],
-                    how="horizontal",
-                )
-            else:
-                result = transformed
+            result = pl.concat([result.select(meta_cols), transformed], how="horizontal") if meta_cols else transformed
 
         # Collapse vintage dimension (weighted/unweighted mean across vintages)
         result = self._collapse_vintage_dimension(result, context, dims)
@@ -1078,9 +1062,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         if vintage_time is None or vintage_time.n_unique() <= 1:
             result = compute_fn(y_truth, y_pred)
             if result is None:
-                raise ValueError(
-                    "All vintage groups were skipped. No valid data to compute the metric."
-                )
+                raise ValueError("All vintage groups were skipped. No valid data to compute the metric.")
             return result
 
         # Multi-vintage: group by vintage
@@ -1099,9 +1081,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             results.append(row)
 
         if not results:
-            raise ValueError(
-                "All vintage groups were skipped. No valid data to compute the metric."
-            )
+            raise ValueError("All vintage groups were skipped. No valid data to compute the metric.")
 
         return pl.concat(results, how="diagonal_relaxed")
 
@@ -2438,8 +2418,6 @@ class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         )
 
         self._validate_probabilities(y_truth, y_pred)
-
-        dims = self._normalize_agg_methods(self.aggregation_method)
 
         # Resolve sample weights (tw + sw only; vintage weight handled via context)
         sample_weight = self._resolve_combined_weights(tw, sw, len(y_truth))

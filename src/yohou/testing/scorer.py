@@ -586,9 +586,7 @@ def check_scorer_multi_vintage(
 
     existing_vt = y_pred["vintage_time"][0]
     # Shift the vintage time back by 1 day for the second vintage
-    if isinstance(existing_vt, datetime.datetime):
-        second_vt = existing_vt - datetime.timedelta(days=1)
-    elif isinstance(existing_vt, datetime.date):
+    if isinstance(existing_vt, datetime.datetime | datetime.date):
         second_vt = existing_vt - datetime.timedelta(days=1)
     else:
         return  # Cannot build second vintage from non-date type
@@ -603,6 +601,4 @@ def check_scorer_multi_vintage(
     elif isinstance(score, int | float | np.number):
         assert np.isfinite(score), f"Multi-vintage score is not finite: {score}"
     else:
-        raise AssertionError(
-            f"Multi-vintage score should be numeric or DataFrame, got {type(score)}"
-        )
+        raise AssertionError(f"Multi-vintage score should be numeric or DataFrame, got {type(score)}")

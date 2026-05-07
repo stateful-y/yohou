@@ -1084,9 +1084,7 @@ class MedianAbsoluteError(BasePointScorer):
             # _aggregate_per_vintage_scores handle component/group collapse.
             abs_errors = self._compute_raw_errors(y_truth, y_pred)
             # Per-row median across columns (components)
-            result = abs_errors.select(
-                pl.concat_list(pl.all()).alias("_err")
-            ).select(
+            result = abs_errors.select(pl.concat_list(pl.all()).alias("_err")).select(
                 pl.col("_err").list.eval(pl.element().median()).list.first().alias("score")
             )
             time_values = context.time_values if context is not None else None
@@ -1097,6 +1095,7 @@ class MedianAbsoluteError(BasePointScorer):
             return result
 
         def _compute_median(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame:
+            """Compute per-column median absolute error."""
             errors = (yt_slice - yp_slice).select(pl.all().abs())
             return errors.select(pl.all().median())
 
@@ -1341,6 +1340,7 @@ class R2Score(BasePointScorer):
         context = self._resolve_vintage_weight_to_context(context, vintage_weight)
 
         def _compute_r2(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame:
+            """Compute per-column R² score."""
             r2_values = {}
             for col in yt_slice.columns:
                 truth = yt_slice[col].to_numpy().astype(np.float64)
@@ -1517,6 +1517,7 @@ class MeanDirectionalAccuracy(BasePointScorer):
         context = self._resolve_vintage_weight_to_context(context, vintage_weight)
 
         def _compute_mda(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame | None:
+            """Compute per-column mean directional accuracy."""
             if len(yt_slice) < 2:
                 return None
             mda_values = {}
