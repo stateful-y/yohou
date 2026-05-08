@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import BaseClassProbaScorer, BaseIntervalScorer, BasePointScorer, BaseScorer
-from .class_proba import Accuracy, BrierScore, LogLoss
+from .base import (
+    BaseClassProbaScorer,
+    BaseHardLabelScorer,
+    BaseIntervalScorer,
+    BasePointScorer,
+    BaseRankingScorer,
+    BaseScorer,
+)
+from .class_proba import BrierScore, LogLoss, RankedProbabilityScore
+from .classification import Accuracy, FBetaScore, PRAuC, Precision, Recall, ROCAuC
 from .conformity import (
     AbsoluteGammaResidual,
     AbsoluteQuantileResidual,
@@ -17,17 +25,21 @@ from .conformity import (
 from .conformity_base import BaseConformityScorer
 from .interval import (
     CalibrationError,
+    ContinuousRankedProbabilityScore,
     EmpiricalCoverage,
     IntervalScore,
     MeanIntervalWidth,
     PinballLoss,
 )
 from .point import (
+    MaxAbsoluteError,
     MeanAbsoluteError,
     MeanAbsolutePercentageError,
     MeanAbsoluteScaledError,
+    MeanDirectionalAccuracy,
     MeanSquaredError,
     MedianAbsoluteError,
+    R2Score,
     RootMeanSquaredError,
     RootMeanSquaredScaledError,
     SymmetricMeanAbsolutePercentageError,
@@ -47,16 +59,29 @@ _SCORER_REGISTRY: dict[str, type[BaseScorer]] = {
     "smape": SymmetricMeanAbsolutePercentageError,
     "mase": MeanAbsoluteScaledError,
     "median_ae": MedianAbsoluteError,
+    "max_ae": MaxAbsoluteError,
+    "r2": R2Score,
+    "mda": MeanDirectionalAccuracy,
     # Interval scorers
     "coverage": EmpiricalCoverage,
     "width": MeanIntervalWidth,
     "interval_score": IntervalScore,
     "pinball_loss": PinballLoss,
     "calibration_error": CalibrationError,
+    "crps": ContinuousRankedProbabilityScore,
     # Class-probability scorers
-    "accuracy": Accuracy,
     "log_loss": LogLoss,
     "brier_score": BrierScore,
+    "rps": RankedProbabilityScore,
+    # Hard-label classification scorers
+    "accuracy": Accuracy,
+    "precision": Precision,
+    "recall": Recall,
+    "fbeta": FBetaScore,
+    "f1": FBetaScore,
+    # Ranking classification scorers
+    "roc_auc": ROCAuC,
+    "pr_auc": PRAuC,
 }
 
 
@@ -129,15 +154,20 @@ __all__ = [
     # Base classes
     "BaseClassProbaScorer",
     "BaseConformityScorer",
+    "BaseHardLabelScorer",
     "BaseIntervalScorer",
     "BasePointScorer",
+    "BaseRankingScorer",
     "BaseScorer",
     # Point scorers
+    "MaxAbsoluteError",
     "MeanAbsoluteError",
     "MeanAbsolutePercentageError",
     "MeanAbsoluteScaledError",
+    "MeanDirectionalAccuracy",
     "MeanSquaredError",
     "MedianAbsoluteError",
+    "R2Score",
     "RootMeanSquaredError",
     "RootMeanSquaredScaledError",
     "SymmetricMeanAbsolutePercentageError",
@@ -150,6 +180,7 @@ __all__ = [
     "Residual",
     # Interval scorers
     "CalibrationError",
+    "ContinuousRankedProbabilityScore",
     "EmpiricalCoverage",
     "IntervalScore",
     "MeanIntervalWidth",
@@ -158,6 +189,13 @@ __all__ = [
     "BrierScore",
     "Accuracy",
     "LogLoss",
+    "RankedProbabilityScore",
+    # Classification scorers
+    "FBetaScore",
+    "Precision",
+    "PRAuC",
+    "Recall",
+    "ROCAuC",
     # Registry and factories
     "get_scorer",
     "make_scorer",

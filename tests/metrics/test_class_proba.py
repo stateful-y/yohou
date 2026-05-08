@@ -8,7 +8,7 @@ import pytest
 from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks as _run_checks_base
-from yohou.metrics import Accuracy, BrierScore, LogLoss
+from yohou.metrics import Accuracy, BrierScore, LogLoss, RankedProbabilityScore
 from yohou.testing import _yield_yohou_scorer_checks
 
 
@@ -539,6 +539,158 @@ class TestMultiTarget:
         """Accuracy works with multiple categorical targets."""
         y_true, y_pred = multi_target_data
         scorer = Accuracy()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert isinstance(score, float)
+        assert score > 0
+
+
+class TestRPSSystematic:
+    def test_rps_systematic(self, class_proba_data):
+        """Run systematic checks for RankedProbabilityScore."""
+        y_truth, y_pred = class_proba_data
+        scorer = RankedProbabilityScore()
+        run_checks(scorer, y_truth, y_pred)
+
+
+class TestRPS:
+    def test_rps_perfect_prediction(self, perfect_proba_data):
+        """RPS should be 0.0 for perfect predictions."""
+        y_true, y_pred = perfect_proba_data
+        scorer = RankedProbabilityScore()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert np.isclose(score, 0.0)
+
+    def test_rps_basic_computation(self, class_proba_data):
+        """RPS should be positive for imperfect predictions."""
+        y_true, y_pred = class_proba_data
+        scorer = RankedProbabilityScore()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert isinstance(score, float)
+        assert score > 0
+
+    def test_rps_worse_than_perfect(self, class_proba_data, perfect_proba_data):
+        """RPS of imperfect predictions should be worse (higher) than perfect."""
+        y_true_p, y_pred_p = perfect_proba_data
+        y_true_i, y_pred_i = class_proba_data
+
+        scorer_p = RankedProbabilityScore()
+        scorer_p.fit(y_true_p)
+        score_p = scorer_p.score(y_true_p, y_pred_p)
+
+        scorer_i = RankedProbabilityScore()
+        scorer_i.fit(y_true_i)
+        score_i = scorer_i.score(y_true_i, y_pred_i)
+
+        assert score_i > score_p
+
+    def test_rps_class_order(self):
+        """RPS should respect class_order for ordinal classes."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "level": ["low", "medium", "high"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "level_proba_low": [0.8, 0.1, 0.1],
+            "level_proba_medium": [0.1, 0.8, 0.1],
+            "level_proba_high": [0.1, 0.1, 0.8],
+        })
+
+        # With explicit ordering
+        scorer_ordered = RankedProbabilityScore(class_order=["low", "medium", "high"])
+        scorer_ordered.fit(y_true)
+        score_ordered = scorer_ordered.score(y_true, y_pred)
+
+        # Without ordering (uses column order, which happens to be same)
+        scorer_default = RankedProbabilityScore()
+        scorer_default.fit(y_true)
+        score_default = scorer_default.score(y_true, y_pred)
+
+        # Same order → same score
+        assert np.isclose(score_ordered, score_default)
+
+    def test_rps_different_class_order_changes_score(self):
+        """RPS should change when class order changes (non-reversal permutation)."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "level": ["low", "medium", "high"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "level_proba_low": [0.6, 0.2, 0.1],
+            "level_proba_medium": [0.3, 0.6, 0.2],
+            "level_proba_high": [0.1, 0.2, 0.7],
+        })
+
+        # Natural order: low, medium, high
+        scorer1 = RankedProbabilityScore(class_order=["low", "medium", "high"])
+        scorer1.fit(y_true)
+        score1 = scorer1.score(y_true, y_pred)
+
+        # Shuffled order: medium, low, high (non-reversal permutation)
+        scorer2 = RankedProbabilityScore(class_order=["medium", "low", "high"])
+        scorer2.fit(y_true)
+        score2 = scorer2.score(y_true, y_pred)
+
+        # Different orderings give different RPS
+        assert not np.isclose(score1, score2)
+
+    def test_rps_k2_vs_brier(self):
+        """RPS with K=2 should relate to Brier score."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "outcome": ["yes", "no", "yes"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "outcome_proba_yes": [0.8, 0.3, 0.6],
+            "outcome_proba_no": [0.2, 0.7, 0.4],
+        })
+
+        rps = RankedProbabilityScore()
+        rps.fit(y_true)
+        rps_score = rps.score(y_true, y_pred)
+
+        brier = BrierScore()
+        brier.fit(y_true)
+        brier_score = brier.score(y_true, y_pred)
+
+        # For K=2: RPS = brier_score / 2 (because RPS normalizes by K-1=1, and
+        # Brier sums 2 squared terms while RPS has 1 cumulative term)
+        # Actually: Brier = sum_k (p_k - o_k)^2, RPS = (cum_p1 - cum_o1)^2 / (K-1)
+        # For K=2: cum_p1 = p_yes, cum_o1 = o_yes
+        # RPS = (p_yes - o_yes)^2 / 1 = (p_yes - o_yes)^2
+        # Brier = (p_yes - o_yes)^2 + (p_no - o_no)^2 = 2 * (p_yes - o_yes)^2
+        # So RPS = Brier / 2
+        assert np.isclose(rps_score, brier_score / 2, rtol=1e-10)
+
+    def test_rps_multi_target(self):
+        """RPS works with multiple categorical targets."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "weather": ["sunny", "rainy", "cloudy"],
+            "mood": ["happy", "sad", "happy"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "weather_proba_sunny": [0.7, 0.1, 0.2],
+            "weather_proba_rainy": [0.2, 0.8, 0.1],
+            "weather_proba_cloudy": [0.1, 0.1, 0.7],
+            "mood_proba_happy": [0.8, 0.2, 0.9],
+            "mood_proba_sad": [0.2, 0.8, 0.1],
+        })
+        scorer = RankedProbabilityScore()
         scorer.fit(y_true)
         score = scorer.score(y_true, y_pred)
         assert isinstance(score, float)

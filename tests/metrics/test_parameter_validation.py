@@ -624,8 +624,22 @@ class TestMakeScorerGetScorer:
         with pytest.raises(ValueError, match="Unknown scorer"):
             make_scorer("nonexistent")
 
-    def test_registry_has_16_scorers(self):
-        """Registry contains exactly 16 scoring scorers."""
+    def test_registry_has_27_scorers(self):
+        """Registry contains exactly 27 scoring scorers (26 + f1 alias)."""
         from yohou.metrics import _SCORER_REGISTRY
 
-        assert len(_SCORER_REGISTRY) == 16
+        assert len(_SCORER_REGISTRY) == 27
+
+
+class TestAggregationMethodNonStringList:
+    """Cover aggregation_method list containing non-string elements."""
+
+    def test_non_string_list_element_raises(self):
+        """Non-string element in aggregation_method list raises ValueError."""
+        scorer = MeanAbsoluteError(aggregation_method=["stepwise", 42])
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "value": [1.0],
+        })
+        with pytest.raises(ValueError, match="All elements in aggregation_method must be strings"):
+            scorer.fit(y_true)

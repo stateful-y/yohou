@@ -65,6 +65,7 @@ from .scorer import (
     check_scorer_coverage_rate_subselection,
     check_scorer_lower_is_better,
     check_scorer_methods_call_check_is_fitted,
+    check_scorer_multi_vintage,
     check_scorer_parameter_validation,
     check_scorer_tags_accessible_before_fit,
     check_scorer_tags_match_capabilities,
@@ -970,6 +971,13 @@ def _yield_yohou_scorer_checks(
                 "error_match": error_match,
             },
         )
+
+    # Multi-vintage smoke test
+    yield (
+        "check_scorer_multi_vintage",
+        check_scorer_multi_vintage,
+        {"y_truth": y_truth, "y_pred": y_pred},
+    )
 
 
 def _yield_yohou_search_checks(
