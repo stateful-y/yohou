@@ -1,6 +1,6 @@
 """Tests for interval forecast metrics."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -9,11 +9,15 @@ import pytest
 from conftest import run_checks as _run_checks_base
 from yohou.metrics import (
     CalibrationError,
+    ContinuousRankedProbabilityScore,
     EmpiricalCoverage,
     IntervalScore,
     MeanIntervalWidth,
     PinballLoss,
+    get_scorer,
+    make_scorer,
 )
+from yohou.metrics.interval import _trapezoidal_weights
 from yohou.testing import _yield_yohou_scorer_checks
 
 
@@ -101,6 +105,12 @@ class TestSystematicChecks:
         """Run systematic checks for CalibrationError."""
         y_truth, y_pred = multi_rate_predictions
         scorer = CalibrationError()
+        run_checks(scorer, y_truth, y_pred)
+
+    def test_crps_systematic(self, multi_rate_predictions):
+        """Run systematic checks for ContinuousRankedProbabilityScore."""
+        y_truth, y_pred = multi_rate_predictions
+        scorer = ContinuousRankedProbabilityScore()
         run_checks(scorer, y_truth, y_pred)
 
 
@@ -500,3 +510,307 @@ class TestEdgeCases:
         coverage.fit(y_true)
         score = coverage.score(y_true, y_pred)
         assert isinstance(score, float)
+
+
+class TestTrapezoidalWeights:
+    def test_weights_sum_to_one(self):
+        """Trapezoidal weights sum to 1.0 for various rate sets."""
+        for rates in [[0.5, 0.9], [0.5, 0.9, 0.95], [0.1, 0.3, 0.5, 0.7, 0.9]]:
+            weights = _trapezoidal_weights(rates)
+            assert abs(sum(weights.values()) - 1.0) < 1e-10, f"Weights don't sum to 1 for {rates}"
+
+    def test_known_values(self):
+        """Trapezoidal weights match hand-computed values for [0.5, 0.9, 0.95]."""
+        weights = _trapezoidal_weights([0.5, 0.9, 0.95])
+        assert abs(weights[0.5] - 0.70) < 1e-10
+        assert abs(weights[0.9] - 0.225) < 1e-10
+        assert abs(weights[0.95] - 0.075) < 1e-10
+
+    def test_two_rates(self):
+        """Trapezoidal weights for [0.5, 0.9] are not equal."""
+        weights = _trapezoidal_weights([0.5, 0.9])
+        assert abs(weights[0.5] - 0.70) < 1e-10
+        assert abs(weights[0.9] - 0.30) < 1e-10
+
+
+class TestContinuousRankedProbabilityScore:
+    def test_requires_two_rates(self):
+        """CRPS raises ValueError with fewer than 2 coverage rates."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value_lower_0.9": [8.0, 18.0],
+            "value_upper_0.9": [12.0, 22.0],
+        })
+        crps = ContinuousRankedProbabilityScore()
+        crps.fit(y_true)
+        with pytest.raises(ValueError, match="at least 2 coverage rates"):
+            crps.score(y_true, y_pred)
+
+    def test_perfect_predictions_zero_score(self):
+        """CRPS is 0 when predictions exactly match truth at all bounds."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value_lower_0.5": [10.0, 20.0],
+            "value_upper_0.5": [10.0, 20.0],
+            "value_lower_0.9": [10.0, 20.0],
+            "value_upper_0.9": [10.0, 20.0],
+        })
+        crps = ContinuousRankedProbabilityScore()
+        crps.fit(y_true)
+        assert crps.score(y_true, y_pred) == 0.0
+
+    def test_point_predictions_half_mae(self):
+        """CRPS of point predictions (lower=upper) equals half the MAE."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+        # Point predictions: lower = upper = constant offset from truth
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value_lower_0.5": [12.0, 22.0],
+            "value_upper_0.5": [12.0, 22.0],
+            "value_lower_0.9": [12.0, 22.0],
+            "value_upper_0.9": [12.0, 22.0],
+        })
+        crps = ContinuousRankedProbabilityScore()
+        crps.fit(y_true)
+        crps_score = crps.score(y_true, y_pred)
+        mae = 2.0  # |10-12| + |20-22| / 2
+        assert abs(crps_score - mae / 2) < 1e-10
+
+    def test_wider_intervals_higher_crps(self):
+        """Wider intervals produce higher CRPS (monotonicity)."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+        y_pred_narrow = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value_lower_0.5": [9.5, 19.5],
+            "value_upper_0.5": [10.5, 20.5],
+            "value_lower_0.9": [9.0, 19.0],
+            "value_upper_0.9": [11.0, 21.0],
+        })
+        y_pred_wide = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value_lower_0.5": [5.0, 15.0],
+            "value_upper_0.5": [15.0, 25.0],
+            "value_lower_0.9": [0.0, 10.0],
+            "value_upper_0.9": [20.0, 30.0],
+        })
+        crps = ContinuousRankedProbabilityScore()
+        crps.fit(y_true)
+        score_narrow = crps.score(y_true, y_pred_narrow)
+        score_wide = crps.score(y_true, y_pred_wide)
+        assert score_wide > score_narrow
+
+    def test_mean_vs_trapezoidal_differ(self, multi_rate_predictions):
+        """Mean and trapezoidal integration give different results."""
+        y_true, y_pred = multi_rate_predictions
+        crps_mean = ContinuousRankedProbabilityScore(integration="mean")
+        crps_mean.fit(y_true)
+        crps_trap = ContinuousRankedProbabilityScore(integration="trapezoidal")
+        crps_trap.fit(y_true)
+        assert crps_mean.score(y_true, y_pred) != crps_trap.score(y_true, y_pred)
+
+    def test_hand_computed_value(self):
+        """CRPS matches hand-computed value for a simple case."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "value": [10.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "value_lower_0.5": [9.0],
+            "value_upper_0.5": [11.0],
+            "value_lower_0.9": [8.0],
+            "value_upper_0.9": [12.0],
+        })
+        # y=10, perfectly centered.
+        # Rate 0.5: tau_l=0.25, tau_u=0.75
+        #   pinball_l = 0.25*(10-9) = 0.25, pinball_u = 0.25*(12-10)... wait
+        #   L_lower: tau=0.25, y=10, q=9 → y>=q → 0.25*(10-9)=0.25
+        #   L_upper: tau=0.75, y=10, q=11 → y<q → 0.25*(11-10)=0.25
+        #   (L_lower + L_upper)/2 = 0.25
+        # Rate 0.9: tau_l=0.05, tau_u=0.95
+        #   L_lower: tau=0.05, y=10, q=8 → y>=q → 0.05*(10-8)=0.10
+        #   L_upper: tau=0.95, y=10, q=12 → y<q → 0.05*(12-10)=0.10
+        #   (L_lower + L_upper)/2 = 0.10
+        # Mean CRPS = (0.25 + 0.10) / 2 = 0.175
+        crps = ContinuousRankedProbabilityScore()
+        crps.fit(y_true)
+        assert abs(crps.score(y_true, y_pred) - 0.175) < 1e-10
+
+    def test_aggregation_coveragewise_always_collapsed(self):
+        """Coveragewise is always collapsed, even with partial aggregation."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value": [10.0, 20.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "value_lower_0.5": [9.0, 19.0],
+            "value_upper_0.5": [11.0, 21.0],
+            "value_lower_0.9": [8.0, 18.0],
+            "value_upper_0.9": [12.0, 22.0],
+        })
+        crps = ContinuousRankedProbabilityScore(aggregation_method=["stepwise"])
+        crps.fit(y_true)
+        result = crps.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "coverage_rate" not in result.columns
+
+    def test_get_scorer_registry(self):
+        """get_scorer('crps') returns ContinuousRankedProbabilityScore."""
+        scorer = get_scorer("crps")
+        assert isinstance(scorer, ContinuousRankedProbabilityScore)
+
+    def test_make_scorer_with_integration(self):
+        """make_scorer passes integration parameter correctly."""
+        scorer = make_scorer("crps", integration="trapezoidal")
+        assert isinstance(scorer, ContinuousRankedProbabilityScore)
+        assert scorer.integration == "trapezoidal"
+
+    def test_coverage_rates_dict_rejected(self):
+        """Dict coverage_rates rejected by parameter validation."""
+        crps = ContinuousRankedProbabilityScore(coverage_rates={0.5: 1.0, 0.9: 2.0})
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "value": [10.0],
+        })
+        with pytest.raises(ValueError, match="coverage_rates"):
+            crps.fit(y_true)
+
+    def test_panel_data(self):
+        """CRPS works with panel data."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "sales__store_1": [10.0, 20.0],
+            "sales__store_2": [15.0, 25.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "sales__store_1_lower_0.5": [9.0, 19.0],
+            "sales__store_1_upper_0.5": [11.0, 21.0],
+            "sales__store_1_lower_0.9": [8.0, 18.0],
+            "sales__store_1_upper_0.9": [12.0, 22.0],
+            "sales__store_2_lower_0.5": [14.0, 24.0],
+            "sales__store_2_upper_0.5": [16.0, 26.0],
+            "sales__store_2_lower_0.9": [13.0, 23.0],
+            "sales__store_2_upper_0.9": [17.0, 27.0],
+        })
+        crps = ContinuousRankedProbabilityScore()
+        crps.fit(y_true)
+        score = crps.score(y_true, y_pred)
+        assert isinstance(score, float)
+        assert score >= 0.0
+
+
+class TestCRPSTrapezoidalEdgeCases:
+    def test_crps_trapezoidal_no_coverage_rate_column(self):
+        """_collapse_coverage_rates returns df unchanged when no coverage_rate column."""
+        crps = ContinuousRankedProbabilityScore(integration="trapezoidal")
+        df = pl.DataFrame({"value": [1.0, 2.0, 3.0]})
+        result = crps._collapse_coverage_rates(df)
+        assert result.equals(df)
+
+    def test_crps_trapezoidal_empty_dataframe(self):
+        """_collapse_coverage_rates drops coverage_rate from empty df."""
+        crps = ContinuousRankedProbabilityScore(integration="trapezoidal")
+        df = pl.DataFrame({"value": pl.Series([], dtype=pl.Float64), "coverage_rate": pl.Series([], dtype=pl.Float64)})
+        result = crps._collapse_coverage_rates(df)
+        assert "coverage_rate" not in result.columns
+        assert len(result) == 0
+
+
+class TestCollapseCoverageRatesEdgeCases:
+    """Cover _collapse_coverage_rates with interval scorers."""
+
+    def test_interval_all_dims_collapses_coverage(self):
+        """EmpiricalCoverage with all dims including coveragewise produces scalar."""
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(3)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": times,
+            "value_lower_0.5": [7.0, 15.0, 25.0],
+            "value_upper_0.5": [13.0, 25.0, 35.0],
+            "value_lower_0.9": [5.0, 12.0, 22.0],
+            "value_upper_0.9": [15.0, 28.0, 38.0],
+        })
+        scorer = EmpiricalCoverage()
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, float)
+
+
+@pytest.fixture
+def multi_vintage_interval_data():
+    """Multi-vintage interval data (2 vintages, 3 rows each, 2 rates)."""
+    times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(3)]
+    vt1 = datetime(2019, 12, 31)
+    vt2 = datetime(2019, 12, 30)
+    y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+    y_pred = pl.DataFrame({
+        "vintage_time": [vt1] * 3 + [vt2] * 3,
+        "time": times * 2,
+        "value_lower_0.5": [8.0, 17.0, 27.0, 8.5, 17.5, 27.5],
+        "value_upper_0.5": [14.0, 23.0, 33.0, 14.5, 23.5, 33.5],
+        "value_lower_0.9": [5.0, 12.0, 22.0, 5.5, 12.5, 22.5],
+        "value_upper_0.9": [15.0, 28.0, 38.0, 15.5, 28.5, 38.5],
+    })
+    return y_true, y_pred
+
+
+class TestIntervalMultiVintageCoverage:
+    """Cover interval scorer paths with multi-vintage data and coverage_rate."""
+
+    def test_stepwise_vintagewise_componentwise_no_coveragewise(self, multi_vintage_interval_data):
+        """Collapse steps+vintages+components but keep coverage_rate."""
+        y_true, y_pred = multi_vintage_interval_data
+        scorer = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+        assert "coverage_rate" in result.columns
+
+    def test_stepwise_vintagewise_componentwise_weighted(self, multi_vintage_interval_data):
+        """Weighted vintage collapse with coverage_rate meta column."""
+        y_true, y_pred = multi_vintage_interval_data
+        vt1 = datetime(2019, 12, 31)
+        vt2 = datetime(2019, 12, 30)
+        scorer = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise"])
+        scorer.fit(y_true)
+        scorer.set_score_request(vintage_weight=True)
+        result = scorer.score(
+            y_true,
+            y_pred,
+            vintage_weight={vt1: 2.0, vt2: 1.0},
+        )
+        assert isinstance(result, pl.DataFrame)
+        assert "coverage_rate" in result.columns
+
+    def test_vintagewise_componentwise_partial_collapse(self, multi_vintage_interval_data):
+        """Partial collapse: vintagewise without stepwise, coverage_rate as meta."""
+        y_true, y_pred = multi_vintage_interval_data
+        scorer = EmpiricalCoverage(aggregation_method=["vintagewise", "componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)

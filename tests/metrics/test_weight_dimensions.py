@@ -7,6 +7,7 @@ import polars as pl
 import pytest
 
 from yohou.metrics import IntervalScore, MeanAbsoluteError
+from yohou.metrics.point import MeanDirectionalAccuracy, MedianAbsoluteError, R2Score
 
 
 @pytest.fixture()
@@ -662,11 +663,6 @@ class TestNormalizeAggMethodsAll:
         assert "coveragewise" in modes
 
 
-# ---------------------------------------------------------------------------
-# Interval scorer: time_weight + step_weight / vintage_weight with coverage rates
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture()
 def interval_train():
     """Training data for interval scorer tests."""
@@ -950,3 +946,93 @@ class TestIntervalMultiRateStepWeight:
 
         assert isinstance(result, float)
         assert not np.isclose(result, default, atol=1e-10)
+
+
+@pytest.fixture()
+def point_data():
+    """Simple 5-row point data with single vintage."""
+    times = [datetime(2024, 1, i) for i in range(1, 6)]
+    y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
+    y_pred = pl.DataFrame({
+        "vintage_time": [datetime(2023, 12, 31)] * 5,
+        "time": times,
+        "value": [12.0, 18.0, 33.0, 38.0, 55.0],
+    })
+    return y_true, y_pred
+
+
+@pytest.fixture()
+def two_vintage_point_data():
+    """Multi-vintage point data (2 vintages, 3 rows each)."""
+    times = [datetime(2024, 1, i) for i in range(1, 4)]
+    vt1 = datetime(2023, 12, 31)
+    vt2 = datetime(2023, 12, 30)
+    y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+    y_pred = pl.DataFrame({
+        "vintage_time": [vt1] * 3 + [vt2] * 3,
+        "time": times * 2,
+        "value": [12.0, 18.0, 33.0, 11.0, 19.0, 28.0],
+    })
+    return y_true, y_pred
+
+
+class TestRejectWeights:
+    """Pattern 2 scorers reject time_weight/step_weight via _reject_weights."""
+
+    def test_r2_rejects_time_weight(self, point_data):
+        """R2Score.score() rejects time_weight via _reject_weights."""
+        y_true, y_pred = point_data
+        scorer = R2Score()
+        scorer.fit(y_true)
+        with pytest.raises(TypeError, match="does not support sample weights"):
+            scorer.score(y_true, y_pred, time_weight=lambda ts: pl.Series([1.0] * len(ts)))
+
+    def test_mda_rejects_step_weight(self, point_data):
+        """MeanDirectionalAccuracy.score() rejects step_weight."""
+        y_true, y_pred = point_data
+        scorer = MeanDirectionalAccuracy()
+        scorer.fit(y_true)
+        with pytest.raises(TypeError, match="does not support sample weights"):
+            scorer.score(y_true, y_pred, step_weight=lambda ts: pl.Series([1.0] * len(ts)))
+
+
+class TestResolveVintageWeightToContext:
+    """Cover _resolve_vintage_weight_to_context for Pattern 2 scorers."""
+
+    def test_r2_with_vintage_weight_callable(self, two_vintage_point_data):
+        """R2Score supports vintage_weight via _resolve_vintage_weight_to_context."""
+        y_true, y_pred = two_vintage_point_data
+        scorer = R2Score()
+        scorer.fit(y_true)
+        scorer.set_score_request(vintage_weight=True)
+
+        score_plain = scorer.score(y_true, y_pred)
+        score_weighted = scorer.score(
+            y_true,
+            y_pred,
+            vintage_weight=lambda vt: pl.Series([2.0, 1.0] * (len(vt) // 2 + 1))[: len(vt)],
+        )
+        assert isinstance(score_plain, float)
+        assert isinstance(score_weighted, float)
+
+    def test_r2_vintage_weight_none_context(self, point_data):
+        """R2Score with vintage_weight=None just returns context unchanged."""
+        y_true, y_pred = point_data
+        scorer = R2Score()
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert isinstance(score, float)
+
+    def test_median_with_vintage_weight(self, two_vintage_point_data):
+        """MedianAbsoluteError supports vintage_weight."""
+        y_true, y_pred = two_vintage_point_data
+        scorer = MedianAbsoluteError()
+        scorer.fit(y_true)
+        scorer.set_score_request(vintage_weight=True)
+
+        score_weighted = scorer.score(
+            y_true,
+            y_pred,
+            vintage_weight={datetime(2023, 12, 31): 2.0, datetime(2023, 12, 30): 1.0},
+        )
+        assert isinstance(score_weighted, float)

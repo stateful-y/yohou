@@ -21,7 +21,7 @@ Coming soon.
 
 ## Creating a Custom Scorer
 
-Coming soon.
+See the dedicated how-to guide: [How to Create a Custom Scorer](../how-to/creating-a-scorer.md).
 
 **API Reference**: See [yohou.metrics](../api/metrics.md) for base classes and [yohou.testing](../api/testing.md) for systematic checks.
 

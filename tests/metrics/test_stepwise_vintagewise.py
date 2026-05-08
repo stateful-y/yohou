@@ -370,3 +370,68 @@ class TestMultiVintageAlignment:
 
         assert ctx.forecasting_step is not None
         assert ctx.forecasting_step.to_list() == [1, 2, 1, 2, 1, 2]
+
+
+class TestCollapseVintageDimensionWithMeta:
+    """Cover weighted/unweighted vintage collapse paths with metadata columns."""
+
+    def test_unweighted_vintage_collapse_with_forecasting_step(self):
+        """Unweighted vintage collapse preserving forecasting_step."""
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        vt1 = datetime(2023, 12, 31)
+        vt2 = datetime(2023, 12, 30)
+
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [vt1] * 3 + [vt2] * 3,
+            "time": times * 2,
+            "value": [12.0, 18.0, 33.0, 11.0, 19.0, 28.0],
+        })
+        scorer = MeanAbsoluteError(aggregation_method=["vintagewise", "componentwise"])
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
+        assert isinstance(result, pl.DataFrame)
+
+    def test_weighted_vintage_collapse_with_forecasting_step(self):
+        """Weighted vintage collapse preserving forecasting_step."""
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        vt1 = datetime(2023, 12, 31)
+        vt2 = datetime(2023, 12, 30)
+
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [vt1] * 3 + [vt2] * 3,
+            "time": times * 2,
+            "value": [12.0, 18.0, 33.0, 11.0, 19.0, 28.0],
+        })
+        scorer = MeanAbsoluteError(aggregation_method=["vintagewise", "componentwise"])
+        scorer.fit(y_true)
+        scorer.set_score_request(vintage_weight=True)
+        result = scorer.score(
+            y_true,
+            y_pred,
+            vintage_weight={vt1: 2.0, vt2: 1.0},
+        )
+        assert isinstance(result, pl.DataFrame)
+
+    def test_weighted_vintage_collapse_stepwise_vintagewise(self):
+        """Weighted vintage collapse with stepwise+vintagewise+componentwise collapses to scalar."""
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        vt1 = datetime(2023, 12, 31)
+        vt2 = datetime(2023, 12, 30)
+
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [vt1] * 3 + [vt2] * 3,
+            "time": times * 2,
+            "value": [12.0, 18.0, 33.0, 11.0, 19.0, 28.0],
+        })
+        scorer = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
+        scorer.fit(y_true)
+        scorer.set_score_request(vintage_weight=True)
+        result = scorer.score(
+            y_true,
+            y_pred,
+            vintage_weight={vt1: 2.0, vt2: 1.0},
+        )
+        assert isinstance(result, float)
