@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.0-alpha.6] - 2026-05-08
+
+This **minor release** includes 9 commits.
+
+
+### Features
+- Allow coverage_rate=0 for point forecasts  ([#50](https://github.com/stateful-y/yohou/pull/50)) by @gtauzin
+- Support global-only exogenous features with panel data  ([#52](https://github.com/stateful-y/yohou/pull/52)) by @gtauzin
+- Add similarity extensions and API hardening  ([#53](https://github.com/stateful-y/yohou/pull/53)) by @gtauzin
+- Add 9 forecasting metrics and 2 base scorer classes  ([#54](https://github.com/stateful-y/yohou/pull/54)) by @gtauzin
+- Add X_actual, X_future, X_forecast API with step-indexed columns  ([#56](https://github.com/stateful-y/yohou/pull/56)) by @gtauzin
+
+### Bug Fixes
+- Detect LightGBM quantile alpha parameter  ([#48](https://github.com/stateful-y/yohou/pull/48)) by @gtauzin
+- Pass Polars DataFrames to estimators instead of numpy arrays  ([#49](https://github.com/stateful-y/yohou/pull/49)) by @gtauzin
+- Sync observed_time_ in SplitConformalForecaster observe and rewind  ([#51](https://github.com/stateful-y/yohou/pull/51)) by @gtauzin
+
+### Refactoring
+- Remove gap parameter from splitters  ([#47](https://github.com/stateful-y/yohou/pull/47)) by @gtauzin
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @gtauzin
+
 ## [0.1.0-alpha.5] - 2026-04-22
 
 This **minor release** includes 2 commits.
