@@ -172,26 +172,26 @@ class TestDistanceSimilarityWithExogenous:
     def test_fit_with_X(self, train_data):
         """Test fitting with exogenous features."""
         y, y_pred = train_data
-        # X should NOT have a 'time' column to avoid duplicate with y_pred
-        X = pl.DataFrame({
+        # X_actual should NOT have a 'time' column to avoid duplicate with y_pred
+        X_actual = pl.DataFrame({
             "feature": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
         })
         sim = DistanceSimilarity()
-        sim.fit(y, y_pred, X=X)
+        sim.fit(y, y_pred, X_actual=X_actual)
         assert sim._X_observed.shape[1] > 1  # time + value + feature cols
 
     def test_predict_with_X(self, train_data, prediction_data):
         """Test prediction with exogenous features."""
         y, y_pred = train_data
-        X_train = pl.DataFrame({
+        X_actual_train = pl.DataFrame({
             "feature": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
         })
-        X_test = pl.DataFrame({
+        X_actual_test = pl.DataFrame({
             "feature": [85.0, 92.0],
         })
         sim = DistanceSimilarity()
-        sim.fit(y, y_pred, X=X_train)
-        weights = sim.predict(prediction_data, X=X_test)
+        sim.fit(y, y_pred, X_actual=X_actual_train)
+        weights = sim.predict(prediction_data, X_actual=X_actual_test)
         assert weights.shape == (2, 8)
 
 

@@ -44,6 +44,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         unless in a ``joblib.parallel_backend`` context. ``-1`` means
         using all processors. Has no effect for ``"multi-output"`` or
         ``"dir-rec"`` strategies.
+    step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
+        Controls which step-indexed feature columns each direct estimator
+        sees. Only affects the ``"direct"`` strategy.
+
+        - ``"all"``: every estimator receives all step columns.
+        - ``"matched"``: estimator for step h receives only ``*_step_h``.
+        - ``"cumulative"``: estimator for step h receives ``*_step_1..h``.
 
     Examples
     --------
@@ -120,6 +127,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
+        step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ) -> None:
@@ -128,6 +136,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             estimator=estimator,
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
+            step_feature_alignment=step_feature_alignment,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
         )
@@ -144,11 +153,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         time_weight: Callable | pl.DataFrame | dict | None = None,
         vintage_weight: Callable | pl.DataFrame | dict | None = None,
         sample_weight_alignment: str = "first_step",
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "PointReductionForecaster":
         """Fit the forecaster to historical data.
@@ -160,9 +171,11 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Processed by the feature transformer to produce
+            lags, rolling statistics, and other derived features. If
+            ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
         time_weight : callable, pl.DataFrame, dict, or None, default=None
@@ -180,6 +193,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             Strategy for converting ``time_weight`` to sklearn
             ``sample_weight`` across forecast horizons. Does not apply
             to ``vintage_weight`` (which uses direct lookup).
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -193,8 +213,10 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 
         y_t, X_t = self._pre_fit(
             y=y,
-            X=X,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         self.estimator_ = self._estimator_fit_one(

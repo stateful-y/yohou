@@ -26,7 +26,7 @@ def naive_data():
         "a": range(length),
         "b": range(10, length + 10),
     })
-    X = pl.DataFrame({
+    X_actual = pl.DataFrame({
         "time": pl.datetime_range(
             start=datetime(2021, 12, 16),
             end=datetime(2021, 12, 16, 0, 0, length - 1),
@@ -37,7 +37,7 @@ def naive_data():
         "d": range(10, length + 10),
         "e": range(20, length + 20),
     })
-    return y, X
+    return y, X_actual
 
 
 class TestSeasonalNaive:
@@ -56,16 +56,16 @@ class TestSeasonalNaive:
     )
     def test_seasonal_naive_checks(self, forecaster, expected_failures, y_X_factory):
         """Run systematic checks on SeasonalNaive forecaster."""
-        y, X = y_X_factory(length=200, seed=42)
+        y, X_actual = y_X_factory(length=200, seed=42)
         y_train, y_test = y[:160], y[160:]
-        X_train, X_test = (X[:160], X[160:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (X_actual[:160], X_actual[160:]) if X_actual is not None else (None, None)
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
             expected_failures=set(expected_failures),
         )
 
@@ -85,11 +85,11 @@ class TestSeasonalNaive:
     )
     def test_predict(self, seasonality, fit_forecasting_horizon, predict_forecasting_horizon, expected_a, naive_data):
         """Test specific prediction behavior of SeasonalNaive."""
-        y, X = naive_data
-        y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2, shuffle=False)
+        y, X_actual = naive_data
+        y_train, y_test, X_actual_train, X_actual_test = train_test_split(y, X_actual, test_size=0.2, shuffle=False)
         forecaster = SeasonalNaive(seasonality=seasonality)
 
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_forecasting_horizon)
+        forecaster.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=fit_forecasting_horizon)
 
         y_pred = forecaster.predict(forecasting_horizon=predict_forecasting_horizon)
 
@@ -108,13 +108,13 @@ class TestSeasonalNaive:
 
 
 class TestSeasonalNaiveWithoutExogenous:
-    """Tests for SeasonalNaive with X=None throughout the lifecycle."""
+    """Tests for SeasonalNaive with X_actual=None throughout the lifecycle."""
 
     def test_fit_predict_without_exogenous(self, naive_data):
-        """SeasonalNaive should work without exogenous features (ignores_exogenous=True)."""
+        """SeasonalNaive should work without exogenous features (requires_exogenous=False)."""
         y, _ = naive_data
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y[:17], X=None, forecasting_horizon=3)
+        forecaster.fit(y[:17], X_actual=None, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert isinstance(y_pred, pl.DataFrame)
@@ -125,8 +125,8 @@ class TestSeasonalNaiveWithoutExogenous:
         """SeasonalNaive observe_predict should work without exogenous features."""
         y, _ = naive_data
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y[:17], X=None, forecasting_horizon=3)
-        y_pred = forecaster.observe_predict(y[17:19], X=None)
+        forecaster.fit(y[:17], X_actual=None, forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(y[17:19], X_actual=None)
 
         assert isinstance(y_pred, pl.DataFrame)
         assert "time" in y_pred.columns
@@ -135,19 +135,51 @@ class TestSeasonalNaiveWithoutExogenous:
         """SeasonalNaive rewind should work without exogenous features."""
         y, _ = naive_data
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y[:17], X=None, forecasting_horizon=3)
-        forecaster.observe(y[17:19], X=None)
-        forecaster.rewind(y[:17], X=None)
+        forecaster.fit(y[:17], X_actual=None, forecasting_horizon=3)
+        forecaster.observe(y[17:19], X_actual=None)
+        forecaster.rewind(y[:17], X_actual=None)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 3
 
-    def test_ignores_exogenous_tag(self):
-        """SeasonalNaive should have ignores_exogenous=True tag."""
+    def test_requires_exogenous_tag(self):
+        """SeasonalNaive should have requires_exogenous=False tag."""
         forecaster = SeasonalNaive(seasonality=3)
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.ignores_exogenous is True
+        assert tags.forecaster_tags.requires_exogenous is False
+
+    def test_seasonal_naive_checks_with_step_data(self, y_X_factory):
+        """Systematic checks include requires_exogenous warning when step data provided."""
+        y, X_actual, X_future, X_forecast = y_X_factory(
+            length=200,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        y_train, y_test = y[:160], y[160:]
+        X_actual_train, X_actual_test = (X_actual[:160], X_actual[160:]) if X_actual is not None else (None, None)
+
+        forecaster = SeasonalNaive(seasonality=7)
+        forecaster_fitted = clone(forecaster)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
+
+        run_checks(
+            forecaster_fitted,
+            _yield_yohou_forecaster_checks(
+                forecaster_fitted,
+                y_train,
+                X_actual_train,
+                y_test,
+                X_actual_test,
+                X_future_train=X_future,
+                X_future_test=X_future,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+            ),
+            expected_failures=set(),
+        )
 
 
 class TestSeasonalNaivePanel:
@@ -211,7 +243,7 @@ def mean_naive_data():
         "a": [float(i) for i in range(length)],
         "b": [float(i) for i in range(10, length + 10)],
     })
-    X = pl.DataFrame({
+    X_actual = pl.DataFrame({
         "time": pl.datetime_range(
             start=datetime(2021, 12, 16),
             end=datetime(2021, 12, 16, 0, 0, length - 1),
@@ -222,7 +254,7 @@ def mean_naive_data():
         "d": range(10, length + 10),
         "e": range(20, length + 20),
     })
-    return y, X
+    return y, X_actual
 
 
 class TestMeanSeasonalNaive:
@@ -241,16 +273,16 @@ class TestMeanSeasonalNaive:
     )
     def test_mean_seasonal_naive_checks(self, forecaster, expected_failures, y_X_factory):
         """Run systematic checks on MeanSeasonalNaive forecaster."""
-        y, X = y_X_factory(length=200, seed=42)
+        y, X_actual = y_X_factory(length=200, seed=42)
         y_train, y_test = y[:160], y[160:]
-        X_train, X_test = (X[:160], X[160:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (X_actual[:160], X_actual[160:]) if X_actual is not None else (None, None)
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
             expected_failures=set(expected_failures),
         )
 
@@ -277,11 +309,11 @@ class TestMeanSeasonalNaive:
     )
     def test_predict(self, seasonality, n_seasons, fit_fh, predict_fh, expected_a, mean_naive_data):
         """Test specific prediction behavior of MeanSeasonalNaive."""
-        y, X = mean_naive_data
-        y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2, shuffle=False)
+        y, X_actual = mean_naive_data
+        y_train, y_test, X_actual_train, X_actual_test = train_test_split(y, X_actual, test_size=0.2, shuffle=False)
         forecaster = MeanSeasonalNaive(seasonality=seasonality, n_seasons=n_seasons)
 
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=fit_fh)
+        forecaster.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=fit_fh)
 
         y_pred = forecaster.predict(forecasting_horizon=predict_fh)
 
@@ -302,29 +334,29 @@ class TestMeanSeasonalNaive:
 
     def test_n_seasons_1_matches_seasonal_naive(self, mean_naive_data):
         """MeanSeasonalNaive(n_seasons=1) should produce identical output to SeasonalNaive."""
-        y, X = mean_naive_data
-        y_train, _, X_train, _ = train_test_split(y, X, test_size=0.2, shuffle=False)
+        y, X_actual = mean_naive_data
+        y_train, _, X_actual_train, _ = train_test_split(y, X_actual, test_size=0.2, shuffle=False)
 
         for seasonality in [1, 3, 7]:
             naive = SeasonalNaive(seasonality=seasonality)
-            naive.fit(y=y_train, X=X_train, forecasting_horizon=5)
+            naive.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=5)
             y_naive = naive.predict(forecasting_horizon=5)
 
             mean_naive = MeanSeasonalNaive(seasonality=seasonality, n_seasons=1)
-            mean_naive.fit(y=y_train, X=X_train, forecasting_horizon=5)
+            mean_naive.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=5)
             y_mean = mean_naive.predict(forecasting_horizon=5)
 
             pl.testing.assert_frame_equal(y_mean, y_naive)
 
 
 class TestMeanSeasonalNaiveWithoutExogenous:
-    """Tests for MeanSeasonalNaive with X=None throughout the lifecycle."""
+    """Tests for MeanSeasonalNaive with X_actual=None throughout the lifecycle."""
 
     def test_fit_predict_without_exogenous(self, mean_naive_data):
         """MeanSeasonalNaive should work without exogenous features."""
         y, _ = mean_naive_data
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
-        forecaster.fit(y[:40], X=None, forecasting_horizon=3)
+        forecaster.fit(y[:40], X_actual=None, forecasting_horizon=3)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert isinstance(y_pred, pl.DataFrame)
@@ -335,8 +367,8 @@ class TestMeanSeasonalNaiveWithoutExogenous:
         """MeanSeasonalNaive observe_predict should work without exogenous features."""
         y, _ = mean_naive_data
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
-        forecaster.fit(y[:40], X=None, forecasting_horizon=3)
-        y_pred = forecaster.observe_predict(y[40:42], X=None)
+        forecaster.fit(y[:40], X_actual=None, forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(y[40:42], X_actual=None)
 
         assert isinstance(y_pred, pl.DataFrame)
         assert "time" in y_pred.columns
@@ -345,19 +377,19 @@ class TestMeanSeasonalNaiveWithoutExogenous:
         """MeanSeasonalNaive rewind should work without exogenous features."""
         y, _ = mean_naive_data
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
-        forecaster.fit(y[:40], X=None, forecasting_horizon=3)
-        forecaster.observe(y[40:42], X=None)
-        forecaster.rewind(y[:40], X=None)
+        forecaster.fit(y[:40], X_actual=None, forecasting_horizon=3)
+        forecaster.observe(y[40:42], X_actual=None)
+        forecaster.rewind(y[:40], X_actual=None)
         y_pred = forecaster.predict(forecasting_horizon=3)
 
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 3
 
-    def test_ignores_exogenous_tag(self):
-        """MeanSeasonalNaive should have ignores_exogenous=True tag."""
+    def test_requires_exogenous_tag(self):
+        """MeanSeasonalNaive should have requires_exogenous=False tag."""
         forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.ignores_exogenous is True
+        assert tags.forecaster_tags.requires_exogenous is False
 
 
 class TestMeanSeasonalNaivePanel:

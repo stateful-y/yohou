@@ -149,6 +149,10 @@ nav:
     - pages/user-guide/index.md
     - Core Concepts: pages/user-guide/core-concepts.md
     - Forecasting: pages/user-guide/forecasting.md
+    - Exogenous Features:
+      - About Exogenous Features: pages/user-guide/exogenous-features.md
+      - Tutorial: pages/user-guide/exogenous-tutorial.md
+      - How to Use Exogenous Features: pages/user-guide/exogenous-howto.md
     - Interval Forecasting: pages/user-guide/interval-forecasting.md
     - Preprocessing: pages/user-guide/preprocessing.md
     - Stationarity: pages/user-guide/stationarity.md

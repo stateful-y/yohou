@@ -43,16 +43,15 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
-
-    from copy import deepcopy
 
     from yohou.datasets import fetch_kdd_cup
     from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
-    from yohou.metrics import EmpiricalCoverage, MeanIntervalWidth
-    from yohou.metrics import IntervalScore
+    from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -96,7 +95,7 @@ def _(fetch_kdd_cup, inspect_panel, mo, train_test_split):
     _bunch = fetch_kdd_cup(n_groups=3)
     aq = _bunch.frame.drop_nulls().tail(300)
     _globals, groups = inspect_panel(aq)
-    y_train, y_test = train_test_split(aq, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(aq, test_size=0.15)
     horizon = len(y_test)
     coverage_rates = [0.9]
 
@@ -252,8 +251,6 @@ def _(
     mo.ui.table(_results)
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -264,7 +261,6 @@ def _(mo):
     Each vintage represents a different forecast origin, so you can analyse
     how interval quality evolves as the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -298,7 +294,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

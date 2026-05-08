@@ -14,6 +14,10 @@ from yohou.datasets._fetchers import (
     fetch_tourism_quarterly,
     get_data_home,
 )
+from yohou.datasets._generators import (
+    make_exogenous_classification,
+    make_exogenous_regression,
+)
 
 __all__ = [
     "clear_data_home",
@@ -28,4 +32,6 @@ __all__ = [
     "fetch_tourism_monthly",
     "fetch_tourism_quarterly",
     "get_data_home",
+    "make_exogenous_classification",
+    "make_exogenous_regression",
 ]

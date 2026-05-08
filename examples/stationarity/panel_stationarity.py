@@ -43,13 +43,12 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    from sklearn.model_selection import train_test_split
-
     from copy import deepcopy
 
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -99,7 +98,7 @@ def _(fetch_tourism_quarterly, inspect_panel, mo, train_test_split):
     _selected = [f"T{i}__tourists" for i in range(3, 11)]
     tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_panel(tourism)
-    y_train, y_test = train_test_split(tourism, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(tourism, test_size=0.2)
     horizon = len(y_test)
 
     mo.md(
@@ -281,8 +280,6 @@ def _(
     )
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -293,7 +290,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -328,7 +324,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

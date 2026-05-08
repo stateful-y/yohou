@@ -29,7 +29,7 @@ class TestPointReductionPanelChecks:
         y_train, y_test = y[:80], y[80:]
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X=None, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         run_checks(
             deepcopy(forecaster_fitted),
@@ -49,10 +49,10 @@ class TestPointReductionPanelBehavior:
             feature_transformer=LagTransformer(lag=[1, 2]),
         )
 
-        forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
 
         # Predict with panel_group=None (default)
-        y_pred = forecaster.predict(X=None, forecasting_horizon=3, panel_group=None)
+        y_pred = forecaster.predict(forecasting_horizon=3, panel_group=None)
 
         # Should have predictions for all 3 series (with __ separator)
         assert "panel__series_0" in y_pred.columns
@@ -70,10 +70,10 @@ class TestPointReductionPanelBehavior:
             feature_transformer=LagTransformer(lag=[1, 2]),
         )
 
-        forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
 
         # Predict only for panel group (all series within the group)
-        y_pred = forecaster.predict(X=None, forecasting_horizon=3, panel_group="panel")
+        y_pred = forecaster.predict(forecasting_horizon=3, panel_group="panel")
 
         # Should have all series columns with __ separator
         assert "panel__series_0" in y_pred.columns
@@ -91,11 +91,11 @@ class TestPointReductionPanelBehavior:
             feature_transformer=LagTransformer(lag=[1, 2]),
         )
 
-        forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
 
         # Try to predict with invalid group name
         with pytest.raises(ValueError, match="not found in fitted forecaster"):
-            forecaster.predict(X=None, forecasting_horizon=3, groups=["invalid_group"])
+            forecaster.predict(forecasting_horizon=3, groups=["invalid_group"])
 
     def test_panel_global_data_no_groups(self, time_series_factory):
         """Test that panel_group has no effect on global data."""
@@ -107,11 +107,11 @@ class TestPointReductionPanelBehavior:
             feature_transformer=LagTransformer(lag=[1, 2]),
         )
 
-        forecaster.fit(y=y_train, X=None, forecasting_horizon=3)
+        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
 
         # Should work the same with or without panel_group
-        y_pred_default = forecaster.predict(X=None, forecasting_horizon=3, panel_group=None)
-        y_pred_explicit = forecaster.predict(X=None, forecasting_horizon=3, panel_group=None)
+        y_pred_default = forecaster.predict(forecasting_horizon=3, panel_group=None)
+        y_pred_explicit = forecaster.predict(forecasting_horizon=3, panel_group=None)
 
         assert y_pred_default.equals(y_pred_explicit)
         assert "feature_0" in y_pred_default.columns

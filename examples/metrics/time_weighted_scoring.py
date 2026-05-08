@@ -44,13 +44,13 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
-
     from copy import deepcopy
+
+    from sklearn.linear_model import Ridge
 
     from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_score_per_vintage,
         plot_score_time_series,
@@ -109,7 +109,7 @@ def _(
     tourism = (
         fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     )
-    y_train, y_test = train_test_split(tourism, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(tourism, test_size=0.15)
     horizon = len(y_test)
 
     fc = PointReductionForecaster(
@@ -275,7 +275,7 @@ def _(
     _store = _full.select("time", *_selected)
     _target_cols = [c for c in _store.columns if c.endswith("__profit")]
     _y = _store.select("time", *_target_cols)
-    _y_train_p, _y_test_p = train_test_split(_y, test_size=0.15, shuffle=False)
+    _y_train_p, _y_test_p = train_test_split(_y, test_size=0.15)
     _horizon_p = len(_y_test_p)
 
     _fc_p = PointReductionForecaster(
@@ -312,8 +312,6 @@ def _(
     mo.vstack(_plots)
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -324,7 +322,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -357,7 +354,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

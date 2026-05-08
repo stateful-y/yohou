@@ -49,11 +49,11 @@ def _():
     import polars as pl
     from sklearn.ensemble import GradientBoostingRegressor
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_sunspot
     from yohou.ensemble import VotingIntervalForecaster
     from yohou.interval import SplitConformalForecaster
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
@@ -87,7 +87,7 @@ def _(mo):
 def _(fetch_sunspot, pl, train_test_split):
     y = fetch_sunspot().frame.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
     forecasting_horizon = 24
-    y_train, y_test = train_test_split(y, test_size=5 * forecasting_horizon, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=5 * forecasting_horizon)
     coverage = [0.50, 0.80, 0.90]
 
     print(f"Training: {len(y_train)} obs, Test: {len(y_test)} obs")

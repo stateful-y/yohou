@@ -53,7 +53,6 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.compose import (
         ColumnForecaster,
@@ -63,6 +62,7 @@ def _():
     )
     from yohou.datasets import fetch_kdd_cup
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer, RollingStatisticsTransformer, StandardScaler
@@ -110,7 +110,7 @@ def _(inspect_panel, fetch_kdd_cup, mo, train_test_split):
     _globals, groups = inspect_panel(store)
     target_cols = [c for c in store.columns if c != "time"]
 
-    y_train, y_test = train_test_split(store, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(store, test_size=0.15)
     horizon = len(y_test)
 
     mo.md(

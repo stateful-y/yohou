@@ -13,7 +13,7 @@ from yohou.utils.panel import inspect_panel
 __all__ = [
     "add_interval",
     "check_continuity",
-    "check_exogenous_required",
+    "check_X_actual_required",
     "check_forecasting_horizon_positive",
     "check_inputs",
     "check_interval_consistency",
@@ -54,7 +54,7 @@ def check_time_column(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
     --------
     `check_interval_consistency` : Validate uniform time spacing.
     `check_continuity` : Validate temporal continuity between DataFrames.
-    `check_inputs` : Validate consistent intervals across y and X.
+    `check_inputs` : Validate consistent intervals across y and X_actual.
 
     """
     if "time" not in df.columns:
@@ -329,7 +329,7 @@ def check_sufficient_rows(
     See Also
     --------
     `check_forecasting_horizon_positive` : Validate forecasting horizon is positive.
-    `check_exogenous_required` : Validate exogenous features for recursive prediction.
+    `check_X_actual_required` : Validate X_actual is provided for recursive prediction.
 
     """
     actual_rows = len(df)
@@ -386,7 +386,7 @@ def check_groups(
     See Also
     --------
     `check_groups_exist` : Validate requested panel groups exist (deprecated).
-    `check_panel_groups_match` : Validate y and X have matching panel groups.
+    `check_panel_groups_match` : Validate y and X_actual have matching panel groups.
     `inspect_panel` : Detect panel groups in a DataFrame.
 
     """
@@ -438,7 +438,7 @@ def check_groups_exist(
     See Also
     --------
     `check_groups` : Preferred replacement for this function.
-    `check_panel_groups_match` : Validate y and X have matching panel groups.
+    `check_panel_groups_match` : Validate y and X_actual have matching panel groups.
 
     """
     if requested_panel_groups is None:
@@ -464,7 +464,7 @@ def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame
     df : pl.DataFrame
         DataFrame to validate. Must have "time" column.
     df_name : str, default="DataFrame"
-        Name of DataFrame in error message (e.g., "y", "X", "y_pred").
+        Name of DataFrame in error message (e.g., "y", "X_actual", "y_pred").
 
     Raises
     ------
@@ -496,7 +496,7 @@ def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame
 
     See Also
     --------
-    `check_panel_groups_match` : Validate y and X have matching panel groups.
+    `check_panel_groups_match` : Validate y and X_actual have matching panel groups.
     `check_groups` : Validate panel group names for forecaster operations.
     `inspect_panel` : Detect panel groups in a DataFrame.
 
@@ -521,30 +521,30 @@ def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame
 
 def check_panel_groups_match(
     y: pl.DataFrame | None,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
 ) -> None:
-    """Validate that y and X have compatible panel group structures.
+    """Validate that y and X_actual have compatible panel group structures.
 
     When both DataFrames contain panel columns (using the ``__`` separator),
     they must share the same entity prefixes. For example, if y has
-    ``"store_1__sales"`` and ``"store_2__sales"``, then X must also have
+    ``"store_1__sales"`` and ``"store_2__sales"``, then X_actual must also have
     panel columns with ``"store_1__"`` and ``"store_2__"`` prefixes.
 
-    Global-only X (no ``__`` columns) is always valid regardless of y's
+    Global-only X_actual (no ``__`` columns) is always valid regardless of y's
     structure. Global features are broadcast to every panel group.
 
     Parameters
     ----------
     y : pl.DataFrame or None
         Target DataFrame. Can be None.
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         Feature DataFrame. Can be None.
 
     Raises
     ------
     ValueError
-        If both y and X have panel columns but with different group prefixes,
-        or if y is global but X has panel columns.
+        If both y and X_actual have panel columns but with different group prefixes,
+        or if y is global but X_actual has panel columns.
 
     Examples
     --------
@@ -556,14 +556,14 @@ def check_panel_groups_match(
     ...     "store_1__sales": [10],
     ...     "store_2__sales": [20],
     ... })
-    >>> X = pl.DataFrame({
+    >>> X_actual = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1)],
     ...     "store_1__temp": [100],
     ...     "store_2__temp": [200],
     ... })
-    >>> check_panel_groups_match(y, X)  # No error
+    >>> check_panel_groups_match(y, X_actual)  # No error
 
-    >>> # Valid: panel y with global-only X (broadcast to all groups)
+    >>> # Valid: panel y with global-only X_actual (broadcast to all groups)
     >>> X_global = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1)],
     ...     "weather": [25.0],
@@ -578,7 +578,7 @@ def check_panel_groups_match(
     >>> check_panel_groups_match(y, X_bad)  # doctest: +SKIP
     Traceback (most recent call last):
         ...
-    ValueError: Panel groups mismatch between y and X...
+    ValueError: Panel groups mismatch between y and X_actual...
 
     See Also
     --------
@@ -587,19 +587,19 @@ def check_panel_groups_match(
     `inspect_panel` : Detect panel groups in a DataFrame.
 
     """
-    if y is None or X is None:
+    if y is None or X_actual is None:
         return  # Can't check if one is missing
 
     _, y_groups = inspect_panel(y)
-    _, X_groups = inspect_panel(X)
+    _, X_groups = inspect_panel(X_actual)
 
-    # Global-only X (no panel columns) is valid with any y structure.
+    # Global-only X_actual (no panel columns) is valid with any y structure.
     # Global features are broadcast to every panel group.
     if X_groups and set(y_groups.keys()) != set(X_groups.keys()):
         raise ValueError(
-            f"Panel groups mismatch between `y` and `X`. "
+            f"Panel groups mismatch between `y` and `X_actual`. "
             f"`y` groups: {sorted(y_groups.keys())}, "
-            f"`X` groups: {sorted(X_groups.keys())}."
+            f"`X_actual` groups: {sorted(X_groups.keys())}."
         )
 
 
@@ -623,7 +623,7 @@ def check_forecasting_horizon_positive(
 
     See Also
     --------
-    `check_exogenous_required` : Validate exogenous features for recursive prediction.
+    `check_X_actual_required` : Validate X_actual is provided for recursive prediction.
     `check_sufficient_rows` : Validate DataFrame has enough rows for an operation.
 
     """
@@ -636,19 +636,19 @@ def check_forecasting_horizon_positive(
         raise ValueError(f"forecasting_horizon must be >= 1, got {horizon}")
 
 
-def check_exogenous_required(
-    X: pl.DataFrame | None,
+def check_X_actual_required(
+    X_actual: pl.DataFrame | None,
     observation_horizon: int,
     context: str,
 ) -> None:
-    """Validate X is provided when required for recursive prediction.
+    """Validate X_actual is provided when required for recursive prediction.
 
     Consolidates duplicated validation in point and interval forecasters.
 
     Parameters
     ----------
-    X : pl.DataFrame or None
-        Exogenous features.
+    X_actual : pl.DataFrame or None
+        Actual exogenous features (``X_actual``).
     observation_horizon : int
         Observation horizon value.
     context : str
@@ -657,7 +657,8 @@ def check_exogenous_required(
     Raises
     ------
     ValueError
-        If X is None but observation_horizon > 0 (recursive prediction needs X).
+        If X_actual is None but observation_horizon > 0 (recursive prediction needs
+        X_actual).
 
     See Also
     --------
@@ -665,11 +666,11 @@ def check_exogenous_required(
     `check_sufficient_rows` : Validate DataFrame has enough rows for an operation.
 
     """
-    if observation_horizon > 0 and X is None:
+    if observation_horizon > 0 and X_actual is None:
         raise ValueError(
             f"For recursive predictions with observation_horizon > 0, "
-            f"X must be provided for {context}. "
-            f"Got observation_horizon={observation_horizon} but X=None."
+            f"X_actual must be provided for {context}. "
+            f"Got observation_horizon={observation_horizon} but X_actual=None."
         )
 
 
@@ -763,10 +764,10 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
     )
 
 
-def check_inputs(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
+def check_inputs(y: pl.DataFrame, X_actual: pl.DataFrame | None) -> str:
     """Validate that target and feature DataFrames have consistent time intervals.
 
-    Ensures all input DataFrames (target y and exogenous features X) have the same
+    Ensures all input DataFrames (target y and exogenous features X_actual) have the same
     uniform time interval. This is required for proper alignment in forecasting
     operations.
 
@@ -775,7 +776,7 @@ def check_inputs(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
     y : pl.DataFrame
         Target time series with "time" column.
 
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         Exogenous feature time series with "time" column, or None.
 
     Returns
@@ -797,8 +798,8 @@ def check_inputs(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
     ...     start=datetime(2020, 1, 1), end=datetime(2020, 1, 5), interval="1d", eager=True
     ... )
     >>> y = pl.DataFrame({"time": time_index, "sales": [100, 110, 120, 130, 140]})
-    >>> X = pl.DataFrame({"time": time_index, "holiday": [0, 0, 1, 0, 0]})
-    >>> interval = check_inputs(y, X)
+    >>> X_actual = pl.DataFrame({"time": time_index, "holiday": [0, 0, 1, 0, 0]})
+    >>> interval = check_inputs(y, X_actual)
     >>> interval
     '1d'
 
@@ -810,30 +811,30 @@ def check_inputs(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
     """
     # Validate column names first
     validate_column_names(y)
-    if X is not None:
-        validate_column_names(X)
+    if X_actual is not None:
+        validate_column_names(X_actual)
 
     y_interval = check_interval_consistency(y)
-    if X is not None:
-        X_interval = check_interval_consistency(X)
+    if X_actual is not None:
+        X_interval = check_interval_consistency(X_actual)
 
         if X_interval != y_interval:
             raise ValueError(
-                f"Time interval mismatch: y has interval {y_interval}, but X has interval "
+                f"Time interval mismatch: y has interval {y_interval}, but X_actual has interval "
                 f"{X_interval}. All inputs must have the same time interval."
             )
 
     return y_interval
 
 
-def validate_search_data(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
+def validate_search_data(y: pl.DataFrame, X_actual: pl.DataFrame | None) -> str:
     """Validate input data for hyperparameter search (GridSearchCV, RandomizedSearchCV).
 
     Performs comprehensive validation of time series data for cross-validation:
     - Checks that y is not None
     - Validates time column presence, dtype, nulls, and sorting
     - Validates panel data internal consistency
-    - Validates panel data group matching between y and X
+    - Validates panel data group matching between y and X_actual
     - Validates consistent time intervals across DataFrames
 
     This function is designed for SearchCV contexts where we validate data
@@ -844,7 +845,7 @@ def validate_search_data(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
     y : pl.DataFrame
         Target time series with "time" column.
 
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         Exogenous feature time series with "time" column, or None.
 
     Returns
@@ -866,8 +867,8 @@ def validate_search_data(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
     ...     start=datetime(2020, 1, 1), end=datetime(2020, 1, 5), interval="1d", eager=True
     ... )
     >>> y = pl.DataFrame({"time": time_index, "sales": [100, 110, 120, 130, 140]})
-    >>> X = pl.DataFrame({"time": time_index, "holiday": [0, 0, 1, 0, 0]})
-    >>> interval = validate_search_data(y, X)
+    >>> X_actual = pl.DataFrame({"time": time_index, "holiday": [0, 0, 1, 0, 0]})
+    >>> interval = validate_search_data(y, X_actual)
     >>> interval
     '1d'
 
@@ -883,18 +884,18 @@ def validate_search_data(y: pl.DataFrame, X: pl.DataFrame | None) -> str:
 
     # Validate time columns
     check_time_column(y, "y")
-    if X is not None:
-        check_time_column(X, "X")
+    if X_actual is not None:
+        check_time_column(X_actual, "X_actual")
 
     # Validate panel data internal consistency
     check_panel_internal_consistency(y, "y")
-    if X is not None:
-        check_panel_internal_consistency(X, "X")
+    if X_actual is not None:
+        check_panel_internal_consistency(X_actual, "X_actual")
         # Validate panel data groups match
-        check_panel_groups_match(y, X)
+        check_panel_groups_match(y, X_actual)
 
     # Validate consistent time intervals and return the interval
-    return check_inputs(y, X)
+    return check_inputs(y, X_actual)
 
 
 def validate_column_names(df: pl.DataFrame) -> None:

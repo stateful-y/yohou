@@ -615,15 +615,15 @@ class TestExogenousFeatures:
 
     @pytest.mark.parametrize("forecasting_horizon", [1, 3, 5])
     def test_exogenous_linear_combination_exact(self, forecasting_horizon):
-        """Verify exact prediction with exogenous features using lagged relationship.
+        """Verify exact prediction with X_future using contemporaneous relationship.
 
-        Uses y_{t+1} = 2*x1_t + 3*x2_t + 5 so that features at time t
-        (including x1_t, x2_t) can predict y at time t+1.
-        Fits with forecasting_horizon=1 and predicts recursively.
+        Uses y[t] = 2*x1[t] + 3*x2[t] + 5 (no AR component). X_future
+        step columns provide x1, x2 values at each future step, enabling
+        exact recursive multi-step prediction via stored X_future raws.
         """
         from datetime import datetime, timedelta
 
-        # Generate data: y_{t+1} = 2*x1_t + 3*x2_t + 5 (lagged relationship)
+        # Generate data: y[t] = 2*x1[t] + 3*x2[t] + 5 (contemporaneous)
         length = 100
         start = datetime(2020, 1, 1)
         time = [start + timedelta(days=i) for i in range(length)]
@@ -631,17 +631,15 @@ class TestExogenousFeatures:
         np.random.seed(42)
         x1 = np.random.randn(length)
         x2 = np.random.randn(length)
-        y_values = np.zeros(length)
-        y_values[0] = 5.0  # Initial value (no x at t=-1)
-        for t in range(1, length):
-            y_values[t] = 2.0 * x1[t - 1] + 3.0 * x2[t - 1] + 5.0
+        y_values = 2.0 * x1 + 3.0 * x2 + 5.0
 
         y = pl.DataFrame({
             "time": time,
             "value": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
 
-        X = pl.DataFrame({
+        # X_future: known-future features covering full time range
+        X_future = pl.DataFrame({
             "time": time,
             "x1": x1,
             "x2": x2,
@@ -649,33 +647,20 @@ class TestExogenousFeatures:
 
         train_length = 80
 
-        # Generate future X values (known ex-ante)
-        np.random.seed(100)
-        x1_future = np.random.randn(forecasting_horizon)
-        x2_future = np.random.randn(forecasting_horizon)
-
-        time_future = [start + timedelta(days=train_length + i) for i in range(forecasting_horizon)]
-        X_future = pl.DataFrame({
-            "time": time_future,
-            "x1": x1_future,
-            "x2": x2_future,
-        }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-
-        # Fit with forecasting_horizon=1 for recursive multi-step prediction
+        # Fit with forecasting_horizon=1; X_future produces x1_step_1, x2_step_1
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
         )
-        forecaster.fit(y[:train_length], X[:train_length], forecasting_horizon=1)
+        forecaster.fit(y[:train_length], forecasting_horizon=1, X_future=X_future)
 
-        # Predict recursively with known future X
-        y_pred = forecaster.predict(X=X_future, forecasting_horizon=forecasting_horizon)
+        # Predict recursively: each step re-derives X_future step columns
+        y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon)
         pred_values = y_pred["value"].to_numpy()
 
-        # Expected: first step uses last training X, subsequent use X_future
-        expected = np.zeros(forecasting_horizon)
-        expected[0] = 2.0 * x1[train_length - 1] + 3.0 * x2[train_length - 1] + 5.0
-        for k in range(1, forecasting_horizon):
-            expected[k] = 2.0 * x1_future[k - 1] + 3.0 * x2_future[k - 1] + 5.0
+        # Expected: y[train_length + k] = 2*x1[train_length + k] + 3*x2[train_length + k] + 5
+        expected = np.array([
+            2.0 * x1[train_length + k] + 3.0 * x2[train_length + k] + 5.0 for k in range(forecasting_horizon)
+        ])
 
         np.testing.assert_allclose(pred_values, expected, atol=1e-9)
 
@@ -706,7 +691,7 @@ class TestExogenousFeatures:
             "value": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
 
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "x": x,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
@@ -718,7 +703,7 @@ class TestExogenousFeatures:
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
         )
-        forecaster.fit(y[:train_length], X[:train_length], forecasting_horizon=1)
+        forecaster.fit(y[:train_length], X_actual[:train_length], forecasting_horizon=1)
 
         # Predict (uses last training features: y_119, x_119)
         y_pred = forecaster.predict()
@@ -730,68 +715,49 @@ class TestExogenousFeatures:
         np.testing.assert_allclose(pred_value, expected, atol=1e-8)
 
     def test_exogenous_polynomial_features(self):
-        """Verify exogenous with polynomial features: y_{t+1} = x_t + x_t^2 + 1.
+        """Verify X_future with polynomial features: y[t] = x[t] + x[t]^2 + 1.
 
-        Uses a lagged relationship so features at time t (including x_t, x_t^2)
-        can exactly predict y_{t+1}. Fits with forecasting_horizon=1 and
-        predicts recursively for 5 steps.
+        X_future provides x and x_squared as step-indexed columns.
+        Fits with forecasting_horizon=1 and predicts recursively for 5 steps.
         """
         from datetime import datetime, timedelta
 
-        # Generate y_{t+1} = x_t + x_t^2 + 1 (lagged relationship)
+        # Generate y[t] = x[t] + x[t]^2 + 1 (contemporaneous)
         length = 100
         start = datetime(2020, 1, 1)
         time = [start + timedelta(days=i) for i in range(length)]
 
         np.random.seed(555)
         x = np.random.randn(length)
-        y_values = np.zeros(length)
-        y_values[0] = 1.0  # Initial value (no x at t=-1)
-        for t in range(1, length):
-            y_values[t] = x[t - 1] + x[t - 1] ** 2 + 1.0
+        y_values = x + x**2 + 1.0
 
         y = pl.DataFrame({
             "time": time,
             "value": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
 
-        X = pl.DataFrame({
+        # X_future with polynomial features pre-computed
+        X_future = pl.DataFrame({
             "time": time,
             "x": x,
+            "x_squared": x**2,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
 
         train_length = 80
         predict_horizon = 5
 
-        # Generate future X
-        np.random.seed(666)
-        x_future = np.random.randn(predict_horizon)
-        time_future = [start + timedelta(days=train_length + i) for i in range(predict_horizon)]
-
-        X_future = pl.DataFrame({
-            "time": time_future,
-            "x": x_future,
-        }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-
-        # Add polynomial features manually
-        X_train = X[:train_length].with_columns((pl.col("x") ** 2).alias("x_squared"))
-        X_future_poly = X_future.with_columns((pl.col("x") ** 2).alias("x_squared"))
-
-        # Fit with forecasting_horizon=1 for recursive multi-step prediction
+        # Fit with forecasting_horizon=1; X_future produces x_step_1, x_squared_step_1
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
         )
-        forecaster.fit(y[:train_length], X_train, forecasting_horizon=1)
+        forecaster.fit(y[:train_length], forecasting_horizon=1, X_future=X_future)
 
         # Predict recursively
-        y_pred = forecaster.predict(X=X_future_poly, forecasting_horizon=predict_horizon)
+        y_pred = forecaster.predict(forecasting_horizon=predict_horizon)
         pred_values = y_pred["value"].to_numpy()
 
-        # Expected: first step uses last training X, subsequent use X_future
-        expected = np.zeros(predict_horizon)
-        expected[0] = x[train_length - 1] + x[train_length - 1] ** 2 + 1.0
-        for k in range(1, predict_horizon):
-            expected[k] = x_future[k - 1] + x_future[k - 1] ** 2 + 1.0
+        # Expected: y[train_length + k] = x[..+k] + x[..+k]^2 + 1
+        expected = np.array([x[train_length + k] + x[train_length + k] ** 2 + 1.0 for k in range(predict_horizon)])
 
         np.testing.assert_allclose(pred_values, expected, atol=1e-9)
 

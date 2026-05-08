@@ -63,7 +63,7 @@ def check_splitter_tags_accessible_before_fit(splitter) -> None:
     )
 
 
-def check_splitter_tags_static_after_fit(splitter, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_splitter_tags_static_after_fit(splitter, y: pl.DataFrame, X_actual: pl.DataFrame | None = None) -> None:
     """Check tags remain unchanged after fit.
 
     Tags describe inherent capabilities, not fitted state.
@@ -75,7 +75,7 @@ def check_splitter_tags_static_after_fit(splitter, y: pl.DataFrame, X: pl.DataFr
         Unfitted splitter instance
     y : pl.DataFrame
         Target time series with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features
 
     Raises
@@ -90,7 +90,7 @@ def check_splitter_tags_static_after_fit(splitter, y: pl.DataFrame, X: pl.DataFr
     tags_before = splitter_clone.__sklearn_tags__()
 
     # Run split (which validates but doesn't "fit" in sklearn sense)
-    _ = list(splitter_clone.split(y, X))
+    _ = list(splitter_clone.split(y, X_actual))
 
     # Get tags after split
     tags_after = splitter_clone.__sklearn_tags__()
@@ -102,7 +102,7 @@ def check_splitter_tags_static_after_fit(splitter, y: pl.DataFrame, X: pl.DataFr
 def check_splitter_tags_match_capabilities(
     splitter,
     y: pl.DataFrame,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     expected_tags: dict | None = None,
 ) -> None:
     """Check tag values match actual splitter behavior.
@@ -115,7 +115,7 @@ def check_splitter_tags_match_capabilities(
         Splitter instance
     y : pl.DataFrame
         Target time series with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features
     expected_tags : dict, optional
         Expected tag values to validate (keys: splitter_type, supports_panel_data, etc.)
@@ -136,7 +136,7 @@ def check_splitter_tags_match_capabilities(
 
     # get_n_splits should always work without data
     try:
-        n_splits_no_data = splitter.get_n_splits(y=None, X=None)
+        n_splits_no_data = splitter.get_n_splits(y=None, X_actual=None)
         assert isinstance(n_splits_no_data, int) and n_splits_no_data >= 0, (
             "get_n_splits() with y=None should return non-negative integer"
         )
@@ -144,7 +144,7 @@ def check_splitter_tags_match_capabilities(
         raise AssertionError(f"get_n_splits(y=None) raised ValueError: {e}") from e
 
 
-def check_splitter_produces_valid_indices(splitter, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_splitter_produces_valid_indices(splitter, y: pl.DataFrame, X_actual: pl.DataFrame | None = None) -> None:
     """Check all train/test indices are valid row positions.
 
     Indices should be non-negative integers within [0, len(y)).
@@ -155,7 +155,7 @@ def check_splitter_produces_valid_indices(splitter, y: pl.DataFrame, X: pl.DataF
         Splitter instance
     y : pl.DataFrame
         Target time series with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features
 
     Raises
@@ -166,7 +166,7 @@ def check_splitter_produces_valid_indices(splitter, y: pl.DataFrame, X: pl.DataF
     """
     n_samples = len(y)
 
-    for i, (train_idx, test_idx) in enumerate(splitter.split(y, X)):
+    for i, (train_idx, test_idx) in enumerate(splitter.split(y, X_actual)):
         # Check train indices
         assert isinstance(train_idx, np.ndarray), f"Split {i}: train indices should be ndarray"
         assert train_idx.dtype == np.intp, f"Split {i}: train indices should have dtype intp"
@@ -187,7 +187,7 @@ def check_splitter_produces_valid_indices(splitter, y: pl.DataFrame, X: pl.DataF
         )
 
 
-def check_splitter_n_splits_consistency(splitter, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_splitter_n_splits_consistency(splitter, y: pl.DataFrame, X_actual: pl.DataFrame | None = None) -> None:
     """Check get_n_splits() matches actual split count.
 
     Parameters
@@ -196,7 +196,7 @@ def check_splitter_n_splits_consistency(splitter, y: pl.DataFrame, X: pl.DataFra
         Splitter instance
     y : pl.DataFrame
         Target time series with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features
 
     Raises
@@ -205,8 +205,8 @@ def check_splitter_n_splits_consistency(splitter, y: pl.DataFrame, X: pl.DataFra
         If reported n_splits doesn't match actual count
 
     """
-    reported_n_splits = splitter.get_n_splits(y, X)
-    actual_splits = list(splitter.split(y, X))
+    reported_n_splits = splitter.get_n_splits(y, X_actual)
+    actual_splits = list(splitter.split(y, X_actual))
     actual_n_splits = len(actual_splits)
 
     assert reported_n_splits == actual_n_splits, (
@@ -214,7 +214,7 @@ def check_splitter_n_splits_consistency(splitter, y: pl.DataFrame, X: pl.DataFra
     )
 
 
-def check_splitter_non_overlapping_tests(splitter, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_splitter_non_overlapping_tests(splitter, y: pl.DataFrame, X_actual: pl.DataFrame | None = None) -> None:
     """Check test sets don't overlap if produces_non_overlapping_tests=True.
 
     Parameters
@@ -223,7 +223,7 @@ def check_splitter_non_overlapping_tests(splitter, y: pl.DataFrame, X: pl.DataFr
         Splitter instance
     y : pl.DataFrame
         Target time series with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features
 
     Raises
@@ -237,7 +237,7 @@ def check_splitter_non_overlapping_tests(splitter, y: pl.DataFrame, X: pl.DataFr
         # Skip check if overlap is allowed
         return
 
-    splits = list(splitter.split(y, X))
+    splits = list(splitter.split(y, X_actual))
     test_sets = [set(test_idx) for _, test_idx in splits]
 
     # Check all pairs for overlap
@@ -322,7 +322,7 @@ def check_splitter_parameter_constraints(
 
             # sklearn validates on first method call, so try get_n_splits or split
             try:
-                splitter.get_n_splits(y=None, X=None)
+                splitter.get_n_splits(y=None, X_actual=None)
             except ValueError as e:
                 # Check if it's a parameter validation error
                 error_msg = str(e)

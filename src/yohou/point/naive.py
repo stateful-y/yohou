@@ -97,7 +97,7 @@ class SeasonalNaive(BasePointForecaster):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.ignores_exogenous = True
+        tags.forecaster_tags.requires_exogenous = False
         tags.forecaster_tags.stateful = True
         return tags
 
@@ -105,8 +105,10 @@ class SeasonalNaive(BasePointForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "BasePointForecaster":
         """Fit the forecaster to historical data.
@@ -118,11 +120,16 @@ class SeasonalNaive(BasePointForecaster):
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Not used by naive forecasters but accepted for API
+            consistency. If ``None``, no exogenous features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -137,8 +144,10 @@ class SeasonalNaive(BasePointForecaster):
         BasePointForecaster.fit(
             self,
             y=y,
-            X=X,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **params,
         )
 
@@ -301,7 +310,7 @@ class MeanSeasonalNaive(BasePointForecaster):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.ignores_exogenous = True
+        tags.forecaster_tags.requires_exogenous = False
         tags.forecaster_tags.stateful = True
         return tags
 
@@ -309,8 +318,10 @@ class MeanSeasonalNaive(BasePointForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "BasePointForecaster":
         """Fit the forecaster to historical data.
@@ -323,11 +334,16 @@ class MeanSeasonalNaive(BasePointForecaster):
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Not used by naive forecasters but accepted for API
+            consistency. If ``None``, no exogenous features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -347,8 +363,10 @@ class MeanSeasonalNaive(BasePointForecaster):
         BasePointForecaster.fit(
             self,
             y=y,
-            X=X,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
             **params,
         )
 

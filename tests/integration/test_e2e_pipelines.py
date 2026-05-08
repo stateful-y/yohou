@@ -797,7 +797,7 @@ class TestFeatureForecastedPipeline:
         forecaster.fit(df_y[:150], df_X[:150], forecasting_horizon=10)
 
         # Predict
-        y_pred = forecaster.predict(X=df_X[:150], forecasting_horizon=10)
+        y_pred = forecaster.predict(forecasting_horizon=10)
 
         # Should produce predictions
         assert len(y_pred) == 10
@@ -841,11 +841,11 @@ class TestFeatureForecastedPipeline:
 
         # Fit
         y_train = df_y[:150]
-        X_train = df_X[:150]
-        forecaster.fit(y_train, X_train, forecasting_horizon=10)
+        X_actual_train = df_X[:150]
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=10)
 
         # Predict with actual features
-        y_pred = forecaster.predict(X=df_X[150:160], forecasting_horizon=10)
+        y_pred = forecaster.predict(forecasting_horizon=10)
         y_test = df_y[150:160]
 
         # Score
@@ -899,14 +899,14 @@ class TestFeatureForecastedPipeline:
         forecaster.fit(df_y[:300], df_X[:300], forecasting_horizon=10)
 
         # Predict
-        y_pred1 = forecaster.predict(X=df_X[:300], forecasting_horizon=10)
+        y_pred1 = forecaster.predict(forecasting_horizon=10)
         assert len(y_pred1) == 10
 
         # Observe
         forecaster.observe(df_y[300:310], df_X[300:310])
 
         # Predict after observe
-        y_pred2 = forecaster.predict(X=df_X[:310], forecasting_horizon=10)
+        y_pred2 = forecaster.predict(forecasting_horizon=10)
         assert len(y_pred2) == 10
 
         # Observe_predict
@@ -966,13 +966,13 @@ class TestFeatureForecastedPipeline:
 
         # Fit both
         y_train = df_y[:150]
-        X_train = df_X[:150]
-        forecaster_actual.fit(y_train, X_train, forecasting_horizon=10)
-        forecaster_predicted.fit(y_train, X_train, forecasting_horizon=10)
+        X_actual_train = df_X[:150]
+        forecaster_actual.fit(y_train, X_actual_train, forecasting_horizon=10)
+        forecaster_predicted.fit(y_train, X_actual_train, forecasting_horizon=10)
 
         # Predict with actual features
-        y_pred_actual = forecaster_actual.predict(X=df_X[150:160], forecasting_horizon=10)
-        y_pred_predicted = forecaster_predicted.predict(X=df_X[:150], forecasting_horizon=10)
+        y_pred_actual = forecaster_actual.predict(forecasting_horizon=10)
+        y_pred_predicted = forecaster_predicted.predict(forecasting_horizon=10)
 
         # Both should work
         assert len(y_pred_actual) == 10
@@ -1028,7 +1028,7 @@ class TestFeatureForecastedPipeline:
         forecaster.fit(df_y[:100], df_X[:100], forecasting_horizon=10)
 
         # Predict
-        y_pred = forecaster.predict(X=df_X[:100], forecasting_horizon=10)
+        y_pred = forecaster.predict(forecasting_horizon=10)
 
         # Since temperature is constant and relationship is linear,
         # predictions should be close to 70 (3*20 + 10)
@@ -1394,11 +1394,11 @@ class TestMaxNestingPipeline:
             ("auxiliary", SeasonalNaive(7), ["auxiliary"]),
         ])
 
-        # Fit with X
-        forecaster.fit(df[:400], X=df_X[:400], forecasting_horizon=7)
+        # Fit with X_actual
+        forecaster.fit(df[:400], X_actual=df_X[:400], forecasting_horizon=7)
 
         # Predict point
-        y_pred = forecaster.predict(X=df_X[:400], forecasting_horizon=7)
+        y_pred = forecaster.predict(forecasting_horizon=7)
         assert len(y_pred) == 7
         assert "demand" in y_pred.columns
         assert "auxiliary" in y_pred.columns
@@ -1448,7 +1448,7 @@ class TestMaxNestingPipeline:
         # But same structure
         assert forecaster.get_params(deep=False).keys() == forecaster_cloned.get_params(deep=False).keys()
 
-        # Fit original (needs X for ForecastedFeatureForecaster)
+        # Fit original (needs X_actual for ForecastedFeatureForecaster)
         # Need enough data so ForecastedFeatureForecaster's feature_forecaster (20% split)
         # has sufficient rows after tabularization with LagTransformer([1,7])
         n = 500
@@ -1469,7 +1469,7 @@ class TestMaxNestingPipeline:
             "temperature": 20 + 5 * np.sin(2 * np.pi * t_vals / 7),
         })
 
-        forecaster.fit(df[:400], X=df_X[:400], forecasting_horizon=5)
+        forecaster.fit(df[:400], X_actual=df_X[:400], forecasting_horizon=5)
 
         # Clone should still be unfitted
         with pytest.raises(NotFittedError, match="is not fitted"):
@@ -1651,21 +1651,21 @@ class TestMaxNestingPipeline:
             split_ratio=0.8,
         )
 
-        # Fit with X
+        # Fit with X_actual
         y_train = df[:400]
         y_test = df[400:407]
-        X_train = df_X[:400]
-        forecaster.fit(y_train, X=X_train, forecasting_horizon=7)
+        X_actual_train = df_X[:400]
+        forecaster.fit(y_train, X_actual=X_actual_train, forecasting_horizon=7)
 
         # Point predictions and scoring
-        y_pred_point = forecaster.predict(X=X_train, forecasting_horizon=7)
+        y_pred_point = forecaster.predict(forecasting_horizon=7)
         point_scorer = MeanAbsoluteError()
         point_scorer.fit(y_train)
         point_score = point_scorer.score(y_test, y_pred_point)
         assert np.isfinite(point_score)
 
         # Interval predictions and scoring
-        y_pred_interval = forecaster.predict_interval(X=X_train, coverage_rates=[0.9], forecasting_horizon=7)
+        y_pred_interval = forecaster.predict_interval(coverage_rates=[0.9], forecasting_horizon=7)
         interval_scorer = IntervalScore(coverage_rates=[0.9])
         interval_scorer.fit(y_train)
         interval_score = interval_scorer.score(y_test, y_pred_interval)

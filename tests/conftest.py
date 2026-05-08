@@ -579,9 +579,79 @@ def transformer_registry():
     }
 
 
+def _generate_exogenous(
+    rng,
+    time,
+    length,
+    n_future_features,
+    n_forecast_features,
+    forecasting_horizon,
+    panel,
+    n_groups,
+):
+    """Generate X_future and X_forecast DataFrames.
+
+    X_future extends ``length + forecasting_horizon`` timestamps so
+    ``window_futures`` fills all step columns without NaN.
+
+    X_forecast vintages extend H steps beyond y range so
+    ``pivot_forecasts`` produces non-null step columns.
+    """
+    from datetime import timedelta
+
+    H = forecasting_horizon
+    interval = time[1] - time[0] if length > 1 else timedelta(seconds=1)
+
+    # X_future: extends H steps beyond y range for NaN-free step columns
+    X_future = None
+    if n_future_features > 0:
+        extended_time = pl.datetime_range(
+            start=time[0],
+            end=time[-1] + H * interval,
+            interval=f"{int(interval.total_seconds())}s",
+            eager=True,
+        )
+        X_future = pl.DataFrame({"time": extended_time})
+        if panel and n_groups > 0:
+            for group_idx in range(n_groups):
+                for i in range(n_future_features):
+                    col_name = f"group_{group_idx}__F_{i}"
+                    X_future = X_future.with_columns(pl.Series(col_name, rng.random(len(extended_time))))
+        else:
+            for i in range(n_future_features):
+                X_future = X_future.with_columns(pl.Series(f"F_{i}", rng.random(len(extended_time))))
+
+    # X_forecast: tidy [vintage_time, time, Xf_0, ...], one vintage per obs
+    # One vintage per obs from index 0, each with H forecast steps
+    # extending into the future
+    X_forecast = None
+    if n_forecast_features > 0:
+        rows = []
+        for v_idx in range(0, length + H):
+            vintage_time = time[v_idx] if v_idx < length else time[-1] + (v_idx - length + 1) * interval
+            for step in range(1, H + 1):
+                target_time_idx = v_idx + step
+                if target_time_idx < length:
+                    target_time = time[target_time_idx]
+                else:
+                    target_time = time[-1] + (target_time_idx - length + 1) * interval
+                row = {"vintage_time": vintage_time, "time": target_time}
+                if panel and n_groups > 0:
+                    for group_idx in range(n_groups):
+                        for i in range(n_forecast_features):
+                            row[f"group_{group_idx}__Xf_{i}"] = float(rng.random())
+                else:
+                    for i in range(n_forecast_features):
+                        row[f"Xf_{i}"] = float(rng.random())
+                rows.append(row)
+        X_forecast = pl.DataFrame(rows)
+
+    return X_future, X_forecast
+
+
 @pytest.fixture
 def y_X_factory():
-    """Factory for generating (y, X) tuples.
+    """Factory for generating (y, X_actual) tuples.
 
     Returns a callable that generates time series data for forecaster testing.
     """
@@ -589,7 +659,19 @@ def y_X_factory():
 
     import numpy as np
 
-    def _factory(length=100, n_targets=2, n_features=3, seed=42, panel=False, n_groups=2):
+    def _factory(
+        length=100,
+        n_targets=2,
+        n_features=3,
+        seed=42,
+        panel=False,
+        n_groups=2,
+        n_future_features=0,
+        n_forecast_features=0,
+        forecasting_horizon=6,
+        *,
+        return_exogenous=False,
+    ):
         """Generate forecaster test data.
 
         Parameters
@@ -608,13 +690,22 @@ def y_X_factory():
         n_groups : int, default=2
             Number of panel groups (entities) when panel=True. Each group
             gets its own set of targets/features: group_0__y_0, group_0__X_0, etc.
+        n_future_features : int, default=0
+            Number of known-future features (X_future columns). 0 means None.
+        n_forecast_features : int, default=0
+            Number of external forecast features (X_forecast columns). 0 means None.
+        forecasting_horizon : int, default=6
+            Forecasting horizon H, used for X_future time extension and
+            X_forecast vintage/step structure.
+        return_exogenous : bool, default=False
+            If True, return (y, X_actual, X_future, X_forecast).
+            If False, return (y, X_actual).
 
         Returns
         -------
-        y : pl.DataFrame
-            Target data with "time" column
-        X : pl.DataFrame or None
-            Features with "time" column
+        tuple
+            (y, X_actual) when return_exogenous=False.
+            (y, X_actual, X_future, X_forecast) when return_exogenous=True.
         """
         rng = np.random.default_rng(seed)
 
@@ -637,36 +728,52 @@ def y_X_factory():
                     col_name = f"group_{group_idx}__y_{i}"
                     y = y.with_columns(pl.Series(col_name, base_values + variation))
 
-            X = None
+            X_actual = None
             if n_features > 0:
-                X = pl.DataFrame({"time": time})
+                X_actual = pl.DataFrame({"time": time})
                 for group_idx in range(n_groups):
                     for i in range(n_features):
                         base_values = rng.random(length)
                         # Add slight variation per group
                         variation = group_idx * 0.05
                         col_name = f"group_{group_idx}__X_{i}"
-                        X = X.with_columns(pl.Series(col_name, base_values + variation))
+                        X_actual = X_actual.with_columns(pl.Series(col_name, base_values + variation))
         else:
             # Generate regular (non-panel) data
             y = pl.DataFrame({"time": time})
             for i in range(n_targets):
                 y = y.with_columns(pl.Series(f"y_{i}", rng.random(length)))
 
-            X = None
+            X_actual = None
             if n_features > 0:
-                X = pl.DataFrame({"time": time})
+                X_actual = pl.DataFrame({"time": time})
                 for i in range(n_features):
-                    X = X.with_columns(pl.Series(f"X_{i}", rng.random(length)))
+                    X_actual = X_actual.with_columns(pl.Series(f"X_{i}", rng.random(length)))
 
-        return y, X
+        if not return_exogenous:
+            return y, X_actual
+
+        return (
+            y,
+            X_actual,
+            *_generate_exogenous(
+                rng,
+                time,
+                length,
+                n_future_features,
+                n_forecast_features,
+                forecasting_horizon,
+                panel,
+                n_groups if panel else 0,
+            ),
+        )
 
     return _factory
 
 
 @pytest.fixture
 def class_proba_y_X_factory():
-    """Factory for generating categorical (y, X) tuples for class-proba testing.
+    """Factory for generating categorical (y, X_actual) tuples for class-proba testing.
 
     Returns a callable that generates time series with categorical target columns
     suitable for ``ClassProbaReductionForecaster`` and related tests.
@@ -683,6 +790,11 @@ def class_proba_y_X_factory():
         seed=42,
         panel=False,
         n_groups=2,
+        n_future_features=0,
+        n_forecast_features=0,
+        forecasting_horizon=6,
+        *,
+        return_exogenous=False,
     ):
         """Generate class-probability forecaster test data.
 
@@ -702,13 +814,21 @@ def class_proba_y_X_factory():
             Whether to create panel data.
         n_groups : int
             Number of panel groups when panel=True.
+        n_future_features : int, default=0
+            Number of known-future features (X_future columns). 0 means None.
+        n_forecast_features : int, default=0
+            Number of external forecast features (X_forecast columns). 0 means None.
+        forecasting_horizon : int, default=6
+            Forecasting horizon H for X_future/X_forecast structure.
+        return_exogenous : bool, default=False
+            If True, return (y, X_actual, X_future, X_forecast).
+            If False, return (y, X_actual).
 
         Returns
         -------
-        y : pl.DataFrame
-            Target data with "time" column and string-valued categorical columns.
-        X : pl.DataFrame or None
-            Numeric features with "time" column.
+        tuple
+            (y, X_actual) when return_exogenous=False.
+            (y, X_actual, X_future, X_forecast) when return_exogenous=True.
         """
         rng = np.random.default_rng(seed)
         class_labels = [f"class_{i}" for i in range(n_classes)]
@@ -728,33 +848,49 @@ def class_proba_y_X_factory():
                     values = rng.choice(class_labels, size=length).tolist()
                     y = y.with_columns(pl.Series(col_name, values, dtype=pl.String))
 
-            X = None
+            X_actual = None
             if n_features > 0:
-                X = pl.DataFrame({"time": time})
+                X_actual = pl.DataFrame({"time": time})
                 for group_idx in range(n_groups):
                     for i in range(n_features):
                         col_name = f"group_{group_idx}__X_{i}"
-                        X = X.with_columns(pl.Series(col_name, rng.random(length)))
+                        X_actual = X_actual.with_columns(pl.Series(col_name, rng.random(length)))
         else:
             y = pl.DataFrame({"time": time})
             for i in range(n_targets):
                 values = rng.choice(class_labels, size=length).tolist()
                 y = y.with_columns(pl.Series(f"y_{i}", values, dtype=pl.String))
 
-            X = None
+            X_actual = None
             if n_features > 0:
-                X = pl.DataFrame({"time": time})
+                X_actual = pl.DataFrame({"time": time})
                 for i in range(n_features):
-                    X = X.with_columns(pl.Series(f"X_{i}", rng.random(length)))
+                    X_actual = X_actual.with_columns(pl.Series(f"X_{i}", rng.random(length)))
 
-        return y, X
+        if not return_exogenous:
+            return y, X_actual
+
+        return (
+            y,
+            X_actual,
+            *_generate_exogenous(
+                rng,
+                time,
+                length,
+                n_future_features,
+                n_forecast_features,
+                forecasting_horizon,
+                panel,
+                n_groups if panel else 0,
+            ),
+        )
 
     return _factory
 
 
 @pytest.fixture
 def y_X_panel_factory():
-    """Factory for generating panel data (y, X) tuples for testing.
+    """Factory for generating panel data (y, X_actual) tuples for testing.
 
     Returns a callable that generates panel time series data with entity prefixes.
     Convention: ``<entity>__<variable>`` (e.g., ``group_0__y_0``).
@@ -763,7 +899,18 @@ def y_X_panel_factory():
 
     import numpy as np
 
-    def _factory(n_groups=2, length=100, n_targets=2, n_features=2, seed=42):
+    def _factory(
+        n_groups=2,
+        length=100,
+        n_targets=2,
+        n_features=2,
+        seed=42,
+        n_future_features=0,
+        n_forecast_features=0,
+        forecasting_horizon=6,
+        *,
+        return_exogenous=False,
+    ):
         """Generate panel data for forecaster testing.
 
         Parameters
@@ -775,16 +922,24 @@ def y_X_panel_factory():
         n_targets : int, default=2
             Number of target variables per group
         n_features : int, default=2
-            Number of features per group (0 for X=None)
+            Number of features per group (0 for X_actual=None)
         seed : int, default=42
             Random seed for reproducibility
+        n_future_features : int, default=0
+            Number of known-future features (X_future columns). 0 means None.
+        n_forecast_features : int, default=0
+            Number of external forecast features (X_forecast columns). 0 means None.
+        forecasting_horizon : int, default=6
+            Forecasting horizon H for X_future/X_forecast structure.
+        return_exogenous : bool, default=False
+            If True, return (y, X_actual, X_future, X_forecast).
+            If False, return (y, X_actual).
 
         Returns
         -------
-        y : pl.DataFrame
-            Panel target data with "time" column and prefixed targets
-        X : pl.DataFrame or None
-            Panel features with "time" column and prefixed features
+        tuple
+            (y, X_actual) when return_exogenous=False.
+            (y, X_actual, X_future, X_forecast) when return_exogenous=True.
         """
         rng = np.random.default_rng(seed)
 
@@ -805,19 +960,35 @@ def y_X_panel_factory():
                 col_name = f"group_{group_idx}__y_{i}"
                 y = y.with_columns(pl.Series(col_name, base_values + variation))
 
-        # Generate panel X data (entity-first: group_0__X_0)
-        X = None
+        # Generate panel X_actual data (entity-first: group_0__X_0)
+        X_actual = None
         if n_features > 0:
-            X = pl.DataFrame({"time": time})
+            X_actual = pl.DataFrame({"time": time})
             for group_idx in range(n_groups):
                 for i in range(n_features):
                     base_values = rng.random(length) * 50
                     # Add group-specific offset
                     variation = group_idx * 5 + rng.normal(0, 0.5, length)
                     col_name = f"group_{group_idx}__X_{i}"
-                    X = X.with_columns(pl.Series(col_name, base_values + variation))
+                    X_actual = X_actual.with_columns(pl.Series(col_name, base_values + variation))
 
-        return y, X
+        if not return_exogenous:
+            return y, X_actual
+
+        return (
+            y,
+            X_actual,
+            *_generate_exogenous(
+                rng,
+                time,
+                length,
+                n_future_features,
+                n_forecast_features,
+                forecasting_horizon,
+                True,
+                n_groups,
+            ),
+        )
 
     return _factory
 
@@ -851,7 +1022,7 @@ def forecaster_registry():
 
 @pytest.fixture
 def panel_X_factory():
-    """Factory for panel data X with panel columns."""
+    """Factory for panel data X_actual with panel columns."""
 
     def _make(length=50, n_panels=2, n_features=2):
         time = pl.datetime_range(
@@ -954,8 +1125,8 @@ class DummyPointForecaster(BasePointForecaster):
         super().__init__()
         self.constant = constant
 
-    def fit(self, y, X=None, forecasting_horizon=1):
-        super().fit(y, X, forecasting_horizon)
+    def fit(self, y, X_actual=None, forecasting_horizon=1):
+        super().fit(y, X_actual, forecasting_horizon)
         return self
 
     def _predict(self):
@@ -972,8 +1143,8 @@ class DummyIntervalForecaster(BaseIntervalForecaster):
         super().__init__()
         self.width = width
 
-    def fit(self, y, X=None, forecasting_horizon=1):
-        super().fit(y, X, forecasting_horizon)
+    def fit(self, y, X_actual=None, forecasting_horizon=1):
+        super().fit(y, X_actual, forecasting_horizon)
         return self
 
     def _predict(self):

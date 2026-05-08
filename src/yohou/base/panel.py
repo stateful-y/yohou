@@ -7,6 +7,7 @@ import polars as pl
 import polars.selectors as cs
 
 from yohou.base.utils import (
+    _derive_step_columns,
     _fit_transform_transformers_one,
     _observe_transformers_one,
     _rewind_transformers_one,
@@ -40,8 +41,8 @@ class BasePanelForecaster:
     target_as_feature: str | None
     groups_: list[str]
     local_y_schema_: dict[str, pl.DataType]
-    local_X_schema_: dict[str, pl.DataType] | None
-    shared_X_schema_: dict[str, pl.DataType] | None
+    local_X_actual_schema_: dict[str, pl.DataType] | None
+    shared_X_actual_schema_: dict[str, pl.DataType] | None
     observation_horizon: int
     observed_time_: dict[str, datetime]
     interval_: timedelta | str
@@ -49,7 +50,7 @@ class BasePanelForecaster:
     def _set_input_attributes_panel(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         y_panel_groups: dict[str, list[str]],
         X_panel_groups: dict[str, list[str]] | None,
     ) -> None:
@@ -59,12 +60,12 @@ class BasePanelForecaster:
         ----------
         y : pl.DataFrame
             Target time series with panel columns.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series with panel columns.
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (group_name -> column_names).
         X_panel_groups : dict[str, list[str]] or None
-            Panel groups from X.
+            Panel groups from X_actual.
 
         """
         self.groups_ = list(y_panel_groups.keys())
@@ -88,13 +89,13 @@ class BasePanelForecaster:
         local_y = y.select(first_group_cols).rename({col: col.split("__", 1)[1] for col in first_group_cols})
         self.local_y_schema_ = dict(local_y.schema)
 
-        self.local_X_schema_ = None
-        self.shared_X_schema_ = None
-        if X is not None and X_panel_groups is not None:
-            X_shared_names, _ = inspect_panel(X)
+        self.local_X_actual_schema_ = None
+        self.shared_X_actual_schema_ = None
+        if X_actual is not None and X_panel_groups is not None:
+            X_shared_names, _ = inspect_panel(X_actual)
 
             if X_panel_groups:
-                # X has panel columns: validate suffixes match across groups
+                # X_actual has panel columns: validate suffixes match across groups
                 first_X_group_cols = X_panel_groups[self.groups_[0]]
                 first_X_suffixes = [col.split("__", 1)[1] for col in first_X_group_cols]
 
@@ -103,24 +104,24 @@ class BasePanelForecaster:
                     group_suffixes = [col.split("__", 1)[1] for col in group_cols]
                     if sorted(group_suffixes) != sorted(first_X_suffixes):
                         raise ValueError(
-                            f"The local groups in `X` do not have the same column suffixes. "
+                            f"The local groups in `X_actual` do not have the same column suffixes. "
                             f"Group '{self.groups_[0]}': {sorted(first_X_suffixes)}, "
                             f"Group '{group_name}': {sorted(group_suffixes)}"
                         )
 
-                # Extract X schema (local + shared)
-                self.shared_X_schema_ = dict(X.select(X_shared_names).schema)
-                local_X = X.select(first_X_group_cols).rename({
+                # Extract X_actual schema (local + shared)
+                self.shared_X_actual_schema_ = dict(X_actual.select(X_shared_names).schema)
+                local_X = X_actual.select(first_X_group_cols).rename({
                     col: col.split("__", 1)[1] for col in first_X_group_cols
                 })
-                self.local_X_schema_ = dict(local_X.schema)
+                self.local_X_actual_schema_ = dict(local_X.schema)
             else:
-                # Global-only X: all non-time columns are shared across groups
-                self.shared_X_schema_ = dict(X.select(X_shared_names).schema)
-                self.local_X_schema_ = {}
+                # Global-only X_actual: all non-time columns are shared across groups
+                self.shared_X_actual_schema_ = dict(X_actual.select(X_shared_names).schema)
+                self.local_X_actual_schema_ = {}
 
     def _fit_transform_inputs_panel(
-        self, y: pl.DataFrame, X: pl.DataFrame | None
+        self, y: pl.DataFrame, X_actual: pl.DataFrame | None
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame] | None]:
         """Fit transformers and transform inputs for panel data.
 
@@ -128,7 +129,7 @@ class BasePanelForecaster:
         ----------
         y : pl.DataFrame
             Target time series with panel columns.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series with panel columns.
 
         Returns
@@ -149,12 +150,12 @@ class BasePanelForecaster:
             y_local = get_group_df(df=y, group_name=group_name, schema=self.local_y_schema_)
 
             X_local = None
-            if X is not None and self.local_X_schema_ is not None:
-                # Build schema for X (local + shared columns)
-                X_schema = dict(self.local_X_schema_)
-                if self.shared_X_schema_:
-                    X_schema.update(self.shared_X_schema_)
-                X_local = get_group_df(df=X, group_name=group_name, schema=X_schema)
+            if X_actual is not None and self.local_X_actual_schema_ is not None:
+                # Build schema for X_actual (local + shared columns)
+                X_schema = dict(self.local_X_actual_schema_)
+                if self.shared_X_actual_schema_:
+                    X_schema.update(self.shared_X_actual_schema_)
+                X_local = get_group_df(df=X_actual, group_name=group_name, schema=X_schema)
 
             (
                 y_t_local,
@@ -163,7 +164,7 @@ class BasePanelForecaster:
                 feature_transformer_local,
             ) = _fit_transform_transformers_one(
                 y=y_local,
-                X=X_local,
+                X_actual=X_local,
                 target_transformer=self.target_transformer,
                 feature_transformer=self.feature_transformer,
                 target_as_feature=self.target_as_feature,
@@ -247,10 +248,12 @@ class BasePanelForecaster:
     def _pre_fit_panel(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         forecasting_horizon: int,
         y_panel_groups: dict[str, list[str]],
         X_panel_groups: dict[str, list[str]] | None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame] | None]:
         """Preprocessing and transform for panel data (narrow types).
 
@@ -258,14 +261,18 @@ class BasePanelForecaster:
         ----------
         y : pl.DataFrame
             Target time series with panel columns (already validated).
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Feature time series with panel columns (already validated).
         forecasting_horizon : int
             Number of steps ahead to forecast.
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (group_name -> column_names).
         X_panel_groups : dict[str, list[str]] or None
-            Panel groups from X.
+            Panel groups from X_actual.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
 
         Returns
         -------
@@ -275,8 +282,72 @@ class BasePanelForecaster:
             Transformed features per group.
 
         """
-        self._set_input_attributes_panel(y, X, y_panel_groups, X_panel_groups)
-        y_t, X_t = self._fit_transform_inputs_panel(y, X)
+        self._set_input_attributes_panel(y, X_actual, y_panel_groups, X_panel_groups)
+        y_t, X_t = self._fit_transform_inputs_panel(y, X_actual)
+
+        # Inject step columns from X_future / X_forecast
+        # Use first group's observation times (all groups share the same time index)
+        first_group = next(iter(y_t))
+        observation_times = y_t[first_group]["time"]
+
+        # Build existing column names at the prefixed level for collision detection
+        existing_columns: set[str] | None = None
+        if X_t is not None:
+            first_X_t = X_t[first_group]
+            if first_X_t is not None:
+                local_cols = {c for c in first_X_t.columns if c != "time"}
+                existing_columns = set()
+                for group_name in self.groups_:
+                    for col in local_cols:
+                        existing_columns.add(f"{group_name}__{col}")
+
+        X_step = _derive_step_columns(
+            X_future=X_future,
+            X_forecast=X_forecast,
+            observation_times=observation_times,
+            forecasting_horizon=forecasting_horizon,
+            interval=self.interval_,
+            existing_columns=existing_columns,
+        )
+        if X_step is not None:
+            self._step_column_names_ = set(X_step.columns) - {"time"}
+            self._X_future_raw_ = X_future
+            self._X_forecast_raw_ = X_forecast
+            self._X_future_schema_ = dict(X_future.select(~cs.by_name("time")).schema) if X_future is not None else None
+            self._X_forecast_schema_ = (
+                dict(X_forecast.select(~cs.by_name("time", "vintage_time")).schema) if X_forecast is not None else None
+            )
+
+            # Build step column schema per group for get_group_df extraction
+            step_cols_no_time = [c for c in X_step.columns if c != "time"]
+            first_group_step_cols = [c for c in step_cols_no_time if c.startswith(f"{first_group}__")]
+            local_step_schema = {c.split("__", 1)[1]: X_step[c].dtype for c in first_group_step_cols}
+            # Also include global (non-prefixed) step columns
+            global_step_cols = [
+                c for c in step_cols_no_time if "__" not in c or not any(c.startswith(f"{g}__") for g in self.groups_)
+            ]
+            for c in global_step_cols:
+                local_step_schema[c] = X_step[c].dtype
+            self._step_schema_per_group_ = local_step_schema
+
+            # Distribute step columns to per-group X_t dicts
+            for group_name in self.groups_:
+                X_step_local = get_group_df(df=X_step, group_name=group_name, schema=local_step_schema)
+                if X_t is not None and group_name in X_t and X_t[group_name] is not None:
+                    X_t[group_name] = X_t[group_name].join(X_step_local, on="time", how="left")
+                else:
+                    X_step_local = X_step_local.join(y_t[group_name].select("time"), on="time", how="semi")
+                    if X_t is None:
+                        X_t = {}
+                    X_t[group_name] = X_step_local
+        else:
+            self._step_column_names_ = set()
+            self._X_future_raw_ = None
+            self._X_forecast_raw_ = None
+            self._X_future_schema_ = None
+            self._X_forecast_schema_ = None
+            self._step_schema_per_group_ = None
+
         self._set_transformed_attributes_panel(y_t, X_t)
         self._update_y_X_t_observed_panel(y, X_t, self.groups_)
 
@@ -285,8 +356,10 @@ class BasePanelForecaster:
     def _rewind_panel(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         groups: list[str],
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "BasePanelForecaster":
         """Reset state for panel data.
 
@@ -294,10 +367,15 @@ class BasePanelForecaster:
         ----------
         y : pl.DataFrame
             Target time series with panel columns.
-        X : pl.DataFrame or None
-            Feature time series with panel columns.
+        X_actual : pl.DataFrame or None
+            Actual feature observations to restore the observation
+            state to (with panel columns).
         groups : list[str]
             Panel group names to reset.
+        X_future : pl.DataFrame or None, default=None
+            Known future features. If None, re-derived from stored raws.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts. If None, re-derived from stored raws.
 
         Returns
         -------
@@ -311,12 +389,12 @@ class BasePanelForecaster:
             y_local = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
 
             X_local = None
-            if X is not None and self.local_X_schema_ is not None:
-                # Build schema for X (local + shared columns)
-                X_schema = dict(self.local_X_schema_)
-                if self.shared_X_schema_:
-                    X_schema.update(self.shared_X_schema_)
-                X_local = get_group_df(df=X, group_name=panel_group_name, schema=X_schema)
+            if X_actual is not None and self.local_X_actual_schema_ is not None:
+                # Build schema for X_actual (local + shared columns)
+                X_schema = dict(self.local_X_actual_schema_)
+                if self.shared_X_actual_schema_:
+                    X_schema.update(self.shared_X_actual_schema_)
+                X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
 
             local_target_transformer = None
             if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
@@ -343,13 +421,19 @@ class BasePanelForecaster:
             X_t_filtered = {k: v for k, v in X_t.items() if v is not None}
 
         self._update_y_X_t_observed_panel(y, X_t_filtered, groups)
+
+        # Re-derive step columns and append to per-group _X_t_observed
+        self._inject_step_columns_after_update_panel(X_future, X_forecast)
+
         return self
 
     def _observe_panel(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         groups: list[str],
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "BasePanelForecaster":
         """Update state with new observations for panel data.
 
@@ -357,10 +441,14 @@ class BasePanelForecaster:
         ----------
         y : pl.DataFrame
             New target observations with panel columns.
-        X : pl.DataFrame or None
-            New feature observations with panel columns.
+        X_actual : pl.DataFrame or None
+            New actual feature observations with panel columns.
         groups : list[str]
             Panel group names to update.
+        X_future : pl.DataFrame or None, default=None
+            Known future features. If None, re-derived from stored raws.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
 
         Returns
         -------
@@ -375,12 +463,12 @@ class BasePanelForecaster:
             y_local = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
 
             X_local = None
-            if X is not None and self.local_X_schema_ is not None:
-                # Build schema for X (local + shared columns)
-                X_schema = dict(self.local_X_schema_)
-                if self.shared_X_schema_:
-                    X_schema.update(self.shared_X_schema_)
-                X_local = get_group_df(df=X, group_name=panel_group_name, schema=X_schema)
+            if X_actual is not None and self.local_X_actual_schema_ is not None:
+                # Build schema for X_actual (local + shared columns)
+                X_schema = dict(self.local_X_actual_schema_)
+                if self.shared_X_actual_schema_:
+                    X_schema.update(self.shared_X_actual_schema_)
+                X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
 
             local_target_transformer = None
             if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
@@ -413,12 +501,136 @@ class BasePanelForecaster:
         if any(v is not None for v in X_t_updated.values()):
             X_t_filtered = {k: v for k, v in X_t_updated.items() if v is not None}
 
-        # Update observed state - pass the concatenated y_updated dict
-        # The panel mixin's _update_y_X_t_observed_panel expects original format DataFrame
-        # but we have pre-extracted dicts here. We need to use the dict-based update.
+        # Update observed state using dict-based update
         self._update_y_X_t_observed_from_dicts(y_updated, X_t_filtered, groups)
 
+        # Re-derive step columns and append to per-group _X_t_observed
+        self._inject_step_columns_after_update_panel(X_future, X_forecast)
+
         return self
+
+    def _inject_step_columns_after_update_panel(
+        self,
+        X_future: pl.DataFrame | None,
+        X_forecast: pl.DataFrame | None,
+    ) -> None:
+        """Re-derive step columns and append to per-group _X_t_observed.
+
+        Uses stored raws as fallback when X_future or X_forecast is omitted.
+        Updates stored raws when new data is provided.
+
+        """
+        if not self._step_column_names_:
+            return
+
+        # Use first group's observed_time_ (all groups share same time index)
+        first_group = next(iter(self.observed_time_))
+        obs_time = self.observed_time_[first_group]
+
+        X_future_eff = X_future if X_future is not None else self._X_future_raw_
+        X_forecast_eff = X_forecast if X_forecast is not None else self._X_forecast_raw_
+
+        X_step = _derive_step_columns(
+            X_future_eff,
+            X_forecast_eff,
+            pl.Series([obs_time]),
+            self.fit_forecasting_horizon_,  # ty: ignore[unresolved-attribute]
+            self.interval_,
+        )
+        if X_step is not None and self._X_t_observed is not None:
+            for group_name, df in self._X_t_observed.items():
+                if df is not None:
+                    step_group = get_group_df(X_step, group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
+                        ~cs.by_name("time")
+                    )
+                    self._X_t_observed[group_name] = pl.concat([df, step_group], how="horizontal")
+
+        # Update stored raws
+        if X_future is not None:
+            self._X_future_raw_ = X_future
+        if X_forecast is not None:
+            self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == obs_time)
+
+    def _observe_with_precomputed_steps_panel(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        X_step_precomputed: pl.DataFrame | None,
+        groups: list[str],
+    ) -> None:
+        """Observe with pre-computed step columns for panel data.
+
+        Used by ``_observe_predict_loop`` to inject step columns that were
+        derived once at loop entry instead of re-deriving per stride.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations with panel columns.
+        X_actual : pl.DataFrame or None
+            New actual feature observations with panel columns.
+        X_step_precomputed : pl.DataFrame or None
+            Pre-computed step columns for this slice (already semi-joined
+            to the slice's time range). ``None`` when no step columns exist.
+        groups : list[str]
+            Panel group names to update.
+
+        """
+        X_t_updated: dict[str, pl.DataFrame | None] = {}
+        y_updated: dict[str, pl.DataFrame] = {}
+
+        for panel_group_name in groups:
+            y_local = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
+
+            X_local = None
+            if X_actual is not None and self.local_X_actual_schema_ is not None:
+                X_schema = dict(self.local_X_actual_schema_)
+                if self.shared_X_actual_schema_:
+                    X_schema.update(self.shared_X_actual_schema_)
+                X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
+
+            local_target_transformer = None
+            if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
+                local_target_transformer = self.target_transformer_[panel_group_name]
+
+            local_feature_transformer = None
+            if self.feature_transformer is not None and isinstance(self.feature_transformer_, dict):
+                local_feature_transformer = self.feature_transformer_[panel_group_name]
+
+            X_t_local = _observe_transformers_one(
+                y_local,
+                X_local,
+                local_target_transformer,
+                local_feature_transformer,
+                self.target_as_feature,
+            )
+
+            # Hstack pre-computed step columns for this group
+            if X_t_local is not None and X_step_precomputed is not None:
+                step_group = get_group_df(X_step_precomputed, panel_group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
+                    ~cs.by_name("time")
+                )
+                X_t_local = pl.concat([X_t_local, step_group], how="horizontal")
+            elif X_t_local is None and X_step_precomputed is not None:
+                X_t_local = get_group_df(X_step_precomputed, panel_group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
+                    ~cs.by_name("time")
+                )
+
+            X_t_updated[panel_group_name] = X_t_local
+
+            y_full = y_local
+            if self._y_observed is not None and panel_group_name in self._y_observed:
+                assert isinstance(self._y_observed, dict)
+                y_stored = self._y_observed[panel_group_name]
+                if y_stored is not None:
+                    y_full = pl.concat([y_stored, y_local], how="vertical")
+            y_updated[panel_group_name] = y_full
+
+        X_t_filtered: dict[str, pl.DataFrame] | None = None
+        if any(v is not None for v in X_t_updated.values()):
+            X_t_filtered = {k: v for k, v in X_t_updated.items() if v is not None}
+
+        self._update_y_X_t_observed_from_dicts(y_updated, X_t_filtered, groups)
 
     def _update_y_X_t_observed_from_dicts(
         self,

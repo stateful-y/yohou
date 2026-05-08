@@ -312,7 +312,7 @@ class TestFetchAirQualityClassification:
 
     def test_bunch_keys(self, air_quality_data):
         """Bunch contains required keys."""
-        for key in ("y", "X", "feature_names", "target_names", "classes", "DESCR"):
+        for key in ("y", "X_actual", "feature_names", "target_names", "classes", "DESCR"):
             assert key in air_quality_data
 
     def test_y_schema(self, air_quality_data):
@@ -324,19 +324,19 @@ class TestFetchAirQualityClassification:
         assert y["air_quality"].dtype == pl.Utf8
 
     def test_x_schema(self, air_quality_data):
-        """X has time (datetime) and 5 numeric feature columns."""
-        X = air_quality_data.X
-        assert "time" in X.columns
-        assert len(X.columns) == 6  # time + 5 features
-        for col in X.columns:
+        """X_actual has time (datetime) and 5 numeric feature columns."""
+        X_actual = air_quality_data.X_actual
+        assert "time" in X_actual.columns
+        assert len(X_actual.columns) == 6  # time + 5 features
+        for col in X_actual.columns:
             if col != "time":
-                assert X[col].dtype.is_numeric()
+                assert X_actual[col].dtype.is_numeric()
 
     def test_y_x_alignment(self, air_quality_data):
-        """y and X have the same length and time column."""
-        y, X = air_quality_data.y, air_quality_data.X
-        assert len(y) == len(X)
-        assert y["time"].equals(X["time"])
+        """y and X_actual have the same length and time column."""
+        y, X_actual = air_quality_data.y, air_quality_data.X_actual
+        assert len(y) == len(X_actual)
+        assert y["time"].equals(X_actual["time"])
 
     def test_classes(self, air_quality_data):
         """Classes match WHO air quality categories."""
@@ -353,8 +353,8 @@ class TestFetchAirQualityClassification:
         assert air_quality_data.target_names == ["air_quality"]
 
     def test_feature_names(self, air_quality_data):
-        """feature_names matches X columns minus time."""
-        expected = [c for c in air_quality_data.X.columns if c != "time"]
+        """feature_names matches X_actual columns minus time."""
+        expected = [c for c in air_quality_data.X_actual.columns if c != "time"]
         assert air_quality_data.feature_names == expected
 
     def test_no_nulls_in_y(self, air_quality_data):
@@ -376,7 +376,7 @@ class TestFetchDemandClassification:
 
     def test_bunch_keys(self, demand_data):
         """Bunch contains required keys."""
-        for key in ("y", "X", "feature_names", "target_names", "classes", "DESCR"):
+        for key in ("y", "X_actual", "feature_names", "target_names", "classes", "DESCR"):
             assert key in demand_data
 
     def test_y_schema(self, demand_data):
@@ -388,19 +388,19 @@ class TestFetchDemandClassification:
         assert y["demand_level"].dtype == pl.Utf8
 
     def test_x_schema(self, demand_data):
-        """X has time (datetime) and 4 numeric feature columns."""
-        X = demand_data.X
-        assert "time" in X.columns
-        assert len(X.columns) == 5  # time + 4 features
-        for col in X.columns:
+        """X_actual has time (datetime) and 4 numeric feature columns."""
+        X_actual = demand_data.X_actual
+        assert "time" in X_actual.columns
+        assert len(X_actual.columns) == 5  # time + 4 features
+        for col in X_actual.columns:
             if col != "time":
-                assert X[col].dtype.is_numeric()
+                assert X_actual[col].dtype.is_numeric()
 
     def test_y_x_alignment(self, demand_data):
-        """y and X have the same length and time column."""
-        y, X = demand_data.y, demand_data.X
-        assert len(y) == len(X)
-        assert y["time"].equals(X["time"])
+        """y and X_actual have the same length and time column."""
+        y, X_actual = demand_data.y, demand_data.X_actual
+        assert len(y) == len(X_actual)
+        assert y["time"].equals(X_actual["time"])
 
     def test_classes(self, demand_data):
         """Classes are low, medium, high."""
@@ -417,8 +417,8 @@ class TestFetchDemandClassification:
         assert demand_data.target_names == ["demand_level"]
 
     def test_feature_names(self, demand_data):
-        """feature_names matches X columns minus time."""
-        expected = [c for c in demand_data.X.columns if c != "time"]
+        """feature_names matches X_actual columns minus time."""
+        expected = [c for c in demand_data.X_actual.columns if c != "time"]
         assert demand_data.feature_names == expected
 
     def test_feature_columns_are_panel(self, demand_data):

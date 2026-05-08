@@ -161,7 +161,7 @@ class TestBaseForecasterWithExogenous:
         f = PointReductionForecaster()
         f.fit(y, X, forecasting_horizon=1)
         # Verify the forecaster can produce predictions
-        result = f.predict(X=X[-3:])
+        result = f.predict()
         assert isinstance(result, pl.DataFrame)
 
     def test_observe_with_X(self, y_X_factory):
@@ -187,7 +187,7 @@ class TestBaseForecasterPreFitValidation:
             f.fit(y, forecasting_horizon=1)
 
     def test_no_X_with_exogenous_forecaster_raises(self, y_X_factory):
-        """Forecaster with ignores_exogenous=False and no X raises."""
+        """Forecaster with requires_exogenous=True and no X raises."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=0)
         f = PointReductionForecaster(target_as_feature=None)
         with pytest.raises(ValueError, match="target_as_feature=None requires X"):

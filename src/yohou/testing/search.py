@@ -42,7 +42,12 @@ __all__ = [
 
 
 def check_search_fit_sets_attributes(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check fit() sets required search CV attributes.
 
@@ -56,7 +61,7 @@ def check_search_fit_sets_attributes(
         Unfitted search CV instance
     y : pl.DataFrame
         Training target data with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features with "time" column
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -68,7 +73,7 @@ def check_search_fit_sets_attributes(
 
     """
     search_cv_clone = clone(search_cv)
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Check core fitted attributes
     assert hasattr(search_cv_clone, "cv_results_"), "fit() must set cv_results_ attribute"
@@ -108,8 +113,17 @@ def check_search_fit_sets_attributes(
         assert hasattr(search_cv_clone, "best_forecaster_"), "fit() must set best_forecaster_ when refit=True"
         assert hasattr(search_cv_clone, "refit_time_"), "fit() must set refit_time_ when refit=True"
 
+        # Depth assertion: step columns propagate through search to best_forecaster_
+        if X_future is not None or X_forecast is not None:
+            assert hasattr(search_cv_clone.best_forecaster_, "_step_column_names_"), (
+                "best_forecaster_ must have _step_column_names_ when X_future/X_forecast provided"
+            )
+            assert len(search_cv_clone.best_forecaster_._step_column_names_) > 0, (
+                "best_forecaster_._step_column_names_ should be non-empty when X_future/X_forecast provided"
+            )
 
-def check_search_not_fitted_error(search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+
+def check_search_not_fitted_error(search_cv, y: pl.DataFrame, X_actual: pl.DataFrame | None = None) -> None:
     """Check accessing fitted attributes before fit() raises NotFittedError.
 
     Parameters
@@ -118,7 +132,7 @@ def check_search_not_fitted_error(search_cv, y: pl.DataFrame, X: pl.DataFrame | 
         Unfitted search CV instance
     y : pl.DataFrame
         Test target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Test features
 
     Raises
@@ -142,7 +156,7 @@ def check_search_not_fitted_error(search_cv, y: pl.DataFrame, X: pl.DataFrame | 
 
     # Should raise NotFittedError when calling predict before fit
     try:
-        search_cv_clone.predict(forecasting_horizon=1, X=X)
+        search_cv_clone.predict(forecasting_horizon=1)
         raise AssertionError(
             f"{search_cv_clone.__class__.__name__} should raise NotFittedError when calling predict() before fit()"
         )
@@ -152,7 +166,12 @@ def check_search_not_fitted_error(search_cv, y: pl.DataFrame, X: pl.DataFrame | 
 
 
 def check_search_cv_results_structure(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check cv_results_ has required structure.
 
@@ -165,7 +184,7 @@ def check_search_cv_results_structure(
         Fitted search CV instance
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -177,7 +196,7 @@ def check_search_cv_results_structure(
 
     """
     search_cv_clone = clone(search_cv)
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     cv_results = search_cv_clone.cv_results_
 
@@ -225,7 +244,12 @@ def check_search_cv_results_structure(
 
 
 def check_search_refit_false_no_forecaster(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check refit=False doesn't create best_forecaster_.
 
@@ -235,7 +259,7 @@ def check_search_refit_false_no_forecaster(
         Unfitted search CV instance with refit=False
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -252,7 +276,7 @@ def check_search_refit_false_no_forecaster(
     original_refit = search_cv_clone.refit
     search_cv_clone.refit = False
 
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Should have results but no best_forecaster_
     assert hasattr(search_cv_clone, "best_params_"), "fit() should set best_params_ even when refit=False"
@@ -262,7 +286,7 @@ def check_search_refit_false_no_forecaster(
 
     # predict() should not be available
     try:
-        search_cv_clone.predict(forecasting_horizon=1, X=X)
+        search_cv_clone.predict(forecasting_horizon=1)
         raise AssertionError(f"{search_cv_clone.__class__.__name__} should not have predict() when refit=False")
     except AttributeError:
         # Expected behavior
@@ -276,8 +300,10 @@ def check_search_predict_delegates(
     search_cv,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_test: pl.DataFrame | None = None,
+    X_actual_train: pl.DataFrame | None = None,
+    X_actual_test: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check predict() delegates to best_forecaster_.predict() correctly.
 
@@ -289,9 +315,9 @@ def check_search_predict_delegates(
         Training target data
     y_test : pl.DataFrame
         Test target data
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Training features
-    X_test : pl.DataFrame, optional
+    X_actual_test : pl.DataFrame, optional
         Test features
 
     Raises
@@ -303,10 +329,12 @@ def check_search_predict_delegates(
     forecasting_horizon = min(3, len(y_test))
 
     # Make predictions from search CV
-    y_pred_search = search_cv.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred_search = search_cv.predict(forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Make predictions from best_forecaster_ directly
-    y_pred_best = search_cv.best_forecaster_.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+    y_pred_best = search_cv.best_forecaster_.predict(
+        forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+    )
 
     # Predictions should be identical
     assert_frame_equal(y_pred_search, y_pred_best, check_exact=False)
@@ -316,8 +344,10 @@ def check_search_observe_delegates(
     search_cv,
     y_train: pl.DataFrame,
     y_update: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_update: pl.DataFrame | None = None,
+    X_actual_train: pl.DataFrame | None = None,
+    X_actual_update: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check observe() delegates to best_forecaster_.observe() correctly.
 
@@ -329,9 +359,9 @@ def check_search_observe_delegates(
         Training target data
     y_update : pl.DataFrame
         Update target data
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Training features
-    X_update : pl.DataFrame, optional
+    X_actual_update : pl.DataFrame, optional
         Update features
 
     Raises
@@ -344,7 +374,7 @@ def check_search_observe_delegates(
     initial_observed_time = search_cv.best_forecaster_.observed_time_
 
     # Observe via search CV
-    search_cv.observe(y_update, X_update)
+    search_cv.observe(y_update, X_actual_update, X_future=X_future, X_forecast=X_forecast)
 
     # Check that best_forecaster_ was observed
     updated_observed_time = search_cv.best_forecaster_.observed_time_
@@ -368,8 +398,10 @@ def check_search_rewind_delegates(
     search_cv,
     y_train: pl.DataFrame,
     y_reset: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_reset: pl.DataFrame | None = None,
+    X_actual_train: pl.DataFrame | None = None,
+    X_actual_reset: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check rewind() delegates to best_forecaster_.rewind() correctly.
 
@@ -381,9 +413,9 @@ def check_search_rewind_delegates(
         Training target data
     y_reset : pl.DataFrame
         Reset target data
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Training features
-    X_reset : pl.DataFrame, optional
+    X_actual_reset : pl.DataFrame, optional
         Reset features
 
     Raises
@@ -396,7 +428,7 @@ def check_search_rewind_delegates(
     initial_observed_time = search_cv.best_forecaster_.observed_time_
 
     # Rewind via search CV
-    search_cv.rewind(y_reset, X_reset)
+    search_cv.rewind(y_reset, X_actual_reset, X_future=X_future, X_forecast=X_forecast)
 
     # Check that best_forecaster_ was rewound
     reset_observed_time = search_cv.best_forecaster_.observed_time_
@@ -414,7 +446,12 @@ def check_search_rewind_delegates(
 
 
 def check_search_multimetric_scoring(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check multi-metric scoring with dict scorer works correctly.
 
@@ -424,7 +461,7 @@ def check_search_multimetric_scoring(
         Unfitted search CV instance with dict scoring
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -441,7 +478,7 @@ def check_search_multimetric_scoring(
     if not isinstance(search_cv_clone.scoring, dict):
         raise ValueError("This check requires search_cv.scoring to be a dict")
 
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Check multimetric_ flag
     assert search_cv_clone.multimetric_, "multimetric_ should be True when scoring is dict"
@@ -474,7 +511,12 @@ def check_search_multimetric_scoring(
 
 
 def check_search_return_train_score(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check return_train_score=True adds train score keys to cv_results_.
 
@@ -484,7 +526,7 @@ def check_search_return_train_score(
         Unfitted search CV instance with return_train_score=True
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -501,7 +543,7 @@ def check_search_return_train_score(
     original_return_train_score = search_cv_clone.return_train_score
     search_cv_clone.return_train_score = True
 
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     cv_results = search_cv_clone.cv_results_
 
@@ -520,7 +562,12 @@ def check_search_return_train_score(
 
 
 def check_search_error_score_handling(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check error_score parameter handles failing fits correctly.
 
@@ -530,7 +577,7 @@ def check_search_error_score_handling(
         Unfitted search CV instance with error_score=np.nan
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -548,7 +595,7 @@ def check_search_error_score_handling(
 
     # Note: This check assumes that invalid parameters will be tested
     # If all parameters are valid, this check may pass trivially
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Check that fit completed without raising
     assert hasattr(search_cv_clone, "cv_results_"), (
@@ -604,7 +651,12 @@ def check_search_clone_preserves_params(search_cv) -> None:
 
 
 def check_grid_search_exhaustive(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check GridSearchCV evaluates all parameter combinations.
 
@@ -614,7 +666,7 @@ def check_grid_search_exhaustive(
         Unfitted GridSearchCV instance
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -629,7 +681,7 @@ def check_grid_search_exhaustive(
         raise ValueError("This check requires GridSearchCV instance")
 
     search_cv_clone = clone(search_cv)
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Count expected combinations
     param_grid = search_cv_clone.param_grid
@@ -693,7 +745,12 @@ def check_grid_search_param_grid_validation(search_cv) -> None:
 
 
 def check_randomized_search_n_iter(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check n_iter controls number of parameter combinations evaluated.
 
@@ -703,7 +760,7 @@ def check_randomized_search_n_iter(
         Unfitted RandomizedSearchCV instance
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -718,7 +775,7 @@ def check_randomized_search_n_iter(
         raise ValueError("This check requires RandomizedSearchCV instance")
 
     search_cv_clone = clone(search_cv)
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Check actual combinations matches n_iter
     actual_combinations = len(search_cv_clone.cv_results_["params"])
@@ -730,7 +787,12 @@ def check_randomized_search_n_iter(
 
 
 def check_randomized_search_reproducibility(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check random_state produces same parameter samples.
 
@@ -740,7 +802,7 @@ def check_randomized_search_reproducibility(
         Unfitted RandomizedSearchCV instance with random_state set
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -759,11 +821,11 @@ def check_randomized_search_reproducibility(
 
     # Fit first time
     search_cv_clone1 = clone(search_cv)
-    search_cv_clone1.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone1.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Fit second time with same random_state
     search_cv_clone2 = clone(search_cv)
-    search_cv_clone2.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone2.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Check that same parameters were sampled
     params1 = search_cv_clone1.cv_results_["params"]
@@ -796,7 +858,12 @@ def check_randomized_search_reproducibility(
 
 
 def check_randomized_search_distributions(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check scipy.stats distributions work for parameter sampling.
 
@@ -806,7 +873,7 @@ def check_randomized_search_distributions(
         Unfitted RandomizedSearchCV instance with scipy distributions
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -821,7 +888,7 @@ def check_randomized_search_distributions(
         raise ValueError("This check requires RandomizedSearchCV instance")
 
     search_cv_clone = clone(search_cv)
-    search_cv_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Check that fit completed successfully
     assert hasattr(search_cv_clone, "cv_results_"), (
@@ -837,9 +904,11 @@ def check_search_panel_data(
     search_cv,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_test: pl.DataFrame | None = None,
+    X_actual_train: pl.DataFrame | None = None,
+    X_actual_test: pl.DataFrame | None = None,
     groups: list[str] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check groups parameter propagates correctly.
 
@@ -851,9 +920,9 @@ def check_search_panel_data(
         Training target data with panel groups
     y_test : pl.DataFrame
         Test target data with panel groups
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Training features with panel groups
-    X_test : pl.DataFrame, optional
+    X_actual_test : pl.DataFrame, optional
         Test features with panel groups
     groups : list of str, optional
         Panel group names to test
@@ -867,7 +936,9 @@ def check_search_panel_data(
     forecasting_horizon = min(3, len(y_test))
 
     # Test predict with groups
-    y_pred = search_cv.predict(forecasting_horizon=forecasting_horizon, X=X_test, groups=groups)
+    y_pred = search_cv.predict(
+        forecasting_horizon=forecasting_horizon, groups=groups, X_future=X_future, X_forecast=X_forecast
+    )
 
     # Check that predictions have panel structure if expected
     if groups is not None:
@@ -885,7 +956,12 @@ def check_search_panel_data(
 
 
 def check_search_method_availability(
-    search_cv, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    search_cv,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check @available_if decorator logic with refit=True/False.
 
@@ -895,7 +971,7 @@ def check_search_method_availability(
         Unfitted search CV instance
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -912,7 +988,7 @@ def check_search_method_availability(
     # For single metric, set refit=True
     if not (isinstance(search_cv.scoring, dict) and isinstance(search_cv.refit, str)):
         search_cv_refit.refit = True
-    search_cv_refit.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_refit.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Methods should be available
     assert hasattr(search_cv_refit, "predict"), "predict() should be available when refit=True"
@@ -921,7 +997,9 @@ def check_search_method_availability(
     # Test with refit=False
     search_cv_no_refit = clone(search_cv)
     search_cv_no_refit.refit = False
-    search_cv_no_refit.fit(y, X, forecasting_horizon=forecasting_horizon)
+    search_cv_no_refit.fit(
+        y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+    )
 
     # Methods should raise AttributeError
     try:
@@ -936,8 +1014,10 @@ def check_search_interval_predict_delegates(
     search_cv,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_test: pl.DataFrame | None = None,
+    X_actual_train: pl.DataFrame | None = None,
+    X_actual_test: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check predict_interval() works after interval search with refit.
 
@@ -952,9 +1032,9 @@ def check_search_interval_predict_delegates(
         Training target data.
     y_test : pl.DataFrame
         Test target data.
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Training features.
-    X_test : pl.DataFrame, optional
+    X_actual_test : pl.DataFrame, optional
         Test features.
 
     Raises
@@ -967,7 +1047,7 @@ def check_search_interval_predict_delegates(
 
     coverage_rates = [0.9]
 
-    y_pred = search_cv.predict_interval(X=X_test, coverage_rates=coverage_rates)
+    y_pred = search_cv.predict_interval(coverage_rates=coverage_rates, X_future=X_future, X_forecast=X_forecast)
 
     assert isinstance(y_pred, pl.DataFrame), f"predict_interval should return pl.DataFrame, got {type(y_pred)}"
     assert "time" in y_pred.columns, "Interval predictions should have 'time' column"

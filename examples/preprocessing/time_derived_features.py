@@ -41,7 +41,6 @@ def _(mo):
 
     Basic understanding of time series feature engineering and Fourier series.
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -81,7 +80,6 @@ def _(mo):
     We load the monthly sunspot series for the calendar, Fourier, and trend
     sections. Later we create a short daily series for holiday features.
     """)
-    return
 
 
 @app.cell
@@ -101,7 +99,6 @@ def _(mo):
     includes `year`, `month`, `quarter`, and the boolean boundary flags,
     but excludes sub-daily features like `hour` and `minute`.
     """)
-    return
 
 
 @app.cell
@@ -119,13 +116,11 @@ def _(plot_time_series, y_cal):
         y_cal.head(1000),
         title="Extracted Calendar Features",
     )
-    return
 
 
 @app.cell
 def _(cal_tf):
     cal_tf.applicable_features_
-    return
 
 
 @app.cell(hide_code=True)
@@ -135,7 +130,6 @@ def _(mo):
 
     Pass an explicit list to extract only the features you need.
     """)
-    return
 
 
 @app.cell
@@ -144,7 +138,6 @@ def _(CalendarFeatureTransformer, y):
     cal_specific.fit(y)
     y_specific = cal_specific.transform(y)
     y_specific.head(5)
-    return
 
 
 @app.cell(hide_code=True)
@@ -159,7 +152,6 @@ def _(mo):
     We create a short daily series for this section since holidays are most
     meaningful at daily granularity.
     """)
-    return
 
 
 @app.cell
@@ -199,7 +191,6 @@ def _(mo):
     holiday. Values are `null` when no next or previous holiday exists
     in the provided list.
     """)
-    return
 
 
 @app.cell
@@ -218,7 +209,6 @@ def _(X_prox, plot_time_series):
         columns=["holiday_indicator", "holiday_days_to_next", "holiday_days_since_last"],
         title="Holiday Indicator and Proximity",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -231,7 +221,6 @@ def _(mo):
     which frequency multiples to include - `[1]` captures the fundamental
     frequency, `[1, 2, 3]` adds higher harmonics for sharper patterns.
     """)
-    return
 
 
 @app.cell
@@ -249,7 +238,6 @@ def _(plot_time_series, y_fourier):
         y_fourier.head(1000),
         title="Yearly Fourier Harmonics (period=12)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -259,13 +247,11 @@ def _(mo):
     `fourier_{seasonality}_cos_{k}` for each harmonic `k`. Values are
     always in the range [-1, 1].
     """)
-    return
 
 
 @app.cell
 def _(pl, y_fourier):
     y_fourier.select(pl.col("^fourier_.*$")).describe()
-    return
 
 
 @app.cell(hide_code=True)
@@ -277,7 +263,6 @@ def _(mo):
     captures a yearly cycle on daily data accounting for leap years.
     The sunspot cycle is approximately 132 months (~11 years).
     """)
-    return
 
 
 @app.cell
@@ -295,7 +280,6 @@ def _(plot_time_series, y_solar):
         y_solar.head(1000),
         title="Solar Cycle Fourier Harmonics (period=132)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -307,7 +291,6 @@ def _(mo):
     periods. Each `FourierFeatureTransformer` handles one seasonal period,
     and the union concatenates their outputs.
     """)
-    return
 
 
 @app.cell
@@ -321,7 +304,6 @@ def _(FeatureUnion, FourierFeatureTransformer, y):
     fourier_union.fit(y)
     y_multi = fourier_union.transform(y)
     y_multi.head(5)
-    return
 
 
 @app.cell(hide_code=True)
@@ -333,7 +315,6 @@ def _(mo):
     index starting at 0. This is useful as a trend feature for
     reduction forecasters.
     """)
-    return
 
 
 @app.cell
@@ -351,7 +332,6 @@ def _(plot_time_series, y_idx):
         y_idx.head(1000),
         title="Time Index",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -363,7 +343,6 @@ def _(mo):
     data length. The `degree` parameter adds polynomial terms for
     non-linear trend modeling.
     """)
-    return
 
 
 @app.cell
@@ -381,7 +360,6 @@ def _(plot_time_series, y_poly):
         y_poly.head(1000),
         title="Normalized Polynomial Time Index (degree=3)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -390,13 +368,11 @@ def _(mo):
     Notice that `time_index` is `Float64` when normalized (instead of `Int64`),
     and polynomial columns are always `Float64`.
     """)
-    return
 
 
 @app.cell
 def _(y_poly):
     y_poly.select("time_index", "time_index_2", "time_index_3").describe()
-    return
 
 
 @app.cell(hide_code=True)
@@ -407,7 +383,6 @@ def _(mo):
     Combine calendar, Fourier, and time index transformers into a single
     [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) pipeline.
     """)
-    return
 
 
 @app.cell
@@ -429,7 +404,6 @@ def _(
     full_union.fit(y)
     y_full = full_union.transform(y)
     y_full.head(5)
-    return
 
 
 @app.cell(hide_code=True)
@@ -443,7 +417,6 @@ def _(mo):
     - [`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.time_features.TimeIndexTransformer/) provides linear or polynomial trend features with optional normalization
     - All four transformers are stateless, not invertible, and derive features purely from the `"time"` column
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -455,7 +428,6 @@ def _(mo):
     - **Custom transforms**: See [`function_transformer.py`](/examples/preprocessing/function_transformer/) for wrapping arbitrary polars operations
     - **Using in forecasters**: Pass to `feature_transformer` in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
     """)
-    return
 
 
 if __name__ == "__main__":

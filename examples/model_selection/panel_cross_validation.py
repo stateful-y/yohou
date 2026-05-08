@@ -233,8 +233,6 @@ def _(deepcopy, fh, mo, plot_forecast, search, y_test, y_train):
     ])
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -245,7 +243,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -278,7 +275,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

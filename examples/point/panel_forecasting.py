@@ -36,18 +36,17 @@ def _(mo):
     - Selective `predict`, `observe`, and `rewind` with `groups`
     - Groupwise scoring to identify weak groups
     """)
-    return
 
 
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeRegressor
 
     from yohou.compose import ColumnForecaster
     from yohou.datasets import fetch_kdd_cup
-    from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_group_scores, plot_score_time_series, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
@@ -81,7 +80,6 @@ def _(mo):
     groups from the `__` separator in column names. The data is split
     85/15 into train and test sets.
     """)
-    return
 
 
 @app.cell
@@ -92,7 +90,7 @@ def _(fetch_kdd_cup, inspect_panel, mo, plot_time_series, train_test_split):
     _target_cols = [c for c in _df.columns if c != "time"]
     y = _df.select("time", *_target_cols)
 
-    y_train, y_test = train_test_split(y, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.15)
     horizon = len(y_test)
 
     mo.vstack([
@@ -116,7 +114,6 @@ def _(mo):
     to every group. Each group gets its own fitted parameters, but shares
     the same hyperparameters.
     """)
-    return
 
 
 @app.cell
@@ -136,7 +133,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) with `groups` and `n_history` shows predictions
     for selected groups in a faceted layout, trimmed to the last 48 time steps.
     """)
-    return
 
 
 @app.cell
@@ -150,7 +146,6 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         groups=_groups[:2],
         title="Global Ridge Model: Selected Stations",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -160,7 +155,6 @@ def _(mo):
 
     Assign different model families to different station groups.
     """)
-    return
 
 
 @app.cell
@@ -212,7 +206,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) for the [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) lets you visually compare how
     per-group model specialisation affects predictions for the same groups.
     """)
-    return
 
 
 @app.cell
@@ -226,7 +219,6 @@ def _(plot_forecast, y_pred_column, y_test, y_train):
         groups=_groups[:2],
         title="ColumnForecaster: Per-Group Specialisation",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -245,7 +237,6 @@ def _(mo):
     forecast origin moves forward), and finally rewind back and predict
     once more (the origin returns to where it was).
     """)
-    return
 
 
 @app.cell
@@ -300,7 +291,6 @@ def _(fc_global, groups, mo, plot_forecast, y_test, y_train):
             title=f"{_group_name}: Predict After Rewind",
         ),
     ])
-    return
 
 
 @app.cell(hide_code=True)
@@ -316,7 +306,6 @@ def _(mo):
     [`plot_group_scores`](/pages/api/generated/yohou.plotting.evaluation.plot_group_scores/) summarises the MAE per model
     broken down by group as a bar chart, box distribution, or heatmap.
     """)
-    return
 
 
 @app.cell
@@ -338,7 +327,6 @@ def _(
         groups=_groups[:2],
         title="MAE Over Time by Station",
     )
-    return
 
 
 @app.cell
@@ -356,7 +344,6 @@ def _(
         title="Groupwise MAE: Global vs ColumnForecaster",
         y_label="MAE",
     )
-    return
 
 
 @app.cell
@@ -368,7 +355,6 @@ def _(MeanAbsoluteError, plot_group_scores, y_pred_global, y_test):
         kind="box",
         title="Global Ridge - MAE Distribution by Group",
     )
-    return
 
 
 @app.cell
@@ -386,7 +372,6 @@ def _(
         kind="heatmap",
         title="Groupwise MAE - Heatmap",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -406,7 +391,6 @@ def _(mo):
     - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/)
     - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
     """)
-    return
 
 
 if __name__ == "__main__":

@@ -103,8 +103,10 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "PolynomialTrendForecaster":
         """Fit polynomial trend model to historical data.
@@ -113,10 +115,19 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         ----------
         y : pl.DataFrame
             Target time series with "time" column.
-        X : pl.DataFrame, optional
-            Exogenous features (currently not used, reserved for future).
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Not used by this forecaster but accepted for API
+            consistency.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -129,7 +140,9 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
 
         # Pre-fit: validate inputs, apply target transformer, set attributes
-        y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
+        y_t, X_t = self._pre_fit(
+            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+        )
 
         estimator = Pipeline([
             ("poly_features", PolynomialFeatures(degree=self.degree, include_bias=True)),

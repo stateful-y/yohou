@@ -297,7 +297,7 @@ def fitted_forecaster_data():
 class _FailingForecaster(SeasonalNaive):
     """Forecaster whose fit() always raises."""
 
-    def fit(self, y, X=None, forecasting_horizon=1, **kwargs):
+    def fit(self, y, X_actual=None, forecasting_horizon=1, **kwargs):
         """Always raise RuntimeError."""
         raise RuntimeError("deliberate fit failure")
 

@@ -40,17 +40,15 @@ def _(mo):
 
     Basic familiarity with sklearn's fit/predict API and time series concepts (trend, seasonality).
     """)
-    return
 
 
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
+    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, train_test_split
     from yohou.plotting import (
         plot_cv_results_scatter,
         plot_forecast,
@@ -87,7 +85,6 @@ def _(mo):
     It exhibits strong trend and seasonality, making it ideal for
     demonstrating preprocessing techniques.
     """)
-    return
 
 
 @app.cell
@@ -106,19 +103,16 @@ def _(mo):
     year's monthly values on the same seasonal axis (FPP3 gg_season style) to
     reveal the repeating yearly pattern.
     """)
-    return
 
 
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(y, title="Monthly Tourism")
-    return
 
 
 @app.cell
 def _(plot_seasonality, y):
     plot_seasonality(y, seasonality="month", title="Monthly Seasonality Pattern")
-    return
 
 
 @app.cell(hide_code=True)
@@ -129,12 +123,11 @@ def _(mo):
     For time series, we must preserve temporal order - no shuffling allowed.
     We hold out the last ~20% (29 months) for testing.
     """)
-    return
 
 
 @app.cell
 def _(train_test_split, y):
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     forecasting_horizon = 12
 
     print(f"Training: {len(y_train)} obs ({y_train['time'].min()} to {y_train['time'].max()})")
@@ -159,7 +152,6 @@ def _(mo):
 
     We start with a simple Ridge regressor and 12 lag features.
     """)
-    return
 
 
 @app.cell
@@ -202,7 +194,6 @@ def _(MeanAbsoluteError, plot_forecast, y_pred, y_test, y_train):
     score = mae.score(y_test_trimmed, y_pred)
     print(f"MAE: {score:.2f}")
     fig_basic
-    return
 
 
 @app.cell(hide_code=True)
@@ -214,12 +205,11 @@ def _(mo):
 
     - `"transformed"` (default): lag features are built from the **transformed** target
     - `"raw"`: lag features are built from the **original** target (useful when target_transformer changes the scale)
-    - `None`: target is **excluded** entirely - only exogenous X is used as features (requires X)
+    - `None`: target is **excluded** entirely - only exogenous X_actual is used as features (requires X_actual)
 
     With no `target_transformer`, `"transformed"` and `"raw"` produce identical results.
     The difference matters when a target_transformer (like log or differencing) changes the scale.
     """)
-    return
 
 
 @app.cell
@@ -250,7 +240,6 @@ def _(
         [{"target_as_feature": k, "MAE": f"{v:.2f}"} for k, v in taf_scores.items()],
         label="MAE by target_as_feature (no target_transformer)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -262,7 +251,6 @@ def _(mo):
     A [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) via `target_transformer` stabilizes variance. It is applied to y
     before fitting and automatically inverted after prediction.
     """)
-    return
 
 
 @app.cell
@@ -301,7 +289,6 @@ def _(MeanAbsoluteError, plot_forecast, y_pred_log, y_test, y_train):
     score_log = mae_log.score(y_test_log, y_pred_log)
     print(f"MAE with log transform: {score_log:.2f}")
     fig_log
-    return
 
 
 @app.cell(hide_code=True)
@@ -317,7 +304,6 @@ def _(mo):
     Including `reduction_strategy` in the grid lets CV select the best
     strategy automatically alongside other hyperparameters.
     """)
-    return
 
 
 @app.cell
@@ -368,7 +354,6 @@ def _(mo):
     [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) shows how the cross-validation score varies
     with the `alpha` hyperparameter. Error bars represent fold-level variation.
     """)
-    return
 
 
 @app.cell
@@ -378,7 +363,6 @@ def _(grid_search, plot_cv_results_scatter):
         param_name="estimator__alpha",
         title="Grid Search Results: Alpha vs CV Score",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -387,7 +371,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) shows the best model's predictions against the test data.
     The best hyperparameters were selected automatically by [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/).
     """)
-    return
 
 
 @app.cell
@@ -400,7 +383,6 @@ def _(grid_search, plot_forecast, y_test, y_train):
         y_pred=y_pred_tuned,
         title="Tuned Reduction Forecast (GridSearchCV)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -417,7 +399,6 @@ def _(mo):
     - [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) provides proper time series CV
     - Log transforms help with multiplicative seasonality (variance scaling with level)
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -433,7 +414,6 @@ def _(mo):
     - **Decomposition**: See [Stationarity](/examples/#stationarity) for trend/seasonality extraction before forecasting
     - **Classification**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for categorical forecasting via reduction
     """)
-    return
 
 
 if __name__ == "__main__":

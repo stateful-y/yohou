@@ -21,10 +21,12 @@ def _fit_one_forecaster(
     forecaster: BaseForecaster,
     name: str,
     y: pl.DataFrame,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
     forecasting_horizon: int,
     fit_params: dict[str, Any],
     extra_fit_kwargs: dict[str, Any] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> tuple[str, BaseForecaster | None, str | None]:
     """Clone and fit a single base forecaster.
 
@@ -36,7 +38,7 @@ def _fit_one_forecaster(
         Name of the forecaster.
     y : pl.DataFrame
         Target time series.
-    X : pl.DataFrame or None
+    X_actual : pl.DataFrame or None
         Exogenous features.
     forecasting_horizon : int
         Forecasting horizon.
@@ -45,6 +47,10 @@ def _fit_one_forecaster(
     extra_fit_kwargs : dict or None
         Additional keyword arguments to pass to the child's ``fit``
         method (e.g. ``coverage_rates``).
+    X_future : pl.DataFrame or None, default=None
+        Known future features.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts.
 
     Returns
     -------
@@ -58,7 +64,14 @@ def _fit_one_forecaster(
         all_params = {**fit_params}
         if extra_fit_kwargs:
             all_params.update(extra_fit_kwargs)
-        forecaster_clone.fit(y, X, forecasting_horizon=forecasting_horizon, **all_params)
+        forecaster_clone.fit(
+            y,
+            X_actual,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            **all_params,
+        )
         return name, forecaster_clone, None
     except Exception as exc:  # noqa: BLE001
         return name, None, f"{type(exc).__name__}: {exc}"
@@ -130,11 +143,13 @@ class _BaseEnsembleForecaster:
     def _fit_forecasters_parallel(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
         forecasting_horizon: int,
         routed_params: Any,
         n_jobs: int | None,
         extra_fit_kwargs: dict[str, Any] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> list[tuple[str, BaseForecaster]]:
         """Clone and fit all base forecasters in parallel.
 
@@ -144,7 +159,7 @@ class _BaseEnsembleForecaster:
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Exogenous features.
         forecasting_horizon : int
             Forecasting horizon.
@@ -155,6 +170,10 @@ class _BaseEnsembleForecaster:
         extra_fit_kwargs : dict or None
             Additional keyword arguments to pass to each child's ``fit``
             method (e.g. ``coverage_rates``).
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
 
         Returns
         -------
@@ -172,10 +191,12 @@ class _BaseEnsembleForecaster:
                 forecaster,
                 name,
                 y,
-                X,
+                X_actual,
                 forecasting_horizon,
                 getattr(routed_params.get(name, Bunch(fit={})), "fit", {}),
                 extra_fit_kwargs,
+                X_future,
+                X_forecast,
             )
             for name, forecaster in self.forecasters
         )
@@ -261,7 +282,7 @@ class _BaseEnsembleForecaster:
         first_forecaster: BaseForecaster,
         forecasting_horizon: int,
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
+        X_actual: pl.DataFrame | None,
     ) -> None:
         """Copy fitted attributes from the first surviving child forecaster.
 
@@ -273,7 +294,7 @@ class _BaseEnsembleForecaster:
             Forecasting horizon used during fitting.
         y : pl.DataFrame
             Training target data.
-        X : pl.DataFrame or None
+        X_actual : pl.DataFrame or None
             Training exogenous data.
 
         """
@@ -281,13 +302,13 @@ class _BaseEnsembleForecaster:
         self.interval_ = first_forecaster.interval_
         self.groups_ = first_forecaster.groups_
         self.local_y_schema_ = dict(first_forecaster.local_y_schema_)
-        self.local_X_schema_ = getattr(first_forecaster, "local_X_schema_", None)
-        self.shared_X_schema_ = getattr(first_forecaster, "shared_X_schema_", None)
+        self.local_X_actual_schema_ = getattr(first_forecaster, "local_X_actual_schema_", None)
+        self.shared_X_actual_schema_ = getattr(first_forecaster, "shared_X_actual_schema_", None)
         self.local_y_t_schema_ = self.local_y_schema_
-        self.local_X_t_schema_ = self.local_X_schema_
+        self.local_X_t_schema_ = self.local_X_actual_schema_
         self._y_observed = y
-        self._X_observed = X
-        self._X_t_observed = X
+        self._X_observed = X_actual
+        self._X_t_observed = X_actual
 
     def _compute_effective_weights(self) -> None:
         """Compute effective weights for surviving forecasters.
@@ -444,8 +465,10 @@ class _BaseEnsembleForecaster:
     def observe(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ):
         """Observe new data on all surviving base forecasters.
@@ -454,10 +477,15 @@ class _BaseEnsembleForecaster:
         ----------
         y : pl.DataFrame
             New target observations.
-        X : pl.DataFrame or None, default=None
-            New exogenous observations.
+        X_actual : pl.DataFrame or None, default=None
+            New actual feature observations with a ``"time"`` column
+            aligned with ``y``. Forwarded to each child forecaster.
         groups : list of str or None, default=None
             Panel group prefixes to observe.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
         **params : dict
             Metadata routing parameters.
 
@@ -468,14 +496,18 @@ class _BaseEnsembleForecaster:
         """
         check_is_fitted(self, ["forecasters_"])
         for _name, forecaster in self.forecasters_:
-            forecaster.observe(y=y, X=X, groups=groups, **params)
+            forecaster.observe(
+                y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast, **params
+            )
         return self
 
     def rewind(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ):
         """Rewind all surviving base forecasters.
@@ -484,10 +516,15 @@ class _BaseEnsembleForecaster:
         ----------
         y : pl.DataFrame
             Target data to rewind to.
-        X : pl.DataFrame or None, default=None
-            Exogenous data to rewind to.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations to restore the observation
+            state to. Must align with ``y``.
         groups : list of str or None, default=None
             Panel group prefixes to rewind.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
         **params : dict
             Metadata routing parameters.
 
@@ -498,5 +535,5 @@ class _BaseEnsembleForecaster:
         """
         check_is_fitted(self, ["forecasters_"])
         for _name, forecaster in self.forecasters_:
-            forecaster.rewind(y=y, X=X, groups=groups, **params)
+            forecaster.rewind(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast, **params)
         return self

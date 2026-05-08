@@ -15,7 +15,6 @@ from yohou.utils.validation import (
     _timedelta_to_string,
     add_interval,
     check_continuity,
-    check_exogenous_required,
     check_forecasting_horizon_positive,
     check_groups,
     check_groups_exist,
@@ -24,6 +23,7 @@ from yohou.utils.validation import (
     check_schema,
     check_scorer_column_selection,
     check_time_column,
+    check_X_actual_required,
     interval_to_timedelta,
     parse_interval,
     validate_column_names,
@@ -998,7 +998,7 @@ class TestCheckPanelGroupsMatch:
             "temp__sensor_2": range(30, 40),
         })
 
-        with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X`"):
+        with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X_actual`"):
             check_panel_groups_match(y, X)
 
     def test_check_panel_groups_match_y_panel_X_global(self):
@@ -1038,7 +1038,7 @@ class TestCheckPanelGroupsMatch:
             "sales__store_2": range(30, 40),
         })
 
-        with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X`"):
+        with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X_actual`"):
             check_panel_groups_match(y, X)
 
     def test_check_panel_groups_match_multiple_groups(self):
@@ -1571,22 +1571,22 @@ class TestCheckForecastingHorizonPositive:
         check_forecasting_horizon_positive(10)
 
 
-class TestCheckExogenousRequired:
-    """Tests for check_exogenous_required."""
+class TestCheckXActualRequired:
+    """Tests for check_X_actual_required."""
 
     def test_none_X_with_positive_horizon_raises(self):
-        """X=None with observation_horizon > 0 raises ValueError."""
+        """X_actual=None with observation_horizon > 0 raises ValueError."""
         with pytest.raises(ValueError):
-            check_exogenous_required(None, observation_horizon=5, context="predict")
+            check_X_actual_required(None, observation_horizon=5, context="predict")
 
     def test_none_X_with_zero_horizon_passes(self):
-        """X=None with observation_horizon=0 passes without error."""
-        check_exogenous_required(None, observation_horizon=0, context="predict")
+        """X_actual=None with observation_horizon=0 passes without error."""
+        check_X_actual_required(None, observation_horizon=0, context="predict")
 
     def test_provided_X_with_positive_horizon_passes(self):
-        """X provided with positive horizon passes without error."""
+        """X_actual provided with positive horizon passes without error."""
         X = pl.DataFrame({"time": [datetime(2020, 1, 1)], "val": [1.0]})
-        check_exogenous_required(X, observation_horizon=5, context="predict")
+        check_X_actual_required(X, observation_horizon=5, context="predict")
 
 
 class TestCheckPanelGroupNamesExist:

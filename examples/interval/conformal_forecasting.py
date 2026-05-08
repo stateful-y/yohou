@@ -47,11 +47,10 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
-
-    from copy import deepcopy
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
@@ -63,6 +62,7 @@ def _():
         MeanIntervalWidth,
         Residual,
     )
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -107,7 +107,7 @@ def _(fetch_tourism_monthly, train_test_split):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
     # Need enough calibration data: use 80/20 split
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     forecasting_horizon = min(len(y_test), 12)  # Limit horizon for calibration
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
@@ -323,8 +323,6 @@ def _(mo):
     """)
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -335,7 +333,6 @@ def _(mo):
     Each vintage represents a different forecast origin, so you can analyse
     how interval quality evolves as the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -369,7 +366,6 @@ def _(vintage_scorer, plot_score_time_series, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
-    return
 
 
 @app.cell
@@ -382,7 +378,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

@@ -40,7 +40,6 @@ def _(mo):
 
     Familiarity with [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) and [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -78,7 +77,6 @@ def _(mo):
     The Electricity Demand dataset has demand columns for several Australian states.
     We'll select Victoria and NSW demand as targets.
     """)
-    return
 
 
 @app.cell
@@ -117,7 +115,6 @@ def _(mo):
     Each entry is a `(name, forecaster, columns)` tuple.
     Here we use [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) for vic_demand and a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) for nsw_demand.
     """)
-    return
 
 
 @app.cell
@@ -159,7 +156,6 @@ def _(mo):
     When multiple target columns are present, the plot overlays them in a
     single figure.
     """)
-    return
 
 
 @app.cell
@@ -170,7 +166,6 @@ def _(plot_forecast, y_pred, y_test, y_train):
         y_train=y_train,
         title="ColumnForecaster: VIC Demand + NSW Demand",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -180,7 +175,6 @@ def _(mo):
 
     After fitting, access individual forecasters by name via `named_forecasters_`.
     """)
-    return
 
 
 @app.cell
@@ -189,7 +183,6 @@ def _(col_fc):
         print(f"{name}: {type(fc).__name__} → {cols}")
 
     vic_demand_fc = col_fc.named_forecasters_["vic_demand"]
-    return
 
 
 @app.cell(hide_code=True)
@@ -200,7 +193,6 @@ def _(mo):
     By default `remainder="drop"`, columns not assigned to any forecaster are
     excluded from predictions. Pass a forecaster to handle them automatically.
     """)
-    return
 
 
 @app.cell
@@ -228,7 +220,6 @@ def _(
         y_train=y_train,
         title="ColumnForecaster with Remainder (SeasonalNaive fallback)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -240,7 +231,6 @@ def _(mo):
     We select 7 to demonstrate [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) at scale, assigning a
     dedicated forecaster to the primary series and using `remainder` for the rest.
     """)
-    return
 
 
 @app.cell
@@ -312,7 +302,6 @@ def _(mo):
     predicted by the dedicated Ridge forecaster, while the remaining columns
     use [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) via the `remainder` parameter.
     """)
-    return
 
 
 @app.cell
@@ -323,7 +312,6 @@ def _(hosp_pred, hosp_test, hosp_train, plot_forecast):
         y_train=hosp_train,
         title="Hospital: ColumnForecaster (Ridge for T1, SeasonalNaive for rest)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -338,7 +326,6 @@ def _(mo):
     - Predictions are concatenated horizontally from all sub-forecasters
     - Scales naturally from 2 columns (Electricity Demand) to 7+ columns (Hospital)
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -350,7 +337,6 @@ def _(mo):
     - **Decomposition**: See [Stationarity](/examples/#stationarity) for [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
     - **Panel data**: See `examples/panel_reduction.py` for panel forecasting
     """)
-    return
 
 
 if __name__ == "__main__":

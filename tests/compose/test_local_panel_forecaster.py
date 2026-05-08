@@ -49,12 +49,12 @@ def panel_y_X():
         "store_a__sales": [float(i) for i in range(100)],
         "store_b__sales": [float(i + 100) for i in range(100)],
     })
-    X = pl.DataFrame({
+    X_actual = pl.DataFrame({
         "time": time,
         "store_a__promo": [float(i % 7) for i in range(100)],
         "store_b__promo": [float(i % 5) for i in range(100)],
     })
-    return y, X
+    return y, X_actual
 
 
 class TestBasicFitPredict:
@@ -76,12 +76,12 @@ class TestBasicFitPredict:
 
     def test_fit_predict_with_exogenous(self, panel_y_X):
         """Fit and predict with exogenous features."""
-        y, X = panel_y_X
+        y, X_actual = panel_y_X
         f = LocalPanelForecaster(
             forecaster=PointReductionForecaster(estimator=Ridge()),
         )
-        f.fit(y[:80], X[:80], forecasting_horizon=5)
-        y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
+        f.fit(y[:80], X_actual[:80], forecasting_horizon=5)
+        y_pred = f.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
         assert "store_a__sales" in y_pred.columns
@@ -165,14 +165,15 @@ class TestObserveRewind:
         assert y_pred_before["store_a__sales"].to_list() != y_pred_after["store_a__sales"].to_list()
 
     def test_observe_predict_combined(self, panel_y):
-        """observe_predict should be equivalent to observe + predict."""
+        """observe_predict delegates to each clone's rolling loop."""
         y = panel_y
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
         f.fit(y[:80], forecasting_horizon=5)
 
         y_pred = f.observe_predict(y=y[80:85])
         assert isinstance(y_pred, pl.DataFrame)
-        assert len(y_pred) == 5
+        # Rolling loop: initial predict (5) + 1 stride window (5) = 10
+        assert len(y_pred) == 10
 
     def test_rewind(self, panel_y):
         """Rewind should reset observation state per group."""
@@ -332,3 +333,207 @@ class TestMultipleGroups:
         y_pred = f.predict(forecasting_horizon=5)
         _, panel_groups = inspect_panel(y_pred)
         assert len(panel_groups) == 5
+
+
+class TestLocalPanelForecasterExogenous:
+    """Tests for LocalPanelForecaster with X_future and X_forecast."""
+
+    def test_fit_predict_with_X_future(self, panel_y):
+        """LocalPanelForecaster passes X_future to per-group clones."""
+        y = panel_y
+
+        # X_future with panel prefix covering beyond y range
+        time_ext = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 4, 19),
+            interval="1d",
+            eager=True,
+        )
+        X_future = pl.DataFrame({
+            "time": time_ext,
+            "store_a__holiday": [1.0 if t.weekday() == 6 else 0.0 for t in time_ext],
+            "store_b__holiday": [1.0 if t.weekday() == 6 else 0.0 for t in time_ext],
+        })
+
+        f = LocalPanelForecaster(forecaster=PointReductionForecaster(estimator=Ridge()))
+        f.fit(y[:80], forecasting_horizon=5, X_future=X_future)
+
+        y_pred = f.predict(forecasting_horizon=5)
+        assert len(y_pred) == 5
+        assert "store_a__sales" in y_pred.columns
+        assert "store_b__sales" in y_pred.columns
+
+    def test_predict_X_forecast_override(self, panel_y):
+        """LocalPanelForecaster passes X_forecast override to per-group predict."""
+        y = panel_y
+        rng = np.random.default_rng(42)
+        time = y["time"]
+        n_obs = len(time)
+        fh = 5
+
+        # Build X_forecast with panel prefix
+        rows = []
+        for v_idx in range(n_obs):
+            for step in range(1, fh + 1):
+                target_idx = v_idx + step
+                if target_idx < n_obs + fh + 5:
+                    tt = time[target_idx] if target_idx < n_obs else time[-1] + timedelta(days=target_idx - n_obs + 1)
+                    rows.append({
+                        "vintage_time": time[v_idx],
+                        "time": tt,
+                        "store_a__wx": float(rng.random()),
+                        "store_b__wx": float(rng.random()),
+                    })
+        X_forecast = pl.DataFrame(rows)
+
+        f = LocalPanelForecaster(forecaster=PointReductionForecaster(estimator=Ridge()))
+        f.fit(y[:80], forecasting_horizon=fh, X_forecast=X_forecast)
+
+        pred1 = f.predict()
+        pred2 = f.predict(X_forecast=X_forecast)
+
+        assert len(pred1) == fh
+        assert len(pred2) == fh
+
+    def test_exogenous_column_isolation(self, panel_y):
+        """Per-group clones see only their own local + global step columns."""
+        y = panel_y
+
+        time_ext = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 4, 19),
+            interval="1d",
+            eager=True,
+        )
+        X_future = pl.DataFrame({
+            "time": time_ext,
+            "store_a__promo": [float(i % 3) for i in range(len(time_ext))],
+            "store_b__promo": [float(i % 5) for i in range(len(time_ext))],
+            "holiday": [1.0 if t.weekday() == 6 else 0.0 for t in time_ext],
+        })
+
+        f = LocalPanelForecaster(forecaster=PointReductionForecaster(estimator=Ridge()))
+        f.fit(y[:80], forecasting_horizon=3, X_future=X_future)
+
+        # Each clone should have unprefixed local + global step columns
+        for gn, fc in f.forecasters_.items():
+            step_cols = [c for c in fc._X_t_observed.columns if "_step_" in c]
+            # Should have promo_step_* and holiday_step_* (unprefixed)
+            promo_steps = [c for c in step_cols if c.startswith("promo_")]
+            holiday_steps = [c for c in step_cols if c.startswith("holiday_")]
+            assert len(promo_steps) > 0, f"Clone {gn} missing promo step columns"
+            assert len(holiday_steps) > 0, f"Clone {gn} missing holiday step columns"
+            # Should NOT have other group's prefixed columns
+            other_prefix = [c for c in step_cols if "__" in c]
+            assert len(other_prefix) == 0, f"Clone {gn} has prefixed columns: {other_prefix}"
+
+    def test_global_only_X_future(self, panel_y):
+        """Global-only X_future (no prefixed columns) works for all groups."""
+        y = panel_y
+
+        time_ext = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 4, 19),
+            interval="1d",
+            eager=True,
+        )
+        X_future = pl.DataFrame({
+            "time": time_ext,
+            "holiday": [1.0 if t.weekday() == 6 else 0.0 for t in time_ext],
+        })
+
+        f = LocalPanelForecaster(forecaster=PointReductionForecaster(estimator=Ridge()))
+        f.fit(y[:80], forecasting_horizon=3, X_future=X_future)
+
+        # Both clones should have identical holiday step columns
+        cols_a = sorted(c for c in f.forecasters_["store_a"]._X_t_observed.columns if "holiday" in c)
+        cols_b = sorted(c for c in f.forecasters_["store_b"]._X_t_observed.columns if "holiday" in c)
+        assert cols_a == cols_b
+        assert len(cols_a) > 0
+
+        y_pred = f.predict(forecasting_horizon=3)
+        assert len(y_pred) == 3
+
+    def test_predict_X_future_override_after_fit_none(self, panel_y):
+        """fit(X_future=None) then predict(X_future=override) derives schema on the fly."""
+        y = panel_y
+
+        f = LocalPanelForecaster(forecaster=PointReductionForecaster(estimator=Ridge()))
+        f.fit(y[:80], forecasting_horizon=3)
+        assert f._local_X_future_schema_ is None
+
+        time_ext = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 4, 19),
+            interval="1d",
+            eager=True,
+        )
+        X_future = pl.DataFrame({
+            "time": time_ext,
+            "store_a__promo": [float(i % 3) for i in range(len(time_ext))],
+            "store_b__promo": [float(i % 5) for i in range(len(time_ext))],
+        })
+
+        y_pred = f.predict(forecasting_horizon=3, X_future=X_future)
+        assert len(y_pred) == 3
+
+    def test_observe_predict_with_stride(self, panel_y):
+        """observe_predict with stride produces rolling multi-window output."""
+        y = panel_y
+        f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
+        f.fit(y[:80], forecasting_horizon=3)
+
+        y_new = y[80:86]  # 6 rows
+        y_pred = f.observe_predict(y=y_new, stride=2)
+
+        # initial predict (3) + 3 stride windows (3*3=9) = 12 rows
+        assert len(y_pred) == 12
+        assert "vintage_time" in y_pred.columns
+        assert "store_a__sales" in y_pred.columns
+        assert "store_b__sales" in y_pred.columns
+
+    def test_observe_predict_with_exogenous(self, panel_y):
+        """observe_predict splits X_future per group and forwards stride."""
+        y = panel_y
+
+        time_ext = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 4, 19),
+            interval="1d",
+            eager=True,
+        )
+        X_future = pl.DataFrame({
+            "time": time_ext,
+            "store_a__promo": [float(i % 3) for i in range(len(time_ext))],
+            "store_b__promo": [float(i % 5) for i in range(len(time_ext))],
+        })
+
+        f = LocalPanelForecaster(forecaster=PointReductionForecaster(estimator=Ridge()))
+        f.fit(y[:80], forecasting_horizon=3, X_future=X_future)
+
+        y_new = y[80:86]
+        y_pred = f.observe_predict(y=y_new, stride=3, X_future=X_future)
+
+        # initial predict (3) + 2 stride windows (2*3=6) = 9 rows
+        assert len(y_pred) == 9
+        assert "store_a__sales" in y_pred.columns
+
+    def test_observe_predict_interval_with_stride(self, panel_y):
+        """observe_predict_interval delegates to each clone's rolling loop."""
+        y = panel_y
+        f = LocalPanelForecaster(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(seasonality=7),
+                calibration_size=20,
+            ),
+        )
+        f.fit(y[:80], forecasting_horizon=3)
+
+        y_new = y[80:86]
+        y_pred = f.observe_predict_interval(y=y_new, stride=2, coverage_rates=[0.9])
+
+        # initial predict (3) + 3 stride windows (3*3=9) = 12 rows
+        assert len(y_pred) == 12
+        # Should have lower/upper bound columns
+        bound_cols = [c for c in y_pred.columns if "lower" in c or "upper" in c]
+        assert len(bound_cols) > 0

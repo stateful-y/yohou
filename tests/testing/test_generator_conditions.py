@@ -322,6 +322,108 @@ class TestForecasterGeneratorConditions:
         )
         assert "check_panel_data" not in names
 
+    def test_step_column_checks_yielded_with_X_future(self, y_X_factory):
+        """X_future provided should yield step-column checks (non-requires_exogenous)."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=80,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        f = PointReductionForecaster(estimator=DecisionTreeRegressor())
+        f.fit(y[:60], X[:60], forecasting_horizon=5, X_future=X_future, X_forecast=X_forecast)
+
+        names = _check_names(
+            _yield_yohou_forecaster_checks(
+                f,
+                y[:50],
+                X[:50],
+                y[50:60],
+                X[50:60],
+                X_future_train=X_future,
+                X_future_test=X_future,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+                tags={"forecaster_type": frozenset({"point"}), "uses_reduction": True},
+            )
+        )
+        step_checks = {
+            "check_fit_predict_with_X_future",
+            "check_fit_predict_with_X_forecast",
+            "check_predict_X_forecast_override",
+            "check_observe_auto_rederives_step_columns",
+            "check_observe_predict_with_step_columns",
+        }
+        assert step_checks.issubset(set(names)), f"Missing step checks: {step_checks - set(names)}"
+        assert "check_requires_exogenous_warns_on_X_future_X_forecast" not in names
+
+    def test_step_column_checks_not_yielded_without_exogenous(self, y_X_factory):
+        """Without X_future/X_forecast, step-column checks should not be yielded."""
+        y, X = y_X_factory(length=80, n_targets=1, n_features=2, seed=42)
+        f = PointReductionForecaster(estimator=DecisionTreeRegressor())
+        f.fit(y[:60], X[:60], forecasting_horizon=5)
+
+        names = _check_names(
+            _yield_yohou_forecaster_checks(
+                f,
+                y[:50],
+                X[:50],
+                y[50:60],
+                X[50:60],
+                tags={"forecaster_type": frozenset({"point"}), "uses_reduction": True},
+            )
+        )
+        step_checks = {
+            "check_fit_predict_with_X_future",
+            "check_fit_predict_with_X_forecast",
+            "check_predict_X_forecast_override",
+            "check_observe_auto_rederives_step_columns",
+            "check_observe_predict_with_step_columns",
+            "check_requires_exogenous_warns_on_X_future_X_forecast",
+        }
+        assert step_checks.isdisjoint(set(names)), f"Unexpected step checks: {step_checks & set(names)}"
+
+    def test_requires_exogenous_yields_warning_check(self, y_X_factory):
+        """requires_exogenous=False with step data should yield warning check only."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=80,
+            n_targets=1,
+            n_features=0,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        f = SeasonalNaive(seasonality=5)
+        f.fit(y[:60], forecasting_horizon=5, X_future=X_future, X_forecast=X_forecast)
+
+        names = _check_names(
+            _yield_yohou_forecaster_checks(
+                f,
+                y[:50],
+                None,
+                y[50:60],
+                None,
+                X_future_train=X_future,
+                X_future_test=X_future,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+                tags={"forecaster_type": frozenset({"point"}), "requires_exogenous": False},
+            )
+        )
+        assert "check_requires_exogenous_warns_on_X_future_X_forecast" in names
+        non_warning_step_checks = {
+            "check_fit_predict_with_X_future",
+            "check_fit_predict_with_X_forecast",
+            "check_predict_X_forecast_override",
+        }
+        assert non_warning_step_checks.isdisjoint(set(names)), (
+            f"Unexpected step checks for requires_exogenous: {non_warning_step_checks & set(names)}"
+        )
+
 
 class TestSplitterGeneratorConditions:
     """Verify conditional branches in _yield_yohou_splitter_checks."""

@@ -50,13 +50,12 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from scipy.stats import uniform
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
-
-    from copy import deepcopy
 
     from yohou.class_proba import ClassProbaReductionForecaster
     from yohou.datasets import fetch_air_quality_classification, fetch_tourism_monthly
@@ -65,6 +64,7 @@ def _():
         ExpandingWindowSplitter,
         GridSearchCV,
         RandomizedSearchCV,
+        train_test_split,
     )
     from yohou.plotting import (
         plot_cv_results_scatter,
@@ -305,12 +305,11 @@ def _(mo):
 @app.cell
 def _(fetch_air_quality_classification, train_test_split):
     cls_data = fetch_air_quality_classification()
-    cls_y, cls_X = cls_data.y, cls_data.X
+    cls_y, cls_X = cls_data.y, cls_data.X_actual
     cls_y_train, cls_y_test, cls_X_train, cls_X_test = train_test_split(
         cls_y,
         cls_X,
         test_size=200,
-        shuffle=False,
     )
     cls_fh = 24
 
@@ -401,9 +400,8 @@ def _(mo):
 
 
 @app.cell
-def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecast):
+def _(cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecast):
     cls_y_pred_labels = cls_grid_search.predict(
-        X=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     plot_forecast(
@@ -416,9 +414,8 @@ def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, cls_y_train, plot_forecas
 
 
 @app.cell
-def _(cls_X_test, cls_fh, cls_grid_search, cls_y_test, plot_forecast):
+def _(cls_fh, cls_grid_search, cls_y_test, plot_forecast):
     cls_y_proba = cls_grid_search.predict_class_proba(
-        X=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     plot_forecast(
@@ -444,8 +441,6 @@ def _(mo):
     """)
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -456,7 +451,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -489,7 +483,7 @@ def _(vintage_scorer, plot_score_per_step, y_after_train, y_pred_vintages):
         y_label="MAE",
         height=380,
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

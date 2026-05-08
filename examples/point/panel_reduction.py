@@ -48,20 +48,19 @@ def _(mo):
     > trains H independent models. See [`reduction_strategies.py`](/examples/point/reduction_strategies/)
     > for a deep dive into reduction strategies.
     """)
-    return
 
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
-
-    from copy import deepcopy
 
     from yohou.compose import LocalPanelForecaster
     from yohou.datasets import fetch_kdd_cup
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_heatmap,
@@ -102,7 +101,6 @@ def _(mo):
     2018 air quality dataset, a multivariate panel with 3 Beijing
     stations, each monitoring 6 pollutants.
     """)
-    return
 
 
 @app.cell
@@ -127,7 +125,6 @@ def _(mo):
     [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) renders all panel columns in one figure. Each `__`-prefixed
     series gets its own trace, giving an overview of pollutant levels across stations.
     """)
-    return
 
 
 @app.cell
@@ -136,14 +133,13 @@ def _(plot_time_series, store):
         store,
         title="KDD Cup 2018: Air Quality Panel",
     )
-    return
 
 
 @app.cell
 def _(mo, store, train_test_split):
     _target_cols = [c for c in store.columns if c != "time"]
     y = store.select("time", *_target_cols)
-    y_train, y_test = train_test_split(y, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.15)
     horizon = len(y_test)
 
     mo.md(
@@ -168,7 +164,6 @@ def _(mo):
     This is efficient when groups share similar dynamics and you want
     one set of hyperparameters to govern all groups.
     """)
-    return
 
 
 @app.cell
@@ -189,7 +184,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) with `groups` shows predictions for selected
     groups in a faceted layout, with training history trimmed to the last 48 steps.
     """)
-    return
 
 
 @app.cell
@@ -203,7 +197,6 @@ def _(plot_forecast, y_pred_global, y_test, y_train):
         groups=_groups[:2],
         title="Global Strategy: One Model, Per-Group State",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -220,7 +213,6 @@ def _(mo):
     learn from inter-group relationships (e.g. co-located pollution monitors,
     spatially correlated air quality patterns).
     """)
-    return
 
 
 @app.cell
@@ -241,7 +233,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) for the multivariate strategy shows the same groups,
     letting you compare predictions against the global strategy above.
     """)
-    return
 
 
 @app.cell
@@ -255,7 +246,6 @@ def _(plot_forecast, y_pred_multivariate, y_test, y_train):
         groups=_groups[:2],
         title="Multivariate Strategy: Cross-Group Features",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -268,7 +258,6 @@ def _(mo):
     which shares hyperparameters across groups, each clone has its own
     parameters.  This is the right choice when groups are heterogeneous.
     """)
-    return
 
 
 @app.cell
@@ -297,7 +286,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) for the local strategy shows fully independent per-group
     clones, which may capture group-specific dynamics better.
     """)
-    return
 
 
 @app.cell
@@ -311,7 +299,6 @@ def _(plot_forecast, y_pred_local, y_test, y_train):
         groups=_groups[:2],
         title="Local Strategy: Independent Per-Group Clones",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -322,7 +309,6 @@ def _(mo):
     Compare all three strategies using per-group MAE (stepwise+vintagewise aggregation
     produces one score per group, averaged across timesteps).
     """)
-    return
 
 
 @app.cell
@@ -357,7 +343,6 @@ def _(
 
     comparison = pl.DataFrame(_rows)
     mo.ui.table(comparison)
-    return
 
 
 @app.cell
@@ -383,7 +368,6 @@ def _(
         },
         title="MAE Over Time: Strategy Comparison",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -396,7 +380,6 @@ def _(mo):
     panel strategy. Each strategy trains on the pooled panel data
     but differs in **how** multi-step targets are handled.
     """)
-    return
 
 
 @app.cell
@@ -428,7 +411,6 @@ def _(
         [{"reduction_strategy": k, "MAE": f"{v:.2f}"} for k, v in _reduction_scores.items()],
         label="MAE by reduction_strategy (global panel)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -458,8 +440,6 @@ def _(mo):
     - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/)
     - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
     """)
-    return
-
 
 
 @app.cell(hide_code=True)
@@ -472,7 +452,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -505,7 +484,6 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
 
 
 @app.cell
@@ -516,7 +494,6 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Score Heatmap (Step x Vintage)",
     )
-    return
 
 
 if __name__ == "__main__":

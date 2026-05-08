@@ -21,7 +21,7 @@ def plot_splits(
     y: pl.DataFrame,
     splitter: BaseSplitter,
     *,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     train_color: str | None = None,
     test_color: str | None = None,
     show_legend: bool = True,
@@ -45,8 +45,9 @@ def plot_splits(
         Target time series with mandatory "time" column.
     splitter : BaseSplitter
         A yohou splitter instance (e.g., ExpandingWindowSplitter, SlidingWindowSplitter).
-    X : pl.DataFrame | None, default=None
-        Optional exogenous features (passed to splitter.split()).
+    X_actual : pl.DataFrame or None, default=None
+        Actual features passed to ``splitter.split()``. Not used for
+        splitting but accepted for API consistency.
     train_color : str | None, default=None
         Color for train segments. If None, uses first color from yohou palette.
     test_color : str | None, default=None
@@ -120,7 +121,7 @@ def plot_splits(
     test_color = test_color or colors[1]
 
     # Get splits
-    splits = list(splitter.split(y, X))
+    splits = list(splitter.split(y, X_actual))
     n_splits = len(splits)
 
     # Create figure

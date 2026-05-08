@@ -28,7 +28,7 @@ def _(mo):
     mo.md(r"""
     # Forecasting with Forecasted Features
 
-    When exogenous features (X) are **not known in advance** at prediction time,
+    When exogenous features (X_actual) are **not known in advance** at prediction time,
     you need to forecast them first. [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) chains a
     **feature forecaster** and a **target forecaster** automatically.
 
@@ -103,7 +103,7 @@ def _(fetch_electricity_demand, mo, pl, plot_time_series):
     y = daily.select("time", "demand")
 
     # NSW demand + calendar features as exogenous
-    X = daily.select(
+    X_actual = daily.select(
         "time",
         "nsw_demand",
         pl.col("time").dt.weekday().cast(pl.Float64).alias("day_of_week"),
@@ -112,14 +112,14 @@ def _(fetch_electricity_demand, mo, pl, plot_time_series):
 
     split_idx = len(y) - 14
     y_train, y_test = y.head(split_idx), y.tail(len(y) - split_idx)
-    X_train, X_test = X.head(split_idx), X.tail(len(X) - split_idx)
+    X_actual_train, X_actual_test = X_actual.head(split_idx), X_actual.tail(len(X_actual) - split_idx)
     forecasting_horizon = len(y_test)
 
     mo.vstack([
         plot_time_series(y, title="Target: VIC Demand"),
-        plot_time_series(X, title="Exogenous Features: NSW Demand + Calendar"),
+        plot_time_series(X_actual, title="Exogenous Features: NSW Demand + Calendar"),
     ])
-    return X_test, X_train, forecasting_horizon, y_test, y_train
+    return X_actual_test, X_actual_train, forecasting_horizon, y_test, y_train
 
 
 @app.cell(hide_code=True)
@@ -127,7 +127,7 @@ def _(mo):
     mo.md(r"""
     ## 2. ForecastedFeatureForecaster with "actual" Strategy
 
-    The default `strategy="actual"` trains the target forecaster on actual X values.
+    The default `strategy="actual"` trains the target forecaster on actual X_actual values.
     Simple, but the target model sees perfect features at train time vs. noisy
     forecasted features at predict time.
 
@@ -143,7 +143,7 @@ def _(
     LagTransformer,
     PointReductionForecaster,
     Ridge,
-    X_train,
+    X_actual_train,
     forecasting_horizon,
     y_train,
 ):
@@ -159,7 +159,7 @@ def _(
         strategy="actual",
     )
 
-    ff_actual.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+    ff_actual.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
     y_pred_actual = ff_actual.predict(forecasting_horizon=forecasting_horizon)
 
     print(f"Strategy='actual', predicted {len(y_pred_actual)} steps")
@@ -185,9 +185,9 @@ def _(mo):
 
     | Strategy | How the target trains | Trade-off |
     |----------|----------------------|----------|
-    | `"actual"` | On the **real** X values | Simplest and fastest, but the target sees perfect features at train time yet noisy forecasted features at test time (distribution shift) |
-    | `"predicted"` | On **forecasted** X from a held-out split (`split_ratio`) | No distribution shift, but both forecasters train on less data because the training set is split in two |
-    | `"rewind"` | On **forecasted** X produced by `observe` / `rewind` over the full training set | Best of both worlds: the target sees realistic noisy features **and** trains on the full dataset. Slower because the feature forecaster produces rolling predictions row-by-row |
+    | `"actual"` | On the **real** X_actual values | Simplest and fastest, but the target sees perfect features at train time yet noisy forecasted features at test time (distribution shift) |
+    | `"predicted"` | On **forecasted** X_actual from a held-out split (`split_ratio`) | No distribution shift, but both forecasters train on less data because the training set is split in two |
+    | `"rewind"` | On **forecasted** X_actual produced by `observe` / `rewind` over the full training set | Best of both worlds: the target sees realistic noisy features **and** trains on the full dataset. Slower because the feature forecaster produces rolling predictions row-by-row |
 
     Let's compare all three.
     """)
@@ -200,7 +200,7 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    X_train,
+    X_actual_train,
     forecasting_horizon,
     y_test,
     y_train,
@@ -220,7 +220,7 @@ def _(
             strategy=strategy,
             split_ratio=0.6,  # only used for "predicted"
         )
-        ff.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        ff.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         _pred = ff.predict(forecasting_horizon=forecasting_horizon)
 
         _scorer = MeanAbsoluteError()
@@ -271,8 +271,8 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    X_test,
-    X_train,
+    X_actual_test,
+    X_actual_train,
     forecasting_horizon,
     pl,
     y_test,
@@ -289,14 +289,14 @@ def _(
         ),
         strategy="actual",
     )
-    ff_rolling.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+    ff_rolling.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
     step = forecasting_horizon
     rolling_preds = []
 
     for i in range(0, len(y_test), step):
         chunk_y = y_test.slice(i, min(step, len(y_test) - i))
-        chunk_X = X_test.slice(i, min(step, len(X_test) - i))
+        chunk_X = X_actual_test.slice(i, min(step, len(X_actual_test) - i))
         if len(chunk_y) == 0:
             break
         _rpred = ff_rolling.predict(forecasting_horizon=len(chunk_y))
@@ -325,7 +325,7 @@ def _(mo):
 
     The trick: use a [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) as the `feature_forecaster` that
     only forecasts `nsw_demand` and **drops** the calendar columns.  At
-    predict time, pass the known calendar values via `X` so they are merged
+    predict time, pass the known calendar values via `X_actual` so they are merged
     back in for the target forecaster.
     """)
 
@@ -338,8 +338,8 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    X_test,
-    X_train,
+    X_actual_test,
+    X_actual_train,
     forecasting_horizon,
     plot_forecast,
     y_test,
@@ -366,11 +366,11 @@ def _(
         strategy="actual",
     )
 
-    ff_known.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+    ff_known.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
-    # Pass known calendar features via X at predict time
-    X_known = X_test.select("time", "day_of_week", "month")
-    y_pred_known = ff_known.predict(forecasting_horizon=forecasting_horizon, X=X_known)
+    # Pass known calendar features via X_actual at predict time
+    X_known = X_actual_test.select("time", "day_of_week", "month")
+    y_pred_known = ff_known.predict(forecasting_horizon=forecasting_horizon, X_future=X_known)
 
     mae_known = MeanAbsoluteError()
     mae_known.fit(y_train)
@@ -396,7 +396,7 @@ def _(mo):
     - Three strategies control how the target forecaster sees features during training
     - `"actual"` is simplest; `"predicted"` / `"rewind"` reduce train-test distribution shift
     - `observe()` passes new observations to both internal forecasters
-    - Use `ColumnForecaster(remainder="drop")` as the feature forecaster to skip known-in-advance columns, then pass them via `X` at predict time
+    - Use `ColumnForecaster(remainder="drop")` as the feature forecaster to skip known-in-advance columns, then pass them via `X_actual` at predict time
     """)
 
 

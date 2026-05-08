@@ -41,7 +41,7 @@ class TestTwoComponentAdditiveIdentity:
         - Prediction = trend_prediction + residual_prediction
         """
         y = linear_series(slope=5.0, intercept=3.0, length=100)
-        X = y.select("time")
+        X_actual = y.select("time")
 
         # Two-component decomposition: trend + residual
         pipeline = DecompositionPipeline([
@@ -51,10 +51,10 @@ class TestTwoComponentAdditiveIdentity:
 
         # Fit on first 80 points, predict 5 steps ahead
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 5
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Get predictions
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
@@ -113,7 +113,7 @@ class TestTwoComponentAdditiveIdentity:
             "time": time,
             "target": [10.0] * n,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=0)),  # Constant trend
@@ -121,10 +121,10 @@ class TestTwoComponentAdditiveIdentity:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 10
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Get component predictions
@@ -186,7 +186,7 @@ class TestMultiplicativeDecomposition:
             "time": time,
             "target": exp_values * seas_normalized,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y_mult.select("time")
+        X_actual = y_mult.select("time")
 
         # Decomposition with log transform
         pipeline = DecompositionPipeline(
@@ -199,10 +199,10 @@ class TestMultiplicativeDecomposition:
         )
 
         y_train = y_mult[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 7
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Verify prediction is in original scale (not log scale)
@@ -248,7 +248,7 @@ class TestMultiplicativeDecomposition:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline(
             [
@@ -259,10 +259,10 @@ class TestMultiplicativeDecomposition:
         )
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 21  # 3 full periods for clear oscillation
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
@@ -300,7 +300,7 @@ class TestThreeComponentDecomposition:
             amplitude=5.0,
             length=100,
         )
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -309,10 +309,10 @@ class TestThreeComponentDecomposition:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 14  # Two full weeks
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Verify additive identity
@@ -367,7 +367,7 @@ class TestThreeComponentDecomposition:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -376,10 +376,10 @@ class TestThreeComponentDecomposition:
         ])
 
         y_train = y[:120]
-        X_train = X[:120]
+        X_actual_train = X_actual[:120]
         forecasting_horizon = 12  # One full month
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Get component predictions
@@ -420,7 +420,7 @@ class TestThreeComponentDecomposition:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -429,10 +429,10 @@ class TestThreeComponentDecomposition:
         ])
 
         y_train = y[:150]
-        X_train = X[:150]
+        X_actual_train = X_actual[:150]
         forecasting_horizon = 24  # One full day
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Get component predictions
@@ -482,7 +482,7 @@ class TestFourComponentDecomposition:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("linear", PolynomialTrendForecaster(degree=1)),
@@ -492,10 +492,10 @@ class TestFourComponentDecomposition:
         ])
 
         y_train = y[:120]
-        X_train = X[:120]
+        X_actual_train = X_actual[:120]
         forecasting_horizon = 14
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Get all component predictions
@@ -558,7 +558,7 @@ class TestFourComponentDecomposition:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=2)),
@@ -568,10 +568,10 @@ class TestFourComponentDecomposition:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 10
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Verify additive identity
@@ -616,7 +616,7 @@ class TestComponentSpecificTransformers:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         # Trend with StandardScaler, seasonal without
         pipeline = DecompositionPipeline([
@@ -626,10 +626,10 @@ class TestComponentSpecificTransformers:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 7
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Get component predictions in transformed space (matching what pipeline sums)
@@ -668,7 +668,7 @@ class TestComponentSpecificTransformers:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         # All components with StandardScaler
         pipeline = DecompositionPipeline([
@@ -678,10 +678,10 @@ class TestComponentSpecificTransformers:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 14
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Get component predictions in transformed space (matching what pipeline sums)
@@ -720,7 +720,7 @@ class TestComponentSpecificTransformers:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         # No transformers on any component
         pipeline = DecompositionPipeline([
@@ -729,10 +729,10 @@ class TestComponentSpecificTransformers:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 7
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Get component predictions
@@ -763,7 +763,7 @@ class TestDifferentForecastingHorizons:
         Sum should be correct for all 10 steps.
         """
         y = linear_series(slope=2.0, intercept=10.0, length=100)
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -771,10 +771,10 @@ class TestDifferentForecastingHorizons:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         # Fit with horizon=3
-        pipeline.fit(y_train, X_train, forecasting_horizon=3)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         # Predict with horizon=10
         forecasting_horizon = 10
@@ -821,7 +821,7 @@ class TestDifferentForecastingHorizons:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -829,10 +829,10 @@ class TestDifferentForecastingHorizons:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         # Fit with horizon=20
-        pipeline.fit(y_train, X_train, forecasting_horizon=20)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=20)
 
         # Predict with horizon=5 (shorter)
         forecasting_horizon = 5
@@ -866,7 +866,7 @@ class TestDifferentForecastingHorizons:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -875,10 +875,10 @@ class TestDifferentForecastingHorizons:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
 
         # Fit with horizon=7, predict with horizon=21 (3 weeks)
-        pipeline.fit(y_train, X_train, forecasting_horizon=7)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=7)
 
         forecasting_horizon = 21
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
@@ -914,7 +914,7 @@ class TestObserveRewindStateManagement:
         fit() → observe(y_new) → predict(): predictions should incorporate new data.
         """
         y = linear_series(slope=3.0, intercept=5.0, length=120)
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -923,16 +923,16 @@ class TestObserveRewindStateManagement:
 
         # Initial fit on first 80 points
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 5
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred_before = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Update with next 10 points
         y_update = y[80:90]
-        X_update = X[80:90]
-        pipeline.observe(y_update, X_update)
+        X_actual_update = X_actual[80:90]
+        pipeline.observe(y_update, X_actual_update)
 
         # Predict again (should start from t=90)
         y_pred_after = pipeline.predict(forecasting_horizon=forecasting_horizon)
@@ -960,7 +960,7 @@ class TestObserveRewindStateManagement:
         fit() → observe() → rewind() → predict(): should match prediction from observation_horizon.
         """
         y = linear_series(slope=2.0, intercept=10.0, length=150)
-        X = y.select("time")
+        X_actual = y.select("time")
 
         # Use PolynomialTrendForecaster with observation_horizon
         trend_forecaster = PolynomialTrendForecaster(degree=1)
@@ -972,18 +972,18 @@ class TestObserveRewindStateManagement:
 
         # Fit on first 80 points
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 5
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Update with next 30 points
         y_update = y[80:110]
-        X_update = X[80:110]
-        pipeline.observe(y_update, X_update)
+        X_actual_update = X_actual[80:110]
+        pipeline.observe(y_update, X_actual_update)
 
         # Now rewind (should keep only observation_horizon rows)
-        pipeline.rewind(y_update, X_update)
+        pipeline.rewind(y_update, X_actual_update)
 
         # After reset, internal state should be trimmed
         # Verify by checking that prediction still works and produces correct shape
@@ -1017,7 +1017,7 @@ class TestObserveRewindStateManagement:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -1025,15 +1025,15 @@ class TestObserveRewindStateManagement:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 5
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Use separate update + predict to verify atomic behavior
         y_update = y[80:90]
-        X_update = X[80:90]
-        pipeline.observe(y_update, X_update)
+        X_actual_update = X_actual[80:90]
+        pipeline.observe(y_update, X_actual_update)
         y_pred_atomic = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
         # Verify prediction has correct length
@@ -1065,7 +1065,7 @@ class TestObserveRewindStateManagement:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -1074,15 +1074,15 @@ class TestObserveRewindStateManagement:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 7
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Update with new data
         y_update = y[80:100]
-        X_update = X[80:100]
-        pipeline.observe(y_update, X_update)
+        X_actual_update = X_actual[80:100]
+        pipeline.observe(y_update, X_actual_update)
 
         # Predictions should now start from t=100
         y_pred_after_update = pipeline.predict(forecasting_horizon=forecasting_horizon)
@@ -1090,7 +1090,7 @@ class TestObserveRewindStateManagement:
         assert len(y_pred_after_update) == forecasting_horizon
 
         # Rewind to trim memory
-        pipeline.rewind(y_update, X_update)
+        pipeline.rewind(y_update, X_actual_update)
 
         # Predictions should still work after reset
         y_pred_after_reset = pipeline.predict(forecasting_horizon=forecasting_horizon)
@@ -1109,7 +1109,7 @@ class TestObserveRewindStateManagement:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -1118,17 +1118,17 @@ class TestObserveRewindStateManagement:
 
         # Initial fit
         y_train = y[:50]
-        X_train = X[:50]
+        X_actual_train = X_actual[:50]
         forecasting_horizon = 5
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Multiple updates: 50->60, 60->70, 70->80
         for start_idx in [50, 60, 70]:
             end_idx = start_idx + 10
             y_update = y[start_idx:end_idx]
-            X_update = X[start_idx:end_idx]
-            pipeline.observe(y_update, X_update)
+            X_actual_update = X_actual[start_idx:end_idx]
+            pipeline.observe(y_update, X_actual_update)
 
         # Final prediction should be from t=80
         y_pred_final = pipeline.predict(forecasting_horizon=forecasting_horizon)
@@ -1159,7 +1159,7 @@ class TestObserveRewindStateManagement:
             "time": time,
             "target": y_values,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
-        X = y.select("time")
+        X_actual = y.select("time")
 
         pipeline = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
@@ -1167,17 +1167,17 @@ class TestObserveRewindStateManagement:
         ])
 
         y_train = y[:80]
-        X_train = X[:80]
+        X_actual_train = X_actual[:80]
         forecasting_horizon = 5
 
-        pipeline.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
         # Update and reset with groups=None (should work as normal reset)
         y_update = y[80:90]
-        X_update = X[80:90]
+        X_actual_update = X_actual[80:90]
 
-        pipeline.observe(y_update, X_update, groups=None)
-        pipeline.rewind(y_update, X_update, groups=None)
+        pipeline.observe(y_update, X_actual_update, groups=None)
+        pipeline.rewind(y_update, X_actual_update, groups=None)
 
         # Verify prediction still works
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon, groups=None)

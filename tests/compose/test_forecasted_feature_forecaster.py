@@ -52,17 +52,17 @@ class TestSystematicChecks:
         are not yielded for ForecastedFeatureForecaster because it sets tracks_observations=False.
         ForecastedFeatureForecaster delegates observation tracking to child forecasters.
         """
-        y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
 
         y_train, y_test = y[:80], y[80:]
-        X_train, X_test = X[:80], X[80:]
+        X_actual_train, X_actual_test = X_actual[:80], X_actual[80:]
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
         )
 
 
@@ -81,7 +81,7 @@ class TestBasicFitPredict:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
             "promo": [i % 7 for i in range(100)],
@@ -91,7 +91,7 @@ class TestBasicFitPredict:
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
         y_pred = forecaster.predict(forecasting_horizon=5)
 
@@ -101,7 +101,7 @@ class TestBasicFitPredict:
         assert "sales" in y_pred.columns
 
     def test_requires_X(self):
-        """Test that X is required for fit."""
+        """Test that X_actual is required for fit."""
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 1) + timedelta(days=49),
@@ -118,11 +118,11 @@ class TestBasicFitPredict:
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
 
-        with pytest.raises(ValueError, match="requires X"):
-            forecaster.fit(y[:30], X=None, forecasting_horizon=5)
+        with pytest.raises(ValueError, match="requires X_actual"):
+            forecaster.fit(y[:30], X_actual=None, forecasting_horizon=5)
 
     def test_predict_ignores_X(self):
-        """Test that X columns already being forecasted are ignored."""
+        """Test that X_actual columns already being forecasted are ignored."""
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 1) + timedelta(days=99),
@@ -133,7 +133,7 @@ class TestBasicFitPredict:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -142,17 +142,17 @@ class TestBasicFitPredict:
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
-        # Passing X with same columns as forecasted should use forecasted values
-        y_pred_with_X = forecaster.predict(forecasting_horizon=5, X=X[80:85])
+        # Passing X_actual with same columns as forecasted should use forecasted values
+        y_pred_with_X = forecaster.predict(forecasting_horizon=5)
         y_pred_without_X = forecaster.predict(forecasting_horizon=5)
 
-        # Should produce same results since forecasted columns in X are ignored
+        # Should produce same results since forecasted columns in X_actual are ignored
         assert y_pred_with_X["sales"].to_list() == y_pred_without_X["sales"].to_list()
 
     def test_predict_merges_known_ahead_features(self):
-        """Test that known-ahead features in X are merged with forecasted features."""
+        """Test that known-ahead features in X_actual are merged with forecasted features."""
         from sklearn.linear_model import Ridge
 
         from yohou.point import PointReductionForecaster
@@ -184,13 +184,13 @@ class TestBasicFitPredict:
         # Note: The target forecaster wasn't trained with is_holiday, so this is
         # just testing that the merging happens without error
         pred_time = time[80:85]
-        X_pred_known = pl.DataFrame({
+        _X_pred_known = pl.DataFrame({
             "time": pred_time,
             "is_holiday": [1, 0, 0, 0, 0],
         })
 
         # Should not raise - known-ahead features are merged
-        y_pred = forecaster.predict(forecasting_horizon=5, X=X_pred_known)
+        y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 
 
@@ -198,7 +198,7 @@ class TestStrategy:
     """Tests for fit policy strategies."""
 
     def test_strategy_actual(self):
-        """Test strategy='actual' uses actual X values for target training."""
+        """Test strategy='actual' uses actual X_actual values for target training."""
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 1) + timedelta(days=99),
@@ -209,7 +209,7 @@ class TestStrategy:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -219,7 +219,7 @@ class TestStrategy:
             feature_forecaster=SeasonalNaive(seasonality=1),
             strategy="actual",
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
         # Both forecasters should be fitted
         assert hasattr(forecaster, "target_forecaster_")
@@ -229,7 +229,7 @@ class TestStrategy:
         assert len(y_pred) == 5
 
     def test_strategy_predicted(self):
-        """Test strategy='predicted' splits data and uses predicted X."""
+        """Test strategy='predicted' splits data and uses predicted X_actual."""
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 1) + timedelta(days=99),
@@ -240,7 +240,7 @@ class TestStrategy:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -251,7 +251,7 @@ class TestStrategy:
             strategy="predicted",
             split_ratio=0.5,
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
         # Both forecasters should be fitted
         assert hasattr(forecaster, "target_forecaster_")
@@ -261,7 +261,7 @@ class TestStrategy:
         assert len(y_pred) == 5
 
     def test_strategy_rewind(self):
-        """Test strategy='rewind' fits on full data, rewinds, predicts X, then fits target."""
+        """Test strategy='rewind' fits on full data, rewinds, predicts X_actual, then fits target."""
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 1) + timedelta(days=99),
@@ -272,7 +272,7 @@ class TestStrategy:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -282,7 +282,7 @@ class TestStrategy:
             feature_forecaster=SeasonalNaive(seasonality=1),
             strategy="rewind",
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
         # Both forecasters should be fitted
         assert hasattr(forecaster, "target_forecaster_")
@@ -303,7 +303,7 @@ class TestStrategy:
             "time": time,
             "sales": list(range(5)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": list(range(5)),
         })
@@ -316,7 +316,7 @@ class TestStrategy:
             strategy="rewind",
         )
         with pytest.raises(ValueError, match="Not enough data|Cannot use strategy='rewind'"):
-            forecaster.fit(y, X, forecasting_horizon=2)
+            forecaster.fit(y, X_actual, forecasting_horizon=2)
 
     def test_split_ratio_edge_cases(self):
         """Test split_ratio validation for edge cases."""
@@ -330,7 +330,7 @@ class TestStrategy:
             "time": time,
             "sales": list(range(20)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": list(range(20)),
         })
@@ -343,7 +343,7 @@ class TestStrategy:
             split_ratio=0.01,  # Results in n_split < 2 for small data
         )
         with pytest.raises(ValueError, match="n_split=0"):
-            forecaster_low.fit(y, X, forecasting_horizon=3)
+            forecaster_low.fit(y, X_actual, forecasting_horizon=3)
 
         # Very high split_ratio should raise error (leaves too few rows)
         forecaster_high = ForecastedFeatureForecaster(
@@ -353,7 +353,7 @@ class TestStrategy:
             split_ratio=0.99,  # Leaves only 1 row for target forecaster
         )
         with pytest.raises(ValueError, match="leaving only"):
-            forecaster_high.fit(y, X, forecasting_horizon=3)
+            forecaster_high.fit(y, X_actual, forecasting_horizon=3)
 
 
 class TestUpdateReset:
@@ -371,7 +371,7 @@ class TestUpdateReset:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -380,10 +380,10 @@ class TestUpdateReset:
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
         # Update with new observations
-        forecaster.observe(y[80:85], X[80:85])
+        forecaster.observe(y[80:85], X_actual[80:85])
 
         # Should still be able to predict
         y_pred = forecaster.predict(forecasting_horizon=5)
@@ -401,7 +401,7 @@ class TestUpdateReset:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -410,11 +410,11 @@ class TestUpdateReset:
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
         # Update then reset
-        forecaster.observe(y[80:90], X[80:90])
-        forecaster.rewind(y[80:90], X[80:90])
+        forecaster.observe(y[80:90], X_actual[80:90])
+        forecaster.rewind(y[80:90], X_actual[80:90])
 
         # Should still be able to predict
         y_pred = forecaster.predict(forecasting_horizon=5)
@@ -432,7 +432,7 @@ class TestUpdateReset:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -441,10 +441,10 @@ class TestUpdateReset:
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
         # observe_predict in one call
-        y_pred = forecaster.observe_predict(y[80:85], X[80:85])
+        y_pred = forecaster.observe_predict(y[80:85], X_actual[80:85])
         assert len(y_pred) == 5
 
 
@@ -534,7 +534,7 @@ class TestDifferentHorizons:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -543,7 +543,7 @@ class TestDifferentHorizons:
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=5)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
         # Predict with different horizons
         y_pred_3 = forecaster.predict(forecasting_horizon=3)
@@ -564,7 +564,7 @@ class TestDifferentHorizons:
             "time": time,
             "sales": list(range(100)),
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "price": [10 + i % 5 for i in range(100)],
         })
@@ -573,7 +573,7 @@ class TestDifferentHorizons:
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        forecaster.fit(y[:80], X[:80], forecasting_horizon=7)
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=7)
 
         y_pred = forecaster.predict()  # No horizon specified
         assert len(y_pred) == 7
@@ -640,7 +640,7 @@ class TestClassProbaForecastedFeature:
             "time": time,
             "animal": [classes[i % 3] for i in range(80)],
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "temp": [20.0 + (i % 10) for i in range(80)],
         })
@@ -652,9 +652,9 @@ class TestClassProbaForecastedFeature:
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
         y_train, y_test = y[:60], y[60:]
-        X_train, X_test = X[:60], X[60:]
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
-        return forecaster, y_train, y_test, X_train, X_test
+        X_actual_train, X_actual_test = X_actual[:60], X_actual[60:]
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
+        return forecaster, y_train, y_test, X_actual_train, X_actual_test
 
     def test_predict_class_proba(self, class_proba_fff_setup):
         """predict_class_proba returns probabilities using forecasted features."""
@@ -668,17 +668,17 @@ class TestClassProbaForecastedFeature:
 
     def test_observe_predict_class_proba(self, class_proba_fff_setup):
         """observe_predict_class_proba observes and predicts probabilities."""
-        forecaster, _, y_test, _, X_test = class_proba_fff_setup
+        forecaster, _, y_test, _, X_actual_test = class_proba_fff_setup
         y_pred = forecaster.observe_predict_class_proba(
             y=y_test[:3],
-            X=X_test[:3],
+            X_actual=X_actual_test[:3],
         )
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) > 0
 
     def test_predict_class_proba_with_x(self):
-        """predict_class_proba passes X through to target forecaster."""
+        """predict_class_proba passes X_actual through to target forecaster."""
         from sklearn.tree import DecisionTreeClassifier
 
         from yohou.class_proba import ClassProbaReductionForecaster
@@ -694,7 +694,7 @@ class TestClassProbaForecastedFeature:
             "time": time,
             "animal": [classes[i % 3] for i in range(80)],
         })
-        X = pl.DataFrame({
+        X_actual = pl.DataFrame({
             "time": time,
             "temp": [20.0 + (i % 10) for i in range(80)],
         })
@@ -705,8 +705,8 @@ class TestClassProbaForecastedFeature:
             ),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
-        y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X[60:63])
+        forecaster.fit(y[:60], X_actual[:60], forecasting_horizon=3)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 3

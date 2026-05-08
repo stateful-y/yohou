@@ -7,7 +7,7 @@ from pydantic import StrictInt
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
-from yohou.utils import CLASS_PROBA, Tags, select_panel_columns, validate_forecaster_data
+from yohou.utils import CLASS_PROBA, Tags, validate_forecaster_data
 
 __all__ = ["BaseClassProbaForecaster"]
 
@@ -66,8 +66,10 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "BaseClassProbaForecaster":
         """Fit the forecaster to historical data.
@@ -77,11 +79,20 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more categorical value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Processed by the feature transformer to produce
+            lags, rolling statistics, and other derived features. If
+            ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -93,7 +104,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If ``forecasting_horizon`` < 1, or if ``y`` / ``X`` have invalid
+            If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have invalid
             structure (e.g., missing ``"time"`` column).
 
         """
@@ -102,8 +113,10 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         BaseForecaster._pre_fit(
             self,
             y=y,
-            X=X,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         return self
@@ -183,7 +196,8 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def predict_class_proba(
         self,
-        X: pl.DataFrame | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
         **params,
@@ -192,9 +206,13 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
@@ -216,31 +234,25 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``X`` has invalid structure or ``groups`` contains
-            names not seen during fit.
+            If ``groups`` contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
+            ["local_y_schema_", "local_X_actual_schema_", "shared_X_actual_schema_", "groups_"],
         )
 
-        _, X, groups = validate_forecaster_data(
+        _, _, groups = validate_forecaster_data(
             self,
             y=None,
-            X=X,
+            X_actual=None,
             reset=False,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
-
-        if groups is not None and X is not None:
-            X = select_panel_columns(
-                X,
-                groups,
-                include_global=True,
-            )
 
         def step_fn(forecaster, groups):
             """Produce one class-probability prediction block."""
@@ -250,35 +262,30 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             )
             return y_pred_step, y_pred_step
 
-        def derive_observation_fn(forecaster, y_pred_step, X, step):
+        def derive_observation_fn(forecaster, y_pred_step):
             """Derive observation via argmax and re-encoding."""
             y_obs = self._argmax_from_proba(y_pred_step)
             y_obs = self._encode_observation(y_obs)
+            return y_obs
 
-            X_slice = None
-            if X is not None:
-                start_idx = step
-                end_idx = start_idx + self.fit_forecasting_horizon_
-                X_slice = X[start_idx:end_idx]
+        def predict_fn():
+            return self._recursive_predict(
+                forecasting_horizon=forecasting_horizon,
+                groups=groups,
+                step_fn=step_fn,
+                derive_observation_fn=derive_observation_fn,
+            )
 
-                if len(X_slice) != len(y_obs):
-                    raise ValueError(
-                        f"Missing X for future steps. Needed {len(y_obs)} rows, but X slice has {len(X_slice)} rows."
-                    )
-
-            return y_obs, X_slice
-
-        return self._recursive_predict(
-            X=X,
-            forecasting_horizon=forecasting_horizon,
-            groups=groups,
-            step_fn=step_fn,
-            derive_observation_fn=derive_observation_fn,
+        return self._predict_with_step_override(
+            X_future=X_future,
+            X_forecast=X_forecast,
+            predict_fn=predict_fn,
         )
 
     def predict(
         self,
-        X: pl.DataFrame | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
         **params,
@@ -290,9 +297,10 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
@@ -316,7 +324,8 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y_proba = self.predict_class_proba(
-            X=X,
+            X_future=X_future,
+            X_forecast=X_forecast,
             forecasting_horizon=forecasting_horizon,
             groups=groups,
             **params,
@@ -427,8 +436,10 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def observe(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "BaseClassProbaForecaster":
         """Observe new data, encoding categorical targets before validation.
 
@@ -440,12 +451,18 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more categorical value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            New actual feature observations with a ``"time"`` column
+            aligned with ``y``. Passed through the feature transformer
+            to update the internal observation state.
         groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups
             are used.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
 
         Returns
         -------
@@ -454,13 +471,15 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y = self._encode_y_input(y)
-        return super().observe(y, X, groups=groups)  # ty: ignore[invalid-return-type]
+        return super().observe(y, X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)  # ty: ignore[invalid-return-type]
 
     def rewind(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "BaseClassProbaForecaster":
         """Rewind memory, encoding categorical targets before validation.
 
@@ -472,12 +491,17 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more categorical value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations to restore the observation
+            state to. Must align with ``y``.
         groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups
             are used.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
 
         Returns
         -------
@@ -486,30 +510,33 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y = self._encode_y_input(y)
-        return super().rewind(y, X, groups=groups)  # ty: ignore[invalid-return-type]
+        return super().rewind(y, X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)  # ty: ignore[invalid-return-type]
 
     def observe_predict_class_proba(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive predict_class_proba and observe.
 
-        Equivalent to calling ``observe(y, X)`` then
-        ``predict_class_proba(X)``. Returns probability predictions.
+        Equivalent to calling ``observe(y, X_actual)`` then
+        ``predict_class_proba()``. Returns probability predictions.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more categorical value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
@@ -520,6 +547,11 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         stride : int or None, default=None
             Step size for rolling update-predict. If ``None``, defaults to
             ``forecasting_horizon``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -534,23 +566,25 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure or ``groups``
+            If ``y`` / ``X_actual`` have invalid structure or ``groups``
             contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
+            ["local_y_schema_", "local_X_actual_schema_", "shared_X_actual_schema_", "groups_"],
         )
 
         y = self._encode_y_input(y)
 
-        y, X, groups = validate_forecaster_data(
+        y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X,
+            X_actual=X_actual,
             reset=False,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
@@ -560,7 +594,9 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         return self._observe_predict_loop(
             predict_fn=self.predict_class_proba,
             y=y,
-            X=X,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
             groups=groups,
             stride=stride,
             forecasting_horizon=forecasting_horizon,
@@ -570,15 +606,17 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def observe_predict(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive predict and observe.
 
-        Equivalent to calling ``observe(y, X)`` then ``predict(X)``.
+        Equivalent to calling ``observe(y, X_actual)`` then ``predict()``.
         Returns argmax class predictions.
 
         Parameters
@@ -586,9 +624,10 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more categorical value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
@@ -599,6 +638,11 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         stride : int or None, default=None
             Step size for rolling update-predict. If ``None``, defaults to
             ``forecasting_horizon``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -613,23 +657,25 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure or ``groups``
+            If ``y`` / ``X_actual`` have invalid structure or ``groups``
             contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "groups_"],
+            ["local_y_schema_", "local_X_actual_schema_", "shared_X_actual_schema_", "groups_"],
         )
 
         y = self._encode_y_input(y)
 
-        y, X, groups = validate_forecaster_data(
+        y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X,
+            X_actual=X_actual,
             reset=False,
             groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         forecasting_horizon = self._validate_predict_params(forecasting_horizon)
@@ -639,7 +685,9 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         return self._observe_predict_loop(
             predict_fn=self.predict,
             y=y,
-            X=X,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
             groups=groups,
             stride=stride,
             forecasting_horizon=forecasting_horizon,

@@ -13,6 +13,8 @@ from yohou.preprocessing.window import LagTransformer
 from yohou.stationarity.transformers import LogTransformer
 from yohou.testing.forecaster import (
     check_clone_preserves_forecaster_params,
+    check_fit_predict_with_X_forecast,
+    check_fit_predict_with_X_future,
     check_fit_predict_without_exogenous,
     check_fit_sets_forecaster_attributes,
     check_forecaster_not_fitted_error,
@@ -20,8 +22,11 @@ from yohou.testing.forecaster import (
     check_forecaster_tags_match_capabilities,
     check_forecaster_tags_static_after_fit,
     check_forecasting_horizon_validation,
+    check_observe_auto_rederives_step_columns,
     check_observe_extends_observations,
+    check_observe_predict_with_step_columns,
     check_predict_time_columns,
+    check_predict_X_forecast_override,
     check_prediction_types_property,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
@@ -253,14 +258,14 @@ class TestForecasterTagsWithTransformers:
 class TestForecasterFitPredictWithoutX:
     """Tests for check_fit_predict_without_exogenous."""
 
-    def test_ignores_exogenous_forecaster_succeeds(self, y_X_factory):
-        """Forecaster with ignores_exogenous=True succeeds without X."""
+    def test_requires_exogenous_forecaster_succeeds(self, y_X_factory):
+        """Forecaster with requires_exogenous=False succeeds without X."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
         forecaster = SeasonalNaive(seasonality=7)
         check_fit_predict_without_exogenous(
             forecaster,
             y[:40],
-            ignores_exogenous=True,
+            requires_exogenous=False,
             forecasting_horizon=3,
         )
 
@@ -271,7 +276,7 @@ class TestForecasterFitPredictWithoutX:
         check_fit_predict_without_exogenous(
             forecaster,
             y[:40],
-            ignores_exogenous=False,
+            requires_exogenous=True,
             target_as_feature=None,
             forecasting_horizon=3,
         )
@@ -289,3 +294,112 @@ class TestForecasterIntervalTags:
         )
         forecaster.fit(y[:150], forecasting_horizon=3)
         check_forecaster_tags_match_capabilities(forecaster)
+
+
+class TestStepColumnChecks:
+    """Tests for X_future/X_forecast step-column check functions."""
+
+    def test_check_fit_predict_with_X_future(self, y_X_factory):
+        """check_fit_predict_with_X_future passes for a reduction forecaster."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=60,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=0,
+            return_exogenous=True,
+        )
+        forecaster = PointReductionForecaster()
+        check_fit_predict_with_X_future(
+            forecaster,
+            y[:50],
+            X[:50],
+            y[50:60],
+            X_future=X_future,
+            forecasting_horizon=3,
+        )
+
+    def test_check_fit_predict_with_X_forecast(self, y_X_factory):
+        """check_fit_predict_with_X_forecast passes for a reduction forecaster."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=60,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=0,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        forecaster = PointReductionForecaster()
+        check_fit_predict_with_X_forecast(
+            forecaster,
+            y[:50],
+            X[:50],
+            y[50:60],
+            X_forecast=X_forecast,
+            forecasting_horizon=3,
+        )
+
+    def test_check_predict_X_forecast_override(self, y_X_factory):
+        """check_predict_X_forecast_override passes for a fitted forecaster."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=60,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=0,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        forecaster = PointReductionForecaster()
+        forecaster.fit(y[:50], X[:50], forecasting_horizon=3, X_forecast=X_forecast)
+        check_predict_X_forecast_override(
+            forecaster,
+            y[50:60],
+            X_forecast=X_forecast,
+            forecasting_horizon=3,
+        )
+
+    def test_check_observe_auto_rederives_step_columns(self, y_X_factory):
+        """check_observe_auto_rederives_step_columns passes for a fitted forecaster."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=60,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=0,
+            return_exogenous=True,
+        )
+        forecaster = PointReductionForecaster()
+        forecaster.fit(y[:50], X[:50], forecasting_horizon=3, X_future=X_future)
+        check_observe_auto_rederives_step_columns(
+            forecaster,
+            y[50:53],
+            X_actual_observe=X[50:53],
+            X_future=X_future,
+        )
+
+    def test_check_observe_predict_with_step_columns(self, y_X_factory):
+        """check_observe_predict_with_step_columns passes for a reduction forecaster."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=80,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        forecaster = PointReductionForecaster()
+        check_observe_predict_with_step_columns(
+            forecaster,
+            y[:60],
+            X[:60],
+            y[60:80],
+            X_actual_test=X[60:80],
+            X_future=X_future,
+            X_forecast=X_forecast,
+            forecasting_horizon=3,
+        )

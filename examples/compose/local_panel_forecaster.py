@@ -55,16 +55,16 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeRegressor
-
-    from copy import deepcopy
 
     from yohou.compose import LocalPanelForecaster
     from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -114,7 +114,7 @@ def _(inspect_panel, fetch_tourism_quarterly, mo, train_test_split):
     _globals, groups = inspect_panel(tourism)
     y = tourism.select("time", *[c for c in tourism.columns if c.endswith("__tourists")])
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     horizon = len(y_test)
 
     mo.md(
@@ -268,7 +268,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, fetch_tourism_qu
     _tourism = fetch_tourism_quarterly().frame
     _tourist_cols = [f"T{i}__tourists" for i in range(3, 11)]
     _y2 = _tourism.select("time", *_tourist_cols).drop_nulls()
-    y_train2, y_test2 = train_test_split(_y2, test_size=0.2, shuffle=False)
+    y_train2, y_test2 = train_test_split(_y2, test_size=0.2)
 
     fc_global = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
@@ -355,8 +355,6 @@ def _(LocalPanelForecaster, MeanAbsoluteError, SeasonalNaive, horizon, mo, y_tes
     return (fc_naive_local,)
 
 
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -367,7 +365,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -400,7 +397,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test2):
         y_label="MAE",
         height=380,
     )
-    return
+
 
 @app.cell(hide_code=True)
 def _(mo):

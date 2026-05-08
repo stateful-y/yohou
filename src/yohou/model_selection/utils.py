@@ -24,6 +24,51 @@ from yohou.metrics.base import BaseIntervalScorer, BaseScorer
 from yohou.utils._compat import _check_method_params, _num_samples, _safe_split
 
 
+def _split_X_forecast(
+    X_forecast: pl.DataFrame | None,
+    y: pl.DataFrame,
+    train_indices: np.ndarray[Any, Any],
+    test_indices: np.ndarray[Any, Any],
+) -> tuple[pl.DataFrame | None, pl.DataFrame | None]:
+    """Split X_forecast by vintage_time range for a CV fold.
+
+    Training receives vintages where ``vintage_time <= cutoff_time``.
+    Testing receives vintages where ``cutoff_time < vintage_time <= test_end_time``.
+    The cutoff is the time corresponding to the last training index and
+    the test end is the time corresponding to the last test index.
+
+    Parameters
+    ----------
+    X_forecast : pl.DataFrame or None
+        External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+        If ``None``, returns ``(None, None)`` immediately.
+    y : pl.DataFrame
+        Target time series with ``"time"`` column, used to derive
+        cutoff and test end times.
+    train_indices : ndarray
+        Row indices of the training set.
+    test_indices : ndarray
+        Row indices of the test set.
+
+    Returns
+    -------
+    tuple of (pl.DataFrame or None, pl.DataFrame or None)
+        ``(X_forecast_train, X_forecast_test)``. Both are ``None``
+        when ``X_forecast`` is ``None``.
+    """
+    if X_forecast is None:
+        return None, None
+
+    cutoff_time = y["time"][int(train_indices[-1])]
+    test_end_time = y["time"][int(test_indices[-1])]
+
+    X_forecast_train = X_forecast.filter(pl.col("vintage_time") <= cutoff_time)
+    X_forecast_test = X_forecast.filter(
+        (pl.col("vintage_time") > cutoff_time) & (pl.col("vintage_time") <= test_end_time)
+    )
+    return X_forecast_train, X_forecast_test
+
+
 def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | _MultimetricScorer:
     """Check the scoring parameter.
 
@@ -181,9 +226,11 @@ class _MultimetricScorer:
 def _fit_and_score(
     forecaster: BaseForecaster,
     y: pl.DataFrame,
-    X: pl.DataFrame | None,
+    X_actual: pl.DataFrame | None,
     forecasting_horizon: int,
     *,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
     scorer: BaseScorer | _MultimetricScorer,
     train: np.ndarray[Any, Any],
     test: np.ndarray[Any, Any],
@@ -210,10 +257,16 @@ def _fit_and_score(
         The forecaster to fit and evaluate.
     y : pl.DataFrame
         Target time series with a ``"time"`` column.
-    X : pl.DataFrame or None
-        Exogenous features with a ``"time"`` column, or ``None``.
+    X_actual : pl.DataFrame or None
+        Actual feature observations with a ``"time"`` column, or
+        ``None``.
     forecasting_horizon : int
         Number of time steps to forecast.
+    X_future : pl.DataFrame or None, default=None
+        Known future features with a ``"time"`` column.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts with ``"vintage_time"`` and ``"time"``
+        columns.
     scorer : BaseScorer or _MultimetricScorer
         Scorer (single or multi-metric) used to evaluate predictions.
         A single scorer returns a float; a ``_MultimetricScorer`` returns
@@ -307,8 +360,9 @@ def _fit_and_score(
 
     start_time = time.time()
 
-    y_train, X_train = _safe_split(forecaster, y, X, train)
-    y_test, X_test = _safe_split(forecaster, y, X, test, train)
+    y_train, X_actual_train = _safe_split(forecaster, y, X_actual, train)
+    y_test, X_actual_test = _safe_split(forecaster, y, X_actual, test, train)
+    X_forecast_train, X_forecast_test = _split_X_forecast(X_forecast, y, train, test)
 
     result: dict[str, object] = {}
     test_scores: dict[str, float | str] | float | str
@@ -318,7 +372,14 @@ def _fit_and_score(
     try:
         if coverage_rates is not None:
             fit_params["coverage_rates"] = coverage_rates
-        forecaster.fit(y=y_train, X=X_train, forecasting_horizon=forecasting_horizon, **fit_params)
+        forecaster.fit(
+            y=y_train,
+            X_actual=X_actual_train,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast_train,
+            **fit_params,
+        )
 
     except Exception:  # noqa: BLE001
         # Note fit time as time until error
@@ -344,11 +405,13 @@ def _fit_and_score(
             forecaster,
             y_train,
             y_test,
-            X_test,
+            X_actual_test,
             predict_func_params,
             scorer,
             score_params_test,
             error_score,
+            X_future=X_future,
+            X_forecast=X_forecast_test,
         )
         score_time = time.time() - start_time - fit_time
 
@@ -357,18 +420,24 @@ def _fit_and_score(
             score_params_train = _check_method_params(y, params=score_params, indices=train)
             train_rewind = train[: -len(test)]
             test_rewind = train[-len(test) :]
-            y_train_rewind, X_train_rewind = _safe_split(forecaster, y_train, X_train, train_rewind)
-            y_train_test, X_train_test = _safe_split(forecaster, y_train, X_train, test_rewind, train_rewind)
-            forecaster.rewind(y_train_rewind, X_train_rewind)
+            y_train_rewind, X_actual_train_rewind = _safe_split(forecaster, y_train, X_actual_train, train_rewind)
+            y_train_test, X_actual_train_test = _safe_split(
+                forecaster, y_train, X_actual_train, test_rewind, train_rewind
+            )
+            forecaster.rewind(
+                y_train_rewind, X_actual=X_actual_train_rewind, X_future=X_future, X_forecast=X_forecast_train
+            )
             train_scores = _score(
                 forecaster,
                 y_train_rewind,
                 y_train_test,
-                X_train_test,
+                X_actual_train_test,
                 predict_func_params,
                 scorer,
                 score_params_train,
                 error_score,
+                X_future=X_future,
+                X_forecast=X_forecast_train,
             )
 
     if verbose > 1:
@@ -510,16 +579,40 @@ def _score(
     forecaster: BaseForecaster,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_test: pl.DataFrame | None,
+    X_actual_test: pl.DataFrame | None,
     predict_func_params: dict[str, object] | None,
     scorer: BaseScorer | _MultimetricScorer,
     score_params: dict[str, object] | None,
     error_score: str | float = "raise",
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> float | dict[str, float | str] | str:
-    """Compute the score(s) of an forecaster on a given test set.
+    """Compute the score(s) of a forecaster on a given test set.
 
-    Will return a dict of floats if `scorer` is a _MultiMetricScorer, otherwise a single
-    float is returned.
+    Will return a dict of floats if ``scorer`` is a ``_MultiMetricScorer``,
+    otherwise a single float is returned.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Fitted forecaster to evaluate.
+    y_test : pl.DataFrame
+        Test target time series.
+    X_actual_test : pl.DataFrame or None
+        Test actual feature observations, or ``None``.
+    predict_func_params : dict or None
+        Routed metadata for the prediction function.
+    scorer : BaseScorer or _MultimetricScorer
+        Scorer used to evaluate predictions.
+    score_params : dict or None
+        Routed metadata for the scorer.
+    error_score : float or "raise", default="raise"
+        Value to assign if scoring fails.
+    X_future : pl.DataFrame or None, default=None
+        Known future features with a ``"time"`` column.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts with ``"vintage_time"`` and ``"time"``
+        columns.
     """
     score_params = {} if score_params is None else score_params
     predict_func_params = {} if predict_func_params is None else predict_func_params
@@ -533,10 +626,21 @@ def _score(
         if response_method == "predict_interval":
             coverage_rates_for_predict = _collect_coverage_rates(scorer)
             y_pred = getattr(forecaster, observe_method)(
-                y_test, X_test, coverage_rates=coverage_rates_for_predict, **predict_func_params
+                y_test,
+                X_actual_test,
+                coverage_rates=coverage_rates_for_predict,
+                X_future=X_future,
+                X_forecast=X_forecast,
+                **predict_func_params,
             )
         else:
-            y_pred = getattr(forecaster, observe_method)(y_test, X_test, **predict_func_params)
+            y_pred = getattr(forecaster, observe_method)(
+                y_test,
+                X_actual_test,
+                X_future=X_future,
+                X_forecast=X_forecast,
+                **predict_func_params,
+            )
 
         # Sort predictions by time for scorer validation.
         # Multi-vintage predictions from observe_predict are concatenated

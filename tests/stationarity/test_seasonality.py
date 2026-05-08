@@ -40,7 +40,7 @@ class TestPatternSeasonalityForecaster:
         """Run systematic checks on PatternSeasonalityForecaster variants."""
         # Generate data with sufficient length for 2+ cycles
         seasonality = forecaster.seasonality
-        y, X = y_X_factory(length=3 * seasonality, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=3 * seasonality, n_targets=1, n_features=0, seed=42)
 
         # Add repeating seasonal pattern
         pattern = list(range(seasonality))
@@ -48,15 +48,17 @@ class TestPatternSeasonalityForecaster:
 
         train_size = int(2.5 * seasonality)
         y_train, y_test = y[:train_size], y[train_size:]
-        X_train, X_test = (X[:train_size], X[train_size:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (
+            (X_actual[:train_size], X_actual[train_size:]) if X_actual is not None else (None, None)
+        )
 
         # Fit forecaster
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
             expected_failures=set(expected_failures),
         )
 
@@ -311,7 +313,7 @@ class TestFourierSeasonalityForecaster:
         """Run systematic checks on FourierSeasonalityForecaster variants."""
         # Generate data with sufficient length
         seasonality = forecaster.seasonality
-        y, X = y_X_factory(length=3 * seasonality, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=3 * seasonality, n_targets=1, n_features=0, seed=42)
 
         # Add sine wave pattern
         phases = np.arange(len(y))
@@ -320,14 +322,16 @@ class TestFourierSeasonalityForecaster:
 
         train_size = int(2.5 * seasonality)
         y_train, y_test = y[:train_size], y[train_size:]
-        X_train, X_test = (X[:train_size], X[train_size:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (
+            (X_actual[:train_size], X_actual[train_size:]) if X_actual is not None else (None, None)
+        )
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
             expected_failures=set(expected_failures),
         )
 

@@ -159,7 +159,7 @@ def check_scorer_prediction_type_compatibility(
     scorer,
     forecaster,
     y: pl.DataFrame,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
 ) -> None:
     """Check scorer works with correct forecaster output type.
 
@@ -174,7 +174,7 @@ def check_scorer_prediction_type_compatibility(
         Fitted forecaster
     y : pl.DataFrame
         Target time series
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Exogenous features
 
     Raises
@@ -192,19 +192,19 @@ def check_scorer_prediction_type_compatibility(
         assert "point" in forecaster_tags.forecaster_tags.forecaster_type, (
             f"Point scorer requires point forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
         )
-        y_pred = forecaster.predict(forecasting_horizon=3, X=X)
+        y_pred = forecaster.predict(forecasting_horizon=3)
     elif scorer_tags.scorer_tags.prediction_type == "interval":
         # Interval scorer needs interval predictions
         assert "interval" in forecaster_tags.forecaster_tags.forecaster_type, (
             f"Interval scorer requires interval forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
         )
-        y_pred = forecaster.predict_interval(forecasting_horizon=3, X=X, coverage_rates=[0.9])
+        y_pred = forecaster.predict_interval(forecasting_horizon=3, coverage_rates=[0.9])
     elif scorer_tags.scorer_tags.prediction_type == "class_proba":
         # Class-probability scorer needs class_proba predictions
         assert "class_proba" in forecaster_tags.forecaster_tags.forecaster_type, (
             f"Class-proba scorer requires class_proba forecaster, got {forecaster_tags.forecaster_tags.forecaster_type}"
         )
-        y_pred = forecaster.predict_class_proba(forecasting_horizon=3, X=X)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
     else:
         raise AssertionError(f"Unknown prediction_type: {scorer_tags.scorer_tags.prediction_type}")
 
