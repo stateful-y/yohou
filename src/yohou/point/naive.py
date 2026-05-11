@@ -7,7 +7,7 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
 
-from yohou.utils._compat import Interval, _fit_context
+from yohou.utils._compat import Interval
 
 from ..utils.tags import Tags
 from .base import BasePointForecaster
@@ -97,52 +97,14 @@ class SeasonalNaive(BasePointForecaster):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.ignores_exogenous = True
+        tags.forecaster_tags.requires_exogenous = False
         tags.forecaster_tags.stateful = True
         return tags
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        **params,
-    ) -> "BasePointForecaster":
-        """Fit the forecaster to historical data.
-
-        Stores the last ``seasonality`` observations for naive repetition.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series with a ``"time"`` column (datetime) and one
-            or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
-        forecasting_horizon : int, default=1
-            Number of time steps to forecast into the future.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted forecaster instance.
-
-        """
-        self._observation_horizon = self.seasonality
-
-        BasePointForecaster.fit(
-            self,
-            y=y,
-            X=X,
-            forecasting_horizon=forecasting_horizon,
-            **params,
-        )
-
-        return self
+    @property
+    def _observation_horizon(self) -> int:
+        """Return seasonality as the observation horizon."""
+        return self.seasonality
 
     def _predict_one(
         self,
@@ -301,58 +263,14 @@ class MeanSeasonalNaive(BasePointForecaster):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.ignores_exogenous = True
+        tags.forecaster_tags.requires_exogenous = False
         tags.forecaster_tags.stateful = True
         return tags
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(
-        self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        **params,
-    ) -> "BasePointForecaster":
-        """Fit the forecaster to historical data.
-
-        Stores the last ``seasonality * n_seasons`` observations for
-        averaging across seasonal cycles.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series with a ``"time"`` column (datetime) and one
-            or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
-        forecasting_horizon : int, default=1
-            Number of time steps to forecast into the future.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted forecaster instance.
-
-        Raises
-        ------
-        ValueError
-            If ``y`` has fewer rows than ``seasonality * n_seasons``.
-
-        """
-        self._observation_horizon = self.seasonality * self.n_seasons
-
-        BasePointForecaster.fit(
-            self,
-            y=y,
-            X=X,
-            forecasting_horizon=forecasting_horizon,
-            **params,
-        )
-
-        return self
+    @property
+    def _observation_horizon(self) -> int:
+        """Return seasonality * n_seasons as the observation horizon."""
+        return self.seasonality * self.n_seasons
 
     def _compute_mean_pattern(self, y_values: pl.DataFrame) -> pl.DataFrame:
         """Compute the mean seasonal pattern from observed values.

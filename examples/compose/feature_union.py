@@ -41,11 +41,11 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.compose import FeatureUnion
     from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import (
@@ -87,7 +87,7 @@ def _(mo):
 def _(fetch_sunspot, mo, pl, train_test_split):
     _raw = fetch_sunspot().frame
     sunspots = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
-    y_train, y_test = train_test_split(sunspots, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(sunspots, test_size=0.15)
     horizon = len(y_test)
     mo.md(f"**Sunspots**: {len(sunspots)} months, **Train**: {len(y_train)}, **Test**: {len(y_test)}")
     return horizon, sunspots, y_test, y_train

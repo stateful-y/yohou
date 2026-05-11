@@ -145,9 +145,11 @@ plugins:
 nav:
   - Home: index.md
   - Tutorials:
+    - pages/tutorials/index.md
     - Getting Started: pages/tutorials/getting-started.md
     - Your First Forecast: pages/tutorials/first-forecast.md
     - Forecasting Workflow: pages/tutorials/forecasting-workflow.md
+    - Exogenous Features: pages/tutorials/exogenous-features.md
   - How-to Guides:
     - pages/how-to/index.md
     - Installation: pages/how-to/installation.md
@@ -160,8 +162,9 @@ nav:
     - Combine Forecasters with Ensembles: pages/how-to/ensemble-forecasting.md
     - Forecast Categorical Time Series: pages/how-to/classification-forecasting.md
     - Add Calendar and Time Features: pages/how-to/time-features.md
+    - Use Exogenous Features: pages/how-to/exogenous-features.md
     - Create Custom Estimators: pages/how-to/custom-estimators.md
-    - Create Custom Scorers: pages/how-to/custom-scorers.md
+    - Create Custom Scorers: pages/how-to/creating-a-scorer.md
     - Troubleshooting: pages/how-to/troubleshooting.md
     - Contributing: pages/how-to/contribute.md
   - Examples:

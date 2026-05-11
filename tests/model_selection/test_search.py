@@ -114,7 +114,7 @@ class TestSystematicChecks:
                     "refit": True,
                 },
                 {"search_type": "grid", "refit": True, "multimetric": False, "interval_scoring": True},
-                ["check_search_observe_delegates", "check_search_rewind_delegates"],
+                [],
             ),
             # GridSearchCV with list-of-dicts param_grid (multiple grid search spaces)
             (
@@ -133,9 +133,17 @@ class TestSystematicChecks:
     @pytest.mark.slow
     def test_search_cv_systematic_checks(self, search_cv_class, params, tags, expected_failures, y_X_factory):
         """Run systematic checks on search CV classes using generator pattern."""
-        y, X = y_X_factory(length=200, n_targets=1, n_features=2, seed=42)
+        y, X_actual, X_future, X_forecast = y_X_factory(
+            length=200,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
         y_train, y_test = y[:180], y[180:]
-        X_train, X_test = (X[:180], X[180:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (X_actual[:180], X_actual[180:]) if X_actual is not None else (None, None)
 
         if tags.get("interval_scoring", False):
             forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=20)
@@ -144,11 +152,22 @@ class TestSystematicChecks:
 
         search_cv = search_cv_class(forecaster=forecaster, **params)
         search_cv_fitted = clone(search_cv)
-        search_cv_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        search_cv_fitted.fit(y_train, X_actual_train, forecasting_horizon=3, X_future=X_future, X_forecast=X_forecast)
 
         run_checks(
             search_cv_fitted,
-            _yield_yohou_search_checks(search_cv_fitted, y_train, X_train, y_test, X_test, tags=tags),
+            _yield_yohou_search_checks(
+                search_cv_fitted,
+                y_train,
+                X_actual_train,
+                y_test,
+                X_actual_test,
+                tags=tags,
+                X_future_train=X_future,
+                X_future_test=X_future,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+            ),
             expected_failures=set(expected_failures),
         )
 
@@ -181,15 +200,17 @@ class TestPanelData:
     )
     def test_search_cv_panel_data(self, search_cv_class, params, y_X_panel_factory):
         """Test search CV with panel data using prefixed columns."""
-        y_panel, X_panel = y_X_panel_factory(n_groups=2, length=80, n_targets=1, n_features=2, seed=42)
+        y_panel, X_actual_panel = y_X_panel_factory(n_groups=2, length=80, n_targets=1, n_features=2, seed=42)
         y_train, _y_test = y_panel[:60], y_panel[60:]
-        X_train, X_test = (X_panel[:60], X_panel[60:]) if X_panel is not None else (None, None)
+        X_actual_train, X_actual_test = (
+            (X_actual_panel[:60], X_actual_panel[60:]) if X_actual_panel is not None else (None, None)
+        )
 
         forecaster = SeasonalNaive()
         search_cv = search_cv_class(forecaster=forecaster, **params)
-        search_cv.fit(y_train, X_train, forecasting_horizon=3)
+        search_cv.fit(y_train, X_actual_train, forecasting_horizon=3)
 
-        y_pred = search_cv.predict(forecasting_horizon=3, X=X_test)
+        y_pred = search_cv.predict(forecasting_horizon=3)
 
         assert "time" in y_pred.columns
         assert len(y_pred) == 3
@@ -204,9 +225,9 @@ class TestEdgeCases:
 
     def test_grid_search_empty_param_grid(self, y_X_factory):
         """Test GridSearchCV with single-value param_grid (degenerate case)."""
-        y, X = y_X_factory(length=100, seed=42)
+        y, X_actual = y_X_factory(length=100, seed=42)
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -214,16 +235,16 @@ class TestEdgeCases:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X_train, forecasting_horizon=3)
+        search.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         assert len(search.cv_results_["params"]) == 1
         assert search.best_params_ == {"seasonality": 5}
 
     def test_randomized_search_n_iter_exceeds_space(self, y_X_factory):
         """Test RandomizedSearchCV when n_iter exceeds parameter space."""
-        y, X = y_X_factory(length=100, seed=42)
+        y, X_actual = y_X_factory(length=100, seed=42)
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         import warnings
 
@@ -241,13 +262,13 @@ class TestEdgeCases:
                 cv=2,
                 random_state=42,
             )
-            search.fit(y_train, X_train, forecasting_horizon=3)
+            search.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         actual_n_iter = len(search.cv_results_["params"])
         assert actual_n_iter == 3, f"Expected 3 unique candidates (parameter space size), got {actual_n_iter}"
 
     def test_search_cv_with_no_X(self, y_X_factory):
-        """Test search CV with X=None (forecast-only scenario)."""
+        """Test search CV with X_actual=None (forecast-only scenario)."""
         y, _ = y_X_factory(length=100, n_features=0, seed=42)
         y_train, y_test = y[:80], y[80:]
 
@@ -257,13 +278,13 @@ class TestEdgeCases:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
-        y_pred = search.predict(forecasting_horizon=3, X=None)
+        y_pred = search.predict(forecasting_horizon=3)
         assert len(y_pred) == 3
 
-        search.observe(y_test[:5], X=None)
-        search.rewind(y_test[:10], X=None)
+        search.observe(y_test[:5], X_actual=None)
+        search.rewind(y_test[:10], X_actual=None)
 
 
 class TestMultiMetric:
@@ -271,9 +292,9 @@ class TestMultiMetric:
 
     def test_multimetric_best_score_selection(self, y_X_factory):
         """Test that best_score_ corresponds to refit metric in multi-metric search."""
-        y, X = y_X_factory(length=100, seed=42)
+        y, X_actual = y_X_factory(length=100, seed=42)
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -285,7 +306,7 @@ class TestMultiMetric:
             cv=2,
             refit="rmse",
         )
-        search.fit(y_train, X_train, forecasting_horizon=3)
+        search.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         expected_score = search.cv_results_["mean_test_rmse"][search.best_index_]
         assert abs(search.best_score_ - expected_score) < 1e-6
@@ -296,9 +317,9 @@ class TestReturnTrainScore:
 
     def test_return_train_score_adds_keys(self, y_X_factory):
         """Test that return_train_score=True adds train score keys."""
-        y, X = y_X_factory(length=100, seed=42)
+        y, X_actual = y_X_factory(length=100, seed=42)
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -307,7 +328,7 @@ class TestReturnTrainScore:
             cv=2,
             return_train_score=True,
         )
-        search.fit(y_train, X_train, forecasting_horizon=3)
+        search.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         assert "mean_train_score" in search.cv_results_
         assert "split0_train_score" in search.cv_results_
@@ -319,9 +340,9 @@ class TestErrorHandling:
 
     def test_error_score_nan_continues_fit(self, y_X_factory):
         """Test that error_score=np.nan continues fit even with potential errors."""
-        y, X = y_X_factory(length=100, seed=42)
+        y, X_actual = y_X_factory(length=100, seed=42)
         y_train = y[:80]
-        X_train = X[:80] if X is not None else None
+        X_actual_train = X_actual[:80] if X_actual is not None else None
 
         import numpy as np
 
@@ -332,7 +353,7 @@ class TestErrorHandling:
             cv=2,
             error_score=np.nan,
         )
-        search.fit(y_train, X_train, forecasting_horizon=3)
+        search.fit(y_train, X_actual_train, forecasting_horizon=3)
         assert hasattr(search, "cv_results_")
 
 
@@ -347,7 +368,7 @@ class TestScorerDirectionCorrectness:
 
     def test_grid_search_selects_lowest_error(self, y_X_factory):
         """GridSearchCV with MAE must pick the candidate with lowest error, not highest."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
         y_train = y[:80]
 
         search = GridSearchCV(
@@ -356,7 +377,7 @@ class TestScorerDirectionCorrectness:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         # Compute actual MAE for each candidate to verify selection
         cv_results = search.cv_results_
@@ -378,7 +399,7 @@ class TestScorerDirectionCorrectness:
 
     def test_best_score_is_negated_raw_mae(self, y_X_factory):
         """best_score_ should equal the negated raw MAE of the best candidate."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
         y_train = y[:80]
 
         search = GridSearchCV(
@@ -387,7 +408,7 @@ class TestScorerDirectionCorrectness:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         # best_score_ is the mean cv score (negated MAE)
         assert search.best_score_ < 0
@@ -397,7 +418,7 @@ class TestScorerDirectionCorrectness:
 
     def test_multimetric_respects_scorer_direction(self, y_X_factory):
         """Multi-metric search: each scorer should be negated per its lower_is_better tag."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
         y_train = y[:80]
 
         search = GridSearchCV(
@@ -410,7 +431,7 @@ class TestScorerDirectionCorrectness:
             cv=2,
             refit="mae",
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         cv_results = search.cv_results_
 
@@ -429,7 +450,7 @@ class TestScorerDirectionCorrectness:
 
     def test_randomized_search_selects_lowest_error(self, y_X_factory):
         """RandomizedSearchCV with MAE must pick the candidate with lowest error."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
         y_train = y[:80]
 
         search = RandomizedSearchCV(
@@ -440,7 +461,7 @@ class TestScorerDirectionCorrectness:
             n_iter=3,
             random_state=42,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         mean_scores = search.cv_results_["mean_test_score"]
 
@@ -464,7 +485,7 @@ class TestSearchRefitFalse:
             cv=2,
             refit=False,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
         assert not hasattr(search, "best_forecaster_")
 
     def test_refit_false_cv_results_available(self, y_X_factory):
@@ -477,7 +498,7 @@ class TestSearchRefitFalse:
             cv=2,
             refit=False,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
         assert "mean_test_score" in search.cv_results_
 
     def test_refit_false_predict_raises(self, y_X_factory):
@@ -490,7 +511,7 @@ class TestSearchRefitFalse:
             cv=2,
             refit=False,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
         with pytest.raises(AttributeError):
             search.predict(forecasting_horizon=3)
 
@@ -519,7 +540,7 @@ class TestSearchPropertyValidation:
             cv=2,
         )
         with pytest.raises(ValueError, match="scoring"):
-            search.fit(y[:80], X=None, forecasting_horizon=3)
+            search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
     def test_callable_refit_selects_index(self, y_X_factory):
         """Callable refit selects custom best index."""
@@ -531,7 +552,7 @@ class TestSearchPropertyValidation:
             cv=2,
             refit=lambda results: 0,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
         assert search.best_index_ == 0
 
     def test_invalid_multimetric_refit_raises(self, y_X_factory):
@@ -545,7 +566,7 @@ class TestSearchPropertyValidation:
             refit="nonexistent",
         )
         with pytest.raises(ValueError, match="refit"):
-            search.fit(y[:80], X=None, forecasting_horizon=3)
+            search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
 
 class TestBestParamsConsistency:
@@ -553,7 +574,7 @@ class TestBestParamsConsistency:
 
     def test_best_params_matches_best_index(self, y_X_factory):
         """best_params_ must correspond to the candidate at best_index_."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -561,7 +582,7 @@ class TestBestParamsConsistency:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
         # best_params_ should match the params at best_index_
         cv_params = search.cv_results_["params"][search.best_index_]
@@ -569,7 +590,7 @@ class TestBestParamsConsistency:
 
     def test_best_forecaster_uses_best_params(self, y_X_factory):
         """best_forecaster_ must be parameterized with best_params_."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -577,7 +598,7 @@ class TestBestParamsConsistency:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
         best = search.best_forecaster_
         for param, value in search.best_params_.items():
@@ -585,7 +606,7 @@ class TestBestParamsConsistency:
 
     def test_best_score_matches_cv_results_at_best_index(self, y_X_factory):
         """best_score_ must equal mean_test_score at best_index_."""
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -593,7 +614,7 @@ class TestBestParamsConsistency:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y[:80], X=None, forecasting_horizon=3)
+        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
 
         expected = search.cv_results_["mean_test_score"][search.best_index_]
         assert search.best_score_ == expected
@@ -605,7 +626,7 @@ class TestIntervalSearch:
     @pytest.mark.slow
     def test_grid_search_interval_scorer(self, y_X_factory):
         """GridSearchCV with interval scorer tunes SplitConformalForecaster."""
-        y, X = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
         y_train = y[:180]
 
         search = GridSearchCV(
@@ -617,14 +638,14 @@ class TestIntervalSearch:
             scoring=IntervalScore(coverage_rates=[0.9]),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         assert hasattr(search, "best_params_")
         assert hasattr(search, "best_forecaster_")
         assert hasattr(search, "best_score_")
 
         # Predict interval from best forecaster
-        y_pred = search.predict_interval(X=None, coverage_rates=[0.9])
+        y_pred = search.predict_interval(coverage_rates=[0.9])
         assert "time" in y_pred.columns
         interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
         assert len(interval_cols) > 0, "Should have interval prediction columns"
@@ -644,7 +665,7 @@ class TestIntervalSearch:
             scoring=EmpiricalCoverage(coverage_rates=[0.9]),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         # EmpiricalCoverage is NOT lower_is_better, scores should be positive
         mean_scores = search.cv_results_["mean_test_score"]
@@ -667,7 +688,7 @@ class TestIntervalSearch:
             cv=2,
             random_state=42,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         assert hasattr(search, "best_params_")
 
@@ -686,10 +707,10 @@ class TestIntervalSearch:
             scoring=IntervalScore(coverage_rates=[0.9, 0.95]),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         # Verify the best forecaster was refit with coverage_rates
-        y_pred = search.predict_interval(X=None, coverage_rates=[0.9, 0.95])
+        y_pred = search.predict_interval(coverage_rates=[0.9, 0.95])
         lower_cols = [c for c in y_pred.columns if "_lower_" in c]
         upper_cols = [c for c in y_pred.columns if "_upper_" in c]
         assert len(lower_cols) >= 2, "Should have lower bounds for both coverage rates"
@@ -718,7 +739,7 @@ class TestMixedMultimetric:
             cv=2,
             refit="mae",
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         assert hasattr(search, "best_params_")
         assert "mean_test_mae" in search.cv_results_
@@ -743,7 +764,7 @@ class TestMixedMultimetric:
             cv=2,
             refit="interval_score",
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
         expected_score = search.cv_results_["mean_test_interval_score"][search.best_index_]
         assert abs(search.best_score_ - expected_score) < 1e-6
@@ -764,7 +785,7 @@ class TestIncompatibleForecasterScorer:
             cv=2,
         )
         with pytest.raises(ValueError, match="does not support predict_interval"):
-            search.fit(y_train, X=None, forecasting_horizon=3)
+            search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
     def test_point_forecaster_with_multimetric_interval_raises(self, y_X_factory):
         """Point-only forecaster with multimetric containing interval scorer raises."""
@@ -782,7 +803,7 @@ class TestIncompatibleForecasterScorer:
             refit="mae",
         )
         with pytest.raises(ValueError, match="does not support predict_interval"):
-            search.fit(y_train, X=None, forecasting_horizon=3)
+            search.fit(y_train, X_actual=None, forecasting_horizon=3)
 
     def test_both_type_forecaster_with_point_scorer_ok(self, y_X_factory):
         """Both-type forecaster with point-only scorer should work."""
@@ -798,7 +819,7 @@ class TestIncompatibleForecasterScorer:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X=None, forecasting_horizon=3)
+        search.fit(y_train, X_actual=None, forecasting_horizon=3)
         assert hasattr(search, "best_params_")
 
 
@@ -870,26 +891,26 @@ class TestSearchDelegatedProperties:
 
     def test_n_features_in_property_delegation(self, y_X_factory):
         """n_features_in_ property is delegated from best_forecaster_."""
-        y, X = y_X_factory(length=60, n_targets=1, n_features=2)
+        y, X_actual = y_X_factory(length=60, n_targets=1, n_features=2)
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
             param_grid={"seasonality": [1, 3]},
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y[:50], X[:50], forecasting_horizon=3)
+        search.fit(y[:50], X_actual[:50], forecasting_horizon=3)
         assert search.n_features_in_ == search.best_forecaster_.n_features_in_
 
     def test_feature_names_in_property_delegation(self, y_X_factory):
         """feature_names_in_ property is delegated from best_forecaster_."""
-        y, X = y_X_factory(length=60, n_targets=1, n_features=2)
+        y, X_actual = y_X_factory(length=60, n_targets=1, n_features=2)
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
             param_grid={"seasonality": [1, 3]},
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y[:50], X[:50], forecasting_horizon=3)
+        search.fit(y[:50], X_actual[:50], forecasting_horizon=3)
         assert search.feature_names_in_ == search.best_forecaster_.feature_names_in_
 
 
@@ -996,7 +1017,7 @@ class TestClassProbaSearch:
         from yohou.class_proba import ClassProbaReductionForecaster
         from yohou.metrics import LogLoss
 
-        y, X = class_proba_y_X_factory(length=100, n_targets=1, n_features=0, n_classes=3, seed=42)
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=0, n_classes=3, seed=42)
         y_train, y_test = y[:80], y[80:]
 
         search_cv = GridSearchCV(

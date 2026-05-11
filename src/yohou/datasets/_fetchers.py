@@ -918,7 +918,7 @@ def fetch_air_quality_classification(
             (Utf8) columns. The ``"air_quality"`` column contains one
             of ``"good"``, ``"moderate"``, ``"unhealthy"``, or
             ``"hazardous"``.
-        X : pl.DataFrame
+        X_actual : pl.DataFrame
             DataFrame with ``"time"`` and 5 pollutant feature columns
             (``"pm10"``, ``"no2"``, ``"co"``, ``"o3"``, ``"so2"``).
         feature_names : list of str
@@ -978,14 +978,14 @@ def fetch_air_quality_classification(
     )
 
     y = frame.select("time", air_quality.alias("air_quality"))
-    X = frame.select("time", *feature_cols).rename({c: c.split("__")[1] for c in feature_cols})
+    X_actual = frame.select("time", *feature_cols).rename({c: c.split("__")[1] for c in feature_cols})
 
     classes = sorted(set(y["air_quality"].to_list()))
 
     return Bunch(
         y=y,
-        X=X,
-        feature_names=[c for c in X.columns if c != "time"],
+        X_actual=X_actual,
+        feature_names=[c for c in X_actual.columns if c != "time"],
         target_names=["air_quality"],
         classes=classes,
         DESCR=(
@@ -1035,7 +1035,7 @@ def fetch_demand_classification(
             DataFrame with ``"time"`` (Datetime) and ``"demand_level"``
             (Utf8) columns. The ``"demand_level"`` column contains one
             of ``"low"``, ``"medium"``, or ``"high"``.
-        X : pl.DataFrame
+        X_actual : pl.DataFrame
             DataFrame with ``"time"`` and 4 state demand columns
             (``"nsw__demand"``, ``"qun__demand"``, ``"sa__demand"``,
             ``"tas__demand"``).
@@ -1091,14 +1091,14 @@ def fetch_demand_classification(
     )
 
     y = frame.select("time", demand_level.alias("demand_level"))
-    X = frame.select("time", *feature_cols)
+    X_actual = frame.select("time", *feature_cols)
 
     classes = sorted(set(y["demand_level"].to_list()))
 
     return Bunch(
         y=y,
-        X=X,
-        feature_names=[c for c in X.columns if c != "time"],
+        X_actual=X_actual,
+        feature_names=[c for c in X_actual.columns if c != "time"],
         target_names=["demand_level"],
         classes=classes,
         DESCR=(

@@ -103,16 +103,18 @@ forecaster = PointReductionForecaster(
 
 ## Exogenous Features with Panel Data
 
-Exogenous features (`X`) can include both global columns (shared across groups) and local columns (group-specific). Global columns lack the `__` prefix:
+Exogenous features (`X_actual`) can include both global columns (shared across groups) and local columns (group-specific). Global columns lack the `__` prefix:
 
 ```python
-X = pl.DataFrame({
+X_actual = pl.DataFrame({
     "time": [...],
     "holiday": [True, False, ...],              # global - shared
     "store_a__promotion": [0.1, 0.2, ...],      # local to store_a
     "store_b__promotion": [0.0, 0.1, ...],      # local to store_b
 })
 ```
+
+Pass panel exogenous data to `fit()` as `X_actual=X_actual`. For known-future features (e.g., holidays for all groups), use `X_future`. For external forecast vintages, use `X_forecast`.
 
 For common panel data errors and their fixes, see [Troubleshooting](troubleshooting.md#panel-column-naming-errors).
 

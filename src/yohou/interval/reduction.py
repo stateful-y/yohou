@@ -44,6 +44,13 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         unless in a ``joblib.parallel_backend`` context. ``-1`` means
         using all processors. Has no effect for ``"multi-output"`` or
         ``"dir-rec"`` strategies.
+    step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
+        Controls which step-indexed feature columns each direct estimator
+        sees. Only affects the ``"direct"`` strategy.
+
+        - ``"all"``: every estimator receives all step columns.
+        - ``"matched"``: estimator for step h receives only ``*_step_h``.
+        - ``"cumulative"``: estimator for step h receives ``*_step_1..h``.
 
     Examples
     --------
@@ -135,6 +142,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         feature_transformer: BaseTransformer | None = None,
+        step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
@@ -144,6 +152,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
             feature_transformer=feature_transformer,
+            step_feature_alignment=step_feature_alignment,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
         )
@@ -185,16 +194,44 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 return param_name
         return None
 
+    def _detect_lgbm_quantile_alpha(self) -> list[str]:
+        """Detect LightGBM-style quantile regression via ``objective="quantile"``.
+
+        LightGBM uses ``objective="quantile"`` with ``alpha`` as the
+        quantile level parameter, rather than a single ``quantile`` param.
+        This method detects that pattern and returns the ``alpha``
+        parameter path so that it can be used the same way as a native
+        ``quantile`` parameter.
+
+        Returns
+        -------
+        list[str]
+            A list with the ``alpha`` parameter path (e.g. ``["alpha"]``
+            or ``["estimator__alpha"]``) if the pattern is detected,
+            otherwise an empty list.
+
+        """
+        params = self.estimator.get_params(deep=True)
+        for param_name, value in params.items():
+            if param_name.split("__")[-1] == "objective" and value == "quantile":
+                # Derive the ``alpha`` parameter path from the ``objective``
+                # path (e.g. ``"estimator__objective"`` -> ``"estimator__alpha"``).
+                prefix = param_name.rsplit("objective", 1)[0]
+                return [f"{prefix}alpha"]
+        return []
+
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
         coverage_rates: list[StrictFloat] | None = None,
         time_weight: Callable | pl.DataFrame | dict | None = None,
         vintage_weight: Callable | pl.DataFrame | dict | None = None,
         sample_weight_alignment: str = "first_step",
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "IntervalReductionForecaster":
         """Fit the forecaster to historical data.
@@ -207,9 +244,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Processed by the feature transformer to produce
+            lags, rolling statistics, and other derived features. If
+            ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
         coverage_rates : list of float or None, default=None
@@ -231,6 +270,13 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             Strategy for converting ``time_weight`` to sklearn
             ``sample_weight`` across forecast horizons. Does not apply
             to ``vintage_weight`` (which uses direct lookup).
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values available for past and future dates. Bypasses the
+            feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -240,13 +286,16 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             The fitted forecaster instance.
 
         """
-        forecasting_horizon, self.fit_coverage_rates_ = self._validate_fit_params(forecasting_horizon, coverage_rates)
+        forecasting_horizon, self.fit_coverage_rates_ = self._validate_interval_fit_params(
+            forecasting_horizon, coverage_rates
+        )
 
-        y_t, X_t = BaseIntervalForecaster._pre_fit(
-            self,
+        y_t, X_t = self._pre_fit(
             y=y,
-            X=X,
+            X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         # Detect multi-quantile estimator (e.g. CatBoost ``MultiQuantile`` loss).
@@ -278,6 +327,12 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 param_name for param_name in estimator_param_names if param_name.split("__")[-1] == "quantile"
             ]
 
+            # LightGBM uses ``objective="quantile"`` with ``alpha`` as the
+            # quantile parameter (instead of a param named ``quantile``).
+            # Detect this pattern when no ``quantile`` param was found.
+            if len(quantile_param_names) == 0:
+                quantile_param_names = self._detect_lgbm_quantile_alpha()
+
             if len(quantile_param_names) > 1:
                 raise ValueError(
                     f"Found multiple quantile parameters in estimator: {quantile_param_names}. "
@@ -289,7 +344,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 raise ValueError(
                     f"No quantile parameter found in estimator. "
                     f"IntervalReductionForecaster requires an estimator with a 'quantile' "
-                    f"parameter (e.g., QuantileRegressor) or a multi-quantile loss function "
+                    f"parameter (e.g., QuantileRegressor), a 'quantile' objective with an "
+                    f"'alpha' parameter (e.g., LGBMRegressor with ``objective='quantile'``), "
+                    f"or a multi-quantile loss function "
                     f"(e.g., CatBoost ``loss_function='MultiQuantile:alpha=...'``). "
                     f"Available parameters: {estimator_param_names}"
                 )

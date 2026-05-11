@@ -233,3 +233,7 @@ def _(
     union.fit(y)
     y_combined = union.transform(y)
     plot_time_series(y_combined, title="FeatureUnion: All Window Features Combined")
+
+
+if __name__ == "__main__":
+    app.run()

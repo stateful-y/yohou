@@ -52,11 +52,11 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
-
-    from copy import deepcopy
 
     from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
@@ -389,7 +389,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -422,4 +421,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
+
+
+if __name__ == "__main__":
+    app.run()

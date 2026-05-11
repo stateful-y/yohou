@@ -10,9 +10,10 @@ import marimo
 
 __generated_with = "0.20.2"
 __gallery__ = {
-    "title": "Feature Forecasting",
+    "title": "How to Forecast with Forecasted Features",
     "description": "Chain feature and target forecasters with ForecastedFeatureForecaster when exogenous variables are unknown at prediction time and must be forecasted.",
     "category": "how-to",
+    "companion": "/pages/explanation/composition/#forecasted-feature-forecaster",
 }
 app = marimo.App(width="medium")
 
@@ -27,13 +28,12 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Forecasting with Forecasted Features
+    # How to Forecast with Forecasted Features
 
-    When exogenous features (X) are **not known in advance** at prediction time,
-    you need to forecast them first. [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) chains a
-    **feature forecaster** and a **target forecaster** automatically.
-
-    This notebook shows how to chain feature and target forecasters with ForecastedFeatureForecaster when exogenous variables are unknown at prediction time and must be forecasted.
+    This notebook shows how to chain feature and target forecasters using
+    [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
+    when exogenous variables are unknown at prediction time and must be
+    forecasted first.
 
     **Prerequisites:** Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
     """)
@@ -319,8 +319,8 @@ def _(mo):
 
     The trick: use a [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) as the `feature_forecaster` that
     only forecasts `nsw_demand` and **drops** the calendar columns.  At
-    predict time, pass the known calendar values via `X` so they are merged
-    back in for the target forecaster.
+    predict time, pass the known calendar values via `X_future` so they are
+    merged back in as step-indexed columns for the target forecaster.
     """)
 
 
@@ -362,9 +362,9 @@ def _(
 
     ff_known.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
 
-    # Pass known calendar features via X at predict time
+    # Pass known calendar features via X_future at predict time
     X_known = X_test.select("time", "day_of_week", "month")
-    y_pred_known = ff_known.predict(forecasting_horizon=forecasting_horizon, X=X_known)
+    y_pred_known = ff_known.predict(forecasting_horizon=forecasting_horizon, X_future=X_known)
 
     mae_known = MeanAbsoluteError()
     mae_known.fit(y_train)
@@ -378,3 +378,7 @@ def _(
         n_history=60,
         title="Known-in-Advance Calendar Features",
     )
+
+
+if __name__ == "__main__":
+    app.run()

@@ -96,7 +96,7 @@ search = GridSearchCV(
     scoring=MeanAbsoluteError(),
     cv=ExpandingWindowSplitter(n_splits=3, test_size=10),
 )
-search.fit(y, X, forecasting_horizon=7)
+search.fit(y, X_actual=X, forecasting_horizon=7)
 ```
 
 For each candidate parameter combination, the search clones the forecaster, fits it on the training fold, and evaluates predictions on the test fold using the provided scorer. Results accumulate into a `cv_results_` dictionary containing per-fold scores, mean scores, standard deviations, rankings, and timing information.

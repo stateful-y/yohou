@@ -7,13 +7,17 @@ type has a base class, methods to implement, and systematic checks.
 
 | Type | Base class | Methods to implement | Use case |
 |------|-----------|---------------------|----------|
-| Point forecaster | `BasePointForecaster` | `_fit`, `_predict_one` | Single-value predictions |
-| Interval forecaster | `BaseIntervalForecaster` | `_fit`, `_predict_one` | Prediction intervals with coverage rates |
-| Class-probability forecaster | `BaseClassProbaForecaster` | `_fit`, `_predict_one` | Categorical outcome probabilities |
+| Point forecaster | `BasePointForecaster` | `_predict_one`, (`_fit`, `_observation_horizon`) | Single-value continuous or categorical predictions |
+| Interval forecaster | `BaseIntervalForecaster` | `_predict_one`, (`_fit`, `_observation_horizon`) | Prediction intervals with coverage rates |
+| Class-probability forecaster | `BaseClassProbaForecaster` | `_predict_one`, (`_fit`, `_observation_horizon`) | Categorical outcome probabilities |
 | Transformer | `BaseTransformer` | `_fit`, `_transform`, `get_feature_names_out`, (`_inverse_transform`) | Feature engineering, preprocessing |
 | Scorer | `BasePointScorer` / `BaseIntervalScorer` | `_compute_raw_errors` | Evaluation metrics |
 
 ## Point Forecaster
+
+Tier 1 (simple) forecasters override `_observation_horizon` and `_predict_one`.
+Override `_fit()` when custom fitting logic is needed. The base `fit()` handles
+validation, transformer setup, panel detection, and calls `_fit()` automatically.
 
 ```python
 import polars as pl
@@ -27,11 +31,8 @@ class LastValueForecaster(BasePointForecaster):
     _tags = {"ignores_exogenous": True, "stateful": True}
 
     @property
-    def observation_horizon(self):
+    def _observation_horizon(self):
         return 1
-
-    def _fit(self, y, X, forecasting_horizon):
-        return self
 
     def _predict_one(self, groups, **params):
         last_value = self._y_observed.select(~cs.by_name("time")).row(-1)[0]
@@ -40,13 +41,14 @@ class LastValueForecaster(BasePointForecaster):
         })
 ```
 
-- `_fit(y, X, forecasting_horizon)` receives all data with the `"time"` column.
-  The base class calls it after validation and transformer setup.
-- `_predict_one(groups, **params)` produces raw predictions for one
+- `_observation_horizon` (property): declares the lookback window size. Return a
+  value computed from constructor params (e.g. `self.seasonality`).
+- `_fit(y_t, X_t, forecasting_horizon)` (optional): receives transformed data
+  after `_pre_fit()` runs. Override this for model-specific fitting logic.
+- `_predict_one(groups, **params)`: produces raw predictions for one
   forecast step. Read from `self._y_observed` so that `observe()` updates carry
   through. Return a DataFrame without a `"time"` column.
-- The base class handles `fit`, `predict`, `observe`, `rewind`, panel dispatch,
-  and transformer composition automatically.
+- Tier 2 (complex) forecasters override `fit()` directly for full control.
 
 ## Interval Forecaster
 
@@ -57,17 +59,14 @@ from yohou.interval import BaseIntervalForecaster
 class MyIntervalForecaster(BaseIntervalForecaster):
     _tags = {"ignores_exogenous": True}
 
-    def _fit(self, y, X, forecasting_horizon):
-        # Fit your interval model
-        ...
-
     def _predict_one(self, groups, **params):
         # Fit your interval model
         # Column naming: {target}_lower_{rate}, {target}_upper_{rate}
         ...
 ```
 
-The base class handles `coverage_rates` validation and storage. Test with
+The base class handles `coverage_rates` validation, storage, and calls `_fit()`
+automatically. Override `_fit()` for model-specific logic. Test with
 `_yield_yohou_forecaster_checks` (interval-specific checks are included
 automatically).
 
@@ -78,11 +77,6 @@ from yohou.class_proba import BaseClassProbaForecaster
 
 
 class MyClassProbaForecaster(BaseClassProbaForecaster):
-    def _fit(self, y, X, forecasting_horizon):
-        # self.classes_, self.n_classes_, self.label_to_code_
-        # are set by the base class before _fit is called
-        ...
-
     def _predict_one(self, groups, **params):
         # Return DataFrame with {target}_proba_{class} columns
         # Probabilities should sum to 1 per row
@@ -196,7 +190,7 @@ For interval scorers, extend `BaseIntervalScorer` instead. It adds
 `coverage_rates` and `"coveragewise"` aggregation.
 
 For the full walkthrough, see
-[How to Create a Custom Scorer](/pages/how-to/custom-scorers/).
+[How to Create a Custom Scorer](/pages/how-to/creating-a-scorer/).
 
 ## Anatomy of an Estimator
 
@@ -327,21 +321,21 @@ def _predict_one(self, groups, **params):
             ...
 ```
 
-## Overriding `fit()` Directly
+## Using `_pre_fit()` Directly
 
-For complex estimators that need full control (reduction forecasters, ensemble
-methods, pipeline composites), override `fit()` directly instead of using
-the `_fit()` hook:
+For complex estimators that need full control over the fit process (reduction
+forecasters, ensemble methods, pipeline composites), call `_pre_fit()` instead
+of `super().fit()`:
 
 ```python
 class MyComplexForecaster(BasePointForecaster):
-    def fit(self, y, X=None, forecasting_horizon=1, **params):
-        self._pre_fit(y, X, forecasting_horizon)
+    def fit(self, y, X_actual=None, forecasting_horizon=1, **params):
+        self._pre_fit(y, X_actual, forecasting_horizon)
         # Custom fitting logic...
         return self
 ```
 
-Call `self._pre_fit(y, X, forecasting_horizon)` to run validation, transformer
+Call `self._pre_fit(y, X_actual, forecasting_horizon)` to run validation, transformer
 setup, and panel detection.
 
 ## See Also

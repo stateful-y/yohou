@@ -274,3 +274,7 @@ def _(
         _y_t = _tf.transform(y)
         _has_inv = hasattr(_tf, "inverse_transform")
         print(f"{_name:<22s}  {_tf.observation_horizon:>11d}  {str(_has_inv):>10s}")
+
+
+if __name__ == "__main__":
+    app.run()

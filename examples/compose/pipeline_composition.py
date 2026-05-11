@@ -43,11 +43,11 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.compose import DecompositionPipeline, FeaturePipeline, FeatureUnion
     from yohou.datasets import fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import (
@@ -92,7 +92,7 @@ def _(mo):
 def _(fetch_electricity_demand, mo, pl, train_test_split):
     _elec = fetch_electricity_demand().frame
     elec = _elec.group_by_dynamic("time", every="1d").agg(pl.col("vic__demand").mean().alias("demand")).drop_nulls()
-    y_train, y_test = train_test_split(elec, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(elec, test_size=0.15)
     horizon = len(y_test)
     mo.md(f"**Daily electricity demand**: Train={len(y_train)}, Test={len(y_test)}")
     return elec, horizon, y_test, y_train

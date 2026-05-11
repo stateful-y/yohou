@@ -306,3 +306,7 @@ def _(FeaturePipeline, OutlierPercentileHandler, SimpleTimeImputer, plot_time_se
     )
     plot_time_series(_combined, title="FeaturePipeline: Outlier Removal + Linear Imputation")
     return pipeline, y_clean
+
+
+if __name__ == "__main__":
+    app.run()

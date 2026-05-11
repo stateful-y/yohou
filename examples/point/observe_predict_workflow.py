@@ -372,7 +372,7 @@ def _(
     train_test_split,
 ):
     cls_data = fetch_air_quality_classification()
-    cls_y, cls_X = cls_data.y, cls_data.X
+    cls_y, cls_X = cls_data.y, cls_data.X_actual
     cls_train_end = len(cls_y) - 400
     cls_cal_end = len(cls_y) - 200
 
@@ -386,7 +386,7 @@ def _(
         estimator=DecisionTreeClassifier(random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
+    cls_forecaster.fit(cls_y_train, X_actual=cls_X_train, forecasting_horizon=cls_fh)
 
     # Independent copy for hard-label demo (section 9) so both cells
     # can call observe_predict_* on their own fitted forecaster.
@@ -402,7 +402,7 @@ def _(cls_X_cal, cls_fh, cls_forecaster, cls_y_cal, cls_y_test, plot_forecast):
     # Observe calibration data and predict class probabilities in one call
     cls_y_proba = cls_forecaster.observe_predict_class_proba(
         cls_y_cal,
-        X=cls_X_cal,
+        X_actual=cls_X_cal,
         forecasting_horizon=cls_fh,
     ).sort("time")
 
@@ -436,7 +436,7 @@ def _(cls_X_cal, cls_fh, cls_forecaster_hard, cls_y_cal, cls_y_test, cls_y_train
     # Same forecaster, but observe_predict returns hard labels
     cls_y_labels = cls_forecaster_hard.observe_predict(
         cls_y_cal,
-        X=cls_X_cal,
+        X_actual=cls_X_cal,
         forecasting_horizon=cls_fh,
     ).sort("time")
 

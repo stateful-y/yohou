@@ -45,17 +45,17 @@ class TestHorizonValidation:
         """Test that predict() validates forecasting_horizon parameter."""
         y, X = y_X_factory(length=50, seed=42)
         y_train, _y_test = y[:40], y[40:]
-        X_train, X_test = X[:40], X[40:]
+        X_train, _X_actual_test = X[:40], X[40:]
 
         forecaster = PointReductionForecaster()
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=3)
 
         # Test invalid horizon in predict
         with pytest.raises(ValueError, match="forecasting_horizon|positive"):
-            forecaster.predict(forecasting_horizon=0, X=X_test)
+            forecaster.predict(forecasting_horizon=0)
 
         with pytest.raises(ValueError, match="forecasting_horizon|positive"):
-            forecaster.predict(forecasting_horizon=-1, X=X_test)
+            forecaster.predict(forecasting_horizon=-1)
 
 
 class TestCoverageRatesValidation:
@@ -81,9 +81,6 @@ class TestCoverageRatesValidation:
         forecaster.fit(y_train, X_train, forecasting_horizon=3, coverage_rates=[0.95])
 
         # Test invalid coverage_rates in predict_interval
-        with pytest.raises(ValueError, match="coverage"):
-            forecaster.predict_interval(forecasting_horizon=3, coverage_rates=[0.0])
-
         with pytest.raises(ValueError, match="coverage"):
             forecaster.predict_interval(forecasting_horizon=3, coverage_rates=[1.5])
 

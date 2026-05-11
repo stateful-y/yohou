@@ -137,12 +137,15 @@ assistant-instructions.md
 .claude/
 ai-instructions/
 llm-instructions/
+.github/skills
+.github/prompts
 
 # Project-specific AI context (that you want to keep private)
 .cursorrules
 .cursor/
 .aider*
 .continue/
+openspec
 
 # Git worktrees
 .worktrees/

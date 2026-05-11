@@ -173,6 +173,7 @@ def _(
         {"SeasonalNaive": y_pred_naive, "Ridge": y_pred_ridge},
         title="MAE by Forecast Step",
     )
+    return (mae,)
 
 
 @app.cell(hide_code=True)

@@ -48,7 +48,6 @@ def _(mo):
 
     Basic familiarity with sklearn's fit/predict API and classification concepts.
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -79,6 +78,7 @@ def _():
         plot_forecast,
         plot_score_time_series,
         plot_time_series,
+        train_test_split,
     )
 
 
@@ -92,13 +92,12 @@ def _(mo):
     The target has 4 WHO-based classes (good, moderate, unhealthy, hazardous)
     and 5 pollutant features (PM10, NO2, CO, O3, SO2) at hourly intervals.
     """)
-    return
 
 
 @app.cell
 def _(fetch_air_quality_classification):
     data = fetch_air_quality_classification()
-    y, X = data.y, data.X
+    y, X = data.y, data.X_actual
 
     print(f"Classes: {data.classes}")
     print(f"Dataset: {len(y)} observations from {y['time'].min()} to {y['time'].max()}")
@@ -112,15 +111,15 @@ def _(mo):
     ### Explore the Features
 
     The exogenous features are 5 pollutant measurements (PM10, NO2, CO, O3, SO2)
-    measured hourly. These serve as known-in-advance inputs to the forecaster.
+    measured hourly. At fit time these are passed as X_actual. For backtesting,
+    we pass test-period values via X_future to provide the forecaster with known
+    feature values over the prediction horizon.
     """)
-    return
 
 
 @app.cell
 def _(X, plot_time_series):
     plot_time_series(X, title="Pollutant Features Over Time")
-    return
 
 
 @app.cell(hide_code=True)
@@ -131,18 +130,15 @@ def _(mo):
     The target variable is a WHO-based air quality category derived from PM2.5
     concentration. Let's see how the classes are distributed over time.
     """)
-    return
 
 
 @app.cell
 def _(data, y):
-    import polars as pl
 
     target_col = data.target_names[0]
     counts = y.group_by(target_col).len().sort("len", descending=True)
     print("Class distribution:")
     counts
-    return
 
 
 @app.cell(hide_code=True)
@@ -153,7 +149,6 @@ def _(mo):
     Visualizing the categorical target as a step chart reveals temporal
     patterns: transitions between classes and how long each state persists.
     """)
-    return
 
 
 @app.cell
@@ -162,7 +157,6 @@ def _(plot_time_series, y):
         y.tail(200),
         title="Air Quality Target Over Time",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -172,7 +166,6 @@ def _(mo):
 
     We hold out the last 200 hours for testing.
     """)
-    return
 
 
 @app.cell
@@ -198,7 +191,6 @@ def _(mo):
     3. **Fit**: The classifier trains on the tabular data
     4. **Predict**: Recursive probability forecasting
     """)
-    return
 
 
 @app.cell
@@ -214,7 +206,7 @@ def _(
         estimator=DecisionTreeClassifier(random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    forecaster.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
+    forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=forecasting_horizon)
 
     print(f"Discovered classes: {forecaster.classes_}")
     return (forecaster,)
@@ -228,13 +220,12 @@ def _(mo):
     `predict_class_proba()` returns one column per class, with probabilities
     summing to 1 at each time step. `predict()` returns the most likely class.
     """)
-    return
 
 
 @app.cell
 def _(X_test, forecaster, forecasting_horizon):
     y_proba = forecaster.predict_class_proba(
-        X=X_test[:forecasting_horizon],
+        X_future=X_test[:forecasting_horizon],
         forecasting_horizon=forecasting_horizon,
     )
     print("Probability predictions (first 12 steps):")
@@ -245,7 +236,7 @@ def _(X_test, forecaster, forecasting_horizon):
 @app.cell
 def _(X_test, forecaster, forecasting_horizon):
     y_pred = forecaster.predict(
-        X=X_test[:forecasting_horizon],
+        X_future=X_test[:forecasting_horizon],
         forecasting_horizon=forecasting_horizon,
     )
     print("Class label predictions:")
@@ -267,7 +258,6 @@ def _(mo):
     - **Categorical predictions** (from `predict()`) are rendered as step
       charts comparing predicted vs actual class labels.
     """)
-    return
 
 
 @app.cell
@@ -277,7 +267,6 @@ def _(plot_forecast, y_proba, y_test):
         y_proba,
         title="Probability Forecast (Stacked Area)",
     )
-    return
 
 
 @app.cell
@@ -287,7 +276,6 @@ def _(plot_forecast, y_pred, y_test):
         y_pred,
         title="Categorical Forecast (Step Chart)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -301,7 +289,6 @@ def _(mo):
     - [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/): Mean squared error between predicted probabilities and one-hot truth (lower is better)
     - [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/): Fraction of correct argmax predictions (higher is better)
     """)
-    return
 
 
 @app.cell
@@ -315,7 +302,6 @@ def _(Accuracy, BrierScore, LogLoss, y_proba, y_test):
     print(f"Log Loss:    {log_loss.score(y_truth_slice, y_proba):.4f}")
     print(f"Brier Score: {brier.score(y_truth_slice, y_proba):.4f}")
     print(f"Accuracy:    {accuracy.score(y_truth_slice, y_proba):.4f}")
-    return
 
 
 @app.cell(hide_code=True)
@@ -332,7 +318,6 @@ def _(mo):
     where the model struggles, helping diagnose whether errors are random or
     systematic.
     """)
-    return
 
 
 @app.cell
@@ -343,7 +328,6 @@ def _(LogLoss, plot_score_time_series, y_rolling_proba, y_test):
         y_rolling_proba,
         title="Log Loss Over Time (Rolling Predictions)",
     )
-    return
 
 
 @app.cell
@@ -354,7 +338,6 @@ def _(BrierScore, plot_score_time_series, y_rolling_proba, y_test):
         y_rolling_proba,
         title="Brier Score Over Time (Rolling Predictions)",
     )
-    return
 
 
 @app.cell
@@ -365,7 +348,6 @@ def _(Accuracy, plot_score_time_series, y_rolling_proba, y_test):
         y_rolling_proba,
         title="Accuracy Over Time (Rolling Predictions)",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -377,14 +359,13 @@ def _(mo):
     observe new data, then predict the next horizon. This simulates real-world
     deployment where predictions are updated as new observations arrive.
     """)
-    return
 
 
 @app.cell
 def _(X_test, forecaster, y_test):
     y_rolling_proba = forecaster.observe_predict_class_proba(
         y=y_test,
-        X=X_test,
+        X_actual=X_test,
     ).sort("time")
     print(f"Rolling predictions: {len(y_rolling_proba)} rows")
     return (y_rolling_proba,)
@@ -393,7 +374,6 @@ def _(X_test, forecaster, y_test):
 @app.cell
 def _(y_rolling_proba):
     y_rolling_proba
-    return
 
 
 @app.cell
@@ -403,7 +383,6 @@ def _(plot_forecast, y_rolling_proba, y_test):
         y_rolling_proba,
         title="Rolling Probability Forecast",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -416,7 +395,6 @@ def _(mo):
     plot. Points near the diagonal indicate good calibration; points below
     mean the model is overconfident for that class.
     """)
-    return
 
 
 @app.cell
@@ -427,4 +405,7 @@ def _(plot_calibration, y_rolling_proba, y_test):
         n_bins=8,
         title="Calibration Plot (Rolling Predictions)",
     )
-    return
+
+
+if __name__ == "__main__":
+    app.run()

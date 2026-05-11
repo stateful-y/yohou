@@ -1,98 +1,222 @@
-# Exogenous Features
+# About Exogenous Features
 
-Most real-world forecasting problems involve more than just the target series. Electricity demand depends on temperature, retail sales respond to promotions, and hospital admissions correlate with flu season indicators. These external predictors, known as exogenous features, can dramatically improve forecast accuracy when used correctly. But they come with a constraint that distinguishes time series forecasting from standard supervised learning: features must be known in advance, at the time the forecast is made.
+Forecasting rarely happens in isolation. Electricity prices depend on weather,
+retail demand responds to holidays, and industrial output tracks commodity
+indices. These external signals are *exogenous features*, and getting them into
+a forecasting model correctly is surprisingly subtle. Yohou's three-parameter
+API (`X_actual`, `X_future`, `X_forecast`) exists because a single `X`
+parameter cannot capture the temporal semantics that matter in production
+forecasting.
 
-## Target vs. Exogenous
+**API Reference**: [`yohou.base`](../api/base.md) · [`yohou.utils`](../api/utils.md)
 
-Yohou follows a clear convention: `y` is the target (what you want to forecast) and `X` is the exogenous feature set (the information available to help). Both are polars DataFrames with a mandatory `"time"` column, but they serve different roles in the forecasting pipeline.
+## The Three Categories
 
-The target variable is what gets tabularized into lagged features by the reduction machinery. It is the series whose future values you are predicting. The exogenous features are additional columns that the regressor can use alongside the lagged target values. They enter the model as-is (after any feature transformers are applied) and enrich the feature space beyond what the target's own history can provide.
+External data that feeds a forecasting model falls into exactly three categories,
+each with distinct temporal properties:
 
-## The Ex-Ante Requirement
+### X_actual: Observation Features
 
-The single most important constraint on exogenous features is: they must be known at forecast time. This is the ex-ante requirement, and violating it is one of the most common mistakes in time series forecasting.
+Actual measurements available up to the current observation point. Temperature
+readings, sensor data, realized demand, settled prices. These values are
+*historical* by definition: you cannot know tomorrow's actual temperature
+today.
 
-If you are forecasting sales 7 days ahead, you can use features that are known today (day of week, month, holiday indicator, planned promotions) but not features that depend on future observations (actual temperature next week, competitor pricing next Tuesday). Features that are determined by the calendar (seasonal indicators, Fourier terms, time-of-day) always satisfy this requirement. Features that are measured in real time (temperature, stock prices) only satisfy it if you either use lagged values or forecast the features themselves.
+`X_actual` flows through the `feature_transformer` pipeline. Lag features,
+rolling statistics, and other time-dependent transformations apply to it
+just as they do to the target variable. At predict time, `X_actual` is not
+available (the future hasn't happened yet), so it never appears in the
+`predict()` signature.
 
-Yohou enforces this through the `X` parameter in `predict()`. Whatever features you pass to `predict()` must cover the forecast horizon. If a feature column is missing or has NaN values in the forecast period, the model cannot use it.
+### X_future: Known-Future Features
 
-## Useful Predictor Types
+Deterministic values available for any date, past or future. Holiday
+calendars, day-of-week indicators, scheduled auction prices, planned
+maintenance windows. Looking up whether December 25th is a holiday gives the
+same answer whether you check in January or November.
 
-Exogenous features fall into a few recurring categories, each with different
-relationships to the ex-ante requirement.
+`X_future` bypasses the `feature_transformer` entirely. Instead, the framework
+windows it forward from each observation point to produce *step-indexed*
+columns (`is_holiday_step_1`, `is_holiday_step_2`, ..., `is_holiday_step_H`).
+Each step column tells the estimator what the holiday status will be at that
+specific forecast horizon.
 
-### Calendar and seasonal features
+### X_forecast: External Forecasts
 
-Day of week, month of year, hour of day, holiday indicators. These are always known
-in advance because they are determined by the calendar, not by observations.
-[`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/) and [`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/) derive these directly from the time column, so no external data source is needed.
+Predictions from external models, each issued at a specific time (the
+*vintage*). Weather model output, demand projections, competitor price
+forecasts. The 6:00 AM weather forecast and the 9:30 AM forecast for the
+same target hour typically differ because the model was updated with newer
+data.
 
-Fourier terms (sine and cosine pairs at seasonal frequencies) serve a similar purpose
-but approximate smooth periodic patterns with fewer features than dummy variables.
-[`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/) constructs these as exogenous columns derived from the time column. Fourier terms can also handle non-integer seasonality (like 365.25 days per year), which calendar dummies cannot. [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/) uses the same idea internally for decomposition.
+`X_forecast` requires a `vintage_time` column that identifies when each
+forecast was issued. Like `X_future`, it bypasses `feature_transformer` and
+produces step-indexed columns. Unlike `X_future`, different vintages produce
+different step values, enabling multi-vintage prediction from a single
+observation state.
 
-### Lagged features
+## Benefits of the Three-Parameter API
 
-Lagged values of the target or exogenous series capture autoregressive
-relationships. For exogenous features, lagged values are inherently ex-ante
-valid: last week's temperature is known today. The reduction machinery creates
-lagged target features internally during tabularization, but lagged exogenous
-features must be constructed explicitly through
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/).
+Separating exogenous data into three parameters unlocks four capabilities:
 
-### Trend indicators
+**Leakage-free walk-forward evaluation.** The `observe_predict` loop
+separates `X_actual` (observation-only, never passed to `predict`) from
+`X_future` (predict-safe). This eliminates an entire class of data leakage
+where future actual measurements (e.g., tomorrow's temperature) would
+otherwise appear in each prediction step.
 
-Numeric time indices, polynomial time features, or piecewise linear trends help
-the regressor capture gradual level changes.
-[`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/)
-handles this within a decomposition pipeline. For reduction forecasters,
-[`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.time_features.TimeIndexTransformer/)
-converts the time column into numeric indices and optional polynomial terms.
+**Partial features at predict time.** `predict(X_future=holidays)` works
+without providing observation features. The API accepts only the data
+categories that are relevant at prediction time, so schema validation
+passes cleanly.
 
-### Rolling statistics
+**Explicit predict-time semantics.** `predict()` does not accept `X_actual`
+at all. The estimator uses the stored `_X_t_observed` buffer from fit, and
+step columns from `X_future`/`X_forecast` are the only features that can be
+overridden at predict time. There is no ambiguity about which features are
+used.
 
-Rolling means, medians, and standard deviations of recent observations capture
-local dynamics.
-[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/)
-creates these as feature columns. Because they depend only on past data, they
-satisfy the ex-ante requirement automatically.
+**Native support for vintage-indexed data.** `X_forecast` accepts tidy
+tables with `vintage_time` columns directly. The framework handles the
+pivot from `[vintage_time, time, col]` to step-indexed format internally,
+removing manual preprocessing.
 
-## Multivariate Target Forecasting
+## Step-Indexed Columns
 
-Sometimes `y` itself has multiple columns: you want to forecast sales for three product categories simultaneously. Yohou handles this natively through panel data conventions (columns prefixed with group names separated by `__`) or simply as a multi-column target DataFrame. The reduction forecaster tabularizes each target column and fits the regressor on the combined feature matrix.
+Both `X_future` and `X_forecast` become *step-indexed columns* in the
+internal feature matrix. This pivoting transforms temporal data into the
+tabular format that sklearn estimators expect.
 
-For situations where columns influence each other (e.g., forecasting temperature and humidity jointly), the lagged values of all target columns become available as features through the tabularization process, allowing the regressor to learn cross-column relationships.
+For a forecasting horizon of $H$ and a feature column `temperature`:
 
-## Forecasting Unknown Features
+$$
+\text{temperature\_step\_}h = \text{temperature at } T + h \cdot \Delta t
+$$
 
-A common challenge is when exogenous features are informative but not known in
-advance. Temperature improves energy demand forecasts, but you do not know next
-week's temperature today.
-[`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
-solves this by chaining two models: a feature forecaster that predicts future `X`,
-and a target forecaster that uses those predicted features. At prediction time, the
-feature forecaster runs first, and its output feeds into the target forecaster.
+where $T$ is the observation time and $\Delta t$ is the time series frequency.
 
-The uncertainty compounds: errors in feature forecasts propagate to target forecasts.
-But the additional information often outweighs the noise, especially when the
-exogenous feature has a strong, stable relationship with the target. The
-`strategy` parameter controls how the target forecaster is trained to account for
-this distribution shift (see [Composition and Pipelines](composition.md) for the
-three available strategies).
+The resulting feature matrix has columns
+`temperature_step_1, temperature_step_2, ..., temperature_step_H` alongside
+the transformer-derived features (`target_lag_1`, `temp_rolling_mean_7`, etc.).
 
-## References
+Two public utilities handle this pivoting:
 
-- Hyndman, R.J. & Athanasopoulos, G. (2021). [Forecasting: principles and practice](https://otexts.com/fpp3/), 3rd edition, OTexts. Chapters 7 and 10.
+- `pivot_forecasts()` converts tidy `[vintage_time, time, col1, col2]` to
+  wide `[time, col1_step_1, col1_step_2, ...]`
+- `window_futures()` converts flat `[time, col1, col2]` to wide format by
+  windowing forward from each observation time
+
+Both are called internally by `_derive_step_columns()`, but are available as
+public utilities for data preparation workflows.
+
+## The Bypass Principle
+
+A key design decision: step-indexed columns bypass `feature_transformer`
+entirely. The `feature_transformer` operates on `X_actual` (and optionally
+on the target via `target_as_feature`) to produce lags, rolling statistics,
+and other observation-derived features. Step columns from `X_future` and
+`X_forecast` are already forward-looking by construction: `is_holiday_step_3`
+*is* the feature for horizon 3. Applying lag or rolling transformations to
+step columns would be meaningless.
+
+This bypass has a practical benefit: at predict time, the framework can swap
+step columns without re-running the transformer. Five different weather
+forecast vintages produce five different predictions from a single
+`predict()` call each, with no deepcopy and no transformer refit.
+
+## Step Feature Alignment
+
+When using the `"direct"` reduction strategy (which fits $H$ independent
+estimators, one per forecast horizon), the `step_feature_alignment` parameter
+controls which step columns each estimator sees:
+
+| Mode | Estimator $h$ receives | Use case |
+|---|---|---|
+| `"all"` (default) | All step columns `*_step_1..H` | Maximum information, backward compatible |
+| `"matched"` | Only `*_step_h` | Cleanest signal, each estimator sees only its horizon's forecast |
+| `"cumulative"` | `*_step_1..h` | All information up to horizon $h$ |
+
+For the electricity pricing use case, `step_feature_alignment="matched"` means
+estimator $h$ trains on `(wind_step_h, price_step_h)`: the weather forecast
+for time $T+h$ predicting the price at $T+h$. This avoids cross-horizon
+information that could confuse simpler estimators.
+
+## Predict-Time Override (Column Swap)
+
+When `predict(X_forecast=...)` is called with new vintage data, the framework
+temporarily replaces all step columns in `_X_t_observed` with freshly derived
+values. The save-swap-restore flow:
+
+1. Resolve effective raws (provided override or stored `_X_future_raw_`/`_X_forecast_raw_`)
+2. Re-derive ALL step columns via `_derive_step_columns()`
+3. Save current step columns and raws from `_X_t_observed`
+4. Swap raws and step columns into `_X_t_observed`
+5. Call the estimator's predict
+6. Restore saved raws and step columns (in a `finally` block)
+
+The forecaster's state is unchanged after the call. Five consecutive
+`predict()` calls with five different `X_forecast` values return five different
+results, all independent.
+
+!!! warning "Thread Safety"
+    The column-swap mechanism mutates and restores `_X_t_observed` in place.
+    For parallel multi-vintage predictions, `copy.deepcopy(forecaster)` once
+    per thread.
+
+## Partial Coverage and Null Handling
+
+Not every `X_forecast` vintage covers the full forecast horizon. If the weather
+model issues a 12-step forecast but the model was trained with `H=24`, the
+left join produces null step columns for steps 13 through 24. This is by design:
+tree-based estimators (XGBoost, LightGBM, HistGradientBoosting) handle null
+values natively. Linear models require imputation or complete coverage.
+
+Similarly, if `X_forecast` doesn't cover all training observation times, the
+uncovered rows produce null step columns. This is common when forecast archives
+start later than the target series.
+
+## Cross-Validation with Exogenous Data
+
+In cross-validation, the three parameters receive different splitting treatment:
+
+- **X_actual** is split by time indices, same as the target `y`
+- **X_future** requires no splitting (deterministic data, available for all dates)
+- **X_forecast** is filtered by `vintage_time <= T` where $T$ is the fold's training cutoff
+
+The `vintage_time` filter on `X_forecast` prevents future forecast vintages from
+leaking into training folds. A forecast issued on Wednesday cannot be used to
+train a model whose observation point is Monday.
+
+## Composition Forecasters
+
+All composition forecasters propagate the three parameters:
+
+- **ColumnForecaster**: Routes `X_actual`, `X_future`, `X_forecast` to each
+  child forecaster. Children that don't use exogenous features ignore the
+  parameters via `requires_exogenous` tag.
+
+- **DecompositionPipeline**: Passes all three parameters to the residual
+  forecaster after trend/seasonality removal.
+
+- **ForecastedFeatureForecaster**: `X_actual` trains the feature forecaster
+  (treated as its y) and provides lag features for the target forecaster.
+  `X_future` and `X_forecast` pass through to the target forecaster directly.
+  At predict time, the target forecaster uses its stored observation window
+  for X_actual features; the feature forecaster is not called.
+
+- **VotingForecaster**: All ensemble members receive the same three parameters.
+
+- **SplitConformalForecaster**: Forwards all parameters to the wrapped point
+  forecaster.
 
 ## Connections
 
-The reduction framework described in [Forecasting](forecasting.md) is where
-exogenous features enter the model through tabularization. Feature transformers
-for constructing lags, rolling statistics, and other derived features are covered
-in [Preprocessing](preprocessing.md). For composing multi-stage forecasters that
-chain target and feature predictions, see
-[Composition and Pipelines](composition.md).
-
-For constructing calendar, Fourier, and trend features from the time column, see
-the [time features section in Preprocessing](preprocessing.md#time-features) and the
-[how-to guide](../how-to/time-features.md).
+- [Exogenous Features Tutorial](../tutorials/exogenous-features.md): hands-on introduction
+  with synthetic data
+- [How to Use Exogenous Features](../how-to/exogenous-features.md): production workflow
+  recipes
+- [Forecasting](forecasting.md): general forecasting concepts
+- [`pivot_forecasts` API Reference](../api/utils.md): utility for pivoting
+  vintage data
+- [`window_futures` API Reference](../api/utils.md): utility for windowing
+  known-future data

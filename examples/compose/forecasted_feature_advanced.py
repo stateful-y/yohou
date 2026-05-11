@@ -10,9 +10,10 @@ import marimo
 
 __generated_with = "0.19.11"
 __gallery__ = {
-    "title": "ForecastedFeatureForecaster (Advanced)",
+    "title": "How to Tune ForecastedFeatureForecaster Strategies",
     "description": "Compare ForecastedFeatureForecaster strategies (actual, predicted, rewind) and split ratio tuning for chaining feature and target forecasters.",
     "category": "how-to",
+    "companion": "/pages/explanation/composition/#forecasted-feature-forecaster",
 }
 app = marimo.App(width="medium")
 
@@ -113,7 +114,8 @@ def _(mo):
     ## 2. Strategy: "actual"
 
     The target forecaster is trained on actual feature values. At
-    prediction time, you must provide X (or use the default forecast).
+    prediction time, features are forecasted by the feature forecaster
+    (or overridden via X_future/X_forecast).
     """)
 
 

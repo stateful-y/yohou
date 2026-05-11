@@ -289,3 +289,7 @@ def _(Upsampler, plot_time_series, y_daily_mean, y_hf):
         _combined.head(96),
         title="Round-Trip: Original vs Down-then-Up (first 2 days)",
     )
+
+
+if __name__ == "__main__":
+    app.run()

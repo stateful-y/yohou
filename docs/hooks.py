@@ -676,9 +676,12 @@ def _get_gallery_items(project_root):
         if not gallery or not isinstance(gallery, dict):
             continue
 
+        # Use relative path from examples/ as unique key (avoids stem collisions
+        # e.g., plotting/signal_processing vs preprocessing/signal_processing).
+        rel_key = str(notebook.relative_to(examples_dir).with_suffix(""))
         stem = notebook.stem
-        view_path = f"/examples/{stem}/"
-        open_path = f"/examples/{stem}/edit/"
+        view_path = f"/examples/{rel_key}/"
+        open_path = f"/examples/{rel_key}/edit/"
 
         items.append({
             "title": gallery.get("title", stem.replace("_", " ").title()),
@@ -687,7 +690,7 @@ def _get_gallery_items(project_root):
             "companion": gallery.get("companion"),
             "view_path": view_path,
             "open_path": open_path,
-            "stem": stem,
+            "stem": rel_key,
             "directory": stem if notebook.parent.name == examples_dir.name else notebook.parent.name,
         })
 
@@ -807,8 +810,8 @@ def _get_notebook_api_usage(project_root):
         if "__init__" in notebook.name:
             continue
 
-        stem = notebook.stem
-        item = stem_to_item.get(stem)
+        rel_key = str(notebook.relative_to(examples_dir).with_suffix(""))
+        item = stem_to_item.get(rel_key)
         if item is None:
             continue
 
@@ -1358,11 +1361,13 @@ def on_pre_build(config):
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
-    failed: list[str] = []
-
-    for notebook in notebooks:
+    def _export_notebook(notebook):
+        """Export a single marimo notebook to HTML. Returns (rel_path, error)."""
         rel_path = notebook.relative_to(project_root)
-        output_dir = docs_examples / notebook.stem
+        # Use relative path from examples/ to avoid stem collisions
+        # (e.g., plotting/signal_processing vs preprocessing/signal_processing).
+        rel_key = str(notebook.relative_to(examples_dir).with_suffix(""))
+        output_dir = docs_examples / rel_key
 
         if output_dir.exists():
             shutil.rmtree(output_dir)
@@ -1388,16 +1393,60 @@ def on_pre_build(config):
                 capture_output=True,
                 text=True,
             )
-            print(f"[hooks] exported html {rel_path} -> {static_file.relative_to(project_root)}")
+            return str(rel_path), None
         except subprocess.CalledProcessError as e:
-            failed.append(str(rel_path))
-            print(f"[hooks] FAILED html {rel_path}: {e}", file=sys.stderr)
-            if e.stderr:
-                print(e.stderr, file=sys.stderr)
-            continue
+            return str(rel_path), e
         except FileNotFoundError:
-            print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
-            break
+            return str(rel_path), FileNotFoundError("marimo")
+
+    _default_workers = min(os.cpu_count() or 2, 4)
+    try:
+        max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", _default_workers))
+    except ValueError:
+        print("[hooks] MKDOCS_EXPORT_WORKERS is not a valid integer, using default", flush=True)
+        max_workers = _default_workers
+
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    failed: list[str] = []
+    done_count_lock = threading.Lock()
+    done_count = 0
+    total = len(notebooks)
+    print(f"[hooks] exporting {total} notebooks with {max_workers} workers", flush=True)
+
+    # Heartbeat thread to prevent RTD "inactivity" kills
+    heartbeat_stop = threading.Event()
+
+    def _heartbeat():
+        while not heartbeat_stop.wait(60):
+            with done_count_lock:
+                _count = done_count
+            print(f"[hooks] ... still exporting ({_count}/{total} done)", flush=True)
+
+    heartbeat = threading.Thread(target=_heartbeat, daemon=True)
+    heartbeat.start()
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_export_notebook, nb): nb for nb in notebooks}
+        for future in as_completed(futures):
+            rel_path, error = future.result()
+            with done_count_lock:
+                done_count += 1
+            if error is None:
+                print(f"[hooks] [{done_count}/{total}] exported {rel_path}", flush=True)
+            elif isinstance(error, FileNotFoundError):
+                print("[hooks] marimo not found, skipping notebook export", file=sys.stderr, flush=True)
+                pool.shutdown(wait=False, cancel_futures=True)
+                heartbeat_stop.set()
+                return
+            else:
+                failed.append(rel_path)
+                print(f"[hooks] [{done_count}/{total}] FAILED {rel_path}: {error}", file=sys.stderr, flush=True)
+                if hasattr(error, "stderr") and error.stderr:
+                    print(error.stderr, file=sys.stderr, flush=True)
+
+    heartbeat_stop.set()
 
     if failed:
         msg = f"[hooks] {len(failed)} notebook(s) had cell execution errors:\n"

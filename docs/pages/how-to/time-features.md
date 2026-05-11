@@ -78,6 +78,15 @@ forecaster = PointReductionForecaster(feature_transformer=features)
 forecaster.fit(y, forecasting_horizon=30)
 ```
 
+### Which parameter to use
+
+When passing time-derived features as exogenous data:
+
+- **Calendar, holidays, Fourier features** use `X_future`: these are deterministic and known in advance for any future date.
+- **Lag features** are handled automatically by `feature_transformer` (derived from `X_actual` internally during `fit`).
+
+If you generate calendar features externally (outside `feature_transformer`), pass them via `X_future` at both `fit()` and `predict()` time.
+
 ### Related pages
 
 - [Preprocessing](../explanation/preprocessing.md#time-features): full details on each transformer

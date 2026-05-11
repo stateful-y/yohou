@@ -4,6 +4,8 @@ This module provides validation functions for common forecaster behaviors
 that apply to all BaseForecaster implementations (both point and interval).
 """
 
+import warnings
+
 import polars as pl
 from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
@@ -11,6 +13,8 @@ from sklearn.utils.validation import check_is_fitted
 
 __all__ = [
     "check_clone_preserves_forecaster_params",
+    "check_fit_predict_with_X_forecast",
+    "check_fit_predict_with_X_future",
     "check_fit_predict_without_exogenous",
     "check_fit_sets_forecaster_attributes",
     "check_forecaster_methods_call_check_is_fitted",
@@ -19,16 +23,25 @@ __all__ = [
     "check_forecaster_tags_match_capabilities",
     "check_forecaster_tags_static_after_fit",
     "check_forecasting_horizon_validation",
+    "check_requires_exogenous_warns_on_X_future_X_forecast",
+    "check_observe_auto_rederives_step_columns",
+    "check_observe_extends_observations",
+    "check_observe_predict_with_step_columns",
     "check_predict_time_columns",
+    "check_predict_X_forecast_override",
     "check_prediction_types_property",
     "check_rewind_propagates_to_transformers",
     "check_rewind_replaces_observations",
-    "check_observe_extends_observations",
 ]
 
 
 def check_fit_sets_forecaster_attributes(
-    forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    forecaster,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check fit() sets required forecaster attributes.
 
@@ -42,10 +55,14 @@ def check_fit_sets_forecaster_attributes(
         Unfitted forecaster instance
     y : pl.DataFrame
         Training target data with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features with "time" column
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
+    X_future : pl.DataFrame, optional
+        Known-future features with "time" column
+    X_forecast : pl.DataFrame, optional
+        External forecasts in tidy format
 
     Raises
     ------
@@ -54,7 +71,7 @@ def check_fit_sets_forecaster_attributes(
 
     """
     forecaster_clone = clone(forecaster)
-    forecaster_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    forecaster_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Check core fitted attributes
     assert hasattr(forecaster_clone, "fit_forecasting_horizon_"), "fit() must set fit_forecasting_horizon_ attribute"
@@ -68,11 +85,11 @@ def check_fit_sets_forecaster_attributes(
     assert hasattr(forecaster_clone, "local_y_schema_"), (
         "fit() must set local_y_schema_ attribute (dict[str, pl.DataType])"
     )
-    assert hasattr(forecaster_clone, "local_X_schema_"), (
-        "fit() must set local_X_schema_ attribute (dict[str, pl.DataType])"
+    assert hasattr(forecaster_clone, "local_X_actual_schema_"), (
+        "fit() must set local_X_actual_schema_ attribute (dict[str, pl.DataType])"
     )
-    assert hasattr(forecaster_clone, "shared_X_schema_"), (
-        "fit() must set shared_X_schema_ attribute (None or dict[str, pl.DataType])"
+    assert hasattr(forecaster_clone, "shared_X_actual_schema_"), (
+        "fit() must set shared_X_actual_schema_ attribute (None or dict[str, pl.DataType])"
     )
     assert hasattr(forecaster_clone, "local_y_t_schema_"), (
         "fit() must set local_y_t_schema_ attribute (None or dict[str, pl.DataType])"
@@ -96,8 +113,37 @@ def check_fit_sets_forecaster_attributes(
             "fit() must set feature_transformer_ when feature_transformer provided"
         )
 
+    # Check step column attributes when X_future/X_forecast provided
+    if X_future is not None or X_forecast is not None:
+        assert hasattr(forecaster_clone, "_step_column_names_"), "fit() must set _step_column_names_ attribute"
+        assert len(forecaster_clone._step_column_names_) > 0, (
+            "_step_column_names_ should be non-empty when X_future/X_forecast provided"
+        )
+        if X_future is not None:
+            assert hasattr(forecaster_clone, "_X_future_schema_"), (
+                "fit() must set _X_future_schema_ when X_future provided"
+            )
+            assert hasattr(forecaster_clone, "_X_future_raw_"), "fit() must set _X_future_raw_ when X_future provided"
+            assert forecaster_clone._X_future_raw_ is not None, (
+                "_X_future_raw_ should not be None when X_future provided"
+            )
+        if X_forecast is not None:
+            assert hasattr(forecaster_clone, "_X_forecast_schema_"), (
+                "fit() must set _X_forecast_schema_ when X_forecast provided"
+            )
+            assert hasattr(forecaster_clone, "_X_forecast_raw_"), (
+                "fit() must set _X_forecast_raw_ when X_forecast provided"
+            )
+            assert forecaster_clone._X_forecast_raw_ is not None, (
+                "_X_forecast_raw_ should not be None when X_forecast provided"
+            )
+    elif hasattr(forecaster_clone, "_step_column_names_"):
+        assert len(forecaster_clone._step_column_names_) == 0, (
+            "_step_column_names_ should be empty when no X_future/X_forecast"
+        )
 
-def check_forecaster_not_fitted_error(forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+
+def check_forecaster_not_fitted_error(forecaster, y: pl.DataFrame, X_actual: pl.DataFrame | None = None) -> None:
     """Check accessing fitted attributes before fit() raises NotFittedError.
 
     Parameters
@@ -106,7 +152,7 @@ def check_forecaster_not_fitted_error(forecaster, y: pl.DataFrame, X: pl.DataFra
         Unfitted forecaster instance
     y : pl.DataFrame
         Test target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Test features
 
     Raises
@@ -129,7 +175,7 @@ def check_forecaster_not_fitted_error(forecaster, y: pl.DataFrame, X: pl.DataFra
         pass
 
 
-def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_test: pl.DataFrame | None = None) -> None:
+def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None) -> None:
     """Check predictions have vintage_time and time columns.
 
     Parameters
@@ -138,7 +184,7 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_test: pl.Data
         Fitted forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_test : pl.DataFrame, optional
+    X_actual_test : pl.DataFrame, optional
         Test features
 
     Raises
@@ -151,9 +197,9 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_test: pl.Data
 
     # Check if forecaster is an interval forecaster
     if hasattr(forecaster, "predict_interval"):
-        y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon, X=X_test)
+        y_pred = forecaster.predict_interval(forecasting_horizon=forecasting_horizon)
     else:
-        y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon, X=X_test)
+        y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon)
 
     assert "vintage_time" in y_pred.columns, "Predictions must have 'vintage_time' column"
     assert "time" in y_pred.columns, "Predictions must have 'time' column"
@@ -169,9 +215,11 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_test: pl.Data
 def check_observe_extends_observations(
     forecaster,
     y_train: pl.DataFrame,
-    y_update: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_update: pl.DataFrame | None = None,
+    y_observe: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None = None,
+    X_actual_observe: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check observe() extends observation buffers correctly.
 
@@ -181,11 +229,11 @@ def check_observe_extends_observations(
         Fitted forecaster instance
     y_train : pl.DataFrame
         Original training data
-    y_update : pl.DataFrame
+    y_observe : pl.DataFrame
         New data for update
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Features for training
-    X_update : pl.DataFrame, optional
+    X_actual_observe : pl.DataFrame, optional
         Features for update
 
     Raises
@@ -234,7 +282,7 @@ def check_observe_extends_observations(
             )
 
     # Update with new data
-    forecaster.observe(y_update, X_update)
+    forecaster.observe(y_observe, X_actual_observe, X_future=X_future, X_forecast=X_forecast)
 
     # Check buffers were extended
     updated_observed_time = forecaster.observed_time_
@@ -290,8 +338,10 @@ def check_rewind_replaces_observations(
     forecaster,
     y_train: pl.DataFrame,
     y_reset: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_reset: pl.DataFrame | None = None,
+    X_actual_train: pl.DataFrame | None = None,
+    X_actual_reset: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check rewind() replaces observation buffers correctly.
 
@@ -303,9 +353,9 @@ def check_rewind_replaces_observations(
         Original training data
     y_reset : pl.DataFrame
         New data for reset
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Features for training
-    X_reset : pl.DataFrame, optional
+    X_actual_reset : pl.DataFrame, optional
         Features for reset
 
     Raises
@@ -353,7 +403,7 @@ def check_rewind_replaces_observations(
             )
 
     # Reset to new data
-    forecaster.rewind(y_reset, X_reset)
+    forecaster.rewind(y_reset, X_actual_reset, X_future=X_future, X_forecast=X_forecast)
 
     # Check buffers were replaced
     reset_observed_time = forecaster.observed_time_
@@ -408,8 +458,10 @@ def check_rewind_propagates_to_transformers(
     forecaster,
     y_train: pl.DataFrame,
     y_reset: pl.DataFrame,
-    X_train: pl.DataFrame | None = None,
-    X_reset: pl.DataFrame | None = None,
+    X_actual_train: pl.DataFrame | None = None,
+    X_actual_reset: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check rewind() propagates to transformers in forecaster.
 
@@ -424,9 +476,9 @@ def check_rewind_propagates_to_transformers(
         Original training data
     y_reset : pl.DataFrame
         New data for reset
-    X_train : pl.DataFrame, optional
+    X_actual_train : pl.DataFrame, optional
         Features for training
-    X_reset : pl.DataFrame, optional
+    X_actual_reset : pl.DataFrame, optional
         Features for reset
 
     Raises
@@ -440,7 +492,7 @@ def check_rewind_propagates_to_transformers(
         return  # Nothing to check
 
     # Rewind the forecaster
-    forecaster.rewind(y_reset, X=X_reset)
+    forecaster.rewind(y_reset, X_actual=X_actual_reset, X_future=X_future, X_forecast=X_forecast)
 
     # Check target transformer is reset
     if hasattr(forecaster, "target_transformer_") and forecaster.target_transformer_ is not None:
@@ -490,7 +542,13 @@ def check_rewind_propagates_to_transformers(
             )
 
 
-def check_forecasting_horizon_validation(forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None) -> None:
+def check_forecasting_horizon_validation(
+    forecaster,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+) -> None:
     """Check forecasting_horizon < 1 raises ValueError.
 
     Parameters
@@ -499,7 +557,7 @@ def check_forecasting_horizon_validation(forecaster, y: pl.DataFrame, X: pl.Data
         Unfitted forecaster instance
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
 
     Raises
@@ -512,7 +570,7 @@ def check_forecasting_horizon_validation(forecaster, y: pl.DataFrame, X: pl.Data
 
     # Test horizon = 0
     try:
-        forecaster_clone.fit(y, X, forecasting_horizon=0)
+        forecaster_clone.fit(y, X_actual, forecasting_horizon=0, X_future=X_future, X_forecast=X_forecast)
         raise AssertionError(f"{forecaster_clone.__class__.__name__} should raise ValueError for forecasting_horizon=0")
     except ValueError as e:
         assert "forecasting_horizon" in str(e).lower() or "positive" in str(e).lower(), (
@@ -522,7 +580,7 @@ def check_forecasting_horizon_validation(forecaster, y: pl.DataFrame, X: pl.Data
     # Test negative horizon
     forecaster_clone = clone(forecaster)
     try:
-        forecaster_clone.fit(y, X, forecasting_horizon=-1)
+        forecaster_clone.fit(y, X_actual, forecasting_horizon=-1, X_future=X_future, X_forecast=X_forecast)
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__} should raise ValueError for forecasting_horizon=-1"
         )
@@ -684,7 +742,7 @@ def check_clone_preserves_forecaster_params(forecaster) -> None:
 
 
 def check_forecaster_tags_accessible_before_fit(
-    forecaster, y: pl.DataFrame | None = None, X: pl.DataFrame | None = None
+    forecaster, y: pl.DataFrame | None = None, X_actual: pl.DataFrame | None = None
 ) -> None:
     """Check __sklearn_tags__() is accessible before fit().
 
@@ -697,7 +755,7 @@ def check_forecaster_tags_accessible_before_fit(
         Unfitted forecaster instance
     y : pl.DataFrame, optional
         Not used, included for signature consistency
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Not used, included for signature consistency
 
     Raises
@@ -725,7 +783,12 @@ def check_forecaster_tags_accessible_before_fit(
 
 
 def check_forecaster_tags_static_after_fit(
-    forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    forecaster,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check forecaster tags remain static after fit().
 
@@ -738,7 +801,7 @@ def check_forecaster_tags_static_after_fit(
         Unfitted forecaster instance
     y : pl.DataFrame
         Training target data
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training features
     forecasting_horizon : int, default=3
         Forecasting horizon
@@ -761,7 +824,7 @@ def check_forecaster_tags_static_after_fit(
     )
 
     # Fit the forecaster
-    forecaster_clone.fit(y, X, forecasting_horizon=forecasting_horizon)
+    forecaster_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Get tags after fit
     tags_after = forecaster_clone.__sklearn_tags__()
@@ -784,7 +847,7 @@ def check_forecaster_tags_static_after_fit(
 
 
 def check_forecaster_tags_match_capabilities(
-    forecaster, y: pl.DataFrame | None = None, X: pl.DataFrame | None = None
+    forecaster, y: pl.DataFrame | None = None, X_actual: pl.DataFrame | None = None
 ) -> None:
     """Check forecaster tags accurately reflect capabilities.
 
@@ -801,7 +864,7 @@ def check_forecaster_tags_match_capabilities(
         Fitted forecaster instance
     y : pl.DataFrame, optional
         Not used, for consistency
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Not used, for consistency
 
     Raises
@@ -865,7 +928,12 @@ def check_forecaster_tags_match_capabilities(
 
 
 def check_forecaster_methods_call_check_is_fitted(
-    forecaster, y: pl.DataFrame, X: pl.DataFrame | None = None, forecasting_horizon: int = 3
+    forecaster,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check all forecaster methods (except fit) raise NotFittedError when unfitted.
 
@@ -879,7 +947,7 @@ def check_forecaster_methods_call_check_is_fitted(
         Unfitted forecaster instance
     y : pl.DataFrame
         Training/test target data with "time" column
-    X : pl.DataFrame, optional
+    X_actual : pl.DataFrame, optional
         Training/test features with "time" column
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
@@ -900,12 +968,11 @@ def check_forecaster_methods_call_check_is_fitted(
         if is_interval:
             forecaster_clone.predict_interval(
                 forecasting_horizon=forecasting_horizon,
-                X=X[50:53] if X is not None else None,
                 coverage_rates=[0.9],
             )
             method_name = "predict_interval"
         else:
-            forecaster_clone.predict(forecasting_horizon=forecasting_horizon, X=X[50:53] if X is not None else None)
+            forecaster_clone.predict(forecasting_horizon=forecasting_horizon)
             method_name = "predict"
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__}.{method_name}() must raise NotFittedError when called on unfitted forecaster"
@@ -915,7 +982,7 @@ def check_forecaster_methods_call_check_is_fitted(
 
     # Test that observe() raises NotFittedError when unfitted
     try:
-        forecaster_clone.observe(y[50:53], X[50:53] if X is not None else None)
+        forecaster_clone.observe(y[50:53], X_actual[50:53] if X_actual is not None else None)
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__}.observe() must raise NotFittedError when called on unfitted forecaster"
         )
@@ -924,7 +991,7 @@ def check_forecaster_methods_call_check_is_fitted(
 
     # Test that rewind() raises NotFittedError when unfitted
     try:
-        forecaster_clone.rewind(y[40:50], X[40:50] if X is not None else None)
+        forecaster_clone.rewind(y[40:50], X_actual[40:50] if X_actual is not None else None)
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__}.rewind() must raise NotFittedError when called on unfitted forecaster"
         )
@@ -935,11 +1002,11 @@ def check_forecaster_methods_call_check_is_fitted(
     try:
         if is_interval:
             forecaster_clone.observe_predict_interval(
-                y[50:53], X[50:53] if X is not None else None, coverage_rates=[0.9]
+                y[50:53], X_actual[50:53] if X_actual is not None else None, coverage_rates=[0.9]
             )
             method_name = "observe_predict_interval"
         else:
-            forecaster_clone.observe_predict(y[50:53], X[50:53] if X is not None else None)
+            forecaster_clone.observe_predict(y[50:53], X_actual[50:53] if X_actual is not None else None)
             method_name = "observe_predict"
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__}.{method_name}() must raise NotFittedError when called on unfitted forecaster"
@@ -951,23 +1018,23 @@ def check_forecaster_methods_call_check_is_fitted(
 def check_fit_predict_without_exogenous(
     forecaster,
     y: pl.DataFrame,
-    ignores_exogenous: bool = False,
+    requires_exogenous: bool = False,
     target_as_feature: str | None = "transformed",
     forecasting_horizon: int = 3,
 ) -> None:
-    """Check forecaster behavior when X=None at fit time.
+    """Check forecaster behavior when X_actual=None at fit time.
 
-    Validates two clear-cut scenarios based on ``ignores_exogenous`` tag
+    Validates two clear-cut scenarios based on ``requires_exogenous`` tag
     and ``target_as_feature`` parameter:
 
-    * ``ignores_exogenous=True``: fit(y, X=None) succeeds and predict()
+    * ``requires_exogenous=False``: fit(y, X_actual=None) succeeds and predict()
       returns valid output.
-    * ``ignores_exogenous=False`` + ``target_as_feature=None``:
-      fit(y, X=None) raises ``ValueError``.
+    * ``requires_exogenous=True`` + ``target_as_feature=None``:
+      fit(y, X_actual=None) raises ``ValueError``.
 
-    When ``ignores_exogenous=False`` and ``target_as_feature`` is not
+    When ``requires_exogenous=True`` and ``target_as_feature`` is not
     ``None``, the check is skipped because behaviour depends on the
-    specific forecaster (some compositions always require X).
+    specific forecaster (some compositions always require X_actual).
 
     Parameters
     ----------
@@ -975,8 +1042,8 @@ def check_fit_predict_without_exogenous(
         Fitted forecaster instance (will be cloned).
     y : pl.DataFrame
         Target time series with ``"time"`` column.
-    ignores_exogenous : bool, default=False
-        Value of the ``ignores_exogenous`` forecaster tag.
+    requires_exogenous : bool, default=False
+        Value of the ``requires_exogenous`` forecaster tag.
     target_as_feature : str or None, default="transformed"
         Value of the ``target_as_feature`` forecaster parameter.
     forecasting_horizon : int, default=3
@@ -986,22 +1053,318 @@ def check_fit_predict_without_exogenous(
     forecaster_clone = clone(forecaster)
     name = forecaster_clone.__class__.__name__
 
-    if ignores_exogenous:
-        # Forecasters that ignore exogenous must succeed with X=None
-        forecaster_clone.fit(y, X=None, forecasting_horizon=forecasting_horizon)
+    if not requires_exogenous:
+        # Forecasters that don't require exogenous must succeed with X_actual=None
+        forecaster_clone.fit(y, X_actual=None, forecasting_horizon=forecasting_horizon)
         y_pred = forecaster_clone.predict(forecasting_horizon=forecasting_horizon)
         assert isinstance(y_pred, pl.DataFrame), (
-            f"{name}.predict() must return pl.DataFrame after fit(y, X=None), got {type(y_pred).__name__}"
+            f"{name}.predict() must return pl.DataFrame after fit(y, X_actual=None), got {type(y_pred).__name__}"
         )
-        assert "time" in y_pred.columns, f"{name}.predict() output must contain 'time' column after fit(y, X=None)"
+        assert "time" in y_pred.columns, (
+            f"{name}.predict() output must contain 'time' column after fit(y, X_actual=None)"
+        )
     elif target_as_feature is None:
-        # target_as_feature=None and ignores_exogenous=False → must raise
+        # target_as_feature=None and requires_exogenous=True → must raise
         try:
-            forecaster_clone.fit(y, X=None, forecasting_horizon=forecasting_horizon)
+            forecaster_clone.fit(y, X_actual=None, forecasting_horizon=forecasting_horizon)
             raise AssertionError(
-                f"{name}.fit(y, X=None) must raise ValueError when target_as_feature=None and ignores_exogenous=False"
+                f"{name}.fit(y, X_actual=None) must raise ValueError when target_as_feature=None and requires_exogenous=True"
             )
         except ValueError:
             pass  # Expected
-    # else: ignores_exogenous=False + target_as_feature is not None
+    # else: requires_exogenous=True + target_as_feature is not None
     # → skip: behaviour is forecaster-specific
+
+
+def check_fit_predict_with_X_future(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    y_test: pl.DataFrame,
+    X_future: pl.DataFrame,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check fit + predict works with X_future provided.
+
+    Validates that fitting with X_future sets ``_X_future_schema_``,
+    populates ``_step_column_names_``, and that predict returns valid output.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None
+        Training features.
+    y_test : pl.DataFrame
+        Test target data.
+    X_future : pl.DataFrame
+        Known-future features with ``"time"`` column.
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast.
+
+    """
+    forecaster_clone = clone(forecaster)
+    forecaster_clone.fit(
+        y_train,
+        X_actual_train,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+    )
+
+    # Schema set
+    assert forecaster_clone._X_future_schema_ is not None, "fit() with X_future must set _X_future_schema_"
+
+    # Step columns populated
+    assert len(forecaster_clone._step_column_names_) > 0, (
+        "_step_column_names_ should be non-empty after fit with X_future"
+    )
+
+    # Raw stored
+    assert forecaster_clone._X_future_raw_ is not None, "fit() with X_future must store _X_future_raw_"
+
+    # Predict works
+    y_pred = forecaster_clone.predict(forecasting_horizon=forecasting_horizon)
+    assert isinstance(y_pred, pl.DataFrame), f"predict() must return pl.DataFrame, got {type(y_pred).__name__}"
+    assert "time" in y_pred.columns, "predict() output must contain 'time' column"
+
+
+def check_fit_predict_with_X_forecast(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    y_test: pl.DataFrame,
+    X_forecast: pl.DataFrame,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check fit + predict works with X_forecast provided.
+
+    Validates that fitting with X_forecast sets ``_X_forecast_schema_``,
+    populates ``_step_column_names_``, and that predict returns valid output.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None
+        Training features.
+    y_test : pl.DataFrame
+        Test target data.
+    X_forecast : pl.DataFrame
+        External forecasts in tidy format.
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast.
+
+    """
+    forecaster_clone = clone(forecaster)
+    forecaster_clone.fit(
+        y_train,
+        X_actual_train,
+        forecasting_horizon=forecasting_horizon,
+        X_forecast=X_forecast,
+    )
+
+    # Schema set
+    assert forecaster_clone._X_forecast_schema_ is not None, "fit() with X_forecast must set _X_forecast_schema_"
+
+    # Step columns populated
+    assert len(forecaster_clone._step_column_names_) > 0, (
+        "_step_column_names_ should be non-empty after fit with X_forecast"
+    )
+
+    # Raw stored (filtered to single vintage)
+    assert forecaster_clone._X_forecast_raw_ is not None, "fit() with X_forecast must store _X_forecast_raw_"
+
+    # Predict works
+    y_pred = forecaster_clone.predict(forecasting_horizon=forecasting_horizon)
+    assert isinstance(y_pred, pl.DataFrame), f"predict() must return pl.DataFrame, got {type(y_pred).__name__}"
+    assert "time" in y_pred.columns, "predict() output must contain 'time' column"
+
+
+def check_predict_X_forecast_override(
+    forecaster,
+    y_test: pl.DataFrame,
+    X_forecast: pl.DataFrame,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check predict with X_forecast override produces different results.
+
+    Validates that passing X_forecast at predict time overrides the stored
+    forecasts without mutating forecaster state.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Fitted forecaster instance (fitted with X_forecast).
+    y_test : pl.DataFrame
+        Test target data.
+    X_forecast : pl.DataFrame
+        External forecasts for override.
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast.
+
+    """
+    # Store original raw
+    original_raw = forecaster._X_forecast_raw_
+
+    # Predict with override
+    y_pred = forecaster.predict(
+        forecasting_horizon=forecasting_horizon,
+        X_forecast=X_forecast,
+    )
+
+    assert isinstance(y_pred, pl.DataFrame), (
+        f"predict() with X_forecast override must return pl.DataFrame, got {type(y_pred).__name__}"
+    )
+
+    # State unchanged (predict must not mutate stored raw)
+    if original_raw is not None:
+        assert forecaster._X_forecast_raw_.shape == original_raw.shape, (
+            "predict() with X_forecast override must not mutate _X_forecast_raw_"
+        )
+
+
+def check_observe_auto_rederives_step_columns(
+    forecaster,
+    y_observe: pl.DataFrame,
+    X_actual_observe: pl.DataFrame | None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+) -> None:
+    """Check observe() re-derives step columns from stored raws.
+
+    After observe, step columns should be re-derived from stored
+    ``_X_future_raw_`` / ``_X_forecast_raw_`` (or from provided overrides).
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Fitted forecaster instance (fitted with X_future/X_forecast).
+    y_observe : pl.DataFrame
+        Update observation data.
+    X_actual_observe : pl.DataFrame or None
+        Update features.
+    X_future : pl.DataFrame or None
+        Optional X_future override for observe.
+    X_forecast : pl.DataFrame or None
+        Optional X_forecast override for observe.
+
+    """
+    # Verify step columns exist before observe
+    assert len(forecaster._step_column_names_) > 0, "Forecaster must have non-empty _step_column_names_ before observe"
+
+    step_cols_before = forecaster._step_column_names_.copy()
+
+    # Observe
+    forecaster.observe(y_observe, X_actual_observe, X_future=X_future, X_forecast=X_forecast)
+
+    # Step column names should still be the same set
+    assert forecaster._step_column_names_ == step_cols_before, "_step_column_names_ should be preserved after observe"
+
+
+def check_observe_predict_with_step_columns(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    y_test: pl.DataFrame,
+    X_actual_test: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check observe_predict works with step columns (lightweight).
+
+    Runs observe_predict with stride=len(y_test)//2 (2 iterations) and
+    validates output structure.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None
+        Training features.
+    y_test : pl.DataFrame
+        Test target data (at least 10 rows).
+    X_actual_test : pl.DataFrame or None
+        Test features.
+    X_future : pl.DataFrame or None
+        Known-future features.
+    X_forecast : pl.DataFrame or None
+        External forecasts.
+    forecasting_horizon : int, default=3
+        Number of steps ahead.
+
+    """
+    forecaster_clone = clone(forecaster)
+    forecaster_clone.fit(
+        y_train,
+        X_actual_train,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+        X_forecast=X_forecast,
+    )
+
+    stride = max(1, len(y_test) // 2)
+    y_pred = forecaster_clone.observe_predict(
+        y_test,
+        X_actual=X_actual_test,
+        forecasting_horizon=forecasting_horizon,
+        stride=stride,
+        X_future=X_future,
+        X_forecast=X_forecast,
+    )
+
+    assert isinstance(y_pred, pl.DataFrame), f"observe_predict() must return pl.DataFrame, got {type(y_pred).__name__}"
+    assert "time" in y_pred.columns, "observe_predict() output must contain 'time' column"
+    assert "vintage_time" in y_pred.columns, "observe_predict() output must contain 'vintage_time' column"
+    assert len(y_pred) > 0, "observe_predict() must return non-empty DataFrame"
+
+
+def check_requires_exogenous_warns_on_X_future_X_forecast(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check that a forecaster with requires_exogenous=False warns when X_future/X_forecast provided.
+
+    Forecasters with ``requires_exogenous=False`` should emit a UserWarning
+    when X_future or X_forecast is passed to fit().
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster with requires_exogenous=False.
+    y_train : pl.DataFrame
+        Training target data.
+    X_future : pl.DataFrame or None
+        Known-future features.
+    X_forecast : pl.DataFrame or None
+        External forecasts.
+    forecasting_horizon : int, default=3
+        Number of steps ahead.
+
+    """
+    forecaster_clone = clone(forecaster)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        forecaster_clone.fit(
+            y_train,
+            X_actual=None,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
+
+    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
+    assert len(user_warnings) > 0, (
+        f"{forecaster_clone.__class__.__name__} with requires_exogenous=False "
+        f"should emit UserWarning when X_future/X_forecast provided"
+    )

@@ -46,6 +46,16 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Transformer used to transform the target time series into features.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
+    step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
+        Controls which step-indexed feature columns each direct estimator
+        sees. Only affects the ``"direct"`` strategy.
+
+        - ``"all"``: every estimator receives all step columns
+          (``*_step_1..H``). Backward compatible, maximum information.
+        - ``"matched"``: estimator for step h receives only ``*_step_h``
+          columns. Cleanest signal, no cross-horizon leakage.
+        - ``"cumulative"``: estimator for step h receives columns
+          ``*_step_1..h``. All information up to horizon h.
     n_jobs : int or None, default=None
         Number of jobs to run in parallel for the ``"direct"`` strategy
         (fitting and predicting H independent models). ``None`` means 1
@@ -87,6 +97,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         **BaseForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
+        "step_feature_alignment": [StrOptions({"all", "matched", "cumulative"})],
         "n_jobs": [Interval(numbers.Integral, -1, None, closed="left"), None],
     }
 
@@ -98,6 +109,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
+        step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         n_jobs: int | None = None,
     ):
         BaseForecaster.__init__(
@@ -110,6 +122,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         self.estimator = estimator
         self.reduction_strategy = reduction_strategy
+        self.step_feature_alignment = step_feature_alignment
         self.n_jobs = n_jobs
 
     def __sklearn_tags__(self) -> Tags:
@@ -309,10 +322,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X_t: pl.DataFrame,
         forecasting_horizon: int,
         y_columns: list[str] | None = None,
-    ) -> tuple[
-        np.ndarray[tuple[int, int], np.dtype[np.float64]],
-        np.ndarray[tuple[int, int], np.dtype[np.float64]],
-    ]:
+    ) -> tuple[pl.DataFrame, pl.DataFrame]:
         """Convert transformed time series to tabular supervised learning format.
 
         Creates feature matrix (X_tab) and target matrix (y_tab) suitable for training
@@ -332,10 +342,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        X_tab : np.ndarray of shape (n_samples, n_features)
+        X_tab : pl.DataFrame
             Feature matrix for supervised learning. Excludes "time" column and
             truncates last forecasting_horizon rows (no targets available).
-        y_tab : np.ndarray of shape (n_samples, forecasting_horizon * n_targets)
+        y_tab : pl.DataFrame
             Target matrix with columns for each (target, step) combination.
             Columns follow pattern: {target}_step_{1}, {target}_step_{2}, ...
 
@@ -371,7 +381,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             for col in y_columns
         })[[f"{col}_step_{step}" for step in range(1, 1 + forecasting_horizon) for col in y_columns]]
 
-        return X_tab.to_numpy(), y_tab.to_numpy()
+        return X_tab, y_tab
 
     def _estimator_fit_one(
         self,
@@ -460,7 +470,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
         forecasting_horizon: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[pl.DataFrame, pl.DataFrame]:
         """Tabularize and stack data for fitting (handles both standard and panel).
 
         Parameters
@@ -474,9 +484,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        X_tab : np.ndarray of shape (n_samples, n_features)
+        X_tab : pl.DataFrame
             Stacked feature matrix.
-        y_tab : np.ndarray of shape (n_samples, H * n_targets)
+        y_tab : pl.DataFrame
             Stacked target matrix with all horizon steps.
 
         """
@@ -500,11 +510,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             )
             X_tab_list.append(X_tab_local)
             y_tab_list.append(y_tab_local)
-        return np.vstack(X_tab_list), np.vstack(y_tab_list)
+        return pl.concat(X_tab_list), pl.concat(y_tab_list)
 
     def _validate_and_prepare_fit(
         self,
-        X_tab: np.ndarray,
+        X_tab: pl.DataFrame,
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         time_weight: Callable | pl.DataFrame | dict | None,
         sample_weight_alignment: str,
@@ -515,7 +525,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        X_tab : np.ndarray
+        X_tab : pl.DataFrame
             Feature matrix.
         y_t : pl.DataFrame or dict[str, pl.DataFrame]
             Transformed target (for weight computation).
@@ -556,8 +566,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def _fit_single_estimator(
         self,
-        X_tab: np.ndarray,
-        y_tab: np.ndarray,
+        X_tab: pl.DataFrame,
+        y_tab: pl.DataFrame | pl.Series,
         sample_weight: np.ndarray | None,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
@@ -566,10 +576,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        X_tab : np.ndarray
+        X_tab : pl.DataFrame
             Feature matrix.
-        y_tab : np.ndarray
-            Target matrix (single or multi-output).
+        y_tab : pl.DataFrame or pl.Series
+            Target (DataFrame for multi-output, Series for single-output).
         sample_weight : np.ndarray or None
             Sample weights.
         estimator_params : dict or None
@@ -663,6 +673,50 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             estimator_fit_params,
         )
 
+    def _filter_step_features(
+        self,
+        X_tab: pl.DataFrame,
+        step: int,
+    ) -> pl.DataFrame:
+        """Filter step-indexed feature columns for a direct estimator.
+
+        When ``step_feature_alignment`` is ``"all"`` (default), returns
+        ``X_tab`` unchanged. For ``"matched"``, keeps only step columns
+        matching the given step number. For ``"cumulative"``, keeps step
+        columns from 1 through the given step number. Non-step columns
+        are always kept.
+
+        Parameters
+        ----------
+        X_tab : pl.DataFrame
+            Feature matrix containing observation features and possibly
+            step-indexed columns from X_future/X_forecast.
+        step : int
+            1-based horizon step index.
+
+        Returns
+        -------
+        pl.DataFrame
+            Filtered feature matrix.
+
+        """
+        if self.step_feature_alignment == "all" or not self._step_column_names_:
+            return X_tab
+
+        step_cols_in_tab = [c for c in X_tab.columns if c in self._step_column_names_]
+        if not step_cols_in_tab:
+            return X_tab
+
+        if self.step_feature_alignment == "matched":
+            keep_suffix = f"_step_{step}"
+            drop = [c for c in step_cols_in_tab if not c.endswith(keep_suffix)]
+        else:
+            # cumulative: keep _step_1 .. _step_{step}
+            keep_suffixes = {f"_step_{s}" for s in range(1, step + 1)}
+            drop = [c for c in step_cols_in_tab if not any(c.endswith(s) for s in keep_suffixes)]
+
+        return X_tab.drop(drop) if drop else X_tab
+
     def _estimator_fit_direct(
         self,
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
@@ -719,22 +773,23 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             vintage_weight=vintage_weight,
         )
 
-        n_targets = (
-            len(self.local_y_t_schema_)
+        y_columns = (
+            list(self.local_y_t_schema_.keys())
             if self.groups_ is None
-            else len([c for c in next(iter(y_t.values())).columns if c != "time"])
+            else [c for c in next(iter(y_t.values())).columns if c != "time"]
             if isinstance(y_t, dict)
-            else len(self.local_y_t_schema_)
+            else list(self.local_y_t_schema_.keys())
         )
 
         def _fit_step(step: int) -> BaseEstimator:
             """Fit a single estimator for horizon step."""
-            step_cols = [step + t * forecasting_horizon for t in range(n_targets)]
-            y_step = y_tab[:, step_cols]
+            step_col_names = [f"{col}_step_{step + 1}" for col in y_columns]
+            y_step: pl.DataFrame | pl.Series = y_tab.select(step_col_names)
             if y_step.shape[1] == 1:
-                y_step = y_step.ravel()
+                y_step = y_step.to_series()
+            X_tab_step = self._filter_step_features(X_tab, step + 1)
             return self._fit_single_estimator(
-                X_tab,
+                X_tab_step,
                 y_step,
                 sample_weight,
                 estimator_params,
@@ -803,23 +858,23 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             vintage_weight=vintage_weight,
         )
 
-        n_targets = (
-            len(self.local_y_t_schema_)
-            if self.groups_ is None
-            else len([c for c in next(iter(y_t.values())).columns if c != "time"])
-            if isinstance(y_t, dict)
-            else len(self.local_y_t_schema_)
-        )
-
         self._dir_rec_n_original_features_ = X_tab.shape[1]
 
+        y_columns = (
+            list(self.local_y_t_schema_.keys())
+            if self.groups_ is None
+            else [c for c in next(iter(y_t.values())).columns if c != "time"]
+            if isinstance(y_t, dict)
+            else list(self.local_y_t_schema_.keys())
+        )
+
         estimators: list[BaseEstimator] = []
-        X_aug = X_tab.copy()  # Progressively augmented feature matrix
+        X_aug = X_tab.clone()  # Progressively augmented feature matrix
         for step in range(forecasting_horizon):
-            step_cols = [step + t * forecasting_horizon for t in range(n_targets)]
-            y_step = y_tab[:, step_cols]
+            step_col_names = [f"{col}_step_{step + 1}" for col in y_columns]
+            y_step: pl.DataFrame | pl.Series = y_tab.select(step_col_names)
             if y_step.shape[1] == 1:
-                y_step = y_step.ravel()
+                y_step = y_step.to_series()
             est = self._fit_single_estimator(
                 X_aug,
                 y_step,
@@ -834,7 +889,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 preds = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
                 if preds.ndim == 1:
                     preds = preds.reshape(-1, 1)
-                X_aug = np.hstack([X_aug, preds])
+                X_aug = X_aug.with_columns([pl.Series(f"__aug_{step}_{j}", preds[:, j]) for j in range(preds.shape[1])])
 
         return estimators
 
@@ -887,7 +942,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def _get_predict_features(
         self,
         panel_group_name: str | None = None,
-    ) -> np.ndarray:
+    ) -> pl.DataFrame:
         """Extract the last-row feature vector for prediction.
 
         Parameters
@@ -898,7 +953,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        np.ndarray of shape (1, n_features)
+        pl.DataFrame
             Feature row for prediction.
 
         """
@@ -911,7 +966,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             assert isinstance(self._X_t_observed, dict)
             X_t_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
             X_t = X_t_dict[panel_group_name][[-1]].select(~cs.by_name("time"))
-        return X_t.select(list(self.local_X_t_schema_.keys())).to_numpy()
+        return X_t.select(list(self.local_X_t_schema_.keys()))
 
     def _reshape_predictions(
         self,
@@ -1003,7 +1058,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_cols = list(self.local_y_t_schema_.keys())
         n_targets = len(y_cols)
 
-        def _predict_step(est: BaseEstimator, X_tab: np.ndarray) -> np.ndarray:
+        def _predict_step(est: BaseEstimator, X_tab: pl.DataFrame) -> np.ndarray:
             """Predict a single horizon step."""
             pred = est.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return np.atleast_1d(pred.ravel())[:n_targets]
@@ -1011,7 +1066,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if self.groups_ is None:
             X_tab = self._get_predict_features()
             rows: list[np.ndarray] = Parallel(n_jobs=self.n_jobs)(
-                delayed(_predict_step)(est, X_tab) for est in estimators
+                delayed(_predict_step)(est, self._filter_step_features(X_tab, step + 1))
+                for step, est in enumerate(estimators)
             )
             y_pred_arr = np.vstack(rows)
             y_pred = pl.DataFrame(y_pred_arr, schema=y_cols)
@@ -1020,7 +1076,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_pred_dict = {}
         for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
-            rows = Parallel(n_jobs=self.n_jobs)(delayed(_predict_step)(est, X_tab) for est in estimators)
+            rows = Parallel(n_jobs=self.n_jobs)(
+                delayed(_predict_step)(est, self._filter_step_features(X_tab, step + 1))
+                for step, est in enumerate(estimators)
+            )
             y_pred_arr = np.vstack(rows)
             y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
             y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
@@ -1057,14 +1116,14 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         if self.groups_ is None:
             X_tab = self._get_predict_features()
-            X_aug = X_tab.copy()
+            X_aug = X_tab.clone()
             rows = []
-            for est in estimators:
+            for i, est in enumerate(estimators):
                 pred = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
                 pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
                 # Augment features for next model
-                X_aug = np.hstack([X_aug, pred.reshape(1, -1)])
+                X_aug = X_aug.with_columns([pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)])
             y_pred_arr = np.vstack(rows)
             y_pred = pl.DataFrame(y_pred_arr, schema=y_cols)
             return cast(y_pred, self.local_y_t_schema_)
@@ -1072,13 +1131,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_pred_dict = {}
         for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
-            X_aug = X_tab.copy()
+            X_aug = X_tab.clone()
             rows = []
-            for est in estimators:
+            for i, est in enumerate(estimators):
                 pred = est.predict(X_aug)
                 pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
-                X_aug = np.hstack([X_aug, pred.reshape(1, -1)])
+                X_aug = X_aug.with_columns([pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)])
             y_pred_arr = np.vstack(rows)
             y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
             y_pred_local = cast(y_pred_local, self.local_y_t_schema_)

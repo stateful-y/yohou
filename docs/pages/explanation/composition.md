@@ -128,18 +128,18 @@ a default forecaster.
 
 A two-stage forecaster for the common scenario where exogenous features are
 available during training but not at prediction time. It chains a
-`feature_forecaster` that predicts future `X` values with a `target_forecaster`
+`feature_forecaster` that predicts future feature values (`X_future`) with a `target_forecaster`
 that uses those predicted features to forecast `y`.
 
 The `strategy` parameter controls how to handle the distribution shift between
 real and forecasted features during training:
 
-- `"actual"`: trains the target forecaster on real `X`. Simple but creates a
-  mismatch since prediction uses forecasted `X`.
+- `"actual"`: trains the target forecaster on real features. Simple but creates a
+  mismatch since prediction uses forecasted values.
 - `"predicted"`: splits the data and trains the target forecaster on predicted
-  `X`, avoiding the shift.
+  features, avoiding the shift.
 - `"rewind"`: fits the feature forecaster on all data, rewinds, then predicts
-  `X` for target training. This uses all data for feature learning while still
+  features for target training. This uses all data for feature learning while still
   avoiding the shift.
 
 ### [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/)

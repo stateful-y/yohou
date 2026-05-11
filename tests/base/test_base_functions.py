@@ -53,7 +53,9 @@ class TestBuildFeatureInput:
         y = time_series_factory(length=50, n_components=2)
         y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
 
-        result = _build_feature_input(y=y, y_t=y_t, X=None, target_as_feature="transformed", feature_transformer=None)
+        result = _build_feature_input(
+            y=y, y_t=y_t, X_actual=None, target_as_feature="transformed", feature_transformer=None
+        )
 
         assert result.equals(y_t)
 
@@ -61,9 +63,11 @@ class TestBuildFeatureInput:
         """Test with target_as_feature='transformed' and exogenous features."""
         y = time_series_factory(length=50, n_components=2)
         y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
-        result = _build_feature_input(y=y, y_t=y_t, X=X, target_as_feature="transformed", feature_transformer=None)
+        result = _build_feature_input(
+            y=y, y_t=y_t, X_actual=X_actual, target_as_feature="transformed", feature_transformer=None
+        )
 
         assert len(result.columns) == 1 + 1 + 3
         assert "time" in result.columns
@@ -75,7 +79,7 @@ class TestBuildFeatureInput:
         y = time_series_factory(length=50, n_components=2)
         y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
 
-        result = _build_feature_input(y=y, y_t=y_t, X=None, target_as_feature="raw", feature_transformer=None)
+        result = _build_feature_input(y=y, y_t=y_t, X_actual=None, target_as_feature="raw", feature_transformer=None)
 
         assert result.equals(y)
 
@@ -83,9 +87,11 @@ class TestBuildFeatureInput:
         """Test with target_as_feature='raw' and exogenous features."""
         y = time_series_factory(length=50, n_components=2)
         y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
-        result = _build_feature_input(y=y, y_t=y_t, X=X, target_as_feature="raw", feature_transformer=None)
+        result = _build_feature_input(
+            y=y, y_t=y_t, X_actual=X_actual, target_as_feature="raw", feature_transformer=None
+        )
 
         assert len(result.columns) == 1 + 2 + 3
 
@@ -93,18 +99,18 @@ class TestBuildFeatureInput:
         """Test with target_as_feature=None and exogenous features."""
         y = time_series_factory(length=50, n_components=2)
         y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
-        result = _build_feature_input(y=y, y_t=y_t, X=X, target_as_feature=None, feature_transformer=None)
+        result = _build_feature_input(y=y, y_t=y_t, X_actual=X_actual, target_as_feature=None, feature_transformer=None)
 
-        assert result.equals(X)
+        assert result.equals(X_actual)
 
     def test_X_only_no_exog_no_transformer(self, time_series_factory):
         """Test with target_as_feature=None, no exog, and no transformer."""
         y = time_series_factory(length=50, n_components=2)
         y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
 
-        result = _build_feature_input(y=y, y_t=y_t, X=None, target_as_feature=None, feature_transformer=None)
+        result = _build_feature_input(y=y, y_t=y_t, X_actual=None, target_as_feature=None, feature_transformer=None)
 
         assert result is None
 
@@ -114,8 +120,8 @@ class TestBuildFeatureInput:
         y_t = y.select([pl.col("time"), pl.col("feature_0") + 10])
         transformer = SimpleTransformer(observation_horizon=2)
 
-        with pytest.raises(ValueError, match="target_as_feature=None requires X to be provided"):
-            _build_feature_input(y=y, y_t=y_t, X=None, target_as_feature=None, feature_transformer=transformer)
+        with pytest.raises(ValueError, match="target_as_feature=None requires X_actual to be provided"):
+            _build_feature_input(y=y, y_t=y_t, X_actual=None, target_as_feature=None, feature_transformer=transformer)
 
     def test_invalid_target_as_feature(self, time_series_factory):
         """Test raises error for invalid target_as_feature value."""
@@ -123,7 +129,7 @@ class TestBuildFeatureInput:
         y_t = y
 
         with pytest.raises(ValueError, match="Invalid target_as_feature="):
-            _build_feature_input(y=y, y_t=y_t, X=None, target_as_feature="invalid", feature_transformer=None)
+            _build_feature_input(y=y, y_t=y_t, X_actual=None, target_as_feature="invalid", feature_transformer=None)
 
 
 class TestFitTransformTransformersOne:
@@ -132,10 +138,10 @@ class TestFitTransformTransformersOne:
     def test_no_transformers(self, time_series_factory):
         """Test with no transformers passes data through unchanged."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
         y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
-            y=y, X=X, target_transformer=None, feature_transformer=None, target_as_feature="transformed"
+            y=y, X_actual=X_actual, target_transformer=None, feature_transformer=None, target_as_feature="transformed"
         )
 
         assert y_t.equals(y)
@@ -146,12 +152,12 @@ class TestFitTransformTransformersOne:
     def test_target_only(self, time_series_factory, SimpleTransformer):
         """Test with only target transformer."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
         target_transformer = SimpleTransformer(observation_horizon=5, add_constant=10.0)
 
         y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=target_transformer,
             feature_transformer=None,
             target_as_feature="transformed",
@@ -166,12 +172,12 @@ class TestFitTransformTransformersOne:
     def test_feature_only(self, time_series_factory, SimpleTransformer):
         """Test with only feature transformer."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
         feature_transformer = SimpleTransformer(observation_horizon=3, add_constant=5.0)
 
         y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=None,
             feature_transformer=feature_transformer,
             target_as_feature="transformed",
@@ -186,13 +192,13 @@ class TestFitTransformTransformersOne:
     def test_both_transformers(self, time_series_factory, SimpleTransformer):
         """Test with both target and feature transformers."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
         target_transformer = SimpleTransformer(observation_horizon=5, add_constant=10.0)
         feature_transformer = SimpleTransformer(observation_horizon=3, add_constant=5.0)
 
         y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=target_transformer,
             feature_transformer=feature_transformer,
             target_as_feature="transformed",
@@ -215,7 +221,7 @@ class TestFitTransformTransformersOne:
 
         y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
             y=y,
-            X=None,
+            X_actual=None,
             target_transformer=target_transformer,
             feature_transformer=None,
             target_as_feature="transformed",
@@ -228,13 +234,13 @@ class TestFitTransformTransformersOne:
     def test_target_as_feature_raw(self, time_series_factory, SimpleTransformer):
         """Test with target_as_feature='raw'."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
         target_transformer = SimpleTransformer(observation_horizon=5, add_constant=10.0)
         feature_transformer = SimpleTransformer(observation_horizon=3, add_constant=5.0)
 
         y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=target_transformer,
             feature_transformer=feature_transformer,
             target_as_feature="raw",
@@ -246,13 +252,13 @@ class TestFitTransformTransformersOne:
     def test_target_as_feature_none(self, time_series_factory, SimpleTransformer):
         """Test with target_as_feature=None."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
         target_transformer = SimpleTransformer(observation_horizon=5, add_constant=10.0)
         feature_transformer = SimpleTransformer(observation_horizon=3, add_constant=5.0)
 
         y_t, X_t, target_tf, feature_tf = _fit_transform_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=target_transformer,
             feature_transformer=feature_transformer,
             target_as_feature=None,
@@ -260,7 +266,7 @@ class TestFitTransformTransformersOne:
 
         assert target_tf is not None
         assert feature_tf is not None
-        assert len(X_t.columns) == len(X.columns)
+        assert len(X_t.columns) == len(X_actual.columns)
 
 
 class TestObserveTransformersOne:
@@ -269,10 +275,10 @@ class TestObserveTransformersOne:
     def test_no_transformers(self, time_series_factory):
         """Test with no transformers still builds feature input."""
         y = time_series_factory(length=10, n_components=2)
-        X = make_exog_data(10, 3)
+        X_actual = make_exog_data(10, 3)
 
         X_t = _observe_transformers_one(
-            y=y, X=X, target_transformer=None, feature_transformer=None, target_as_feature="transformed"
+            y=y, X_actual=X_actual, target_transformer=None, feature_transformer=None, target_as_feature="transformed"
         )
 
         assert X_t is not None
@@ -281,17 +287,17 @@ class TestObserveTransformersOne:
     def test_target_only(self, time_series_factory, SimpleTransformer):
         """Test with only target transformer."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
         target_transformer = SimpleTransformer(observation_horizon=5, add_constant=10.0)
         target_transformer.fit(y[:40])
 
         y_new = y[40:45]
-        X_new = X[40:45]
+        X_new = X_actual[40:45]
 
         X_t = _observe_transformers_one(
             y=y_new,
-            X=X_new,
+            X_actual=X_new,
             target_transformer=target_transformer,
             feature_transformer=None,
             target_as_feature="transformed",
@@ -302,18 +308,18 @@ class TestObserveTransformersOne:
     def test_feature_only(self, time_series_factory, SimpleTransformer):
         """Test with only feature transformer."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
         feature_transformer = SimpleTransformer(observation_horizon=3, add_constant=5.0)
-        X_feat_in = pl.concat([y, X.select(pl.exclude("time"))], how="horizontal")
+        X_feat_in = pl.concat([y, X_actual.select(pl.exclude("time"))], how="horizontal")
         feature_transformer.fit(X_feat_in[:40])
 
         y_new = y[40:45]
-        X_new = X[40:45]
+        X_new = X_actual[40:45]
 
         X_t = _observe_transformers_one(
             y=y_new,
-            X=X_new,
+            X_actual=X_new,
             target_transformer=None,
             feature_transformer=feature_transformer,
             target_as_feature="transformed",
@@ -324,22 +330,22 @@ class TestObserveTransformersOne:
     def test_both_transformers(self, time_series_factory, SimpleTransformer):
         """Test with both target and feature transformers."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
         target_transformer = SimpleTransformer(observation_horizon=5, add_constant=10.0)
         target_transformer.fit(y[:40])
 
         y_t = target_transformer.transform(y[:40])
-        X_feat_in = pl.concat([y_t, X[:40].select(pl.exclude("time"))], how="horizontal")
+        X_feat_in = pl.concat([y_t, X_actual[:40].select(pl.exclude("time"))], how="horizontal")
         feature_transformer = SimpleTransformer(observation_horizon=3, add_constant=5.0)
         feature_transformer.fit(X_feat_in)
 
         y_new = y[40:45]
-        X_new = X[40:45]
+        X_new = X_actual[40:45]
 
         X_t = _observe_transformers_one(
             y=y_new,
-            X=X_new,
+            X_actual=X_new,
             target_transformer=target_transformer,
             feature_transformer=feature_transformer,
             target_as_feature="transformed",
@@ -354,11 +360,11 @@ class TestRewindTransformersOne:
     def test_no_transformers(self, time_series_factory):
         """Test with no transformers builds feature input from last rows."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
         X_t = _rewind_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=None,
             feature_transformer=None,
             observation_horizon=5,
@@ -370,7 +376,7 @@ class TestRewindTransformersOne:
     def test_target_only(self, time_series_factory, SimpleTransformer):
         """Test with only target transformer."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
         target_transformer = SimpleTransformer(observation_horizon=5, add_constant=10.0)
         target_transformer.fit(y[:40])
@@ -378,7 +384,7 @@ class TestRewindTransformersOne:
         observation_horizon = 5
         X_t = _rewind_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=target_transformer,
             feature_transformer=None,
             observation_horizon=observation_horizon,
@@ -391,16 +397,16 @@ class TestRewindTransformersOne:
     def test_feature_only(self, time_series_factory, SimpleTransformer):
         """Test with only feature transformer."""
         y = time_series_factory(length=50, n_components=2)
-        X = make_exog_data(50, 3)
+        X_actual = make_exog_data(50, 3)
 
-        X_feat_in = pl.concat([y, X.select(pl.exclude("time"))], how="horizontal")
+        X_feat_in = pl.concat([y, X_actual.select(pl.exclude("time"))], how="horizontal")
         feature_transformer = SimpleTransformer(observation_horizon=3, add_constant=5.0)
         feature_transformer.fit(X_feat_in[:40])
 
         observation_horizon = 5
         X_t = _rewind_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=None,
             feature_transformer=feature_transformer,
             observation_horizon=observation_horizon,
@@ -415,19 +421,19 @@ class TestRewindTransformersOne:
 
         NOTE: This test currently fails due to a bug in _rewind_transformers_one.
         The function calls _build_feature_input with full y, but y_t (transformed y)
-        has only observation_horizon rows. When concatenating y_t with X (which has full length),
+        has only observation_horizon rows. When concatenating y_t with X_actual (which has full length),
         polars fills missing rows with null values, causing check_interval_consistency to fail.
 
         Potential fix: Pass y[-observation_horizon:] to _build_feature_input instead of full y.
         """
         y = time_series_factory(length=20, n_components=2)
-        X = make_exog_data(20, 3)
+        X_actual = make_exog_data(20, 3)
 
         target_transformer = SimpleTransformer(observation_horizon=2, add_constant=10.0)
         target_transformer.fit(y)
 
         y_t = target_transformer.transform(y)
-        X_feat_in = pl.concat([y_t, X.select(pl.exclude("time"))], how="horizontal")
+        X_feat_in = pl.concat([y_t, X_actual.select(pl.exclude("time"))], how="horizontal")
         feature_transformer = SimpleTransformer(observation_horizon=2, add_constant=5.0)
         feature_transformer.fit(X_feat_in)
 
@@ -435,7 +441,7 @@ class TestRewindTransformersOne:
 
         X_t = _rewind_transformers_one(
             y=y,
-            X=X,
+            X_actual=X_actual,
             target_transformer=target_transformer,
             feature_transformer=feature_transformer,
             observation_horizon=observation_horizon,
@@ -455,7 +461,7 @@ class TestRewindTransformersOne:
         observation_horizon = 10
         X_t = _rewind_transformers_one(
             y=y,
-            X=None,
+            X_actual=None,
             target_transformer=target_transformer,
             feature_transformer=None,
             observation_horizon=observation_horizon,
@@ -477,7 +483,7 @@ class TestRewindTransformersOne:
         with pytest.raises((ValueError, IndexError)):
             _rewind_transformers_one(
                 y=y,
-                X=None,
+                X_actual=None,
                 target_transformer=target_transformer,
                 feature_transformer=None,
                 observation_horizon=observation_horizon,

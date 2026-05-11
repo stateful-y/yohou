@@ -38,11 +38,11 @@ forecast origin. Use `y_pred["vintage_time"].unique()` to see all vintages.
     Always `deepcopy` the forecaster before calling `observe_predict`. The method
     mutates internal state, so a copy preserves the original for further use.
 
-If your forecaster uses exogenous features, pass them via `X`:
+If your forecaster uses exogenous features, pass them via `X_actual` (for historical observations) and optionally `X_future` or `X_forecast` (for known-ahead or external forecast data):
 
 ```python
 y_pred = deepcopy(forecaster).observe_predict(
-    y_test, X=X_test, forecasting_horizon=7, stride=1
+    y_test, X_actual=X_test, forecasting_horizon=7, stride=1
 )
 ```
 

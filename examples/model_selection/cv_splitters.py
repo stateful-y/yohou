@@ -10,7 +10,7 @@ import marimo
 __generated_with = "0.19.11"
 __gallery__ = {
     "title": "CV Splitters",
-    "description": "Demonstrate ExpandingWindowSplitter and SlidingWindowSplitter for temporal cross-validation with configurable gap, test_size, and fold visualisation.",
+    "description": "Demonstrate ExpandingWindowSplitter and SlidingWindowSplitter for temporal cross-validation with configurable test_size, stride, and fold visualisation.",
     "category": "how-to",
     "companion": "/pages/explanation/model-selection/#expanding-window-splitting",
 }
@@ -32,7 +32,7 @@ def _(mo):
     Standard k-fold CV violates temporal order. Yohou provides time-respecting
     splitters that always train on past data and test on future data.
 
-    This notebook shows how to demonstrate ExpandingWindowSplitter and SlidingWindowSplitter for temporal cross-validation with configurable gap, test_size, and fold visualisation.
+    This notebook shows how to use ExpandingWindowSplitter and SlidingWindowSplitter for temporal cross-validation with configurable test_size, stride, and fold visualisation.
 
     **Prerequisites:** Basic understanding of cross-validation concepts.
     """)
@@ -147,27 +147,7 @@ def _(plot_splits, sliding, y):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Using `gap` to Simulate Forecast Delay
-
-    In practice, there's often a gap between the last known observation and when
-    forecasts are needed. The `gap` parameter simulates this.
-    """)
-
-
-@app.cell
-def _(ExpandingWindowSplitter, plot_splits, y):
-    expanding_gap = ExpandingWindowSplitter(n_splits=3, test_size=12, gap=6)
-
-    for _i, (_train_idx, _test_idx) in enumerate(expanding_gap.split(y)):
-        print(f"  Split {_i}: train ends at {_train_idx[-1]}, test starts at {_test_idx[0]} (gap=6)")
-
-    plot_splits(y, expanding_gap, title="Expanding Window with gap=6")
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## 5. Controlling Window Size
+    ## 4. Controlling Window Size
 
     `max_train_size` on [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) limits growth, effectively
     becoming a sliding window that fills up from the expanding start.
@@ -187,7 +167,7 @@ def _(ExpandingWindowSplitter, plot_splits, y):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 6. SlidingWindowSplitter with Stride
+    ## 5. SlidingWindowSplitter with Stride
 
     `stride` controls how many observations the window advances between splits.
     Default is `test_size` (non-overlapping test sets).
@@ -200,3 +180,7 @@ def _(SlidingWindowSplitter, plot_splits, y):
 
     print(f"Splits with stride=6: {strided.get_n_splits()}")
     plot_splits(y, strided, title="Sliding Window with stride=6 (overlapping tests)")
+
+
+if __name__ == "__main__":
+    app.run()

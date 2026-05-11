@@ -21,10 +21,9 @@ def plot_splits(
     y: pl.DataFrame,
     splitter: BaseSplitter,
     *,
-    X: pl.DataFrame | None = None,
+    X_actual: pl.DataFrame | None = None,
     train_color: str | None = None,
     test_color: str | None = None,
-    gap_color: str = "#9ca3af",
     show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
@@ -33,7 +32,6 @@ def plot_splits(
     height: int | None = None,
     resampler: bool | Literal["widget"] | None = None,
     line_width: float = 10.0,
-    gap_opacity: float = 0.5,
 ) -> go.Figure:
     """
     Plot cross-validation splits as a timeline visualization.
@@ -47,14 +45,13 @@ def plot_splits(
         Target time series with mandatory "time" column.
     splitter : BaseSplitter
         A yohou splitter instance (e.g., ExpandingWindowSplitter, SlidingWindowSplitter).
-    X : pl.DataFrame | None, default=None
-        Optional exogenous features (passed to splitter.split()).
+    X_actual : pl.DataFrame or None, default=None
+        Actual features passed to ``splitter.split()``. Not used for
+        splitting but accepted for API consistency.
     train_color : str | None, default=None
         Color for train segments. If None, uses first color from yohou palette.
     test_color : str | None, default=None
         Color for test segments. If None, uses second color from yohou palette.
-    gap_color : str, default="#9ca3af"
-        Color for gap segments (if splitter has gap > 0).
     show_legend : bool, default=True
         Whether to show the legend.
     title : str | None, default=None
@@ -72,9 +69,7 @@ def plot_splits(
         ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
         ``None`` uses a plain ``go.Figure``.
     line_width : float, default=10.0
-        Width of the train/test/gap bars.
-    gap_opacity : float, default=0.5
-        Opacity for gap segments.
+        Width of the train/test bars.
 
     Returns
     -------
@@ -126,7 +121,7 @@ def plot_splits(
     test_color = test_color or colors[1]
 
     # Get splits
-    splits = list(splitter.split(y, X))
+    splits = list(splitter.split(y, X_actual))
     n_splits = len(splits)
 
     # Create figure
@@ -134,9 +129,6 @@ def plot_splits(
 
     # Get time column
     times = y["time"]
-
-    # Check if splitter has gap
-    gap = getattr(splitter, "gap", None) or 0
 
     # Plot each split
     for i, (train_idx, test_idx) in enumerate(splits):
@@ -163,22 +155,6 @@ def plot_splits(
                 hovertemplate=f"Train<br>Start: %{{x}}<br>Fold: {fold_label}<extra></extra>",
             )
         )
-
-        # Plot gap if present
-        if gap > 0:
-            fig.add_trace(
-                go.Scatter(
-                    x=[t_train_end, t_test_start],
-                    y=[fold_label, fold_label],
-                    mode="lines",
-                    line={"color": gap_color, "width": line_width},
-                    name="Gap" if i == 0 else None,
-                    showlegend=(i == 0),
-                    legendgroup="gap",
-                    opacity=gap_opacity,
-                    hovertemplate=f"Gap<br>Fold: {fold_label}<extra></extra>",
-                )
-            )
 
         # Plot test segment
         fig.add_trace(

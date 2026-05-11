@@ -244,7 +244,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -277,4 +276,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
+
+
+if __name__ == "__main__":
+    app.run()

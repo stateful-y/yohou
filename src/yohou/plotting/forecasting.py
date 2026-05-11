@@ -331,7 +331,7 @@ def plot_forecast(
     pred_value_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)]
     test_value_cols = [c for c in y_test.columns if c != "time"]
 
-    # Apply columns filter (Decision #8: columns param on plot_forecast)
+    # Apply columns filter
     if columns is not None:
         col_list = [columns] if isinstance(columns, str) else list(columns)
         test_value_cols = [c for c in col_list if c in test_value_cols]
@@ -374,28 +374,43 @@ def plot_forecast(
                 lower_col = f"{interval_base}_lower_{rate}"
                 upper_col = f"{interval_base}_upper_{rate}"
                 if lower_col in y_pred.columns and upper_col in y_pred.columns:
-                    rate_opacity = band_opacity * (1.0 - 0.45 * sort_idx / max(1, n_rates - 1))
-                    rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {rate_opacity:.3f})"
                     t = y_pred["time"].to_list()
                     y_upper = y_pred[upper_col].to_list()
                     y_lower = y_pred[lower_col].to_list()
-                    x_band = t + t[::-1]
-                    y_band = y_upper + y_lower[::-1]
-                    ctx.fig.add_trace(
-                        go.Scatter(
-                            x=x_band,
-                            y=y_band,
-                            fill="toself",
-                            fillcolor=rgba,
-                            mode="lines",
-                            line={"width": 0, "color": rgba},
-                            name=f"{col} ({rate:.0%} PI)",
-                            legendrank=11 + sort_idx,
-                            hoverinfo="skip",
-                        ),
-                        row=ctx.row,
-                        col=ctx.col,
-                    )
+                    if rate == 0:
+                        ctx.fig.add_trace(
+                            go.Scatter(
+                                x=t,
+                                y=y_upper,
+                                mode="lines",
+                                line={"dash": "dash", "width": line_width * 0.75, "color": forecast_color},
+                                name=f"{col} (Median)",
+                                legendrank=11 + sort_idx,
+                                hoverinfo="skip",
+                            ),
+                            row=ctx.row,
+                            col=ctx.col,
+                        )
+                    else:
+                        rate_opacity = band_opacity * (1.0 - 0.45 * sort_idx / max(1, n_rates - 1))
+                        rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {rate_opacity:.3f})"
+                        x_band = t + t[::-1]
+                        y_band = y_upper + y_lower[::-1]
+                        ctx.fig.add_trace(
+                            go.Scatter(
+                                x=x_band,
+                                y=y_band,
+                                fill="toself",
+                                fillcolor=rgba,
+                                mode="lines",
+                                line={"width": 0, "color": rgba},
+                                name=f"{col} ({rate:.0%} PI)",
+                                legendrank=11 + sort_idx,
+                                hoverinfo="skip",
+                            ),
+                            row=ctx.row,
+                            col=ctx.col,
+                        )
 
         # Actual test data (prepend last train point to close the gap)
         _x_actual = y_test["time"]
@@ -831,7 +846,7 @@ def _plot_forecast_class_proba(
     proba_cols = [c for c in first_pred.columns if "_proba_" in c]  # ty: ignore[unresolved-attribute]
     all_targets = _discover_proba_targets(proba_cols)
 
-    # Filter targets by columns parameter (Decision #10)
+    # Filter targets by columns parameter
     if columns is not None:
         col_list = [columns] if isinstance(columns, str) else list(columns)
         all_targets = {t: cols for t, cols in all_targets.items() if t in col_list}
@@ -1112,28 +1127,44 @@ def _plot_forecast_multi_model(
                 upper_col = f"{interval_base}_upper_{rate}"
                 if lower_col in y_pred.columns and upper_col in y_pred.columns:
                     rgb = tuple(int(model_color[i : i + 2], 16) for i in (1, 3, 5))
-                    rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
                     t = y_pred["time"].to_list()
                     y_upper = y_pred[upper_col].to_list()
                     y_lower = y_pred[lower_col].to_list()
-                    x_band = t + t[::-1]
-                    y_band = y_upper + y_lower[::-1]
-                    ctx.fig.add_trace(
-                        go.Scatter(
-                            x=x_band,
-                            y=y_band,
-                            fill="toself",
-                            fillcolor=rgba,
-                            mode="lines",
-                            line={"width": 0, "color": rgba},
-                            name=f"{model_name} ({rate:.0%} PI)",
-                            legendgroup=model_name,
-                            legendrank=10 + model_idx * 100 + sort_idx + 1,
-                            hoverinfo="skip",
-                        ),
-                        row=ctx.row,
-                        col=ctx.col,
-                    )
+                    if rate == 0:
+                        ctx.fig.add_trace(
+                            go.Scatter(
+                                x=t,
+                                y=y_upper,
+                                mode="lines",
+                                line={"dash": "dash", "width": line_width * 0.75, "color": model_color},
+                                name=f"{model_name} (Median)",
+                                legendgroup=model_name,
+                                legendrank=10 + model_idx * 100 + sort_idx + 1,
+                                hoverinfo="skip",
+                            ),
+                            row=ctx.row,
+                            col=ctx.col,
+                        )
+                    else:
+                        rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
+                        x_band = t + t[::-1]
+                        y_band = y_upper + y_lower[::-1]
+                        ctx.fig.add_trace(
+                            go.Scatter(
+                                x=x_band,
+                                y=y_band,
+                                fill="toself",
+                                fillcolor=rgba,
+                                mode="lines",
+                                line={"width": 0, "color": rgba},
+                                name=f"{model_name} ({rate:.0%} PI)",
+                                legendgroup=model_name,
+                                legendrank=10 + model_idx * 100 + sort_idx + 1,
+                                hoverinfo="skip",
+                            ),
+                            row=ctx.row,
+                            col=ctx.col,
+                        )
 
         # Actual test data (prepend last train point to close the gap)
         _x_actual = y_test["time"]
@@ -1216,6 +1247,7 @@ def _render_interval_bands(
     base_color,
     member,
     band_opacity,
+    line_width,
     legend_tracker,
     group_title,
     row,
@@ -1238,16 +1270,17 @@ def _render_interval_bands(
             lower_c = f"{interval_base}_lower_{rate}"
             upper_c = f"{interval_base}_upper_{rate}"
             if lower_c in m_pred.columns and upper_c in m_pred.columns:
-                rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
                 t = m_pred["time"].to_list()
                 y_upper = m_pred[upper_c].to_list()
                 y_lower = m_pred[lower_c].to_list()
-                x_band = t + t[::-1]
-                y_band = y_upper + y_lower[::-1]
                 if multi_member:
-                    pi_entry = f"{m_name} ({rate:.0%} PI)" if is_multi_model else f"{rate:.0%} PI"
+                    pi_entry = f"{m_name} (Median)" if rate == 0 else f"{m_name} ({rate:.0%} PI)"
+                    if not is_multi_model:
+                        pi_entry = "Median" if rate == 0 else f"{rate:.0%} PI"
+                elif is_multi_model:
+                    pi_entry = f"{m_name} (Median)" if rate == 0 else f"{m_name} ({rate:.0%} PI)"
                 else:
-                    pi_entry = f"{rate:.0%} PI" if not is_multi_model else f"{m_name} ({rate:.0%} PI)"
+                    pi_entry = "Median" if rate == 0 else f"{rate:.0%} PI"
 
                 if group_title is not None:
                     legend_kw = grouped_legend_kwargs(group_title, pi_entry, legend_tracker, is_first_in_group=False)
@@ -1258,22 +1291,40 @@ def _render_interval_bands(
                         "legendgroup": m_name,
                     }
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=x_band,
-                        y=y_band,
-                        fill="toself",
-                        fillcolor=rgba,
-                        mode="lines",
-                        line={"width": 0, "color": rgba},
-                        **legend_kw,
-                        legendrank=10 + m_idx * 100 + sort_idx + 1,
-                        hoverinfo="skip",
-                    ),
-                    row=row,
-                    col=col_grid,
-                    **_fill_trace_kwargs(fig),
-                )
+                if rate == 0:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=t,
+                            y=y_upper,
+                            mode="lines",
+                            line={"dash": "dash", "width": line_width * 0.75, "color": band_c},
+                            **legend_kw,
+                            legendrank=10 + m_idx * 100 + sort_idx + 1,
+                            hoverinfo="skip",
+                        ),
+                        row=row,
+                        col=col_grid,
+                    )
+                else:
+                    rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
+                    x_band = t + t[::-1]
+                    y_band = y_upper + y_lower[::-1]
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x_band,
+                            y=y_band,
+                            fill="toself",
+                            fillcolor=rgba,
+                            mode="lines",
+                            line={"width": 0, "color": rgba},
+                            **legend_kw,
+                            legendrank=10 + m_idx * 100 + sort_idx + 1,
+                            hoverinfo="skip",
+                        ),
+                        row=row,
+                        col=col_grid,
+                        **_fill_trace_kwargs(fig),
+                    )
 
 
 def _render_forecast_trace(
@@ -1868,6 +1919,7 @@ def _plot_forecast_panel(
                 base_color=base_color if multi_sub else None,
                 member=sub_name,
                 band_opacity=band_opacity,
+                line_width=line_width,
                 legend_tracker=legend_tracker,
                 group_title=group_title,
                 row=row,
@@ -3352,6 +3404,7 @@ def _mstl_to_component_dict(
             raise ValueError(msg)
         sorted_periods = sorted(resolved)
     else:
+        assert not isinstance(periods, str)
         sorted_periods = sorted(periods)
 
     # Infer interval for human-readable labels (fall back to numeric if unknown)

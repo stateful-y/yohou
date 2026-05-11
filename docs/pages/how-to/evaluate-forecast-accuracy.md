@@ -44,7 +44,7 @@ search = GridSearchCV(
     scoring=MeanAbsoluteError(),
     cv=ExpandingWindowSplitter(n_splits=5, test_size=14),
 )
-search.fit(y, X, forecasting_horizon=14)
+search.fit(y, X_actual=X, forecasting_horizon=14)
 
 # Per-fold and mean scores
 print(search.cv_results_)
@@ -87,7 +87,7 @@ search = GridSearchCV(
     refit="mae",
     cv=ExpandingWindowSplitter(n_splits=5, test_size=14),
 )
-search.fit(y, X, forecasting_horizon=14)
+search.fit(y, X_actual=X, forecasting_horizon=14)
 ```
 
 The `refit` parameter specifies which metric determines the best configuration. All metrics appear in `cv_results_`.

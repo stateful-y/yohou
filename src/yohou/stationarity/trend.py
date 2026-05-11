@@ -9,7 +9,7 @@ from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 
-from yohou.utils._compat import Interval, _fit_context
+from yohou.utils._compat import Interval
 
 from .base import _BaseTrendForecaster
 
@@ -99,43 +99,27 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         self.degree = degree
         self.estimator = estimator
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(
+    def _fit(
         self,
-        y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        **params,
-    ) -> "PolynomialTrendForecaster":
-        """Fit polynomial trend model to historical data.
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: StrictInt,
+    ) -> None:
+        """Fit polynomial trend model to transformed data.
 
         Parameters
         ----------
-        y : pl.DataFrame
-            Target time series with "time" column.
-        X : pl.DataFrame, optional
-            Exogenous features (currently not used, reserved for future).
-        forecasting_horizon : int, default=1
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed features (unused).
+        forecasting_horizon : int
             Number of steps ahead to forecast.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            Fitted forecaster.
 
         """
-        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
-
-        # Pre-fit: validate inputs, apply target transformer, set attributes
-        y_t, X_t = self._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
-
         estimator = Pipeline([
             ("poly_features", PolynomialFeatures(degree=self.degree, include_bias=True)),
             ("regressor", clone(self.estimator)),
         ])
 
         self._fit_estimator(estimator, y_t)
-
-        return self

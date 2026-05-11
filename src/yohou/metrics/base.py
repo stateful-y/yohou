@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import re
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -12,11 +13,11 @@ import polars as pl
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
+from yohou.metrics._context import ScoringContext
 from yohou.utils import Tags, inspect_panel, validate_scorer_data
 from yohou.utils._compat import StrOptions, _fit_context
 from yohou.utils.validation import check_interval_consistency
 from yohou.utils.weighting import (
-    combine_weight_vectors,
     normalize_weights,
     resolve_weight_to_array,
     validate_callable_signature,
@@ -25,9 +26,14 @@ from yohou.utils.weighting import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from yohou.metrics._context import ScoringContext
-
-__all__ = ["BaseClassProbaScorer", "BaseIntervalScorer", "BasePointScorer", "BaseScorer"]
+__all__ = [
+    "BaseClassProbaScorer",
+    "BaseHardLabelScorer",
+    "BaseIntervalScorer",
+    "BasePointScorer",
+    "BaseRankingScorer",
+    "BaseScorer",
+]
 
 
 class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
@@ -265,11 +271,29 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         context: ScoringContext | None,
         dims: set[str],
     ) -> pl.DataFrame:
-        """Collapse row dimensions (stepwise and/or vintagewise).
+        """Collapse row dimensions (stepwise and/or vintagewise) using mean."""
+        return self._collapse_rows_with(df, context, dims, agg_fn="mean")
 
-        When both stepwise and vintagewise are in *dims*, all rows are
-        averaged (within each coverage_rate group if present). For partial
-        collapse, rows are grouped by the non-collapsed dimension.
+    def _collapse_rows_with(
+        self,
+        df: pl.DataFrame,
+        context: ScoringContext | None,
+        dims: set[str],
+        agg_fn: str = "mean",
+    ) -> pl.DataFrame:
+        """Collapse row dimensions using the specified aggregation function.
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            DataFrame with per-row scores.
+        context : ScoringContext or None
+            Scoring context with time values and metadata.
+        dims : set of str
+            Aggregation dimensions.
+        agg_fn : str, default="mean"
+            Polars aggregation function name ("mean", "sum", "max").
+
         """
         collapse_steps = "stepwise" in dims
         collapse_vintages = "vintagewise" in dims
@@ -281,10 +305,33 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         meta_cols = [c for c in df.columns if c in meta_names]
         val_cols = [c for c in df.columns if c not in meta_names]
 
+        def _agg_exprs(cols: list[str]) -> list[pl.Expr]:
+            """Build aggregation expressions for the given columns."""
+            return [getattr(pl.col(c), agg_fn)() for c in cols]
+
         if collapse_steps and collapse_vintages:
+            # Per-vintage-first: group by vintage_time within each vintage,
+            # then return per-vintage rows (vintage collapse happens later).
+            vintage_time = getattr(context, "vintage_time", None) if context is not None else None
+            if vintage_time is not None and vintage_time.n_unique() > 1:
+                vt_list = vintage_time.to_list()
+                if "coverage_rate" in df.columns:
+                    n_rates = df["coverage_rate"].n_unique()
+                    vt_list = vt_list * n_rates
+                group_cols = ["vintage_time"] + meta_cols
+                return (
+                    df
+                    .with_columns(pl.Series("vintage_time", vt_list))
+                    .group_by(group_cols, maintain_order=True)
+                    .agg(_agg_exprs(val_cols))
+                    .sort("vintage_time")
+                )
+
             if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
-            return df.select(pl.all().mean())
+                return df.group_by(meta_cols, maintain_order=True).agg(_agg_exprs(val_cols))
+            if agg_fn == "mean":
+                return df.select(pl.all().mean())
+            return df.select(_agg_exprs(val_cols))
 
         # Partial collapse: keep one dimension, collapse the other
         keep_dim = "forecasting_step" if collapse_vintages else "vintage_time"
@@ -292,8 +339,10 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         if dim_values is None:
             if meta_cols:
-                return df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
-            return df.select(pl.all().mean())
+                return df.group_by(meta_cols, maintain_order=True).agg(_agg_exprs(val_cols))
+            if agg_fn == "mean":
+                return df.select(pl.all().mean())
+            return df.select(_agg_exprs(val_cols))
 
         # Tile context values for interval data (coverage_rate repeats rows)
         dim_list = dim_values.to_list()
@@ -307,9 +356,56 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             df
             .with_columns(pl.Series(keep_dim, dim_list))
             .group_by(group_cols, maintain_order=True)
-            .agg([pl.col(c).mean() for c in val_cols])
+            .agg(_agg_exprs(val_cols))
             .sort(keep_dim)
         )
+
+    def _collapse_vintage_dimension(
+        self,
+        df: pl.DataFrame,
+        context: ScoringContext | None,
+        dims: set[str],
+    ) -> pl.DataFrame:
+        """Collapse vintage_time rows via (weighted) mean.
+
+        Internal method, not an override point. Fires after _transform_scores
+        to produce cross-vintage aggregation. No-op when vintage_time column
+        is absent or vintagewise not in dims.
+        """
+        if "vintage_time" not in df.columns or "vintagewise" not in dims:
+            return df
+
+        meta_names = {"coverage_rate", "forecasting_step", "time"}
+        meta_cols = [c for c in df.columns if c in meta_names]
+        val_cols = [c for c in df.columns if c not in meta_names and c != "vintage_time"]
+
+        vintage_weight = context.vintage_weight if context is not None else None
+
+        if vintage_weight is not None:
+            # Weighted mean across vintages
+            # Attach weight per vintage row
+            unique_vintages = df["vintage_time"].unique(maintain_order=True).to_list()
+            if len(vintage_weight) != len(unique_vintages):
+                raise ValueError(
+                    f"vintage_weight length ({len(vintage_weight)}) does not match "
+                    f"number of unique vintages ({len(unique_vintages)})"
+                )
+            weight_map = dict(zip(unique_vintages, vintage_weight.tolist(), strict=True))
+            df = df.with_columns(pl.col("vintage_time").replace_strict(weight_map, default=1.0).alias("_vw"))
+            if meta_cols:
+                result = df.group_by(meta_cols, maintain_order=True).agg([
+                    (pl.col(c) * pl.col("_vw")).sum() / pl.col("_vw").sum() for c in val_cols
+                ])
+            else:
+                total = df["_vw"].sum()
+                result = df.select([(pl.col(c) * pl.col("_vw")).sum() / total for c in val_cols])
+        # Unweighted mean across vintages
+        elif meta_cols:
+            result = df.group_by(meta_cols, maintain_order=True).agg([pl.col(c).mean() for c in val_cols])
+        else:
+            result = df.select([pl.col(c).mean() for c in val_cols])
+
+        return result
 
     def _collapse_components(self, df: pl.DataFrame) -> pl.DataFrame:
         """Collapse component columns into a single score via weighted average.
@@ -569,20 +665,78 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             elif isinstance(vw_resolved, dict):
                 vw_resolved = {g: a[keep] for g, a in vw_resolved.items()}
 
+        # Derive per-unique-vintage weights and store in context
+        if isinstance(vw_resolved, dict) and context.vintage_time is not None:
+            # Panel-aware vintage_weight: all groups share the same vintage_time
+            # axis, so use the first group's weights for cross-vintage weighting.
+            first_group_weights = next(iter(vw_resolved.values()))  # ty: ignore[invalid-assignment]
+            context = self._set_vintage_weight_on_context(context, first_group_weights)  # ty: ignore[invalid-argument-type]
+            vw_resolved = None
+        elif isinstance(vw_resolved, np.ndarray) and context.vintage_time is not None:
+            context = self._set_vintage_weight_on_context(context, vw_resolved)
+            # vintage_weight handled at cross-vintage level; don't pass to _apply_weights
+            vw_resolved = None
+
         return y_truth, y_pred, context, tw_resolved, sw_resolved, vw_resolved
+
+    @staticmethod
+    def _set_vintage_weight_on_context(
+        context: ScoringContext,
+        vw_array: np.ndarray,
+    ) -> ScoringContext:
+        """Attach per-unique-vintage weights to a scoring context."""
+        vt_df = pl.DataFrame({
+            "vintage_time": context.vintage_time,
+            "_vw": vw_array,
+        })
+        per_vintage = vt_df.group_by("vintage_time", maintain_order=True).agg(pl.col("_vw").first())
+        return ScoringContext(
+            time_values=context.time_values,
+            vintage_time=context.vintage_time,
+            forecasting_step=context.forecasting_step,
+            vintage_weight=per_vintage["_vw"].to_numpy(),
+        )
+
+    def _resolve_vintage_weight_to_context(
+        self,
+        context: ScoringContext,
+        vintage_weight: Callable | pl.DataFrame | dict | None,
+    ) -> ScoringContext:
+        """Resolve a vintage_weight argument into context.vintage_weight.
+
+        Lightweight alternative to ``_pre_filter_zero_weights`` for scorers
+        that only need vintage_weight resolution (no time/step weights).
+        """
+        if vintage_weight is None:
+            return context
+        if context.vintage_time is None:
+            return context
+        vw_resolved = resolve_weight_to_array(
+            vintage_weight,
+            context.vintage_time,
+            "vintage_time",
+        )
+        if isinstance(vw_resolved, dict):
+            raise TypeError(
+                "Panel-aware (dict) vintage_weight is not supported. "
+                "Use a flat callable, DataFrame, or dict keyed on vintage_time values."
+            )
+        return self._set_vintage_weight_on_context(context, vw_resolved)
 
     def _apply_weights(
         self,
         scores: pl.DataFrame,
         time_weight_resolved: np.ndarray | dict[str, np.ndarray] | None,
         step_weight_resolved: np.ndarray | dict[str, np.ndarray] | None,
-        vintage_weight_resolved: np.ndarray | dict[str, np.ndarray] | None,
         n_rates: int = 1,
     ) -> pl.DataFrame:
         """Apply pre-resolved weights to score DataFrame.
 
         Two-stage normalization: (1) normalize and apply time_weight,
-        (2) combine step_weight + vintage_weight, normalize, and apply.
+        (2) apply step_weight (normalized).
+
+        Vintage weights are not applied at row level; they are handled
+        during cross-vintage aggregation in ``_collapse_vintage_dimension``.
 
         """
         _, panel_groups = inspect_panel(scores)
@@ -616,41 +770,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         if time_weight_resolved is not None:
             scores = _apply_one_weight(scores, time_weight_resolved, value_cols)
 
-        # Stage 2: step_weight + vintage_weight (combined, then normalized)
-        if step_weight_resolved is not None or vintage_weight_resolved is not None:
-            # For dict weights, combine per-group
-            if isinstance(step_weight_resolved, dict) or isinstance(vintage_weight_resolved, dict):
-                all_groups = set()
-                if isinstance(step_weight_resolved, dict):
-                    all_groups |= step_weight_resolved.keys()
-                if isinstance(vintage_weight_resolved, dict):
-                    all_groups |= vintage_weight_resolved.keys()
-
-                for group_name in all_groups:
-                    sw_g = (
-                        step_weight_resolved.get(group_name)
-                        if isinstance(step_weight_resolved, dict)
-                        else step_weight_resolved
-                    )
-                    vw_g = (
-                        vintage_weight_resolved.get(group_name)
-                        if isinstance(vintage_weight_resolved, dict)
-                        else vintage_weight_resolved
-                    )
-                    n = len(sw_g) if sw_g is not None else len(vw_g)  # ty: ignore[invalid-argument-type]
-                    combined = combine_weight_vectors(sw_g, vw_g, n=n)  # ty: ignore[invalid-argument-type]
-                    if combined is not None:
-                        tiled = np.tile(combined, n_rates) if n_rates > 1 else combined
-                        group_cols = [c for c in panel_groups.get(group_name, []) if c in value_cols]
-                        if group_cols:
-                            scores = _apply_array(scores, tiled, group_cols)
-            else:
-                # Both are plain arrays or None
-                n = len(step_weight_resolved) if step_weight_resolved is not None else len(vintage_weight_resolved)  # ty: ignore[invalid-argument-type]
-                combined = combine_weight_vectors(step_weight_resolved, vintage_weight_resolved, n=n)
-                if combined is not None:
-                    tiled = np.tile(combined, n_rates) if n_rates > 1 else combined
-                    scores = _apply_array(scores, tiled, value_cols)
+        # Stage 2: step_weight (normalized independently)
+        if step_weight_resolved is not None:
+            scores = _apply_one_weight(scores, step_weight_resolved, value_cols)
 
         return scores
 
@@ -802,13 +924,173 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return modes
 
+    def _transform_scores(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Apply element-wise transform to aggregated value columns.
+
+        Override in subclasses needing post-aggregation transforms
+        (e.g. sqrt for RMSE). Called inside ``_aggregate_per_vintage_scores``
+        after component/group collapse, before vintage collapse.
+        Receives only value columns (no meta columns).
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            DataFrame with value columns only.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed DataFrame.
+
+        """
+        return df
+
+    @staticmethod
+    def _reject_weights(**params: object) -> None:
+        """Raise if any weight kwargs are passed to a scorer that doesn't support them."""
+        weight_keys = [
+            k for k in params if k in {"time_weight", "step_weight", "vintage_weight"} and params[k] is not None
+        ]
+        if weight_keys:
+            raise TypeError(
+                f"This scorer does not support sample weights, "
+                f"but received: {', '.join(sorted(weight_keys))}. "
+                f"Remove the weight arguments or use a scorer that supports weighting."
+            )
+
+    def _aggregate_per_vintage_scores(
+        self,
+        result: pl.DataFrame,
+        context: ScoringContext | None,
+    ) -> float | pl.DataFrame:
+        """Shared pipeline tail for all scorer families.
+
+        Input: a per-vintage DataFrame (one row per vintage with
+        ``vintage_time`` column for multi-vintage, or single-row without
+        it for single-vintage). Pipeline:
+        components → groups → strip meta → _transform_scores → reattach meta
+        → _collapse_vintage_dimension → finalize → rename.
+        """
+        dims = self._normalize_agg_methods(self.aggregation_method)  # ty: ignore[unresolved-attribute]
+
+        # Input validation: multi-vintage context but no vintage_time column.
+        # Only fires when both stepwise and vintagewise are requested, because
+        # in that case _collapse_rows preserves vintage_time for per-vintage-first
+        # aggregation and _collapse_vintage_dimension handles the final collapse.
+        # When only vintagewise is requested, _collapse_rows already collapses
+        # vintages by grouping by forecasting_step, so vintage_time is gone.
+        if (
+            "stepwise" in dims
+            and "vintagewise" in dims
+            and context is not None
+            and context.vintage_time is not None
+            and context.vintage_time.n_unique() > 1
+            and "vintage_time" not in result.columns
+        ):
+            raise ValueError(
+                "Context has multiple vintages but input DataFrame is missing "
+                "'vintage_time' column. Attach vintage_time before calling "
+                "_aggregate_per_vintage_scores."
+            )
+
+        if "componentwise" in dims:
+            result = self._collapse_components(result)
+
+        if "groupwise" in dims:
+            result = self._collapse_groups(result)
+
+        # Strip meta → _transform_scores → reattach meta
+        meta_names = {"coverage_rate", "forecasting_step", "vintage_time", "time"}
+        meta_cols = [c for c in result.columns if c in meta_names]
+        val_cols = [c for c in result.columns if c not in meta_names]
+
+        if val_cols:
+            transformed = self._transform_scores(result.select(val_cols))
+            result = pl.concat([result.select(meta_cols), transformed], how="horizontal") if meta_cols else transformed
+
+        # Collapse vintage dimension (weighted/unweighted mean across vintages)
+        result = self._collapse_vintage_dimension(result, context, dims)
+
+        # Finalize: attach labels, convert to scalar
+        finalized = self._finalize(result, context, dims)
+
+        if isinstance(finalized, pl.DataFrame):
+            finalized = self._rename_metric_columns(finalized)
+
+        return finalized
+
+    def _map_per_vintage(
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        context: ScoringContext | None,
+        compute_fn: Callable[[pl.DataFrame, pl.DataFrame], pl.DataFrame | None],
+    ) -> pl.DataFrame:
+        """Group data by vintage and apply compute_fn per group.
+
+        Utility for Pattern 2 scorers (whole-column computation).
+        Returns a per-vintage DataFrame with ``vintage_time`` column
+        for multi-vintage, or a single-row DataFrame (no vintage_time)
+        for single-vintage.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            Ground truth (time column removed).
+        y_pred : pl.DataFrame
+            Predictions (time column removed).
+        context : ScoringContext or None
+            Scoring context.
+        compute_fn : callable
+            ``(y_truth_slice, y_pred_slice) -> pl.DataFrame | None``.
+            Returns single-row DataFrame per vintage or None to skip.
+
+        Returns
+        -------
+        pl.DataFrame
+            Per-vintage results concatenated.
+
+        Raises
+        ------
+        ValueError
+            If all vintages are skipped.
+
+        """
+        vintage_time = context.vintage_time if context is not None else None
+
+        # Single-vintage fallthrough
+        if vintage_time is None or vintage_time.n_unique() <= 1:
+            result = compute_fn(y_truth, y_pred)
+            if result is None:
+                raise ValueError("All vintage groups were skipped. No valid data to compute the metric.")
+            return result
+
+        # Multi-vintage: group by vintage
+        vt_values = vintage_time.to_list()
+        unique_vintages = vintage_time.unique(maintain_order=True).to_list()
+
+        results: list[pl.DataFrame] = []
+        for vt in unique_vintages:
+            mask = [v == vt for v in vt_values]
+            yt_slice = y_truth.filter(mask)
+            yp_slice = y_pred.filter(mask)
+            row = compute_fn(yt_slice, yp_slice)
+            if row is None:
+                continue
+            row = row.with_columns(pl.lit(vt).alias("vintage_time").cast(pl.Datetime))
+            results.append(row)
+
+        if not results:
+            raise ValueError("All vintage groups were skipped. No valid data to compute the metric.")
+
+        return pl.concat(results, how="diagonal_relaxed")
+
     def _aggregate_scores(
         self, raw_scores: pl.DataFrame, context: ScoringContext | None = None
     ) -> float | pl.DataFrame:
         """Apply sequential aggregation pipeline to raw scores.
 
-        Collapses dimensions one at a time in order: groups → coverage →
-        rows (steps/vintages) → components → finalize.
+        Pipeline: coverage → rows (per-vintage) → _aggregate_per_vintage_scores.
 
         Parameters
         ----------
@@ -839,16 +1121,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         # 2. Collapse row dimensions (steps and/or vintages)
         result = self._collapse_rows(result, context, dims)
 
-        # 3. Collapse components
-        if "componentwise" in dims:
-            result = self._collapse_components(result)
-
-        # 4. Collapse panel groups
-        if "groupwise" in dims:
-            result = self._collapse_groups(result)
-
-        # 5. Finalize: attach labels, convert to scalar
-        return self._finalize(result, context, dims)
+        # 3. Delegate tail to shared pipeline
+        return self._aggregate_per_vintage_scores(result, context)
 
     @abc.abstractmethod
     def score(
@@ -1060,25 +1334,6 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         """
 
-    def _post_aggregate(self, result: float | pl.DataFrame) -> float | pl.DataFrame:
-        """Apply an optional post-aggregation transform (e.g. sqrt for RMSE).
-
-        Override in subclasses that need a transform after aggregation.
-        Default implementation is identity.
-
-        Parameters
-        ----------
-        result : float or pl.DataFrame
-            Aggregated scores.
-
-        Returns
-        -------
-        float or pl.DataFrame
-            Transformed scores.
-
-        """
-        return result
-
     def score(
         self,
         y_truth: pl.DataFrame,
@@ -1131,7 +1386,7 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         )
 
         # 0. Resolve weights and pre-filter zero-weight rows
-        y_truth, y_pred, context, tw, sw, vw = self._pre_filter_zero_weights(
+        y_truth, y_pred, context, tw, sw, _ = self._pre_filter_zero_weights(
             y_truth,
             y_pred,
             context,
@@ -1143,20 +1398,11 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         # 1. Compute raw per-timestep per-component errors
         scores = self._compute_raw_errors(y_truth, y_pred)
 
-        # 2. Apply weights (two-stage: time first, then step+vintage)
-        scores = self._apply_weights(scores, tw, sw, vw)
+        # 2. Apply weights (time first, then step)
+        scores = self._apply_weights(scores, tw, sw)
 
-        # 3. Aggregate
-        result = self._aggregate_scores(scores, context=context)
-
-        # 4. Post-aggregation transform (e.g. sqrt for RMSE/RMSSE)
-        result = self._post_aggregate(result)
-
-        # 5. Rename columns
-        if isinstance(result, pl.DataFrame):
-            result = self._rename_metric_columns(result)
-
-        return result
+        # 3. Aggregate (includes transform + rename via _aggregate_per_vintage_scores)
+        return self._aggregate_scores(scores, context=context)
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -1272,8 +1518,8 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
             # Check range
             for rate in coverage_filter:
-                if not 0 < rate < 1:
-                    raise ValueError(f"All coverage rates must be between 0 and 1 (exclusive), got {rate}")
+                if not 0 <= rate <= 1:
+                    raise ValueError(f"All coverage rates must be between 0 and 1 (inclusive), got {rate}")
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, y_train: pl.DataFrame, *, forecaster=None, **params) -> BaseIntervalScorer:
@@ -1415,7 +1661,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         )
 
         # 0. Resolve weights and pre-filter zero-weight rows
-        y_truth, y_pred, context, tw, sw, vw = self._pre_filter_zero_weights(
+        y_truth, y_pred, context, tw, sw, _ = self._pre_filter_zero_weights(
             y_truth,
             y_pred,
             context,
@@ -1432,16 +1678,10 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         # 2. Apply weights (two-stage, tiled across coverage rates)
         n_rates = raw_scores["coverage_rate"].n_unique() if "coverage_rate" in raw_scores.columns else 1
-        raw_scores = self._apply_weights(raw_scores, tw, sw, vw, n_rates=n_rates)
+        raw_scores = self._apply_weights(raw_scores, tw, sw, n_rates=n_rates)
 
-        # 3. Aggregate
-        result = self._aggregate_scores(raw_scores, context=context)
-
-        # 4. Rename columns
-        if isinstance(result, pl.DataFrame):
-            result = self._rename_metric_columns(result)
-
-        return result
+        # 3. Aggregate (includes transform + rename via _aggregate_per_vintage_scores)
+        return self._aggregate_scores(raw_scores, context=context)
 
     def _extract_coverage_rates(self, y_pred: pl.DataFrame) -> list[float]:
         """Extract unique coverage rates from interval prediction columns.
@@ -1754,7 +1994,7 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_truth, y_pred, context = validate_scorer_data(self, y_truth, y_pred)
 
         # 0. Resolve weights and pre-filter zero-weight rows
-        y_truth, y_pred, context, tw, sw, vw = self._pre_filter_zero_weights(
+        y_truth, y_pred, context, tw, sw, _ = self._pre_filter_zero_weights(
             y_truth,
             y_pred,
             context,
@@ -1769,14 +2009,558 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         # 1. Compute raw per-timestep per-component errors
         scores = self._compute_raw_errors(y_truth, y_pred)
 
-        # 2. Apply weights (two-stage: time first, then step+vintage)
-        scores = self._apply_weights(scores, tw, sw, vw)
+        # 2. Apply weights (time first, then step)
+        scores = self._apply_weights(scores, tw, sw)
 
-        # 3. Aggregate
-        result = self._aggregate_scores(scores, context=context)
+        # 3. Aggregate (includes transform + rename via _aggregate_per_vintage_scores)
+        return self._aggregate_scores(scores, context=context)
 
-        # 4. Rename columns
-        if isinstance(result, pl.DataFrame):
-            result = self._rename_metric_columns(result)
 
-        return result
+class BaseHardLabelScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
+    """Base class for confusion-matrix classification metrics.
+
+    Extends :class:`BaseClassProbaScorer` for metrics that argmax predicted
+    probabilities into hard labels and compute scores from the resulting
+    confusion matrix (TP, FP, FN counts).
+
+    The ``score()`` method is inherited from :class:`BaseClassProbaScorer`.
+    Subclasses override :meth:`_compute_raw_errors` (produces per-row
+    confusion indicators) and :meth:`_aggregate_scores` (sums indicators,
+    computes metrics, applies class averaging).
+
+    Parameters
+    ----------
+    average : str, default="macro"
+        Class averaging strategy: ``"macro"`` (unweighted mean across
+        classes), ``"micro"`` (aggregate counts across classes first),
+        or ``"weighted"`` (support-weighted mean).
+    zero_division : float, default=0.0
+        Value to return when a metric denominator is zero.
+    aggregation_method : list of str or str, default="all"
+        Which dimensions to aggregate.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter or filter with weights.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter or filter with weights.
+
+    """
+
+    _parameter_constraints: dict = {
+        **BaseClassProbaScorer._parameter_constraints,
+        "average": [StrOptions({"macro", "micro", "weighted"})],
+        "zero_division": "no_validation",
+    }
+
+    def __init__(
+        self,
+        average: str = "macro",
+        zero_division: float = 0.0,
+        aggregation_method: list[str] | str = "all",
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
+    ):
+        super().__init__(
+            aggregation_method=aggregation_method,
+            groups=groups,
+            components=components,
+        )
+        self.average = average
+        self.zero_division = zero_division
+
+    def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute per-row confusion indicators for each class and target.
+
+        Argmaxes predicted probabilities into hard labels and computes
+        binary TP/FP/FN indicators per row per class.
+
+        Returns a wide DataFrame with columns like
+        ``{target}_tp_{class}``, ``{target}_fp_{class}``,
+        ``{target}_fn_{class}`` (target includes panel group prefix
+        when present, e.g. ``grpA__weather_tp_sunny``).
+
+        """
+        target_cols = self._extract_target_columns(y_truth)
+        all_indicator_cols: list[pl.Series] = []
+
+        for target_col in target_cols:
+            proba_cols, class_labels = self._extract_class_proba_columns(y_pred, target_col)
+            if not proba_cols:
+                continue
+            self._build_confusion_indicators(
+                y_truth[target_col],
+                y_pred.select(proba_cols),
+                class_labels,
+                target_col,
+                all_indicator_cols,
+            )
+
+        return pl.DataFrame(all_indicator_cols)
+
+    @staticmethod
+    def _build_confusion_indicators(
+        truth_series: pl.Series,
+        proba_df: pl.DataFrame,
+        class_labels: list[str],
+        prefix: str,
+        out: list[pl.Series],
+    ) -> None:
+        """Build TP/FP/FN indicator columns for one target.
+
+        Parameters
+        ----------
+        truth_series : pl.Series
+            True class labels.
+        proba_df : pl.DataFrame
+            Probability columns for this target.
+        class_labels : list of str
+            Class label names (one per proba column).
+        prefix : str
+            Column name prefix (target or group__target).
+        out : list of pl.Series
+            Output list; indicator Series are appended in place.
+
+        """
+        truth_arr = truth_series.to_numpy().astype(str)
+        proba_arr = proba_df.to_numpy()
+        pred_indices = np.argmax(proba_arr, axis=1)
+        pred_labels = np.array(class_labels)[pred_indices]
+
+        for cls in class_labels:
+            is_true = (truth_arr == cls).astype(np.float64)
+            is_pred = (pred_labels == cls).astype(np.float64)
+            tp = is_true * is_pred
+            fp = (1.0 - is_true) * is_pred
+            fn = is_true * (1.0 - is_pred)
+            out.append(pl.Series(f"{prefix}_tp_{cls}", tp))
+            out.append(pl.Series(f"{prefix}_fp_{cls}", fp))
+            out.append(pl.Series(f"{prefix}_fn_{cls}", fn))
+
+    def _aggregate_scores(
+        self, raw_scores: pl.DataFrame, context: ScoringContext | None = None
+    ) -> float | pl.DataFrame:
+        """Aggregate confusion indicators into final metric scores.
+
+        Pipeline: sum rows (per-vintage) → compute metric from counts →
+        delegate tail to _aggregate_per_vintage_scores.
+
+        """
+        dims = self._normalize_agg_methods(self.aggregation_method)
+
+        # 1. Collapse rows via SUM (not mean) — produces per-vintage sums
+        result = self._collapse_rows_sum(raw_scores, context, dims)
+
+        # 2 & 3. Compute metric from counts and apply class averaging
+        result = self._compute_and_average(result)
+
+        # 4. Delegate tail (components → groups → transform → vintage collapse → finalize)
+        return self._aggregate_per_vintage_scores(result, context)
+
+    def _collapse_rows_sum(
+        self,
+        df: pl.DataFrame,
+        context: ScoringContext | None,
+        dims: set[str],
+    ) -> pl.DataFrame:
+        """Collapse row dimensions using sum (for confusion counts)."""
+        return self._collapse_rows_with(df, context, dims, agg_fn="sum")
+
+    def _compute_and_average(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Compute metric from counts and apply class averaging.
+
+        For micro averaging, sums TP/FP/FN across all classes before
+        computing the metric. For macro/weighted, computes per-class
+        metrics first, then averages.
+
+        """
+        meta_names = {"coverage_rate", "forecasting_step", "vintage_time", "time"}
+        meta_cols = [c for c in df.columns if c in meta_names]
+        val_cols = [c for c in df.columns if c not in meta_names]
+
+        # Parse column structure: group targets and their classes
+        targets = self._parse_indicator_columns(val_cols)
+
+        result_cols: list[pl.Series] = []
+
+        for col_prefix, class_labels in targets.items():
+            if self.average == "micro":
+                score_series = self._micro_average(df, col_prefix, class_labels)
+            elif self.average == "weighted":
+                score_series = self._weighted_average(df, col_prefix, class_labels)
+            else:
+                score_series = self._macro_average(df, col_prefix, class_labels)
+            result_cols.append(score_series)
+
+        meta_df = df.select(meta_cols) if meta_cols else pl.DataFrame()
+        score_df = pl.DataFrame(result_cols)
+        if len(meta_df) > 0:
+            return pl.concat([meta_df, score_df], how="horizontal")
+        return score_df
+
+    @staticmethod
+    def _parse_indicator_columns(val_cols: list[str]) -> dict[str, list[str]]:
+        """Parse indicator columns into {target_prefix: [class_labels]}.
+
+        Columns follow the pattern ``{prefix}_tp_{class}``,
+        ``{prefix}_fp_{class}``, ``{prefix}_fn_{class}``.
+        """
+        targets: dict[str, list[str]] = {}
+        for col in val_cols:
+            for indicator in ("_tp_", "_fp_", "_fn_"):
+                if indicator in col:
+                    # Use rindex to match the last occurrence, so class
+                    # labels containing "_tp_" etc. are handled correctly.
+                    idx = col.rindex(indicator)
+                    prefix = col[:idx]
+                    cls = col[idx + len(indicator) :]
+                    if prefix not in targets:
+                        targets[prefix] = []
+                    if cls not in targets[prefix]:
+                        targets[prefix].append(cls)
+                    break
+        return targets
+
+    def _micro_average(self, df: pl.DataFrame, col_prefix: str, class_labels: list[str]) -> pl.Series:
+        """Micro averaging: sum counts across classes, then compute metric."""
+        tp_cols = [f"{col_prefix}_tp_{cls}" for cls in class_labels]
+        fp_cols = [f"{col_prefix}_fp_{cls}" for cls in class_labels]
+        fn_cols = [f"{col_prefix}_fn_{cls}" for cls in class_labels]
+
+        tp_total = df.select(pl.sum_horizontal(tp_cols)).to_series()
+        fp_total = df.select(pl.sum_horizontal(fp_cols)).to_series()
+        fn_total = df.select(pl.sum_horizontal(fn_cols)).to_series()
+
+        metric_df = self._compute_metric_from_counts(pl.DataFrame({"tp": tp_total, "fp": fp_total, "fn": fn_total}))
+        return metric_df.to_series().alias(col_prefix)
+
+    def _macro_average(self, df: pl.DataFrame, col_prefix: str, class_labels: list[str]) -> pl.Series:
+        """Macro averaging: compute per-class metric, then unweighted mean."""
+        per_class: list[pl.Series] = []
+        for i, cls in enumerate(class_labels):
+            counts = pl.DataFrame({
+                "tp": df[f"{col_prefix}_tp_{cls}"],
+                "fp": df[f"{col_prefix}_fp_{cls}"],
+                "fn": df[f"{col_prefix}_fn_{cls}"],
+            })
+            metric_df = self._compute_metric_from_counts(counts)
+            per_class.append(metric_df.to_series().alias(f"_cls_{i}"))
+
+        stacked = pl.DataFrame(per_class)
+        return stacked.select(pl.mean_horizontal(pl.all())).to_series().alias(col_prefix)
+
+    def _weighted_average(self, df: pl.DataFrame, col_prefix: str, class_labels: list[str]) -> pl.Series:
+        """Weighted averaging: per-class metric weighted by class support."""
+        per_class_metrics: list[pl.Series] = []
+        supports: list[pl.Series] = []
+        for i, cls in enumerate(class_labels):
+            counts = pl.DataFrame({
+                "tp": df[f"{col_prefix}_tp_{cls}"],
+                "fp": df[f"{col_prefix}_fp_{cls}"],
+                "fn": df[f"{col_prefix}_fn_{cls}"],
+            })
+            metric_df = self._compute_metric_from_counts(counts)
+            per_class_metrics.append(metric_df.to_series().alias(f"_cls_{i}"))
+            # Support = TP + FN (number of true instances of this class)
+            supports.append((df[f"{col_prefix}_tp_{cls}"] + df[f"{col_prefix}_fn_{cls}"]).alias(f"_sup_{i}"))
+
+        # Build a temporary DataFrame for clean computation
+        tmp_data: dict[str, pl.Series] = {}
+        for i, (m, s) in enumerate(zip(per_class_metrics, supports, strict=True)):
+            tmp_data[f"_m_{i}"] = m
+            tmp_data[f"_s_{i}"] = s
+        tmp = pl.DataFrame(tmp_data)
+
+        n_classes = len(class_labels)
+        metric_cols = [f"_m_{i}" for i in range(n_classes)]
+        support_cols = [f"_s_{i}" for i in range(n_classes)]
+
+        result = tmp.select(
+            (
+                pl.sum_horizontal([pl.col(mc) * pl.col(sc) for mc, sc in zip(metric_cols, support_cols, strict=True)])
+                / pl.max_horizontal(pl.sum_horizontal([pl.col(sc) for sc in support_cols]), pl.lit(1.0))
+            ).alias(col_prefix)
+        )
+        return result.to_series()
+
+    @abc.abstractmethod
+    def _compute_metric_from_counts(self, counts: pl.DataFrame) -> pl.DataFrame:
+        """Compute metric value from confusion counts.
+
+        Parameters
+        ----------
+        counts : pl.DataFrame
+            DataFrame with ``"tp"``, ``"fp"``, ``"fn"`` columns.
+            Each row corresponds to a temporal group (or a single row
+            when all rows are collapsed).
+
+        Returns
+        -------
+        pl.DataFrame
+            Single-column DataFrame with computed metric values.
+
+        """
+
+
+class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
+    """Base class for ranking classification metrics.
+
+    Extends :class:`BaseClassProbaScorer` for metrics that require the
+    full probability vector and cannot produce meaningful per-row values
+    (e.g., ROC AUC, PR AUC). Overrides ``score()`` entirely.
+
+    Parameters
+    ----------
+    average : str, default="macro"
+        Class averaging strategy: ``"macro"`` (unweighted mean across
+        classes) or ``"weighted"`` (support-weighted mean).
+    aggregation_method : list of str or str, default="all"
+        Which dimensions to aggregate.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter or filter with weights.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter or filter with weights.
+
+    """
+
+    _parameter_constraints: dict = {
+        **BaseClassProbaScorer._parameter_constraints,
+        "average": [StrOptions({"macro", "weighted"})],
+    }
+
+    def __init__(
+        self,
+        average: str = "macro",
+        aggregation_method: list[str] | str = "all",
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
+    ):
+        super().__init__(
+            aggregation_method=aggregation_method,
+            groups=groups,
+            components=components,
+        )
+        self.average = average
+
+    def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Not used by ranking scorers (score() is overridden)."""
+        raise NotImplementedError("Ranking scorers override score() directly")
+
+    @abc.abstractmethod
+    def _compute_ranking_metric(
+        self,
+        y_true_binary: np.ndarray,
+        y_proba: np.ndarray,
+        sample_weight: np.ndarray | None = None,
+    ) -> float:
+        """Compute ranking metric for a single class (one-vs-rest).
+
+        Parameters
+        ----------
+        y_true_binary : np.ndarray
+            Binary array (1 for positive class, 0 otherwise).
+        y_proba : np.ndarray
+            Predicted probabilities for the positive class.
+        sample_weight : np.ndarray or None
+            Per-sample weights.
+
+        Returns
+        -------
+        float
+            Metric value for this class.
+
+        """
+
+    def score(
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        /,
+        time_weight: Callable | pl.DataFrame | dict | None = None,
+        step_weight: Callable | pl.DataFrame | dict | None = None,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
+        **params,
+    ) -> float | pl.DataFrame:
+        """Compute the ranking metric score.
+
+        Overrides the full scoring pipeline because ranking metrics
+        require the complete probability vector per group and cannot
+        produce meaningful per-row error values.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True class labels with ``"time"`` column.
+        y_pred : pl.DataFrame
+            Predicted probabilities with ``"time"`` column.
+        time_weight : callable, pl.DataFrame, dict, or None, default=None
+            Time-based evaluation weights.
+        step_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-step weights.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        float or pl.DataFrame
+            Aggregated metric score.
+
+        """
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, context = validate_scorer_data(self, y_truth, y_pred)
+
+        y_truth, y_pred, context, tw, sw, _ = self._pre_filter_zero_weights(
+            y_truth,
+            y_pred,
+            context,
+            time_weight,
+            step_weight,
+            vintage_weight,
+        )
+
+        self._validate_probabilities(y_truth, y_pred)
+
+        # Resolve sample weights (tw + sw only; vintage weight handled via context)
+        sample_weight = self._resolve_combined_weights(tw, sw, len(y_truth))
+
+        target_cols = self._extract_target_columns(y_truth)
+        vintage_time = context.vintage_time if context is not None else None
+
+        # Per-vintage computation
+        if vintage_time is not None and vintage_time.n_unique() > 1:
+            vt_values = vintage_time.to_list()
+            unique_vintages = vintage_time.unique(maintain_order=True).to_list()
+
+            vintage_results: list[pl.DataFrame] = []
+            for vt in unique_vintages:
+                mask = [v == vt for v in vt_values]
+                yt_slice = y_truth.filter(mask)
+                yp_slice = y_pred.filter(mask)
+                sw_slice = sample_weight[mask] if sample_weight is not None else None
+
+                row_data: dict[str, list[float]] = {}
+                for target_col in target_cols:
+                    proba_cols, class_labels = self._extract_class_proba_columns(yp_slice, target_col)
+                    if not proba_cols:
+                        continue
+                    score_val = self._compute_ovr_metric(
+                        yt_slice[target_col],
+                        yp_slice.select(proba_cols),
+                        class_labels,
+                        sw_slice,
+                    )
+                    row_data[target_col] = [score_val]
+
+                row = pl.DataFrame(row_data)
+                row = row.with_columns(pl.lit(vt).alias("vintage_time").cast(pl.Datetime))
+                vintage_results.append(row)
+
+            result = pl.concat(vintage_results, how="diagonal_relaxed")
+        else:
+            # Single-vintage: compute across all rows
+            result_data: dict[str, list[float]] = {}
+            for target_col in target_cols:
+                proba_cols, class_labels = self._extract_class_proba_columns(y_pred, target_col)
+                if not proba_cols:
+                    continue
+                score_val = self._compute_ovr_metric(
+                    y_truth[target_col],
+                    y_pred.select(proba_cols),
+                    class_labels,
+                    sample_weight,
+                )
+                result_data[target_col] = [score_val]
+            result = pl.DataFrame(result_data)
+
+        # Delegate tail
+        return self._aggregate_per_vintage_scores(result, context)
+
+    def _compute_ovr_metric(
+        self,
+        truth_series: pl.Series,
+        proba_df: pl.DataFrame,
+        class_labels: list[str],
+        sample_weight: np.ndarray | None,
+    ) -> float:
+        """Compute one-vs-rest ranking metric with class averaging.
+
+        Parameters
+        ----------
+        truth_series : pl.Series
+            True class labels.
+        proba_df : pl.DataFrame
+            Probability columns.
+        class_labels : list of str
+            Class label names.
+        sample_weight : np.ndarray or None
+            Combined sample weights.
+
+        Returns
+        -------
+        float
+            Averaged metric across classes.
+
+        """
+        truth_arr = truth_series.to_numpy().astype(str)
+        proba_arr = proba_df.to_numpy()
+
+        per_class_scores: list[float] = []
+        supports: list[int] = []
+
+        for i, cls in enumerate(class_labels):
+            y_binary = (truth_arr == cls).astype(np.float64)
+            support = int(y_binary.sum())
+            # Skip classes with no positive or no negative samples
+            if support == 0 or support == len(y_binary):
+                continue
+            score_val = self._compute_ranking_metric(
+                y_binary,
+                proba_arr[:, i],
+                sample_weight,
+            )
+            per_class_scores.append(score_val)
+            supports.append(support)
+
+        if not per_class_scores:
+            return 0.0
+
+        if self.average == "weighted":
+            total_support = sum(supports)
+            return sum(s * v / total_support for s, v in zip(supports, per_class_scores, strict=True))
+        # macro
+        return sum(per_class_scores) / len(per_class_scores)
+
+    @staticmethod
+    def _resolve_combined_weights(
+        tw: np.ndarray | dict[str, np.ndarray] | None,
+        sw: np.ndarray | dict[str, np.ndarray] | None,
+        n: int,
+    ) -> np.ndarray | None:
+        """Combine resolved weight arrays into a single sample weight vector.
+
+        For simplicity, ranking scorers use a single combined weight array.
+        Dict (panel-aware) weights are not supported and are skipped
+        with a warning.
+        """
+        arrays = []
+        for w in (tw, sw):
+            if w is None:
+                continue
+            if isinstance(w, dict):
+                warnings.warn(
+                    "Panel-aware (dict) weights are not supported by ranking scorers and will be ignored. "
+                    "Use a flat callable or DataFrame weight instead.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+                continue
+            arrays.append(w)
+
+        if not arrays:
+            return None
+
+        combined = np.ones(n, dtype=np.float64)
+        for arr in arrays:
+            combined *= arr
+        return combined

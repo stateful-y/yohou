@@ -33,8 +33,8 @@ Yohou's base classes bridge scikit-learn's estimator protocol with time series
 operations. The key addition is the **observe/rewind lifecycle**: after fitting,
 a forecaster can receive new observations via `observe()`, update its internal
 state, and produce updated predictions. `rewind()` rolls back to the last
-checkpoint. This lifecycle is managed entirely by the base class. Your custom
-implementation only needs to provide `_fit` and `_predict`.
+checkpoint. This lifecycle is managed entirely by the base class. Your custom implementation only needs to override `fit` (calling
+`super().fit(...)` for validation and setup) and provide `_predict_one`.
 
 ### Forecasters
 
@@ -112,5 +112,5 @@ The [Custom Estimator Reference](/pages/api/custom-estimators/) provides the
 complete API for all component types, including code templates and test
 generators. The [How to Create a Custom Point Forecaster](/pages/how-to/custom-estimators/)
 walks through a concrete forecaster example from start to finish, and the
-[How to Create a Custom Scorer](/pages/how-to/custom-scorers/) covers
+[How to Create a Custom Scorer](/pages/how-to/creating-a-scorer/) covers
 implementing custom evaluation metrics.

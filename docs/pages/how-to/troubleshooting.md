@@ -113,11 +113,11 @@ weights = pl.DataFrame({
 
 **Error**: `"target_as_feature=None requires X to be provided"`
 
-If the forecaster uses exogenous features (`ignores_exogenous=False`), you must pass `X` at both fit and predict time:
+If the forecaster uses exogenous features (`ignores_exogenous=False`), you must pass `X_actual` at fit time. At predict time, use `X_future` for known-ahead features or `X_forecast` for external forecast vintages:
 
 ```python
-forecaster.fit(y_train, X=X_train, forecasting_horizon=12)
-y_pred = forecaster.predict(X=X_test, forecasting_horizon=12)
+forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=12)
+y_pred = forecaster.predict(X_future=X_test, forecasting_horizon=12)
 ```
 
 ## Build Errors After Moving Documentation

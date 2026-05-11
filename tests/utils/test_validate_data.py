@@ -201,15 +201,15 @@ class TestValidateForecasterData:
         y = pl.DataFrame({"time": time, "target": range(10)})
 
         forecaster = SeasonalNaive(seasonality=2)
-        forecaster.fit(y, X=None, forecasting_horizon=2)
+        forecaster.fit(y, X_actual=None, forecasting_horizon=2)
 
-        # Observe with X=None should work
-        forecaster.observe(y[-2:], X=None)
+        # Observe with X_actual=None should work
+        forecaster.observe(y[-2:], X_actual=None)
 
         assert forecaster._y_observed.shape[0] == 2
 
     def test_validate_pre_fit_raises_when_no_features(self):
-        """Test that fit raises ValueError when target_as_feature=None, X=None, and ignores_exogenous=False."""
+        """Test that fit raises ValueError when target_as_feature=None, X=None, and requires_exogenous=True."""
         from sklearn.linear_model import QuantileRegressor
         from sklearn.multioutput import MultiOutputRegressor
 
@@ -226,8 +226,8 @@ class TestValidateForecasterData:
             target_as_feature=None,
         )
 
-        with pytest.raises(ValueError, match="target_as_feature=None requires X to be provided"):
-            forecaster.fit(y, X=None, forecasting_horizon=3)
+        with pytest.raises(ValueError, match="target_as_feature=None requires X_actual to be provided"):
+            forecaster.fit(y, X_actual=None, forecasting_horizon=3)
 
     def test_validate_data_preserves_column_order(self):
         """Test that validate_data ensures time column is handled correctly."""
@@ -1083,16 +1083,16 @@ class TestValidateSplitterDataBothNonNone:
     """Tests for validate_splitter_data with both y and X provided."""
 
     def test_both_y_and_x_validated(self):
-        """Both y and X are validated and panel groups checked."""
+        """Both y and X_actual are validated and panel groups checked."""
         from yohou.utils.validate_data import validate_splitter_data
 
         times = [datetime(2024, 1, i) for i in range(1, 11)]
         y = pl.DataFrame({"time": times, "target": range(10)})
-        X = pl.DataFrame({"time": times, "feature": range(10, 20)})
+        X_actual = pl.DataFrame({"time": times, "feature": range(10, 20)})
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=2)
-        result_y, result_X = validate_splitter_data(splitter, y, X)
+        result_y, result_X_actual = validate_splitter_data(splitter, y, X_actual)
         assert result_y is not None
-        assert result_X is not None
+        assert result_X_actual is not None
 
 
 class TestValidateTransformerInversePaths:
@@ -1430,3 +1430,85 @@ class TestTruncatePartialVintage:
         assert len(remaining) == 3
         assert datetime(2020, 1, 19) not in remaining.to_list()
         assert len(y_true_out) == 9  # 3 vintages × 3 time points
+
+
+class TestValidateXFutureStructure:
+    """Tests for _validate_X_future_structure."""
+
+    def test_missing_time_column_raises(self):
+        """X_future without 'time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_future_structure
+
+        df = pl.DataFrame({"value": [1.0, 2.0]})
+        with pytest.raises(ValueError, match="time"):
+            _validate_X_future_structure(df)
+
+    def test_wrong_time_dtype_raises(self):
+        """X_future with non-date 'time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_future_structure
+
+        df = pl.DataFrame({"time": [1, 2], "value": [1.0, 2.0]})
+        with pytest.raises(ValueError, match="dtype"):
+            _validate_X_future_structure(df)
+
+    def test_valid_passes(self):
+        """X_future with valid structure passes."""
+        from yohou.utils.validate_data import _validate_X_future_structure
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
+        _validate_X_future_structure(df)
+
+
+class TestValidateXForecastStructure:
+    """Tests for _validate_X_forecast_structure."""
+
+    def test_missing_vintage_time_raises(self):
+        """X_forecast without 'vintage_time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_forecast_structure
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
+        with pytest.raises(ValueError, match="vintage_time"):
+            _validate_X_forecast_structure(df)
+
+    def test_missing_time_raises(self):
+        """X_forecast without 'time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_forecast_structure
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"vintage_time": time, "value": [1.0] * len(time)})
+        with pytest.raises(ValueError, match="time"):
+            _validate_X_forecast_structure(df)
+
+    def test_wrong_vintage_time_dtype_raises(self):
+        """X_forecast with non-date 'vintage_time' column raises ValueError."""
+        from yohou.utils.validate_data import _validate_X_forecast_structure
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"vintage_time": [1, 2, 3, 4, 5], "time": time, "value": [1.0] * len(time)})
+        with pytest.raises(ValueError, match="dtype"):
+            _validate_X_forecast_structure(df)
+
+
+class TestValidateStepSourceSchema:
+    """Tests for _validate_step_source_schema."""
+
+    def test_schema_mismatch_raises(self):
+        """Mismatched schema raises ValueError."""
+        from yohou.utils.validate_data import _validate_step_source_schema
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
+        expected = {"wrong_col": pl.Float64}
+        with pytest.raises(ValueError, match="schema mismatch"):
+            _validate_step_source_schema(df, expected, "X_future", exclude_cols={"time"})
+
+    def test_matching_schema_passes(self):
+        """Matching schema passes validation."""
+        from yohou.utils.validate_data import _validate_step_source_schema
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), interval="1d", eager=True)
+        df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
+        expected = {"value": pl.Float64}
+        _validate_step_source_schema(df, expected, "X_future", exclude_cols={"time"})

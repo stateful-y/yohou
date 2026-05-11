@@ -401,3 +401,7 @@ def _(elec_heatmap, plot_seasonal_heatmap):
         reverse_y=True,
         title="Seasonal Heatmap - Max, Hot Colorscale, Reversed Y",
     )
+
+
+if __name__ == "__main__":
+    app.run()

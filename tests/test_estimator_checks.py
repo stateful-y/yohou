@@ -15,9 +15,9 @@ def check_time_column_required(estimator, time_series_factory):
     Yohou transformers should raise an error when given data
     without a 'time' column.
     """
-    X = time_series_factory(length=20)
+    X_actual = time_series_factory(length=20)
     # Remove time column
-    X_no_time = X.select(pl.all().exclude("time"))
+    X_no_time = X_actual.select(pl.all().exclude("time"))
 
     with pytest.raises((ValueError, KeyError, Exception)):
         clone(estimator).fit(X_no_time)
@@ -25,9 +25,9 @@ def check_time_column_required(estimator, time_series_factory):
 
 def check_observation_horizon_property(estimator, time_series_factory):
     """Check observation_horizon property exists after fit."""
-    X = time_series_factory(length=20)
+    X_actual = time_series_factory(length=20)
     estimator_clone = clone(estimator)
-    estimator_clone.fit(X)
+    estimator_clone.fit(X_actual)
 
     assert hasattr(estimator_clone, "observation_horizon"), "Fitted transformer must have observation_horizon property"
 
@@ -38,10 +38,10 @@ def check_observation_horizon_property(estimator, time_series_factory):
 
 def check_observe_rewind_contract(estimator, time_series_train_test_factory):
     """Check observe() and rewind() methods exist and work."""
-    X, X_new = time_series_train_test_factory(train_length=20, test_length=10)
+    X_actual, X_new = time_series_train_test_factory(train_length=20, test_length=10)
 
     estimator_clone = clone(estimator)
-    estimator_clone.fit(X)
+    estimator_clone.fit(X_actual)
 
     # observe should work
     assert hasattr(estimator_clone, "observe"), "Transformer must have observe() method"
@@ -54,14 +54,14 @@ def check_observe_rewind_contract(estimator, time_series_train_test_factory):
 
 def check_polars_dataframe_io(estimator, time_series_factory):
     """Check transformer accepts and returns polars DataFrames."""
-    X = time_series_factory(length=20)
+    X_actual = time_series_factory(length=20)
     estimator_clone = clone(estimator)
 
     # Input should be polars DataFrame
-    assert isinstance(X, pl.DataFrame), "Test data should be polars DataFrame"
+    assert isinstance(X_actual, pl.DataFrame), "Test data should be polars DataFrame"
 
-    estimator_clone.fit(X)
-    X_trans = estimator_clone.transform(X)
+    estimator_clone.fit(X_actual)
+    X_trans = estimator_clone.transform(X_actual)
 
     # Output should also be polars DataFrame
     assert isinstance(X_trans, pl.DataFrame), f"transform() must return polars DataFrame, got {type(X_trans)}"
@@ -114,7 +114,7 @@ class TestTransformerSklearnCompat:
 
     def test_all_transformers_fit_transform(self, transformer_registry, time_series_factory):
         """Test all transformers have working fit_transform."""
-        X = time_series_factory(length=50)
+        X_actual = time_series_factory(length=50)
 
         for name, config in transformer_registry.items():
             transformer = clone(config["transformer"])
@@ -125,12 +125,12 @@ class TestTransformerSklearnCompat:
             if sklearn_tags.input_tags and sklearn_tags.input_tags.min_value is not None:
                 # Make data satisfy min_value constraint by adding offset
                 offset = max(0.0, sklearn_tags.input_tags.min_value + 1.0)
-                X_test = X.select([pl.col("time"), (pl.all().exclude("time") + offset)])
+                X_actual_test = X_actual.select([pl.col("time"), (pl.all().exclude("time") + offset)])
             else:
-                X_test = X
+                X_actual_test = X_actual
 
             # fit_transform should work
-            X_trans = transformer.fit_transform(X_test)
+            X_trans = transformer.fit_transform(X_actual_test)
 
             # Output should be DataFrame with time column
             assert isinstance(X_trans, pl.DataFrame), f"{name}: fit_transform should return DataFrame"
@@ -138,7 +138,7 @@ class TestTransformerSklearnCompat:
 
     def test_all_transformers_get_feature_names_out(self, transformer_registry, time_series_factory):
         """Test all transformers implement get_feature_names_out."""
-        X = time_series_factory(length=50)
+        X_actual = time_series_factory(length=50)
 
         for name, config in transformer_registry.items():
             transformer = clone(config["transformer"])
@@ -149,11 +149,11 @@ class TestTransformerSklearnCompat:
             if sklearn_tags.input_tags and sklearn_tags.input_tags.min_value is not None:
                 # Make data satisfy min_value constraint by adding offset
                 offset = max(0.0, sklearn_tags.input_tags.min_value + 1.0)
-                X_test = X.select([pl.col("time"), (pl.all().exclude("time") + offset)])
+                X_actual_test = X_actual.select([pl.col("time"), (pl.all().exclude("time") + offset)])
             else:
-                X_test = X
+                X_actual_test = X_actual
 
-            transformer.fit(X_test)
+            transformer.fit(X_actual_test)
 
             # get_feature_names_out should work
             feature_names = transformer.get_feature_names_out()

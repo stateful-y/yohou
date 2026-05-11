@@ -127,12 +127,12 @@ class ForecasterTags:
         Whether the forecaster supports time-based weighting of observations.
     supports_vintage_weight : bool, default=False
         Whether the forecaster supports vintage-based weighting of observations.
-    ignores_exogenous : bool, default=False
-        Whether the forecaster ignores exogenous features ``X``.
-        When ``True``, the forecaster does not use exogenous features
-        and ``X=None`` is always valid at fit time.  When ``False``
-        (default), ``X=None`` is only valid when ``target_as_feature``
-        is not ``None`` (so the target itself provides features).
+    requires_exogenous : bool, default=True
+        Whether the forecaster requires exogenous features ``X_actual``.
+        When ``True`` (default), ``X_actual`` must be provided at fit
+        time unless ``target_as_feature`` is set (which derives features
+        from the target itself). When ``False``, the forecaster works
+        without ``X_actual``.
     tracks_observations : bool, default=True
         Whether the forecaster tracks observations in the standard way
         (update extends _y_observed, reset replaces it). Set to False for
@@ -149,7 +149,7 @@ class ForecasterTags:
     supports_panel_data: bool = True
     supports_time_weight: bool = False
     supports_vintage_weight: bool = False
-    ignores_exogenous: bool = False
+    requires_exogenous: bool = True
     tracks_observations: bool = True
 
     _VALID_FORECASTER_TYPE_ELEMENTS: frozenset[str] = frozenset({"point", "interval", "class_proba"})
@@ -186,12 +186,24 @@ class ScorerTags:
         False for metrics where higher is better (e.g., R²).
     requires_calibration : bool, default=False
         Whether the scorer requires calibration data from fit().
+    symmetric : bool, default=False
+        Whether the scorer produces symmetric (absolute) conformity
+        scores.  Symmetric scorers yield equal width intervals on both
+        sides of the point prediction.  Asymmetric scorers (the default)
+        allow different widths above and below.
+    multiplicative : bool, default=False
+        Whether the scorer normalises residuals by the prediction
+        magnitude (e.g. gamma residuals).  When ``True``, weighted
+        interval reconstruction scales quantiles by
+        ``(prediction + epsilon)``.
 
     """
 
     prediction_type: Literal["point", "interval", "class_proba"] | None = None
     lower_is_better: bool = True
     requires_calibration: bool = False
+    symmetric: bool = False
+    multiplicative: bool = False
 
 
 @dataclass

@@ -32,3 +32,12 @@ Each function downloads data from [Monash/Zenodo](https://forecastingdata.org) (
 | [`clear_data_home`](generated/yohou.datasets._fetchers.clear_data_home.md) | Delete all the content of the data home cache. |
 | [`get_data_home`](generated/yohou.datasets._fetchers.get_data_home.md) | Return the path of the yohou data directory. |
 | [`parse_tsf`](generated/yohou.datasets._tsf_parser.parse_tsf.md) | Parse a Monash `.tsf` file into a wide polars DataFrame. |
+
+### Synthetic generators
+
+Parameterized generators that create synthetic time series with all three exogenous feature types (`X_actual`, `X_future`, `X_forecast`). No download required.
+
+| Name | Description |
+| --- | --- |
+| [`make_exogenous_regression`](generated/yohou.datasets._generators.make_exogenous_regression.md) | Generate synthetic regression data with exogenous features. |
+| [`make_exogenous_classification`](generated/yohou.datasets._generators.make_exogenous_classification.md) | Generate synthetic classification data with exogenous features. |

@@ -414,3 +414,7 @@ def _(plot_resampling_comparison, tourism_monthly, tourism_resampled):
         resampled_line_dash="dash",
         title="Resampling Comparison - Custom Labels and Dash",
     )
+
+
+if __name__ == "__main__":
+    app.run()

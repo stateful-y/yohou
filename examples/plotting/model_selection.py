@@ -84,7 +84,7 @@ def _(mo):
     ## 1. Cross-Validation Splits
 
     [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/) renders each fold as a horizontal bar, with colour-coded
-    train, test, and optional gap segments. Vary the splitter type, number
+    train and test segments. Vary the splitter type, number
     of splits, and custom colours.
     """)
 
@@ -129,11 +129,10 @@ def _(SlidingWindowSplitter, plot_splits, tourism):
 def _(ExpandingWindowSplitter, plot_splits, tourism):
     plot_splits(
         tourism,
-        ExpandingWindowSplitter(n_splits=3, test_size=12, gap=6),
+        ExpandingWindowSplitter(n_splits=3, test_size=12),
         train_color="#059669",
         test_color="#dc2626",
-        gap_color="#fbbf24",
-        title="Expanding Window - Gap=6, Custom Colours",
+        title="Expanding Window - Custom Colours",
     )
 
 
@@ -141,8 +140,8 @@ def _(ExpandingWindowSplitter, plot_splits, tourism):
 def _(SlidingWindowSplitter, plot_splits, tourism):
     plot_splits(
         tourism,
-        SlidingWindowSplitter(n_splits=3, test_size=12, gap=3),
-        title="Sliding Window - Gap=3",
+        SlidingWindowSplitter(n_splits=3, test_size=12),
+        title="Sliding Window",
     )
 
 

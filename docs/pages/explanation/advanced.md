@@ -66,14 +66,15 @@ where each stage works on what previous stages left behind.
 
 [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
 dispatches by column subset. Each sub-forecaster observes only its assigned
-columns of `y`, but all receive the full `X` unmodified. Column splitting
+columns of `y`, but all receive the full `X_actual` unmodified. Column splitting
 applies exclusively to the target.
 
 [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
-chains in two stages. The feature forecaster observes `X` as its target (it has
-no exogenous data of its own), then the target forecaster observes `y` with `X`.
-This maintains the two-stage relationship: the feature forecaster learns to
-predict exogenous features, and the target forecaster uses those features.
+chains in two stages. The feature forecaster observes `X_actual` as its target
+(it has no exogenous data of its own), then the target forecaster observes `y`
+with `X_future` containing the feature forecasts. This maintains the two-stage
+relationship: the feature forecaster learns to predict exogenous features, and
+the target forecaster uses those features as known-ahead inputs.
 
 ## The Reduction Architecture
 

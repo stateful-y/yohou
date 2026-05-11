@@ -48,17 +48,15 @@ def _(mo):
 
     Familiarity with [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/).
     """)
-    return
 
 
 @app.cell(hide_code=True)
 def _():
     import time
+    from copy import deepcopy
 
     from catboost import CatBoostRegressor
     from sklearn.model_selection import train_test_split
-
-    from copy import deepcopy
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
@@ -95,7 +93,6 @@ def _(mo):
     We load the Monthly Tourism dataset (series T1) and split it into training
     and test sets for interval forecasting.
     """)
-    return
 
 
 @app.cell
@@ -132,7 +129,6 @@ def _(mo):
     > `CatBoostRegressor(loss_function='Quantile:alpha=...')` models using
     > `reduction_strategy="direct"` instead.
     """)
-    return
 
 
 @app.cell
@@ -182,7 +178,6 @@ def _(mo):
     history and test data. The `coverage_rates` parameter controls which
     interval bands are shown.
     """)
-    return
 
 
 @app.cell
@@ -194,7 +189,6 @@ def _(coverage_rates, plot_forecast, y_pred_mq, y_test, y_train):
         coverage_rates=coverage_rates,
         title="CatBoost MultiQuantile Intervals",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -204,7 +198,6 @@ def _(mo):
 
     The default estimator is `MultiOutputRegressor(QuantileRegressor())`, let's compare it with our `MultiOutputRegressor(CatBoostRegressor())`.
     """)
-    return
 
 
 @app.cell
@@ -254,7 +247,6 @@ def _(mo):
     contain the true value at the target rate?), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) (penalises
     width and miscoverage), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) (average band width).
     """)
-    return
 
 
 @app.cell
@@ -279,7 +271,6 @@ def _(
 
     table = "| Approach | Metric | Score |\n|---|---|---|\n" + "\n".join(rows)
     mo.md(table)
-    return
 
 
 @app.cell(hide_code=True)
@@ -292,7 +283,6 @@ def _(mo):
     Each vintage represents a different forecast origin, so you can analyse
     how interval quality evolves as the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -326,7 +316,6 @@ def _(vintage_scorer, plot_score_per_step, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
-    return
 
 
 @app.cell
@@ -339,4 +328,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
-    return
+
+
+if __name__ == "__main__":
+    app.run()

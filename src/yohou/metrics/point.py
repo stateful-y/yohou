@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numbers
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -11,7 +12,7 @@ import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
 if TYPE_CHECKING:
-    pass
+    from yohou.metrics._context import ScoringContext
 
 from yohou.utils import validate_scorer_data
 from yohou.utils._compat import Interval, _fit_context
@@ -19,11 +20,14 @@ from yohou.utils._compat import Interval, _fit_context
 from .base import BasePointScorer
 
 __all__ = [
+    "MaxAbsoluteError",
     "MeanAbsoluteError",
     "MeanAbsolutePercentageError",
     "MeanAbsoluteScaledError",
+    "MeanDirectionalAccuracy",
     "MeanSquaredError",
     "MedianAbsoluteError",
+    "R2Score",
     "RootMeanSquaredError",
     "RootMeanSquaredScaledError",
     "SymmetricMeanAbsolutePercentageError",
@@ -320,12 +324,9 @@ class RootMeanSquaredError(BasePointScorer):
         """Compute per-row squared errors for RMSE."""
         return (y_truth - y_pred).select(pl.all().pow(2))
 
-    def _post_aggregate(self, result: float | pl.DataFrame) -> float | pl.DataFrame:
+    def _transform_scores(self, df: pl.DataFrame) -> pl.DataFrame:
         """Apply square root to aggregated squared errors."""
-        if isinstance(result, pl.DataFrame):
-            numeric_cols = [c for c in result.columns if c != "time"]
-            return result.with_columns([pl.col(c).sqrt() for c in numeric_cols])
-        return float(np.sqrt(result))
+        return df.select(pl.all().sqrt())
 
 
 class RootMeanSquaredScaledError(BasePointScorer):
@@ -519,12 +520,9 @@ class RootMeanSquaredScaledError(BasePointScorer):
             scaled_squared_errors_data[col] = (errors / np.sqrt(scale)) ** 2
         return pl.DataFrame(scaled_squared_errors_data)
 
-    def _post_aggregate(self, result: float | pl.DataFrame) -> float | pl.DataFrame:
+    def _transform_scores(self, df: pl.DataFrame) -> pl.DataFrame:
         """Apply square root to aggregated scaled squared errors."""
-        if isinstance(result, pl.DataFrame):
-            numeric_cols = [c for c in result.columns if c != "time"]
-            return result.with_columns([pl.col(c).sqrt() for c in numeric_cols])
-        return float(np.sqrt(result))
+        return df.select(pl.all().sqrt())
 
 
 class MeanAbsolutePercentageError(BasePointScorer):
@@ -1033,7 +1031,14 @@ class MedianAbsoluteError(BasePointScorer):
         """Compute per-row absolute errors for median aggregation."""
         return (y_truth - y_pred).select(pl.all().abs())
 
-    def score(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params) -> float | pl.DataFrame:  # type: ignore
+    def score(  # type: ignore
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        /,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
+        **params,
+    ) -> float | pl.DataFrame:
         """Compute median absolute error.
 
         Parameters
@@ -1042,17 +1047,23 @@ class MedianAbsoluteError(BasePointScorer):
             True values with "time" column.
         y_pred : pl.DataFrame
             Predicted values with "time" column.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights for cross-vintage aggregation.
         **params : dict
             Metadata to route to nested estimators.
 
         Returns
         -------
         float or pl.DataFrame
-            If aggregation_method includes stepwise+vintagewise, returns DataFrame with per-component MedianAE values.
-            If aggregation_method includes "componentwise", returns DataFrame with "time" and "median_ae" columns.
-            If aggregation_method="all", returns scalar float.
+            Aggregated median absolute error.
+
+        Raises
+        ------
+        TypeError
+            If time_weight or step_weight are passed (median is not weight-compatible).
 
         """
+        self._reject_weights(**params)
         check_is_fitted(self, ["_is_fitted"])
 
         y_truth, y_pred, context = validate_scorer_data(
@@ -1061,38 +1072,475 @@ class MedianAbsoluteError(BasePointScorer):
             y_pred,
         )
 
-        abs_errors = self._compute_raw_errors(y_truth, y_pred)
+        # Resolve vintage_weight into context
+        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
 
-        # Apply median aggregation
-        agg_method = self.aggregation_method
-        if isinstance(agg_method, str):
-            agg_method = [agg_method]
+        dims = self._normalize_agg_methods(self.aggregation_method)
+        collapse_steps = "stepwise" in dims
+        collapse_vintages = "vintagewise" in dims
 
-        collapse_steps = "stepwise" in agg_method
-        collapse_vintages = "vintagewise" in agg_method
-        collapse_all_rows = collapse_steps and collapse_vintages
-
-        if "all" in agg_method or (
-            collapse_all_rows and "componentwise" in agg_method and ("groupwise" in agg_method or self.groups is None)
-        ):
-            # Fully aggregated: global median
-            result = float(abs_errors.select(pl.all().median()).to_numpy().flatten().mean())
-        elif collapse_all_rows:
-            # Per-component: median across time
-            result = abs_errors.select(pl.all().median())
-        elif "componentwise" in agg_method:
-            # Per-timestep: median across components
-            result = abs_errors.select(pl.concat_list(pl.all()).alias("errors")).select(
-                pl.col("errors").list.eval(pl.element().median()).list.first().alias("score")
+        if not collapse_steps and not collapse_vintages:
+            # Componentwise/groupwise only: keep per-row scores, let
+            # _aggregate_per_vintage_scores handle component/group collapse.
+            abs_errors = self._compute_raw_errors(y_truth, y_pred)
+            # Per-row median across columns (components)
+            result = abs_errors.select(pl.concat_list(pl.all()).alias("_err")).select(
+                pl.col("_err").list.eval(pl.element().median()).list.first().alias("score")
             )
             time_values = context.time_values if context is not None else None
             if time_values is not None:
                 result = result.with_columns(pl.Series("time", time_values).cast(pl.Datetime))
                 result = result.select(["time"] + [c for c in result.columns if c != "time"])
-        else:
-            result = abs_errors.select(pl.all().median())
-
-        if isinstance(result, pl.DataFrame):
             result = self._rename_metric_columns(result)
+            return result
 
-        return result
+        def _compute_median(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame:
+            """Compute per-column median absolute error."""
+            errors = (yt_slice - yp_slice).select(pl.all().abs())
+            return errors.select(pl.all().median())
+
+        result = self._map_per_vintage(y_truth, y_pred, context, _compute_median)
+        return self._aggregate_per_vintage_scores(result, context)
+
+
+class MaxAbsoluteError(BasePointScorer):
+    r"""Maximum Absolute Error metric for point forecasts.
+
+    Computes the maximum of absolute differences between predictions and actual
+    values. This metric captures worst case prediction error, providing a bound
+    on how far off the forecast can be.
+
+    The MaxAE is defined as:
+
+    $$\text{MaxAE} = \max_{i=1}^{n}|y_i - \hat{y}_i|$$
+
+    where $y_i$ is the actual value, $\hat{y}_i$ is the predicted value, and
+    $n$ is the number of observations.
+
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "stepwise": Aggregate across forecasting steps.
+        - "vintagewise": Aggregate across vintages (observed times).
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["stepwise", "vintagewise", "componentwise", "groupwise"].
+        Example outputs:
+        - ["stepwise", "vintagewise"]: Per-component (and per-group) DataFrame.
+        - "componentwise" or ["componentwise"]: Per-timestep (and per-group) DataFrame.
+        - "groupwise" or ["groupwise"]: Per-component per-timestep DataFrame (panel aggregated).
+        - ["stepwise", "vintagewise", "componentwise"]: Scalar (global) or per-group DataFrame (panel).
+        - "all": Scalar float (hierarchically aggregated for panel data).
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
+
+    Attributes
+    ----------
+    lower_is_better : bool
+        Always True for MaxAE.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MaxAbsoluteError
+    >>> y_true = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [10.0, 20.0, 30.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [12.0, 19.0, 25.0],
+    ... })
+    >>> max_ae = MaxAbsoluteError()
+    >>> _ = max_ae.fit(y_true)
+    >>> max_ae.score(y_true, y_pred)
+    5.0
+
+    Notes
+    -----
+    - MaxAE captures the worst case prediction error in a forecast
+    - Highly sensitive to outliers by design
+    - Interpretable in the same units as the target variable
+    - Row collapse uses ``max`` (not ``mean``), while component and group collapse
+      use weighted ``mean`` (consistent with the pipeline convention)
+
+    See Also
+    --------
+    `MeanAbsoluteError` : Mean Absolute Error, average case measure
+    `MedianAbsoluteError` : Median Absolute Error, robust central tendency measure
+
+    """
+
+    _metric_name = "max_ae"
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method,
+            groups=groups,
+            components=components,
+        )
+
+    def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Compute per-row absolute errors."""
+        return (y_truth - y_pred).select(pl.all().abs())
+
+    def _collapse_rows(
+        self,
+        df: pl.DataFrame,
+        context: ScoringContext | None,
+        dims: set[str],
+    ) -> pl.DataFrame:
+        """Collapse row dimensions using max instead of mean."""
+        return self._collapse_rows_with(df, context, dims, agg_fn="max")
+
+
+class R2Score(BasePointScorer):
+    r"""R-squared (Coefficient of Determination) metric for point forecasts.
+
+    Computes the proportion of variance in the true values that is explained
+    by the predictions. A score of 1.0 indicates perfect prediction, 0.0
+    indicates performance equivalent to predicting the mean, and negative
+    values indicate worse performance than predicting the mean.
+
+    The R² is defined as:
+
+    $$R^2 = 1 - \frac{\sum_{i=1}^{n}(y_i - \hat{y}_i)^2}{\sum_{i=1}^{n}(y_i - \bar{y})^2}$$
+
+    where $y_i$ is the actual value, $\hat{y}_i$ is the predicted value,
+    $\bar{y}$ is the mean of actual values, and $n$ is the number of observations.
+
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "stepwise": Aggregate across forecasting steps.
+        - "vintagewise": Aggregate across vintages (observed times).
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["stepwise", "vintagewise", "componentwise", "groupwise"].
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
+
+    Attributes
+    ----------
+    lower_is_better : bool
+        Always False for R². Higher values indicate better fit.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import R2Score
+    >>> y_true = pl.DataFrame({
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [10.0, 20.0, 30.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
+    ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
+    ...     "value": [12.0, 18.0, 31.0],
+    ... })
+    >>> r2 = R2Score()
+    >>> _ = r2.fit(y_true)
+    >>> r2.score(y_true, y_pred)  # doctest: +ELLIPSIS
+    0.955
+
+    Notes
+    -----
+    - R² = 1.0 means perfect prediction
+    - R² = 0.0 means predictions are as good as predicting the mean
+    - R² < 0 means predictions are worse than predicting the mean
+    - When SS_tot = 0 (constant true values), returns 0.0 by convention
+    - Overrides ``score()`` because computing the denominator (SS_tot) requires
+      access to the full ``y_truth`` column, not just per-row errors
+
+    See Also
+    --------
+    `MeanSquaredError` : Mean Squared Error, the numerator component of R²
+    `MeanAbsoluteError` : Mean Absolute Error, alternative regression metric
+
+    """
+
+    _metric_name = "r2"
+
+    lower_is_better = False
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method,
+            groups=groups,
+            components=components,
+        )
+
+    def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Not used directly. R² overrides score()."""
+        return (y_truth - y_pred).select(pl.all().pow(2))
+
+    def score(  # type: ignore
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        /,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
+        **params,
+    ) -> float | pl.DataFrame:
+        """Compute R-squared score.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True values with "time" column.
+        y_pred : pl.DataFrame
+            Predicted values with "time" column.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights for cross-vintage aggregation.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        float or pl.DataFrame
+            R² score. 1.0 for perfect predictions, 0.0 for mean-level predictions.
+
+        Raises
+        ------
+        TypeError
+            If time_weight or step_weight are passed.
+
+        """
+        self._reject_weights(**params)
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, context = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
+
+        # Resolve vintage_weight into context
+        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
+
+        def _compute_r2(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame:
+            """Compute per-column R² score."""
+            r2_values = {}
+            for col in yt_slice.columns:
+                truth = yt_slice[col].to_numpy().astype(np.float64)
+                pred = yp_slice[col].to_numpy().astype(np.float64)
+                ss_res = np.sum((truth - pred) ** 2)
+                ss_tot = np.sum((truth - np.mean(truth)) ** 2)
+                r2_values[col] = 1.0 - ss_res / ss_tot if ss_tot != 0 else 0.0
+            return pl.DataFrame(r2_values).select(yt_slice.columns)
+
+        result = self._map_per_vintage(y_truth, y_pred, context, _compute_r2)
+        return self._aggregate_per_vintage_scores(result, context)
+
+    def __sklearn_tags__(self):
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with lower_is_better=False.
+
+        """
+        tags = super().__sklearn_tags__()
+        if tags.scorer_tags is not None:
+            tags.scorer_tags.lower_is_better = False
+        return tags
+
+
+class MeanDirectionalAccuracy(BasePointScorer):
+    r"""Mean Directional Accuracy metric for point forecasts.
+
+    Computes the proportion of time steps where the predicted direction of
+    change matches the actual direction of change. This metric evaluates
+    whether the forecast correctly predicts upward or downward movements.
+
+    The MDA is defined as:
+
+    $$\text{MDA} = \frac{1}{n-1}\sum_{i=2}^{n}\mathbf{1}[\text{sign}(\Delta y_i) = \text{sign}(\Delta \hat{y}_i)]$$
+
+    where $\Delta y_i = y_i - y_{i-1}$ and $\Delta \hat{y}_i = \hat{y}_i - \hat{y}_{i-1}$.
+
+    Parameters
+    ----------
+    aggregation_method : list of str or str, default="all"
+        Dimensions to aggregate over. Options:
+        - "stepwise": Aggregate across forecasting steps.
+        - "vintagewise": Aggregate across vintages (observed times).
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["stepwise", "vintagewise", "componentwise", "groupwise"].
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict).
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict).
+
+    Attributes
+    ----------
+    lower_is_better : bool
+        Always False for MDA. Higher values indicate better directional prediction.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.metrics import MeanDirectionalAccuracy
+    >>> y_true = pl.DataFrame({
+    ...     "time": [
+    ...         datetime(2020, 1, 1),
+    ...         datetime(2020, 1, 2),
+    ...         datetime(2020, 1, 3),
+    ...         datetime(2020, 1, 4),
+    ...         datetime(2020, 1, 5),
+    ...     ],
+    ...     "value": [10.0, 15.0, 12.0, 18.0, 20.0],
+    ... })
+    >>> y_pred = pl.DataFrame({
+    ...     "vintage_time": [datetime(2019, 12, 31)] * 5,
+    ...     "time": [
+    ...         datetime(2020, 1, 1),
+    ...         datetime(2020, 1, 2),
+    ...         datetime(2020, 1, 3),
+    ...         datetime(2020, 1, 4),
+    ...         datetime(2020, 1, 5),
+    ...     ],
+    ...     "value": [10.0, 14.0, 15.0, 17.0, 19.0],
+    ... })
+    >>> mda = MeanDirectionalAccuracy()
+    >>> _ = mda.fit(y_true)
+    >>> mda.score(y_true, y_pred)
+    0.75
+
+    Notes
+    -----
+    - MDA = 1.0 means all directional changes were predicted correctly
+    - MDA = 0.5 is equivalent to random guessing for direction
+    - MDA = 0.0 means all directional predictions were wrong
+    - Requires at least 2 time steps (N-1 comparisons from ``.diff()``)
+    - Returns 0.0 when fewer than 2 rows are available
+    - Overrides ``score()`` because computing direction requires ``.diff()``
+      on the full columns, not per-row errors
+
+    See Also
+    --------
+    `MeanAbsoluteError` : Error magnitude metric (not directional)
+    `R2Score` : Variance explained metric
+
+    """
+
+    _metric_name = "mda"
+
+    lower_is_better = False
+
+    def __init__(
+        self,
+        aggregation_method: list[str] | str = "all",
+        groups: list[str] | dict[str, float] | None = None,
+        components: list[str] | dict[str, float] | None = None,
+    ) -> None:
+        super().__init__(
+            aggregation_method=aggregation_method,
+            groups=groups,
+            components=components,
+        )
+
+    def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
+        """Not used directly. MDA overrides score()."""
+        return (y_truth - y_pred).select(pl.all().abs())
+
+    def score(  # type: ignore
+        self,
+        y_truth: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        /,
+        vintage_weight: Callable | pl.DataFrame | dict | None = None,
+        **params,
+    ) -> float | pl.DataFrame:
+        """Compute Mean Directional Accuracy.
+
+        Parameters
+        ----------
+        y_truth : pl.DataFrame
+            True values with "time" column.
+        y_pred : pl.DataFrame
+            Predicted values with "time" column.
+        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
+            Per-vintage weights for cross-vintage aggregation.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        float or pl.DataFrame
+            MDA score between 0 and 1. 1.0 for perfect directional prediction.
+
+        Raises
+        ------
+        TypeError
+            If time_weight or step_weight are passed.
+
+        """
+        self._reject_weights(**params)
+        check_is_fitted(self, ["_is_fitted"])
+
+        y_truth, y_pred, context = validate_scorer_data(
+            self,
+            y_truth,
+            y_pred,
+        )
+
+        if len(y_truth) < 2:
+            return 0.0
+
+        # Resolve vintage_weight into context
+        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
+
+        def _compute_mda(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame | None:
+            """Compute per-column mean directional accuracy."""
+            if len(yt_slice) < 2:
+                return None
+            mda_values = {}
+            for col in yt_slice.columns:
+                truth_diff = np.diff(yt_slice[col].to_numpy().astype(np.float64))
+                pred_diff = np.diff(yp_slice[col].to_numpy().astype(np.float64))
+                matches = (np.sign(truth_diff) == np.sign(pred_diff)).astype(np.float64)
+                mda_values[col] = float(np.mean(matches))
+            return pl.DataFrame(mda_values).select(yt_slice.columns)
+
+        result = self._map_per_vintage(y_truth, y_pred, context, _compute_mda)
+        return self._aggregate_per_vintage_scores(result, context)
+
+    def __sklearn_tags__(self):
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with lower_is_better=False.
+
+        """
+        tags = super().__sklearn_tags__()
+        if tags.scorer_tags is not None:
+            tags.scorer_tags.lower_is_better = False
+        return tags

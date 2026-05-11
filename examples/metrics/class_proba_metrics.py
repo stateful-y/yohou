@@ -47,7 +47,6 @@ def _(mo):
 
     Basic understanding of classification metrics and probability calibration.
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -98,13 +97,12 @@ def _(mo):
     Random Forest. Both produce probability forecasts via rolling
     `observe_predict_class_proba()`.
     """)
-    return
 
 
 @app.cell
 def _(fetch_air_quality_classification, train_test_split):
     data = fetch_air_quality_classification()
-    y, X = data.y, data.X
+    y, X = data.y, data.X_actual
 
     y_train, y_test, X_train, X_test = train_test_split(
         y,
@@ -126,13 +124,11 @@ def _(mo):
     The features are 5 pollutant time series measured hourly. Visualizing
     them helps understand the temporal patterns the models must learn.
     """)
-    return
 
 
 @app.cell
 def _(X, plot_time_series):
     plot_time_series(X, title="Air Quality - Pollutant Features")
-    return
 
 
 @app.cell
@@ -152,7 +148,6 @@ def _(mo):
     Visualizing the target as a step chart reveals temporal patterns:
     transitions between air quality classes and how long each state persists.
     """)
-    return
 
 
 @app.cell
@@ -164,7 +159,6 @@ def _(plot_forecast, y, y_train):
         n_history=200,
         title="Air Quality Target Over Time",
     )
-    return
 
 
 @app.cell
@@ -185,17 +179,17 @@ def _(
         estimator=DecisionTreeClassifier(random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    dt.fit(y_train, X_train, forecasting_horizon=fh)
+    dt.fit(y_train, X_actual=X_train, forecasting_horizon=fh)
     dt_hard = deepcopy(dt)
-    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X=X_test).sort("time")
+    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X_actual=X_test).sort("time")
 
     rf = ClassProbaReductionForecaster(
         estimator=RandomForestClassifier(n_estimators=50, random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    rf.fit(y_train, X_train, forecasting_horizon=fh)
+    rf.fit(y_train, X_actual=X_train, forecasting_horizon=fh)
     rf_hard = deepcopy(rf)
-    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X=X_test).sort("time")
+    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X_actual=X_test).sort("time")
 
     print(f"DT predictions: {len(y_proba_dt)} rows")
     print(f"RF predictions: {len(y_proba_rf)} rows")
@@ -210,13 +204,12 @@ def _(mo):
     Before looking at probabilities, let's compare the hard class predictions
     (argmax of probabilities) from both models against the actual classes.
     """)
-    return
 
 
 @app.cell
 def _(X_test, dt_hard, fh, plot_forecast, rf_hard, y_test):
-    y_pred_dt = dt_hard.observe_predict(y=y_test, X=X_test).sort("time")
-    y_pred_rf = rf_hard.observe_predict(y=y_test, X=X_test).sort("time")
+    y_pred_dt = dt_hard.observe_predict(y=y_test, X_actual=X_test).sort("time")
+    y_pred_rf = rf_hard.observe_predict(y=y_test, X_actual=X_test).sort("time")
     plot_forecast(
         y_test,
         {"Decision Tree": y_pred_dt, "Random Forest": y_pred_rf},
@@ -235,7 +228,6 @@ def _(mo):
     Passing a dict of predictions creates one subplot per model for
     side-by-side comparison.
     """)
-    return
 
 
 @app.cell
@@ -245,7 +237,6 @@ def _(plot_forecast, y_proba_dt, y_proba_rf, y_test):
         {"Decision Tree": y_proba_dt, "Random Forest": y_proba_rf},
         title="Probability Forecast Comparison",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -257,7 +248,6 @@ def _(mo):
     and the true class distribution. Lower values indicate better-calibrated
     predictions. Probabilities are clipped to avoid infinite loss.
     """)
-    return
 
 
 @app.cell
@@ -281,7 +271,6 @@ def _(mo):
     Set `aggregation=["stepwise", "vintagewise"]` to get a score for each component. This
     reveals when predictions are most uncertain.
     """)
-    return
 
 
 @app.cell
@@ -304,7 +293,6 @@ def _(mo):
     probabilities and one-hot truth vectors. It ranges from 0 (perfect)
     to 2 (worst case) for multi-class problems.
     """)
-    return
 
 
 @app.cell
@@ -328,7 +316,6 @@ def _(mo):
     For multi-target datasets, `aggregation="componentwise"` returns one
     score per target column.
     """)
-    return
 
 
 @app.cell
@@ -350,7 +337,6 @@ def _(mo):
     [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/) converts probabilities to class labels via argmax
     and computes the fraction of correct predictions. Higher is better.
     """)
-    return
 
 
 @app.cell
@@ -373,7 +359,6 @@ def _(mo):
 
     Let's compare all three metrics side-by-side.
     """)
-    return
 
 
 @app.cell
@@ -401,7 +386,6 @@ def _(acc_dt, acc_rf, bs_dt, bs_rf, ll_dt, ll_rf, mo):
 
     {_table}
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -412,7 +396,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) shows how predicted class probabilities evolve
     over time. Diamond markers indicate the true class at each time step.
     """)
-    return
 
 
 @app.cell
@@ -422,7 +405,6 @@ def _(plot_forecast, y_proba_rf, y_test):
         y_proba_rf,
         title="Random Forest - Class Probabilities vs Actuals",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -434,7 +416,6 @@ def _(mo):
     frequencies. A well-calibrated model has points near the diagonal. This
     helps diagnose whether your model is over- or under-confident.
     """)
-    return
 
 
 @app.cell
@@ -445,7 +426,6 @@ def _(plot_calibration, y_proba_rf, y_test):
         n_bins=8,
         title="Random Forest Calibration",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -457,7 +437,6 @@ def _(mo):
     shows how each metric evolves across time steps. Passing a dict of
     predictions overlays both models on the same axes for easy comparison.
     """)
-    return
 
 
 @app.cell
@@ -468,7 +447,6 @@ def _(LogLoss, plot_score_time_series, y_proba_dt, y_proba_rf, y_test):
         {"Decision Tree": y_proba_dt, "Random Forest": y_proba_rf},
         title="Log Loss Over Time - Model Comparison",
     )
-    return
 
 
 @app.cell
@@ -479,7 +457,6 @@ def _(BrierScore, plot_score_time_series, y_proba_dt, y_proba_rf, y_test):
         {"Decision Tree": y_proba_dt, "Random Forest": y_proba_rf},
         title="Brier Score Over Time - Model Comparison",
     )
-    return
 
 
 @app.cell
@@ -490,4 +467,3 @@ def _(Accuracy, plot_score_time_series, y_proba_dt, y_proba_rf, y_test):
         {"Decision Tree": y_proba_dt, "Random Forest": y_proba_rf},
         title="Accuracy Over Time - Model Comparison",
     )
-    return

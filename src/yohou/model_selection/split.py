@@ -1,10 +1,9 @@
 """Time series cross-validation splitters for model selection."""
 
 import numbers
-import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import polars as pl
@@ -19,6 +18,7 @@ __all__ = [
     "SlidingWindowSplitter",
     "check_cv",
     "check_cv_alignment",
+    "train_test_split",
 ]
 
 
@@ -49,9 +49,21 @@ class BaseSplitter(BaseEstimator, ABC):
     """
 
     _parameter_constraints: dict = {}
+    _tags: ClassVar[dict[str, Any]] = {}
 
     # Fitted attributes (set during split())
     interval_: str
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Merge parameter constraints from all classes in the MRO."""
+        super().__init_subclass__(**kwargs)
+        # Auto-merge _parameter_constraints from all classes in the MRO.
+        merged: dict = {}
+        for klass in reversed(cls.__mro__):
+            own = klass.__dict__.get("_parameter_constraints")
+            if own and isinstance(own, dict):
+                merged.update(own)
+        cls._parameter_constraints = merged
 
     @abstractmethod
     def split(
@@ -137,6 +149,24 @@ class BaseSplitter(BaseEstimator, ABC):
         tags = Tags(estimator_type="splitter")
         if tags.splitter_tags is not None:
             tags.splitter_tags.supports_panel_data = True
+
+        # Merge class-level _tags dict (flat keys) into tag dataclasses.
+        # Walk MRO in reverse so most-derived class wins.
+        merged_tags: dict[str, Any] = {}
+        for klass in reversed(type(self).__mro__):
+            class_tags = klass.__dict__.get("_tags")
+            if class_tags and isinstance(class_tags, dict):
+                merged_tags.update(class_tags)
+
+        if merged_tags:
+            for key, value in merged_tags.items():
+                if tags.splitter_tags is not None and hasattr(tags.splitter_tags, key):
+                    setattr(tags.splitter_tags, key, value)
+                elif tags.input_tags is not None and hasattr(tags.input_tags, key):
+                    setattr(tags.input_tags, key, value)
+                elif hasattr(tags, key):
+                    setattr(tags, key, value)
+
         return tags
 
 
@@ -215,12 +245,13 @@ class ExpandingWindowSplitter(BaseSplitter):
     """
 
     _parameter_constraints: dict = {
-        **BaseSplitter._parameter_constraints,
         "n_splits": [Interval(numbers.Integral, 2, None, closed="left")],
         "max_train_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "test_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "gap": [Interval(numbers.Integral, 0, None, closed="left")],
     }
+
+    _tags: ClassVar[dict[str, Any]] = {"splitter_type": "expanding"}
 
     def __init__(
         self,
@@ -349,19 +380,6 @@ class ExpandingWindowSplitter(BaseSplitter):
         """
         return self.n_splits
 
-    def __sklearn_tags__(self):
-        """Get metadata tags for this splitter.
-
-        Returns
-        -------
-        tags : Tags
-            Metadata tags describing splitter capabilities.
-
-        """
-        tags = super().__sklearn_tags__()
-        tags.splitter_tags.splitter_type = "expanding"
-        return tags
-
 
 class SlidingWindowSplitter(BaseSplitter):
     """Sliding window time series cross-validation splitter.
@@ -446,13 +464,14 @@ class SlidingWindowSplitter(BaseSplitter):
     """
 
     _parameter_constraints: dict = {
-        **BaseSplitter._parameter_constraints,
         "n_splits": [Interval(numbers.Integral, 2, None, closed="left")],
         "train_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "test_size": [Interval(numbers.Integral, 1, None, closed="left")],
         "stride": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "gap": [Interval(numbers.Integral, 0, None, closed="left")],
     }
+
+    _tags: ClassVar[dict[str, Any]] = {"splitter_type": "sliding"}
 
     def __init__(
         self,
@@ -539,16 +558,6 @@ class SlidingWindowSplitter(BaseSplitter):
         test_size = self.test_size
         stride = self.stride if self.stride is not None else test_size
         gap = self.gap
-
-        if test_size % stride != 0:
-            warnings.warn(
-                f"test_size={test_size} is not a multiple of "
-                f"stride={stride}. The last vintage in each fold will "
-                f"have fewer in-test predictions, causing uneven step "
-                f"representation in stepwise scoring.",
-                UserWarning,
-                stacklevel=3,
-            )
 
         if train_size + gap + test_size > n_samples:
             raise ValueError(
@@ -642,19 +651,6 @@ class SlidingWindowSplitter(BaseSplitter):
 
         """
         return self.n_splits
-
-    def __sklearn_tags__(self):
-        """Get metadata tags for this splitter.
-
-        Returns
-        -------
-        tags : Tags
-            Metadata tags describing splitter capabilities.
-
-        """
-        tags = super().__sklearn_tags__()
-        tags.splitter_tags.splitter_type = "sliding"
-        return tags
 
 
 def check_cv(
@@ -774,3 +770,137 @@ def check_cv_alignment(
         "step_counts": step_counts,
         "is_balanced": is_balanced,
     }
+
+
+def train_test_split(
+    *arrays: pl.DataFrame,
+    test_size: int | float,
+    X_forecast: pl.DataFrame | None = None,
+) -> list[pl.DataFrame]:
+    """Split time series data into temporal train and test sets.
+
+    A time series counterpart to :func:`sklearn.model_selection.train_test_split`.
+    Data is always split in temporal order (no shuffling): the earliest rows
+    form the training set and the most recent rows form the test set.
+
+    Row-indexed arrays (``y``, ``X_actual``) are split by position.
+    ``X_forecast``, when provided, is split by ``vintage_time`` range using
+    the cutoff time inferred from the first positional array.
+
+    Parameters
+    ----------
+    *arrays : pl.DataFrame
+        One or more Polars DataFrames to split by row index. All must
+        have the same number of rows. The first array must contain a
+        ``"time"`` column (used to derive the vintage cutoff when
+        ``X_forecast`` is provided).
+    test_size : int or float
+        If ``int``, the number of rows to allocate to the test set.
+        If ``float``, the fraction of total rows for testing (must be
+        in ``(0.0, 1.0)``).
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+        Split by ``vintage_time`` range: training receives vintages where
+        ``vintage_time <= cutoff_time``, testing receives vintages where
+        ``cutoff_time < vintage_time <= test_end_time``. The cutoff and
+        test end times are derived from the ``"time"`` column of the first
+        positional array.
+
+    Returns
+    -------
+    list of pl.DataFrame
+        Alternating train/test pairs for each positional array, followed
+        by the X_forecast train/test pair if ``X_forecast`` is provided.
+
+        With one array: ``[arr_train, arr_test]``.
+
+        With two arrays: ``[arr1_train, arr1_test, arr2_train, arr2_test]``.
+
+        With ``X_forecast``:
+        ``[..., X_forecast_train, X_forecast_test]`` appended.
+
+    Raises
+    ------
+    ValueError
+        If no arrays are provided, arrays have different lengths,
+        ``test_size`` is invalid, or the first array is missing a
+        ``"time"`` column when ``X_forecast`` is provided.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from yohou.model_selection import train_test_split
+
+    Split y and X_actual (80/20):
+
+    >>> y = pl.DataFrame({
+    ...     "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), eager=True),
+    ...     "value": list(range(10)),
+    ... })
+    >>> y_train, y_test = train_test_split(y, test_size=2)
+    >>> len(y_train), len(y_test)
+    (8, 2)
+
+    Split with a fractional test_size:
+
+    >>> y_train, y_test = train_test_split(y, test_size=0.3)
+    >>> len(y_train), len(y_test)
+    (7, 3)
+    """
+    if len(arrays) == 0:
+        msg = "At least one array is required."
+        raise ValueError(msg)
+
+    n_samples = len(arrays[0])
+    for i, arr in enumerate(arrays[1:], start=1):
+        if len(arr) != n_samples:
+            msg = (
+                f"All arrays must have the same number of rows. "
+                f"Array 0 has {n_samples} rows but array {i} has {len(arr)} rows."
+            )
+            raise ValueError(msg)
+
+    if isinstance(test_size, float):
+        if not 0.0 < test_size < 1.0:
+            msg = f"test_size as a float must be in (0.0, 1.0), got {test_size}."
+            raise ValueError(msg)
+        n_test = max(1, round(n_samples * test_size))
+    elif isinstance(test_size, int):
+        if test_size < 1 or test_size >= n_samples:
+            msg = f"test_size as an int must be in [1, {n_samples - 1}], got {test_size}."
+            raise ValueError(msg)
+        n_test = test_size
+    else:
+        msg = f"test_size must be int or float, got {type(test_size).__name__}."
+        raise TypeError(msg)
+
+    split_idx = n_samples - n_test
+    result: list[pl.DataFrame] = []
+    for arr in arrays:
+        result.append(arr[:split_idx])
+        result.append(arr[split_idx:])
+
+    if X_forecast is not None:
+        first = arrays[0]
+        if "time" not in first.columns:
+            msg = (
+                "The first positional array must contain a 'time' column "
+                "when X_forecast is provided (needed to derive the vintage "
+                "cutoff time)."
+            )
+            raise ValueError(msg)
+        if "vintage_time" not in X_forecast.columns or "time" not in X_forecast.columns:
+            msg = (
+                "X_forecast must contain both 'vintage_time' and 'time' columns. "
+                f"Found columns: {list(X_forecast.columns)}"
+            )
+            raise ValueError(msg)
+
+        cutoff_time = first["time"][split_idx - 1]
+        test_end_time = first["time"][-1]
+        result.append(X_forecast.filter(pl.col("vintage_time") <= cutoff_time))
+        result.append(
+            X_forecast.filter((pl.col("vintage_time") > cutoff_time) & (pl.col("vintage_time") <= test_end_time))
+        )
+
+    return result

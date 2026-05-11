@@ -7,7 +7,7 @@ import time
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import polars as pl
@@ -342,6 +342,17 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         "return_train_score": ["boolean"],
     }
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Merge parameter constraints from all classes in the MRO."""
+        super().__init_subclass__(**kwargs)
+        # Auto-merge _parameter_constraints from all classes in the MRO.
+        merged: dict = {}
+        for klass in reversed(cls.__mro__):
+            own = klass.__dict__.get("_parameter_constraints")
+            if own and isinstance(own, dict):
+                merged.update(own)
+        cls._parameter_constraints = merged
+
     @abstractmethod
     def __init__(
         self,
@@ -392,10 +403,10 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         return self.best_forecaster_.interval_
 
     @property
-    def groups_(self):
+    def panel_group_names_(self):
         """Panel group names detected during fit."""
         check_is_fitted(self)
-        return self.best_forecaster_.groups_
+        return self.best_forecaster_.panel_group_names_
 
     def _check_refit_for_multimetric(self, scores):
         """Check that refit parameter is valid for multimetric scoring.
@@ -921,7 +932,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
             # Fit scorers on the training data if they have a fit method
             if isinstance(scorers, _MultimetricScorer) or hasattr(scorers, "fit"):
-                scorers.fit(y, forecaster=self.best_forecaster_)
+                scorers.fit(y)
 
         # Store the scorer (not as dict for single metric evaluation)
         if isinstance(scorers, _MultimetricScorer):
@@ -939,7 +950,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         self,
         forecasting_horizon: int | None = None,
         X: pl.DataFrame | None = None,
-        groups: list[str] | None = None,
+        panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate point forecasts using the best forecaster.
@@ -952,7 +963,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        groups : list of str or None, default=None
+        panel_group_names : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
         **params : dict
@@ -961,7 +972,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"vintage_time"``, ``"time"``, and one
+            Point predictions with ``"observed_time"``, ``"time"``, and one
             column per target variable.
 
         """
@@ -970,7 +981,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         return self.best_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
             X=X,
-            groups=groups,
+            panel_group_names=panel_group_names,
             **params,
         )
 
@@ -980,7 +991,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         forecasting_horizon: int | None = None,
         X: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
-        groups: list[str] | None = None,
+        panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate interval forecasts using the best forecaster.
@@ -997,7 +1008,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        groups : list of str or None, default=None
+        panel_group_names : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
         **params : dict
@@ -1006,7 +1017,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"vintage_time"``, ``"time"``, and
+            Interval predictions with ``"observed_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         """
@@ -1016,12 +1027,14 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             forecasting_horizon=forecasting_horizon,
             X=X,
             coverage_rates=coverage_rates,
-            groups=groups,
+            panel_group_names=panel_group_names,
             **params,
         )
 
     @available_if(_search_forecaster_has("observe"))
-    def observe(self, y: pl.DataFrame, X: pl.DataFrame | None = None, groups: list[str] | None = None) -> BaseSearchCV:
+    def observe(
+        self, y: pl.DataFrame, X: pl.DataFrame | None = None, panel_group_names: list[str] | None = None
+    ) -> BaseSearchCV:
         """Observe new data with the best forecaster without refitting.
 
         Parameters
@@ -1032,7 +1045,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        groups : list of str or None, default=None
+        panel_group_names : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
 
@@ -1043,11 +1056,13 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
         """
         check_is_fitted(self)
-        self.best_forecaster_.observe(y, X, groups)
+        self.best_forecaster_.observe(y, X, panel_group_names)
         return self
 
     @available_if(_search_forecaster_has("rewind"))
-    def rewind(self, y: pl.DataFrame, X: pl.DataFrame | None = None, groups: list[str] | None = None) -> BaseSearchCV:
+    def rewind(
+        self, y: pl.DataFrame, X: pl.DataFrame | None = None, panel_group_names: list[str] | None = None
+    ) -> BaseSearchCV:
         """Rewind the best forecaster observation buffers.
 
         Parameters
@@ -1058,7 +1073,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        groups : list of str or None, default=None
+        panel_group_names : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
 
@@ -1069,7 +1084,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
         """
         check_is_fitted(self)
-        self.best_forecaster_.rewind(y, X, groups)
+        self.best_forecaster_.rewind(y, X, panel_group_names)
         return self
 
     @available_if(_search_forecaster_has("observe_predict"))
@@ -1078,7 +1093,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         forecasting_horizon: int | None = None,
-        groups: list[str] | None = None,
+        panel_group_names: list[str] | None = None,
         stride: int | None = None,
         predict_transformed: bool = False,
         **params,
@@ -1098,7 +1113,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
-        groups : list of str or None, default=None
+        panel_group_names : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
         stride : int or None, default=None
@@ -1113,14 +1128,14 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Point predictions with ``"vintage_time"``, ``"time"``, and one
+            Point predictions with ``"observed_time"``, ``"time"``, and one
             column per target variable.
 
         """
         check_is_fitted(self)
         _raise_for_params(params, self, "observe_predict")
         return self.best_forecaster_.observe_predict(
-            y, X, forecasting_horizon, groups, stride, predict_transformed, **params
+            y, X, forecasting_horizon, panel_group_names, stride, predict_transformed, **params
         )
 
     @available_if(_search_forecaster_has("observe_predict_interval"))
@@ -1129,7 +1144,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
         coverage_rates: list[float] | None = None,
-        groups: list[str] | None = None,
+        panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data and generate interval forecasts.
@@ -1149,7 +1164,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        groups : list of str or None, default=None
+        panel_group_names : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
         **params : dict
@@ -1158,20 +1173,20 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"vintage_time"``, ``"time"``, and
+            Interval predictions with ``"observed_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         """
         check_is_fitted(self)
         _raise_for_params(params, self, "observe_predict_interval")
-        return self.best_forecaster_.observe_predict_interval(y, X, coverage_rates, groups, **params)
+        return self.best_forecaster_.observe_predict_interval(y, X, coverage_rates, panel_group_names, **params)
 
     @available_if(_search_forecaster_has("class_proba"))
     def predict_class_proba(
         self,
         forecasting_horizon: int | None = None,
         X: pl.DataFrame | None = None,
-        groups: list[str] | None = None,
+        panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate class-probability forecasts using the best forecaster.
@@ -1184,7 +1199,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        groups : list of str or None, default=None
+        panel_group_names : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
         **params : dict
@@ -1193,7 +1208,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Class-probability predictions with ``"vintage_time"``,
+            Class-probability predictions with ``"observed_time"``,
             ``"time"``, and probability columns for each target.
 
         """
@@ -1202,7 +1217,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         return self.best_forecaster_.predict_class_proba(
             forecasting_horizon=forecasting_horizon,
             X=X,
-            groups=groups,
+            panel_group_names=panel_group_names,
             **params,
         )
 
@@ -1211,7 +1226,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         self,
         y: pl.DataFrame,
         X: pl.DataFrame | None = None,
-        groups: list[str] | None = None,
+        panel_group_names: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Observe new data and generate class-probability forecasts.
@@ -1227,7 +1242,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         X : pl.DataFrame or None, default=None
             Exogenous features with a ``"time"`` column matching ``y``.
             If ``None``, no exogenous features are used.
-        groups : list of str or None, default=None
+        panel_group_names : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
         **params : dict
@@ -1236,13 +1251,13 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Class-probability predictions with ``"vintage_time"``,
+            Class-probability predictions with ``"observed_time"``,
             ``"time"``, and probability columns for each target.
 
         """
         check_is_fitted(self)
         _raise_for_params(params, self, "observe_predict_class_proba")
-        return self.best_forecaster_.observe_predict_class_proba(y, X, groups, **params)
+        return self.best_forecaster_.observe_predict_class_proba(y, X, panel_group_names, **params)
 
 
 class GridSearchCV(BaseSearchCV):
@@ -1589,7 +1604,6 @@ class GridSearchCV(BaseSearchCV):
     """
 
     _parameter_constraints: dict = {
-        **BaseSearchCV._parameter_constraints,
         "param_grid": [dict, list],
     }
 
@@ -2016,7 +2030,6 @@ class RandomizedSearchCV(BaseSearchCV):
     """
 
     _parameter_constraints: dict = {
-        **BaseSearchCV._parameter_constraints,
         "param_distributions": [dict, list],
         "n_iter": [Interval(numbers.Integral, 1, None, closed="left")],
         "random_state": ["random_state"],

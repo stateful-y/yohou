@@ -18,6 +18,10 @@ Learn Yohou through focused, interactive examples. Each notebook demonstrates on
 
 <!-- GALLERY:interval -->
 
+## Class-Probability Forecasting
+
+<!-- GALLERY:class_proba -->
+
 ## Composition
 
 <!-- GALLERY:compose -->
@@ -41,6 +45,10 @@ Learn Yohou through focused, interactive examples. Each notebook demonstrates on
 ## Datasets
 
 <!-- GALLERY:datasets -->
+
+## Ensemble
+
+<!-- GALLERY:ensemble -->
 
 ## Plotting
 

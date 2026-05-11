@@ -47,16 +47,15 @@ def _(mo):
     Basic familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) -
     see [`reduction_forecaster.py`](/examples/point/reduction_forecaster/) for an introduction.
     """)
-    return
 
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.model_selection import train_test_split
-
-    from copy import deepcopy
 
     from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
@@ -95,7 +94,6 @@ def _(mo):
     We use the Sunspot dataset resampled to monthly frequency -
     over 200 years of solar activity with a strong ~11-year cycle.
     """)
-    return
 
 
 @app.cell
@@ -113,7 +111,6 @@ def _(fetch_sunspot, pl, train_test_split):
 @app.cell
 def _(plot_time_series, y):
     plot_time_series(y, title="Monthly Sunspot Numbers (1818-2020)")
-    return
 
 
 @app.cell(hide_code=True)
@@ -129,7 +126,6 @@ def _(mo):
     - Assumes the same model structure suits every step
     - `estimator_` is a **single** `BaseEstimator`
     """)
-    return
 
 
 @app.cell
@@ -167,7 +163,6 @@ def _(mo):
     - Ignores inter-step dependencies
     - `estimator_` is a **list** of H `BaseEstimator` objects
     """)
-    return
 
 
 @app.cell
@@ -206,7 +201,6 @@ def _(mo):
     - Captures dependencies between horizon steps
     - `estimator_` is a **list** of H `BaseEstimator` objects (like direct)
     """)
-    return
 
 
 @app.cell
@@ -241,7 +235,6 @@ def _(mo):
     [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) accepts a `dict[str, pl.DataFrame]` to overlay
     multiple models on the same chart.
     """)
-    return
 
 
 @app.cell
@@ -264,7 +257,6 @@ def _(
         n_history=120,
         title="Reduction Strategy Comparison",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -275,7 +267,6 @@ def _(mo):
     We score each strategy with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/)
     and compare them in a bar chart.
     """)
-    return
 
 
 @app.cell
@@ -300,7 +291,6 @@ def _(
         },
         title="MAE by Reduction Strategy",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -321,7 +311,6 @@ def _(mo):
     Setting `target_as_feature=None` is useful when exogenous features (X) are
     available and you want to exclude the target from the feature matrix entirely.
     """)
-    return
 
 
 @app.cell
@@ -353,7 +342,6 @@ def _(
         [{"target_as_feature": k, "MAE": f"{v:.2f}"} for k, v in taf_scores.items()],
         label="MAE by target_as_feature",
     )
-    return
 
 
 @app.cell(hide_code=True)
@@ -370,7 +358,6 @@ def _(mo):
     All strategies can be **applied recursively** for horizons beyond the fit horizon
     by passing a larger `forecasting_horizon` at predict time.
     """)
-    return
 
 
 @app.cell(hide_code=True)
@@ -383,7 +370,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -416,4 +402,7 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
-    return
+
+
+if __name__ == "__main__":
+    app.run()

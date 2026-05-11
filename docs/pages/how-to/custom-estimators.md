@@ -13,8 +13,9 @@ design rationale behind extending vs composing, see
 
 ## 1. Subclass the Base
 
-Create a class that extends `BasePointForecaster` and implement `_fit` and
-`_predict`:
+Create a class that extends `BasePointForecaster` and implement
+`_predict_one`. Override `_observation_horizon` as a property to declare
+how many recent observations the forecaster needs:
 
 ```python
 import polars as pl
@@ -28,11 +29,8 @@ class LastValueForecaster(BasePointForecaster):
     _tags = {"ignores_exogenous": True, "stateful": True}
 
     @property
-    def observation_horizon(self):
+    def _observation_horizon(self):
         return 1
-
-    def _fit(self, y, X, forecasting_horizon):
-        return self
 
     def _predict_one(self, groups, **params):
         last_value = self._y_observed.select(~cs.by_name("time")).row(-1)[0]
@@ -41,9 +39,10 @@ class LastValueForecaster(BasePointForecaster):
         })
 ```
 
-`_fit` receives validated data after the base class has handled transformer
-setup and panel detection. `_predict_one` produces raw predictions for one forecast
-step, reading from `self._y_observed` so that `observe()` updates carry through.
+The base `fit()` handles validation, transformer setup, panel detection, and
+calls `_fit()` automatically. `_predict_one` produces raw predictions for one
+forecast step, reading from `self._y_observed` so that `observe()` updates
+carry through.
 
 ## 2. Add Parameters
 
@@ -69,11 +68,8 @@ class WindowMeanForecaster(BasePointForecaster):
         self.window_size = window_size
 
     @property
-    def observation_horizon(self):
+    def _observation_horizon(self):
         return self.window_size
-
-    def _fit(self, y, X, forecasting_horizon):
-        return self
 
     def _predict_one(self, groups, **params):
         values = self._y_observed.select(~cs.by_name("time"))
@@ -111,6 +107,6 @@ serialization, and more.
 ## See Also
 
 - [Custom Estimator Reference](/pages/api/custom-estimators/): full API for all component types (transformers, scorers, interval forecasters, class-probability forecasters)
-- [Create Custom Scorers](/pages/how-to/custom-scorers/): implementing custom evaluation metrics
+- [Create Custom Scorers](/pages/how-to/creating-a-scorer/): implementing custom evaluation metrics
 - [Extending Yohou](/pages/explanation/extending-yohou/): when to extend vs compose, base class architecture
 - [Extensions](/pages/reference/extensions/): official and community extensions

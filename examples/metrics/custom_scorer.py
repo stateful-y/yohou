@@ -13,7 +13,7 @@ __gallery__ = {
     "title": "How to Create a Custom Scorer",
     "description": "Implement a custom point scorer with aggregation, panel support, and systematic testing.",
     "category": "how-to",
-    "companion": "/pages/how-to/custom-scorers/",
+    "companion": "/pages/how-to/creating-a-scorer/",
 }
 app = marimo.App(width="medium")
 
@@ -41,8 +41,6 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    from datetime import datetime, timedelta
-
     import polars as pl
     from sklearn.linear_model import Ridge
 
@@ -51,7 +49,6 @@ def _():
     from yohou.metrics.base import BasePointScorer
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
-    from yohou.utils import inspect_panel
 
     return (
         BasePointScorer,
@@ -60,11 +57,8 @@ def _():
         PointReductionForecaster,
         Ridge,
         SeasonalNaive,
-        datetime,
         fetch_tourism_monthly,
-        inspect_panel,
         pl,
-        timedelta,
     )
 
 

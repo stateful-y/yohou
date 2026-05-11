@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import polars as pl
 
 
@@ -29,9 +30,14 @@ class ScoringContext:
         ``(time - vintage_time) / interval``. ``None`` when
         ``vintage_time`` is ``None`` or the scorer has no ``interval_``
         attribute.
+    vintage_weight : np.ndarray or None
+        Per-unique-vintage weights for cross-vintage aggregation.
+        Length matches the number of unique vintages. ``None`` when
+        no vintage_weight was provided by the caller.
 
     """
 
     time_values: list
     vintage_time: pl.Series | None = None
     forecasting_step: pl.Series | None = None
+    vintage_weight: np.ndarray | None = None

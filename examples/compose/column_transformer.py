@@ -46,10 +46,10 @@ def _(mo):
 def _():
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.compose import ColumnTransformer
     from yohou.datasets import fetch_dominick, fetch_electricity_demand
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_time_series
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer, StandardScaler
@@ -97,13 +97,13 @@ def _(fetch_electricity_demand, pl, train_test_split):
         .drop_nulls()
     )
 
-    _train_df, _test_df = train_test_split(vic_daily, test_size=0.15, shuffle=False)
+    _train_df, _test_df = train_test_split(vic_daily, test_size=0.15)
     y_train = _train_df.select("time", "Demand")
-    X_train = _train_df.select("time", "NSW_Demand", "SA_Demand")
+    X_actual_train = _train_df.select("time", "NSW_Demand", "SA_Demand")
     y_test = _test_df.select("time", "Demand")
-    X_test = _test_df.select("time", "NSW_Demand", "SA_Demand")
+    X_actual_test = _test_df.select("time", "NSW_Demand", "SA_Demand")
 
-    return X_test, X_train, vic_daily, y_test, y_train
+    return X_actual_test, X_actual_train, vic_daily, y_test, y_train
 
 
 @app.cell
@@ -136,12 +136,12 @@ def _(ColumnTransformer, StandardScaler):
 
 
 @app.cell
-def _(X_train, ct, pl, plot_time_series):
-    _ct_fitted = ct.fit(X_train)
-    _X_transformed = _ct_fitted.transform(X_train)
+def _(X_actual_train, ct, pl, plot_time_series):
+    _ct_fitted = ct.fit(X_actual_train)
+    _X_transformed = _ct_fitted.transform(X_actual_train)
     _combined = pl.concat(
         [
-            X_train.rename({"NSW_Demand": "NSW (raw)", "SA_Demand": "SA (raw)"}),
+            X_actual_train.rename({"NSW_Demand": "NSW (raw)", "SA_Demand": "SA (raw)"}),
             _X_transformed.drop("time").rename({
                 c: c.split("__", 1)[-1] + " (scaled)" for c in _X_transformed.columns if c != "time"
             }),
@@ -157,21 +157,21 @@ def _(mo):
     ## 3. ColumnTransformer Inside a Forecaster
 
     Pass the [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) as `feature_transformer` to
-    [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/). The forecaster calls `.fit_transform()` on `X`
-    at fit time and `.transform()` on `X` at predict time.
+    [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/). The forecaster calls `.fit_transform()` on `X_actual`
+    at fit time and `.transform()` on `X_actual` at predict time.
     """)
 
 
 @app.cell
-def _(PointReductionForecaster, Ridge, X_test, X_train, ct, y_test, y_train):
+def _(PointReductionForecaster, Ridge, X_actual_train, ct, y_test, y_train):
     forecaster_ct = PointReductionForecaster(
         estimator=Ridge(alpha=1e-3),
         feature_transformer=ct,
     )
 
     forecasting_horizon = len(y_test)
-    forecaster_ct.fit(y_train, X_train, forecasting_horizon=forecasting_horizon)
-    y_pred_ct = forecaster_ct.predict(X_test, forecasting_horizon=forecasting_horizon)
+    forecaster_ct.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
+    y_pred_ct = forecaster_ct.predict(forecasting_horizon=forecasting_horizon)
     return (y_pred_ct,)
 
 
@@ -230,7 +230,7 @@ def _(mo):
 
 
 @app.cell
-def _(ColumnTransformer, StandardScaler, X_train, mo):
+def _(ColumnTransformer, StandardScaler, X_actual_train, mo):
     ct_verbose = ColumnTransformer(
         transformers=[
             ("scale_nsw", StandardScaler(), ["NSW_Demand"]),
@@ -238,13 +238,13 @@ def _(ColumnTransformer, StandardScaler, X_train, mo):
         ],
         verbose_feature_names_out=True,
     )
-    ct_verbose.fit(X_train)
+    ct_verbose.fit(X_actual_train)
     _names = ct_verbose.get_feature_names_out()
     mo.md(f"**Feature names (verbose=True)**: {_names}")
 
 
 @app.cell
-def _(ColumnTransformer, StandardScaler, X_train, mo):
+def _(ColumnTransformer, StandardScaler, X_actual_train, mo):
     _ct_short = ColumnTransformer(
         transformers=[
             ("scale_nsw", StandardScaler(), ["NSW_Demand"]),
@@ -252,7 +252,7 @@ def _(ColumnTransformer, StandardScaler, X_train, mo):
         ],
         verbose_feature_names_out=False,
     )
-    _ct_short.fit(X_train)
+    _ct_short.fit(X_actual_train)
     _names = _ct_short.get_feature_names_out()
     mo.md(f"**Feature names (verbose=False)**: {_names}")
 
@@ -289,8 +289,8 @@ def _(fetch_dominick, inspect_panel, mo, train_test_split):
     _globals, _groups = inspect_panel(store)
     mo.md(f"**Panel groups**: {len(_groups)} groups\n\n**First group columns**: {list(_groups.values())[0]}")
 
-    # Panel data: y contains all `__profit` columns, no separate X needed
-    y_train_panel, y_test_panel = train_test_split(store, test_size=0.1, shuffle=False)
+    # Panel data: y contains all `__profit` columns, no separate X_actual needed
+    y_train_panel, y_test_panel = train_test_split(store, test_size=0.1)
 
     y_train_panel.head()
     return y_test_panel, y_train_panel

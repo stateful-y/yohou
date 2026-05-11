@@ -42,17 +42,17 @@ def consuming_estimator():
             self._fit_metadata = {}
             self._predict_metadata = {}
 
-        def fit(self, X, y, sample_weight=None, **fit_params):
+        def fit(self, X_actual, y, sample_weight=None, **fit_params):
             # Record that fit was called and what metadata was passed
             self.registry.append(("fit", sample_weight))
             self._fit_metadata = {"sample_weight": sample_weight, **fit_params}
-            return super().fit(X, y, sample_weight=sample_weight)
+            return super().fit(X_actual, y, sample_weight=sample_weight)
 
-        def predict(self, X, **predict_params):
+        def predict(self, X_actual, **predict_params):
             # Record predict call
             self.registry.append(("predict", predict_params))
             self._predict_metadata = predict_params
-            return super().predict(X)
+            return super().predict(X_actual)
 
     return ConsumingRidge(registry=registry), registry
 
@@ -83,9 +83,9 @@ class TestBasicRouting:
 
     def test_default_request_is_empty(self, y_X_factory):
         """By default, metadata requests should be empty."""
-        y, X = y_X_factory(length=31)
+        y, X_actual = y_X_factory(length=31)
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y, X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual, forecasting_horizon=3)
 
         routing = forecaster.get_metadata_routing()
         assert_request_is_empty(routing)
@@ -154,19 +154,19 @@ class TestForecasterRouting:
 
     def test_accepts_params_in_fit(self, y_X_factory):
         """Forecasters should accept **params in fit method."""
-        y, X = y_X_factory(length=50, n_targets=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1)
         forecaster = SeasonalNaive(seasonality=3)
 
-        forecaster.fit(y, X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual, forecasting_horizon=3)
 
         forecaster_clone = clone(forecaster)
-        forecaster_clone.fit(y, X, forecasting_horizon=3, **{})
+        forecaster_clone.fit(y, X_actual, forecasting_horizon=3, **{})
 
     def test_accepts_params_in_predict(self, y_X_factory):
         """Forecasters should accept **params in predict method."""
-        y, X = y_X_factory(length=50, n_targets=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1)
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y, X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual, forecasting_horizon=3)
 
         y_pred = forecaster.predict(forecasting_horizon=3)
         assert len(y_pred) > 0
@@ -176,23 +176,23 @@ class TestForecasterRouting:
 
     def test_observe_predict_accepts_params(self, y_X_factory):
         """observe_predict should accept **params and route to predict."""
-        y, X = y_X_factory(length=50, n_targets=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1)
         y_train, y_test = y[:-10], y[-10:]
-        X_train, X_test = X[:-10], X[-10:]
+        X_actual_train, X_actual_test = X_actual[:-10], X_actual[-10:]
 
         forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
 
-        y_pred = forecaster.observe_predict(y_test[:3], X_test[:3], forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(y_test[:3], X_actual_test[:3], forecasting_horizon=3)
         assert len(y_pred) > 0
 
     def test_routing_with_reduction(self, y_X_factory, consuming_estimator):
         """Reduction forecasters should route metadata to sub-estimators."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1, n_features=1)
         estimator, registry = consuming_estimator
 
         forecaster = PointReductionForecaster(estimator=estimator)
-        forecaster.fit(y, X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual, forecasting_horizon=3)
 
         assert len(registry) > 0
         fit_calls = [call for call in registry if call[0] == "fit"]
@@ -349,7 +349,7 @@ class TestSearchCVRouting:
 
     def test_get_metadata_routing(self, y_X_factory):
         """GridSearchCV should implement get_metadata_routing."""
-        y, X = y_X_factory(length=50, n_targets=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1)
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -364,7 +364,7 @@ class TestSearchCVRouting:
 
     def test_fits_with_metadata(self, y_X_factory):
         """GridSearchCV should work with metadata routing enabled."""
-        y, X = y_X_factory(length=50, n_targets=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1)
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -372,7 +372,7 @@ class TestSearchCVRouting:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y, X, forecasting_horizon=3)
+        search.fit(y, X_actual, forecasting_horizon=3)
         assert hasattr(search, "best_forecaster_")
 
         y_pred = search.predict(forecasting_horizon=3)
@@ -380,9 +380,9 @@ class TestSearchCVRouting:
 
     def test_observe_predict(self, y_X_factory):
         """GridSearchCV.observe_predict should route metadata."""
-        y, X = y_X_factory(length=50, n_targets=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1)
         y_train, y_test = y[:-10], y[-10:]
-        X_train, X_test = X[:-10], X[-10:]
+        X_actual_train, X_actual_test = X_actual[:-10], X_actual[-10:]
 
         search = GridSearchCV(
             forecaster=SeasonalNaive(),
@@ -390,9 +390,9 @@ class TestSearchCVRouting:
             scoring=MeanAbsoluteError(),
             cv=2,
         )
-        search.fit(y_train, X_train, forecasting_horizon=3)
+        search.fit(y_train, X_actual_train, forecasting_horizon=3)
 
-        y_pred = search.observe_predict(y_test[:3], X_test[:3], forecasting_horizon=3)
+        y_pred = search.observe_predict(y_test[:3], X_actual_test[:3], forecasting_horizon=3)
         assert len(y_pred) > 0
 
 
@@ -413,14 +413,14 @@ class TestErrorHandling:
 
     def test_no_error_when_explicit_params_passed(self, y_X_factory):
         """Explicit parameters should always be accepted."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1, n_features=1)
         forecaster = SeasonalNaive(seasonality=3)
 
-        forecaster.fit(y, X=X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual=X_actual, forecasting_horizon=3)
 
     def test_cloning_preserves_routing_state(self, y_X_factory):
         """Cloning should preserve metadata routing configuration."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1, n_features=1)
         forecaster = SeasonalNaive(seasonality=3)
 
         forecaster.set_predict_request(forecasting_horizon=True)
@@ -438,7 +438,7 @@ class TestIntegration:
     @pytest.mark.slow
     def test_nested_pipeline_with_searchcv(self, y_X_factory):
         """Test deeply nested routing: GridSearchCV -> Reduction Forecaster with FeaturePipeline."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1, n_features=1)
         from sklearn.linear_model import Ridge
 
         feature_pipeline = FeaturePipeline([
@@ -454,7 +454,7 @@ class TestIntegration:
             cv=2,
         )
 
-        search.fit(y, X, forecasting_horizon=3)
+        search.fit(y, X_actual, forecasting_horizon=3)
         assert hasattr(search, "best_forecaster_")
 
         y_pred = search.predict(forecasting_horizon=3)
@@ -462,7 +462,7 @@ class TestIntegration:
 
     def test_featureunion_in_forecaster_pipeline(self, y_X_factory):
         """Test metadata routing through FeatureUnion in forecaster pipeline."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1, n_features=1)
         from sklearn.linear_model import Ridge
 
         feature_union = FeatureUnion([
@@ -472,7 +472,7 @@ class TestIntegration:
 
         forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=feature_union)
 
-        forecaster.fit(y, X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual, forecasting_horizon=3)
 
         y_pred = forecaster.predict(forecasting_horizon=3)
         assert len(y_pred) > 0
@@ -483,7 +483,7 @@ class TestIntegration:
             reason="ColumnTransformer uses sklearn's safe_indexing which doesn't handle "
             "polars DataFrames correctly via __dataframe__ protocol for column selection.",
         )
-        y, X = y_X_factory(length=50, n_targets=1, n_features=3)
+        y, X_actual = y_X_factory(length=50, n_targets=1, n_features=3)
         from sklearn.linear_model import Ridge
 
         ct = ColumnTransformer(
@@ -496,14 +496,14 @@ class TestIntegration:
 
         forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=ct)
 
-        forecaster.fit(y, X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual, forecasting_horizon=3)
 
         y_pred = forecaster.predict(forecasting_horizon=3)
         assert len(y_pred) > 0
 
     def test_full_pipeline_with_reduction_forecaster(self, y_X_factory, consuming_estimator):
         """Test complete pipeline with reduction forecaster and metadata."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=1)
+        y, X_actual = y_X_factory(length=50, n_targets=1, n_features=1)
         estimator, registry = consuming_estimator
 
         feature_pipeline = FeaturePipeline([
@@ -512,7 +512,7 @@ class TestIntegration:
 
         forecaster = PointReductionForecaster(estimator=estimator, feature_transformer=feature_pipeline)
 
-        forecaster.fit(y, X, forecasting_horizon=3)
+        forecaster.fit(y, X_actual, forecasting_horizon=3)
 
         assert len(registry) > 0
 

@@ -2585,11 +2585,6 @@ class TestPlotReliabilityDiagram:
             plot_calibration(y_pred, y_truth_bad)
 
 
-# ---------------------------------------------------------------------------
-# Multi-scorer support tests
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def multi_scorer_data():
     """Create data suitable for multi-scorer tests."""
@@ -3092,11 +3087,6 @@ class TestPlotGroupScores:
                 panel_group_data["y_pred"],
                 kind="scatter",
             )
-
-
-# ---------------------------------------------------------------------------
-# Multi-scorer + multi-model faceted coverage tests
-# ---------------------------------------------------------------------------
 
 
 class TestMultiScorerMultiModelFaceted:

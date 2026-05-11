@@ -47,18 +47,18 @@ class TestSystematicChecks:
         Note: check_observe_extends_observations and check_rewind_replaces_observations
         are not yielded because DecompositionPipeline sets tracks_observations=False.
         """
-        y, X = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
+        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
         y = y.with_columns([(pl.col(col).abs() + 1).alias(col) for col in y.columns if col != "time"])
 
         y_train, y_test = y[:80], y[80:]
-        X_train, X_test = (X[:80], X[80:]) if X is not None else (None, None)
+        X_actual_train, X_actual_test = (X_actual[:80], X_actual[80:]) if X_actual is not None else (None, None)
 
         forecaster_fitted = clone(forecaster)
-        forecaster_fitted.fit(y_train, X_train, forecasting_horizon=3)
+        forecaster_fitted.fit(y_train, X_actual_train, forecasting_horizon=3)
 
         run_checks(
             forecaster_fitted,
-            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_train, y_test, X_test),
+            _yield_yohou_forecaster_checks(forecaster_fitted, y_train, X_actual_train, y_test, X_actual_test),
         )
 
 
@@ -358,7 +358,7 @@ class TestExogenousFeatures:
             eager=True,
         )
         y = pl.DataFrame({"time": time, "value": range(50)})
-        X = pl.DataFrame({"time": time, "feature": range(50, 100)})
+        X_actual = pl.DataFrame({"time": time, "feature": range(50, 100)})
 
         from sklearn.linear_model import Ridge
 
@@ -373,18 +373,16 @@ class TestExogenousFeatures:
             ),
         ])
         fit_forecasting_horizon = 5
-        forecaster.fit(y[:30], X=X[:30], forecasting_horizon=fit_forecasting_horizon)
+        forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=fit_forecasting_horizon)
 
         predict_forecasting_horizon = 5
-        y_pred = forecaster.predict(
-            X=X[30 : 30 + predict_forecasting_horizon], forecasting_horizon=predict_forecasting_horizon
-        )
+        y_pred = forecaster.predict(forecasting_horizon=predict_forecasting_horizon)
 
         assert len(y_pred) == predict_forecasting_horizon
 
 
 class TestDecompositionPipelineWithoutExogenous:
-    """Tests for DecompositionPipeline with X=None throughout the lifecycle."""
+    """Tests for DecompositionPipeline with X_actual=None throughout the lifecycle."""
 
     @pytest.fixture
     def daily_y(self):
@@ -403,7 +401,7 @@ class TestDecompositionPipelineWithoutExogenous:
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("seasonality", SeasonalNaive(seasonality=7)),
         ])
-        forecaster.fit(daily_y[:40], X=None, forecasting_horizon=5)
+        forecaster.fit(daily_y[:40], X_actual=None, forecasting_horizon=5)
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert isinstance(y_pred, pl.DataFrame)
@@ -416,20 +414,35 @@ class TestDecompositionPipelineWithoutExogenous:
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("seasonality", SeasonalNaive(seasonality=7)),
         ])
-        forecaster.fit(daily_y[:40], X=None, forecasting_horizon=5)
-        y_pred = forecaster.observe_predict(daily_y[40:43], X=None)
+        forecaster.fit(daily_y[:40], X_actual=None, forecasting_horizon=5)
+        y_pred = forecaster.observe_predict(daily_y[40:43], X_actual=None)
 
         assert isinstance(y_pred, pl.DataFrame)
         assert "time" in y_pred.columns
 
-    def test_ignores_exogenous_tag(self):
-        """DecompositionPipeline should have ignores_exogenous=True tag."""
+    def test_requires_exogenous_tag(self):
+        """DecompositionPipeline always reports requires_exogenous=False.
+
+        The pipeline accepts but does not require X_actual. Inner forecasters
+        manage their own features internally.
+        """
         forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("seasonality", SeasonalNaive(seasonality=7)),
         ])
         tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.ignores_exogenous is True
+        assert tags.forecaster_tags.requires_exogenous is False
+
+        from sklearn.linear_model import Ridge
+
+        from yohou.point import PointReductionForecaster
+
+        forecaster_mixed = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            ("ml", PointReductionForecaster(estimator=Ridge())),
+        ])
+        tags_mixed = forecaster_mixed.__sklearn_tags__()
+        assert tags_mixed.forecaster_tags.requires_exogenous is False
 
 
 class TestFeatureTransformerParam:
@@ -541,15 +554,15 @@ class TestDecompositionPipelineObserveRewind:
         """Observe with feature_transformer exercises feature transform path."""
         from yohou.preprocessing import LagTransformer
 
-        y, X = y_X_factory(length=80, n_targets=1, n_features=2)
+        y, X_actual = y_X_factory(length=80, n_targets=1, n_features=2)
 
         forecaster = DecompositionPipeline(
             [("trend", PolynomialTrendForecaster(degree=1))],
             feature_transformer=LagTransformer(lag=[1]),
         )
-        forecaster.fit(y[:60], X[:60], forecasting_horizon=5)
+        forecaster.fit(y[:60], X_actual[:60], forecasting_horizon=5)
 
-        forecaster.observe(y=y[60:70], X=X[60:70])
+        forecaster.observe(y=y[60:70], X_actual=X_actual[60:70])
         y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 
@@ -597,8 +610,8 @@ class TestDecompositionPipelineFeatureTransformer:
         from yohou.preprocessing import FunctionTransformer
 
         y = time_series_factory(length=80, n_components=1)
-        X = time_series_factory(length=80, n_components=1, seed=99)
-        X = X.rename({c: f"feat_{c}" if c != "time" else c for c in X.columns})
+        X_actual = time_series_factory(length=80, n_components=1, seed=99)
+        X_actual = X_actual.rename({c: f"feat_{c}" if c != "time" else c for c in X_actual.columns})
 
         forecaster = DecompositionPipeline(
             [
@@ -607,10 +620,10 @@ class TestDecompositionPipelineFeatureTransformer:
             ],
             feature_transformer=FunctionTransformer(),
         )
-        forecaster.fit(y[:60], X=X[:60], forecasting_horizon=5)
+        forecaster.fit(y[:60], X_actual=X_actual[:60], forecasting_horizon=5)
 
-        forecaster.rewind(y=y[:60], X=X[:60])
-        y_pred = forecaster.predict(X=X[60:80], forecasting_horizon=5)
+        forecaster.rewind(y=y[:60], X_actual=X_actual[:60])
+        y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 
     def test_predict_with_target_transformer_inverse(self, time_series_factory):
@@ -629,3 +642,129 @@ class TestDecompositionPipelineFeatureTransformer:
         y_pred = forecaster.predict(forecasting_horizon=5, predict_transformed=False)
         assert len(y_pred) == 5
         assert all(v > 0 for v in y_pred.select(pl.exclude("time", "vintage_time")).to_series().to_list())
+
+
+class TestObservePredictWithExogenous:
+    """Tests for observe_predict with exogenous features on DecompositionPipeline."""
+
+    @pytest.fixture
+    def exogenous_pipeline(self):
+        """Create a pipeline with exogenous-aware inner forecaster."""
+        from sklearn.linear_model import Ridge
+
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import LagTransformer
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [float(i) for i in range(50)]})
+        X_actual = pl.DataFrame({"time": time, "feature": [float(i) for i in range(50, 100)]})
+
+        forecaster = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            (
+                "ml",
+                PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
+            ),
+        ])
+        forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=5)
+        return forecaster, y, X_actual
+
+    def test_observe_predict_with_exogenous(self, exogenous_pipeline):
+        """observe_predict uses pipeline's custom observe for residual decomposition."""
+        forecaster, y, X_actual = exogenous_pipeline
+        y_pred = forecaster.observe_predict(
+            y=y[30:40],
+            X_actual=X_actual[30:40],
+            forecasting_horizon=5,
+        )
+        assert isinstance(y_pred, pl.DataFrame)
+        assert "time" in y_pred.columns
+        assert "vintage_time" in y_pred.columns
+
+    def test_observe_with_exogenous_decomposes_residuals(self, exogenous_pipeline):
+        """observe() correctly decomposes new observations across inner forecasters."""
+        forecaster, y, X_actual = exogenous_pipeline
+
+        forecaster.observe(y=y[30:35], X_actual=X_actual[30:35])
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        assert len(y_pred) == 5
+        assert "value" in y_pred.columns
+
+    def test_observe_predict_regression_without_exogenous(self):
+        """observe_predict without exogenous works after observe_predict override."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": [float(i) for i in range(50)]})
+
+        forecaster = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            ("seasonality", SeasonalNaive(seasonality=7)),
+        ])
+        forecaster.fit(y[:30], forecasting_horizon=5)
+
+        y_pred = forecaster.observe_predict(y=y[30:40])
+        assert isinstance(y_pred, pl.DataFrame)
+        assert "time" in y_pred.columns
+        # Verify predictions exist for each vintage
+        n_vintages = y_pred["vintage_time"].n_unique()
+        assert n_vintages >= 2
+
+    def test_observe_large_chunk_with_exogenous(self, exogenous_pipeline):
+        """observe() handles chunks larger than fit_fh with exogenous inner forecasters."""
+        forecaster, y, X_actual = exogenous_pipeline
+        # Observe 15 rows (3x fit_fh=5), triggers recursive path
+        forecaster.observe(y=y[30:45], X_actual=X_actual[30:45])
+        y_pred = forecaster.predict(forecasting_horizon=5)
+        assert len(y_pred) == 5
+
+
+class TestPanelExogenous:
+    """Tests for panel data with exogenous features on DecompositionPipeline."""
+
+    def test_panel_with_exogenous_features(self):
+        """DecompositionPipeline works with panel data and exogenous features."""
+        from sklearn.linear_model import Ridge
+
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import LagTransformer
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "group_a__value": [float(i) for i in range(50)],
+            "group_b__value": [float(i + 10) for i in range(50)],
+        })
+        X_actual = pl.DataFrame({
+            "time": time,
+            "group_a__feature": [float(i) for i in range(50, 100)],
+            "group_b__feature": [float(i + 5) for i in range(50, 100)],
+        })
+
+        forecaster = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            (
+                "ml",
+                PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
+            ),
+        ])
+        forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        assert len(y_pred) == 5
+        assert "group_a__value" in y_pred.columns
+        assert "group_b__value" in y_pred.columns

@@ -68,14 +68,16 @@ class _BaseTrendForecaster(BasePointForecaster):
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
-        tags.forecaster_tags.ignores_exogenous = True
+        tags.forecaster_tags.requires_exogenous = False
         return tags
 
     def _pre_fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> tuple[pl.DataFrame | dict[str, pl.DataFrame], pl.DataFrame | dict[str, pl.DataFrame] | None]:
         """Preprocess and transform inputs before fitting.
 
@@ -83,10 +85,14 @@ class _BaseTrendForecaster(BasePointForecaster):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Features time series.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
 
         Returns
         -------
@@ -96,7 +102,13 @@ class _BaseTrendForecaster(BasePointForecaster):
             Transformed features.
 
         """
-        y_t, X_t = super()._pre_fit(y=y, X=X, forecasting_horizon=forecasting_horizon)
+        y_t, X_t = super()._pre_fit(
+            y=y,
+            X_actual=X_actual,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
 
         # Panel data
         if self.groups_ is not None:
@@ -113,8 +125,10 @@ class _BaseTrendForecaster(BasePointForecaster):
     def rewind(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "_BaseTrendForecaster":
         """Rewinds the forecaster by rewinding the observation horizon.
 
@@ -122,20 +136,26 @@ class _BaseTrendForecaster(BasePointForecaster):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame or None
-            Feature time series.
+        X_actual : pl.DataFrame or None
+            Actual feature observations to restore the observation
+            state to. Must align with ``y``.
         groups : list of str or None, default=None
             Group prefixes for panel data:
             - If None: predict for all groups
             - If list of str: predict only for the specified panel groups
             Parameter is ignored if the forecaster was not fitted on panel data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
 
         Returns
         -------
         self
 
         """
-        super().rewind(y=y, X=X, groups=groups)
+        super().rewind(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)
 
         if groups is None:
             groups = self.groups_

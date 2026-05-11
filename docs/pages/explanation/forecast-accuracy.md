@@ -127,7 +127,7 @@ metric-specific logic), applies time weights if provided, aggregates according t
 `aggregation_method`, and runs any post-aggregation transform (e.g. square root
 for RMSE). Custom scorers override only `_compute_raw_errors`; the rest of the
 pipeline is inherited. See
-[How to Create Custom Scorers](/pages/how-to/custom-scorers/) for a walkthrough.
+[How to Create Custom Scorers](/pages/how-to/creating-a-scorer/) for a walkthrough.
 
 ## Weighting
 

@@ -54,11 +54,11 @@ def _():
     import polars as pl
     from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_sunspot, fetch_tourism_monthly
     from yohou.ensemble import VotingPointForecaster
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_heatmap,
@@ -106,7 +106,7 @@ def _(mo):
 def _(fetch_sunspot, pl, train_test_split):
     y = fetch_sunspot().frame.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
     forecasting_horizon = 24
-    y_train, y_test = train_test_split(y, test_size=forecasting_horizon, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=forecasting_horizon)
 
     print(f"Training: {len(y_train)} obs, Test: {len(y_test)} obs")
     print(f"Forecasting horizon: {forecasting_horizon} months")
@@ -333,7 +333,7 @@ def _(
     train_test_split,
 ):
     tourism = fetch_tourism_monthly(n_series=5).frame
-    tourism_train, tourism_test = train_test_split(tourism, test_size=12 * 5, shuffle=False)
+    tourism_train, tourism_test = train_test_split(tourism, test_size=12 * 5)
 
     panel_ensemble = VotingPointForecaster(
         forecasters=[
@@ -368,7 +368,6 @@ def _():
     return
 
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -379,7 +378,6 @@ def _(mo):
     a different forecast origin, so you can analyse how accuracy evolves as
     the model absorbs more data.
     """)
-    return
 
 
 @app.cell
@@ -410,7 +408,6 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Score Heatmap (Step x Vintage)",
     )
-    return
 
 
 @app.cell
@@ -424,7 +421,6 @@ def _(vintage_scorer, plot_score_time_series, y_pred_vintages, y_test):
         height=500,
         facet_by="vintage",
     )
-    return
 
 
 if __name__ == "__main__":

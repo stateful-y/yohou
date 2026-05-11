@@ -112,6 +112,7 @@ def _(
     GradientBoostingClassifier,
     LagTransformer,
     LogisticRegression,
+    MultiOutputClassifier,
     RandomForestClassifier,
 ):
     base_forecasters = [

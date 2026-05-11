@@ -46,11 +46,11 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    from copy import deepcopy
+
     import polars as pl
     from sklearn.linear_model import Ridge
     from sklearn.model_selection import train_test_split
-
-    from copy import deepcopy
 
     from yohou.datasets import fetch_kdd_cup
     from yohou.interval import SplitConformalForecaster
@@ -372,7 +372,6 @@ def _(mo):
     visualise the score matrix as a heatmap. Each cell shows the error for a
     specific (step, vintage) combination.
     """)
-    return
 
 
 @app.cell
@@ -407,4 +406,7 @@ def _(plot_score_heatmap, vintage_scorer, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Score Heatmap (Step x Vintage)",
     )
-    return
+
+
+if __name__ == "__main__":
+    app.run()

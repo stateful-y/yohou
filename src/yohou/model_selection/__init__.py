@@ -9,6 +9,7 @@ from .split import (
     ExpandingWindowSplitter,
     SlidingWindowSplitter,
     check_cv_alignment,
+    train_test_split,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "RandomizedSearchCV",
     "SlidingWindowSplitter",
     "check_cv_alignment",
+    "train_test_split",
 ]

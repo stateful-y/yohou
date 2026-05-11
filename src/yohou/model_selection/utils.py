@@ -24,6 +24,51 @@ from yohou.metrics.base import BaseIntervalScorer, BaseScorer
 from yohou.utils._compat import _check_method_params, _num_samples, _safe_split
 
 
+def _split_X_forecast(
+    X_forecast: pl.DataFrame | None,
+    y: pl.DataFrame,
+    train_indices: np.ndarray[Any, Any],
+    test_indices: np.ndarray[Any, Any],
+) -> tuple[pl.DataFrame | None, pl.DataFrame | None]:
+    """Split X_forecast by vintage_time range for a CV fold.
+
+    Training receives vintages where ``vintage_time <= cutoff_time``.
+    Testing receives vintages where ``cutoff_time < vintage_time <= test_end_time``.
+    The cutoff is the time corresponding to the last training index and
+    the test end is the time corresponding to the last test index.
+
+    Parameters
+    ----------
+    X_forecast : pl.DataFrame or None
+        External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+        If ``None``, returns ``(None, None)`` immediately.
+    y : pl.DataFrame
+        Target time series with ``"time"`` column, used to derive
+        cutoff and test end times.
+    train_indices : ndarray
+        Row indices of the training set.
+    test_indices : ndarray
+        Row indices of the test set.
+
+    Returns
+    -------
+    tuple of (pl.DataFrame or None, pl.DataFrame or None)
+        ``(X_forecast_train, X_forecast_test)``. Both are ``None``
+        when ``X_forecast`` is ``None``.
+    """
+    if X_forecast is None:
+        return None, None
+
+    cutoff_time = y["time"][int(train_indices[-1])]
+    test_end_time = y["time"][int(test_indices[-1])]
+
+    X_forecast_train = X_forecast.filter(pl.col("vintage_time") <= cutoff_time)
+    X_forecast_test = X_forecast.filter(
+        (pl.col("vintage_time") > cutoff_time) & (pl.col("vintage_time") <= test_end_time)
+    )
+    return X_forecast_train, X_forecast_test
+
+
 def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | _MultimetricScorer:
     """Check the scoring parameter.
 
@@ -104,31 +149,13 @@ class _MultimetricScorer:
         self._scorers = scorers
         self._raise_exc = raise_exc
 
-        # Validate all scorers produce scalar output
-        for name, scorer in scorers.items():
-            agg = getattr(scorer, "aggregation_method", "all")
-            # Interval scorers expand "all" to the full list at init time
-            is_all = agg == "all" or (
-                isinstance(agg, list) and set(agg) >= {"stepwise", "vintagewise", "componentwise"}
-            )
-            if not is_all:
-                raise ValueError(
-                    f"Scorer '{name}' has aggregation_method={agg!r}, but "
-                    f"cross-validation requires aggregation_method='all' "
-                    f"(scalar output). Use scorer.score() directly for "
-                    f"partial aggregation."
-                )
-
-    def fit(self, y: pl.DataFrame, *, forecaster=None) -> _MultimetricScorer:
+    def fit(self, y: pl.DataFrame) -> _MultimetricScorer:
         """Fit all scorers that have a fit method.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series used for fitting stateful scorers.
-        forecaster : BaseForecaster or None, default=None
-            If provided, forwarded to each scorer's ``fit`` method so
-            that metadata can be extracted from the fitted forecaster.
 
         Returns
         -------
@@ -136,7 +163,7 @@ class _MultimetricScorer:
         """
         for scorer in self._scorers.values():
             if hasattr(scorer, "fit"):
-                scorer.fit(y, forecaster=forecaster)
+                scorer.fit(y)
         return self
 
     def __call__(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, **params: object) -> dict[str, float | str]:
@@ -434,6 +461,17 @@ def _resolve_response_method(scorer: BaseScorer | _MultimetricScorer) -> str:
     return max(methods, key=lambda m: _RESPONSE_METHOD_PRIORITY[m])
 
 
+# Backward-compat shims for yohou-optuna <= 0.1.0a1
+def _needs_interval_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
+    """Check if any scorer requires interval predictions."""
+    return "predict_interval" in _get_response_methods(scorer)
+
+
+def _needs_point_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
+    """Check if any scorer requires point predictions."""
+    return "predict" in _get_response_methods(scorer)
+
+
 def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[float] | None:
     """Collect coverage rates from interval scorers.
 
@@ -444,8 +482,7 @@ def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[flo
     all_rates: set[float] = set()
     for s in scorers:
         if isinstance(s, BaseIntervalScorer) and s.coverage_rates is not None:
-            rates = list(s.coverage_rates.keys()) if isinstance(s.coverage_rates, dict) else s.coverage_rates
-            all_rates.update(rates)
+            all_rates.update(s.coverage_rates)
     return sorted(all_rates) if all_rates else None
 
 
@@ -538,14 +575,16 @@ def _score(
         else:
             y_pred = getattr(forecaster, observe_method)(y_test, X_test, **predict_func_params)
 
-        # Sort predictions by time for scorer validation.
-        # Multi-vintage predictions from observe_predict are concatenated
-        # and may not be in time order.
-        y_pred = y_pred.sort("time")
+        # observe_predict produces overlapping prediction windows when the last
+        # observation chunk is smaller than stride. Deduplicate (keeping the most
+        # recently informed prediction) and sort so downstream scorers receive a
+        # clean, monotonically increasing time column.
+        # TODO: Address this formally in scorers
+        y_pred = y_pred.unique(subset=["time"], keep="last").sort("time")
 
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):
-            scorer.fit(y_train, forecaster=forecaster)
+            scorer.fit(y_train)
         scores = scorer(y_test, y_pred, **score_params)  # ty: ignore[invalid-assignment]
 
     except Exception:  # noqa: BLE001

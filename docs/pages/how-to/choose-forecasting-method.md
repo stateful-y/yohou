@@ -25,7 +25,7 @@ from sklearn.linear_model import Ridge
 from yohou.point import PointReductionForecaster
 
 forecaster = PointReductionForecaster(estimator=Ridge())
-forecaster.fit(y_train, X_train, forecasting_horizon=14)
+forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=14)
 ```
 
 Compare against the baseline. If the linear model does not improve on `SeasonalNaive`, check whether the data has strong nonlinear patterns or whether the exogenous features carry useful signal.
@@ -143,7 +143,7 @@ interval_forecaster = SplitConformalForecaster(
     point_forecaster=forecaster,
     calibration_size=100,
 )
-interval_forecaster.fit(y_train, X_train, forecasting_horizon=14, coverage_rates=[0.9])
+interval_forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=14, coverage_rates=[0.9])
 intervals = interval_forecaster.predict_interval(coverage_rates=[0.9])
 ```
 

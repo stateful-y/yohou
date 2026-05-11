@@ -26,10 +26,10 @@ Using the generator functions for systematic testing::
     from yohou.point import SeasonalNaive
 
     forecaster = SeasonalNaive(seasonality=12)
-    forecaster.fit(y_train, X_train, forecasting_horizon=3)
+    forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
 
     for check_name, check_func, check_kwargs in _yield_yohou_forecaster_checks(
-        forecaster, y_train, X_train, y_test, X_test
+        forecaster, y_train, X_actual_train, y_test, X_actual_test
     ):
         check_func(forecaster, **check_kwargs)
 
@@ -37,7 +37,7 @@ Using individual check functions::
 
     from yohou.testing import check_fit_sets_forecaster_attributes
 
-    check_fit_sets_forecaster_attributes(forecaster, y_train, X_train, forecasting_horizon=3)
+    check_fit_sets_forecaster_attributes(forecaster, y_train, X_actual_train, forecasting_horizon=3)
 
 """
 
@@ -55,6 +55,9 @@ from .common import (
 )
 from .forecaster import (
     check_clone_preserves_forecaster_params,
+    check_fit_predict_with_X_forecast,
+    check_fit_predict_with_X_future,
+    check_fit_predict_without_exogenous,
     check_fit_sets_forecaster_attributes,
     check_forecaster_methods_call_check_is_fitted,
     check_forecaster_not_fitted_error,
@@ -62,9 +65,13 @@ from .forecaster import (
     check_forecaster_tags_match_capabilities,
     check_forecaster_tags_static_after_fit,
     check_forecasting_horizon_validation,
+    check_observe_auto_rederives_step_columns,
     check_observe_extends_observations,
+    check_observe_predict_with_step_columns,
     check_predict_time_columns,
+    check_predict_X_forecast_override,
     check_prediction_types_property,
+    check_requires_exogenous_warns_on_X_future_X_forecast,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
 )
@@ -103,6 +110,7 @@ from .scorer import (
     check_scorer_coverage_rate_subselection,
     check_scorer_lower_is_better,
     check_scorer_methods_call_check_is_fitted,
+    check_scorer_multi_vintage,
     check_scorer_panel_subselection,
     check_scorer_parameter_validation,
     check_scorer_prediction_type_compatibility,
@@ -202,6 +210,9 @@ __all__ = [
     "check_observe_transform_equivalence",
     "check_observe_transform_sequential_consistency",
     "check_clone_preserves_forecaster_params",
+    "check_fit_predict_with_X_forecast",
+    "check_fit_predict_with_X_future",
+    "check_fit_predict_without_exogenous",
     "check_fit_sets_forecaster_attributes",
     "check_forecaster_methods_call_check_is_fitted",
     "check_forecaster_not_fitted_error",
@@ -209,11 +220,15 @@ __all__ = [
     "check_forecaster_tags_match_capabilities",
     "check_forecaster_tags_static_after_fit",
     "check_forecasting_horizon_validation",
+    "check_requires_exogenous_warns_on_X_future_X_forecast",
+    "check_observe_auto_rederives_step_columns",
+    "check_observe_extends_observations",
+    "check_observe_predict_with_step_columns",
     "check_predict_time_columns",
+    "check_predict_X_forecast_override",
     "check_prediction_types_property",
     "check_rewind_propagates_to_transformers",
     "check_rewind_replaces_observations",
-    "check_observe_extends_observations",
     "check_point_prediction_structure",
     "check_point_prediction_types",
     "check_coverage_rates_parameter",
@@ -239,6 +254,7 @@ __all__ = [
     "check_scorer_coverage_rate_subselection",
     "check_scorer_lower_is_better",
     "check_scorer_methods_call_check_is_fitted",
+    "check_scorer_multi_vintage",
     "check_scorer_panel_subselection",
     "check_scorer_parameter_validation",
     "check_scorer_prediction_type_compatibility",

@@ -11,23 +11,23 @@ from yohou.utils import inspect_panel
 __all__ = ["check_panel_data", "check_panel_invalid_group_raises", "check_panel_single_group"]
 
 
-def _call_predict(forecaster, X, forecasting_horizon, panel_group=None, groups=None):
+def _call_predict(forecaster, forecasting_horizon, panel_group=None, groups=None):
     """Call appropriate predict method based on forecaster type."""
     # Interval forecasters use predict_interval, point forecasters use predict
     if hasattr(forecaster, "predict"):
         if panel_group is not None:
-            return forecaster.predict(X=X, forecasting_horizon=forecasting_horizon, panel_group=panel_group)
+            return forecaster.predict(forecasting_horizon=forecasting_horizon, panel_group=panel_group)
         elif groups is not None:
-            return forecaster.predict(X=X, forecasting_horizon=forecasting_horizon, groups=groups)
+            return forecaster.predict(forecasting_horizon=forecasting_horizon, groups=groups)
         else:
-            return forecaster.predict(X=X, forecasting_horizon=forecasting_horizon)
+            return forecaster.predict(forecasting_horizon=forecasting_horizon)
     # Interval forecaster
     elif panel_group is not None:
-        return forecaster.predict_interval(X=X, forecasting_horizon=forecasting_horizon, panel_group=panel_group)
+        return forecaster.predict_interval(forecasting_horizon=forecasting_horizon, panel_group=panel_group)
     elif groups is not None:
-        return forecaster.predict_interval(X=X, forecasting_horizon=forecasting_horizon, groups=groups)
+        return forecaster.predict_interval(forecasting_horizon=forecasting_horizon, groups=groups)
     else:
-        return forecaster.predict_interval(X=X, forecasting_horizon=forecasting_horizon)
+        return forecaster.predict_interval(forecasting_horizon=forecasting_horizon)
 
 
 def _column_present(field: str, columns: list[str]) -> bool:
@@ -61,7 +61,7 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | 
 
     """
     # Predict with default (panel_group=None)
-    y_pred = _call_predict(forecaster, X=X_panel, forecasting_horizon=3, panel_group=None)
+    y_pred = _call_predict(forecaster, forecasting_horizon=3, panel_group=None)
 
     # Check that all local groups from training data are in predictions
     _, y_panel_groups = inspect_panel(y_panel)
@@ -104,7 +104,7 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.Data
         first_group = list(y_panel_groups.keys())[0]
 
         # Predict with specific group
-        y_pred = _call_predict(forecaster, X=X_panel, forecasting_horizon=3, panel_group=first_group)
+        y_pred = _call_predict(forecaster, forecasting_horizon=3, panel_group=first_group)
 
         # Should have columns from the specified group (flat columns with __ separator)
         group_cols = y_panel_groups[first_group]
@@ -142,7 +142,7 @@ def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel:
     if len(y_panel_groups) > 0:
         # Try to predict with invalid group name
         try:
-            _call_predict(forecaster, X=X_panel, forecasting_horizon=3, groups=["invalid_group"])
+            _call_predict(forecaster, forecasting_horizon=3, groups=["invalid_group"])
             raise AssertionError("predict() should raise ValueError for invalid panel_group, but didn't")
         except ValueError as e:
             # Expected - check error message mentions the invalid group
