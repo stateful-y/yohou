@@ -185,6 +185,19 @@ class TestPivotForecasts:
         assert result["temp_step_2"].to_list() == [None]
         assert result["temp_step_3"].to_list() == [12.0]
 
+    def test_empty_dataframe_returns_empty(self):
+        """Empty DataFrame with correct schema returns empty pivoted result."""
+        df = pl.DataFrame({
+            "vintage_time": pl.Series([], dtype=pl.Datetime("us")),
+            "time": pl.Series([], dtype=pl.Datetime("us")),
+            "temp": pl.Series([], dtype=pl.Float64),
+        })
+        result = pivot_forecasts(df)
+
+        assert result.is_empty()
+        assert "time" in result.columns
+        assert "temp" in result.columns
+
     def test_panel_prefixed_columns(self):
         """Columns with __ panel prefix produce prefixed step names."""
         df = pl.DataFrame({
