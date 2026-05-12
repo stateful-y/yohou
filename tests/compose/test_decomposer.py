@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 from sklearn.base import clone
-from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks
 from yohou.compose import DecompositionPipeline

@@ -1292,13 +1292,13 @@ def _facet_figure_panel(
 ) -> go.Figure:
     """Panel-mode faceting (group/member axes)."""
     panel_cols = resolve_panel_columns(df, groups, columns)
-    groups, all_members = _group_panel_columns(panel_cols)
-    all_group_names = list(groups.keys())
+    group_map, all_members = _group_panel_columns(panel_cols)
+    all_group_names = list(group_map.keys())
 
     if facet_by == "member":
         facet_keys = all_members
         overlay_keys_per_facet = {
-            m: [g for g, cols in groups.items() if any(_member_name(c) == m for c in cols)] for m in all_members
+            m: [g for g, cols in group_map.items() if any(_member_name(c) == m for c in cols)] for m in all_members
         }
         full_group_set = set(all_group_names)
         missing = {
@@ -1314,7 +1314,7 @@ def _facet_figure_panel(
             )
     else:
         facet_keys = all_group_names
-        overlay_keys_per_facet = {g: [_member_name(c) for c in cols] for g, cols in groups.items()}
+        overlay_keys_per_facet = {g: [_member_name(c) for c in cols] for g, cols in group_map.items()}
 
     n_facets = len(facet_keys)
     n_cols_grid = min(n_facets, facet_n_cols)
@@ -1340,7 +1340,7 @@ def _facet_figure_panel(
                 group_name = overlay_key
                 member_name = facet_key
                 col_name = next(
-                    (c for c in groups[group_name] if _member_name(c) == member_name),
+                    (c for c in group_map[group_name] if _member_name(c) == member_name),
                     None,
                 )
                 if col_name is None:
@@ -1350,7 +1350,7 @@ def _facet_figure_panel(
                 group_name = facet_key
                 member_name = overlay_key
                 col_name = next(
-                    (c for c in groups[group_name] if _member_name(c) == member_name),
+                    (c for c in group_map[group_name] if _member_name(c) == member_name),
                     None,
                 )
                 if col_name is None:

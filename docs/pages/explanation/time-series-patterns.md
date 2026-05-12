@@ -80,8 +80,8 @@ The patterns identified here inform transform selection in
 scaling), see [Preprocessing](preprocessing.md). For checking whether a model has
 captured the patterns, see [Residual Diagnostics](residual-diagnostics.md).
 
-Practical examples: [Correlation](/examples/correlation/) demonstrates ACF and PACF
-analysis, and [Seasonal](/examples/seasonal/) explores seasonal pattern
+Practical examples: [Correlation](/examples/plotting/correlation/) demonstrates ACF and PACF
+analysis, and [Seasonal](/examples/plotting/seasonal/) explores seasonal pattern
 identification.
 
 ## Categorical Patterns

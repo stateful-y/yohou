@@ -292,11 +292,11 @@ The transformers mentioned above (target transformers for stationarity, feature
 transformers for signal enrichment) are discussed in depth in
 [Preprocessing](preprocessing.md) and [Stationarity](stationarity.md).
 
-Practical examples: [Reduction Forecaster](/examples/reduction_forecaster/) walks
+Practical examples: [Reduction Forecaster](/examples/point/reduction_forecaster/) walks
 through building a basic reduction forecaster, and
-[Reduction Strategies](/examples/reduction_strategies/) compares multi-output,
+[Reduction Strategies](/examples/point/reduction_strategies/) compares multi-output,
 direct, and dir-rec on the same dataset.
-[Panel Reduction Forecasting](/examples/panel_reduction/) demonstrates panel
+[Panel Reduction Forecasting](/examples/point/panel_reduction/) demonstrates panel
 strategies (global, multivariate, local) for multi-entity data.
 
 The reduction pattern extends naturally to categorical targets through

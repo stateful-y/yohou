@@ -51,6 +51,6 @@ Scorers for evaluating point forecasts, prediction intervals, and conformal pred
 
 | Name | Description |
 | --- | --- |
-| [`Accuracy`](generated/yohou.metrics.class_proba.Accuracy.md) | Categorical accuracy from class-probability forecasts. |
+| [`Accuracy`](generated/yohou.metrics.classification.Accuracy.md) | Categorical accuracy from class-probability forecasts. |
 | [`BrierScore`](generated/yohou.metrics.class_proba.BrierScore.md) | Multi-class Brier score for class-probability forecasts. |
 | [`LogLoss`](generated/yohou.metrics.class_proba.LogLoss.md) | Logarithmic loss (cross-entropy) for class-probability forecasts. |

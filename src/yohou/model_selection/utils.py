@@ -646,7 +646,7 @@ def _score(
 
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):
-            scorer.fit(y_train)
+            scorer.fit(y_train, forecaster=forecaster)
         scores = scorer(y_test, y_pred, **score_params)  # ty: ignore[invalid-assignment]
 
     except Exception:  # noqa: BLE001

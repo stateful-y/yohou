@@ -244,6 +244,6 @@ way they work with `predict`.
 provides an ensemble approach to combining prediction intervals from multiple models.
 See [Ensemble Forecasting](ensemble-forecasting.md) for details.
 
-Practical examples: [Conformal Forecasting](/examples/conformal_forecasting/),
-[Conformity Scorers](/examples/conformity_scorers/), and
-[Distance Similarity](/examples/distance_similarity/).
+Practical examples: [Conformal Forecasting](/examples/interval/conformal_forecasting/),
+[Conformity Scorers](/examples/metrics/conformity_scorers/), and
+[Distance Similarity](/examples/interval/distance_similarity/).

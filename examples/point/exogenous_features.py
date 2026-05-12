@@ -13,7 +13,7 @@ __gallery__ = {
     "title": "Exogenous Features (X_actual, X_future, X_forecast)",
     "description": "Build a forecasting model with actual observations, known-future indicators, and multi-vintage external forecasts on synthetic electricity price data.",
     "category": "tutorial",
-    "companion": "pages/user-guide/exogenous-tutorial.md",
+    "companion": "pages/tutorials/exogenous-features.md",
 }
 app = marimo.App(width="medium")
 

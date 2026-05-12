@@ -8,7 +8,7 @@ the same aggregation, weighting, and multi-vintage infrastructure.
 
 ## Prerequisites
 
-- yohou installed ([Getting Started](../getting-started/index.md))
+- yohou installed ([Getting Started](../tutorials/getting-started.md))
 - Familiarity with scikit-learn's `BaseEstimator` conventions
 - Understanding of yohou's forecasting data format (`time` column, optional
   `vintage_time` column)

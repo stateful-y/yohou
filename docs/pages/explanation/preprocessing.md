@@ -129,6 +129,6 @@ same `BaseTransformer` contract but focus specifically on making time series
 stationary. For how transformers compose inside forecasters and pipelines, see
 [Composition](composition.md).
 
-Practical examples: [Data Cleaning](/examples/data_cleaning/),
-[Window Transformers](/examples/window_transformers/), and
-[Pipeline Composition](/examples/pipeline_composition/).
+Practical examples: [Data Cleaning](/examples/preprocessing/data_cleaning/),
+[Window Transformers](/examples/preprocessing/window_transformers/), and
+[Pipeline Composition](/examples/compose/pipeline_composition/).
