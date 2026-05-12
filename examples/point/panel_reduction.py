@@ -9,12 +9,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Panel Reduction Forecasting",
-    "description": "Apply reduction-based forecasters to panel data with global and per-group strategies.",
-    "category": "how-to",
-    "companion": "/pages/explanation/core-concepts/#univariate-multivariate-and-panel-data",
-}
 app = marimo.App(width="medium")
 
 
@@ -38,9 +32,21 @@ def _(mo):
     data through different `panel_strategy` options, plus the fully
     independent [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) approach.
 
-    This notebook shows how to apply reduction-based forecasters to panel data with global and per-group strategies.
+    ## What You'll Learn
 
-    **Background:** [Panel Data](/pages/explanation/core-concepts/#univariate-multivariate-and-panel-data) explains the naming conventions and strategy options.
+    - Panel data conventions (`<group>__<series>`) and inspection utilities
+    - Panel data forecasting strategies with a reduction-based forecasting model
+    - `panel_strategy="global"` (default): shared model, per-group state
+    - `panel_strategy="multivariate"`: treat panel as wide multivariate data
+    - [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/): fully independent per-group clones
+    - When to use each strategy
+    - Groupwise scoring to compare strategies
+
+    > **Note**: `panel_strategy` and `reduction_strategy` are **orthogonal**:
+    > any combination works. For example, `panel_strategy="global"` with
+    > `reduction_strategy="direct"` pools panel groups into one dataset but
+    > trains H independent models. See [`reduction_strategies.py`](/examples/point/reduction_strategies/)
+    > for a deep dive into reduction strategies.
     """)
 
 
@@ -50,11 +56,11 @@ def _():
 
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.compose import LocalPanelForecaster
     from yohou.datasets import fetch_kdd_cup
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_heatmap,
@@ -133,7 +139,7 @@ def _(plot_time_series, store):
 def _(mo, store, train_test_split):
     _target_cols = [c for c in store.columns if c != "time"]
     y = store.select("time", *_target_cols)
-    y_train, y_test = train_test_split(y, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.15)
     horizon = len(y_test)
 
     mo.md(
@@ -405,6 +411,35 @@ def _(
         [{"reduction_strategy": k, "MAE": f"{v:.2f}"} for k, v in _reduction_scores.items()],
         label="MAE by reduction_strategy (global panel)",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## When to Use Each Strategy
+
+    | Strategy | Parameter | Best For |
+    |---|---|---|
+    | **Global** | `panel_strategy="global"` (default) | Homogeneous groups sharing similar dynamics |
+    | **Multivariate** | `panel_strategy="multivariate"` | Correlated groups with cross-group interactions |
+    | **Local** | `LocalPanelForecaster(forecaster=...)` | Heterogeneous groups needing fully independent models |
+
+    **Rules of thumb:**
+
+    - Start with `"global"` (simplest, good default)
+    - Try `"multivariate"` if groups are strongly correlated (e.g. nearby monitoring stations)
+    - Use [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) when groups differ significantly (e.g. different cities, sensor types)
+    - Combine with [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) to assign different model families per group
+
+    ## Next Steps
+
+    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec comparison
+    - **LocalPanelForecaster deep dive**: See [`examples/compose/local_panel_forecaster.py`](/examples/compose/local_panel_forecaster/)
+    - **Per-group specialisation**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/)
+    - **Composition patterns**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
+    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/)
+    - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
+    """)
 
 
 @app.cell(hide_code=True)

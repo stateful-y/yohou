@@ -13,7 +13,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "CatBoost Forecasting",
     "description": "Plug CatBoostRegressor into PointReductionForecaster as a drop-in sklearn estimator, compare gradient-boosted versus Ridge linear baseline, and demonstrate the direct reduction strategy with tree-based models.",
-    "category": "how-to",
 }
 
 app = marimo.App(width="medium")
@@ -318,6 +317,20 @@ def _(vintage_scorer, plot_score_time_series, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - Any sklearn-compatible regressor works with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
+    - CatBoost often captures nonlinear patterns better than linear models
+    - Tree-based models pair well with `reduction_strategy="direct"` (no `MultiOutputRegressor` wrapper needed)
+    - Use `verbose=0` to keep notebook output clean
+    - Consider [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) for tuning `iterations`, `depth`, `learning_rate`
+    - See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for a full strategy comparison
+    """)
 
 
 if __name__ == "__main__":

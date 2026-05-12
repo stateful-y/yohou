@@ -11,7 +11,7 @@ from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, BaseTransformer
-from yohou.utils import INTERVAL, Tags, cast, select_panel_columns, validate_forecaster_data
+from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
 from yohou.utils._compat import _fit_context
 
 __all__ = ["BaseIntervalForecaster", "BaseSimilarity"]
@@ -37,6 +37,29 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     """
 
     _parameter_constraints: dict = {}
+
+    @staticmethod
+    def _validate_no_nulls(df: pl.DataFrame, method_name: str) -> None:
+        """Raise if any column contains null or NaN values.
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            DataFrame to validate.
+        method_name : str
+            Name of the calling method (for the error message).
+
+        Raises
+        ------
+        ValueError
+            If any column contains null or NaN values.
+
+        """
+        null_cols = [col for col in df.columns if df[col].is_null().any()]
+        nan_cols = [col for col in df.select(cs.numeric()).columns if df[col].is_nan().any()]
+        bad_cols = sorted(set(null_cols + nan_cols))
+        if bad_cols:
+            raise ValueError(f"{method_name}() received data with null or NaN values in columns: {bad_cols}")
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -73,7 +96,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Fit the similarity measure.
 
@@ -85,7 +108,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Point predictions.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
 
         Returns
@@ -99,7 +122,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         self,
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> "BaseSimilarity":
         """Observe new data and update the similarity measure.
 
@@ -111,7 +134,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             New predictions.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             New exogenous features.
 
         Returns
@@ -124,7 +147,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     def predict(
         self,
         y_pred: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         """Compute similarity weights for predictions.
 
@@ -133,7 +156,7 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predictions to compute similarities for.
 
-        X : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame or None, default=None
             Exogenous features.
 
         Returns
@@ -142,6 +165,36 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
             Similarity weights.
 
         """
+
+    def rewind(
+        self,
+        y: pl.DataFrame,
+        y_pred: pl.DataFrame,
+        X_actual: pl.DataFrame | None = None,
+    ) -> "BaseSimilarity":
+        """Rewind observed data from the similarity measure.
+
+        Default implementation is a no-op. Concrete subclasses that
+        track observed data should override this to remove the most
+        recently observed rows.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target observations to rewind.
+
+        y_pred : pl.DataFrame
+            Predictions to rewind.
+
+        X_actual : pl.DataFrame or None, default=None
+            Exogenous features to rewind.
+
+        Returns
+        -------
+        self
+
+        """
+        return self
 
 
 class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
@@ -177,8 +230,6 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     """
 
-    _parameter_constraints: dict = {}
-
     _tags: dict = {"forecaster_type": INTERVAL}
 
     _parameter_constraints: dict = {}
@@ -202,8 +253,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
-        coverage_rates: list[float] | None = None,
         *,
+        coverage_rates: list[float] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
@@ -282,7 +333,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If forecasting_horizon < 1 or coverage_rates not in (0, 1].
+            If forecasting_horizon < 1 or coverage_rates not in [0, 1].
 
         """
         if forecasting_horizon < 1:
@@ -293,8 +344,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         # Validate coverage rates
         for rate in coverage_rates:
-            if not (0 < rate <= 1):
-                raise ValueError(f"All coverage_rates must be in (0, 1], got {rate}")
+            if not (0 <= rate <= 1):
+                raise ValueError(f"All coverage_rates must be in [0, 1], got {rate}")
 
         return forecasting_horizon, coverage_rates
 
@@ -320,7 +371,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If forecasting_horizon < 1 or coverage_rates not in (0, 1].
+            If forecasting_horizon < 1 or coverage_rates not in [0, 1].
 
         """
         if forecasting_horizon is None:
@@ -332,20 +383,25 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def predict_interval(
         self,
-        X: pl.DataFrame | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
         """Generate interval forecasts.
 
         Parameters
         ----------
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
@@ -362,7 +418,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             - ``"point"``: use the point forecast directly (if available)
 
             If ``None``, defaults to ``"mean"``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
@@ -372,7 +428,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"observed_time"``, ``"time"``, and
+            Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         Raises
@@ -380,38 +436,33 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``X`` has invalid structure, ``coverage_rates`` not in (0, 1],
-            or ``panel_group_names`` contains names not seen during fit.
+            If ``coverage_rates`` not in [0, 1],
+            or ``groups`` contains names not seen during fit.
 
         """
-        check_is_fitted(self, ["panel_group_names_", "local_y_schema_", "fit_forecasting_horizon_"])
-        _, X, panel_group_names = validate_forecaster_data(
+        check_is_fitted(self, ["groups_", "local_y_schema_", "fit_forecasting_horizon_"])
+        _, _, groups = validate_forecaster_data(
             self,
             y=None,
-            X=X,
+            X_actual=None,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(forecasting_horizon, coverage_rates)
 
         y_columns = list(self.local_y_schema_.keys())
-        if panel_group_names is not None:
-            y_columns = [f"{panel_group}__{col}" for panel_group in panel_group_names for col in self.local_y_schema_]
-
-            if X is not None:
-                X = select_panel_columns(
-                    X,
-                    self.panel_group_names_,
-                    include_global=True,
-                )
+        if groups is not None:
+            y_columns = [f"{panel_group}__{col}" for panel_group in groups for col in self.local_y_schema_]
 
         def step_fn(forecaster, groups):
             """Produce one interval-prediction block."""
-            y_pred_step, y_pred_step_inv = forecaster._predict_and_postprocess(groups, coverage_rates=coverage_rates)
+            y_pred_step, y_pred_step_inv = forecaster._predict(groups, coverage_rates=coverage_rates)
             return y_pred_step_inv, y_pred_step_inv
 
-        def derive_observation_fn(forecaster, y_pred_step_inv, X, step):
+        def derive_observation_fn(forecaster, y_pred_step_inv):
             """Derive observation from interval bounds."""
             time = y_pred_step_inv.select(cs.by_name("time"))
 
@@ -433,9 +484,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             y = pl.DataFrame(y_data)
 
-            if panel_group_names is not None:
+            if groups is not None:
                 cast_schema = {}
-                for group_name in panel_group_names:
+                for group_name in groups:
                     for col_name, dtype in forecaster.local_y_schema_.items():
                         cast_schema[f"{group_name}__{col_name}"] = dtype
             else:
@@ -443,50 +494,50 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
             y = cast(y.select(~cs.by_name("time")), cast_schema)
             y = pl.concat([y_data["time"].to_frame(), y], how="horizontal")
+            return y
 
-            X_slice = None
-            if X is not None:
-                X_slice = X.join(y.select("time"), on="time", how="semi")
+        def predict_fn():
+            """Run recursive predict with step columns."""
+            return self._recursive_predict(
+                forecasting_horizon=forecasting_horizon,
+                groups=groups,
+                step_fn=step_fn,
+                derive_observation_fn=derive_observation_fn,
+            )
 
-                if len(X_slice) != len(y):
-                    raise ValueError(
-                        f"Missing X for future steps. Needed {len(y)} rows, but X slice has {len(X_slice)} rows."
-                    )
-
-            return y, X_slice
-
-        return self._recursive_predict(
-            X=X,
-            forecasting_horizon=forecasting_horizon,
-            panel_group_names=panel_group_names,
-            step_fn=step_fn,
-            derive_observation_fn=derive_observation_fn,
+        return self._predict_with_step_override(
+            X_future=X_future,
+            X_forecast=X_forecast,
+            predict_fn=predict_fn,
         )
 
     def observe_predict_interval(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
         strategy: Literal["mean", "median", "point"] | None = None,
-        panel_group_names: list[str] | None = None,
+        groups: list[str] | None = None,
         stride: StrictInt | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> pl.DataFrame:
         """Alternate recursive predict_interval and observe.
 
-        Equivalent to calling ``observe(y, X)`` then
-        ``predict_interval(X)``.  Returns interval predictions.
+        Equivalent to calling ``observe(y, X_actual)`` then
+        ``predict_interval()``.  Returns interval predictions.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
@@ -503,20 +554,25 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             - ``"point"``: use the point forecast directly (if available)
 
             If ``None``, defaults to ``"mean"``.
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
         stride : int or None, default=None
             Step size for rolling update-predict.  If ``None``, defaults to
             ``forecasting_horizon``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
         **params : dict
             Metadata to route to nested estimators.
 
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"observed_time"``, ``"time"``, and
+            Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
 
         Raises
@@ -524,17 +580,19 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure, ``coverage_rates`` not in
-            (0, 1], or ``panel_group_names`` contains names not seen during fit.
+            If ``y`` / ``X_actual`` have invalid structure, ``coverage_rates`` not in
+            (0, 1], or ``groups`` contains names not seen during fit.
 
         """
-        check_is_fitted(self, ["panel_group_names_", "local_y_schema_", "fit_forecasting_horizon_"])
-        y, X, panel_group_names = validate_forecaster_data(
+        check_is_fitted(self, ["groups_", "local_y_schema_", "fit_forecasting_horizon_"])
+        y, X_actual, groups = validate_forecaster_data(
             self,
             y=y,
-            X=X,
+            X_actual=X_actual,
             reset=False,
-            panel_group_names=panel_group_names,
+            groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         forecasting_horizon, _ = self._validate_predict_params(forecasting_horizon, coverage_rates)
@@ -545,8 +603,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         return self._observe_predict_loop(
             predict_fn=self.predict_interval,
             y=y,
-            X=X,
-            panel_group_names=panel_group_names,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            groups=groups,
             stride=stride,
             forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
@@ -554,9 +614,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             **params,
         )
 
-    def _predict(
+    def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         coverage_rates: list[StrictFloat] | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -564,7 +624,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         coverage_rates : list of float
             Coverage rates for the prediction intervals.

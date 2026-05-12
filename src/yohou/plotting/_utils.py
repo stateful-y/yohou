@@ -334,7 +334,7 @@ def _create_figure(
         A plain figure, ``FigureResampler``, or ``FigureWidgetResampler``.
     """
     mode = _get_resampler_mode(resampler)
-    if mode == "widget":
+    if mode == "widget":  # pragma: no cover
         try:
             from plotly_resampler import FigureWidgetResampler  # noqa: PLC0415  # ty: ignore[unresolved-import]
         except ImportError as e:
@@ -344,7 +344,7 @@ def _create_figure(
             go.Figure(**kwargs),
             **_build_resampler_kwargs(),
         )
-    if mode:
+    if mode:  # pragma: no cover
         try:
             from plotly_resampler import FigureResampler  # noqa: PLC0415  # ty: ignore[unresolved-import]
         except ImportError as e:
@@ -377,7 +377,7 @@ def _create_subplots(
     """
     fig = make_subplots(**subplots_kwargs)
     mode = _get_resampler_mode(resampler)
-    if mode == "widget":
+    if mode == "widget":  # pragma: no cover
         try:
             from plotly_resampler import FigureWidgetResampler  # noqa: PLC0415  # ty: ignore[unresolved-import]
         except ImportError as e:
@@ -387,7 +387,7 @@ def _create_subplots(
             fig,
             **_build_resampler_kwargs(),
         )
-    if mode:
+    if mode:  # pragma: no cover
         try:
             from plotly_resampler import FigureResampler  # noqa: PLC0415  # ty: ignore[unresolved-import]
         except ImportError as e:
@@ -418,9 +418,9 @@ def _fill_trace_kwargs(fig: go.Figure) -> dict:
         )
     except ImportError:
         return {}
-    if isinstance(fig, AbstractFigureAggregator):
+    if isinstance(fig, AbstractFigureAggregator):  # pragma: no cover
         return {"gap_handler": NoGapHandler()}
-    return {}
+    return {}  # pragma: no cover
 
 
 def palette_yohou() -> dict[str, str]:
@@ -759,7 +759,7 @@ def _normalize_y_pred(
 DEFAULT_WIDTH: int = 1000
 """Default figure width in pixels applied when *width* is ``None``."""
 
-DEFAULT_LAYOUT = {
+DEFAULT_LAYOUT: dict[str, Any] = {
     "template": "plotly_white",
     "font": {"family": "Arial, sans-serif", "size": 12, "color": "#1e293b"},
     "title": {"font": {"size": 16, "color": "#0f172a"}, "x": 0.5, "xanchor": "center"},
@@ -838,14 +838,14 @@ def apply_default_layout(
     layout_update: dict[str, Any] = copy.deepcopy(DEFAULT_LAYOUT)
 
     if title is not None:
-        layout_update["title"]["text"] = title  # ty: ignore[invalid-assignment]
+        layout_update["title"]["text"] = title
     if x_label is not None:
-        layout_update["xaxis"]["title"] = x_label  # ty: ignore[invalid-assignment]
+        layout_update["xaxis"]["title"] = x_label
     if y_label is not None:
-        layout_update["yaxis"]["title"] = y_label  # ty: ignore[invalid-assignment]
-    layout_update["width"] = width if width is not None else DEFAULT_WIDTH  # ty: ignore[invalid-assignment]
+        layout_update["yaxis"]["title"] = y_label
+    layout_update["width"] = width if width is not None else DEFAULT_WIDTH
     if height is not None:
-        layout_update["height"] = height  # ty: ignore[invalid-assignment]
+        layout_update["height"] = height
     if hovermode is not None:
         layout_update["hovermode"] = hovermode
 
@@ -855,7 +855,7 @@ def apply_default_layout(
 
 def resolve_panel_columns(
     df: pl.DataFrame,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     columns: str | list[str] | None = None,
 ) -> list[str]:
     """Resolve which panel columns to plot.
@@ -864,7 +864,7 @@ def resolve_panel_columns(
     ----------
     df : pl.DataFrame
         Input DataFrame with panel columns (``group__member`` pattern).
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Group prefixes to include.  If ``None`` or empty, all groups
         are included.
     columns : str | list[str] | None, default=None
@@ -897,7 +897,7 @@ def resolve_panel_columns(
     >>> resolve_panel_columns(df, columns="a")
     ['sales__a']
 
-    >>> resolve_panel_columns(df, panel_group_names=["sales"], columns=["b"])
+    >>> resolve_panel_columns(df, groups=["sales"], columns=["b"])
     ['sales__b']
     """
     _, panels = inspect_panel(df)
@@ -905,7 +905,7 @@ def resolve_panel_columns(
         columns = [columns]
     cols: list[str] = []
     for prefix, members in panels.items():
-        if not panel_group_names or prefix in panel_group_names:
+        if not groups or prefix in groups:
             if columns is not None:
                 for member in members:
                     _, _, postfix = member.partition("__")
@@ -915,16 +915,16 @@ def resolve_panel_columns(
                 cols.extend(members)
     if not cols:
         if columns is not None:
-            msg = f"No panel columns found for groups={panel_group_names} with members={columns}"
+            msg = f"No panel columns found for groups={groups} with members={columns}"
         else:
-            msg = f"No panel columns found for groups: {panel_group_names}"
+            msg = f"No panel columns found for groups: {groups}"
         raise ValueError(msg)
     return cols
 
 
 def _auto_detect_panel(
     df: pl.DataFrame,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
 ) -> bool:
     """Return ``True`` if *df* contains panel columns for the given groups.
 
@@ -935,7 +935,7 @@ def _auto_detect_panel(
     ----------
     df : pl.DataFrame
         DataFrame to inspect.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Group prefixes to check.  ``None`` checks for any panel columns.
 
     Returns
@@ -944,7 +944,7 @@ def _auto_detect_panel(
         ``True`` when at least one matching panel column is found.
     """
     try:
-        return len(resolve_panel_columns(df, panel_group_names)) > 0
+        return len(resolve_panel_columns(df, groups)) > 0
     except ValueError:
         return False
 
@@ -1130,7 +1130,7 @@ def facet_figure(
     df: pl.DataFrame,
     render_fn: Callable[[RenderContext], None],
     *,
-    panel_group_names: list[str] | None = None,
+    groups: list[str] | None = None,
     columns: str | list[str] | None = None,
     column_groups: dict[str, list[str]] | None = None,
     facet_by: Literal["group", "member"] = "member",
@@ -1148,8 +1148,8 @@ def facet_figure(
 ) -> go.Figure:
     """Create a faceted subplot figure for panel or column data.
 
-    When *panel_group_names* is provided the function facets by panel
-    group/member (existing behaviour).  When *panel_group_names* is
+    When *groups* is provided the function facets by panel
+    group/member (existing behaviour).  When *groups* is
     ``None`` the function facets by **column**: each column (or column
     group) becomes one subplot.
 
@@ -1159,7 +1159,7 @@ def facet_figure(
         Input DataFrame with a ``"time"`` column.
     render_fn : Callable[[RenderContext], None]
         Callback receiving a `RenderContext` for each trace.
-    panel_group_names : list[str] | None, default=None
+    groups : list[str] | None, default=None
         Group prefixes to include (``None`` means non-panel mode).
     columns : str | list[str] | None, default=None
         For panel mode: member names to include within selected groups.
@@ -1232,11 +1232,11 @@ def facet_figure(
     [`RenderContext`][yohou.plotting.RenderContext] : Typed context passed to the render callback.
     [`resolve_panel_columns`][yohou.plotting.resolve_panel_columns] : Resolve which panel columns to plot.
     """
-    if panel_group_names is not None:
+    if groups is not None:
         return _facet_figure_panel(
             df,
             render_fn,
-            panel_group_names=panel_group_names,
+            groups=groups,
             columns=columns,
             facet_by=facet_by,
             facet_n_cols=facet_n_cols,
@@ -1275,7 +1275,7 @@ def _facet_figure_panel(
     df: pl.DataFrame,
     render_fn: Callable[[RenderContext], None],
     *,
-    panel_group_names: list[str] | None,
+    groups: list[str] | None,
     columns: str | list[str] | None,
     facet_by: Literal["group", "member"],
     facet_n_cols: int,
@@ -1291,7 +1291,7 @@ def _facet_figure_panel(
     resampler: bool | Literal["widget"] | None,
 ) -> go.Figure:
     """Panel-mode faceting (group/member axes)."""
-    panel_cols = resolve_panel_columns(df, panel_group_names, columns)
+    panel_cols = resolve_panel_columns(df, groups, columns)
     groups, all_members = _group_panel_columns(panel_cols)
     all_group_names = list(groups.keys())
 

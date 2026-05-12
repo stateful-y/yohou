@@ -9,12 +9,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Interval Reduction Forecaster",
-    "description": "Build prediction intervals using reduction-based interval forecasters with quantile regression.",
-    "category": "how-to",
-    "companion": "/pages/explanation/interval-forecasting/",
-}
 app = marimo.App(width="medium")
 
 
@@ -52,11 +46,11 @@ def _():
     from copy import deepcopy
 
     import plotly.graph_objects as go
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_heatmap,
@@ -93,7 +87,7 @@ def _(mo):
 def _(fetch_tourism_monthly, train_test_split):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     forecasting_horizon = len(y_test)
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
@@ -291,6 +285,19 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## Key Takeaways
+
+    - [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) uses quantile regression for native intervals
+    - `coverage_rates` are specified at **fit time** (models for each quantile)
+    - No separate calibration set needed (unlike conformal prediction)
+    - More coverage rates = more quantile models to train
+    - Evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict_interval` method with `stride=1` produces one
@@ -341,6 +348,18 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Score Heatmap (Step x Vintage)",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - **Point strategy comparison**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
+    - **CatBoost multi-quantile**: See [`catboost_multiquantile.py`](/examples/interval/catboost_multiquantile/) for single-model quantile prediction
+    - **Calibration plots**: Use [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) from `yohou.plotting`
+    - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval metrics
+    """)
 
 
 if __name__ == "__main__":

@@ -10,11 +10,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "CatBoost Multi-Quantile",
-    "description": "Generate prediction intervals using CatBoost multi-quantile regression for interval forecasting.",
-    "category": "how-to",
-}
 app = marimo.App(width="medium")
 
 
@@ -56,11 +51,11 @@ def _():
     from copy import deepcopy
 
     from catboost import CatBoostRegressor
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_step,
@@ -99,7 +94,7 @@ def _(mo):
 def _(fetch_tourism_monthly, train_test_split):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     forecasting_horizon = len(y_test)
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
@@ -328,6 +323,26 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - Set `loss_function='MultiQuantile:alpha=...'` on `CatBoostRegressor`
+    - [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) detects this and fits **one** model
+    - The alpha placeholder is overwritten: just specify `coverage_rates`
+    - Multi-quantile is faster when many coverage rates are needed
+    - Interval quality is comparable to separate quantile models
+    - `reduction_strategy` does not change multi-quantile behaviour (always recursive with H=1)
+
+    ## Next Steps
+
+    - **Standard interval reduction**: See [`interval_reduction.py`](/examples/interval/interval_reduction/) for `reduction_strategy` comparison
+    - **Point CatBoost**: See [`catboost_forecasting.py`](/examples/point/catboost_forecasting/) for point forecasting with CatBoost
+    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) for multi-output vs direct vs dir-rec
+    """)
 
 
 if __name__ == "__main__":

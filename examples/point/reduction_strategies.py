@@ -9,12 +9,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Reduction Strategies",
-    "description": "Compare direct, recursive, and multi-output reduction strategies for point forecasting.",
-    "category": "how-to",
-    "companion": "/pages/explanation/forecasting/#reduction-strategies",
-}
 app = marimo.App(width="medium")
 
 
@@ -55,10 +49,10 @@ def _():
 
     import polars as pl
     from sklearn.ensemble import RandomForestRegressor
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_sunspot
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_step,
@@ -100,7 +94,7 @@ def _(mo):
 def _(fetch_sunspot, pl, train_test_split):
     y = fetch_sunspot().frame.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
 
-    y_train, y_test = train_test_split(y, test_size=0.05, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.05)
     forecasting_horizon = 24
 
     print(f"Training: {len(y_train)} obs, Test: {len(y_test)} obs")
@@ -305,10 +299,10 @@ def _(mo):
     |---|---|---|
     | `"transformed"` (default) | Target after `target_transformer` | Lag features see the transformed scale |
     | `"raw"` | Original untransformed target | Lag features on raw scale even when target is transformed |
-    | `None` | Exogenous X only (no target) | Purely exogenous-driven forecasting (requires X) |
+    | `None` | Exogenous X_actual only (no target) | Purely exogenous-driven forecasting (requires X_actual) |
 
     We compare `"transformed"` vs `"raw"` with the direct strategy.
-    Setting `target_as_feature=None` is useful when exogenous features (X) are
+    Setting `target_as_feature=None` is useful when exogenous features (X_actual) are
     available and you want to exclude the target from the feature matrix entirely.
     """)
 
@@ -363,6 +357,20 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## Key Takeaways
+
+    - `reduction_strategy` controls how multi-step forecasts are produced from tabularized data
+    - **Multi-output**: one model, all steps at once - simple and fast
+    - **Direct**: H independent models - avoids error accumulation
+    - **Dir-Rec**: H sequential models with feature augmentation - captures inter-step dependencies
+    - `target_as_feature` controls whether lags come from the transformed target, raw target, or neither
+    - For direct and dir-rec, `estimator_` becomes a `list[BaseEstimator]` of length H
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict` method with `stride=1` produces one forecast per
@@ -402,6 +410,18 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - **Reduction basics**: See [`reduction_forecaster.py`](/examples/point/reduction_forecaster/) for transformers and GridSearchCV
+    - **Interval strategies**: See [`interval_reduction.py`](/examples/interval/interval_reduction/) for quantile regression with reduction strategies
+    - **Panel data**: See [`panel_reduction.py`](/examples/point/panel_reduction/) for panel strategies (orthogonal to reduction strategies)
+    - **Time weighting**: See [`time_weighted_reduction.py`](/examples/point/time_weighted_reduction/) for sample weight alignment
+    """)
 
 
 if __name__ == "__main__":

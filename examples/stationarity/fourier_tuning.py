@@ -13,8 +13,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Fourier Tuning",
     "description": "Explore how Fourier harmonic count affects seasonal fit quality, compare Fourier vs Pattern seasonality, and tune harmonics jointly with GridSearchCV.",
-    "category": "how-to",
-    "companion": "/pages/explanation/stationarity/#seasonality-estimation",
 }
 app = marimo.App(width="medium")
 
@@ -56,12 +54,11 @@ def _():
     import polars as pl
     from sklearn.base import clone
     from sklearn.linear_model import ElasticNet, Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_electricity_demand
     from yohou.metrics import MeanAbsoluteError
-    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
+    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -111,7 +108,7 @@ def _(fetch_electricity_demand, mo, pl, train_test_split):
     elec_daily = (
         _elec.group_by_dynamic("time", every="1d").agg(pl.col("vic__demand").mean().alias("demand")).drop_nulls()
     )
-    y_train, y_test = train_test_split(elec_daily, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(elec_daily, test_size=0.15)
     horizon = len(y_test)
     mo.md(
         f"**Daily electricity demand**: {len(elec_daily)} days\n\n"
@@ -447,6 +444,36 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - **Harmonics** control model complexity: `[1]` gives a single
+    smooth wave, adding higher harmonics captures sharper patterns
+    (max useful = `floor(seasonality / 2)`)
+    - **Fourier vs Pattern**: Fourier generalises well for smooth
+    seasonal shapes; Pattern is more flexible for irregular or
+    asymmetric cycles
+    - **Estimator regularisation** matters: Ridge shrinks Fourier
+    coefficients uniformly, ElasticNet can zero some out entirely.
+    The right alpha depends on the signal-to-noise ratio
+    - **DecompositionPipeline** is the natural home for Fourier
+    seasonality: remove the seasonal component first, then model
+    the residual with lags or other features
+    - **GridSearchCV** lets you tune harmonics and Ridge alphas
+    jointly using time-series cross-validation, avoiding the need
+    for manual trial and error
+
+    ## Next Steps
+
+    - **Decomposition pipelines**: See [`examples/compose/decomposition_variations.py`](/examples/compose/decomposition_variations/)
+    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
+    - **Decomposition**: See [`examples/stationarity/decomposition.py`](/examples/stationarity/decomposition/)
+    - **Hyperparameter search**: See [`examples/model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/)
+    """)
 
 
 if __name__ == "__main__":

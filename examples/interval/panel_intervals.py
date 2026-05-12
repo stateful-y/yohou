@@ -12,7 +12,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Prediction Intervals",
     "description": "Combine conformal and quantile regression intervals on panel data with per-group coverage analysis, calibration plots, and groupwise interval scoring.",
-    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -48,11 +47,11 @@ def _():
 
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_kdd_cup
     from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, IntervalScore, MeanIntervalWidth
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -96,7 +95,7 @@ def _(fetch_kdd_cup, inspect_panel, mo, train_test_split):
     _bunch = fetch_kdd_cup(n_groups=3)
     aq = _bunch.frame.drop_nulls().tail(300)
     _globals, groups = inspect_panel(aq)
-    y_train, y_test = train_test_split(aq, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(aq, test_size=0.15)
     horizon = len(y_test)
     coverage_rates = [0.9]
 
@@ -295,6 +294,24 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - **Per-group calibration**: Both conformal and quantile regression methods calibrate independently per group
+    - **Coverage varies by group**: Some groups may have wider/narrower intervals depending on their variance
+    - **[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)** wraps any point forecaster with conformal calibration
+    - **[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)** uses quantile regression directly
+    - Use [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) for per-group coverage/width analysis
+
+    ## Next Steps
+
+    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/) for coveragewise scoring
+    - **Conformity scorers**: See [`examples/metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/)
+    """)
 
 
 if __name__ == "__main__":

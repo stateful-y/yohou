@@ -12,7 +12,6 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Aggregation Modes",
     "description": "Demonstrate all scorer aggregation strategies (stepwise, vintagewise, componentwise, groupwise, coveragewise, all) on panel data with weighted group aggregation.",
-    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -50,11 +49,11 @@ def _():
 
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_kdd_cup
     from yohou.interval import SplitConformalForecaster
     from yohou.metrics import EmpiricalCoverage, MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_score_heatmap,
         plot_time_series,
@@ -107,7 +106,7 @@ def _(
     _y = _bunch.frame.drop_nulls().tail(250)
 
     fh = 24
-    y_train, y_test = train_test_split(_y, test_size=fh, shuffle=False)
+    y_train, y_test = train_test_split(_y, test_size=fh)
 
     _, groups = inspect_panel(_y)
 
@@ -406,6 +405,29 @@ def _(plot_score_heatmap, vintage_scorer, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Score Heatmap (Step x Vintage)",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    | Mode | Aggregates Over | Result |
+    |------|----------------|--------|
+    | `"all"` | time + components + groups + coverage | scalar |
+    | `["stepwise", "vintagewise"]` | time | one row, one col per series |
+    | `"componentwise"` | members within groups | rows = timesteps, cols = panel groups |
+    | `"groupwise"` | panel groups (stations) | rows = timesteps, cols = components (pollutants) |
+    | `"coveragewise"` | coverage rates (interval only) | collapses coverage dimension |
+
+    - **Multivariate panel** groups are essential for seeing the difference
+      between `"componentwise"` (pollutants → stations) and `"groupwise"`
+      (stations → pollutants).
+    - **`groups`** (dict): Weight groups differently during `"all"`
+      aggregation.
+    - **Combine modes** as a list (e.g., `["stepwise", "vintagewise", "componentwise"]`) to
+      aggregate over multiple dimensions at once.
+    """)
 
 
 if __name__ == "__main__":

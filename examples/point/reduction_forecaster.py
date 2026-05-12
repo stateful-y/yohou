@@ -9,12 +9,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Reduction Forecaster",
-    "description": "Learn how to turn any scikit-learn regressor into a time series forecaster using the reduction pattern.",
-    "category": "tutorial",
-    "companion": "/pages/explanation/forecasting/",
-}
 app = marimo.App(width="medium")
 
 
@@ -30,28 +24,31 @@ def _(mo):
     mo.md(r"""
     # Reduction Forecasting with sklearn
 
-    This tutorial walks through **reduction forecasting**, the approach of
-    converting time series forecasting into a supervised learning problem
-    that sklearn regressors can solve.
+    This notebook demonstrates **reduction forecasting** - the approach of converting
+    time series forecasting into a supervised learning problem that sklearn regressors
+    can solve.
 
-    We will build a basic lag-based forecaster, explore how
-    `target_transformer` and `feature_transformer` differ, control feature
-    construction with `target_as_feature`, and tune hyperparameters
-    (including `reduction_strategy`) with `GridSearchCV`.
+    ## What You'll Learn
 
-    **Prerequisites**: Basic familiarity with sklearn's fit/predict API and
-    time series concepts (trend, seasonality).
+    - How [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) tabularizes time series data using lag features
+    - The difference between `target_transformer` (invertible) and `feature_transformer` (features)
+    - Controlling feature construction with `target_as_feature`
+    - Tuning hyperparameters **including `reduction_strategy`** with [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
+    - Visualizing forecasts and cross-validation results
+
+    ## Prerequisites
+
+    Basic familiarity with sklearn's fit/predict API and time series concepts (trend, seasonality).
     """)
 
 
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
-    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
+    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, train_test_split
     from yohou.plotting import (
         plot_cv_results_scatter,
         plot_forecast,
@@ -84,9 +81,9 @@ def _(mo):
     mo.md(r"""
     ## 1. Load and Explore the Data
 
-    We use the Monthly Tourism dataset, which contains monthly tourist counts.
+    We use the Monthly Tourism dataset - monthly tourist counts.
     It exhibits strong trend and seasonality, making it ideal for
-    demonstrating the preprocessing techniques we will apply.
+    demonstrating preprocessing techniques.
     """)
 
 
@@ -123,14 +120,14 @@ def _(mo):
     mo.md(r"""
     ## 2. Train/Test Split
 
-    For time series, we must preserve temporal order. No shuffling allowed.
+    For time series, we must preserve temporal order - no shuffling allowed.
     We hold out the last ~20% (29 months) for testing.
     """)
 
 
 @app.cell
 def _(train_test_split, y):
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     forecasting_horizon = 12
 
     print(f"Training: {len(y_train)} obs ({y_train['time'].min()} to {y_train['time'].max()})")
@@ -143,16 +140,15 @@ def _(mo):
     mo.md(r"""
     ## 3. Basic Reduction Forecaster
 
-    [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) converts time series forecasting into tabular
-    regression:
+    [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) converts time series forecasting into tabular regression:
 
     1. **Feature generation**: `feature_transformer` creates lag features from past y values
     2. **Fit**: Trains an sklearn regressor on the (lags, y) tabular data
     3. **Predict**: Recursively forecasts by feeding predictions back as features
 
     Key distinction:
-    - **`feature_transformer`**: Generates input features from y (e.g., [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) for lags). Not invertible.
-    - **`target_transformer`**: Applied to y before fitting, inverted after prediction (e.g., [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/)). Must be invertible.
+    - **`feature_transformer`**: Generates input features from y (e.g., [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) for lags) - not invertible
+    - **`target_transformer`**: Applied to y before fitting, inverted after prediction (e.g., [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/)) - must be invertible
 
     We start with a simple Ridge regressor and 12 lag features.
     """)
@@ -205,14 +201,14 @@ def _(mo):
     mo.md(r"""
     ## 4. Feature Construction with `target_as_feature`
 
-    The `target_as_feature` parameter controls what enters the feature matrix.
-    With no `target_transformer`, `"transformed"` and `"raw"` produce
-    identical results. The difference matters when a target_transformer
-    (like log or differencing) changes the scale:
+    The `target_as_feature` parameter controls what enters the feature matrix:
 
-    - `"transformed"` (default): lag features from the **transformed** target
-    - `"raw"`: lag features from the **original** target
-    - `None`: target is **excluded** entirely, so only exogenous X is used
+    - `"transformed"` (default): lag features are built from the **transformed** target
+    - `"raw"`: lag features are built from the **original** target (useful when target_transformer changes the scale)
+    - `None`: target is **excluded** entirely - only exogenous X_actual is used as features (requires X_actual)
+
+    With no `target_transformer`, `"transformed"` and `"raw"` produce identical results.
+    The difference matters when a target_transformer (like log or differencing) changes the scale.
     """)
 
 
@@ -251,10 +247,9 @@ def _(mo):
     mo.md(r"""
     ## 5. Adding Target Transformation
 
-    Our tourism data has multiplicative seasonality (variance grows with
-    level). A [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) via `target_transformer` stabilizes this.
-    It is applied to y before fitting and automatically inverted after
-    prediction.
+    The Monthly Tourism data has multiplicative seasonality (variance grows with level).
+    A [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) via `target_transformer` stabilizes variance. It is applied to y
+    before fitting and automatically inverted after prediction.
     """)
 
 
@@ -301,9 +296,9 @@ def _(mo):
     mo.md(r"""
     ## 6. Hyperparameter Tuning with GridSearchCV
 
-    We now tune Ridge regularization (`estimator__alpha`), lag count
+    We tune Ridge regularization (`estimator__alpha`), lag count
     (`feature_transformer__lag`), and **`reduction_strategy`** using
-    [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) with temporal cross-validation via
+    [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) with time series cross-validation via
     [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/).
 
     Including `reduction_strategy` in the grid lets CV select the best
@@ -393,13 +388,31 @@ def _(grid_search, plot_forecast, y_test, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## What We Built
+    ## Key Takeaways
 
-    We went from a basic 12-lag Ridge forecaster to a tuned model with
-    log-transformed target and grid-searched hyperparameters. Along the way
-    we explored `target_as_feature` modes, the distinction between
-    `target_transformer` and `feature_transformer`, and how to include
-    `reduction_strategy` in a cross-validated search.
+    - **Reduction forecasting** converts time series into tabular regression via lag features
+    - [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) wraps any sklearn regressor for forecasting
+    - **`target_transformer`**: Invertible transforms on y (e.g., [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) for variance stabilization)
+    - **`feature_transformer`**: Feature generation from y (e.g., [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) for lags)
+    - **`target_as_feature`**: Controls whether lag features come from the transformed target, raw target, or neither
+    - **`reduction_strategy`**: Can be tuned via [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) alongside other hyperparameters
+    - [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) provides proper time series CV
+    - Log transforms help with multiplicative seasonality (variance scaling with level)
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - **Strategy deep-dive**: See [`reduction_strategies.py`](/examples/point/reduction_strategies/) to compare multi-output, direct, and dir-rec
+    - **Time weighting**: See [`time_weighted_reduction.py`](/examples/point/time_weighted_reduction/) for sample weight alignment strategies
+    - **Naive baselines**: See [`naive_forecasters.py`](/examples/point/naive_forecasters/) to compare with simple benchmarks
+    - **Multi-column forecasting**: See [`multi_column_forecasting.py`](/examples/point/multi_column_forecasting/) for multivariate data
+    - **Interval prediction**: See [Interval](/examples/#interval-forecasting) examples for uncertainty quantification
+    - **Decomposition**: See [Stationarity](/examples/#stationarity) for trend/seasonality extraction before forecasting
+    - **Classification**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for categorical forecasting via reduction
     """)
 
 

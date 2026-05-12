@@ -12,7 +12,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Stationarity",
     "description": "Apply per-group stationarity transforms on panel data with SeasonalDifferencing, DecompositionPipeline (polynomial trend + pattern seasonality), and residuals.",
-    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -46,11 +45,10 @@ def _(mo):
 def _():
     from copy import deepcopy
 
-    from sklearn.model_selection import train_test_split
-
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -100,7 +98,7 @@ def _(fetch_tourism_quarterly, inspect_panel, mo, train_test_split):
     _selected = [f"T{i}__tourists" for i in range(3, 11)]
     tourism = _bunch.frame.select("time", *_selected).drop_nulls()
     _globals, groups = inspect_panel(tourism)
-    y_train, y_test = train_test_split(tourism, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(tourism, test_size=0.2)
     horizon = len(y_test)
 
     mo.md(
@@ -326,6 +324,25 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - **Per-group decomposition**: [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) fits trend, seasonality, and residual separately for each panel group
+    - **Seasonal differencing**: `SeasonalDifferencing(seasonality=4)` operates per-group with invertible transforms
+    - **Use `PolynomialTrendForecaster(degree=1)`** for linear trends (no separate linear trend forecaster)
+    - **Three-component pipelines** (trend + season + residual) can improve on simpler baselines
+    - **Groupwise scoring** reveals groups where decomposition helps vs hurts
+
+    ## Next Steps
+
+    - **Panel pipelines**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
+    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
+    - **Decomposition details**: See [`examples/stationarity/decomposition.py`](/examples/stationarity/decomposition/)
+    """)
 
 
 if __name__ == "__main__":

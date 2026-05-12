@@ -13,7 +13,6 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Function Transformer",
     "description": "Wrap arbitrary polars or numpy operations as sklearn transformers with FunctionTransformer, supporting stateful warmup, inverse transforms, and pipelines.",
-    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -57,10 +56,10 @@ def _():
     import numpy as np
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_time_series,
@@ -92,7 +91,7 @@ def _(mo):
     ## 1. Load Data
 
     We load the monthly tourism series and split it into train and test sets.
-    `train_test_split` with `shuffle=False` preserves temporal order, which is
+    `train_test_split` preserves temporal order, which is
     essential for time series work.
     """)
 
@@ -100,7 +99,7 @@ def _(mo):
 @app.cell
 def _(fetch_tourism_monthly, plot_time_series, train_test_split):
     df = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
-    y_train, y_test = train_test_split(df, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(df, test_size=0.15)
     plot_time_series(y_train, title="Training Data")
     return df, y_test, y_train
 
@@ -347,6 +346,27 @@ def _(vintage_scorer, plot_score_time_series, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) wraps any `polars DataFrame -> DataFrame` function as an sklearn-compatible transformer
+    - **func** receives the DataFrame **without** the `"time"` column; time is re-attached automatically
+    - **Statefulness** is auto-detected: if `func` produces leading NaN rows, those become `observation_horizon` warmup
+    - **check_inverse** verifies the round-trip `inverse_func(func(x)) ≈ x` at fit time (warns, does not raise)
+    - **kw_args / inv_kw_args** pass extra keyword arguments to `func` / `inverse_func`
+    - **feature_names_out** controls output column naming: `"one-to-one"` or a callable
+    - Compose with forecasters via `target_transformer` or `feature_transformer` parameters
+
+    ## Next Steps
+
+    - **Sklearn wrappers**: See [`examples/preprocessing/sklearn_wrappers.py`](/examples/preprocessing/sklearn_wrappers/) for built-in StandardScaler, MinMaxScaler, etc.
+    - **Window transforms**: See `examples/preprocessing/window_transforms.py` for rolling and expanding windows
+    - **Signal processing**: See [`examples/preprocessing/signal_processing.py`](/examples/preprocessing/signal_processing/) for numerical filters and differentiators
+    """)
 
 
 if __name__ == "__main__":

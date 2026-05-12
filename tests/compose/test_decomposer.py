@@ -248,8 +248,8 @@ class TestUpdateReset:
             ("seasonality", SeasonalNaive(seasonality=7)),
         ])
 
-        with pytest.raises(NotFittedError, match="fitted"):
-            _ = forecaster.observation_horizon
+        # Before fitting, observation_horizon returns 0 (no fitted transformers)
+        assert forecaster.observation_horizon == 0
 
         forecaster.fit(daily_data[:30], forecasting_horizon=5)
         horizon = forecaster.observation_horizon

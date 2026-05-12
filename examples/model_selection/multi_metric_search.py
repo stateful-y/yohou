@@ -12,7 +12,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Multi-Metric Search",
     "description": "Evaluate hyperparameter configurations against multiple metrics simultaneously with dict-of-scorers, refit strategies, and Pareto-optimal selection.",
-    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -352,6 +351,26 @@ def _(vintage_scorer, plot_score_summary, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Model Score Summary",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - Pass `scoring={"name": BaseScorer()}` for multi-metric evaluation
+    - `refit` must be a scorer key when using dict scoring (not `True`)
+    - Scores are **negated** for "lower is better" metrics
+    - `cv_results_` contains per-metric mean/std/rank columns
+    - Different metrics may select different best parameters
+    - [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) efficiently samples continuous distributions
+
+    ## Next Steps
+
+    - **Interval search**: See [`examples/model_selection/interval_search.py`](/examples/model_selection/interval_search/)
+    - **Optuna search**: See [`examples/model_selection/optuna_search.py`](/examples/model_selection/optuna_search/)
+    - **Panel CV**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
+    """)
 
 
 if __name__ == "__main__":

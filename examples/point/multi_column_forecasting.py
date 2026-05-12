@@ -9,11 +9,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Multi-Column Forecasting",
-    "description": "Assign different forecasters to different target columns using ColumnForecaster with remainder handling and per-component scoring breakdown.",
-    "category": "how-to",
-}
 app = marimo.App(width="medium")
 
 
@@ -33,9 +28,17 @@ def _(mo):
     **different forecasters** to each column (or column group). [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
     is yohou's answer to sklearn's [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/), but for forecasters.
 
-    This notebook shows how to assign different forecasters to different target columns using ColumnForecaster with remainder handling and per-component scoring breakdown.
+    ## What You'll Learn
 
-    **Prerequisites:** Familiarity with [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) and [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
+    - Creating multivariate time series data
+    - Using [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) to assign forecasters to column subsets
+    - Handling remainder columns with a fallback forecaster
+    - Accessing fitted sub-forecasters by name
+    - Scaling to many columns with the Hospital dataset
+
+    ## Prerequisites
+
+    Familiarity with [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) and [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
     """)
 
 
@@ -309,6 +312,31 @@ def _(hosp_pred, hosp_test, hosp_train, plot_forecast):
         y_train=hosp_train,
         title="Hospital: ColumnForecaster (Ridge for T1, SeasonalNaive for rest)",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) maps different forecasters to different column subsets
+    - Each `(name, forecaster, columns)` tuple defines one sub-forecaster
+    - Use `remainder=` to handle unassigned columns with a fallback forecaster
+    - Access fitted forecasters via `named_forecasters_["name"]`
+    - Predictions are concatenated horizontally from all sub-forecasters
+    - Scales naturally from 2 columns (Electricity Demand) to 7+ columns (Hospital)
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - **Feature forecasting**: See [`feature_forecasting.py`](/examples/point/feature_forecasting/) for [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
+    - **Decomposition**: See [Stationarity](/examples/#stationarity) for [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
+    - **Panel data**: See `examples/panel_reduction.py` for panel forecasting
+    """)
 
 
 if __name__ == "__main__":

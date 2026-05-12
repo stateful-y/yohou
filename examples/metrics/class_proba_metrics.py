@@ -12,8 +12,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Class-Probability Metrics",
     "description": "Evaluate categorical forecasts with LogLoss, BrierScore, and Accuracy. Covers per-timestep scoring, aggregation modes, and reliability diagrams.",
-    "category": "how-to",
-    "companion": "/pages/explanation/forecast-accuracy/#classification-scoring-rules",
 }
 app = marimo.App(width="medium")
 
@@ -54,12 +52,12 @@ def _():
     from copy import deepcopy
 
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
     from yohou.datasets import fetch_air_quality_classification
     from yohou.metrics import Accuracy, BrierScore, LogLoss
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_calibration,
         plot_forecast,
@@ -102,18 +100,17 @@ def _(mo):
 @app.cell
 def _(fetch_air_quality_classification, train_test_split):
     data = fetch_air_quality_classification()
-    y, X = data.y, data.X_actual
+    y, X_actual = data.y, data.X_actual
 
-    y_train, y_test, X_train, X_test = train_test_split(
+    y_train, y_test, X_actual_train, X_actual_test = train_test_split(
         y,
-        X,
+        X_actual,
         test_size=200,
-        shuffle=False,
     )
 
     print(f"Classes: {data.classes}")
     print(f"Train: {len(y_train)} obs | Test: {len(y_test)} obs")
-    return X_test, X_train, data, y, y_test, y_train, X
+    return X_actual_test, X_actual_train, data, y, y_test, y_train, X_actual
 
 
 @app.cell(hide_code=True)
@@ -127,8 +124,8 @@ def _(mo):
 
 
 @app.cell
-def _(X, plot_time_series):
-    plot_time_series(X, title="Air Quality - Pollutant Features")
+def _(X_actual, plot_time_series):
+    plot_time_series(X_actual, title="Air Quality - Pollutant Features")
 
 
 @app.cell
@@ -167,8 +164,8 @@ def _(
     DecisionTreeClassifier,
     LagTransformer,
     RandomForestClassifier,
-    X_test,
-    X_train,
+    X_actual_test,
+    X_actual_train,
     deepcopy,
     y_test,
     y_train,
@@ -179,17 +176,17 @@ def _(
         estimator=DecisionTreeClassifier(random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    dt.fit(y_train, X_actual=X_train, forecasting_horizon=fh)
+    dt.fit(y_train, X_actual_train, forecasting_horizon=fh)
     dt_hard = deepcopy(dt)
-    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X_actual=X_test).sort("time")
+    y_proba_dt = dt.observe_predict_class_proba(y=y_test, X_actual=X_actual_test).sort("time")
 
     rf = ClassProbaReductionForecaster(
         estimator=RandomForestClassifier(n_estimators=50, random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    rf.fit(y_train, X_actual=X_train, forecasting_horizon=fh)
+    rf.fit(y_train, X_actual_train, forecasting_horizon=fh)
     rf_hard = deepcopy(rf)
-    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X_actual=X_test).sort("time")
+    y_proba_rf = rf.observe_predict_class_proba(y=y_test, X_actual=X_actual_test).sort("time")
 
     print(f"DT predictions: {len(y_proba_dt)} rows")
     print(f"RF predictions: {len(y_proba_rf)} rows")
@@ -207,9 +204,9 @@ def _(mo):
 
 
 @app.cell
-def _(X_test, dt_hard, fh, plot_forecast, rf_hard, y_test):
-    y_pred_dt = dt_hard.observe_predict(y=y_test, X_actual=X_test).sort("time")
-    y_pred_rf = rf_hard.observe_predict(y=y_test, X_actual=X_test).sort("time")
+def _(X_actual_test, dt_hard, fh, plot_forecast, rf_hard, y_test):
+    y_pred_dt = dt_hard.observe_predict(y=y_test, X_actual=X_actual_test).sort("time")
+    y_pred_rf = rf_hard.observe_predict(y=y_test, X_actual=X_actual_test).sort("time")
     plot_forecast(
         y_test,
         {"Decision Tree": y_pred_dt, "Random Forest": y_pred_rf},
@@ -467,3 +464,19 @@ def _(Accuracy, plot_score_time_series, y_proba_dt, y_proba_rf, y_test):
         {"Decision Tree": y_proba_dt, "Random Forest": y_proba_rf},
         title="Accuracy Over Time - Model Comparison",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) - Full class-probability forecasting walkthrough
+    - [`point_metrics.py`](/examples/metrics/point_metrics/) - Point forecast evaluation metrics
+    - [`aggregation_modes.py`](/examples/metrics/aggregation_modes/) - Deep dive into aggregation modes
+    - [Metrics](/examples/#metrics) - All metric examples
+    """)
+
+
+if __name__ == "__main__":
+    app.run()

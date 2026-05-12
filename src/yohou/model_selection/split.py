@@ -1,6 +1,7 @@
 """Time series cross-validation splitters for model selection."""
 
 import numbers
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from typing import Any, ClassVar
@@ -69,7 +70,7 @@ class BaseSplitter(BaseEstimator, ABC):
     def split(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[tuple[np.ndarray[Any, np.dtype[np.intp]], np.ndarray[Any, np.dtype[np.intp]]]]:
         """Generate indices to split time series data.
 
@@ -78,9 +79,9 @@ class BaseSplitter(BaseEstimator, ABC):
         y : pl.DataFrame
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
-            Exogenous features.  Not used for splitting but accepted for
-            API compatibility.
+        X_actual : pl.DataFrame or None, default=None
+            Actual features.  Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------
@@ -95,7 +96,7 @@ class BaseSplitter(BaseEstimator, ABC):
     def _iter_test_indices(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[np.ndarray[Any, np.dtype[np.intp]]]:
         """Generate test indices for each split.
 
@@ -105,8 +106,9 @@ class BaseSplitter(BaseEstimator, ABC):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame, optional
-            Exogenous features.
+        X_actual : pl.DataFrame or None, default=None
+            Actual features. Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------
@@ -119,16 +121,16 @@ class BaseSplitter(BaseEstimator, ABC):
     def get_n_splits(
         self,
         y: pl.DataFrame | None = None,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> int:
         """Return the number of cross-validation folds.
 
         Parameters
         ----------
         y : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
-        X : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
+            Not used.  Accepted for API consistency.
+        X_actual : pl.DataFrame or None, default=None
+            Not used.  Accepted for API consistency.
 
         Returns
         -------
@@ -194,10 +196,6 @@ class ExpandingWindowSplitter(BaseSplitter):
         Used to limit the size of the test set. Defaults to
         ``n_samples // (n_splits + 1)``, which is the maximum allowed
         value with no overlap between test sets.
-    gap : int, default=0
-        Number of time steps to skip between the end of the training set
-        and the start of the test set. Must be non-negative.
-        Use gap > 0 to simulate forecasting lag or prevent data leakage.
 
     Examples
     --------
@@ -225,11 +223,6 @@ class ExpandingWindowSplitter(BaseSplitter):
     >>> len(train), len(test)
     (80, 10)
     >>>
-    >>> # With 5-day gap between train and test
-    >>> splitter_gap = ExpandingWindowSplitter(n_splits=3, test_size=10, gap=5)
-    >>> train, test = list(splitter_gap.split(y))[0]
-    >>> bool(test[0] - train[-1] == 6)  # 5-day gap + 1 for next index
-    True
 
     Notes
     -----
@@ -248,7 +241,6 @@ class ExpandingWindowSplitter(BaseSplitter):
         "n_splits": [Interval(numbers.Integral, 2, None, closed="left")],
         "max_train_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "test_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
-        "gap": [Interval(numbers.Integral, 0, None, closed="left")],
     }
 
     _tags: ClassVar[dict[str, Any]] = {"splitter_type": "expanding"}
@@ -259,12 +251,10 @@ class ExpandingWindowSplitter(BaseSplitter):
         *,
         max_train_size: int | None = None,
         test_size: int | None = None,
-        gap: int = 0,
     ) -> None:
         self.n_splits = n_splits
         self.max_train_size = max_train_size
         self.test_size = test_size
-        self.gap = gap
 
         # Validate parameters
         self._validate_params()
@@ -272,7 +262,7 @@ class ExpandingWindowSplitter(BaseSplitter):
     def split(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[tuple[np.ndarray[Any, np.dtype[np.intp]], np.ndarray[Any, np.dtype[np.intp]]]]:
         """Generate indices to split time series data with expanding windows.
 
@@ -281,9 +271,9 @@ class ExpandingWindowSplitter(BaseSplitter):
         y : pl.DataFrame
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
-            Exogenous features.  Not used for splitting but accepted for
-            API compatibility.
+        X_actual : pl.DataFrame or None, default=None
+            Actual features.  Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------
@@ -294,18 +284,15 @@ class ExpandingWindowSplitter(BaseSplitter):
 
         """
         # Validate data
-        y, X = validate_splitter_data(self, y=y, X=X)
+        y, X_actual = validate_splitter_data(self, y=y, X_actual=X_actual)
 
         n_samples = len(y)
         indices = np.arange(n_samples)
         max_train_size = self.max_train_size
-        gap = self.gap
 
         # Delegate to concrete implementation
-        for test_index in self._iter_test_indices(y, X):
-            # test_index already has gap incorporated from _iter_test_indices
-            # Train indices are all samples before (test_start - gap)
-            train_end = test_index[0] - gap
+        for test_index in self._iter_test_indices(y, X_actual):
+            train_end = test_index[0]
             train_index = indices[indices < train_end]
 
             # Apply max_train_size if specified
@@ -317,7 +304,7 @@ class ExpandingWindowSplitter(BaseSplitter):
     def _iter_test_indices(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[np.ndarray[Any, np.dtype[np.intp]]]:
         """Generate test indices for expanding window splits.
 
@@ -325,8 +312,9 @@ class ExpandingWindowSplitter(BaseSplitter):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame, optional
-            Exogenous features (not used).
+        X_actual : pl.DataFrame or None, default=None
+            Actual features. Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------
@@ -338,7 +326,6 @@ class ExpandingWindowSplitter(BaseSplitter):
         n_splits = self.n_splits
         n_folds = n_splits + 1
         test_size = self.test_size if self.test_size is not None else n_samples // n_folds
-        gap = self.gap
 
         if n_folds > n_samples:
             raise ValueError(f"Cannot have number of folds={n_folds} greater than the number of samples={n_samples}.")
@@ -346,31 +333,26 @@ class ExpandingWindowSplitter(BaseSplitter):
         if test_size >= n_samples:
             raise ValueError(f"test_size={test_size} should be less than the number of samples={n_samples}.")
 
-        # Calculate test start positions accounting for gap
-        # The last test must end at n_samples, working backwards n_splits times
-        # Each test is test_size long, and we need gap between train and test
-        # So test positions are shifted by gap compared to no-gap case
-        test_starts = range(n_samples - gap - n_splits * test_size, n_samples - gap, test_size)
+        test_starts = range(n_samples - n_splits * test_size, n_samples, test_size)
 
         for test_start in test_starts:
-            # Add gap to shift test forward (train ends gap samples before test)
-            if test_start + gap < 0:
+            if test_start < 0:
                 continue
-            yield np.arange(test_start + gap, test_start + gap + test_size, dtype=np.intp)
+            yield np.arange(test_start, test_start + test_size, dtype=np.intp)
 
     def get_n_splits(
         self,
         y: pl.DataFrame | None = None,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> int:
         """Return the number of cross-validation folds.
 
         Parameters
         ----------
         y : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
-        X : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
+            Not used.  Accepted for API consistency.
+        X_actual : pl.DataFrame or None, default=None
+            Not used.  Accepted for API consistency.
 
         Returns
         -------
@@ -397,7 +379,7 @@ class SlidingWindowSplitter(BaseSplitter):
         Number of samples in each training window.  When ``None``
         (default), the training size is computed automatically so that
         exactly ``n_splits`` folds fit the data:
-        ``train_size = n_samples - gap - test_size - (n_splits - 1) * stride``.
+        ``train_size = n_samples - test_size - (n_splits - 1) * stride``.
         When both ``n_splits`` and ``train_size`` are provided explicitly,
         they must be consistent with the data length; otherwise a
         ``ValueError`` is raised during ``split()``.
@@ -406,10 +388,6 @@ class SlidingWindowSplitter(BaseSplitter):
     stride : int, default=None
         Number of samples to move forward between splits. If None,
         defaults to `test_size` (non-overlapping windows).
-    gap : int, default=0
-        Number of time steps to skip between the end of the training set
-        and the start of the test set. Must be non-negative.
-        Use gap > 0 to simulate forecasting lag or prevent data leakage.
 
     Attributes
     ----------
@@ -442,12 +420,6 @@ class SlidingWindowSplitter(BaseSplitter):
     >>> # All training windows have the same size
     >>> all(len(tr) == len(splits[0][0]) for tr, _ in splits)
     True
-    >>>
-    >>> # With explicit train_size and gap
-    >>> splitter_gap = SlidingWindowSplitter(n_splits=6, train_size=30, test_size=10, gap=3)
-    >>> train, test = list(splitter_gap.split(y))[0]
-    >>> bool(test[0] - train[-1] == 4)  # 3-day gap + 1 for next index
-    True
 
     Notes
     -----
@@ -468,7 +440,6 @@ class SlidingWindowSplitter(BaseSplitter):
         "train_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "test_size": [Interval(numbers.Integral, 1, None, closed="left")],
         "stride": [Interval(numbers.Integral, 1, None, closed="left"), None],
-        "gap": [Interval(numbers.Integral, 0, None, closed="left")],
     }
 
     _tags: ClassVar[dict[str, Any]] = {"splitter_type": "sliding"}
@@ -480,13 +451,11 @@ class SlidingWindowSplitter(BaseSplitter):
         train_size: int | None = None,
         test_size: int = 10,
         stride: int | None = None,
-        gap: int = 0,
     ) -> None:
         self.n_splits = n_splits
         self.train_size = train_size
         self.test_size = test_size
         self.stride = stride
-        self.gap = gap
 
         # Validate parameters
         self._validate_params()
@@ -494,7 +463,7 @@ class SlidingWindowSplitter(BaseSplitter):
     def split(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[tuple[np.ndarray[Any, np.dtype[np.intp]], np.ndarray[Any, np.dtype[np.intp]]]]:
         """Generate indices to split time series data with sliding windows.
 
@@ -503,9 +472,9 @@ class SlidingWindowSplitter(BaseSplitter):
         y : pl.DataFrame
             Target time series used to generate train/test split indices.
             Must have a ``"time"`` column.
-        X : pl.DataFrame or None, default=None
-            Exogenous features.  Not used for splitting but accepted for
-            API compatibility.
+        X_actual : pl.DataFrame or None, default=None
+            Actual features.  Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------
@@ -516,18 +485,16 @@ class SlidingWindowSplitter(BaseSplitter):
 
         """
         # Validate data
-        y, X = validate_splitter_data(self, y=y, X=X)
-
-        gap = self.gap
+        y, X_actual = validate_splitter_data(self, y=y, X_actual=X_actual)
 
         # Resolve train_size (may compute from n_splits) and store as fitted attr
         self.train_size_ = self._resolve_train_size(len(y))
 
         # Delegate to concrete implementation for test indices
-        for test_index in self._iter_test_indices(y, X):
+        for test_index in self._iter_test_indices(y, X_actual):
             # For sliding window, train indices are the fixed-size window
-            # ending gap samples before the test set
-            train_end = test_index[0] - gap
+            # ending at the start of the test set
+            train_end = test_index[0]
             train_start = train_end - self.train_size_
 
             train_index = np.arange(train_start, train_end, dtype=np.intp)
@@ -536,7 +503,7 @@ class SlidingWindowSplitter(BaseSplitter):
     def _iter_test_indices(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> Iterator[np.ndarray[Any, np.dtype[np.intp]]]:
         """Generate test indices for sliding window splits.
 
@@ -544,8 +511,9 @@ class SlidingWindowSplitter(BaseSplitter):
         ----------
         y : pl.DataFrame
             Target time series.
-        X : pl.DataFrame, optional
-            Exogenous features (not used).
+        X_actual : pl.DataFrame or None, default=None
+            Actual features. Not used for splitting but accepted for
+            API consistency.
 
         Yields
         ------
@@ -557,16 +525,25 @@ class SlidingWindowSplitter(BaseSplitter):
         train_size = self._resolve_train_size(n_samples)
         test_size = self.test_size
         stride = self.stride if self.stride is not None else test_size
-        gap = self.gap
 
-        if train_size + gap + test_size > n_samples:
+        if train_size + test_size > n_samples:
             raise ValueError(
-                f"train_size ({train_size}) + gap ({gap}) + test_size ({test_size}) = "
-                f"{train_size + gap + test_size} is greater than n_samples ({n_samples})."
+                f"train_size ({train_size}) + test_size ({test_size}) = "
+                f"{train_size + test_size} is greater than n_samples ({n_samples})."
+            )
+
+        if test_size % stride != 0:
+            warnings.warn(
+                f"test_size={test_size} is not a multiple of "
+                f"stride={stride}. The last vintage in each fold will "
+                f"have fewer in-test predictions, causing uneven step "
+                f"representation in stepwise scoring.",
+                UserWarning,
+                stacklevel=3,
             )
 
         # Fixed iteration: produce exactly n_splits test windows
-        test_start = train_size + gap
+        test_start = train_size
         for _ in range(self.n_splits):
             if test_start + test_size > n_samples:
                 break
@@ -595,16 +572,15 @@ class SlidingWindowSplitter(BaseSplitter):
         """
         test_size = self.test_size
         stride = self.stride if self.stride is not None else test_size
-        gap = self.gap
         n_splits = self.n_splits
 
         if self.train_size is None:
             # Compute train_size from n_splits
-            train_size = n_samples - gap - test_size - (n_splits - 1) * stride
+            train_size = n_samples - test_size - (n_splits - 1) * stride
             if train_size < 1:
                 raise ValueError(
                     f"Not enough data for n_splits={n_splits} with "
-                    f"test_size={test_size}, stride={stride}, gap={gap}: "
+                    f"test_size={test_size}, stride={stride}: "
                     f"computed train_size={train_size} (must be >= 1). "
                     f"Reduce n_splits or provide more data."
                 )
@@ -612,19 +588,19 @@ class SlidingWindowSplitter(BaseSplitter):
 
         # Both n_splits and train_size are explicit; check consistency
         train_size = self.train_size
-        if train_size + gap + test_size > n_samples:
+        if train_size + test_size > n_samples:
             raise ValueError(
-                f"train_size ({train_size}) + gap ({gap}) + test_size ({test_size}) = "
-                f"{train_size + gap + test_size} is greater than n_samples ({n_samples})."
+                f"train_size ({train_size}) + test_size ({test_size}) = "
+                f"{train_size + test_size} is greater than n_samples ({n_samples})."
             )
 
-        available = n_samples - train_size - gap - test_size
+        available = n_samples - train_size - test_size
         max_splits = (available // stride) + 1
         if n_splits > max_splits:
             raise ValueError(
                 f"Inconsistent parameters: n_splits={n_splits} but the data "
                 f"(n_samples={n_samples}) with train_size={train_size}, "
-                f"test_size={test_size}, stride={stride}, gap={gap} supports "
+                f"test_size={test_size}, stride={stride} supports "
                 f"at most {max_splits} splits. Set train_size=None to "
                 f"auto-compute or reduce n_splits to at most {max_splits}."
             )
@@ -633,16 +609,16 @@ class SlidingWindowSplitter(BaseSplitter):
     def get_n_splits(
         self,
         y: pl.DataFrame | None = None,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
     ) -> int:
         """Return the number of cross-validation folds.
 
         Parameters
         ----------
         y : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
-        X : pl.DataFrame or None, default=None
-            Not used.  Accepted for API compatibility.
+            Not used.  Accepted for API consistency.
+        X_actual : pl.DataFrame or None, default=None
+            Not used.  Accepted for API consistency.
 
         Returns
         -------

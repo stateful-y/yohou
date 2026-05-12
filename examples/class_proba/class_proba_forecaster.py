@@ -9,12 +9,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Class-Probability Forecasting Quickstart",
-    "description": "Forecast categorical time series with ClassProbaReductionForecaster, evaluate with LogLoss and BrierScore, and inspect class probability distributions.",
-    "category": "tutorial",
-    "companion": "/pages/explanation/class-probability-forecasting/",
-}
 app = marimo.App(width="medium")
 
 
@@ -33,12 +27,13 @@ def _(mo):
     This notebook demonstrates **class-probability forecasting**, that is, predicting the
     probability distribution over categorical outcomes at future time steps.
 
-    We will fit a [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/),
-    obtain probability predictions with `predict_class_proba()` and hard labels with
-    `predict()`, evaluate with [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/),
-    [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/), and
-    [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/), and visualize
-    class probabilities with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/).
+    ## What You'll Learn
+
+    - How [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) converts categorical time series into a classification problem
+    - Obtaining probability predictions with `predict_class_proba()` and class labels with `predict()`
+    - Evaluating predictions with [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/), [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/), and [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/)
+    - Visualizing class probabilities with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
+    - Using the observe-predict workflow for rolling evaluation
 
     We use [`fetch_air_quality_classification`](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/),
     which derives a 4-class air quality target (good / moderate / unhealthy / hazardous)
@@ -52,12 +47,12 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeClassifier
 
     from yohou.class_proba import ClassProbaReductionForecaster
     from yohou.datasets import fetch_air_quality_classification
     from yohou.metrics import Accuracy, BrierScore, LogLoss
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_calibration,
         plot_forecast,
@@ -97,12 +92,12 @@ def _(mo):
 @app.cell
 def _(fetch_air_quality_classification):
     data = fetch_air_quality_classification()
-    y, X = data.y, data.X_actual
+    y, X_actual = data.y, data.X_actual
 
     print(f"Classes: {data.classes}")
     print(f"Dataset: {len(y)} observations from {y['time'].min()} to {y['time'].max()}")
     y.head(10)
-    return X, data, y
+    return X_actual, data, y
 
 
 @app.cell(hide_code=True)
@@ -111,15 +106,13 @@ def _(mo):
     ### Explore the Features
 
     The exogenous features are 5 pollutant measurements (PM10, NO2, CO, O3, SO2)
-    measured hourly. At fit time these are passed as X_actual. For backtesting,
-    we pass test-period values via X_future to provide the forecaster with known
-    feature values over the prediction horizon.
+    measured hourly. These serve as known-in-advance inputs to the forecaster.
     """)
 
 
 @app.cell
-def _(X, plot_time_series):
-    plot_time_series(X, title="Pollutant Features Over Time")
+def _(X_actual, plot_time_series):
+    plot_time_series(X_actual, title="Pollutant Features Over Time")
 
 
 @app.cell(hide_code=True)
@@ -169,13 +162,13 @@ def _(mo):
 
 
 @app.cell
-def _(X, train_test_split, y):
-    y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=200, shuffle=False)
+def _(X_actual, train_test_split, y):
+    y_train, y_test, X_actual_train, X_actual_test = train_test_split(y, X_actual, test_size=200)
     forecasting_horizon = 24
 
     print(f"Training: {len(y_train)} obs")
     print(f"Test: {len(y_test)} obs")
-    return X_test, X_train, forecasting_horizon, y_test, y_train
+    return X_actual_test, X_actual_train, forecasting_horizon, y_test, y_train
 
 
 @app.cell(hide_code=True)
@@ -198,7 +191,7 @@ def _(
     ClassProbaReductionForecaster,
     DecisionTreeClassifier,
     LagTransformer,
-    X_train,
+    X_actual_train,
     forecasting_horizon,
     y_train,
 ):
@@ -206,7 +199,7 @@ def _(
         estimator=DecisionTreeClassifier(random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=forecasting_horizon)
+    forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
     print(f"Discovered classes: {forecaster.classes_}")
     return (forecaster,)
@@ -223,9 +216,8 @@ def _(mo):
 
 
 @app.cell
-def _(X_test, forecaster, forecasting_horizon):
+def _(forecaster, forecasting_horizon):
     y_proba = forecaster.predict_class_proba(
-        X_future=X_test[:forecasting_horizon],
         forecasting_horizon=forecasting_horizon,
     )
     print("Probability predictions (first 12 steps):")
@@ -234,9 +226,8 @@ def _(X_test, forecaster, forecasting_horizon):
 
 
 @app.cell
-def _(X_test, forecaster, forecasting_horizon):
+def _(forecaster, forecasting_horizon):
     y_pred = forecaster.predict(
-        X_future=X_test[:forecasting_horizon],
         forecasting_horizon=forecasting_horizon,
     )
     print("Class label predictions:")
@@ -307,6 +298,41 @@ def _(Accuracy, BrierScore, LogLoss, y_proba, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 7. Rolling Observe-Predict
+
+    The `observe_predict_class_proba()` method performs rolling evaluation:
+    observe new data, then predict the next horizon. This simulates real-world
+    deployment where predictions are updated as new observations arrive.
+    """)
+
+
+@app.cell
+def _(X_actual_test, forecaster, y_test):
+    y_rolling_proba = forecaster.observe_predict_class_proba(
+        y=y_test,
+        X_actual=X_actual_test,
+    ).sort("time")
+    print(f"Rolling predictions: {len(y_rolling_proba)} rows")
+    return (y_rolling_proba,)
+
+
+@app.cell
+def _(y_rolling_proba):
+    y_rolling_proba
+
+
+@app.cell
+def _(plot_forecast, y_rolling_proba, y_test):
+    plot_forecast(
+        y_test,
+        y_rolling_proba,
+        title="Rolling Probability Forecast",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Score Evolution Over Time
 
     Per-timestep LogLoss and BrierScore reveal when the model is most
@@ -353,41 +379,6 @@ def _(Accuracy, plot_score_time_series, y_rolling_proba, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7. Rolling Observe-Predict
-
-    The `observe_predict_class_proba()` method performs rolling evaluation:
-    observe new data, then predict the next horizon. This simulates real-world
-    deployment where predictions are updated as new observations arrive.
-    """)
-
-
-@app.cell
-def _(X_test, forecaster, y_test):
-    y_rolling_proba = forecaster.observe_predict_class_proba(
-        y=y_test,
-        X_actual=X_test,
-    ).sort("time")
-    print(f"Rolling predictions: {len(y_rolling_proba)} rows")
-    return (y_rolling_proba,)
-
-
-@app.cell
-def _(y_rolling_proba):
-    y_rolling_proba
-
-
-@app.cell
-def _(plot_forecast, y_rolling_proba, y_test):
-    plot_forecast(
-        y_test,
-        y_rolling_proba,
-        title="Rolling Probability Forecast",
-    )
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ## 8. Calibration Plot
 
     [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
@@ -405,6 +396,19 @@ def _(plot_calibration, y_rolling_proba, y_test):
         n_bins=8,
         title="Calibration Plot (Rolling Predictions)",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - Try different classifiers: `LogisticRegression`, `RandomForestClassifier`, `GradientBoostingClassifier`
+    - Experiment with `reduction_strategy="direct"` for independent step classifiers
+    - Add more lag features with [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
+    - Explore [Metrics](/examples/#metrics) for more evaluation options
+    - See [`reduction_forecaster.py`](/examples/point/reduction_forecaster/) for the regression equivalent
+    """)
 
 
 if __name__ == "__main__":

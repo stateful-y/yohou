@@ -12,8 +12,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Time-Weighted Scoring",
     "description": "Apply exponential decay, linear decay, and seasonal emphasis weighting to forecast evaluation, prioritising recent or periodic time steps.",
-    "category": "how-to",
-    "companion": "/pages/explanation/model-selection/#time-weighted-scoring",
 }
 app = marimo.App(width="medium")
 
@@ -49,10 +47,10 @@ def _():
     from copy import deepcopy
 
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_dominick, fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_score_per_vintage,
         plot_score_time_series,
@@ -111,7 +109,7 @@ def _(
     tourism = (
         fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
     )
-    y_train, y_test = train_test_split(tourism, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(tourism, test_size=0.15)
     horizon = len(y_test)
 
     fc = PointReductionForecaster(
@@ -277,7 +275,7 @@ def _(
     _store = _full.select("time", *_selected)
     _target_cols = [c for c in _store.columns if c.endswith("__profit")]
     _y = _store.select("time", *_target_cols)
-    _y_train_p, _y_test_p = train_test_split(_y, test_size=0.15, shuffle=False)
+    _y_train_p, _y_test_p = train_test_split(_y, test_size=0.15)
     _horizon_p = len(_y_test_p)
 
     _fc_p = PointReductionForecaster(
@@ -356,6 +354,26 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - **`exponential_decay_weight(half_life)`**: Most common; recent data weighted higher
+    - **`linear_decay_weight(max_steps)`**: Gradual recency; `None` = full range
+    - **`seasonal_emphasis_weight(seasonality, emphasis)`**: Boost specific seasonal positions
+    - **`compose_weights(*fns)`**: Multiply weight functions for combined effects
+    - **`time_weight`**: Pass to `scorer.score()` to weight per-timestep errors
+    - **Panel data**: Weights apply uniformly to all groups (per-timestep)
+
+    ## Next Steps
+
+    - **Time-weighted forecasting**: See `examples/time_weighted_forecasting.py`
+    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/)
+    - **Scoring**: See `examples/scoring.py`
+    """)
 
 
 if __name__ == "__main__":

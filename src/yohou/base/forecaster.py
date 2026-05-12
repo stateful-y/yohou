@@ -1,6 +1,7 @@
 """Base class for forecasters."""
 
 import abc
+import warnings
 from collections.abc import Callable
 from copy import deepcopy
 from typing import Any, Literal
@@ -16,6 +17,7 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.base.panel import BasePanelForecaster
 from yohou.base.standard import BaseStandardForecaster
 from yohou.base.transformer import BaseTransformer
+from yohou.base.utils import _derive_step_columns
 from yohou.utils import (
     Tags,
     cast,
@@ -97,18 +99,6 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
     # Fitted attributes (set during fit())
     interval_: str
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Merge parameter constraints from all classes in the MRO."""
-        super().__init_subclass__(**kwargs)
-        # Auto-merge _parameter_constraints from all classes in the MRO.
-        # Walk in reverse so the most-derived class wins on key conflicts.
-        merged: dict = {}
-        for klass in reversed(cls.__mro__):
-            own = klass.__dict__.get("_parameter_constraints")
-            if own and isinstance(own, dict):
-                merged.update(own)
-        cls._parameter_constraints = merged
-
     def __init__(
         self,
         feature_transformer: BaseTransformer | None = None,
@@ -120,6 +110,18 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         self.target_transformer = target_transformer
         self.target_as_feature = target_as_feature
         self.panel_strategy = panel_strategy
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Merge parameter constraints from all classes in the MRO."""
+        super().__init_subclass__(**kwargs)
+        # Auto-merge _parameter_constraints from all classes in the MRO.
+        # Walk in reverse so the most-derived class wins on key conflicts.
+        merged: dict = {}
+        for klass in reversed(cls.__mro__):
+            own = klass.__dict__.get("_parameter_constraints")
+            if own and isinstance(own, dict):
+                merged.update(own)
+        cls._parameter_constraints = merged
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -241,79 +243,13 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         self_observation_horizon = self._observation_horizon
         return max(self_observation_horizon, target_observation_horizon, feature_observation_horizon)
 
-    def _set_input_attributes(self, y: pl.DataFrame, X: pl.DataFrame | None) -> None:
-        """Detect and validate panel data structure across target and features.
-
-        Inspects whether the data contains global (single time series) or local
-        (panel columns with multiple time series) and ensures consistency
-        across y and X. Sets instance attributes for downstream use.
-
-            Sets the following attributes:
-            - `panel_group_names_` : list of str or None
-                Group prefixes for panel data (e.g., ["sales", "inventory"])
-            - `local_y_schema_` : dict of str to pl.DataType
-                Schema (column names -> dtypes) for target columns
-            - `local_X_schema_` : dict of str to pl.DataType
-                Schema (column names -> dtypes) for feature columns
-            - `shared_X_schema_` : dict of str to pl.DataType or None
-                Schema (column names -> dtypes) for shared feature columns found in X
-                alongside local groups.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series.
-        X : pl.DataFrame or None
-            Feature time series.
-
-        Raises
-        ------
-        ValueError
-            If y contains both global and local columns (ambiguous structure),
-            or if group column suffixes don't match across groups,
-            or if X local groups don't match y's structure.
-
-        Notes
-        -----
-        Panel data example:
-            y has columns ["sales__store_1", "sales__store_2"] (both Int64)
-            -> panel_group_names_ = ["sales"]
-            -> local_y_schema_ = {"store_1": pl.Int64, "store_2": pl.Int64}
-            (Note: schema has unprefixed column names)
-
-        Global data example:
-            y has regular column "sales" (Int64)
-            -> panel_group_names_ = None
-            -> local_y_schema_ = {"sales": pl.Int64}
-
-        See Also
-        --------
-        `inspect_panel` : Detects group columns.
-
-        """
-        y_global_names, y_panel_groups = inspect_panel(y)
-        X_panel_groups = None
-        if X is not None:
-            _, X_panel_groups = inspect_panel(X)
-
-            if len(X_panel_groups) and list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
-                raise ValueError("`X` and `y` do not have the same local group names.")
-
-        # Non-panel data or multivariate strategy: dispatch to standard mixin
-        if self.panel_strategy == "multivariate" or not y_panel_groups:
-            BaseStandardForecaster._set_input_attributes_standard(self, y, X)
-        # Panel data with global strategy: dispatch to panel mixin
-        else:
-            # Check for ambiguous structure (both standard and local columns)
-            if len(y_global_names):
-                raise ValueError("`y` contains both local and standard columns.")
-            BasePanelForecaster._set_input_attributes_panel(self, y, X, y_panel_groups, X_panel_groups)
-
     def _validate_pre_fit(
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> tuple[
         pl.DataFrame,
         pl.DataFrame | None,
@@ -333,6 +269,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Features time series.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
 
         Returns
         -------
@@ -343,10 +283,17 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (empty dict if global data).
         X_panel_groups : dict[str, list[str]] or None
-            Panel groups from X (None if X is None).
+            Panel groups from X_actual (None if X_actual is None).
 
         """
-        y, X_actual, _ = validate_forecaster_data(self, y, X_actual, reset=True)
+        y, X_actual, _ = validate_forecaster_data(
+            self,
+            y,
+            X_actual,
+            reset=True,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
         self.fit_forecasting_horizon_ = forecasting_horizon
 
         _, y_panel_groups = inspect_panel(y)
@@ -355,9 +302,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             _, X_panel_groups = inspect_panel(X_actual)
 
             if len(X_panel_groups) and list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
-                raise ValueError("`X` and `y` do not have the same local group names.")
+                raise ValueError("`X_actual` and `y` do not have the same local group names.")
 
-        # Validate that X is provided when target_as_feature=None
+        # Validate that X_actual is provided when target_as_feature=None
         # and a feature transformer is configured.  Failing early here avoids
         # a confusing error at predict time inside _build_feature_input().
         if (
@@ -366,11 +313,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             and X_actual is None
         ):
             raise ValueError(
-                "target_as_feature=None with a feature_transformer requires X to be provided, but X is None."
+                "target_as_feature=None with a feature_transformer requires X_actual to be provided, but X_actual is None."
             )
 
-        # Validate that X is provided when target_as_feature=None and the
-        # forecaster actually needs exogenous features.  Forecasters with
+        # Validate that X_actual is provided when target_as_feature=None and the
+        # forecaster requires exogenous features.  Forecasters with
         # requires_exogenous=False (e.g. SeasonalNaive, stationarity, decomposition)
         # work without any feature matrix.
         sklearn_tags = self.__sklearn_tags__()
@@ -381,9 +328,21 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             and sklearn_tags.forecaster_tags.requires_exogenous
         ):
             raise ValueError(
-                "target_as_feature=None requires X to be provided when the "
+                "target_as_feature=None requires X_actual to be provided when the "
                 "forecaster uses exogenous features (requires_exogenous=True), "
-                "but X is None."
+                "but X_actual is None."
+            )
+
+        # Warn when a forecaster that does not use exogenous receives X_future/X_forecast
+        if (
+            sklearn_tags.forecaster_tags is not None
+            and not sklearn_tags.forecaster_tags.requires_exogenous
+            and (X_future is not None or X_forecast is not None)
+        ):
+            warnings.warn(
+                f"{self.__class__.__name__} has requires_exogenous=False. X_future and X_forecast will be ignored.",
+                UserWarning,
+                stacklevel=4,
             )
 
         return y, X_actual, y_panel_groups, X_panel_groups
@@ -409,7 +368,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
 
         Returns
         -------
@@ -425,7 +385,13 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         - `BasePanelForecaster._pre_fit_panel(self, ...)` -> `tuple[dict, dict | None]`
 
         """
-        y, X_actual, y_panel_groups, X_panel_groups = self._validate_pre_fit(y, X_actual, forecasting_horizon)
+        y, X_actual, y_panel_groups, X_panel_groups = self._validate_pre_fit(
+            y,
+            X_actual,
+            forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
 
         # Dispatch to mixin methods based on panel strategy
         if self.panel_strategy == "multivariate" or not y_panel_groups:
@@ -446,33 +412,39 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 X_forecast=X_forecast,
             )
 
+    @abc.abstractmethod
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
+        X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "BaseForecaster":
         """Fit the forecaster to historical data.
-
-        Handles validation, schema detection, panel dispatch, and transformer
-        setup.  After the base infrastructure is ready, calls ``_fit()`` for
-        model-specific fitting logic.
-
-        Tier 1 (simple) subclasses override ``_fit()`` only.
-        Tier 2 (complex) subclasses override ``fit()`` directly.
 
         Parameters
         ----------
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Processed by the feature transformer to produce
+            lags, rolling statistics, and other derived features. If
+            ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column. Deterministic
+            values that are windowed forward from each observation time.
+            Bypasses the feature transformer.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns. Pivoted by ordinal rank within each vintage group.
+            Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -484,23 +456,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         Raises
         ------
         ValueError
-            If ``y`` is missing the ``"time"`` column, if ``y`` and ``X``
+            If ``y`` is missing the ``"time"`` column, if ``y`` and ``X_actual``
             have mismatched panel group names, or if
             ``target_as_feature=None`` without exogenous features when the
             forecaster requires them.
 
         """
-        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
-
-        y_t, X_t = self._pre_fit(
-            y=y,
-            X_actual=X,
-            forecasting_horizon=forecasting_horizon,
-        )
-
-        self._fit(y_t, X_t, forecasting_horizon)
-
-        return self
 
     def _validate_fit_params(self, forecasting_horizon: StrictInt) -> StrictInt:
         """Validate fit parameters.
@@ -559,38 +520,29 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         -----
         The following ``self`` attributes are available after ``_pre_fit()``:
 
-        ``_y_observed``
-            Stored observed target data (last ``observation_horizon`` rows).
-        ``_X_t_observed``
-            Stored observed feature data (last ``observation_horizon`` rows).
-        ``local_y_t_schema_``
-            Column schema for the transformed target.
-        ``local_X_t_schema_``
-            Column schema for the transformed features.
-        ``fit_forecasting_horizon_``
-            The forecasting horizon passed to ``fit()``.
-        ``interval_``
-            Detected temporal interval (e.g. ``"1d"``, ``"1h"``).
-        ``groups_``
-            Panel group names, or ``None`` for standard data.
-        ``observed_time_``
-            Time range of observed data.
-        ``_X_future_raw_``
-            Raw future features before step column processing (or ``None``).
-        ``_X_forecast_raw_``
-            Raw forecast features before step column processing (or ``None``).
-        ``_step_column_names_``
-            Step column names generated from X_future/X_forecast.
-        ``panel_group_names_``
-            Panel group names (if panel data).
+        - ``fit_forecasting_horizon_`` : int
+        - ``interval_`` : str (detected time interval)
+        - ``groups_`` : dict or None (panel groups)
+        - ``local_y_schema_`` : dict (target column schema)
+        - ``local_y_t_schema_`` : dict (transformed target schema)
+        - ``local_X_actual_schema_`` : dict or None (feature schema)
+        - ``local_X_t_schema_`` : dict or None (transformed feature schema)
+        - ``shared_X_actual_schema_`` : dict or None
+        - ``n_features_in_`` : int
+        - ``feature_names_in_`` : list[str]
+        - ``observed_time_`` : dict or pl.Series (observation timestamps)
+        - ``target_transformer_`` : fitted transformer or None
+        - ``feature_transformer_`` : fitted transformer or None
 
         """
 
     def rewind(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        X_actual: pl.DataFrame | None = None,
+        groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "BaseForecaster":
         """Rewind observation buffers to the last ``observation_horizon`` rows.
 
@@ -599,13 +551,17 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
-        panel_group_names : list of str or None, default=None
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations to restore the observation state
+            to. Must align with ``y``.
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
 
         Returns
         -------
@@ -618,39 +574,49 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure or ``panel_group_names``
-            contains names not seen during fit.
+            If ``y`` / ``X_actual`` have invalid structure, non-monotonic time
+            index, or ``groups`` contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_actual_schema_", "shared_X_actual_schema_", "groups_"],
         )
 
-        # Validate schema, enforce column order, and validate panel_group_names (no continuity check - rewind sets new window)
-        y, X, panel_group_names = validate_forecaster_data(self, y, X, reset=False, panel_group_names=panel_group_names)
+        # Validate schema, enforce column order, and validate groups (no continuity check - rewind sets new window)
+        y, X_actual, groups = validate_forecaster_data(
+            self,
+            y,
+            X_actual,
+            reset=False,
+            groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
 
         # Special handling for forecasters with no observation horizon
-        if self.observation_horizon == 0:
+        if self.observation_horizon == 0:  # pragma: no cover
             # If there is no observation horizon, only check for time column presence
             if "time" not in y.columns:
                 raise ValueError("y must contain 'time' column.")
-            if X is not None and "time" not in X.columns:
-                raise ValueError("X must contain 'time' column.")
+            if X_actual is not None and "time" not in X_actual.columns:
+                raise ValueError("X_actual must contain 'time' column.")
 
         # Dispatch to mixin methods
-        if self.panel_group_names_ is None:
-            BaseStandardForecaster._rewind_standard(self, y, X)
+        if self.groups_ is None:
+            BaseStandardForecaster._rewind_standard(self, y, X_actual, X_future=X_future, X_forecast=X_forecast)
         else:
-            BasePanelForecaster._rewind_panel(self, y, X, panel_group_names)
+            BasePanelForecaster._rewind_panel(self, y, X_actual, groups, X_future=X_future, X_forecast=X_forecast)
 
         return self
 
     def observe(
         self,
         y: pl.DataFrame,
-        X: pl.DataFrame | None = None,
-        panel_group_names: list[str] | None = None,
+        X_actual: pl.DataFrame | None = None,
+        groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
     ) -> "BaseForecaster":
         """Observe new data and update observation buffers without refitting.
 
@@ -659,13 +625,18 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         y : pl.DataFrame
             Target time series with a ``"time"`` column (datetime) and one
             or more numeric value columns.
-        X : pl.DataFrame or None, default=None
-            Exogenous features with a ``"time"`` column matching ``y``.
-            If ``None``, no exogenous features are used.
-        panel_group_names : list of str or None, default=None
+        X_actual : pl.DataFrame or None, default=None
+            New actual feature observations with a ``"time"`` column
+            aligned with ``y``. Passed through the feature transformer to
+            update the internal observation state.
+        groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
             data.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
 
         Returns
         -------
@@ -678,82 +649,247 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``y`` / ``X`` have invalid structure, non-contiguous time
-            index, or ``panel_group_names`` contains names not seen during fit.
+            If ``y`` / ``X_actual`` have invalid structure, non-monotonic time
+            index, or ``groups`` contains names not seen during fit.
 
         """
         check_is_fitted(
             self,
-            ["local_y_schema_", "local_X_schema_", "shared_X_schema_", "panel_group_names_"],
+            ["local_y_schema_", "local_X_actual_schema_", "shared_X_actual_schema_", "groups_"],
         )
 
-        # Validate schema, enforce column order, and validate panel_group_names (includes continuity check)
-        y, X, panel_group_names = validate_forecaster_data(self, y, X, reset=False, panel_group_names=panel_group_names)
+        # Validate schema, enforce column order, and validate groups (includes continuity check)
+        y, X_actual, groups = validate_forecaster_data(
+            self,
+            y,
+            X_actual,
+            reset=False,
+            groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
 
         # Dispatch to mixin methods
-        if self.panel_group_names_ is None:
-            BaseStandardForecaster._observe_standard(self, y, X)
+        if self.groups_ is None:
+            BaseStandardForecaster._observe_standard(self, y, X_actual, X_future=X_future, X_forecast=X_forecast)
         else:
-            BasePanelForecaster._observe_panel(self, y, X, panel_group_names)
+            BasePanelForecaster._observe_panel(self, y, X_actual, groups, X_future=X_future, X_forecast=X_forecast)
 
         return self
+
+    def _predict_with_step_override(
+        self,
+        *,
+        X_future: pl.DataFrame | None,
+        X_forecast: pl.DataFrame | None,
+        predict_fn: Callable[[], pl.DataFrame],
+    ) -> pl.DataFrame:
+        """Run predict_fn with temporarily overridden step columns.
+
+        When X_future or X_forecast is provided, re-derives ALL step columns
+        from effective raws and swaps them into ``_X_t_observed``. After
+        ``predict_fn`` returns, the original step columns and raws are
+        restored. This enables multi-vintage predictions without mutating
+        forecaster state.
+
+        Also temporarily sets ``_X_future_raw_`` / ``_X_forecast_raw_`` so
+        that ``_recursive_predict``'s ``deepcopy(self)`` inherits the
+        override (each recursive block's ``observe()`` auto re-derives step
+        columns from stored raws per Decision 21).
+
+        Parameters
+        ----------
+        X_future : pl.DataFrame or None
+            Known future features override. If None, uses stored raw.
+        X_forecast : pl.DataFrame or None
+            External forecast override. If None, uses stored raw.
+        predict_fn : callable
+            ``predict_fn() -> pl.DataFrame``. Called with overridden state.
+
+        Returns
+        -------
+        pl.DataFrame
+            Result of ``predict_fn()``.
+
+        """
+        if not self._step_column_names_:
+            # No step columns at all: nothing to swap
+            return predict_fn()
+
+        if X_future is None and X_forecast is None:
+            # No override requested: skip swap
+            return predict_fn()
+
+        # Resolve effective raws
+        X_future_eff = X_future if X_future is not None else self._X_future_raw_
+        X_forecast_eff = X_forecast if X_forecast is not None else self._X_forecast_raw_
+
+        # Re-derive ALL step columns for current observed_time_
+        # Panel data stores observed_time_ as a dict; use first group's time
+        obs_time = (
+            self.observed_time_[next(iter(self.observed_time_))]
+            if isinstance(self.observed_time_, dict)
+            else self.observed_time_
+        )
+        X_step_new = _derive_step_columns(
+            X_future_eff,
+            X_forecast_eff,
+            pl.Series([obs_time]),
+            self.fit_forecasting_horizon_,
+            self.interval_,
+        )
+
+        step_col_list = sorted(self._step_column_names_)
+
+        # For panel data, per-group DataFrames use unprefixed step column names
+        if isinstance(self._X_t_observed, dict):
+            local_step_cols = sorted(self._step_schema_per_group_) if self._step_schema_per_group_ else []
+        else:
+            local_step_cols = step_col_list
+
+        # Save current state
+        saved_future_raw = self._X_future_raw_
+        saved_forecast_raw = self._X_forecast_raw_
+
+        if isinstance(self._X_t_observed, dict):
+            # Panel: save per-group step columns (unprefixed)
+            saved_step_data = {}
+            for group_name, group_df in self._X_t_observed.items():
+                cols_present = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+                if cols_present:
+                    saved_step_data[group_name] = group_df.select(cols_present)  # ty: ignore[unresolved-attribute]
+        else:
+            # Standard: save step columns from last row
+            cols_present = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
+            saved_step_data = self._X_t_observed.select(cols_present) if cols_present else None  # ty: ignore[unresolved-attribute]
+
+        try:
+            # Swap raws (for deepcopy in _recursive_predict)
+            if X_future is not None:
+                self._X_future_raw_ = X_future
+            if X_forecast is not None:
+                self._X_forecast_raw_ = X_forecast
+
+            # Swap step columns in _X_t_observed
+            if X_step_new is not None:
+                if isinstance(self._X_t_observed, dict):
+                    from yohou.utils.panel import get_group_df  # noqa: PLC0415
+
+                    for group_name, group_df in self._X_t_observed.items():
+                        cols_to_drop = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+                        new_group_step = get_group_df(X_step_new, group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
+                            ~cs.by_name("time")
+                        )
+                        if cols_to_drop:
+                            updated = group_df.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
+                            self._X_t_observed[group_name] = pl.concat([updated, new_group_step], how="horizontal")  # ty: ignore[invalid-assignment]
+                        else:
+                            self._X_t_observed[group_name] = pl.concat([group_df, new_group_step], how="horizontal")  # ty: ignore[invalid-assignment,unresolved-attribute]
+                else:
+                    new_step_only = X_step_new.select(~cs.by_name("time"))
+                    cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
+                    if cols_to_drop:
+                        updated = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
+                        self._X_t_observed = pl.concat([updated, new_step_only], how="horizontal")
+
+            return predict_fn()
+
+        finally:
+            # Restore raws
+            self._X_future_raw_ = saved_future_raw
+            self._X_forecast_raw_ = saved_forecast_raw
+
+            # Restore step columns
+            if isinstance(self._X_t_observed, dict):
+                for group_name, saved_df in saved_step_data.items():  # ty: ignore[unresolved-attribute]
+                    group_df = self._X_t_observed[group_name]
+                    cols_to_drop = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+                    if cols_to_drop:
+                        restored = group_df.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
+                        self._X_t_observed[group_name] = pl.concat([restored, saved_df], how="horizontal")
+            elif saved_step_data is not None:
+                cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
+                if cols_to_drop:
+                    restored = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
+                    self._X_t_observed = pl.concat([restored, saved_step_data], how="horizontal")
 
     def _recursive_predict(
         self,
         *,
-        X: pl.DataFrame | None,
         forecasting_horizon: int,
-        panel_group_names: list[str] | None,
+        groups: list[str] | None,
         step_fn: Callable[["BaseForecaster", list[str]], tuple[pl.DataFrame, pl.DataFrame]],
         derive_observation_fn: Callable[
-            ["BaseForecaster", pl.DataFrame, pl.DataFrame | None, int],
-            tuple[pl.DataFrame, pl.DataFrame | None],
+            ["BaseForecaster", pl.DataFrame],
+            pl.DataFrame,
         ],
     ) -> pl.DataFrame:
         """Shared recursive multi-step prediction loop.
 
         Produces predictions by repeatedly calling ``step_fn`` to get one
         forecast block, then ``derive_observation_fn`` to convert that
-        prediction into an observation that is fed back via ``observe()``
+        prediction into a y observation that is fed back via ``observe()``
         for the next recursive step.
+
+        X_future step columns are auto re-derived during each block's
+        ``observe()`` from ``_X_future_raw_`` (inherited via deepcopy from
+        ``_predict_with_step_override``). Do NOT pass explicit X_future or
+        X_forecast to ``observe()`` inside this loop.
 
         Parameters
         ----------
-        X : pl.DataFrame or None
-            Exogenous features, already filtered for panel groups by the
-            caller if needed.
         forecasting_horizon : int
             Total number of time steps to forecast.
-        panel_group_names : list of str or None
+        groups : list of str or None
             Panel group prefixes to operate on.
         step_fn : callable
             ``step_fn(forecaster_copy, groups) -> (y_accumulate, y_for_obs)``
             where ``y_accumulate`` is appended to output and ``y_for_obs``
             is passed to ``derive_observation_fn``.
         derive_observation_fn : callable
-            ``derive_observation_fn(forecaster_copy, y_for_obs, X, step_idx)
-            -> (y_obs, X_slice)`` where ``y_obs`` and ``X_slice`` are passed
-            to ``observe()``.
+            ``derive_observation_fn(forecaster_copy, y_for_obs) -> y_obs``
+            where ``y_obs`` is passed to ``observe(y=y_obs)``.
 
         Returns
         -------
         pl.DataFrame
-            Concatenated predictions with ``"observed_time"`` set to the
+            Concatenated predictions with ``"vintage_time"`` set to the
             first step's value and tail-trimmed to ``forecasting_horizon``.
 
+        Raises
+        ------
+        ValueError
+            If ``forecasting_horizon > fit_forecasting_horizon_`` and the
+            forecaster was fitted with ``X_forecast``. Recursive prediction
+            cannot re-derive vintage-dependent forecast columns across
+            blocks. Use ``ForecastedFeatureForecaster`` instead.
+
         """
+        if forecasting_horizon > self.fit_forecasting_horizon_ and self._X_forecast_raw_ is not None:
+            msg = (
+                f"Recursive prediction (forecasting_horizon={forecasting_horizon} > "
+                f"fit_forecasting_horizon={self.fit_forecasting_horizon_}) is not "
+                f"supported when X_forecast was provided at fit time. X_forecast "
+                f"step columns are vintage-dependent and cannot be re-derived "
+                f"across recursive blocks. Use ForecastedFeatureForecaster to "
+                f"compose a forecaster that generates its own step forecasts."
+            )
+            raise ValueError(msg)
+
         forecaster = deepcopy(self)
 
         y_pred = pl.DataFrame()
         for step in range(0, forecasting_horizon, self.fit_forecasting_horizon_):
-            y_accumulate, y_for_obs = step_fn(forecaster, panel_group_names or [])
+            y_accumulate, y_for_obs = step_fn(forecaster, groups or [])
             y_pred = pl.concat([y_pred, y_accumulate])
 
             if step + self.fit_forecasting_horizon_ < forecasting_horizon:
-                y_obs, X_slice = derive_observation_fn(forecaster, y_for_obs, X, step)
-                forecaster.observe(y_obs, X_slice)
+                y_obs = derive_observation_fn(forecaster, y_for_obs)
+                # observe with X_actual=None: step columns auto re-derived
+                # from _X_future_raw_ / _X_forecast_raw_ (Decision 21)
+                forecaster.observe(y_obs)
 
-        y_pred = y_pred.with_columns(observed_time=y_pred["observed_time"][0])
+        y_pred = y_pred.with_columns(vintage_time=y_pred["vintage_time"][0])
 
         if forecasting_horizon % self.fit_forecasting_horizon_:
             end = self.fit_forecasting_horizon_ - forecasting_horizon % self.fit_forecasting_horizon_
@@ -766,9 +902,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         *,
         predict_fn: Callable[..., pl.DataFrame],
         y: pl.DataFrame,
-        X: pl.DataFrame | None,
-        panel_group_names: list[str] | None,
+        X_actual: pl.DataFrame | None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+        groups: list[str] | None,
         stride: int,
+        observe_fn: Callable[..., Any] | None = None,
         **predict_kwargs: Any,
     ) -> pl.DataFrame:
         """Shared observe-then-predict rolling loop.
@@ -778,6 +917,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ``observe_predict``, ``observe_predict_interval``, and
         ``observe_predict_class_proba``.
 
+        When ``observe_fn`` is ``None`` (default), step columns are
+        pre-computed once at entry via ``_derive_step_columns`` and
+        injected through ``_observe_with_precomputed_steps``. When
+        ``observe_fn`` is provided (meta-forecasters), the callback
+        handles observation and each child derives its own step columns.
+
         Parameters
         ----------
         predict_fn : callable
@@ -785,12 +930,23 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             ``self.predict_interval``, ``self.predict_class_proba``).
         y : pl.DataFrame
             Historical target observations to incrementally observe.
-        X : pl.DataFrame or None
-            Exogenous features aligned with ``y``.
-        panel_group_names : list of str or None
+        X_actual : pl.DataFrame or None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step of
+            the rolling loop.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
+        groups : list of str or None
             Panel group prefixes to operate on.
         stride : int
             Number of rows to observe between successive predictions.
+        observe_fn : callable or None, default=None
+            Optional callback for meta-forecasters. When provided, called
+            as ``observe_fn(y_slice, X_actual=X_obs_slice, X_future=...,
+            X_forecast=...)`` instead of using pre-computed step columns.
         **predict_kwargs : dict
             Extra keyword arguments forwarded to ``predict_fn``
             (e.g. ``forecasting_horizon``, ``coverage_rates``).
@@ -801,25 +957,58 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Concatenated predictions from the initial call plus one
             prediction after each observe step.
 
+        Notes
+        -----
+        When ``len(y) % stride != 0``, the last observe call consumes
+        fewer than ``stride`` rows. The prediction still outputs the
+        full forecasting horizon, so no data is lost. However, this
+        creates one extra vintage whose observed window is shorter
+        than the others. Partial vintages are automatically truncated
+        at score time by the scorer.
+
         """
-        y_pred_i = predict_fn(X=X, panel_group_names=panel_group_names, **predict_kwargs)
+        # Pre-compute step columns once for all observation times
+        step_columns_full = None
+        if observe_fn is None:
+            step_columns_full = _derive_step_columns(
+                X_future,
+                X_forecast,
+                y["time"],
+                self.fit_forecasting_horizon_,
+                self.interval_,
+            )
+
+        # Initial predict (reads _X_t_observed set during fit/last observe)
+        y_pred_i = predict_fn(groups=groups, **predict_kwargs)
         y_pred = y_pred_i
 
         for i in range(0, len(y), stride):
             y_slice = y[i : i + stride]
 
-            X_slice = None
-            if X is not None:
-                X_slice = X.join(y_slice.select("time"), on="time", how="semi")
+            X_obs_slice = None
+            if X_actual is not None:
+                X_obs_slice = X_actual.join(y_slice.select("time"), on="time", how="semi")
 
-            self.observe(y=y_slice, X=X_slice, panel_group_names=panel_group_names)
+            if observe_fn is not None:
+                # Meta-forecaster path: delegate observe to callback
+                observe_fn(y_slice, X_actual=X_obs_slice, X_future=X_future, X_forecast=X_forecast)
+            elif step_columns_full is not None:
+                # Standard/panel path with pre-computed step columns
+                X_step_slice = step_columns_full.join(y_slice.select("time"), on="time", how="semi")
 
-            X_future = None
-            if X is not None:
-                last_time = y_slice["time"][-1]
-                X_future = X.filter(pl.col("time") > last_time)
+                if self.groups_ is None:
+                    BaseStandardForecaster._observe_with_precomputed_steps_standard(
+                        self, y_slice, X_obs_slice, X_step_slice
+                    )
+                else:
+                    BasePanelForecaster._observe_with_precomputed_steps_panel(
+                        self, y_slice, X_obs_slice, X_step_slice, groups or []
+                    )
+            else:
+                # No step columns and no observe_fn: fall back to regular observe
+                self.observe(y=y_slice, X_actual=X_obs_slice, groups=groups)
 
-            y_pred_i = predict_fn(X=X_future, panel_group_names=panel_group_names, **predict_kwargs)
+            y_pred_i = predict_fn(groups=groups, **predict_kwargs)
             y_pred = pl.concat([y_pred, y_pred_i])
 
         return y_pred
@@ -835,25 +1024,25 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         Returns
         -------
         pl.DataFrame
-            Predictions with observed_time and time columns.
+            Predictions with vintage_time and time columns.
 
         """
         # Dispatch to mixin methods
-        if self.panel_group_names_ is not None:
+        if self.groups_ is not None:
             return BasePanelForecaster._add_time_columns_panel(self, y_pred)
         else:
             return BaseStandardForecaster._add_time_columns_standard(self, y_pred)
 
-    def _predict(
+    def _predict_one(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **params,
     ) -> pl.DataFrame:
         """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
 
         Parameters
         ----------
-        panel_group_names : list of str
+        groups : list of str
             Panel group names to predict for.
         **params : dict
             Metadata to route to nested estimators.
@@ -864,24 +1053,24 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Predicted time series.
 
         """
-        raise NotImplementedError(f"The forecaster of type {type(self)} does not implement _predict.")
+        raise NotImplementedError(f"The forecaster of type {type(self)} does not implement_predict_one.")
 
-    def _predict_and_postprocess(
+    def _predict(
         self,
-        panel_group_names: list[str],
+        groups: list[str],
         **predict_one_params,
     ) -> tuple[pl.DataFrame, pl.DataFrame]:
         """Generate one-step or multi-step prediction.
 
         Parameters
         ----------
-        panel_group_names : list of str or None, default=None
+        groups : list of str or None, default=None
             Group prefixes for panel data:
             - If None: predict for all groups
             - If list of str: predict only for the specified panel groups
             Parameter is ignored if the forecaster was not fitted on panel data.
         **predict_one_params : dict
-            Params to the _predict method.
+            Params to the _predict_one method.
 
         Returns
         -------
@@ -891,10 +1080,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Inverse transformed predicted time series (original scale).
 
         """
-        y_pred_step = self._predict(panel_group_names=panel_group_names, **predict_one_params)
+        y_pred_step = self._predict_one(groups=groups, **predict_one_params)
 
         if self.target_transformer is None:
-            if not panel_group_names:
+            if not groups:
                 # Non-panel data
 
                 y_pred_step = cast(y_pred_step, self.local_y_schema_)
@@ -905,21 +1094,21 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                     y_pred_step,
                     {
                         f"{panel_group_name}__{col}": dtype
-                        for panel_group_name in panel_group_names
+                        for panel_group_name in groups
                         for col, dtype in self.local_y_schema_.items()
                     },
                 )
 
             y_pred_step_inv = y_pred_step
 
-        elif not panel_group_names:
+        elif not groups:
             # Non-panel data
             assert self.target_transformer_ is not None
             assert not isinstance(self.target_transformer_, dict)
 
-            # Remove "observed_time" before inverse_transform (transformers don't handle it)
-            observed_time = y_pred_step.select(cs.by_name("observed_time"))
-            y_pred_step_no_obs = y_pred_step.select(~cs.by_name("observed_time"))
+            # Remove "vintage_time" before inverse_transform (transformers don't handle it)
+            vintage_time = y_pred_step.select(cs.by_name("vintage_time"))
+            y_pred_step_no_obs = y_pred_step.select(~cs.by_name("vintage_time"))
 
             transformer = typing_cast(Any, self.target_transformer_)
             y_pred_step_inv = transformer.inverse_transform(
@@ -936,8 +1125,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 how="horizontal",
             )
 
-            # Add "observed_time" back
-            y_pred_step_inv = pl.concat([observed_time, y_pred_step_inv], how="horizontal")
+            # Add "vintage_time" back
+            y_pred_step_inv = pl.concat([vintage_time, y_pred_step_inv], how="horizontal")
 
         else:
             # Panel data
@@ -951,12 +1140,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             target_transformers = typing_cast(dict[str, BaseTransformer | None], self.target_transformer_)
             y_observed_dict = typing_cast(dict[str, pl.DataFrame | None], self._y_observed)
 
-            for panel_group_name in panel_group_names:
+            for panel_group_name in groups:
                 transformer = target_transformers[panel_group_name]
                 assert transformer is not None
 
-                # Remove "observed_time" before extracting group data
-                observed_time = y_pred_step.select(cs.by_name("observed_time")).head(1)
+                # Remove "vintage_time" before extracting group data
+                vintage_time = y_pred_step.select(cs.by_name("vintage_time")).head(1)
 
                 # Extract the group's columns (in transformed space, with prefix)
                 group_cols = [c for c in y_pred_step.columns if c.startswith(f"{panel_group_name}__")]
@@ -992,15 +1181,15 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                     how="horizontal",
                 )
 
-                # Add "observed_time" back
-                y_pred_step_group_inv = pl.concat([observed_time, y_pred_step_group_inv], how="horizontal")
+                # Add "vintage_time" back
+                y_pred_step_group_inv = pl.concat([vintage_time, y_pred_step_group_inv], how="horizontal")
 
                 # Store in dict (without time columns)
                 y_pred_step_inv_dict[panel_group_name] = y_pred_step_group_inv.select(
-                    ~cs.by_name("observed_time") & ~cs.by_name("time")
+                    ~cs.by_name("vintage_time") & ~cs.by_name("time")
                 )
 
-            times = y_pred_step.select(cs.by_name("observed_time") | cs.by_name("time"))
+            times = y_pred_step.select(cs.by_name("vintage_time") | cs.by_name("time"))
             y_pred_inv_cols = pl.concat(list(y_pred_step_inv_dict.values()), how="horizontal")
 
             y_pred_step_inv = pl.concat([times, y_pred_inv_cols], how="horizontal")

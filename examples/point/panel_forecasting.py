@@ -9,12 +9,6 @@
 import marimo
 
 __generated_with = "0.23.1"
-__gallery__ = {
-    "title": "Panel Point Forecasting",
-    "description": "Global models, per-group specialisation with ColumnForecaster, selective group operations, and groupwise scoring on multi-series panel time series.",
-    "category": "how-to",
-    "companion": "/pages/explanation/core-concepts/#univariate-multivariate-and-panel-data",
-}
 app = marimo.App(width="medium")
 
 
@@ -47,12 +41,12 @@ def _(mo):
 @app.cell(hide_code=True)
 def _():
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeRegressor
 
     from yohou.compose import ColumnForecaster
     from yohou.datasets import fetch_kdd_cup
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import plot_forecast, plot_group_scores, plot_score_time_series, plot_time_series
     from yohou.point import PointReductionForecaster, SeasonalNaive
     from yohou.preprocessing import LagTransformer
@@ -96,7 +90,7 @@ def _(fetch_kdd_cup, inspect_panel, mo, plot_time_series, train_test_split):
     _target_cols = [c for c in _df.columns if c != "time"]
     y = _df.select("time", *_target_cols)
 
-    y_train, y_test = train_test_split(y, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.15)
     horizon = len(y_test)
 
     mo.vstack([
@@ -378,6 +372,25 @@ def _(
         kind="heatmap",
         title="Groupwise MAE - Heatmap",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - **Panel reduction models** apply the same hyperparameters across all groups (each group still fitted independently)
+    - **ColumnForecaster** enables per-group model specialisation (different algorithms, different hyperparameters)
+    - **`groups`** is accepted by `predict`, `observe`, `rewind`, and scoring enabling the update or query a subset of groups without touching the rest
+    - **Groupwise scoring** reveals which groups benefit from specialised models
+    - Always compare against a simple baseline ([`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/)) per group
+
+    ## Next Steps
+
+    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/)
+    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/metrics/aggregation_modes/)
+    - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/model_selection/panel_cross_validation/)
+    """)
 
 
 if __name__ == "__main__":

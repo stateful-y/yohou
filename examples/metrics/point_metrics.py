@@ -9,12 +9,6 @@
 import marimo
 
 __generated_with = "0.23.1"
-__gallery__ = {
-    "title": "Point Metrics",
-    "description": "All 8 point scorers (MAE, MSE, RMSE, MedianAE, MAPE, sMAPE, RMSSE, MASE) with flexible aggregation modes and per-timestep score visualisation.",
-    "category": "how-to",
-    "companion": "/pages/explanation/forecast-accuracy/",
-}
 app = marimo.App(width="medium")
 
 
@@ -52,7 +46,6 @@ def _():
     from copy import deepcopy
 
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import (
@@ -65,6 +58,7 @@ def _():
         RootMeanSquaredScaledError,
         SymmetricMeanAbsolutePercentageError,
     )
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -122,7 +116,7 @@ def _(
 ):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     fh = len(y_test)
 
     naive = SeasonalNaive(seasonality=12)
@@ -467,7 +461,6 @@ def _(
         cls_y,
         cls_X,
         test_size=200,
-        shuffle=False,
     )
     cls_fh = 24
 
@@ -475,16 +468,14 @@ def _(
         estimator=DecisionTreeClassifier(random_state=42),
         feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
-    cls_forecaster.fit(cls_y_train, X_actual=cls_X_train, forecasting_horizon=cls_fh)
+    cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
 
     # predict() returns hard class labels (argmax of probabilities)
     cls_y_pred_labels = cls_forecaster.predict(
-        X_future=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
     # predict_class_proba() returns the full probability distribution
     cls_y_proba = cls_forecaster.predict_class_proba(
-        X_future=cls_X_test[:cls_fh],
         forecasting_horizon=cls_fh,
     )
 
@@ -605,6 +596,21 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## Key Takeaways
+
+    - All point scorers follow `fit()` → `score()` pattern
+    - Basic metrics (MAE, MSE, RMSE, MAPE, sMAPE, MedianAE) need no training data
+    - Scaled metrics (MASE, RMSSE) fit on **training data** for normalization
+    - `aggregation_method` controls granularity: `"all"`, `["stepwise", "vintagewise"]`, `"componentwise"`
+    - [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/) evaluates hard classification correctness (use with care on imbalanced data)
+    - Use [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) for temporal error analysis
+    - Use [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) for multi-model comparison
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict` method with `stride=1` produces one forecast per
@@ -657,3 +663,19 @@ def _(plot_score_time_series, vintage_scorer, y_pred_vintages, y_test):
         height=500,
         facet_by="member",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - **Interval metrics**: See [`interval_metrics.py`](/examples/metrics/interval_metrics/) for interval scoring
+    - **Cross-validation**: See [Model Selection](/examples/#model-selection) for temporal CV with scoring
+    - **Time weighting**: See [`time_weighted_scoring.py`](/examples/metrics/time_weighted_scoring/)
+    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) for soft classification metrics (LogLoss, BrierScore) and reliability diagrams
+    """)
+
+
+if __name__ == "__main__":
+    app.run()

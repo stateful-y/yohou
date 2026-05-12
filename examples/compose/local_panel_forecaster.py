@@ -12,8 +12,6 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "LocalPanelForecaster",
     "description": "Wrap any forecaster with LocalPanelForecaster for fully independent per-group clones, parallel fitting via n_jobs, and selective group operations.",
-    "category": "how-to",
-    "companion": "/pages/explanation/core-concepts/#univariate-multivariate-and-panel-data",
 }
 app = marimo.App(width="medium")
 
@@ -61,12 +59,12 @@ def _():
 
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
     from sklearn.tree import DecisionTreeRegressor
 
     from yohou.compose import LocalPanelForecaster
     from yohou.datasets import fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -116,7 +114,7 @@ def _(inspect_panel, fetch_tourism_quarterly, mo, train_test_split):
     _globals, groups = inspect_panel(tourism)
     y = tourism.select("time", *[c for c in tourism.columns if c.endswith("__tourists")])
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     horizon = len(y_test)
 
     mo.md(
@@ -270,7 +268,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, fetch_tourism_qu
     _tourism = fetch_tourism_quarterly().frame
     _tourist_cols = [f"T{i}__tourists" for i in range(3, 11)]
     _y2 = _tourism.select("time", *_tourist_cols).drop_nulls()
-    y_train2, y_test2 = train_test_split(_y2, test_size=0.2, shuffle=False)
+    y_train2, y_test2 = train_test_split(_y2, test_size=0.2)
 
     fc_global = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
@@ -399,6 +397,29 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test2):
         y_label="MAE",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    | Feature | `panel_strategy="global"` | [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) |
+    |---|---|---|
+    | **Model sharing** | Shared hyperparameters | Fully independent clones |
+    | **Transformers** | Per-group (automatic) | Per-group (inside each clone) |
+    | **Cross-group learning** | Pooled estimator | None |
+    | **Parallel fitting** | Sequential | `n_jobs` parameter |
+    | **Selective operations** | `groups` on all methods | `groups` on all methods |
+    | **Best for** | Homogeneous groups | Heterogeneous groups |
+
+    ## Next Steps
+
+    - **Panel strategy overview**: See `examples/panel_reduction.py`
+    - **Per-group specialisation**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/) for [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
+    - **Composition patterns**: See [`examples/compose/panel_pipelines.py`](/examples/compose/panel_pipelines/)
+    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/interval/panel_intervals/)
+    """)
 
 
 if __name__ == "__main__":

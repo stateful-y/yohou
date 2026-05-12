@@ -9,12 +9,6 @@
 import marimo
 
 __generated_with = "0.20.2"
-__gallery__ = {
-    "title": "Time-Derived Features",
-    "description": "Create calendar, holiday, Fourier, and time index features with dedicated transformers and compose them with FeatureUnion.",
-    "category": "tutorial",
-    "companion": "/pages/explanation/preprocessing/#time-features",
-}
 app = marimo.App(width="medium")
 
 
@@ -30,13 +24,18 @@ def _(mo):
     mo.md(r"""
     # Time-Derived Features
 
-    In this notebook we will use four stateless transformers that extract
-    features from the `"time"` column:
-    [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/),
-    [`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/),
-    [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/), and
-    [`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.time_features.TimeIndexTransformer/),
-    then compose them with [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/).
+    This notebook demonstrates four stateless transformers that extract
+    features from the `"time"` column. Calendar and holiday features
+    encode temporal context, Fourier features capture cyclical
+    seasonality, and time index features model trend.
+
+    ## What You'll Learn
+
+    - [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/): Auto-detect applicable calendar features from the time interval
+    - [`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/): Binary holiday indicator with optional proximity features
+    - [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/): Sin/cos harmonics at a specified seasonal period
+    - [`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.time_features.TimeIndexTransformer/): Integer, normalized, or polynomial trend indices
+    - Composing transformers with [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)
 
     ## Prerequisites
 
@@ -93,7 +92,7 @@ def _(fetch_sunspot, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. CalendarFeatureTransformer: Auto-detect
+    ## 2. CalendarFeatureTransformer - Auto-detect
 
     With `features=None` (the default), the transformer detects the data
     interval and extracts all applicable features. For monthly data this
@@ -215,11 +214,11 @@ def _(X_prox, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 6. FourierFeatureTransformer: Single Seasonality
+    ## 6. FourierFeatureTransformer - Single Seasonality
 
     Specify the seasonal period as the number of time steps. For monthly data,
     a yearly cycle is `seasonality=12`. The `harmonics` parameter controls
-    which frequency multiples to include. `[1]` captures the fundamental
+    which frequency multiples to include - `[1]` captures the fundamental
     frequency, `[1, 2, 3]` adds higher harmonics for sharper patterns.
     """)
 
@@ -310,7 +309,7 @@ def _(FeatureUnion, FourierFeatureTransformer, y):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 9. TimeIndexTransformer: Linear Index
+    ## 9. TimeIndexTransformer - Linear Index
 
     [`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.time_features.TimeIndexTransformer/) converts the time column into a sequential integer
     index starting at 0. This is useful as a trend feature for
@@ -405,6 +404,30 @@ def _(
     full_union.fit(y)
     y_full = full_union.transform(y)
     y_full.head(5)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/) auto-detects applicable features from the time interval, or accepts an explicit list
+    - [`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/) matches against a user-provided polars DataFrame of holiday dates; `days_to_next`/`days_since_last` add distance columns
+    - [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/) produces sin/cos pairs for each harmonic; compose via [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) for multiple seasonalities
+    - [`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.time_features.TimeIndexTransformer/) provides linear or polynomial trend features with optional normalization
+    - All four transformers are stateless, not invertible, and derive features purely from the `"time"` column
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - **Window transformers**: See [`window_transformers.py`](/examples/preprocessing/window_transformers/) for lag, rolling, and EMA features
+    - **Custom transforms**: See [`function_transformer.py`](/examples/preprocessing/function_transformer/) for wrapping arbitrary polars operations
+    - **Using in forecasters**: Pass to `feature_transformer` in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
+    """)
 
 
 if __name__ == "__main__":

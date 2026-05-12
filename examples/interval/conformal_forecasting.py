@@ -12,8 +12,6 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Conformal Prediction Intervals",
     "description": "Build distribution-free prediction intervals with SplitConformalForecaster using calibration holdouts and configurable conformity scoring functions.",
-    "category": "tutorial",
-    "companion": "/pages/explanation/interval-forecasting/",
 }
 app = marimo.App(width="medium")
 
@@ -34,15 +32,16 @@ def _(mo):
     **distribution-free** prediction intervals with finite-sample coverage
     guarantees, using a held-out calibration set.
 
-    In this tutorial we will build conformal intervals around point
-    forecasters, compare different conformity scorers
-    ([`Residual`](/pages/api/generated/yohou.metrics.conformity.Residual/),
-    [`AbsoluteResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteResidual/),
-    [`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/)),
-    evaluate interval quality, and swap in a `SeasonalNaive` base forecaster.
+    ## What You'll Learn
 
-    **Prerequisites**: Basic understanding of prediction intervals and
-    [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
+    - Building conformal intervals around point forecasters
+    - Choosing conformity scorers ([`Residual`](/pages/api/generated/yohou.metrics.conformity.Residual/), [`AbsoluteResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteResidual/), [`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/))
+    - Evaluating interval quality with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) and [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/)
+    - Visualizing prediction intervals with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
+
+    ## Prerequisites
+
+    Basic understanding of prediction intervals and [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
     """)
 
 
@@ -52,7 +51,6 @@ def _():
 
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import SplitConformalForecaster
@@ -64,6 +62,7 @@ def _():
         MeanIntervalWidth,
         Residual,
     )
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_forecast,
         plot_score_per_vintage,
@@ -99,8 +98,7 @@ def _(mo):
     mo.md(r"""
     ## 1. Prepare Data
 
-    We load the Monthly Tourism dataset and split it for calibrating and
-    evaluating conformal intervals.
+    We load the Monthly Tourism dataset and split it into training and test sets for calibrating and evaluating conformal intervals.
     """)
 
 
@@ -109,7 +107,7 @@ def _(fetch_tourism_monthly, train_test_split):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
     # Need enough calibration data: use 80/20 split
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     forecasting_horizon = min(len(y_test), 12)  # Limit horizon for calibration
 
     print(f"Train: {len(y_train)}, Test: {len(y_test)}")
@@ -121,9 +119,9 @@ def _(mo):
     mo.md(r"""
     ## 2. SplitConformalForecaster
 
-    We wrap a point forecaster and use a calibration set to compute conformal
-    scores. The `calibration_size` parameter controls how many of the most
-    recent training observations are held out for calibration.
+    Wraps a point forecaster and uses a calibration set to compute conformal scores.
+    `calibration_size` controls how many of the most recent training observations
+    are used for calibration.
     """)
 
 
@@ -211,12 +209,11 @@ def _(mo):
     mo.md(r"""
     ## 4. Conformity Scorers
 
-    The conformity scorer determines how prediction errors are measured.
-    We compare three options to see how they affect interval shape:
+    The conformity scorer determines how prediction errors are measured:
 
-    - `Residual()`: Raw residuals ($y - \hat{y}$) - symmetric intervals
-    - `AbsoluteResidual()`: $|y - \hat{y}|$ - default, symmetric
-    - `GammaResidual()`: $|y - \hat{y}| / \hat{y}$ - scale-adaptive, wider intervals where predictions are larger
+    - `Residual()`: Raw residuals ($y - \hat{y}$): symmetric intervals
+    - `AbsoluteResidual()`: $|y - \hat{y}|$: default, symmetric
+    - `GammaResidual()`: $|y - \hat{y}| / \hat{y}$: scale-adaptive, wider intervals where predictions are larger
     """)
 
 
@@ -272,8 +269,7 @@ def _(mo):
     mo.md(r"""
     ## 5. Using SeasonalNaive as Base
 
-    Conformal intervals work with **any** point forecaster. We swap in
-    [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) to see how a simpler base model affects interval width.
+    Conformal intervals work with **any** point forecaster, including [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/).
     """)
 
 
@@ -298,9 +294,8 @@ def _(SeasonalNaive, SplitConformalForecaster, forecasting_horizon, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Notice how [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/)-based conformal intervals are wider than the
-    Ridge-based intervals above, reflecting the higher residual variance
-    of the simpler base model.
+    [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) shows how [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/)-based conformal intervals
+    compare visually to the Ridge-based intervals above.
     """)
 
 
@@ -318,14 +313,13 @@ def _(plot_forecast, y_pred_naive_int, y_test, y_train):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## What We Built
+    ## Key Takeaways
 
-    We wrapped a point forecaster with `SplitConformalForecaster` to produce
-    calibrated prediction intervals, compared three conformity scorers
-    (symmetric vs. scale-adaptive), evaluated interval quality with
-    `EmpiricalCoverage` and `IntervalScore`, and showed that any base
-    forecaster (including `SeasonalNaive`) can be wrapped for conformal
-    inference.
+    - [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) adds prediction intervals to any point forecaster
+    - Coverage guarantees are distribution-free (no normality assumed)
+    - `calibration_size` trades off calibration accuracy vs. training data
+    - Conformity scorers control interval shape: symmetric vs. scale-adaptive
+    - Evaluate with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/), [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/), and [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
     """)
 
 
@@ -384,6 +378,17 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="Interval Score",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - **Interval reduction**: See [`interval_reduction.py`](/examples/interval/interval_reduction/) for quantile regression intervals
+    - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval evaluation
+    - **Calibration plots**: See [Plotting](/examples/#plotting) for [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
+    """)
 
 
 if __name__ == "__main__":

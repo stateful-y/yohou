@@ -12,8 +12,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Decomposition Variations",
     "description": "Build 2- and 3-component DecompositionPipeline forecasters chaining trend, seasonality, and residual models with target pre-transformation.",
-    "category": "how-to",
-    "companion": "/pages/explanation/stationarity/#decomposition",
 }
 app = marimo.App(width="medium")
 
@@ -50,11 +48,11 @@ def _():
 
     import polars as pl
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.compose import DecompositionPipeline
     from yohou.datasets import fetch_sunspot, fetch_tourism_quarterly
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_decomposition,
         plot_forecast,
@@ -107,7 +105,7 @@ def _(mo):
 def _(fetch_sunspot, mo, pl, train_test_split):
     _raw = fetch_sunspot().frame
     sunspots = _raw.group_by_dynamic("time", every="1mo").agg(pl.col("sunspot_number").mean())
-    y_train, y_test = train_test_split(sunspots, test_size=0.15, shuffle=False)
+    y_train, y_test = train_test_split(sunspots, test_size=0.15)
     horizon = len(y_test)
     mo.md(f"**Sunspots**: Train={len(y_train)}, Test={len(y_test)}")
     return horizon, sunspots, y_test, y_train
@@ -345,7 +343,7 @@ def _(
     # Select 8 series with uniform length for a manageable panel demo
     _tourist_cols = [f"T{i}__tourists" for i in range(3, 11)]
     _tourism = _tourism.select("time", *_tourist_cols).drop_nulls()
-    _y_train_p, _y_test_p = train_test_split(_tourism, test_size=0.2, shuffle=False)
+    _y_train_p, _y_test_p = train_test_split(_tourism, test_size=0.2)
     _horizon_p = len(_y_test_p)
 
     _fc_panel = DecompositionPipeline(
@@ -430,6 +428,28 @@ def _(vintage_scorer, plot_score_summary, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Model Score Summary",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - **Predictions are summed** across all components in [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
+    - **`store_residuals=True`**: stores intermediate residuals for inspection
+    - **`target_transformer`**: applied before decomposition, inverted after prediction
+    - **Panel data**: each group gets independent decomposition
+    - **Common patterns**:
+      - Trend + Residual (simple noise after detrending)
+      - Trend + Seasonality + Residual (captures periodic patterns)
+      - Log transform + Decomposition (multiplicative to additive conversion)
+
+    ## Next Steps
+
+    - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/compose/pipeline_composition/)
+    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/stationarity/stationarity_transforms/)
+    - **Panel stationarity**: See [`examples/stationarity/panel_stationarity.py`](/examples/stationarity/panel_stationarity/)
+    """)
 
 
 if __name__ == "__main__":

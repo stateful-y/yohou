@@ -12,7 +12,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Interval Metrics",
     "description": "Evaluate prediction intervals with EmpiricalCoverage, IntervalScore, MeanIntervalWidth, PinballLoss, and CalibrationError across coverage levels.",
-    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -32,9 +31,18 @@ def _(mo):
     Prediction intervals need specialized metrics beyond point accuracy.
     Yohou provides 5 interval scorers that evaluate coverage, width, and calibration.
 
-    This notebook shows how to evaluate prediction intervals with EmpiricalCoverage, IntervalScore, MeanIntervalWidth, PinballLoss, and CalibrationError across coverage levels.
+    ## What You'll Learn
 
-    **Prerequisites:** Understanding of prediction intervals from `interval/` examples.
+    - [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/): Does the interval contain the actual value at the expected rate?
+    - [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) (Winkler score): Penalizes wide intervals and miscoverage
+    - [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/): Average interval width (narrower = better)
+    - [`PinballLoss`](/pages/api/generated/yohou.metrics.interval.PinballLoss/): Quantile-specific loss
+    - [`CalibrationError`](/pages/api/generated/yohou.metrics.interval.CalibrationError/): Gap between nominal and empirical coverage
+    - Aggregation across coverage rates with `"coveragewise"`
+
+    ## Prerequisites
+
+    Understanding of prediction intervals from `interval/` examples.
     """)
 
 
@@ -43,7 +51,6 @@ def _():
     from copy import deepcopy
 
     from sklearn.linear_model import QuantileRegressor
-    from sklearn.model_selection import train_test_split
     from sklearn.multioutput import MultiOutputRegressor
 
     from yohou.datasets import fetch_tourism_monthly
@@ -55,6 +62,7 @@ def _():
         MeanIntervalWidth,
         PinballLoss,
     )
+    from yohou.model_selection import train_test_split
     from yohou.plotting import (
         plot_calibration,
         plot_forecast,
@@ -109,7 +117,7 @@ def _(
 ):
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
-    y_train, y_test = train_test_split(y, test_size=0.2, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=0.2)
     fh = len(y_test)
     coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.8, 0.9, 0.95]
 
@@ -353,6 +361,21 @@ def _(coverage_rates, plot_calibration, y_pred_int, y_test):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## Key Takeaways
+
+    - [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/): Checks if intervals achieve target coverage
+    - [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/): Combined sharpness + coverage (lower = better)
+    - [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/): Sharpness only (narrower = better)
+    - [`PinballLoss`](/pages/api/generated/yohou.metrics.interval.PinballLoss/): Quantile-specific loss
+    - [`CalibrationError`](/pages/api/generated/yohou.metrics.interval.CalibrationError/): Gap between nominal and realized coverage
+    - Use `aggregation_method="coveragewise"` for per-rate breakdown
+    - [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) visualizes calibration quality
+    """)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict_interval` method with `stride=1` produces one
@@ -403,6 +426,17 @@ def _(vintage_scorer, plot_score_heatmap, y_pred_vintages, y_test):
         y_pred_vintages,
         title="Score Heatmap (Step x Vintage)",
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Next Steps
+
+    - **Point metrics**: See [`point_metrics.py`](/examples/metrics/point_metrics/) for forecast accuracy metrics
+    - **Model selection**: See [Model Selection](/examples/#model-selection) for CV with scoring
+    - **Time weighting**: See `examples/time_weighted_forecasting.py`
+    """)
 
 
 if __name__ == "__main__":

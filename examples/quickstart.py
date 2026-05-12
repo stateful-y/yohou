@@ -12,8 +12,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Quickstart",
-    "description": "End-to-end tour of yohou covering data loading, baseline forecasting, preprocessing pipelines, decomposition, cross-validation search, interval prediction, and exogenous features.",
-    "category": "tutorial",
+    "description": "End-to-end tour of yohou covering data loading, baseline forecasting, preprocessing pipelines, decomposition, cross-validation search, and interval prediction.",
 }
 app = marimo.App(width="medium")
 
@@ -46,7 +45,6 @@ def _(mo):
     8. **Interval forecasting**: SplitConformalForecaster for prediction intervals
     9. **Time-weighted training**: exponential_decay_weight, compose_weights
     10. **Panel data**: forecasting multiple series with the `__` separator convention
-    11. **Exogenous features**: X_actual, X_future, and X_forecast for external data
 
     ## Prerequisites
 
@@ -62,9 +60,7 @@ def _():
     import polars as pl
     from scipy.stats import randint, uniform
     from sklearn.base import clone
-    from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.linear_model import Ridge
-    from sklearn.model_selection import train_test_split
 
     from yohou.compose import DecompositionPipeline, FeaturePipeline, LocalPanelForecaster
     from yohou.datasets import fetch_dominick, fetch_tourism_monthly
@@ -75,6 +71,7 @@ def _():
         GridSearchCV,
         RandomizedSearchCV,
         SlidingWindowSplitter,
+        train_test_split,
     )
     from yohou.plotting import (
         plot_calibration,
@@ -108,7 +105,6 @@ def _():
         FeaturePipeline,
         FourierSeasonalityForecaster,
         GridSearchCV,
-        HistGradientBoostingRegressor,
         LagTransformer,
         LocalPanelForecaster,
         LogTransformer,
@@ -135,11 +131,11 @@ def _():
         plot_calibration,
         plot_cv_results_scatter,
         plot_forecast,
-        plot_score_per_vintage,
-        plot_score_time_series,
         plot_splits,
         plot_time_series,
         plot_time_weight,
+        plot_score_per_vintage,
+        plot_score_time_series,
         randint,
         seasonal_emphasis_weight,
         train_test_split,
@@ -190,7 +186,7 @@ def _(mo):
 
 @app.cell
 def _(train_test_split, y):
-    y_train, y_test = train_test_split(y, test_size=24, shuffle=False)
+    y_train, y_test = train_test_split(y, test_size=24)
     forecasting_horizon = len(y_test)
 
     print(f"Train: {len(y_train)} rows  |  Test: {len(y_test)} rows  |  Horizon: {forecasting_horizon}")
@@ -1061,7 +1057,6 @@ def _(MeanAbsoluteError, SeasonalNaive, train_test_split, y_panel):
     y_panel_train, y_panel_test = train_test_split(
         y_panel,
         test_size=13,
-        shuffle=False,
     )
 
     panel_baseline = SeasonalNaive(seasonality=52)
@@ -1197,79 +1192,33 @@ def _(
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        ## 11. Exogenous Features
+    mo.md(r"""
+    ## Key Takeaways
 
-        Yohou supports three types of external data in `fit()` and `predict()`:
+    - **Scikit-learn API**: `fit(y, X_actual, forecasting_horizon)` → `predict(forecasting_horizon)` → `score(y_truth, y_pred)`
+    - **Preprocessing**: [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains invertible transforms (log, differencing, lags)
+    - **Decomposition**: [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) models trend + seasonality + residual
+    - **Cross-validation**: [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) / [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/) respect temporal order
+    - **Hyperparameter search**: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) (exhaustive) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) (efficient)
+    - **Time weighting**: [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/), [`compose_weights`](/pages/api/generated/yohou.utils.weighting.compose_weights/) for recency emphasis
+    - **Streaming**: `observe_predict` updates memory without retraining
+    - **Intervals**: [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) + `predict_interval(coverage_rates=[0.9])`
+    - **Panel data**: `__` separator convention; `panel_strategy="global"` pools groups; [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) fits per-group models
 
-        - **X_actual**: historical observations (e.g., measured temperature)
-        - **X_future**: known future values (e.g., holidays, calendar features)
-        - **X_forecast**: external forecasts with a `vintage_time` column (e.g., weather predictions)
+    ## Next Steps
 
-        We demonstrate using synthetic electricity price data where the price
-        depends on temperature and holidays.
-        """
-    )
-
-
-@app.cell
-def _():
-    from yohou.datasets import make_exogenous_regression
-
-    exog_data = make_exogenous_regression(n_samples=200, forecasting_horizon=6)
-    exog_y = exog_data.y
-    exog_X_actual = exog_data.X_actual
-    exog_X_future = exog_data.X_future
-    exog_X_forecast = exog_data.X_forecast
-
-    print(f"Target: {exog_y.columns}, {len(exog_y)} rows")
-    print(f"X_actual columns: {exog_X_actual.columns}")
-    print(f"X_future columns: {exog_X_future.columns}")
-    print(f"X_forecast columns: {exog_X_forecast.columns}")
-    return exog_X_actual, exog_X_forecast, exog_X_future, exog_data, exog_y
-
-
-@app.cell
-def _(
-    HistGradientBoostingRegressor,
-    LagTransformer,
-    PointReductionForecaster,
-    exog_X_actual,
-    exog_X_forecast,
-    exog_X_future,
-    exog_y,
-):
-    exog_train_size = 160
-    exog_forecaster = PointReductionForecaster(
-        estimator=HistGradientBoostingRegressor(max_iter=50, random_state=42),
-        feature_transformer=LagTransformer(lag=[1, 2, 3]),
-        reduction_strategy="direct",
-    )
-
-    exog_forecaster.fit(
-        y=exog_y[:exog_train_size],
-        X_actual=exog_X_actual[:exog_train_size],
-        forecasting_horizon=6,
-        X_future=exog_X_future,
-        X_forecast=exog_X_forecast,
-    )
-
-    exog_pred = exog_forecaster.predict()
-    print(f"Predicted {len(exog_pred)} steps with exogenous features")
-    print(f"Features per step: {exog_forecaster.estimator_[0].feature_names_in_.tolist()}")
-    return exog_forecaster, exog_pred, exog_train_size
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(
-        r"""
-        For a full walkthrough of exogenous features including multi-vintage
-        predictions and walk-forward evaluation, see the
-        [Exogenous Features tutorial](/examples/compose/exogenous_features/).
-        """
-    )
+    | Topic | Notebook |
+    |-------|----------|
+    | Feature engineering | [`point/feature_forecasting.py`](/examples/point/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/) |
+    | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
+    | Class probability | [`point/class_proba_forecaster.py`](/examples/point/class_proba_forecaster/), [`metrics/class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) |
+    | Interval forecasting | [`interval/interval_reduction.py`](/examples/interval/interval_reduction/), [`metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/) |
+    | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/stationarity/decomposition/) |
+    | Metrics guide | [`metrics/point_metrics.py`](/examples/metrics/point_metrics/), [`metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) |
+    | Splitters & search | [`model_selection/cv_splitters.py`](/examples/model_selection/cv_splitters/), [`model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/) |
+    | Dataset explorers | [`datasets/tourism_monthly.py`](/examples/datasets/tourism_monthly/), [`datasets/store_sales.py`](/examples/datasets/store_sales/), … |
+    | Plotting gallery | [`plotting/exploration.py`](/examples/plotting/exploration/), [`plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/), … |
+    """)
 
 
 if __name__ == "__main__":

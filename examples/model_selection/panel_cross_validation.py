@@ -12,7 +12,6 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Cross-Validation",
     "description": "Time series cross-validation on panel data with GridSearchCV, selective group observation, rewind operations, and groupwise performance comparison.",
-    "category": "how-to",
 }
 app = marimo.App(width="medium")
 
@@ -276,6 +275,31 @@ def _(vintage_scorer, plot_score_per_vintage, y_pred_vintages, y_test):
         y_label="MAE",
         height=380,
     )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Key Takeaways
+
+    - **Panel CV splits by time**: All groups share the same train/test time
+      boundaries; [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates them together
+    - **`refit=True`**: The best model is fitted on all training data after
+      search, ready for `predict` / `observe` / `rewind`
+    - **`observe` with `groups`**: Feed new data to specific
+      groups, shifting their forecast origin forward
+    - **`rewind` with `groups`**: Reset specific groups back to
+      a previous observation window without refitting
+    - **`predict` with `groups`**: Generate forecasts for a
+      subset of groups only
+
+    ## Next Steps
+
+    - **Multi-metric search**: See [`examples/model_selection/multi_metric_search.py`](/examples/model_selection/multi_metric_search/)
+    - **Interval search**: See [`examples/model_selection/interval_search.py`](/examples/model_selection/interval_search/)
+    - **CV splitters**: See [`examples/model_selection/cv_splitters.py`](/examples/model_selection/cv_splitters/)
+    - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/point/panel_forecasting/)
+    """)
 
 
 if __name__ == "__main__":
