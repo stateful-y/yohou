@@ -155,3 +155,6 @@ lightning_logs
 
 # CatBoost
 catboost_info
+
+# Companion packages (separate repos)
+packages/
