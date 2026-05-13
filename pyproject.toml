@@ -239,7 +239,7 @@ disable = [
     "MD046",  # Code block style (indented blocks required inside MkDocs tabs)
     "MD051",  # Link fragments (cross-doc references resolved at MkDocs build time)
 ]
-exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv"]
+exclude = ["CHANGELOG.md", "docs/pages/reference/changelog.md", "site", "htmlcov", ".nox", ".venv"]
 
 [tool.rumdl.per-file-ignores]
 # MD057 (relative links) suppressed for pages with links to build-time generated files.
