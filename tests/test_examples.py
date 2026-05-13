@@ -10,6 +10,7 @@ https://docs.marimo.io/getting_started/quickstart/#run-as-scripts
 import importlib.util
 import pathlib
 import subprocess
+import sys
 
 import pytest
 
@@ -41,7 +42,7 @@ def _collect_notebooks(subdir: str | None = None) -> list:
 def _run_notebook(notebook_file: pathlib.Path) -> None:
     """Run a marimo notebook as a script and assert success."""
     result = subprocess.run(
-        ["python", str(notebook_file)],
+        [sys.executable, str(notebook_file)],
         capture_output=True,
         text=True,
         check=False,

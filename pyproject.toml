@@ -248,7 +248,7 @@ exclude = ["CHANGELOG.md", "docs/pages/reference/changelog.md", "site", "htmlcov
 "docs/pages/getting-started/installation.md" = ["MD057"]  # Links to not-yet-created extensions page
 ".github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]  # PR template starts with checklist
 "README.md" = ["MD041"]  # README starts with logo, not heading
-"docs/index.md" = ["MD041"]  # Landing page starts with logo, not heading
+"docs/index.md" = ["MD041", "MD057"]  # Landing page starts with logo; API links are build-time generated
 "CONTRIBUTING.md" = ["MD057"]  # Relative link to docs/ is valid at project level
 
 [tool.commitizen]
