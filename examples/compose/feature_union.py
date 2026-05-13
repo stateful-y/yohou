@@ -13,6 +13,7 @@ __gallery__ = {
     "title": "Feature Union",
     "description": "Combine lag features, rolling statistics, EMA, and scaling in parallel with FeatureUnion and automatic observation horizon resolution.",
     "category": "how-to",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

@@ -73,10 +73,10 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
     See Also
     --------
-    `ColumnForecaster` : Separate forecasters for target/feature columns.
-    `ForecastedFeatureForecaster` : Chains target and feature forecasters.
-    `PolynomialTrendForecaster` : Polynomial trend component for decomposition.
-    `FourierSeasonalityForecaster` : Fourier seasonality component for decomposition.
+    - [`ColumnForecaster`][yohou.compose.column_forecaster.ColumnForecaster] : Separate forecasters for target/feature columns.
+    - [`ForecastedFeatureForecaster`][yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster] : Chains target and feature forecasters.
+    - [`PolynomialTrendForecaster`][yohou.stationarity.trend.PolynomialTrendForecaster] : Polynomial trend component for decomposition.
+    - [`FourierSeasonalityForecaster`][yohou.stationarity.seasonality.FourierSeasonalityForecaster] : Fourier seasonality component for decomposition.
 
     Examples
     --------

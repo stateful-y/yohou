@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Panel Preprocessing",
     "description": "Automatic panel-aware transformation (StandardScaler, rolling stats, imputation) plus manual per-group workflows with get_group_df and dict_to_panel.",
     "category": "how-to",
+    "section": "panel-data",
 }
 app = marimo.App(width="medium")
 

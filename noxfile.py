@@ -278,6 +278,9 @@ def lint(session: nox.Session) -> None:
     # Run ruff check
     session.run("ruff", "check", "src", "tests", external=True)
 
+    # Run PEP 723 dependency audit for notebook examples
+    session.run("pytest", "tests/test_notebook_pep723.py", "-v", "--no-header", "-o", "addopts=")
+
     # Run rumdl markdown linter
     session.run("uvx", "rumdl", "check", ".", external=True)
 

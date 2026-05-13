@@ -166,43 +166,38 @@ nav:
     - Create Custom Estimators: pages/how-to/custom-estimators.md
     - Create Custom Scorers: pages/how-to/creating-a-scorer.md
     - Troubleshooting: pages/how-to/troubleshooting.md
-    - Contributing: pages/how-to/contribute.md
   - Examples:
     - pages/examples/index.md
     - Quickstart: pages/examples/quickstart.md
-    - Point Forecasting: pages/examples/point.md
-    - Interval Forecasting: pages/examples/interval.md
-    - Class-Probability Forecasting: pages/examples/class_proba.md
-    - Ensemble: pages/examples/ensemble.md
-    - Composition: pages/examples/compose.md
-    - Preprocessing: pages/examples/preprocessing.md
-    - Stationarity: pages/examples/stationarity.md
-    - Metrics: pages/examples/metrics.md
-    - Model Selection: pages/examples/model-selection.md
-    - Datasets: pages/examples/datasets.md
-    - Plotting: pages/examples/plotting.md
+    - Getting Started: pages/examples/getting-started.md
+    - Forecasting Models: pages/examples/forecasting-models.md
+    - Data & Features: pages/examples/data-features.md
+    - Panel Data: pages/examples/panel-data.md
+    - Evaluation & Search: pages/examples/evaluation-search.md
+    - Visualization: pages/examples/visualization.md
   - Explanation:
+    - pages/explanation/index.md
     - Core Concepts: pages/explanation/core-concepts.md
     - Time Series Patterns: pages/explanation/time-series-patterns.md
     - Forecasting: pages/explanation/forecasting.md
     - Interval Forecasting: pages/explanation/interval-forecasting.md
     - Class-Probability Forecasting: pages/explanation/class-probability-forecasting.md
     - Ensemble Forecasting: pages/explanation/ensemble-forecasting.md
-    - Composition and Pipelines: pages/explanation/composition.md
     - Exogenous Features: pages/explanation/exogenous-features.md
     - Preprocessing: pages/explanation/preprocessing.md
     - Stationarity: pages/explanation/stationarity.md
-    - Model Selection: pages/explanation/model-selection.md
+    - Feature Pipelines: pages/explanation/feature-pipelines.md
+    - Forecaster Composition: pages/explanation/forecaster-composition.md
     - Forecast Accuracy: pages/explanation/forecast-accuracy.md
+    - Model Selection: pages/explanation/model-selection.md
     - Weighting: pages/explanation/weighting.md
     - Residual Diagnostics: pages/explanation/residual-diagnostics.md
     - Practical Issues: pages/explanation/practical-issues.md
     - Visualization: pages/explanation/visualization.md
     - Advanced Topics: pages/explanation/advanced.md
     - Extending Yohou: pages/explanation/extending-yohou.md
-    - Glossary: pages/explanation/glossary.md
   - Reference:
-    - Overview: pages/reference/overview.md
+    - API Reference: pages/api/index.md
     - API Reference:
       - pages/api/index.md
       - yohou.base: pages/api/base.md
@@ -220,8 +215,10 @@ nav:
       - yohou.utils: pages/api/utils.md
       - yohou.testing: pages/api/testing.md
       - Custom Estimators: pages/api/custom-estimators.md
-    - Extensions: pages/reference/extensions.md
     - Changelog: pages/reference/changelog.md
+    - Glossary: pages/explanation/glossary.md
+    - Data Catalog: pages/reference/data-catalog.md
+  - Extensions: pages/reference/extensions.md
 
 extra:
   social:

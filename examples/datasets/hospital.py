@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Hospital",
     "description": "Explore the Hospital panel dataset (767 series) with multi-series visualisation, cross-correlation analysis across lags, and monthly seasonality.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

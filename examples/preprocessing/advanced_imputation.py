@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Advanced Imputation",
     "description": "Compare SimpleTimeImputer, SeasonalImputer, SimpleImputer, and TransformedSpaceKNNImputer on synthetic block and scattered gaps in monthly tourism data.",
     "category": "how-to",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

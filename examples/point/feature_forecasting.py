@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Feature Forecasting",
     "description": "Chain feature and target forecasters with ForecastedFeatureForecaster when exogenous variables are unknown at prediction time and must be forecasted.",
+    "category": "how-to",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 

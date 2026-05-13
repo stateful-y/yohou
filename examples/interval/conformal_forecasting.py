@@ -12,6 +12,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Conformal Prediction Intervals",
     "description": "Build distribution-free prediction intervals with SplitConformalForecaster using calibration holdouts and configurable conformity scoring functions.",
+    "category": "tutorial",
+    "section": "getting-started",
 }
 app = marimo.App(width="medium")
 

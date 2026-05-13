@@ -106,8 +106,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 
     See Also
     --------
-    `BaseReductionForecaster` : Base class for reduction forecasters.
-    `LagTransformer` : Create lagged features for reduction strategies.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Base class for reduction forecasters.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Create lagged features for reduction strategies.
 
     """
 

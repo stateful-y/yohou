@@ -44,8 +44,8 @@ class BaseSplitter(BaseEstimator, ABC):
 
     See Also
     --------
-    `ExpandingWindowSplitter` : Expanding-window cross-validation.
-    `SlidingWindowSplitter` : Sliding-window cross-validation.
+    - [`ExpandingWindowSplitter`][yohou.model_selection.split.ExpandingWindowSplitter] : Expanding-window cross-validation.
+    - [`SlidingWindowSplitter`][yohou.model_selection.split.SlidingWindowSplitter] : Sliding-window cross-validation.
 
     """
 
@@ -233,7 +233,7 @@ class ExpandingWindowSplitter(BaseSplitter):
 
     See Also
     --------
-    `SlidingWindowSplitter` : Fixed-size rolling window splitter
+    - [`SlidingWindowSplitter`][yohou.model_selection.split.SlidingWindowSplitter] : Fixed-size rolling window splitter
 
     """
 
@@ -431,7 +431,7 @@ class SlidingWindowSplitter(BaseSplitter):
 
     See Also
     --------
-    `ExpandingWindowSplitter` : Growing training window splitter
+    - [`ExpandingWindowSplitter`][yohou.model_selection.split.ExpandingWindowSplitter] : Growing training window splitter
 
     """
 

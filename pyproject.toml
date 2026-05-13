@@ -54,6 +54,7 @@ tests = [
     "hypothesis>=6.100",
 ]
 lint = [
+    "pytest>=8.3",
     "ruff>=0.8.0",
     "ty>=0.0.29",
 ]
@@ -72,8 +73,6 @@ examples = [
     "marimo>=0.19.0",
     "catboost>=1.2",
     "statsmodels>=0.14",
-    "yohou-optuna",
-    "yohou-nixtla; python_version < '3.14'",
 ]
 
 [project.urls]
@@ -81,6 +80,9 @@ Homepage = "https://github.com/stateful-y/yohou"
 Documentation = "https://yohou.readthedocs.io"
 Repository = "https://github.com/stateful-y/yohou"
 "Bug Tracker" = "https://github.com/stateful-y/yohou/issues"
+
+[tool.uv.workspace]
+members = ["packages/*"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -95,9 +97,6 @@ fallback-version = "0.0.0"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/yohou/_version.py"
-
-[tool.ty.rules]
-unused-ignore-comment = "ignore"
 
 [tool.ruff]
 line-length = 120
@@ -246,12 +245,10 @@ exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv"]
 # MD057 (relative links) suppressed for pages with links to build-time generated files.
 # These links are validated post-build by linkchecker (nox -s link_docs).
 "docs/pages/api/*.md" = ["MD001", "MD057"]  # mkdocstrings generates heading levels and files at build time
-"docs/pages/how-to/installation.md" = ["MD057"]  # Links to not-yet-created extensions page
-".github/skills/**" = ["MD007"]  # Nested lists in skill files use variable indent
+"docs/pages/getting-started/installation.md" = ["MD057"]  # Links to not-yet-created extensions page
 ".github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]  # PR template starts with checklist
 "README.md" = ["MD041"]  # README starts with logo, not heading
 "docs/index.md" = ["MD041"]  # Landing page starts with logo, not heading
-"docs/pages/reference/changelog.md" = ["MD041"]  # Uses --8<-- include, heading comes from CHANGELOG.md
 "CONTRIBUTING.md" = ["MD057"]  # Relative link to docs/ is valid at project level
 
 [tool.commitizen]

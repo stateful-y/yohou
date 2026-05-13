@@ -1,8 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "statsmodels",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -13,6 +12,7 @@ __gallery__ = {
     "title": "Tourism Quarterly Analytics",
     "description": "Diagnostic analytics on quarterly tourism panel data with autocorrelation, correlation heatmaps, lag scatter, and seasonal subseries plots.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

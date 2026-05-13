@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Signal Processing Plots",
     "description": "Butterworth low-pass filtering with frequency spectrum analysis and phase shift inspection on half-hourly electricity demand data using Plotly.",
     "category": "how-to",
+    "section": "visualization",
 }
 app = marimo.App(width="medium")
 

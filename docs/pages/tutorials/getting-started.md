@@ -1,6 +1,6 @@
 # Getting Started
 
-Get up and running with Yohou in minutes. This guide walks you through the complete workflow: install, load data, fit a forecaster, predict, evaluate, and plot.
+In this tutorial, we will load a real time series dataset, fit a seasonal baseline forecaster, score it, and plot the predictions. Along the way, we will encounter the core Yohou workflow: load, split, fit, predict, score, and plot.
 
 ## Install
 
@@ -16,63 +16,65 @@ Get up and running with Yohou in minutes. This guide walks you through the compl
     pip install yohou
     ```
 
-=== "conda"
+See [Installation](../how-to/installation.md) for conda/mamba, development setup, and optional packages.
 
-    ```bash
-    conda install -c conda-forge yohou
-    ```
+The plotting functions used in this guide require the plotting extra:
 
-See [Installation](../how-to/installation.md) for mamba, development setup, and optional packages.
+```bash
+pip install yohou[plotting]
+```
 
 ## Load a Dataset
 
 Yohou datasets are fetched from [Monash/Zenodo](https://forecastingdata.org) and cached locally as Polars DataFrames with a mandatory `"time"` column.
 
 ```python
-from yohou.datasets import fetch_tourism_monthly
+from yohou.datasets import fetch_sunspot
 
-bunch = fetch_tourism_monthly()
-y = bunch.frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
+bunch = fetch_sunspot()
+y = bunch.frame
 print(y.head())
 ```
 
 ```text
 shape: (5, 2)
-┌─────────────────────┬───────────┐
-│ time                ┆ tourists  │
-│ ---                 ┆ ---       │
-│ datetime[μs]        ┆ f64       │
-╞═════════════════════╪═══════════╡
-│ 1979-01-01 00:00:00 ┆ 1149.87   │
-│ 1979-02-01 00:00:00 ┆ 1053.8002 │
-│ 1979-03-01 00:00:00 ┆ 1388.8798 │
-│ 1979-04-01 00:00:00 ┆ 1783.3702 │
-│ 1979-05-01 00:00:00 ┆ 1921.0252 │
-└─────────────────────┴───────────┘
+┌─────────────────────┬────────────────┐
+│ time                ┆ sunspot_number │
+│ ---                 ┆ ---            │
+│ datetime[μs]        ┆ f64            │
+╞═════════════════════╪════════════════╡
+│ 1818-01-08 00:00:00 ┆ 64.0           │
+│ 1818-01-09 00:00:00 ┆ 65.0           │
+│ 1818-01-10 00:00:00 ┆ 63.0           │
+│ 1818-01-11 00:00:00 ┆ 57.0           │
+│ 1818-01-12 00:00:00 ┆ 61.0           │
+└─────────────────────┴────────────────┘
 ```
 
-Split into train and test sets (last 24 months held out):
+Split into train and test sets (last 30 days held out):
 
 ```python
-y_train, y_test = y[:-24], y[-24:]
+y_train, y_test = y[:-30], y[-30:]
 forecasting_horizon = len(y_test)
 ```
 
-## Start Simple: A Seasonal Baseline
+## Fit a Seasonal Baseline
 
-The simplest seasonal model repeats values from one year ago. Every more complex model should beat this baseline.
+The simplest seasonal model repeats values from one cycle ago. At daily resolution, the solar rotation period of 27 days is a natural choice. We pass `forecasting_horizon` at fit time so Yohou knows how many steps ahead it needs to predict.
 
 ```python
 from yohou.point import SeasonalNaive
 
-baseline = SeasonalNaive(seasonality=12)
+baseline = SeasonalNaive(seasonality=27)
 baseline.fit(y_train, forecasting_horizon=forecasting_horizon)
 y_pred_baseline = baseline.predict(forecasting_horizon=forecasting_horizon)
 ```
 
+Notice that `y_pred_baseline` is a Polars DataFrame with the same `"time"` column as the input, aligned to the test period.
+
 ## Evaluate
 
-Score the baseline against held-out data using [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/):
+Score the baseline against held-out data using [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/). Scorers in Yohou are stateful: `scorer.fit(y_train)` stores the training data so that scale-dependent metrics can normalise correctly.
 
 ```python
 from yohou.metrics import MeanAbsoluteError
@@ -82,8 +84,10 @@ scorer.fit(y_train)
 print(f"Baseline MAE: {scorer.score(y_test, y_pred_baseline):.2f}")
 ```
 
+The output should look something like:
+
 ```text
-Baseline MAE: 221.68
+Baseline MAE: 22.38
 ```
 
 ## Plot
@@ -96,39 +100,23 @@ from yohou.plotting import plot_forecast
 plot_forecast(
     y_test,
     {"Baseline": y_pred_baseline},
-    y_train=y_train,
-    title="Tourism Forecast: Seasonal Naive Baseline",
-    y_label="Monthly tourists",
+    y_train=y_train.tail(90),
+    title="Sunspot Forecast: Seasonal Naive Baseline",
+    y_label="Sunspot number",
 )
 ```
 
-## What We Built
+## What You Built
 
-You installed Yohou, loaded a real dataset, fit a seasonal baseline, scored it, and plotted the forecast. Every model you build will follow this same pattern: load data, split, fit, predict, score, plot.
-
-The baseline is a useful sanity check but not competitive. In **[Your First Forecast](first-forecast.md)**, you will build a reduction pipeline with stationarity transforms and lag features that substantially outperforms the baseline.
-
-## Go Further: Interactive Quickstart
-
-The Quickstart notebook extends this guide with decomposition pipelines, cross-validation, hyperparameter search, interval forecasting, time-weighted training, and panel data.
-
-=== "View online"
-
-    [:material-book-open-variant: Open Quickstart notebook](../examples/quickstart.md){ .md-button .md-button--primary }
-
-=== "Run locally"
-
-    Launch the interactive Marimo notebook in your browser:
-
-    ```bash
-    uv run marimo edit examples/quickstart.py
-    ```
+You loaded a real dataset, split it into train and test sets, fit a seasonal baseline, scored it with MAE, and plotted the forecast. This is the complete Yohou workflow. Every model you build will follow this same pattern.
 
 ## Next Steps
 
-- **[Your First Forecast](first-forecast.md)**: Build a reduction pipeline with stationarity transforms and lag features
+- **[Your First Forecast](first-forecast.md)**: Build a reduction pipeline with lag and rolling features that substantially outperforms the baseline
 - **[Forecasting Workflow](forecasting-workflow.md)**: Evaluate with cross-validation, hyperparameter search, and residual diagnostics
 - **[Installation](../how-to/installation.md)**: conda/mamba, development setup, and optional packages
 - **[Core Concepts](../explanation/core-concepts.md)**: Observe/rewind, panel data, and metadata routing
 
-For visualization, install the plotting extra: `pip install yohou[plotting]`
+The Quickstart notebook extends this guide with decomposition pipelines, cross-validation, hyperparameter search, interval forecasting, time-weighted training, and panel data.
+
+[View](../examples/quickstart.md) · [Open in marimo](/examples/quickstart/edit/)

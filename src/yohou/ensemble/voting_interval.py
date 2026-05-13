@@ -114,9 +114,9 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
 
     See Also
     --------
-    `VotingPointForecaster` : Ensemble for point forecasters.
-    `VotingClassProbaForecaster` : Ensemble for class-probability forecasters.
-    `SplitConformalForecaster` : Conformal prediction intervals.
+    - [`VotingPointForecaster`][yohou.ensemble.voting_point.VotingPointForecaster] : Ensemble for point forecasters.
+    - [`VotingClassProbaForecaster`][yohou.ensemble.voting_class_proba.VotingClassProbaForecaster] : Ensemble for class-probability forecasters.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] : Conformal prediction intervals.
 
     Notes
     -----

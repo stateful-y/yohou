@@ -13,6 +13,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "CatBoost Forecasting",
     "description": "Plug CatBoostRegressor into PointReductionForecaster as a drop-in sklearn estimator, compare gradient-boosted versus Ridge linear baseline, and demonstrate the direct reduction strategy with tree-based models.",
+    "category": "how-to",
+    "section": "forecasting-models",
 }
 
 app = marimo.App(width="medium")

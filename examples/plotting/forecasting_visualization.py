@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -14,6 +14,7 @@ __gallery__ = {
     "description": "Visualise point forecasts from single and multiple models, decomposition pipeline components, and time weight decay functions with interactive Plotly.",
     "category": "tutorial",
     "companion": "/pages/explanation/visualization/",
+    "section": "visualization",
 }
 app = marimo.App(width="medium")
 

@@ -100,10 +100,10 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
 
     See Also
     --------
-    `StandardScaler` : Pre-configured wrapper for sklearn's StandardScaler.
-    `MinMaxScaler` : Pre-configured wrapper for sklearn's MinMaxScaler.
-    `RobustScaler` : Pre-configured wrapper for sklearn's RobustScaler.
-    `MaxAbsScaler` : Pre-configured wrapper for sklearn's MaxAbsScaler.
+    - [`StandardScaler`][yohou.preprocessing.sklearn_wrappers.StandardScaler] : Pre-configured wrapper for sklearn's StandardScaler.
+    - [`MinMaxScaler`][yohou.preprocessing.sklearn_wrappers.MinMaxScaler] : Pre-configured wrapper for sklearn's MinMaxScaler.
+    - [`RobustScaler`][yohou.preprocessing.sklearn_wrappers.RobustScaler] : Pre-configured wrapper for sklearn's RobustScaler.
+    - [`MaxAbsScaler`][yohou.preprocessing.sklearn_wrappers.MaxAbsScaler] : Pre-configured wrapper for sklearn's MaxAbsScaler.
 
     """
 
@@ -326,10 +326,10 @@ class SklearnScaler(SklearnTransformer):
 
     See Also
     --------
-    `StandardScaler` : Pre-configured wrapper for sklearn's StandardScaler.
-    `MinMaxScaler` : Pre-configured wrapper for sklearn's MinMaxScaler.
-    `RobustScaler` : Pre-configured wrapper for sklearn's RobustScaler.
-    `MaxAbsScaler` : Pre-configured wrapper for sklearn's MaxAbsScaler.
+    - [`StandardScaler`][yohou.preprocessing.sklearn_wrappers.StandardScaler] : Pre-configured wrapper for sklearn's StandardScaler.
+    - [`MinMaxScaler`][yohou.preprocessing.sklearn_wrappers.MinMaxScaler] : Pre-configured wrapper for sklearn's MinMaxScaler.
+    - [`RobustScaler`][yohou.preprocessing.sklearn_wrappers.RobustScaler] : Pre-configured wrapper for sklearn's RobustScaler.
+    - [`MaxAbsScaler`][yohou.preprocessing.sklearn_wrappers.MaxAbsScaler] : Pre-configured wrapper for sklearn's MaxAbsScaler.
 
     """
 

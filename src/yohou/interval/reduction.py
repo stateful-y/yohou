@@ -124,8 +124,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     See Also
     --------
-    `SplitConformalForecaster` : Conformal prediction intervals.
-    `PointReductionForecaster` : Point forecasts without intervals.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] : Conformal prediction intervals.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : Point forecasts without intervals.
 
     """
 

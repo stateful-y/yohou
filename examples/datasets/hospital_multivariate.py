@@ -1,8 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "statsmodels",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -13,6 +12,7 @@ __gallery__ = {
     "title": "Hospital Multivariate Analytics",
     "description": "Multivariate analytics on hospital patient data with scatter matrices, correlation heatmaps, STL decomposition, and cross-correlation diagnostics.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

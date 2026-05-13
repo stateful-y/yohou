@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Signal Processing",
     "description": "Apply NumericalFilter (Butterworth, Chebyshev, Bessel), NumericalDifferentiator, and NumericalIntegrator for signal smoothing and rate-of-change extraction.",
     "category": "how-to",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

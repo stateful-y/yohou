@@ -57,9 +57,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     See Also
     --------
-    `BaseSimilarity` : Similarity weighting for adaptive intervals.
-    `Residual` : Default conformity scorer.
-    `IntervalReductionForecaster` : Alternative interval forecaster.
+    - [`BaseSimilarity`][yohou.interval.base.BaseSimilarity] : Similarity weighting for adaptive intervals.
+    - [`Residual`][yohou.metrics.conformity.Residual] : Default conformity scorer.
+    - [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster] : Alternative interval forecaster.
 
     """
 

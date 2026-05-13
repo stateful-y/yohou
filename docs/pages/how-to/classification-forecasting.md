@@ -99,4 +99,4 @@ plot_calibration(y_test, y_proba)
 - [Class-Probability Forecasting](../explanation/class-probability-forecasting.md): theory and mathematical details
 - [Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md): complete metrics guide
 - [API Reference: yohou.class_proba](../api/class_proba.md)
-- [Class-Probability Examples](../examples/class_proba.md)
+- [Class-Probability Examples](../examples/forecasting-models.md)

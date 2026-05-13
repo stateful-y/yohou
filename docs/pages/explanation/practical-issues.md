@@ -100,7 +100,7 @@ input data rather than interpolate lower-frequency data.
 
 ## Connections
 
-Missing value and outlier handling are part of the [Preprocessing](preprocessing.md) pipeline. Complex seasonality ties into [Stationarity](stationarity.md) transforms and decomposition. Forecast combinations relate to the composition patterns in [Composition](composition.md). For evaluating whether a model is adequate given these practical challenges, see [Forecast Accuracy](forecast-accuracy.md) and [Residual Diagnostics](residual-diagnostics.md).
+Missing value and outlier handling are part of the [Preprocessing](preprocessing.md) pipeline. Complex seasonality ties into [Stationarity](stationarity.md) transforms and decomposition. Forecast combinations relate to the forecaster composition patterns in [Forecaster Composition](forecaster-composition.md). For evaluating whether a model is adequate given these practical challenges, see [Forecast Accuracy](forecast-accuracy.md) and [Residual Diagnostics](residual-diagnostics.md).
 
 Practical examples: [Resampling](/examples/preprocessing/resampling/),
 [Advanced Imputation](/examples/preprocessing/advanced_imputation/), and

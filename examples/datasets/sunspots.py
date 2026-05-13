@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Sunspots",
     "description": "Analyse 200+ years of monthly sunspot numbers with 11-year rolling smoothing, autocorrelation periodicity detection, and spectral frequency analysis.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

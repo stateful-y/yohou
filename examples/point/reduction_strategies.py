@@ -9,6 +9,13 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Direct, Recursive, and MIMO Strategies",
+    "description": "Compare direct, recursive, and MIMO reduction strategies across forecasting horizons to understand the trade-offs for your use case.",
+    "category": "tutorial",
+    "companion": "pages/explanation/forecasting",
+    "section": "getting-started",
+}
 app = marimo.App(width="medium")
 
 

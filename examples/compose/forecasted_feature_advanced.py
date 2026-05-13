@@ -12,6 +12,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "ForecastedFeatureForecaster (Advanced)",
     "description": "Compare ForecastedFeatureForecaster strategies (actual, predicted, rewind) and split ratio tuning for chaining feature and target forecasters.",
+    "category": "how-to",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 

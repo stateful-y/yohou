@@ -2,6 +2,9 @@
 
 This guide shows how to measure and compare forecast performance using yohou's metrics and cross-validation tools.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## Score a Single Forecast
 
 Fit a scorer on the training data, then call `score` with the test set and predictions:

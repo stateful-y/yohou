@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "numpy",
 #     "scikit-learn",
 #     "yohou",
 # ]
@@ -12,6 +13,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Observe-Predict Workflow",
     "description": "Incrementally observe new data and predict without refitting, with exogenous features (X_actual, X_future, X_forecast) flowing through every step.",
+    "category": "tutorial",
+    "section": "getting-started",
 }
 app = marimo.App(width="medium")
 

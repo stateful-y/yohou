@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Tourism Quarterly",
     "description": "Explore the Tourism Quarterly panel dataset with inspect_panel structure analysis, cross-group demand comparison, and seasonal boxplots across 8 series.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

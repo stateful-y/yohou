@@ -13,6 +13,7 @@ __gallery__ = {
     "title": "Column Transformer",
     "description": "Route columns through distinct transformers with ColumnTransformer, including remainder handling and automatic panel-aware column detection.",
     "category": "how-to",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

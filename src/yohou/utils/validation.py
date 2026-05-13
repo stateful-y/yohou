@@ -52,9 +52,9 @@ def check_time_column(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
 
     See Also
     --------
-    `check_interval_consistency` : Validate uniform time spacing.
-    `check_continuity` : Validate temporal continuity between DataFrames.
-    `check_inputs` : Validate consistent intervals across y and X_actual.
+    - [`check_interval_consistency`][yohou.utils.validation.check_interval_consistency] : Validate uniform time spacing.
+    - [`check_continuity`][yohou.utils.validation.check_continuity] : Validate temporal continuity between DataFrames.
+    - [`check_inputs`][yohou.utils.validation.check_inputs] : Validate consistent intervals across y and X_actual.
 
     """
     if "time" not in df.columns:
@@ -114,8 +114,8 @@ def check_scorer_column_selection(
 
     See Also
     --------
-    `inspect_panel` : Detect panel groups in a DataFrame.
-    `check_groups` : Validate panel group names for forecaster operations.
+    - [`inspect_panel`][yohou.utils.panel.inspect_panel] : Detect panel groups in a DataFrame.
+    - [`check_groups`][yohou.utils.validation.check_groups] : Validate panel group names for forecaster operations.
 
     """
     has_panel_specs = hasattr(scorer, "groups") and scorer.groups is not None
@@ -328,8 +328,8 @@ def check_sufficient_rows(
 
     See Also
     --------
-    `check_forecasting_horizon_positive` : Validate forecasting horizon is positive.
-    `check_X_actual_required` : Validate X_actual is provided for recursive prediction.
+    - [`check_forecasting_horizon_positive`][yohou.utils.validation.check_forecasting_horizon_positive] : Validate forecasting horizon is positive.
+    - [`check_X_actual_required`][yohou.utils.validation.check_X_actual_required] : Validate X_actual is provided for recursive prediction.
 
     """
     actual_rows = len(df)
@@ -385,9 +385,9 @@ def check_groups(
 
     See Also
     --------
-    `check_groups_exist` : Validate requested panel groups exist (deprecated).
-    `check_panel_groups_match` : Validate y and X_actual have matching panel groups.
-    `inspect_panel` : Detect panel groups in a DataFrame.
+    - [`check_groups_exist`][yohou.utils.validation.check_groups_exist] : Validate requested panel groups exist (deprecated).
+    - [`check_panel_groups_match`][yohou.utils.validation.check_panel_groups_match] : Validate y and X_actual have matching panel groups.
+    - [`inspect_panel`][yohou.utils.panel.inspect_panel] : Detect panel groups in a DataFrame.
 
     """
     # If no groups requested, use all fitted groups
@@ -437,8 +437,8 @@ def check_groups_exist(
 
     See Also
     --------
-    `check_groups` : Preferred replacement for this function.
-    `check_panel_groups_match` : Validate y and X_actual have matching panel groups.
+    - [`check_groups`][yohou.utils.validation.check_groups] : Preferred replacement for this function.
+    - [`check_panel_groups_match`][yohou.utils.validation.check_panel_groups_match] : Validate y and X_actual have matching panel groups.
 
     """
     if requested_panel_groups is None:
@@ -496,9 +496,9 @@ def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame
 
     See Also
     --------
-    `check_panel_groups_match` : Validate y and X_actual have matching panel groups.
-    `check_groups` : Validate panel group names for forecaster operations.
-    `inspect_panel` : Detect panel groups in a DataFrame.
+    - [`check_panel_groups_match`][yohou.utils.validation.check_panel_groups_match] : Validate y and X_actual have matching panel groups.
+    - [`check_groups`][yohou.utils.validation.check_groups] : Validate panel group names for forecaster operations.
+    - [`inspect_panel`][yohou.utils.panel.inspect_panel] : Detect panel groups in a DataFrame.
 
     """
     _, groups = inspect_panel(df)
@@ -582,9 +582,9 @@ def check_panel_groups_match(
 
     See Also
     --------
-    `check_panel_internal_consistency` : Validate panel groups have consistent structure.
-    `check_groups` : Validate panel group names for forecaster operations.
-    `inspect_panel` : Detect panel groups in a DataFrame.
+    - [`check_panel_internal_consistency`][yohou.utils.validation.check_panel_internal_consistency] : Validate panel groups have consistent structure.
+    - [`check_groups`][yohou.utils.validation.check_groups] : Validate panel group names for forecaster operations.
+    - [`inspect_panel`][yohou.utils.panel.inspect_panel] : Detect panel groups in a DataFrame.
 
     """
     if y is None or X_actual is None:
@@ -623,8 +623,8 @@ def check_forecasting_horizon_positive(
 
     See Also
     --------
-    `check_X_actual_required` : Validate X_actual is provided for recursive prediction.
-    `check_sufficient_rows` : Validate DataFrame has enough rows for an operation.
+    - [`check_X_actual_required`][yohou.utils.validation.check_X_actual_required] : Validate X_actual is provided for recursive prediction.
+    - [`check_sufficient_rows`][yohou.utils.validation.check_sufficient_rows] : Validate DataFrame has enough rows for an operation.
 
     """
     if horizon is None:
@@ -662,8 +662,8 @@ def check_X_actual_required(
 
     See Also
     --------
-    `check_forecasting_horizon_positive` : Validate forecasting horizon is positive.
-    `check_sufficient_rows` : Validate DataFrame has enough rows for an operation.
+    - [`check_forecasting_horizon_positive`][yohou.utils.validation.check_forecasting_horizon_positive] : Validate forecasting horizon is positive.
+    - [`check_sufficient_rows`][yohou.utils.validation.check_sufficient_rows] : Validate DataFrame has enough rows for an operation.
 
     """
     if observation_horizon > 0 and X_actual is None:
@@ -722,9 +722,9 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
 
     See Also
     --------
-    `check_inputs` : Validates multiple DataFrames have matching intervals
-    `check_continuity` : Validates temporal continuity between DataFrames
-    `add_interval` : Add intervals to datetime values
+    - [`check_inputs`][yohou.utils.validation.check_inputs] : Validates multiple DataFrames have matching intervals
+    - [`check_continuity`][yohou.utils.validation.check_continuity] : Validates temporal continuity between DataFrames
+    - [`add_interval`][yohou.utils.validation.add_interval] : Add intervals to datetime values
 
     """
     if df is None:
@@ -805,8 +805,8 @@ def check_inputs(y: pl.DataFrame, X_actual: pl.DataFrame | None) -> str:
 
     See Also
     --------
-    `check_interval_consistency` : Validates single DataFrame intervals
-    `validate_column_names` : Validates column names don't misuse __ separator
+    - [`check_interval_consistency`][yohou.utils.validation.check_interval_consistency] : Validates single DataFrame intervals
+    - [`validate_column_names`][yohou.utils.validation.validate_column_names] : Validates column names don't misuse __ separator
 
     """
     # Validate column names first
@@ -874,9 +874,9 @@ def validate_search_data(y: pl.DataFrame, X_actual: pl.DataFrame | None) -> str:
 
     See Also
     --------
-    `validate_forecaster_data` : Data validation with forecaster state management
-    `check_inputs` : Validates consistent time intervals
-    `check_time_column` : Validates time column properties
+    - [`validate_forecaster_data`][yohou.utils.validate_data.validate_forecaster_data] : Data validation with forecaster state management
+    - [`check_inputs`][yohou.utils.validation.check_inputs] : Validates consistent time intervals
+    - [`check_time_column`][yohou.utils.validation.check_time_column] : Validates time column properties
 
     """
     if y is None:
@@ -938,7 +938,7 @@ def validate_column_names(df: pl.DataFrame) -> None:
 
     See Also
     --------
-    `check_inputs` : Validates time intervals and calls this function
+    - [`check_inputs`][yohou.utils.validation.check_inputs] : Validates time intervals and calls this function
 
     """
     # Pattern: allows underscores in group/series names, but not adjacent to __
@@ -1053,8 +1053,8 @@ def check_schema(
 
     See Also
     --------
-    `check_inputs` : Validates time intervals
-    `BaseForecaster` : Uses this function to validate incoming data
+    - [`check_inputs`][yohou.utils.validation.check_inputs] : Validates time intervals
+    - [`BaseForecaster`][yohou.base.forecaster.BaseForecaster] : Uses this function to validate incoming data
 
     Notes
     -----
@@ -1200,7 +1200,7 @@ def check_continuity(
 
     See Also
     --------
-    `check_interval_consistency` : Validates uniform time spacing
+    - [`check_interval_consistency`][yohou.utils.validation.check_interval_consistency] : Validates uniform time spacing
 
     """
     # Skip validation if expected_interval is None (e.g., single-step prediction)
@@ -1471,9 +1471,9 @@ def parse_interval(interval: str) -> tuple[int, str]:
 
     See Also
     --------
-    `interval_to_timedelta` : Convert interval string to timedelta.
-    `add_interval` : Add intervals to a datetime value.
-    `check_interval_consistency` : Validate uniform time spacing.
+    - [`interval_to_timedelta`][yohou.utils.validation.interval_to_timedelta] : Convert interval string to timedelta.
+    - [`add_interval`][yohou.utils.validation.add_interval] : Add intervals to a datetime value.
+    - [`check_interval_consistency`][yohou.utils.validation.check_interval_consistency] : Validate uniform time spacing.
 
     """
     match = re.match(r"(\d+)(mo|q|y|w|d|h|min|ms|us|m|s)", interval)
@@ -1514,9 +1514,9 @@ def interval_to_timedelta(interval: str) -> timedelta | None:
 
     See Also
     --------
-    `parse_interval` : Parse interval string into multiplier and unit.
-    `add_interval` : Add intervals to a datetime value.
-    `check_interval_consistency` : Validate uniform time spacing.
+    - [`parse_interval`][yohou.utils.validation.parse_interval] : Parse interval string into multiplier and unit.
+    - [`add_interval`][yohou.utils.validation.add_interval] : Add intervals to a datetime value.
+    - [`check_interval_consistency`][yohou.utils.validation.check_interval_consistency] : Validate uniform time spacing.
 
     """
     multiplier, unit = parse_interval(interval)
@@ -1573,9 +1573,9 @@ def add_interval(start: datetime, interval: str | timedelta, n: int = 1) -> date
 
     See Also
     --------
-    `parse_interval` : Parse interval string into multiplier and unit.
-    `interval_to_timedelta` : Convert interval string to timedelta.
-    `check_interval_consistency` : Validate uniform time spacing.
+    - [`parse_interval`][yohou.utils.validation.parse_interval] : Parse interval string into multiplier and unit.
+    - [`interval_to_timedelta`][yohou.utils.validation.interval_to_timedelta] : Convert interval string to timedelta.
+    - [`check_interval_consistency`][yohou.utils.validation.check_interval_consistency] : Validate uniform time spacing.
 
     """
     if isinstance(interval, timedelta):

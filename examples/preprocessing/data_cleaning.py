@@ -13,6 +13,7 @@ __gallery__ = {
     "description": "End-to-end data cleaning pipeline combining SimpleTimeImputer and SeasonalImputer for missing values with OutlierThresholdHandler for anomaly clipping.",
     "category": "how-to",
     "companion": "/pages/explanation/preprocessing/",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

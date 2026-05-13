@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "numpy",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -14,6 +14,7 @@ __gallery__ = {
     "description": "Exploratory time series visualisation with raw series plots, rolling statistics overlays, distribution boxplots, missing data pattern auditing, outlier detection, and resampling comparison.",
     "category": "tutorial",
     "companion": "/pages/explanation/visualization/",
+    "section": "visualization",
 }
 app = marimo.App(width="medium")
 

@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Time-Weighted Scoring",
     "description": "Apply exponential decay, linear decay, and seasonal emphasis weighting to forecast evaluation, prioritising recent or periodic time steps.",
+    "category": "how-to",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 

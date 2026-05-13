@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Stationarity",
     "description": "Apply per-group stationarity transforms on panel data with SeasonalDifferencing, DecompositionPipeline (polynomial trend + pattern seasonality), and residuals.",
+    "category": "how-to",
+    "section": "panel-data",
 }
 app = marimo.App(width="medium")
 

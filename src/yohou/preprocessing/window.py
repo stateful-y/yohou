@@ -64,10 +64,10 @@ class LagTransformer(BaseTransformer):
 
     See Also
     --------
-    `MeanLagTransformer` : Averages multiple lag multiples into a single feature.
-    `RollingStatisticsTransformer` : Compute rolling statistics (mean, std, etc.).
-    `SlidingWindowFunctionTransformer` : Apply custom functions to sliding windows.
-    `tabularize` : Underlying tabularization function.
+    - [`MeanLagTransformer`][yohou.preprocessing.window.MeanLagTransformer] : Averages multiple lag multiples into a single feature.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Compute rolling statistics (mean, std, etc.).
+    - [`SlidingWindowFunctionTransformer`][yohou.preprocessing.window.SlidingWindowFunctionTransformer] : Apply custom functions to sliding windows.
+    - [`tabularize`][yohou.utils.tabularization.tabularize] : Underlying tabularization function.
 
     Notes
     -----
@@ -189,8 +189,8 @@ class MeanLagTransformer(BaseTransformer):
 
     See Also
     --------
-    `LagTransformer` : Creates individual lag features without averaging.
-    `RollingStatisticsTransformer` : Compute rolling statistics over consecutive windows.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Creates individual lag features without averaging.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Compute rolling statistics over consecutive windows.
 
     Notes
     -----
@@ -384,9 +384,9 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
 
     See Also
     --------
-    `LagTransformer` : Create lagged features.
-    `RollingStatisticsTransformer` : Pre-built rolling statistics.
-    `FunctionTransformer` : Apply function element-wise.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Create lagged features.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Pre-built rolling statistics.
+    - [`FunctionTransformer`][yohou.preprocessing.function.FunctionTransformer] : Apply function element-wise.
 
     """
 
@@ -545,8 +545,8 @@ class RollingStatisticsTransformer(BaseTransformer):
 
     See Also
     --------
-    `SlidingWindowFunctionTransformer` : Apply custom function over windows.
-    `LagTransformer` : Create lagged features.
+    - [`SlidingWindowFunctionTransformer`][yohou.preprocessing.window.SlidingWindowFunctionTransformer] : Apply custom function over windows.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Create lagged features.
 
     Notes
     -----
@@ -747,8 +747,8 @@ class ExponentialMovingAverage(BaseTransformer):
 
     See Also
     --------
-    `RollingStatisticsTransformer` : Fixed-window rolling statistics.
-    `SlidingWindowFunctionTransformer` : Custom window functions.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Fixed-window rolling statistics.
+    - [`SlidingWindowFunctionTransformer`][yohou.preprocessing.window.SlidingWindowFunctionTransformer] : Custom window functions.
 
     """
 

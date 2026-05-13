@@ -9,6 +9,13 @@
 import marimo
 
 __generated_with = "0.23.1"
+__gallery__ = {
+    "title": "How to Forecast Panel Data with ColumnForecaster",
+    "description": "Apply a shared forecasting model across multiple series in a panel dataset using ColumnForecaster with the __ column separator convention.",
+    "category": "how-to",
+    "companion": "pages/how-to/panel-data",
+    "section": "panel-data",
+}
 app = marimo.App(width="medium")
 
 

@@ -1,13 +1,20 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
 import marimo
 
 __generated_with = "0.23.1"
+__gallery__ = {
+    "title": "How to Visualize Forecast Evaluation Results",
+    "description": "Use plot_calibration, plot_score_per_step, and plot_forecast to diagnose forecast accuracy and interval calibration visually.",
+    "category": "how-to",
+    "companion": "pages/how-to/evaluate-forecast-accuracy",
+    "section": "visualization",
+}
 app = marimo.App(width="medium")
 
 

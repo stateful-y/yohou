@@ -6,6 +6,8 @@ organized around what you are trying to understand at each phase of the
 analysis. All functions accept polars DataFrames directly, return interactive
 `plotly.graph_objects.Figure` objects, and handle panel data automatically.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
 ## The Forecasting Visualization Workflow
 
@@ -15,8 +17,9 @@ right plot at the right moment.
 
 ### Exploring the Data
 
-Before building any model, you need to understand the raw data: its shape,
-patterns, and quality. Functions like `plot_time_series` and
+The exploration functions reveal the shape, trend, volatility, gaps, and value
+distribution of a raw time series, giving a complete first picture before any
+modeling begins. Functions like `plot_time_series` and
 `plot_rolling_statistics` give a first look at trends and volatility.
 `plot_missing_data` reveals gaps that might need imputation.
 `plot_distribution` and `plot_boxplot` expose the value landscape. These
@@ -25,8 +28,8 @@ making them the natural starting point.
 
 ### Understanding the Structure
 
-Once you have a general sense of the data, diagnostics go deeper into its
-temporal structure. ACF and PACF plots (`plot_autocorrelation`,
+Diagnostic plots expose the lag dependencies, seasonal periodicity, and
+frequency-domain structure that determine how past values relate to future ones. ACF and PACF plots (`plot_autocorrelation`,
 `plot_partial_autocorrelation`) reveal lag dependencies and help inform model
 order selection. Seasonality plots (`plot_seasonality`, `plot_subseasonality`)
 decompose a series by period to show recurring patterns. `plot_lag_scatter`
@@ -41,7 +44,9 @@ translate visual observations into modeling decisions.
 
 ### Visualizing Forecasts
 
-After fitting a model, the central question is "how do the predictions look?"
+Forecast visualization captures how predicted values compare to actuals and what
+internal structure a fitted decomposition assigned to trend, seasonality, and
+residual.
 `plot_forecast` overlays predicted values against actuals with optional
 historical context. When you pass predictions as a `dict[str, pl.DataFrame]`,
 multiple models appear side by side for comparison. Prediction intervals render
@@ -54,7 +59,9 @@ the weighting function emphasized different time periods during training.
 
 ### Evaluating Model Quality
 
-After generating predictions, you need to assess whether they are trustworthy.
+Model quality evaluation examines whether residuals behave like white noise,
+whether prediction intervals achieve their nominal coverage rates, and where
+error accumulates across horizon steps and forecast origins.
 `plot_residuals` produces a four-panel diagnostic (residuals over time, versus
 fitted values, histogram, Q-Q plot) that tests whether residuals behave like
 white noise. `plot_calibration` checks whether prediction intervals achieve

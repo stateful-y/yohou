@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Decomposition",
     "description": "Chain PolynomialTrendForecaster, PatternSeasonalityForecaster, and FourierSeasonalityForecaster inside DecompositionPipeline with component visualisation.",
+    "category": "tutorial",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

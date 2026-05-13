@@ -6,6 +6,9 @@ the time feature transformers.
 **Prerequisites**: Familiarity with transformers and the `feature_transformer`
 parameter. See [Preprocessing](../explanation/preprocessing.md) for background.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## Calendar Features
 
 Extract integer features from timestamps (month, day of week, hour, etc.):

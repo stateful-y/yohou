@@ -102,10 +102,10 @@ class MeanAbsoluteError(BasePointScorer):
 
     See Also
     --------
-    `MeanSquaredError` : Mean Squared Error, more sensitive to large errors
-    `RootMeanSquaredError` : Root Mean Squared Error, MeanSquaredError in original units
-    `RootMeanSquaredScaledError` : Root Mean Squared Scaled Error, scale-independent version
-    `MAPE` : Mean Absolute Percentage Error, scale-independent
+    - [`MeanSquaredError`][yohou.metrics.point.MeanSquaredError] : Mean Squared Error, more sensitive to large errors
+    - [`RootMeanSquaredError`][yohou.metrics.point.RootMeanSquaredError] : Root Mean Squared Error, MeanSquaredError in original units
+    - [`RootMeanSquaredScaledError`][yohou.metrics.point.RootMeanSquaredScaledError] : Root Mean Squared Scaled Error, scale-independent version
+    - [`MeanAbsolutePercentageError`][yohou.metrics.point.MeanAbsolutePercentageError] : Mean Absolute Percentage Error, scale-independent
 
     """
 
@@ -199,9 +199,9 @@ class MeanSquaredError(BasePointScorer):
 
     See Also
     --------
-    `MeanAbsoluteError` : Mean Absolute Error, less sensitive to outliers
-    `RootMeanSquaredError` : Root Mean Squared Error, MeanSquaredError in original units
-    `RootMeanSquaredScaledError` : Root Mean Squared Scaled Error, scale-independent version
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Mean Absolute Error, less sensitive to outliers
+    - [`RootMeanSquaredError`][yohou.metrics.point.RootMeanSquaredError] : Root Mean Squared Error, MeanSquaredError in original units
+    - [`RootMeanSquaredScaledError`][yohou.metrics.point.RootMeanSquaredScaledError] : Root Mean Squared Scaled Error, scale-independent version
 
     """
 
@@ -296,9 +296,9 @@ class RootMeanSquaredError(BasePointScorer):
 
     See Also
     --------
-    `MeanAbsoluteError` : Mean Absolute Error, less sensitive to outliers
-    `MeanSquaredError` : Mean Squared Error, RMSE squared
-    `RootMeanSquaredScaledError` : Root Mean Squared Scaled Error, scale-independent version
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Mean Absolute Error, less sensitive to outliers
+    - [`MeanSquaredError`][yohou.metrics.point.MeanSquaredError] : Mean Squared Error, RMSE squared
+    - [`RootMeanSquaredScaledError`][yohou.metrics.point.RootMeanSquaredScaledError] : Root Mean Squared Scaled Error, scale-independent version
 
     """
 
@@ -416,9 +416,9 @@ class RootMeanSquaredScaledError(BasePointScorer):
 
     See Also
     --------
-    `RootMeanSquaredError` : Root Mean Squared Error, non-scaled version
-    `MeanAbsoluteError` : Mean Absolute Error, non-scaled alternative
-    `MeanSquaredError` : Mean Squared Error, squared version
+    - [`RootMeanSquaredError`][yohou.metrics.point.RootMeanSquaredError] : Root Mean Squared Error, non-scaled version
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Mean Absolute Error, non-scaled alternative
+    - [`MeanSquaredError`][yohou.metrics.point.MeanSquaredError] : Mean Squared Error, squared version
 
     """
 
@@ -597,9 +597,9 @@ class MeanAbsolutePercentageError(BasePointScorer):
 
     See Also
     --------
-    `SymmetricMeanAbsolutePercentageError` : Symmetric version of MAPE
-    `MeanAbsoluteError` : Absolute error in original units
-    `MeanAbsoluteScaledError` : Scaled by naive forecast error
+    - [`SymmetricMeanAbsolutePercentageError`][yohou.metrics.point.SymmetricMeanAbsolutePercentageError] : Symmetric version of MAPE
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Absolute error in original units
+    - [`MeanAbsoluteScaledError`][yohou.metrics.point.MeanAbsoluteScaledError] : Scaled by naive forecast error
 
     """
 
@@ -706,9 +706,9 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
 
     See Also
     --------
-    `MeanAbsolutePercentageError` : Asymmetric version of percentage error
-    `MeanAbsoluteError` : Absolute error in original units
-    `MeanAbsoluteScaledError` : Scaled by naive forecast error
+    - [`MeanAbsolutePercentageError`][yohou.metrics.point.MeanAbsolutePercentageError] : Asymmetric version of percentage error
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Absolute error in original units
+    - [`MeanAbsoluteScaledError`][yohou.metrics.point.MeanAbsoluteScaledError] : Scaled by naive forecast error
 
     """
 
@@ -831,9 +831,9 @@ class MeanAbsoluteScaledError(BasePointScorer):
 
     See Also
     --------
-    `RootMeanSquaredScaledError` : Squared error version of scaled metric
-    `MeanAbsoluteError` : Non-scaled MAE
-    `MeanAbsolutePercentageError` : Percentage-based scale-independent metric
+    - [`RootMeanSquaredScaledError`][yohou.metrics.point.RootMeanSquaredScaledError] : Squared error version of scaled metric
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Non-scaled MAE
+    - [`MeanAbsolutePercentageError`][yohou.metrics.point.MeanAbsolutePercentageError] : Percentage-based scale-independent metric
 
     """
 
@@ -1004,8 +1004,8 @@ class MedianAbsoluteError(BasePointScorer):
 
     See Also
     --------
-    `MeanAbsoluteError` : Mean-based absolute error, more sensitive to outliers
-    `MaxError` : Maximum absolute error, worst-case measure
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Mean-based absolute error, more sensitive to outliers
+    - [`MaxAbsoluteError`][yohou.metrics.point.MaxAbsoluteError] : Maximum absolute error, worst-case measure
 
     """
 
@@ -1172,8 +1172,8 @@ class MaxAbsoluteError(BasePointScorer):
 
     See Also
     --------
-    `MeanAbsoluteError` : Mean Absolute Error, average case measure
-    `MedianAbsoluteError` : Median Absolute Error, robust central tendency measure
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Mean Absolute Error, average case measure
+    - [`MedianAbsoluteError`][yohou.metrics.point.MedianAbsoluteError] : Median Absolute Error, robust central tendency measure
 
     """
 
@@ -1270,8 +1270,8 @@ class R2Score(BasePointScorer):
 
     See Also
     --------
-    `MeanSquaredError` : Mean Squared Error, the numerator component of R²
-    `MeanAbsoluteError` : Mean Absolute Error, alternative regression metric
+    - [`MeanSquaredError`][yohou.metrics.point.MeanSquaredError] : Mean Squared Error, the numerator component of R²
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Mean Absolute Error, alternative regression metric
 
     """
 
@@ -1444,8 +1444,8 @@ class MeanDirectionalAccuracy(BasePointScorer):
 
     See Also
     --------
-    `MeanAbsoluteError` : Error magnitude metric (not directional)
-    `R2Score` : Variance explained metric
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Error magnitude metric (not directional)
+    - [`R2Score`][yohou.metrics.point.R2Score] : Variance explained metric
 
     """
 

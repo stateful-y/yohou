@@ -21,9 +21,9 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `Residual` : Concrete conformity scorer.
-    `AbsoluteResidual` : Concrete conformity scorer.
-    `SplitConformalForecaster` : Uses conformity scores.
+    - [`Residual`][yohou.metrics.conformity.Residual] : Concrete conformity scorer.
+    - [`AbsoluteResidual`][yohou.metrics.conformity.AbsoluteResidual] : Concrete conformity scorer.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] : Uses conformity scores.
 
     """
 

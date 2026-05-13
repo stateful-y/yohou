@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Correlation Diagnostics",
     "description": "Pairwise correlation heatmaps, scatter matrices, cross-correlation at multiple lags, and lag scatter plots for multivariate time series diagnostics.",
     "category": "how-to",
+    "section": "visualization",
 }
 app = marimo.App(width="medium")
 

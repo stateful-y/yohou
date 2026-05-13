@@ -1,9 +1,8 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "plotly",
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -13,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Quickstart",
     "description": "End-to-end tour of yohou covering data loading, baseline forecasting, preprocessing pipelines, decomposition, cross-validation search, and interval prediction.",
+    "category": "tutorial",
+    "section": "getting-started",
 }
 app = marimo.App(width="medium")
 

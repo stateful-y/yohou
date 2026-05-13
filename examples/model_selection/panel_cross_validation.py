@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Cross-Validation",
     "description": "Time series cross-validation on panel data with GridSearchCV, selective group observation, rewind operations, and groupwise performance comparison.",
+    "category": "how-to",
+    "section": "panel-data",
 }
 app = marimo.App(width="medium")
 

@@ -215,6 +215,8 @@ All composition forecasters propagate the three parameters:
   with synthetic data
 - [How to Use Exogenous Features](../how-to/exogenous-features.md): production workflow
   recipes
+- [Forecaster Composition](forecaster-composition.md): `ForecastedFeatureForecaster`,
+  which automates the two-stage pattern of forecasting exogenous features before the target
 - [Forecasting](forecasting.md): general forecasting concepts
 - [`pivot_forecasts` API Reference](../api/utils.md): utility for pivoting
   vintage data

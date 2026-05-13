@@ -88,10 +88,10 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
 
     See Also
     --------
-    `VotingIntervalForecaster` : Ensemble for interval forecasters.
-    `VotingClassProbaForecaster` : Ensemble for class-probability forecasters.
-    `ColumnForecaster` : Apply different forecasters to different column subsets.
-    `LocalPanelForecaster` : Fit independent clones per panel group.
+    - [`VotingIntervalForecaster`][yohou.ensemble.voting_interval.VotingIntervalForecaster] : Ensemble for interval forecasters.
+    - [`VotingClassProbaForecaster`][yohou.ensemble.voting_class_proba.VotingClassProbaForecaster] : Ensemble for class-probability forecasters.
+    - [`ColumnForecaster`][yohou.compose.column_forecaster.ColumnForecaster] : Apply different forecasters to different column subsets.
+    - [`LocalPanelForecaster`][yohou.compose.local_panel_forecaster.LocalPanelForecaster] : Fit independent clones per panel group.
 
     Notes
     -----

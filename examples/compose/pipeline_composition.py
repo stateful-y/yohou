@@ -14,6 +14,7 @@ __gallery__ = {
     "description": "Nest FeaturePipeline, FeatureUnion, and DecompositionPipeline for multi-level feature engineering with trend-season-residual decomposition.",
     "category": "how-to",
     "companion": "/pages/explanation/preprocessing/#composing-transformers",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

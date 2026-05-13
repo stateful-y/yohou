@@ -100,9 +100,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
     See Also
     --------
-    `BaseClassProbaForecaster` : Base class for class-probability forecasters.
-    `PointReductionForecaster` : ML-based point forecaster.
-    `BaseReductionForecaster` : Base class for reduction forecasters.
+    - [`BaseClassProbaForecaster`][yohou.class_proba.base.BaseClassProbaForecaster] : Base class for class-probability forecasters.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : ML-based point forecaster.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Base class for reduction forecasters.
 
     """
 

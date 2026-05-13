@@ -9,6 +9,13 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "How to Use LocalPanelForecaster for Per-Series Models",
+    "description": "Fit a separate reduction model for each panel series using LocalPanelForecaster and compare with a shared ColumnForecaster.",
+    "category": "how-to",
+    "companion": "pages/how-to/panel-data",
+    "section": "panel-data",
+}
 app = marimo.App(width="medium")
 
 

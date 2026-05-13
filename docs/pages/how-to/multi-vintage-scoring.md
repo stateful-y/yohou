@@ -5,6 +5,9 @@ score them across vintages. Use this when you need to assess whether a model's
 accuracy is stable over time or when you want to break down errors by forecast
 horizon step.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## Prerequisites
 
 - A fitted forecaster ([First Forecast](../tutorials/first-forecast.md))

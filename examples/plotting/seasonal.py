@@ -1,8 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "statsmodels",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -14,6 +13,7 @@ __gallery__ = {
     "description": "Seasonal overlays, subseasonal structure, ACF/PACF correlation patterns, and STL decomposition for monthly, quarterly, and long-cycle datasets.",
     "category": "tutorial",
     "companion": "/pages/explanation/time-series-patterns/",
+    "section": "visualization",
 }
 app = marimo.App(width="medium")
 

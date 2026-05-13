@@ -31,8 +31,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `DistanceSimilarity` : Distance-based similarity measure.
-    `SplitConformalForecaster` : Conformal forecaster that uses similarities.
+    - [`DistanceSimilarity`][yohou.interval.similarity.DistanceSimilarity] : Distance-based similarity measure.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] : Conformal forecaster that uses similarities.
 
     """
 
@@ -224,9 +224,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `SplitConformalForecaster` : Conformal interval forecaster.
-    `IntervalReductionForecaster` : ML-based interval forecaster.
-    `BasePointForecaster` : Base class for point forecasters.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] : Conformal interval forecaster.
+    - [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster] : ML-based interval forecaster.
+    - [`BasePointForecaster`][yohou.point.base.BasePointForecaster] : Base class for point forecasters.
 
     """
 

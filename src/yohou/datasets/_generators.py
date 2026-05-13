@@ -81,8 +81,8 @@ def make_exogenous_regression(
 
     See Also
     --------
-    `make_exogenous_classification` : Classification variant with categorical target.
-    `fetch_tourism_monthly` : Real monthly tourism dataset (univariate).
+    - [`make_exogenous_classification`][yohou.datasets._generators.make_exogenous_classification] : Classification variant with categorical target.
+    - [`fetch_tourism_monthly`][yohou.datasets._fetchers.fetch_tourism_monthly] : Real monthly tourism dataset (univariate).
 
     Examples
     --------
@@ -215,8 +215,8 @@ def make_exogenous_classification(
 
     See Also
     --------
-    `make_exogenous_regression` : Regression variant with continuous target.
-    `fetch_air_quality_classification` : Real air quality classification dataset.
+    - [`make_exogenous_regression`][yohou.datasets._generators.make_exogenous_regression] : Regression variant with continuous target.
+    - [`fetch_air_quality_classification`][yohou.datasets._fetchers.fetch_air_quality_classification] : Real air quality classification dataset.
 
     Examples
     --------

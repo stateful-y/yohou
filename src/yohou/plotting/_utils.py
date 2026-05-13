@@ -658,7 +658,7 @@ def linked_legendgroup_kwargs(
     See Also
     --------
     [`grouped_legend_kwargs`][yohou.plotting._utils.grouped_legend_kwargs] : Build kwargs for titled legend groups.
-    [`LegendTracker`][yohou.plotting._utils.LegendTracker] : Track which legend entries have been shown.
+    [`LegendTracker`][yohou.plotting.LegendTracker] : Track which legend entries have been shown.
     """
     if is_primary:
         return {
@@ -712,7 +712,7 @@ def grouped_legend_kwargs(
     See Also
     --------
     [`linked_legendgroup_kwargs`][yohou.plotting.linked_legendgroup_kwargs] : Build kwargs for linked (ungrouped) legend entries.
-    [`LegendTracker`][yohou.plotting._utils.LegendTracker] : Track which legend entries have been shown.
+    [`LegendTracker`][yohou.plotting.LegendTracker] : Track which legend entries have been shown.
     """
     key = f"{group_title}::{entry_name}"
     kw: dict = {
@@ -1229,7 +1229,7 @@ def facet_figure(
 
     See Also
     --------
-    [`RenderContext`][yohou.plotting.RenderContext] : Typed context passed to the render callback.
+    [`RenderContext`][yohou.plotting._utils.RenderContext] : Typed context passed to the render callback.
     [`resolve_panel_columns`][yohou.plotting.resolve_panel_columns] : Resolve which panel columns to plot.
     """
     if groups is not None:

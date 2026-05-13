@@ -10,6 +10,13 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "How to Forecast Intervals with CatBoost Multiquantile",
+    "description": "Use IntervalReductionForecaster with CatBoost's native multiquantile objective for simultaneous lower and upper bound estimation.",
+    "category": "how-to",
+    "companion": "pages/explanation/interval-forecasting",
+    "section": "forecasting-models",
+}
 app = marimo.App(width="medium")
 
 

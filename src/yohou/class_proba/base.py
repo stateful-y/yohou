@@ -41,8 +41,8 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `ClassProbaReductionForecaster` : ML-based class-probability forecaster.
-    `BasePointForecaster` : Base class for point forecasters.
+    - [`ClassProbaReductionForecaster`][yohou.class_proba.reduction.ClassProbaReductionForecaster] : ML-based class-probability forecaster.
+    - [`BasePointForecaster`][yohou.point.base.BasePointForecaster] : Base class for point forecasters.
 
     """
 

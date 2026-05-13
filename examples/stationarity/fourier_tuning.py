@@ -1,9 +1,8 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "plotly",
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -13,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Fourier Tuning",
     "description": "Explore how Fourier harmonic count affects seasonal fit quality, compare Fourier vs Pattern seasonality, and tune harmonics jointly with GridSearchCV.",
+    "category": "how-to",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

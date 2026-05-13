@@ -63,8 +63,8 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
 
     See Also
     --------
-    `all_displays` : Get all display classes from yohou.
-    `all_functions` : Get all public functions from yohou.
+    - [`all_displays`][yohou.utils.discovery.all_displays] : Get all display classes from yohou.
+    - [`all_functions`][yohou.utils.discovery.all_functions] : Get all public functions from yohou.
     """
 
     def is_abstract(c: type) -> bool:
@@ -208,8 +208,8 @@ def all_displays() -> list[tuple[str, type]]:
 
     See Also
     --------
-    `all_estimators` : Get all estimator classes from yohou.
-    `all_functions` : Get all public functions from yohou.
+    - [`all_estimators`][yohou.utils.discovery.all_estimators] : Get all estimator classes from yohou.
+    - [`all_functions`][yohou.utils.discovery.all_functions] : Get all public functions from yohou.
     """
     all_classes = []
     root = str(Path(__file__).parent.parent)  # yohou package
@@ -264,8 +264,8 @@ def all_functions() -> list[tuple[str, object]]:
 
     See Also
     --------
-    `all_estimators` : Get all estimator classes from yohou.
-    `all_displays` : Get all display classes from yohou.
+    - [`all_estimators`][yohou.utils.discovery.all_estimators] : Get all estimator classes from yohou.
+    - [`all_displays`][yohou.utils.discovery.all_displays] : Get all display classes from yohou.
     """
     all_functions = []
     root = str(Path(__file__).parent.parent)  # yohou package

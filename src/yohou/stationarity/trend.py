@@ -64,9 +64,9 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
 
     See Also
     --------
-    `PatternSeasonalityForecaster` : Seasonal pattern extraction for periodic components.
-    `FourierSeasonalityForecaster` : Fourier-based seasonality estimation.
-    `DecompositionPipeline` : Combines trend + seasonality + residual forecasters.
+    - [`PatternSeasonalityForecaster`][yohou.stationarity.seasonality.PatternSeasonalityForecaster] : Seasonal pattern extraction for periodic components.
+    - [`FourierSeasonalityForecaster`][yohou.stationarity.seasonality.FourierSeasonalityForecaster] : Fourier-based seasonality estimation.
+    - [`DecompositionPipeline`][yohou.compose.decomposition_pipeline.DecompositionPipeline] : Combines trend + seasonality + residual forecasters.
 
     Notes
     -----

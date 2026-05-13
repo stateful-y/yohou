@@ -43,38 +43,8 @@ without manual intervention. This is the same mechanism sklearn uses for
 For a complete overview of weight types and formats, see
 [Weighting](weighting.md).
 
-## State Propagation in Composite Estimators
-
-Yohou's [composition patterns](composition.md) let you build complex forecasting
-pipelines from simpler components. Under the hood, these composites must
-propagate `observe` and `rewind` operations to all sub-estimators while
-maintaining correct state and data flow.
-
-Every forecaster maintains two observation buffers: `_y_observed` and
-`_X_observed`. Calling `observe()` appends new data to these buffers (with time
-continuity validation), while `rewind()` replaces them with the last
-`observation_horizon` rows without validation, allowing arbitrary reset windows.
-Composite estimators build on this by dispatching these operations to their
-sub-components in patterns that mirror how `fit` and `predict` flow.
-
-[`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
-sequences in the same order as training. When `observe()` is called, it
-transforms the incoming data through any target/feature transformers, then
-iterates through forecasters: each one predicts, computes residuals, and
-observes those residuals. This preserves the additive decomposition contract
-where each stage works on what previous stages left behind.
-
-[`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
-dispatches by column subset. Each sub-forecaster observes only its assigned
-columns of `y`, but all receive the full `X_actual` unmodified. Column splitting
-applies exclusively to the target.
-
-[`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
-chains in two stages. The feature forecaster observes `X_actual` as its target
-(it has no exogenous data of its own), then the target forecaster observes `y`
-with `X_future` containing the feature forecasts. This maintains the two-stage
-relationship: the feature forecaster learns to predict exogenous features, and
-the target forecaster uses those features as known-ahead inputs.
+For how `observe` and `rewind` propagate through composite forecasters, see
+[Forecaster Composition](forecaster-composition.md#state-propagation-through-composite-forecasters).
 
 ## The Reduction Architecture
 
@@ -126,38 +96,6 @@ This means any reduction forecaster can produce arbitrarily long forecasts,
 but accuracy typically degrades as errors compound across recursive steps.
 Models trained with longer horizons reduce the number of recursive steps needed.
 
-## Extending Yohou
-
-Yohou uses a workspace packages pattern for integrations that bring in heavy
-or specialized dependencies. These are separate Python packages that live in
-the `packages/` directory of the repository and depend on yohou as a core
-library. Keeping them separate avoids bloating yohou's dependency tree with
-large frameworks like PyTorch or Optuna that most users do not need.
-
-**yohou-optuna** (`packages/yohou-optuna/`) integrates
-[Optuna](https://optuna.org/) for Bayesian hyperparameter optimization. It
-provides search classes that follow the same API as yohou's built-in
-[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
-and
-[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/),
-so switching between grid search and Optuna-based search requires changing only
-the search object. This API compatibility is possible because all search classes
-inherit from the same
-[`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/)
-base class and implement a single `_run_search` method.
-
-**yohou-nixtla** (`packages/yohou-nixtla/`) wraps the
-[Nixtla](https://nixtla.io/) ecosystem (statsforecast, mlforecast, and
-neuralforecast) as yohou-compatible forecasters. This gives access to
-classical statistical models (ARIMA, ETS), ML models (LightGBM via mlforecast),
-and deep learning models (N-BEATS, PatchTST) through yohou's standard
-fit/predict interface.
-
-Both packages follow yohou's API conventions: they accept polars DataFrames,
-support panel data, participate in metadata routing, and work with yohou's
-cross-validation and scoring infrastructure. This consistency is the main
-benefit of the extension pattern over using those libraries directly.
-
 ## Discovery API
 
 The `yohou.utils.discovery` module provides programmatic introspection of all
@@ -185,8 +123,9 @@ complement `all_estimators()` by covering display classes and public functions
 respectively.
 
 **See also**: [Core Concepts](core-concepts.md) for the base class hierarchy
-and time series method lifecycle. [Composition and Pipelines](composition.md)
-for the user-facing composition API. [Forecasting](forecasting.md) covers the
+and time series method lifecycle. [Forecaster Composition](forecaster-composition.md)
+for the user-facing composition API and state propagation details.
+[Forecasting](forecasting.md) covers the
 reduction approach in more detail. [Model Selection](model-selection.md)
 explains cross-validation and hyperparameter search.
 [Class-Probability Forecasting](class-probability-forecasting.md) covers

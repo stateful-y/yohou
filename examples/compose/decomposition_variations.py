@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Decomposition Variations",
     "description": "Build 2- and 3-component DecompositionPipeline forecasters chaining trend, seasonality, and residual models with target pre-transformation.",
+    "category": "how-to",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 

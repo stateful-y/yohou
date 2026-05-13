@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Interval Metrics",
     "description": "Evaluate prediction intervals with EmpiricalCoverage, IntervalScore, MeanIntervalWidth, PinballLoss, and CalibrationError across coverage levels.",
+    "category": "how-to",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 

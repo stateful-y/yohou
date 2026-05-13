@@ -1,8 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "statsmodels",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -13,6 +12,7 @@ __gallery__ = {
     "title": "Pedestrian Counts Analytics",
     "description": "Advanced sensor analytics on Melbourne pedestrian data with autocorrelation, partial autocorrelation, rolling statistics, and day-of-week seasonality.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

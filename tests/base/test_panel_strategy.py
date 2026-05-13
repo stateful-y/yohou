@@ -288,12 +288,12 @@ class TestGlobalOnlyExogenous:
         f.fit(y[:80], X[:80], forecasting_horizon=5)
 
         assert f.groups_ is not None
-        assert f.local_X_actual_schema_ == {}
-        assert f.shared_X_actual_schema_ is not None
-        assert "weather" in f.shared_X_actual_schema_
-        assert "holiday" in f.shared_X_actual_schema_
+        assert f.local_X_schema_ == {}
+        assert f.shared_X_schema_ is not None
+        assert "weather" in f.shared_X_schema_
+        assert "holiday" in f.shared_X_schema_
 
-        y_pred = f.predict(forecasting_horizon=5)
+        y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
         assert y_pred.shape[0] == 5
         pred_cols = set(y_pred.columns) - {"time", "vintage_time"}
         y_cols = set(y.columns) - {"time"}
@@ -308,15 +308,15 @@ class TestGlobalOnlyExogenous:
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
 
-        y_pred_1 = f.predict(forecasting_horizon=5)
+        y_pred_1 = f.predict(X=X[80:85], forecasting_horizon=5)
         assert y_pred_1.shape[0] == 5
 
-        f.observe(y[80:85], X_actual=X[80:85])
-        y_pred_2 = f.predict(forecasting_horizon=5)
+        f.observe(y[80:85], X=X[80:85])
+        y_pred_2 = f.predict(X=X[85:90], forecasting_horizon=5)
         assert y_pred_2.shape[0] == 5
 
-        f.rewind(y[:80], X_actual=X[:80])
-        y_pred_3 = f.predict(forecasting_horizon=5)
+        f.rewind(y[:80], X=X[:80])
+        y_pred_3 = f.predict(X=X[80:85], forecasting_horizon=5)
         assert y_pred_3.shape[0] == 5
 
         # Predictions after rewind should match the first prediction
@@ -336,7 +336,7 @@ class TestGlobalOnlyExogenous:
             calibration_size=20,
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
-        y_pred = f.predict(forecasting_horizon=5, coverage_rates=[0.9])
+        y_pred = f.predict(X=X[80:85], forecasting_horizon=5, coverage_rates=[0.9])
         assert y_pred.shape[0] == 5
 
     def test_grid_search_cv(self, panel_y_global_X):
@@ -371,7 +371,7 @@ class TestGlobalOnlyExogenous:
             ),
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
-        y_pred = f.predict(forecasting_horizon=5)
+        y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
         assert y_pred.shape[0] == 5
         pred_cols = set(y_pred.columns) - {"time", "vintage_time"}
         y_cols = set(y.columns) - {"time"}
@@ -395,12 +395,12 @@ class TestGlobalOnlyExogenous:
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
 
-        assert f.local_X_actual_schema_ is not None
-        assert len(f.local_X_actual_schema_) > 0
-        assert f.shared_X_actual_schema_ is not None
-        assert "weather" in f.shared_X_actual_schema_
+        assert f.local_X_schema_ is not None
+        assert len(f.local_X_schema_) > 0
+        assert f.shared_X_schema_ is not None
+        assert "weather" in f.shared_X_schema_
 
-        y_pred = f.predict(forecasting_horizon=5)
+        y_pred = f.predict(X=X[80:85], forecasting_horizon=5)
         assert y_pred.shape[0] == 5
 
     def test_lifecycle_with_target_transformer(self, panel_y_global_X):
@@ -416,15 +416,15 @@ class TestGlobalOnlyExogenous:
         f.fit(y[:80], X[:80], forecasting_horizon=5)
         assert isinstance(f.target_transformer_, dict)
 
-        y_pred_1 = f.predict(forecasting_horizon=5)
+        y_pred_1 = f.predict(X=X[80:85], forecasting_horizon=5)
         assert y_pred_1.shape[0] == 5
 
-        f.observe(y[80:85], X_actual=X[80:85])
-        y_pred_2 = f.predict(forecasting_horizon=5)
+        f.observe(y[80:85], X=X[80:85])
+        y_pred_2 = f.predict(X=X[85:90], forecasting_horizon=5)
         assert y_pred_2.shape[0] == 5
 
-        f.rewind(y[:80], X_actual=X[:80])
-        y_pred_3 = f.predict(forecasting_horizon=5)
+        f.rewind(y[:80], X=X[:80])
+        y_pred_3 = f.predict(X=X[80:85], forecasting_horizon=5)
         assert y_pred_3.shape[0] == 5
 
         for col in [c for c in y_pred_1.columns if c not in {"time", "vintage_time"}]:

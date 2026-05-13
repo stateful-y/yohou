@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Naive Forecasters",
     "description": "Baseline forecasting with SeasonalNaive using different seasonality periods, the observe/predict streaming workflow, and rolling evaluation patterns.",
+    "category": "tutorial",
+    "section": "getting-started",
 }
 app = marimo.App(width="medium")
 

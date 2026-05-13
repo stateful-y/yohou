@@ -9,6 +9,13 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "How to Forecast Multiple Columns Independently",
+    "description": "Use ColumnForecaster to apply a point forecaster independently to each column of a multivariate time series.",
+    "category": "how-to",
+    "companion": "pages/how-to/panel-data",
+    "section": "panel-data",
+}
 app = marimo.App(width="medium")
 
 

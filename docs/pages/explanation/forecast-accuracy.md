@@ -2,6 +2,9 @@
 
 A forecast is only useful if you can measure how good it is. Choosing the right metric is not a formality: different metrics reward different behaviors, and the "best" model under one metric may be mediocre under another. This page explains the reasoning behind metric families and common pitfalls, helping you make informed choices. For individual metric parameters and usage, see the [API Reference: yohou.metrics](/pages/api/metrics/).
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## Forecast Errors vs. Residuals
 
 Two closely related quantities are easy to confuse. Residuals compare fitted (in-sample) values to actuals on the training set. Forecast errors compare genuine out-of-sample predictions to actuals on held-out data. Residuals tell you how well the model explains history. Forecast errors tell you how well it predicts the future. For model selection, forecast errors are what matter. Residuals are useful for [diagnostics](residual-diagnostics.md) but not for assessing predictive skill.
@@ -32,7 +35,7 @@ true values are zero, and it is asymmetric (systematically favoring models that
 under-predict). sMAPE addresses the asymmetry but becomes unstable when both truth
 and prediction are small.
 
-Use percentage metrics for reporting, not for model selection.
+The asymmetry of MAPE means models optimized by it systematically bias toward under-prediction, making it unreliable as a selection criterion even when its intuitive scale makes it appropriate for stakeholder reporting.
 
 ### Scaled Metrics (MASE, RMSSE)
 

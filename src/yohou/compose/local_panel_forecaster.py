@@ -161,7 +161,7 @@ class LocalPanelForecaster(BaseForecaster):
 
     See Also
     --------
-    `ColumnForecaster` : Apply different forecasters to different column subsets.
+    - [`ColumnForecaster`][yohou.compose.column_forecaster.ColumnForecaster] : Apply different forecasters to different column subsets.
 
     Notes
     -----

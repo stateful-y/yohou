@@ -14,6 +14,7 @@ __gallery__ = {
     "description": "Build interval ensembles with VotingIntervalForecaster using envelope, mean, and median aggregation strategies.",
     "category": "how-to",
     "companion": "/pages/explanation/ensemble-forecasting/",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 

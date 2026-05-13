@@ -1,9 +1,8 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "plotly",
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -14,6 +13,7 @@ __gallery__ = {
     "title": "Time-Weighted Reduction",
     "description": "Use time_weight and sample_weight_alignment to emphasise recent or seasonal training samples in PointReductionForecaster, with visualisation of weight curves and alignment strategy comparison.",
     "category": "how-to",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 

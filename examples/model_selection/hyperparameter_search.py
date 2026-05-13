@@ -12,6 +12,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Hyperparameter Search",
     "description": "Tune forecaster hyperparameters with GridSearchCV and RandomizedSearchCV using temporal cross-validation splitters and result scatter visualisation.",
+    "category": "how-to",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 

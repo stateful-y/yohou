@@ -53,20 +53,7 @@ module provides the essential diagnostic toolkit:
 
 The combination of these views gives a fairly complete picture of the data's structure before you write a single line of modeling code.
 
-## From Patterns to Method Selection
-
-The patterns you identify directly map to yohou component choices:
-
-| Pattern | Suggested approach |
-|---------|-------------------|
-| No trend, no seasonality | [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) as baseline, simple [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) |
-| Linear trend only | [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) with `seasonality=1` as target transformer |
-| Additive seasonality | [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) in a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) |
-| Multiplicative seasonality | Same pipeline with `target_transformer=LogTransformer()` |
-| Multiple seasonal periods | [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/) with harmonics for each period |
-| Exogenous predictors available | [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with feature transformers |
-
-This table is a starting point, not a decision tree. In practice, the best combination is found by [cross-validation](model-selection.md) across candidate configurations.
+For guidance on translating these patterns into yohou component choices, see [Choose a Forecasting Method](../how-to/choose-forecasting-method.md).
 
 ## References
 
@@ -80,9 +67,8 @@ The patterns identified here inform transform selection in
 scaling), see [Preprocessing](preprocessing.md). For checking whether a model has
 captured the patterns, see [Residual Diagnostics](residual-diagnostics.md).
 
-Practical examples: [Correlation](/examples/plotting/correlation/) demonstrates ACF and PACF
-analysis, and [Seasonal](/examples/plotting/seasonal/) explores seasonal pattern
-identification.
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
 ## Categorical Patterns
 

@@ -83,9 +83,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     See Also
     --------
-    `BasePointForecaster` : Base class for point forecasters.
-    `BaseIntervalForecaster` : Base class for interval forecasters.
-    `BaseReductionForecaster` : Forecasting via sklearn regressors.
+    - [`BasePointForecaster`][yohou.point.base.BasePointForecaster] : Base class for point forecasters.
+    - [`BaseIntervalForecaster`][yohou.interval.base.BaseIntervalForecaster] : Base class for interval forecasters.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Forecasting via sklearn regressors.
 
     """
 

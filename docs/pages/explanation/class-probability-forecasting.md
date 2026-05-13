@@ -13,6 +13,9 @@ supervised classification. The result is a per-timestep probability simplex: a v
 of non-negative values summing to one, representing the model's belief about the
 likelihood of each class.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## From Numeric to Categorical Prediction
 
 Point forecasters produce a single numeric value per timestep. Interval forecasters
@@ -171,4 +174,4 @@ Class-probability forecasting interacts with several other parts of Yohou:
 - [Forecast Accuracy](forecast-accuracy.md): metric theory including proper scoring rules
 - [How to Forecast Categorical Time Series](../how-to/classification-forecasting.md): step-by-step guide
 - [API Reference: yohou.class_proba](../api/class_proba.md)
-- [Class-Probability Examples](../examples/class_proba.md)
+- [Class-Probability Examples](../examples/forecasting-models.md)

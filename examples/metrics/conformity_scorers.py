@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Conformity Scorers",
     "description": "Compare Residual, AbsoluteResidual, GammaResidual, and AbsoluteGammaResidual conformity scorers with coverage/width analysis and DistanceSimilarity interaction.",
+    "category": "how-to",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 

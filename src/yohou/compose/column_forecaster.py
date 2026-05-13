@@ -194,8 +194,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
     See Also
     --------
-    `ColumnTransformer` : Column-wise transformer composition.
-    `DecompositionPipeline` : Sequential residual-based forecaster composition.
+    - [`ColumnTransformer`][yohou.compose.column_transformer.ColumnTransformer] : Column-wise transformer composition.
+    - [`DecompositionPipeline`][yohou.compose.decomposition_pipeline.DecompositionPipeline] : Sequential residual-based forecaster composition.
 
     Notes
     -----

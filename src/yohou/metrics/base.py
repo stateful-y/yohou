@@ -61,9 +61,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `BasePointScorer` : Base class for point-prediction metrics.
-    `BaseIntervalScorer` : Base class for interval-prediction metrics.
-    `BaseConformityScorer` : Base class for conformity scorers.
+    - [`BasePointScorer`][yohou.metrics.base.BasePointScorer] : Base class for point-prediction metrics.
+    - [`BaseIntervalScorer`][yohou.metrics.base.BaseIntervalScorer] : Base class for interval-prediction metrics.
+    - [`BaseConformityScorer`][yohou.metrics.conformity_base.BaseConformityScorer] : Base class for conformity scorers.
 
     """
 
@@ -1244,9 +1244,9 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `MeanAbsoluteError` : Concrete point scorer implementation.
-    `MeanSquaredError` : Concrete point scorer implementation.
-    `BasePointForecaster` : Produces point forecasts.
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Concrete point scorer implementation.
+    - [`MeanSquaredError`][yohou.metrics.point.MeanSquaredError] : Concrete point scorer implementation.
+    - [`BasePointForecaster`][yohou.point.base.BasePointForecaster] : Produces point forecasts.
 
     """
 
@@ -1452,9 +1452,9 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `IntervalScore` : Concrete interval scorer implementation.
-    `CoverageScore` : Concrete interval scorer implementation.
-    `BaseIntervalForecaster` : Produces interval forecasts.
+    - [`IntervalScore`][yohou.metrics.interval.IntervalScore] : Concrete interval scorer implementation.
+    - [`EmpiricalCoverage`][yohou.metrics.interval.EmpiricalCoverage] : Concrete interval scorer implementation.
+    - [`BaseIntervalForecaster`][yohou.interval.base.BaseIntervalForecaster] : Produces interval forecasts.
 
     """
 
@@ -1764,10 +1764,10 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `LogLoss` : Logarithmic loss scorer.
-    `BrierScore` : Brier score for multi-class probabilities.
-    `Accuracy` : Accuracy from argmax of predicted probabilities.
-    `BaseClassProbaForecaster` : Produces class-probability forecasts.
+    - [`LogLoss`][yohou.metrics.class_proba.LogLoss] : Logarithmic loss scorer.
+    - [`BrierScore`][yohou.metrics.class_proba.BrierScore] : Brier score for multi-class probabilities.
+    - [`Accuracy`][yohou.metrics.classification.Accuracy] : Accuracy from argmax of predicted probabilities.
+    - [`BaseClassProbaForecaster`][yohou.class_proba.base.BaseClassProbaForecaster] : Produces class-probability forecasts.
 
     """
 

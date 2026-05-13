@@ -13,6 +13,7 @@ __gallery__ = {
     "title": "Panel Pipelines",
     "description": "Combine ColumnForecaster, FeaturePipeline, FeatureUnion, and DecompositionPipeline on panel data with per-group scoring on KDD Cup air quality.",
     "category": "how-to",
+    "section": "panel-data",
 }
 app = marimo.App(width="medium")
 

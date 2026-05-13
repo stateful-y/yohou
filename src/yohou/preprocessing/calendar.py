@@ -150,10 +150,10 @@ class CalendarFeatureTransformer(BaseTransformer):
 
     See Also
     --------
-    `HolidayFeatureTransformer` : Binary holiday indicator from user-provided dates.
-    `FourierFeatureTransformer` : Sin/cos harmonics for cyclical encoding.
-    `TimeIndexTransformer` : Numeric time index for trend features.
-    `FunctionTransformer` : Custom function-based transforms.
+    - [`HolidayFeatureTransformer`][yohou.preprocessing.calendar.HolidayFeatureTransformer] : Binary holiday indicator from user-provided dates.
+    - [`FourierFeatureTransformer`][yohou.preprocessing.time_features.FourierFeatureTransformer] : Sin/cos harmonics for cyclical encoding.
+    - [`TimeIndexTransformer`][yohou.preprocessing.time_features.TimeIndexTransformer] : Numeric time index for trend features.
+    - [`FunctionTransformer`][yohou.preprocessing.function.FunctionTransformer] : Custom function-based transforms.
 
     Examples
     --------
@@ -282,9 +282,9 @@ class HolidayFeatureTransformer(BaseTransformer):
 
     See Also
     --------
-    `CalendarFeatureTransformer` : Calendar features (month, day of week, etc.).
-    `FourierFeatureTransformer` : Sin/cos harmonics for cyclical encoding.
-    `TimeIndexTransformer` : Numeric time index for trend features.
+    - [`CalendarFeatureTransformer`][yohou.preprocessing.calendar.CalendarFeatureTransformer] : Calendar features (month, day of week, etc.).
+    - [`FourierFeatureTransformer`][yohou.preprocessing.time_features.FourierFeatureTransformer] : Sin/cos harmonics for cyclical encoding.
+    - [`TimeIndexTransformer`][yohou.preprocessing.time_features.TimeIndexTransformer] : Numeric time index for trend features.
 
     Examples
     --------

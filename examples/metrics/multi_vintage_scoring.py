@@ -14,6 +14,7 @@ __gallery__ = {
     "description": "Generate multi-vintage predictions with observe_predict, score per step and per vintage, and visualize with heatmap, per-step, and per-vintage plots.",
     "category": "how-to",
     "companion": "/pages/how-to/multi-vintage-scoring/",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 
@@ -32,6 +33,9 @@ def _(mo):
 
     Score forecasts across multiple observation origins (vintages) to assess
     how accuracy varies over time and across forecast horizon steps.
+    Use [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/)
+    and [`RootMeanSquaredError`](/pages/api/generated/yohou.metrics.point.RootMeanSquaredError/)
+    with the `"vintagewise"` and `"stepwise"` aggregation modes.
     """)
 
 

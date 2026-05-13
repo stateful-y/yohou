@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Electricity Demand Dataset",
     "description": "High-frequency panel analysis of half-hourly Australian electricity demand across five states with cross-correlation diagnostics and rolling statistics.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

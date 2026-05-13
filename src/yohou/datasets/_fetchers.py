@@ -49,7 +49,7 @@ def get_data_home(data_home: str | os.PathLike | None = None) -> str:
 
     See Also
     --------
-    `clear_data_home` : Delete all cached datasets.
+    - [`clear_data_home`][yohou.datasets._fetchers.clear_data_home] : Delete all cached datasets.
 
     """
     if data_home is None:
@@ -70,7 +70,7 @@ def clear_data_home(data_home: str | os.PathLike | None = None) -> None:
 
     See Also
     --------
-    `get_data_home` : Return the path of the data directory.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     """
     data_home = get_data_home(data_home)
@@ -232,9 +232,9 @@ def fetch_tourism_monthly(
 
     See Also
     --------
-    `fetch_tourism_quarterly` : Quarterly tourism series from the same competition.
-    `fetch_hospital` : Monthly hospital patient count series.
-    `get_data_home` : Return the path of the data directory.
+    - [`fetch_tourism_quarterly`][yohou.datasets._fetchers.fetch_tourism_quarterly] : Quarterly tourism series from the same competition.
+    - [`fetch_hospital`][yohou.datasets._fetchers.fetch_hospital] : Monthly hospital patient count series.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     References
     ----------
@@ -309,9 +309,9 @@ def fetch_sunspot(
 
     See Also
     --------
-    `fetch_tourism_monthly` : Monthly tourism series.
-    `fetch_electricity_demand` : Half-hourly electricity demand series.
-    `get_data_home` : Return the path of the data directory.
+    - [`fetch_tourism_monthly`][yohou.datasets._fetchers.fetch_tourism_monthly] : Monthly tourism series.
+    - [`fetch_electricity_demand`][yohou.datasets._fetchers.fetch_electricity_demand] : Half-hourly electricity demand series.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     References
     ----------
@@ -391,9 +391,9 @@ def fetch_tourism_quarterly(
 
     See Also
     --------
-    `fetch_tourism_monthly` : Monthly tourism series from the same competition.
-    `fetch_hospital` : Monthly hospital patient count series.
-    `get_data_home` : Return the path of the data directory.
+    - [`fetch_tourism_monthly`][yohou.datasets._fetchers.fetch_tourism_monthly] : Monthly tourism series from the same competition.
+    - [`fetch_hospital`][yohou.datasets._fetchers.fetch_hospital] : Monthly hospital patient count series.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     References
     ----------
@@ -470,9 +470,9 @@ def fetch_electricity_demand(
 
     See Also
     --------
-    `fetch_pedestrian_counts` : Hourly pedestrian sensor series.
-    `fetch_kdd_cup` : Hourly air quality series.
-    `get_data_home` : Return the path of the data directory.
+    - [`fetch_pedestrian_counts`][yohou.datasets._fetchers.fetch_pedestrian_counts] : Hourly pedestrian sensor series.
+    - [`fetch_kdd_cup`][yohou.datasets._fetchers.fetch_kdd_cup] : Hourly air quality series.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     References
     ----------
@@ -554,9 +554,9 @@ def fetch_dominick(
 
     See Also
     --------
-    `fetch_tourism_monthly` : Monthly tourism series.
-    `fetch_hospital` : Monthly hospital patient count series.
-    `get_data_home` : Return the path of the data directory.
+    - [`fetch_tourism_monthly`][yohou.datasets._fetchers.fetch_tourism_monthly] : Monthly tourism series.
+    - [`fetch_hospital`][yohou.datasets._fetchers.fetch_hospital] : Monthly hospital patient count series.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     References
     ----------
@@ -638,9 +638,9 @@ def fetch_pedestrian_counts(
 
     See Also
     --------
-    `fetch_electricity_demand` : Half-hourly electricity demand series.
-    `fetch_kdd_cup` : Hourly air quality series.
-    `get_data_home` : Return the path of the data directory.
+    - [`fetch_electricity_demand`][yohou.datasets._fetchers.fetch_electricity_demand] : Half-hourly electricity demand series.
+    - [`fetch_kdd_cup`][yohou.datasets._fetchers.fetch_kdd_cup] : Hourly air quality series.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     References
     ----------
@@ -721,9 +721,9 @@ def fetch_hospital(
 
     See Also
     --------
-    `fetch_tourism_monthly` : Monthly tourism series.
-    `fetch_dominick` : Weekly retail profit series.
-    `get_data_home` : Return the path of the data directory.
+    - [`fetch_tourism_monthly`][yohou.datasets._fetchers.fetch_tourism_monthly] : Monthly tourism series.
+    - [`fetch_dominick`][yohou.datasets._fetchers.fetch_dominick] : Weekly retail profit series.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     References
     ----------
@@ -840,9 +840,9 @@ def fetch_kdd_cup(
 
     See Also
     --------
-    `fetch_electricity_demand` : Half-hourly electricity demand series.
-    `fetch_pedestrian_counts` : Hourly pedestrian sensor series.
-    `get_data_home` : Return the path of the data directory.
+    - [`fetch_electricity_demand`][yohou.datasets._fetchers.fetch_electricity_demand] : Half-hourly electricity demand series.
+    - [`fetch_pedestrian_counts`][yohou.datasets._fetchers.fetch_pedestrian_counts] : Hourly pedestrian sensor series.
+    - [`get_data_home`][yohou.datasets._fetchers.get_data_home] : Return the path of the data directory.
 
     References
     ----------
@@ -932,8 +932,8 @@ def fetch_air_quality_classification(
 
     See Also
     --------
-    `fetch_kdd_cup` : Full KDD Cup 2018 air quality dataset.
-    `fetch_demand_classification` : Categorical electricity demand dataset.
+    - [`fetch_kdd_cup`][yohou.datasets._fetchers.fetch_kdd_cup] : Full KDD Cup 2018 air quality dataset.
+    - [`fetch_demand_classification`][yohou.datasets._fetchers.fetch_demand_classification] : Categorical electricity demand dataset.
 
     Examples
     --------
@@ -1050,8 +1050,8 @@ def fetch_demand_classification(
 
     See Also
     --------
-    `fetch_electricity_demand` : Full Australian electricity demand dataset.
-    `fetch_air_quality_classification` : Categorical air quality dataset.
+    - [`fetch_electricity_demand`][yohou.datasets._fetchers.fetch_electricity_demand] : Full Australian electricity demand dataset.
+    - [`fetch_air_quality_classification`][yohou.datasets._fetchers.fetch_air_quality_classification] : Categorical air quality dataset.
 
     Examples
     --------

@@ -100,6 +100,38 @@ For cases where tags depend on constructor parameters or child estimators (commo
 in reduction forecasters or ensembles), override `__sklearn_tags__()` as a method
 instead of using the class-level `_tags` dict.
 
+## Integration Packages
+
+Yohou uses a workspace packages pattern for integrations that bring in heavy
+or specialized dependencies. These are separate Python packages that live in
+the `packages/` directory of the repository and depend on yohou as a core
+library. Keeping them separate avoids bloating yohou's dependency tree with
+large frameworks like PyTorch or Optuna that most users do not need.
+
+**yohou-optuna** (`packages/yohou-optuna/`) integrates
+[Optuna](https://optuna.org/) for Bayesian hyperparameter optimization. It
+provides search classes that follow the same API as yohou's built-in
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
+and
+[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/),
+so switching between grid search and Optuna-based search requires changing only
+the search object. This API compatibility is possible because all search classes
+inherit from the same
+[`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/)
+base class and implement a single `_run_search` method.
+
+**yohou-nixtla** (`packages/yohou-nixtla/`) wraps the
+[Nixtla](https://nixtla.io/) ecosystem (statsforecast, mlforecast, and
+neuralforecast) as yohou-compatible forecasters. This gives access to
+classical statistical models (ARIMA, ETS), ML models (LightGBM via mlforecast),
+and deep learning models (N-BEATS, PatchTST) through yohou's standard
+fit/predict interface.
+
+Both packages follow yohou's API conventions: they accept polars DataFrames,
+support panel data, participate in metadata routing, and work with yohou's
+cross-validation and scoring infrastructure. This consistency is the main
+benefit of the extension pattern over using those libraries directly.
+
 ## Connections
 
 The extension architecture mirrors scikit-learn's estimator protocol deliberately.

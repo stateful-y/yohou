@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Panel Prediction Intervals",
     "description": "Combine conformal and quantile regression intervals on panel data with per-group coverage analysis, calibration plots, and groupwise interval scoring.",
+    "category": "how-to",
+    "section": "panel-data",
 }
 app = marimo.App(width="medium")
 

@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Pedestrian Counts Dataset",
     "description": "Sensor-level panel exploration of Melbourne pedestrian counts with per-sensor boxplots, hourly seasonal patterns, and panel structure inspection.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

@@ -61,8 +61,8 @@ class SeasonalNaive(BasePointForecaster):
 
     See Also
     --------
-    `MeanSeasonalNaive` : Averages multiple past seasonal cycles.
-    `PointReductionForecaster` : ML-based point forecaster.
+    - [`MeanSeasonalNaive`][yohou.point.naive.MeanSeasonalNaive] : Averages multiple past seasonal cycles.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : ML-based point forecaster.
 
     """
 
@@ -224,8 +224,8 @@ class MeanSeasonalNaive(BasePointForecaster):
 
     See Also
     --------
-    `SeasonalNaive` : Repeats the last seasonal cycle without averaging.
-    `PointReductionForecaster` : ML-based point forecaster.
+    - [`SeasonalNaive`][yohou.point.naive.SeasonalNaive] : Repeats the last seasonal cycle without averaging.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : ML-based point forecaster.
 
     """
 

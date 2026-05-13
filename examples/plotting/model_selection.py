@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -11,6 +11,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Model Selection Plots",
     "description": "Visualise CV fold geometry with expanding and sliding window splitters and hyperparameter search results with plot_splits and plot_cv_results_scatter.",
+    "category": "how-to",
+    "section": "visualization",
 }
 app = marimo.App(width="medium")
 

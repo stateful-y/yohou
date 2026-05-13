@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Multi-Metric Search",
     "description": "Evaluate hyperparameter configurations against multiple metrics simultaneously with dict-of-scorers, refit strategies, and Pareto-optimal selection.",
+    "category": "how-to",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 

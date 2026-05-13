@@ -11,6 +11,9 @@ while preserving the shared signal. Yohou implements this through three voting
 forecasters, one for each prediction type: [`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/),
 [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/), and [`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/).
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## Variance Reduction Through Diversity
 
 Consider $K$ base forecasters producing predictions $\hat{y}_{t,1}, \ldots, \hat{y}_{t,K}$.
@@ -116,4 +119,4 @@ matters.
 - [Interval Forecasting](interval-forecasting.md): interval ensemble context
 - [How to Combine Forecasters with Ensembles](../how-to/ensemble-forecasting.md): step-by-step guide
 - [API Reference: yohou.ensemble](../api/ensemble.md)
-- [Ensemble Examples](../examples/ensemble.md)
+- [Ensemble Examples](../examples/forecasting-models.md)

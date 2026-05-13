@@ -13,6 +13,8 @@ Yohou provides two approaches to interval forecasting: conformal prediction
 intervals directly). Both produce prediction intervals at user-specified coverage
 rates and integrate with yohou's standard `fit`/`predict_interval`/`observe` lifecycle.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
 ## Conformal Prediction
 

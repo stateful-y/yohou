@@ -6,6 +6,9 @@ A stationary series has constant mean, constant variance, and autocovariance tha
 
 Yohou provides two complementary approaches to stationarity: decomposition pipelines that model each component with a dedicated forecaster, and standalone transformers that apply invertible mathematical operations to the raw series.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## Decomposition
 
 The classical approach to time series decomposition splits a series into additive components:

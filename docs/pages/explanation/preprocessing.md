@@ -51,7 +51,7 @@ applies different transformers to different column subsets, then concatenates th
 results.
 
 These composites are commonly used as the `target_transformer` or
-`feature_transformer` parameter in forecasters. See [Composition](composition.md)
+`feature_transformer` parameter in forecasters. See [Feature Pipelines](feature-pipelines.md)
 for a deeper discussion of how these patterns interact with observe/rewind state
 propagation.
 
@@ -127,8 +127,7 @@ where they are applied automatically during fit and predict. The
 [Stationarity](stationarity.md) transforms (differencing, decomposition) follow the
 same `BaseTransformer` contract but focus specifically on making time series
 stationary. For how transformers compose inside forecasters and pipelines, see
-[Composition](composition.md).
+[Feature Pipelines](feature-pipelines.md).
 
-Practical examples: [Data Cleaning](/examples/preprocessing/data_cleaning/),
-[Window Transformers](/examples/preprocessing/window_transformers/), and
-[Pipeline Composition](/examples/compose/pipeline_composition/).
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->

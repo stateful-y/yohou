@@ -13,6 +13,7 @@ __gallery__ = {
     "description": "Feature engineering with LagTransformer, RollingStatisticsTransformer, SlidingWindowFunctionTransformer, and ExponentialMovingAverage on time series data.",
     "category": "how-to",
     "companion": "/pages/explanation/preprocessing/",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

@@ -6,6 +6,9 @@ implementation patterns are covered, from simplest (override one method)
 to most flexible (full `score()` override). Every pattern plugs into
 the same aggregation, weighting, and multi-vintage infrastructure.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## Prerequisites
 
 - yohou installed ([Getting Started](../tutorials/getting-started.md))

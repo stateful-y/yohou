@@ -9,6 +9,13 @@
 import marimo
 
 __generated_with = "0.23.1"
+__gallery__ = {
+    "title": "How to Use Point Forecast Metrics",
+    "description": "Compare MAE, MAPE, MASE, RMSE, and other point metrics across multiple forecasters with componentwise and groupwise aggregation.",
+    "category": "how-to",
+    "companion": "pages/explanation/forecast-accuracy",
+    "section": "evaluation-search",
+}
 app = marimo.App(width="medium")
 
 

@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Tourism Monthly",
     "description": "Explore a single monthly tourism series with raw trend visualisation, 12-month rolling mean smoothing, and min/max envelope seasonality analysis.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

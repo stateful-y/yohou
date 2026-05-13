@@ -11,6 +11,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "CV Splitters",
     "description": "Demonstrate ExpandingWindowSplitter and SlidingWindowSplitter for temporal cross-validation with configurable gap, test_size, and fold visualisation.",
+    "category": "tutorial",
+    "section": "getting-started",
 }
 app = marimo.App(width="medium")
 

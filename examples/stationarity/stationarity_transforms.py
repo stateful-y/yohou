@@ -13,6 +13,7 @@ __gallery__ = {
     "description": "Catalogue of variance-stabilising and detrending transforms: LogTransformer, BoxCox, SeasonalDifferencing, SeasonalReturn, and ASinh with inverse verification.",
     "category": "how-to",
     "companion": "/pages/explanation/stationarity/#standalone-transforms",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

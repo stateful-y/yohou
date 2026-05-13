@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Dominick Store Sales",
     "description": "Explore the Dominick's Finer Foods panel dataset with per-SKU profit visualisation, cross-group distribution boxplots, and weekly seasonality.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 

@@ -128,4 +128,4 @@ for name, model in [("ridge", ridge), ("rf", rf), ("ensemble", ensemble)]:
 
 - [Ensemble Forecasting](../explanation/ensemble-forecasting.md): theory and aggregation formulas
 - [API Reference: yohou.ensemble](../api/ensemble.md)
-- [Ensemble Examples](../examples/ensemble.md)
+- [Ensemble Examples](../examples/forecasting-models.md)

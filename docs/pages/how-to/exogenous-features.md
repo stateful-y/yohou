@@ -4,9 +4,8 @@ This guide shows you how to use `X_actual`, `X_future`, and `X_forecast` in
 common production forecasting scenarios. Use this when you have external data
 that should influence your forecasts.
 
-!!! tip "Interactive version available"
-    Try the multi-vintage recipe as an interactive notebook:
-    [View](/examples/compose/multi_vintage_forecasting/) · [Open in marimo](/examples/compose/multi_vintage_forecasting/edit/)
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

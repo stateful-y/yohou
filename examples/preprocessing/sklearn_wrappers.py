@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Sklearn Scalers & Transformers",
     "description": "Wrap sklearn scalers (StandardScaler, MinMaxScaler, RobustScaler, PowerTransformer, PolynomialFeatures) for polars DataFrames with inverse transforms.",
+    "category": "how-to",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

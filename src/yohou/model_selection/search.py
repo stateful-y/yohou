@@ -325,8 +325,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
     See Also
     --------
-    `GridSearchCV` : Exhaustive search over specified parameter values.
-    `RandomizedSearchCV` : Randomized search over parameter distributions.
+    - [`GridSearchCV`][yohou.model_selection.search.GridSearchCV] : Exhaustive search over specified parameter values.
+    - [`RandomizedSearchCV`][yohou.model_selection.search.RandomizedSearchCV] : Randomized search over parameter distributions.
 
     """
 
@@ -1640,11 +1640,11 @@ class GridSearchCV(BaseSearchCV):
 
     See Also
     --------
-    `RandomizedSearchCV` : Randomized search over parameter distributions.
-    `ExpandingWindowSplitter` : Cross-validation with expanding training windows.
-    `SlidingWindowSplitter` : Cross-validation with sliding fixed-size windows.
-    `MeanAbsoluteError` : Mean absolute error scorer.
-    `RootMeanSquaredError` : Root mean squared error scorer.
+    - [`RandomizedSearchCV`][yohou.model_selection.search.RandomizedSearchCV] : Randomized search over parameter distributions.
+    - [`ExpandingWindowSplitter`][yohou.model_selection.split.ExpandingWindowSplitter] : Cross-validation with expanding training windows.
+    - [`SlidingWindowSplitter`][yohou.model_selection.split.SlidingWindowSplitter] : Cross-validation with sliding fixed-size windows.
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Mean absolute error scorer.
+    - [`RootMeanSquaredError`][yohou.metrics.point.RootMeanSquaredError] : Root mean squared error scorer.
 
     Notes
     -----
@@ -2045,11 +2045,11 @@ class RandomizedSearchCV(BaseSearchCV):
 
     See Also
     --------
-    `GridSearchCV` : Exhaustive search over specified parameter values.
-    `ExpandingWindowSplitter` : Cross-validation with expanding training windows.
-    `SlidingWindowSplitter` : Cross-validation with sliding fixed-size windows.
-    `MeanAbsoluteError` : Mean absolute error scorer.
-    `RootMeanSquaredError` : Root mean squared error scorer.
+    - [`GridSearchCV`][yohou.model_selection.search.GridSearchCV] : Exhaustive search over specified parameter values.
+    - [`ExpandingWindowSplitter`][yohou.model_selection.split.ExpandingWindowSplitter] : Cross-validation with expanding training windows.
+    - [`SlidingWindowSplitter`][yohou.model_selection.split.SlidingWindowSplitter] : Cross-validation with sliding fixed-size windows.
+    - [`MeanAbsoluteError`][yohou.metrics.point.MeanAbsoluteError] : Mean absolute error scorer.
+    - [`RootMeanSquaredError`][yohou.metrics.point.RootMeanSquaredError] : Root mean squared error scorer.
 
     Notes
     -----

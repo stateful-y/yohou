@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Class-Probability Metrics",
     "description": "Evaluate categorical forecasts with LogLoss, BrierScore, and Accuracy. Covers per-timestep scoring, aggregation modes, and reliability diagrams.",
+    "category": "how-to",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 

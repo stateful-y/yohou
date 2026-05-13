@@ -51,8 +51,8 @@ def tabularize(df_time_series: pl.DataFrame, lags: Sequence[int]) -> pl.DataFram
 
     See Also
     --------
-    `BaseReductionForecaster` : Uses tabularize for forecasting
-    `LagTransformer` : Transformer that applies similar lagging logic
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Uses tabularize for forecasting
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Transformer that applies similar lagging logic
 
     """
     columns = [col for col in df_time_series.columns if col != "time"]

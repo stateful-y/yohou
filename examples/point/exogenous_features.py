@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "numpy",
 #     "scikit-learn",
 #     "yohou",
 # ]
@@ -14,6 +15,7 @@ __gallery__ = {
     "description": "Build a forecasting model with actual observations, known-future indicators, and multi-vintage external forecasts on synthetic electricity price data.",
     "category": "tutorial",
     "companion": "/pages/tutorials/exogenous-features/",
+    "section": "getting-started",
 }
 app = marimo.App(width="medium")
 
@@ -35,7 +37,8 @@ def _(mo):
         types of exogenous features on synthetic electricity price data. We will
         fit with actual temperature, holiday calendars, and weather forecasts,
         then produce predictions from two different forecast vintages and run
-        a walk-forward evaluation.
+        a walk-forward evaluation using
+        [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
 
         **Prerequisites:** Basic familiarity with yohou's fit/predict API
         ([Quickstart](/examples/quickstart/)).

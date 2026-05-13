@@ -2,6 +2,7 @@
 
 from yohou.plotting._utils import (
     LINE_DASH_SEQUENCE,
+    LegendTracker,
     PanelColorManager,
     RenderContext,
     config_context,
@@ -54,6 +55,7 @@ from yohou.plotting.signal import plot_phase, plot_spectrum
 
 __all__ = [
     "LINE_DASH_SEQUENCE",
+    "LegendTracker",
     "PanelColorManager",
     "RenderContext",
     "config_context",

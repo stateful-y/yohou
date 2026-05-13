@@ -14,6 +14,7 @@ __gallery__ = {
     "description": "Implement a custom point scorer with aggregation, panel support, and systematic testing.",
     "category": "how-to",
     "companion": "/pages/how-to/creating-a-scorer/",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 
@@ -30,8 +31,9 @@ def _(mo):
     mo.md(r"""
     # How to Create a Custom Scorer
 
-    This notebook shows how to implement a custom point scorer that
-    integrates with Yohou's aggregation, panel dispatch, and
+    This notebook shows how to implement a custom point scorer by extending
+    [`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/),
+    integrating with Yohou's aggregation, panel dispatch, and
     cross-validation machinery.
 
     **Prerequisites:** Familiarity with the built-in scorers

@@ -37,9 +37,9 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `PointReductionForecaster` : ML-based point forecaster.
-    `SeasonalNaive` : Simple seasonal naive forecaster.
-    `BaseIntervalForecaster` : Base class for interval forecasters.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : ML-based point forecaster.
+    - [`SeasonalNaive`][yohou.point.naive.SeasonalNaive] : Simple seasonal naive forecaster.
+    - [`BaseIntervalForecaster`][yohou.interval.base.BaseIntervalForecaster] : Base class for interval forecasters.
 
     """
 

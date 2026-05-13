@@ -13,6 +13,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Function Transformer",
     "description": "Wrap arbitrary polars or numpy operations as sklearn transformers with FunctionTransformer, supporting stateful warmup, inverse transforms, and pipelines.",
+    "category": "how-to",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

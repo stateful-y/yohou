@@ -12,6 +12,8 @@ __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Distance-Based Similarity",
     "description": "Adaptive prediction intervals via similarity-weighted conformal prediction using DistanceSimilarity with configurable distance metrics and bandwidths.",
+    "category": "how-to",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 

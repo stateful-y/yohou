@@ -1,35 +1,51 @@
 ![Yohou](assets/logo_dark.png#only-dark){width=800}
 ![Yohou](assets/logo_light.png#only-light){width=800}
 
-Yohou bridges Scikit-Learn's tabular machine learning ecosystem with time series forecasting. It treats forecasting as a supervised learning reduction problem while preserving temporal structure, giving you the full power of sklearn estimators, pipelines, and cross-validation with native polars DataFrames.
+Yohou is a time series forecasting framework built on top of Scikit-Learn's ecosystem. It provides a unified interface for building, extending, and comparing any forecasting model, from sklearn-native reductions to statistical models or deep learning integrations and hyperparameter optimization workflows. All models share a consistent API with native DataFrame support, Scikit-Learn-based compositions, and first-class cross-validation.
 
 <div class="grid cards" markdown>
 
--   **Get Started in 5 Minutes**
+-   **Tutorials**
 
     ---
 
-    Install Yohou, load a dataset, fit a forecaster, and generate predictions.
+    Install Yohou, load a dataset, fit a forecaster, and generate your first predictions.
 
-    [Getting Started](pages/tutorials/getting-started.md)
+    [Tutorials](pages/tutorials/index.md)
 
--   **Learn the Concepts**
-
-    ---
-
-    Understand core data formats, the fit/observe/predict lifecycle, preprocessing, and composition.
-
-    [Explanation](pages/explanation/core-concepts.md)
-
--   **Reference**
+-   **How-to Guides**
 
     ---
 
-    Complete documentation for every class and function across all submodules, plus extensions and changelog.
+    Step-by-step guides for panel data, exogenous features, ensembles, custom estimators, and more.
 
-    [Reference](pages/reference/overview.md)
+    [How-to Guides](pages/how-to/index.md)
 
--   **See It In Action**
+-   **Explanation**
+
+    ---
+
+    Understand the fit/observe/predict lifecycle, data formats, preprocessing, and core design decisions.
+
+    [Explanation](pages/explanation/index.md)
+
+-   **API Reference**
+
+    ---
+
+    Complete documentation for every class and function across all submodules.
+
+    [API Reference](pages/api/index.md)
+
+-   **Extensions**
+
+    ---
+
+    Official and community extensions for hyperparameter optimization, deep learning integrations, and more.
+
+    [Extensions](pages/reference/extensions.md)
+
+-   **Examples**
 
     ---
 
@@ -41,15 +57,16 @@ Yohou bridges Scikit-Learn's tabular machine learning ecosystem with time series
 
 ## Key Features
 
-- **Polars-native**: All data flows use `polars.DataFrame` with a mandatory `"time"` column. No pandas required.
-- **sklearn-compatible**: Standard `fit`/`predict` API extended with `observe`, `rewind`, and `observe_predict` for time series.
-- **Point, interval & classification forecasting**: From naive baselines to conformal prediction intervals and calibrated class-probability distributions.
-- **Ensemble methods**: Combine multiple forecasters with voting (mean, median, envelope, soft/hard voting).
-- **Panel data**: First-class support for multiple related time series via the `__` column naming convention.
-- **Composition**: Pipelines, feature unions, column transformers, and decomposition pipelines that compose like sklearn.
-- **Time-weighted learning**: Metadata routing support for `time_weight` and `vintage_weight` in fitting and scoring.
-- **Interactive visualization**: Plotly-based plotting functions for exploration, diagnostics, and evaluation (install with `pip install yohou[plotting]`).
-- **Remote datasets**: 10 `fetch_*` functions for Monash/Zenodo time series with local Parquet caching (univariate, multivariate, panel, and classification).
+- **Polars-native**: All data flows use `polars.DataFrame` with a mandatory `"time"` column.
+- **Sklearn-compatible**: Standard `fit`/`predict` API with a consistent interface across all forecaster types.
+- **Reduction forecasting**: Wrap any sklearn regressor or classifier and Yohou handles windowing, tabularization, and recursive prediction automatically.
+- **Point, interval, and class-probability forecasting**: From naive baselines to conformal prediction intervals and calibrated class-probability distributions.
+- **Panel data**: First-class support for multiple related time series via the `__` column naming convention, with per-group models via [`LocalPanelForecaster`](pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster.md).
+- **Incremental observation**: Call `observe()` to feed new data, `rewind()` to roll back state, and `observe_predict()` to fast-forward and forecast in one step without retraining.
+- **Stateful transformers**: All transformers are stateful and fitted separately from the forecaster, supporting incremental observation and rewind in full preprocessing pipelines.
+- **Composable pipelines**: Decomposition pipelines, feature pipelines, feature unions, and column transformers that compose like sklearn.
+- **Cross-validation and model selection**: Temporal splitters ([`ExpandingWindowSplitter`](pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter.md), [`SlidingWindowSplitter`](pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter.md)) and [`GridSearchCV`](pages/api/generated/yohou.model_selection.search.GridSearchCV.md)/[`RandomizedSearchCV`](pages/api/generated/yohou.model_selection.search.RandomizedSearchCV.md) with no data leakage.
+- **Metrics**: Point, interval, and class-probability scorers with stepwise, vintagewise, componentwise, and groupwise aggregation modes.
 
 ## What's New
 

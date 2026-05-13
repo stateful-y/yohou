@@ -13,6 +13,7 @@ __gallery__ = {
     "title": "Interval Search",
     "description": "Tune interval forecaster parameters directly with interval metrics in GridSearchCV, including mixed point+interval multimetric search.",
     "category": "how-to",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 

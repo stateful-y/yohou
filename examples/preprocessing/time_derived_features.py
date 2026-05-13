@@ -1,14 +1,20 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "plotly",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "How to Add Calendar, Fourier, and Holiday Features",
+    "description": "Enrich your feature matrix with time-derived signals using CalendarFeatureTransformer, FourierFeatureTransformer, and HolidayFeatureTransformer.",
+    "category": "how-to",
+    "companion": "pages/how-to/time-features",
+    "section": "data-features",
+}
 app = marimo.App(width="medium")
 
 

@@ -80,8 +80,8 @@ class BoxCoxTransformer(BaseTransformer):
 
     See Also
     --------
-    `LogTransformer` : Logarithmic transformation (Box-Cox with lambda=0).
-    `ASinhTransformer` : Inverse hyperbolic sine transformation for data with zeros.
+    - [`LogTransformer`][yohou.stationarity.transformers.LogTransformer] : Logarithmic transformation (Box-Cox with lambda=0).
+    - [`ASinhTransformer`][yohou.stationarity.transformers.ASinhTransformer] : Inverse hyperbolic sine transformation for data with zeros.
     `sklearn.preprocessing.PowerTransformer` : sklearn's power transformations.
 
     """
@@ -233,9 +233,9 @@ class LogTransformer(BoxCoxTransformer):
 
     See Also
     --------
-    `BoxCoxTransformer` : Generalized power transform (parent class).
-    `ASinhTransformer` : Variance stabilization for data with negatives.
-    `SeasonalLogDifferencing` : Combined log + seasonal differencing.
+    - [`BoxCoxTransformer`][yohou.stationarity.transformers.BoxCoxTransformer] : Generalized power transform (parent class).
+    - [`ASinhTransformer`][yohou.stationarity.transformers.ASinhTransformer] : Variance stabilization for data with negatives.
+    - [`SeasonalLogDifferencing`][yohou.stationarity.transformers.SeasonalLogDifferencing] : Combined log + seasonal differencing.
 
     """
 
@@ -323,8 +323,8 @@ class SeasonalDifferencing(BaseTransformer):
 
     See Also
     --------
-    `SeasonalLogDifferencing` : Log transform followed by seasonal differencing.
-    `SeasonalReturn` : Compute seasonal returns ((x_t - x_{t-s}) / x_{t-s}).
+    - [`SeasonalLogDifferencing`][yohou.stationarity.transformers.SeasonalLogDifferencing] : Log transform followed by seasonal differencing.
+    - [`SeasonalReturn`][yohou.stationarity.transformers.SeasonalReturn] : Compute seasonal returns ((x_t - x_{t-s}) / x_{t-s}).
 
     """
 
@@ -466,9 +466,9 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
 
     See Also
     --------
-    `SeasonalDifferencing` : Simple seasonal differencing without log transform.
-    `LogTransformer` : Log transform without differencing.
-    `SeasonalReturn` : Percentage returns instead of log differences.
+    - [`SeasonalDifferencing`][yohou.stationarity.transformers.SeasonalDifferencing] : Simple seasonal differencing without log transform.
+    - [`LogTransformer`][yohou.stationarity.transformers.LogTransformer] : Log transform without differencing.
+    - [`SeasonalReturn`][yohou.stationarity.transformers.SeasonalReturn] : Percentage returns instead of log differences.
 
     """
 
@@ -597,9 +597,9 @@ class SeasonalReturn(BaseTransformer):
 
     See Also
     --------
-    `AbsoluteSeasonalReturn` : Absolute difference instead of percentage return.
-    `SeasonalDifferencing` : Simple differencing without percentage computation.
-    `SeasonalLogDifferencing` : Log-differencing for multiplicative relationships.
+    - [`AbsoluteSeasonalReturn`][yohou.stationarity.transformers.AbsoluteSeasonalReturn] : Absolute difference instead of percentage return.
+    - [`SeasonalDifferencing`][yohou.stationarity.transformers.SeasonalDifferencing] : Simple differencing without percentage computation.
+    - [`SeasonalLogDifferencing`][yohou.stationarity.transformers.SeasonalLogDifferencing] : Log-differencing for multiplicative relationships.
 
     """
 
@@ -755,8 +755,8 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
     See Also
     --------
-    `SeasonalReturn` : Percentage returns instead of absolute differences.
-    `SeasonalDifferencing` : Equivalent computation with different API.
+    - [`SeasonalReturn`][yohou.stationarity.transformers.SeasonalReturn] : Percentage returns instead of absolute differences.
+    - [`SeasonalDifferencing`][yohou.stationarity.transformers.SeasonalDifferencing] : Equivalent computation with different API.
 
     """
 
@@ -904,8 +904,8 @@ class ASinhTransformer(BaseTransformer):
 
     See Also
     --------
-    `BoxCoxTransformer` : Power transform for variance stabilization.
-    `LogTransformer` : Simpler variance stabilization for positive data.
+    - [`BoxCoxTransformer`][yohou.stationarity.transformers.BoxCoxTransformer] : Power transform for variance stabilization.
+    - [`LogTransformer`][yohou.stationarity.transformers.LogTransformer] : Simpler variance stabilization for positive data.
     `sklearn.preprocessing.PowerTransformer` : sklearn's power transforms.
 
     """

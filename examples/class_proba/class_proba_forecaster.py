@@ -9,6 +9,13 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "How to Forecast Class Probabilities",
+    "description": "Use ClassProbaReductionForecaster to produce calibrated probability forecasts and evaluate them with Brier score, log loss, and accuracy.",
+    "category": "how-to",
+    "companion": "pages/explanation/class-probability-forecasting",
+    "section": "forecasting-models",
+}
 app = marimo.App(width="medium")
 
 

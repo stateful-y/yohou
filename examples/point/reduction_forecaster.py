@@ -9,6 +9,13 @@
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "Reduction Forecasting Walkthrough",
+    "description": "Walk through the full fit/predict/evaluate cycle with PointReductionForecaster, cross-validation, and grid search on a real dataset.",
+    "category": "tutorial",
+    "companion": "pages/explanation/forecasting",
+    "section": "getting-started",
+}
 app = marimo.App(width="medium")
 
 

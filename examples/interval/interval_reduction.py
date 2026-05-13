@@ -2,13 +2,20 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
 import marimo
 
 __generated_with = "0.20.2"
+__gallery__ = {
+    "title": "How to Build Interval Forecasts with Reduction",
+    "description": "Wrap any quantile-capable sklearn estimator with IntervalReductionForecaster to produce calibrated prediction intervals across multiple horizons.",
+    "category": "how-to",
+    "companion": "pages/explanation/interval-forecasting",
+    "section": "forecasting-models",
+}
 app = marimo.App(width="medium")
 
 

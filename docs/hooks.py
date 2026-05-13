@@ -21,8 +21,6 @@ _CATEGORY_LABELS = {
     "model_selection": "Model Selection",
     "datasets": "Datasets",
     "plotting": "Plotting",
-    "class_proba": "Class-Probability Forecasting",
-    "ensemble": "Ensemble",
 }
 
 _DISCOVERY_CACHE = None
@@ -637,6 +635,7 @@ def _build_api_table_html(project_root):
 
 
 _GALLERY_CACHE = None
+_COMPANION_INDEX = None
 
 
 def _get_gallery_items(project_root):
@@ -676,90 +675,127 @@ def _get_gallery_items(project_root):
         if not gallery or not isinstance(gallery, dict):
             continue
 
-        # Use relative path from examples/ as unique key (avoids stem collisions
-        # e.g., plotting/signal_processing vs preprocessing/signal_processing).
-        rel_key = str(notebook.relative_to(examples_dir).with_suffix(""))
+        rel = notebook.relative_to(examples_dir)
+        parts = rel.parts
+        category = parts[0] if len(parts) > 1 else "quickstart"
         stem = notebook.stem
-        view_path = f"/examples/{rel_key}/"
-        open_path = f"/examples/{rel_key}/edit/"
+
+        # view_path is always flat (notebooks are exported to docs/examples/{stem}/)
+        view_path = f"/examples/{stem}/"
+
+        if len(parts) > 1:
+            # open_path preserves category so the marimo-playground rewrite
+            # regex can reconstruct the real repo path (examples/{category}/{stem}.py)
+            open_path = f"/examples/{category}/{stem}/edit/"
+        else:
+            open_path = f"/examples/{stem}/edit/"
+
+        section = gallery.get("section")
+        if section is None:
+            print(f"[gallery] {notebook.relative_to(project_root)}: missing 'section' field", file=sys.stderr)
 
         items.append({
             "title": gallery.get("title", stem.replace("_", " ").title()),
-            "description": gallery.get("description", ""),
-            "category": gallery.get("category", ""),
+            "category": category,
+            "diataxis_category": gallery.get("category"),
             "companion": gallery.get("companion"),
+            "description": gallery.get("description", ""),
             "view_path": view_path,
             "open_path": open_path,
-            "stem": rel_key,
-            "directory": stem if notebook.parent.name == examples_dir.name else notebook.parent.name,
+            "stem": stem,
+            "section": section,
         })
 
     _GALLERY_CACHE = items
     return _GALLERY_CACHE
 
 
-def _build_gallery_html(project_root, category=None, quadrant=None, directory=None):
-    """Build gallery card grid as Material 'grid cards' markdown, grouped by category."""
+_DIATAXIS_CATEGORIES = {"tutorial", "how-to"}
+
+
+def _build_gallery_html(project_root, category=None):
+    """Build gallery card grid as Material 'grid cards' markdown."""
     items = _get_gallery_items(project_root)
 
     if category:
-        items = [i for i in items if i.get("category") == category]
-
-    if quadrant:
-        items = [i for i in items if i.get("category") == quadrant]
-
-    if directory:
-        items = [i for i in items if i.get("directory") == directory]
+        if category.startswith("section:"):
+            section_key = category.removeprefix("section:")
+            items = [i for i in items if i.get("section") == section_key]
+        elif category in _DIATAXIS_CATEGORIES:
+            items = [i for i in items if i["diataxis_category"] == category]
+        else:
+            items = [i for i in items if i["category"] == category]
 
     if not items:
         return "<!-- no gallery items found -->\n"
 
-    # Group items by category, preserving order within each group
-    _CATEGORY_ORDER = ["tutorial", "how-to"]
-    _CATEGORY_HEADINGS = {
-        "tutorial": "Tutorials",
-        "how-to": "How-to Guides",
-    }
-
-    grouped: dict[str, list[dict]] = {}
-    for item in items:
-        cat = item.get("category") or "other"
-        grouped.setdefault(cat, []).append(item)
-
-    sections = []
-    for cat in _CATEGORY_ORDER:
-        group = grouped.pop(cat, [])
-        if not group:
-            continue
-        heading = _CATEGORY_HEADINGS.get(cat, cat.title())
-        cards = _build_gallery_cards(group)
-        sections.append(f"## {heading}\n\n{cards}")
-
-    # Remaining uncategorized items
-    for _cat, group in grouped.items():
-        cards = _build_gallery_cards(group)
-        sections.append(cards)
-
-    return "\n\n".join(sections) + "\n"
-
-
-_BADGE_LABELS = {"tutorial": "Tutorial", "how-to": "How-to"}
-_BADGE_CLASSES = {"tutorial": "tutorial", "how-to": "howto"}
-
-
-def _build_gallery_cards(items):
-    """Build a Material 'grid cards' block from a list of gallery items."""
     cards = []
     for item in items:
         desc = item["description"] or "No description."
-        cat = item.get("category", "")
-        badge_label = _BADGE_LABELS.get(cat)
-        badge_cls = _BADGE_CLASSES.get(cat)
-        badge = f'<small class="gallery-badge gallery-badge--{badge_cls}">{badge_label}</small> ' if badge_label else ""
-        links = f"[View]({item['view_path']}) · [Open in marimo]({item['open_path']})"
-        if item.get("companion"):
-            links += f" · [Guide]({item['companion']})"
-        cards.append(f"-   {badge}**{item['title']}**\n\n    ---\n\n    {desc}\n\n    {links}")
+        cards.append(
+            f"-   **{item['title']}**\n"
+            f"\n"
+            f"    ---\n"
+            f"\n"
+            f"    {desc}\n"
+            f"\n"
+            f"    [View]({item['view_path']}) · "
+            f"[Open in marimo]({item['open_path']})"
+        )
+
+    return '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
+
+
+_NOTEBOOK_API_USAGE_CACHE = None
+
+
+def _normalize_companion_path(path: str) -> str:
+    """Normalize a companion path for comparison.
+
+    Strips leading/trailing slashes and .md suffix so that
+    ``"pages/how-to/creating-a-scorer"`` in __gallery__ matches
+    ``"pages/how-to/creating-a-scorer.md"`` as a src_uri.
+    """
+    return path.strip("/").removesuffix(".md")
+
+
+def _get_companion_index(project_root):
+    """Build reverse map: normalized doc path -> list of gallery items (cached)."""
+    global _COMPANION_INDEX
+    if _COMPANION_INDEX is not None:
+        return _COMPANION_INDEX
+
+    index: dict[str, list[dict]] = {}
+    for item in _get_gallery_items(project_root):
+        companion = item.get("companion")
+        if companion:
+            key = _normalize_companion_path(companion)
+            index.setdefault(key, []).append(item)
+    _COMPANION_INDEX = index
+    return _COMPANION_INDEX
+
+
+def _build_companion_cards_html(project_root, page_src_uri: str) -> str:
+    """Build gallery card grid for notebooks whose companion matches this page."""
+    key = _normalize_companion_path(page_src_uri)
+    items = _get_companion_index(project_root).get(key, [])
+
+    if not items:
+        return ""
+
+    cards = []
+    for item in items:
+        desc = item["description"] or "No description."
+        cards.append(
+            f"-   **{item['title']}**\n"
+            f"\n"
+            f"    ---\n"
+            f"\n"
+            f"    {desc}\n"
+            f"\n"
+            f"    [View]({item['view_path']}) · "
+            f"[Open in marimo]({item['open_path']})"
+        )
 
     return '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
 
@@ -810,8 +846,8 @@ def _get_notebook_api_usage(project_root):
         if "__init__" in notebook.name:
             continue
 
-        rel_key = str(notebook.relative_to(examples_dir).with_suffix(""))
-        item = stem_to_item.get(rel_key)
+        stem = notebook.stem
+        item = stem_to_item.get(stem)
         if item is None:
             continue
 
@@ -853,12 +889,28 @@ def _build_api_examples_html(project_root, qualified_name):
             seen.add(item["stem"])
             unique_items.append(item)
 
-    return "## Examples\n\nThe following example notebooks use this component:\n\n" + _build_gallery_cards(unique_items)
+    cards = []
+    for item in unique_items:
+        desc = item["description"] or "No description."
+        cat_label = _CATEGORY_LABELS.get(item["category"], item["category"].title())
+        cards.append(
+            f"-   **{item['title']}**\n"
+            f"\n"
+            f"    ---\n"
+            f"\n"
+            f"    <small>{cat_label}</small>\n"
+            f"\n"
+            f"    {desc}\n"
+            f"\n"
+            f"    [View]({item['view_path']}) \u00b7 "
+            f"[Open in marimo]({item['open_path']})"
+        )
 
-
-# ---------------------------------------------------------------------------
-# API sidebar module TOC
-# ---------------------------------------------------------------------------
+    return (
+        "## Examples\n\n"
+        "The following example notebooks use this component:\n\n"
+        '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
+    )
 
 
 def _build_module_toc(config, current_src_path=None):
@@ -1309,15 +1361,16 @@ def on_page_markdown(markdown, page, config, files):
         gallery_html = _build_gallery_html(project_root)
         markdown = markdown.replace("<!-- GALLERY -->", gallery_html)
 
-    # Per-category filter: <!-- GALLERY:point -->, <!-- GALLERY:tutorials -->, etc.
-    _CATEGORY_FILTER_MAP = {"tutorials": "tutorial", "howto": "how-to"}
-    for match in re.finditer(r"<!-- GALLERY:(\w+) -->", markdown):
-        key = match.group(1)
-        if key in _CATEGORY_FILTER_MAP:
-            gallery_html = _build_gallery_html(project_root, quadrant=_CATEGORY_FILTER_MAP[key])
-        else:
-            gallery_html = _build_gallery_html(project_root, directory=key)
+    # Per-category: <!-- GALLERY:point -->, <!-- GALLERY:section:panel-data -->, etc.
+    for match in re.finditer(r"<!-- GALLERY:(\w[\w:-]*) -->", markdown):
+        cat = match.group(1)
+        gallery_html = _build_gallery_html(project_root, category=cat)
         markdown = markdown.replace(match.group(0), gallery_html)
+
+    # COMPANION_NOTEBOOKS placeholder → companion notebook cards
+    if "<!-- COMPANION_NOTEBOOKS -->" in markdown:
+        companion_html = _build_companion_cards_html(project_root, page.file.src_path)
+        markdown = markdown.replace("<!-- COMPANION_NOTEBOOKS -->", companion_html)
 
     # Resolve [Open in marimo] placeholder URLs → full marimo.app playground URLs
     markdown = re.sub(
@@ -1330,6 +1383,19 @@ def on_page_markdown(markdown, page, config, files):
     markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
 
     return markdown
+
+
+def on_startup(**kwargs):
+    """Reset module-level caches at the start of each build."""
+    global _GALLERY_CACHE, _COMPANION_INDEX, _NOTEBOOK_API_USAGE_CACHE
+    global _DISCOVERY_CACHE, _SEE_ALSO_LOOKUP, _SUBMODULE_CACHE, _GIT_REF_CACHE
+    _GALLERY_CACHE = None
+    _COMPANION_INDEX = None
+    _NOTEBOOK_API_USAGE_CACHE = None
+    _DISCOVERY_CACHE = None
+    _SEE_ALSO_LOOKUP = None
+    _SUBMODULE_CACHE = None
+    _GIT_REF_CACHE = None
 
 
 def on_pre_build(config):
@@ -1364,10 +1430,7 @@ def on_pre_build(config):
     def _export_notebook(notebook):
         """Export a single marimo notebook to HTML. Returns (rel_path, error)."""
         rel_path = notebook.relative_to(project_root)
-        # Use relative path from examples/ to avoid stem collisions
-        # (e.g., plotting/signal_processing vs preprocessing/signal_processing).
-        rel_key = str(notebook.relative_to(examples_dir).with_suffix(""))
-        output_dir = docs_examples / rel_key
+        output_dir = docs_examples / notebook.stem
 
         if output_dir.exists():
             shutil.rmtree(output_dir)
@@ -1399,18 +1462,12 @@ def on_pre_build(config):
         except FileNotFoundError:
             return str(rel_path), FileNotFoundError("marimo")
 
-    _default_workers = min(os.cpu_count() or 2, 4)
-    try:
-        max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", _default_workers))
-    except ValueError:
-        print("[hooks] MKDOCS_EXPORT_WORKERS is not a valid integer, using default", flush=True)
-        max_workers = _default_workers
+    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min(os.cpu_count() or 2, 4)))
 
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     failed: list[str] = []
-    done_count_lock = threading.Lock()
     done_count = 0
     total = len(notebooks)
     print(f"[hooks] exporting {total} notebooks with {max_workers} workers", flush=True)
@@ -1420,9 +1477,7 @@ def on_pre_build(config):
 
     def _heartbeat():
         while not heartbeat_stop.wait(60):
-            with done_count_lock:
-                _count = done_count
-            print(f"[hooks] ... still exporting ({_count}/{total} done)", flush=True)
+            print(f"[hooks] ... still exporting ({done_count}/{total} done)", flush=True)
 
     heartbeat = threading.Thread(target=_heartbeat, daemon=True)
     heartbeat.start()
@@ -1431,8 +1486,7 @@ def on_pre_build(config):
         futures = {pool.submit(_export_notebook, nb): nb for nb in notebooks}
         for future in as_completed(futures):
             rel_path, error = future.result()
-            with done_count_lock:
-                done_count += 1
+            done_count += 1
             if error is None:
                 print(f"[hooks] [{done_count}/{total}] exported {rel_path}", flush=True)
             elif isinstance(error, FileNotFoundError):

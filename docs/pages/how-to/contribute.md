@@ -449,7 +449,7 @@ Notebooks serve **tutorials** or **how-to guides** only - never explanation or r
 1. **Title**: `# In this notebook, we will [goal]`
 2. **Prerequisites**: One-liner stating required prior knowledge
 3. **Numbered sections**: `## 1. Section Name`, `## 2. Section Name`, etc. with visible output every cell
-4. **What We Built**: Closing section summarizing what was accomplished and linking to next steps
+4. **What You Built**: Closing section summarizing what was accomplished and linking to next steps
 
 **How-to notebooks** (category: `how-to`):
 

@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "numpy",
 #     "scikit-learn",
 #     "yohou",
 # ]
@@ -14,6 +15,7 @@ __gallery__ = {
     "description": "Generate multiple predictions from different weather forecast vintages without refitting, using the X_forecast predict-time override.",
     "category": "how-to",
     "companion": "/pages/how-to/exogenous-features/",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 
@@ -32,7 +34,8 @@ def _(mo):
         # How to Produce Multi-Vintage Predictions
 
         This notebook shows how to generate multiple predictions from
-        different external forecast vintages at the same observation point.
+        different external forecast vintages at the same observation point using
+        [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
         Each `predict()` call swaps step columns temporarily without
         changing the forecaster's internal state.
 

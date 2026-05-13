@@ -2,6 +2,9 @@
 
 Panel data (multiple related time series) uses a column naming convention with double underscores: `{group}__{column}`. Every group must share the same column suffixes.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ```python
 import polars as pl
 

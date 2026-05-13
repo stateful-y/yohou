@@ -15,8 +15,6 @@ Usage
 from __future__ import annotations
 
 from yohou.datasets import (
-    fetch_air_quality_classification,
-    fetch_demand_classification,
     fetch_dominick,
     fetch_electricity_demand,
     fetch_hospital,
@@ -34,8 +32,6 @@ _FETCHERS = [
     ("electricity_demand", fetch_electricity_demand),
     ("pedestrian_counts", fetch_pedestrian_counts),
     ("dominick", fetch_dominick),
-    ("air_quality_classification", fetch_air_quality_classification),
-    ("demand_classification", fetch_demand_classification),
 ]
 
 if __name__ == "__main__":
@@ -43,18 +39,15 @@ if __name__ == "__main__":
 
     def _fetch_one(name, fetcher):
         bunch = fetcher()
-        if hasattr(bunch, "n_series"):
-            return name, f"{bunch.n_series} series, {len(bunch.frame)} rows, cached to {bunch.filename}"
-        else:
-            return name, f"{len(bunch.y)} rows, {len(bunch.classes)} classes"
+        return name, bunch.n_series, len(bunch.frame), bunch.filename
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {pool.submit(_fetch_one, name, fn): name for name, fn in _FETCHERS}
         for future in as_completed(futures):
             name = futures[future]
             try:
-                name, info = future.result()
-                print(f"[precache] {name}: {info}", flush=True)
+                name, n_series, n_rows, filename = future.result()
+                print(f"[precache] {name}: {n_series} series, {n_rows} rows, cached to {filename}", flush=True)
             except Exception as exc:
                 print(f"[precache] {name}: FAILED ({exc})", flush=True)
 

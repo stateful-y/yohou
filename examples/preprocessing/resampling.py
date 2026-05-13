@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "Resampling",
     "description": "Demonstrate Downsampler and Upsampler for changing time series frequency, including multivariate support, boundary settings, and round-trip information loss.",
     "category": "how-to",
+    "section": "data-features",
 }
 app = marimo.App(width="medium")
 

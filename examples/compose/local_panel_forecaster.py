@@ -12,6 +12,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "LocalPanelForecaster",
     "description": "Wrap any forecaster with LocalPanelForecaster for fully independent per-group clones, parallel fitting via n_jobs, and selective group operations.",
+    "category": "how-to",
+    "section": "panel-data",
 }
 app = marimo.App(width="medium")
 

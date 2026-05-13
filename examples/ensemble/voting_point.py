@@ -14,6 +14,7 @@ __gallery__ = {
     "description": "Build point ensembles with VotingPointForecaster using mean, weighted, and median aggregation strategies.",
     "category": "how-to",
     "companion": "/pages/explanation/ensemble-forecasting/",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 

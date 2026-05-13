@@ -9,6 +9,13 @@
 import marimo
 
 __generated_with = "0.23.5"
+__gallery__ = {
+    "title": "How to Align Exogenous Features Across Pipeline Steps",
+    "description": "Control which step-indexed columns each direct-strategy estimator sees using the step_feature_alignment parameter of PointReductionForecaster.",
+    "category": "how-to",
+    "companion": "pages/how-to/exogenous-features",
+    "section": "data-features",
+}
 app = marimo.App(width="medium")
 
 
@@ -24,9 +31,11 @@ def _(mo):
     mo.md(r"""
     # How to Control Step Feature Alignment
 
-    This notebook shows how to use the `step_feature_alignment` parameter
+    This notebook shows how to use the `step_feature_alignment` parameter of
+    [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
     to control which step-indexed columns each direct-strategy estimator
-    sees during training and prediction.
+    sees during training and prediction. The synthetic data is generated with
+    [`make_exogenous_regression`](/pages/api/generated/yohou.datasets._fetchers.make_exogenous_regression/).
 
     **Prerequisites:** Familiarity with the direct reduction strategy and
     exogenous features

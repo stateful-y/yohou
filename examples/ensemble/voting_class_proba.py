@@ -14,6 +14,7 @@ __gallery__ = {
     "description": "Build classification ensembles with VotingClassProbaForecaster using soft and hard voting strategies.",
     "category": "how-to",
     "companion": "/pages/explanation/ensemble-forecasting/",
+    "section": "forecasting-models",
 }
 app = marimo.App(width="medium")
 

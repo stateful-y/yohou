@@ -1,4 +1,4 @@
-# Exogenous Features Tutorial
+# Exogenous Features
 
 In this tutorial, we will build a forecasting model that uses all three types
 of exogenous features: actual observations, known-future indicators, and
@@ -6,15 +6,12 @@ external forecast vintages. We will fit the model on synthetic electricity
 price data, produce predictions from two different weather forecast vintages,
 and run a walk-forward evaluation.
 
-!!! tip "Interactive version available"
-    Try this tutorial as an interactive notebook:
-    [View](/examples/compose/exogenous_features/) · [Open in marimo](/examples/compose/exogenous_features/edit/)
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 
-- Yohou installed (`pip install yohou`)
-- Basic familiarity with the fit/predict/observe lifecycle
-  ([Core Concepts](../explanation/core-concepts.md))
+- Completed [Forecasting Workflow](forecasting-workflow.md)
 
 ## 1. Create the Synthetic Data
 
@@ -42,7 +39,7 @@ actual_temp = 15.0 + 5.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 0.5, n)
 X_actual = pl.DataFrame({"time": time_series, "temperature": actual_temp})
 
 # X_future: holiday indicator (1.0 on Sundays, 0.0 otherwise)
-holidays = [1.0 if dt.weekday() == 6 else 0.0 for dt in times]
+holidays = np.array([1.0 if dt.weekday() == 6 else 0.0 for dt in times])
 X_future = pl.DataFrame({"time": time_series, "is_holiday": holidays})
 
 # y: price = 50 + 2·temperature + 10·is_holiday + noise
@@ -92,7 +89,7 @@ from yohou.preprocessing import LagTransformer
 
 forecaster = PointReductionForecaster(
     estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3),
-    feature_transformer=LagTransformer([1, 2, 3]),
+    feature_transformer=LagTransformer(lag=[1, 2, 3]),
     reduction_strategy="direct",
 )
 
@@ -114,19 +111,16 @@ After fitting, the forecaster stores step columns from both `X_future`
 and `X_forecast`:
 
 ```python
-print(f"Step columns: {len(forecaster._step_column_names_)}")
-print(f"Some step columns: {sorted(forecaster._step_column_names_)[:6]}")
+step_cols = sorted(forecaster._step_column_names_)
+print(f"Step columns ({len(step_cols)}): {step_cols[:3]} ... {step_cols[-3:]}")
 ```
 
-The output should look something like:
-
 ```text
-Step columns: 12
-Some step columns: ['is_holiday_step_1', 'is_holiday_step_2', ..., 'wx_temp_step_1', ...]
+Step columns (12): ['is_holiday_step_1', 'is_holiday_step_2', 'is_holiday_step_3'] ... ['wx_temp_step_4', 'wx_temp_step_5', 'wx_temp_step_6']
 ```
 
 Notice that both holiday and weather columns were converted to step-indexed
-format.
+format: one column per forecast step for each feature.
 
 ## 4. Predict with Multiple Vintages
 
@@ -168,36 +162,73 @@ vintage should produce predictions closer to the true prices.
 
 ## 5. Walk-Forward Evaluation
 
-The `observe_predict` loop observes `X_actual` at each step and uses
-`X_future` for step column derivation. Here we omit `X_forecast` so the
-loop uses the training forecasts stored at fit time:
+The `observe_predict` loop steps through `y_test` one stride at a time,
+observing new `X_actual` at each step. We pass the full `X_forecast` so the
+forecaster can look up the appropriate vintage at each observation time:
 
 ```python
 from yohou.metrics import MeanAbsoluteError
 
 X_actual_test = X_actual[train_size:]
-
-preds = forecaster.observe_predict(
+preds_with_wx = forecaster.observe_predict(
     y=y_test,
     X_actual=X_actual_test,
     X_future=X_future,
+    X_forecast=X_forecast,
     stride=H,
 )
 
 scorer = MeanAbsoluteError()
 scorer.fit(y_train)
-score = scorer.score(y_test[:len(preds)], preds)
-print(f"Walk-forward MAE: {score:.4f}")
+print(f"Walk-forward MAE (with weather forecast): {scorer.score(y_test[:len(preds_with_wx)], preds_with_wx):.4f}")
 ```
 
-Notice that `X_future` covers the full time range (it's deterministic and
-available for all dates).
+```text
+Walk-forward MAE (with weather forecast): 2.8083
+```
 
-## What We Built
+To see how much the weather signal contributes, fit the same architecture
+without `X_forecast` and compare:
 
-We built a forecasting model that:
+```python
+forecaster_no_wx = PointReductionForecaster(
+    estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3),
+    feature_transformer=LagTransformer(lag=[1, 2, 3]),
+    reduction_strategy="direct",
+)
+forecaster_no_wx.fit(
+    y=y_train,
+    X_actual=X_actual_train,
+    forecasting_horizon=H,
+    X_future=X_future,
+)
 
-- Uses temperature readings (`X_actual`) for lag-based features
+preds_no_wx = forecaster_no_wx.observe_predict(
+    y=y_test,
+    X_actual=X_actual_test,
+    X_future=X_future,
+    stride=H,
+)
+print(f"Walk-forward MAE (no  weather forecast): {scorer.score(y_test[:len(preds_no_wx)], preds_no_wx):.4f}")
+```
+
+```text
+Walk-forward MAE (no  weather forecast): 3.7157
+```
+
+Notice that `X_future` (holiday indicator) covers the full time range in
+both cases: it is deterministic and known for all dates, so no slicing is needed.
+
+The weather signal reduces MAE from 3.72 to 2.81. The remaining gap to the
+noise floor reflects the forecast bias (0.5°C) and uncertainty (std 0.3°C)
+we deliberately built into `X_forecast`: a perfect weather model would close
+it further.
+
+## What You Built
+
+You built a forecasting model that:
+
+- Uses temperature readings (`X_actual`) for historical actual features
 - Incorporates holiday calendars (`X_future`) as step-indexed known-future
   features
 - Accepts weather forecast vintages (`X_forecast`) with `vintage_time`

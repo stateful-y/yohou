@@ -6,41 +6,18 @@ yohou converts the temporal structure of a time series into rows and columns tha
 scikit-learn regressor can learn from. This page explains how that conversion works,
 what choices it involves, and where the tradeoffs lie.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
 ## The Forecasting Workflow
 
-Forecasting follows a cyclical workflow, regardless of the method chosen:
+The forecasting lifecycle is cyclical rather than sequential. Problem definition establishes what variable to predict, over what horizon, and which decisions the forecast will drive, shaping every subsequent choice from data granularity to evaluation criteria.
 
-1. **Define the problem.** What variable needs forecasting? Over what horizon? What
-   decisions depend on the forecast? These questions shape every subsequent choice,
-   from data granularity to evaluation criteria.
+Data preparation addresses the realities of collecting and cleaning historical observations and exogenous predictors. Common scenarios such as missing values, outliers, and frequency mismatches are covered in [Practical Issues](practical-issues.md). Exploration of the cleaned series reveals [temporal patterns](time-series-patterns.md) such as trend, seasonality, cycles, and structural breaks, which guide the choice of transformers and model configurations.
 
-2. **Gather and prepare data.** Assemble historical observations of the target variable
-   and any exogenous predictors that are known in advance. Handle missing values,
-   outliers, and frequency alignment. See [Practical Issues](practical-issues.md)
-   for common data quality scenarios.
+Method selection and evaluation form the core iterative loop. A candidate configuration is fitted and its accuracy measured using temporal cross-validation and appropriate [accuracy metrics](forecast-accuracy.md). Unsatisfactory results send the process back to exploration or data preparation rather than to model tuning alone. [Model Selection](model-selection.md) covers strategies for navigating this cycle efficiently.
 
-3. **Explore the data.** Visualize the series to identify
-   [patterns](time-series-patterns.md): trend, seasonality, cycles, and structural
-   breaks. The patterns you observe guide which transformers and models to consider.
-
-4. **Choose and fit a method.** Select a forecasting approach (naive baseline, reduction
-   forecaster, decomposition pipeline, or ensemble) and train it on the historical data.
-   The sections below cover the reduction approach in detail.
-
-5. **Evaluate accuracy.** Measure forecast quality using temporal cross-validation
-   and appropriate [accuracy metrics](forecast-accuracy.md). Compare against naive
-   baselines to confirm the model adds value. See
-   [Model Selection](model-selection.md) for evaluation strategies.
-
-6. **Deploy and monitor.** Put the forecaster into production using the
-   `observe`/`predict` lifecycle. Monitor residuals over time
-   ([Residual Diagnostics](residual-diagnostics.md)) and refit when performance
-   degrades.
-
-This workflow is iterative. Poor evaluation results lead back to step 3 or 4;
-monitoring in step 6 may trigger a return to step 2 when new data sources become
-available.
+Production deployment uses the `observe`/`predict` lifecycle to generate new forecasts as observations arrive. [Residual Diagnostics](residual-diagnostics.md) tracks whether the model continues to perform well over time, and significant degradation initiates a return to the earlier phases.
 
 
 ## Forecasting as Supervised Learning Reduction

@@ -12,6 +12,8 @@ __generated_with = "0.19.11"
 __gallery__ = {
     "title": "Aggregation Modes",
     "description": "Demonstrate all scorer aggregation strategies (stepwise, vintagewise, componentwise, groupwise, coveragewise, all) on panel data with weighted group aggregation.",
+    "category": "how-to",
+    "section": "evaluation-search",
 }
 app = marimo.App(width="medium")
 
@@ -30,6 +32,9 @@ def _(mo):
 
     Yohou scorers support multiple **aggregation strategies** that control how
     per-timestep, per-component errors are reduced into summary scores.
+    These strategies apply to any scorer that extends
+    [`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/) or
+    [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/).
 
     ## What You'll Learn
 

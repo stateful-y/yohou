@@ -114,7 +114,7 @@ class OutlierThresholdHandler(BaseTransformer):
 
     See Also
     --------
-    `OutlierPercentileHandler` : Handle outliers based on percentiles.
+    - [`OutlierPercentileHandler`][yohou.preprocessing.outlier.OutlierPercentileHandler] : Handle outliers based on percentiles.
 
     """
 
@@ -243,7 +243,7 @@ class OutlierPercentileHandler(BaseTransformer):
 
     See Also
     --------
-    `OutlierThresholdHandler` : Handle outliers based on fixed thresholds.
+    - [`OutlierThresholdHandler`][yohou.preprocessing.outlier.OutlierThresholdHandler] : Handle outliers based on fixed thresholds.
 
     """
 

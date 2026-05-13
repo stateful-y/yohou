@@ -12,6 +12,7 @@ __gallery__ = {
     "title": "KDD Cup Air Quality",
     "description": "Explore the KDD Cup 2018 multivariate panel dataset with hourly air quality readings from 59 Beijing and London monitoring stations.",
     "category": "how-to",
+    "section": "data-catalog",
 }
 app = marimo.App(width="medium")
 
