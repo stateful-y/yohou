@@ -82,6 +82,42 @@ class TestForecasterTagMerging:
         assert tags.forecaster_tags is not None
         assert tags.forecaster_tags.stateful is True
 
+    def test_tags_merged_into_target_tags(self):
+        """A _tags key only present on target_tags goes through that branch."""
+
+        class _TargetTagForecaster(BasePointForecaster):
+            _tags = {"required": True}
+
+            def __init__(self):
+                super().__init__(
+                    feature_transformer=None,
+                    target_transformer=None,
+                    target_as_feature=None,
+                )
+
+            def __sklearn_tags__(self) -> Tags:
+                tags = super().__sklearn_tags__()
+                assert tags.forecaster_tags is not None
+                tags.forecaster_tags.requires_exogenous = False
+                return tags
+
+            @property
+            def _observation_horizon(self):
+                return 0
+
+            def _fit(self, y_t, X_t, forecasting_horizon):
+                pass
+
+            def _predict_one(self, groups, **params):
+                cols = [c for c in self.local_y_schema_ if c != "time"]
+                h = self.fit_forecasting_horizon_
+                return pl.DataFrame({c: [0.0] * h for c in cols})
+
+        f = _TargetTagForecaster()
+        tags = f.__sklearn_tags__()
+        assert tags.target_tags is not None
+        assert tags.target_tags.required is True
+
 
 # ---------------------------------------------------------------------------
 # Forecaster observation_horizon: pre-fit access returns default
@@ -302,3 +338,61 @@ class TestClassProbaForecasterConcreteFit:
         assert hasattr(f, "fit_forecasting_horizon_")
         result = f.predict_class_proba()
         assert "time" in result.columns
+
+
+# ---------------------------------------------------------------------------
+# BaseForecaster._validate_fit_params with invalid forecasting_horizon
+# ---------------------------------------------------------------------------
+
+
+class TestValidateFitParams:
+    """_validate_fit_params raises when forecasting_horizon < 1."""
+
+    def test_forecasting_horizon_zero_raises(self):
+        import pytest
+
+        f = _TagMergingForecaster()
+        with pytest.raises(ValueError, match="forecasting_horizon must be >= 1"):
+            f._validate_fit_params(0)
+
+    def test_forecasting_horizon_negative_raises(self):
+        import pytest
+
+        f = _TagMergingForecaster()
+        with pytest.raises(ValueError, match="forecasting_horizon must be >= 1"):
+            f._validate_fit_params(-1)
+
+    def test_forecasting_horizon_valid_returns_value(self):
+        f = _TagMergingForecaster()
+        assert f._validate_fit_params(5) == 5
+
+
+# ---------------------------------------------------------------------------
+# SlidingWindowSplitter: train_size + test_size > n_samples
+# ---------------------------------------------------------------------------
+
+
+class TestSlidingWindowSplitterOverflow:
+    """SlidingWindowSplitter raises when train + test exceeds data."""
+
+    def test_train_plus_test_exceeds_n_samples(self):
+        import pytest
+
+        from yohou.model_selection.split import SlidingWindowSplitter
+
+        cv = SlidingWindowSplitter(n_splits=2, train_size=8, test_size=5)
+        y = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2020, 1, 1),
+                end=datetime(2020, 1, 10),
+                interval="1d",
+                eager=True,
+            ),
+            "value": list(range(10)),
+        })
+        # The guard in _iter_test_indices is normally unreachable because
+        # _resolve_train_size validates first.  Bypass that to cover the
+        # defensive check at line 530.
+        cv._resolve_train_size = lambda n: 8  # skip upstream validation
+        with pytest.raises(ValueError, match="greater than n_samples"):
+            list(cv._iter_test_indices(y))

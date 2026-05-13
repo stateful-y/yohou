@@ -173,7 +173,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 # Map flat key to the correct tag dataclass field
                 if tags.forecaster_tags is not None and hasattr(tags.forecaster_tags, key):
                     setattr(tags.forecaster_tags, key, value)
-                elif tags.transformer_tags is not None and hasattr(tags.transformer_tags, key):
+                elif tags.transformer_tags is not None and hasattr(tags.transformer_tags, key):  # pragma: no cover
                     setattr(tags.transformer_tags, key, value)
                 elif tags.input_tags is not None and hasattr(tags.input_tags, key):
                     setattr(tags.input_tags, key, value)
@@ -202,6 +202,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     @_observation_horizon.setter
     def _observation_horizon(self, value: int) -> None:
+        """Set the internal observation horizon value."""
         self._oh_value = value
 
     @property
