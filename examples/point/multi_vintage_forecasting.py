@@ -13,7 +13,7 @@ __gallery__ = {
     "title": "How to Produce Multi-Vintage Predictions",
     "description": "Generate multiple predictions from different weather forecast vintages without refitting, using the X_forecast predict-time override.",
     "category": "how-to",
-    "companion": "pages/how-to/exogenous-features.md",
+    "companion": "/pages/how-to/exogenous-features/",
 }
 app = marimo.App(width="medium")
 
