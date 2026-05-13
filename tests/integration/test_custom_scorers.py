@@ -18,10 +18,6 @@ from yohou.metrics.base import BasePointScorer
 from yohou.model_selection import GridSearchCV, SlidingWindowSplitter
 from yohou.testing import _yield_yohou_scorer_checks
 
-# ---------------------------------------------------------------------------
-# Custom estimators
-# ---------------------------------------------------------------------------
-
 
 class _MaxAbsoluteError(BasePointScorer):
     """Max absolute error (custom _collapse_rows using agg_fn='max')."""
@@ -71,11 +67,6 @@ class _RootMeanSquaredError(BasePointScorer):
         return df.select(pl.all().sqrt())
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def scorer_data():
     """y_truth and y_pred for scorer testing."""
@@ -97,11 +88,6 @@ def scorer_data():
         "value": [float(v + 1) for v in range(n)],
     })
     return y_truth, y_pred
-
-
-# ---------------------------------------------------------------------------
-# Test classes
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration

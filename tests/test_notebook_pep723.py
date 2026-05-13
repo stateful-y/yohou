@@ -74,21 +74,37 @@ def _parse_pep723_deps(path: pathlib.Path) -> list[str]:
     return data.get("dependencies", [])
 
 
+# Synthetic marker used to require the plotting extra when a notebook imports
+# from yohou.plotting (which is only available with yohou[plotting]).
+_YOHOU_PLOTTING_MARKER = "_yohou_plotting"
+
+
 def _get_notebook_imports(path: pathlib.Path) -> set[str]:
     """Return all top-level package names imported by the notebook.
 
-    Excludes stdlib modules, ``marimo``, and ``yohou`` internals.
+    Excludes stdlib modules, ``marimo``, and ``yohou`` internals, but adds a
+    synthetic ``_yohou_plotting`` marker when the notebook imports from
+    ``yohou.plotting`` (which requires the ``plotting`` extra).
     """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imports: set[str] = set()
+    uses_yohou_plotting = False
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                imports.add(alias.name.split(".")[0])
+                mod = alias.name
+                if mod == "yohou.plotting" or mod.startswith("yohou.plotting."):
+                    uses_yohou_plotting = True
+                imports.add(mod.split(".")[0])
         elif isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == "yohou.plotting" or node.module.startswith("yohou.plotting."):
+                uses_yohou_plotting = True
             imports.add(node.module.split(".")[0])
     stdlib = sys.stdlib_module_names
-    return {imp for imp in imports if imp not in stdlib and imp != "marimo" and not imp.startswith("yohou")}
+    external = {imp for imp in imports if imp not in stdlib and imp != "marimo" and not imp.startswith("yohou")}
+    if uses_yohou_plotting:
+        external.add(_YOHOU_PLOTTING_MARKER)
+    return external
 
 
 def _resolve_covered_imports(deps: list[str]) -> set[str]:
@@ -106,6 +122,8 @@ def _resolve_covered_imports(deps: list[str]) -> set[str]:
             covered |= _YOHOU_BASE_IMPORTS
             for extra in extras:
                 covered |= _YOHOU_EXTRAS_IMPORTS.get(extra, frozenset())
+            if "plotting" in extras:
+                covered.add(_YOHOU_PLOTTING_MARKER)
         elif name in INSTALL_TO_IMPORT:
             covered.add(INSTALL_TO_IMPORT[name])
 
@@ -129,7 +147,7 @@ def test_pep723_deps_are_complete(notebook: pathlib.Path) -> None:
     actual_imports = _get_notebook_imports(notebook)
     covered = _resolve_covered_imports(deps)
 
-    unknown = actual_imports - _ALL_KNOWN_IMPORTS
+    unknown = actual_imports - _ALL_KNOWN_IMPORTS - {_YOHOU_PLOTTING_MARKER}
     if unknown:
         pytest.fail(
             f"{notebook.relative_to(EXAMPLES_DIR.parent)}: imports {sorted(unknown)} "
@@ -139,8 +157,11 @@ def test_pep723_deps_are_complete(notebook: pathlib.Path) -> None:
 
     missing = actual_imports - covered
     if missing:
+        human_missing = [
+            "yohou.plotting (requires yohou[plotting])" if m == _YOHOU_PLOTTING_MARKER else m for m in sorted(missing)
+        ]
         pytest.fail(
-            f"{notebook.relative_to(EXAMPLES_DIR.parent)}: imports {sorted(missing)} "
+            f"{notebook.relative_to(EXAMPLES_DIR.parent)}: {human_missing} "
             f"are not covered by the declared PEP 723 dependencies {deps!r}. "
             f"Add the corresponding package(s) to the notebook's PEP 723 block."
         )

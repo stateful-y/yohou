@@ -39,10 +39,6 @@ from yohou.metrics.point import (
 )
 from yohou.testing import _yield_yohou_scorer_checks
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture(scope="module")
 def point_data():
@@ -164,11 +160,6 @@ def class_proba_data():
     return y_true, y_pred
 
 
-# ---------------------------------------------------------------------------
-# Registry instantiation
-# ---------------------------------------------------------------------------
-
-
 class TestRegistryInstantiation:
     """Verify get_scorer() instantiates every registry entry without error."""
 
@@ -177,11 +168,6 @@ class TestRegistryInstantiation:
         scorer = get_scorer(name)
         assert scorer is not None
         assert hasattr(scorer, "__sklearn_tags__")
-
-
-# ---------------------------------------------------------------------------
-# Point scorers
-# ---------------------------------------------------------------------------
 
 
 class TestPointScorerChecks:
@@ -238,11 +224,6 @@ class TestPointScorerChecks:
         self._run(MeanAbsoluteError, *panel_point_data)
 
 
-# ---------------------------------------------------------------------------
-# Interval scorers
-# ---------------------------------------------------------------------------
-
-
 class TestIntervalScorerChecks:
     """Run _yield_yohou_scorer_checks on all interval scorers."""
 
@@ -277,11 +258,6 @@ class TestIntervalScorerChecks:
         )
 
 
-# ---------------------------------------------------------------------------
-# Class-probability scorers
-# ---------------------------------------------------------------------------
-
-
 class TestClassProbaScorerChecks:
     """Run _yield_yohou_scorer_checks on class-probability scorers."""
 
@@ -298,11 +274,6 @@ class TestClassProbaScorerChecks:
 
     def test_ranked_probability_score(self, class_proba_data):
         self._run(RankedProbabilityScore, *class_proba_data)
-
-
-# ---------------------------------------------------------------------------
-# Hard-label classification scorers
-# ---------------------------------------------------------------------------
 
 
 class TestHardLabelScorerChecks:
@@ -332,11 +303,6 @@ class TestHardLabelScorerChecks:
         self._run(FBetaScore, *class_proba_data, beta=2.0)
 
 
-# ---------------------------------------------------------------------------
-# Ranking scorers
-# ---------------------------------------------------------------------------
-
-
 class TestRankingScorerChecks:
     """Run _yield_yohou_scorer_checks on ranking classification scorers."""
 
@@ -351,10 +317,6 @@ class TestRankingScorerChecks:
     def test_pr_auc(self, class_proba_data):
         self._run(PRAuC, *class_proba_data)
 
-
-# ---------------------------------------------------------------------------
-# Registry completeness guard
-# ---------------------------------------------------------------------------
 
 # Collect all scorer classes tested above (unique set)
 _TESTED_SCORER_CLASSES: set[type] = {

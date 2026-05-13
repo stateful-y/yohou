@@ -21,10 +21,6 @@ from yohou.interval.similarity import DistanceSimilarity
 from yohou.point.base import BasePointForecaster
 from yohou.utils.tags import Tags
 
-# ---------------------------------------------------------------------------
-# Forecaster _tags merging into non-forecaster tag dataclasses
-# ---------------------------------------------------------------------------
-
 
 class _TagMergingForecaster(BasePointForecaster):
     """Forecaster with _tags keys targeting input_tags and top-level tags."""
@@ -119,11 +115,6 @@ class TestForecasterTagMerging:
         assert tags.target_tags.required is True
 
 
-# ---------------------------------------------------------------------------
-# Forecaster observation_horizon: pre-fit access returns default
-# ---------------------------------------------------------------------------
-
-
 class TestObservationHorizonPreFit:
     """observation_horizon is accessible before fit() is called."""
 
@@ -165,11 +156,6 @@ class TestObservationHorizonPreFit:
         assert f.observation_horizon == 5
 
 
-# ---------------------------------------------------------------------------
-# Splitter _tags merging into input_tags and top-level
-# ---------------------------------------------------------------------------
-
-
 class TestSplitterTagMerging:
     """ExpandingWindowSplitter _tags merge splitter_type via _tags dict."""
 
@@ -203,22 +189,12 @@ class TestSplitterTagMerging:
         assert tags.non_deterministic is True
 
 
-# ---------------------------------------------------------------------------
-# BaseSimilarity.discarded_time_stamps
-# ---------------------------------------------------------------------------
-
-
 class TestSimilarityDiscardedTimestamps:
     """BaseSimilarity.discarded_time_stamps returns None."""
 
     def test_returns_none(self):
         sim = DistanceSimilarity()
         assert sim.discarded_time_stamps is None
-
-
-# ---------------------------------------------------------------------------
-# BaseIntervalForecaster concrete fit()
-# ---------------------------------------------------------------------------
 
 
 class _MinimalIntervalForecaster(BaseIntervalForecaster):
@@ -308,11 +284,6 @@ class TestIntervalForecasterConcreteFit:
         assert hasattr(f, "interval_")
 
 
-# ---------------------------------------------------------------------------
-# BaseClassProbaForecaster concrete fit()
-# ---------------------------------------------------------------------------
-
-
 class TestClassProbaForecasterConcreteFit:
     """BaseClassProbaForecaster.fit() calls _pre_fit and _fit."""
 
@@ -340,11 +311,6 @@ class TestClassProbaForecasterConcreteFit:
         assert "time" in result.columns
 
 
-# ---------------------------------------------------------------------------
-# BaseForecaster._validate_fit_params with invalid forecasting_horizon
-# ---------------------------------------------------------------------------
-
-
 class TestValidateFitParams:
     """_validate_fit_params raises when forecasting_horizon < 1."""
 
@@ -365,11 +331,6 @@ class TestValidateFitParams:
     def test_forecasting_horizon_valid_returns_value(self):
         f = _TagMergingForecaster()
         assert f._validate_fit_params(5) == 5
-
-
-# ---------------------------------------------------------------------------
-# SlidingWindowSplitter: train_size + test_size > n_samples
-# ---------------------------------------------------------------------------
 
 
 class TestSlidingWindowSplitterOverflow:

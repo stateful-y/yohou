@@ -21,10 +21,6 @@ from yohou.base.transformer import BaseTransformer
 from yohou.compose import FeaturePipeline
 from yohou.testing import _yield_yohou_transformer_checks
 
-# ---------------------------------------------------------------------------
-# Custom estimators
-# ---------------------------------------------------------------------------
-
 
 class _ScaleTransformer(BaseTransformer):
     """Multiplies all numeric columns by a constant factor (stateless, invertible)."""
@@ -93,11 +89,6 @@ class _WindowStatsTransformer(BaseTransformer):
         return list(input_features)
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def numeric_series():
     rng = np.random.default_rng(42)
@@ -111,11 +102,6 @@ def numeric_series():
         ),
         "value": rng.normal(10, 1, n).tolist(),
     })
-
-
-# ---------------------------------------------------------------------------
-# Test classes
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration

@@ -27,10 +27,6 @@ from yohou.point.base import BasePointForecaster
 from yohou.testing import _yield_yohou_forecaster_checks
 from yohou.utils.tags import Tags
 
-# ---------------------------------------------------------------------------
-# Custom estimators (inline, matching documented patterns)
-# ---------------------------------------------------------------------------
-
 
 class _LastValueForecaster(BasePointForecaster):
     """Repeats the last observed value. Minimal Tier 1 pattern from docs."""
@@ -270,9 +266,7 @@ class _UniformClassProbaForecaster(BaseClassProbaForecaster):
         return self._add_time_columns(y_pred)
 
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -305,11 +299,6 @@ def categorical_series():
         ),
         "category": [classes[i] for i in rng.integers(0, 3, n)],
     })
-
-
-# ---------------------------------------------------------------------------
-# Test classes
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration

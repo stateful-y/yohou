@@ -3,7 +3,7 @@
 # dependencies = [
 #     "catboost",
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
