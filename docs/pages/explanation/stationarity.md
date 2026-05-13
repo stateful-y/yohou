@@ -127,7 +127,7 @@ covers non-stationarity transforms (scaling, windowing, imputation) that operate
 features rather than targets. For how residuals reveal whether a stationarity
 transform has done its job, see [Residual Diagnostics](residual-diagnostics.md).
 
-Practical examples: [Decomposition](/examples/stationarity/decomposition/),
-[Decomposition Variations](/examples/compose/decomposition_variations/),
-[Fourier Tuning](/examples/stationarity/fourier_tuning/), and
-[Stationarity Transforms](/examples/stationarity/stationarity_transforms/).
+Practical examples: [Decomposition](/examples/decomposition/),
+[Decomposition Variations](/examples/decomposition_variations/),
+[Fourier Tuning](/examples/fourier_tuning/), and
+[Stationarity Transforms](/examples/stationarity_transforms/).

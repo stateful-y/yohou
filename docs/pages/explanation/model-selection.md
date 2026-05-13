@@ -162,6 +162,6 @@ classification forecasters, pass a class-proba scorer such as
 [`LogLoss()`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) as the
 `scoring` parameter.
 
-Practical examples: [CV Splitters](/examples/model_selection/cv_splitters/),
-[Hyperparameter Search](/examples/model_selection/hyperparameter_search/), and
-[Time-Weighted Scoring](/examples/metrics/time_weighted_scoring/).
+Practical examples: [CV Splitters](/examples/cv_splitters/),
+[Hyperparameter Search](/examples/hyperparameter_search/), and
+[Time-Weighted Scoring](/examples/time_weighted_scoring/).

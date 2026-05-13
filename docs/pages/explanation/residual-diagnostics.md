@@ -71,8 +71,8 @@ room to improve. The conformal prediction framework in
 to construct prediction intervals. The [Stationarity](stationarity.md) page covers
 the transforms used to address non-stationary residual patterns.
 
-Practical examples: [Evaluation](/examples/plotting/evaluation/) and
-[Forecasting Visualization](/examples/plotting/forecasting_visualization/) demonstrate
+Practical examples: [Evaluation](/examples/evaluation/) and
+[Forecasting Visualization](/examples/forecasting_visualization/) demonstrate
 residual plots and ACF analysis on fitted forecasters.
 
 !!! note
