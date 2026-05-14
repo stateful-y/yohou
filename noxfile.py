@@ -25,10 +25,10 @@ _PLOTTING_UNSUPPORTED = {"3.14"}
 
 
 def _plotting_extras(session: nox.Session) -> tuple[str, ...]:
-    """Return ('--extra', 'plotting-interactive') when the session Python supports it."""
+    """Return ('--extra', 'plotting') when the session Python supports it."""
     if session.python in _PLOTTING_UNSUPPORTED:
         return ()
-    return ("--extra", "plotting-interactive")
+    return ("--extra", "plotting")
 
 
 def _plotting_ignores(session: nox.Session) -> tuple[str, ...]:
@@ -47,7 +47,7 @@ def test_coverage(session: nox.Session) -> None:
         "sync",
         "--no-default-groups",
         "--extra",
-        "plotting-interactive",
+        "plotting",
         "--group",
         "tests",
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
@@ -212,7 +212,7 @@ def test_examples(session: nox.Session) -> None:
         "sync",
         "--no-default-groups",
         "--extra",
-        "plotting-interactive",
+        "plotting",
         "--group",
         "tests",
         "--group",
