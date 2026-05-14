@@ -47,6 +47,11 @@ _YOHOU_BASE_IMPORTS: frozenset[str] = frozenset({
 # Imports added by each yohou optional extra.
 _YOHOU_EXTRAS_IMPORTS: dict[str, frozenset[str]] = {
     "plotting": frozenset({
+        "plotly",
+        "pytz",
+        "statsmodels",
+    }),
+    "plotting-interactive": frozenset({
         "anywidget",
         "plotly",
         "plotly_resampler",
@@ -122,7 +127,7 @@ def _resolve_covered_imports(deps: list[str]) -> set[str]:
             covered |= _YOHOU_BASE_IMPORTS
             for extra in extras:
                 covered |= _YOHOU_EXTRAS_IMPORTS.get(extra, frozenset())
-            if "plotting" in extras:
+            if "plotting" in extras or "plotting-interactive" in extras:
                 covered.add(_YOHOU_PLOTTING_MARKER)
         elif name in INSTALL_TO_IMPORT:
             covered.add(INSTALL_TO_IMPORT[name])
