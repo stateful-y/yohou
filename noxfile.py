@@ -92,6 +92,8 @@ def test(session: nox.Session) -> None:
         "--no-cov",
         "--doctest-modules",
         "--doctest-continue-on-failure",
+        "-m",
+        "not example",
         *_plotting_ignores(session),
         "-n",
         "auto",

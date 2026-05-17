@@ -13,6 +13,7 @@ __gallery__ = {
     "description": "Pairwise correlation heatmaps, scatter matrices, cross-correlation at multiple lags, and lag scatter plots for multivariate time series diagnostics.",
     "category": "tutorial",
     "section": "visualization",
+    "companion": "/pages/tutorials/exploratory-visualization/",
     "api_references": ["plot_correlation_heatmap", "plot_cross_correlation", "plot_lag_scatter", "plot_scatter_matrix"],
 }
 app = marimo.App(width="medium")
