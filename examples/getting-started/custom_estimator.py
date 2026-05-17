@@ -65,9 +65,11 @@ def _():
 
         def _predict_one(self, groups, **params):
             last_value = self._y_observed.select(~cs.by_name("time")).row(-1)[0]
-            return pl.DataFrame(
-                {self._y_columns[0]: [last_value] * self.fit_forecasting_horizon_}
+            col_name = next(iter(self.local_y_schema_))
+            y_pred = pl.DataFrame(
+                {col_name: [last_value] * self.fit_forecasting_horizon_}
             )
+            return self._add_time_columns(y_pred)
 
     return LastValueForecaster, cs, pl
 

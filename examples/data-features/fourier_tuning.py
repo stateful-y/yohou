@@ -44,6 +44,51 @@ def _(mo):
     """)
 
 
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    import polars as pl
+    from sklearn.base import clone
+    from sklearn.linear_model import ElasticNet, Ridge
+
+    from yohou.compose import DecompositionPipeline
+    from yohou.datasets import fetch_electricity_demand
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import (
+        ExpandingWindowSplitter,
+        GridSearchCV,
+        train_test_split,
+    )
+    from yohou.plotting import plot_forecast, plot_score_per_vintage
+    from yohou.point import PointReductionForecaster
+    from yohou.preprocessing import LagTransformer
+    from yohou.stationarity.seasonality import (
+        FourierSeasonalityForecaster,
+        PatternSeasonalityForecaster,
+    )
+
+    return (
+        DecompositionPipeline,
+        ElasticNet,
+        ExpandingWindowSplitter,
+        FourierSeasonalityForecaster,
+        GridSearchCV,
+        LagTransformer,
+        MeanAbsoluteError,
+        PatternSeasonalityForecaster,
+        PointReductionForecaster,
+        Ridge,
+        clone,
+        deepcopy,
+        fetch_electricity_demand,
+        pl,
+        plot_forecast,
+        plot_score_per_vintage,
+        train_test_split,
+    )
+
+
 @app.cell
 def _(fetch_electricity_demand, mo, pl, train_test_split):
     _elec = fetch_electricity_demand().frame

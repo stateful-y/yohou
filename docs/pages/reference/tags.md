@@ -77,3 +77,37 @@ These apply to all estimator types.
 | `symmetric` | `bool` | `True` | Whether `similarity(A, B) == similarity(B, A)` |
 | `requires_predictions` | `bool` | `True` | Whether predictions (`y_pred`) are needed in addition to actuals |
 | `produces_weights` | `bool` | `True` | Whether the measure produces weights for conformity scores |
+
+## Dynamic Tags
+
+Some tags are computed at runtime rather than declared in `_tags`. Override
+`__sklearn_tags__()` to set these programmatically.
+
+| Tag | Computed When | Description |
+|-----|---------------|-------------|
+| `forecaster_tags.stateful` | `target_transformer` or `feature_transformer` has `stateful=True` | Base forecaster automatically marks itself stateful when any attached transformer is stateful |
+| `forecaster_tags.forecaster_type` | Multiple base classes are combined | A forecaster that inherits both point and interval capabilities gets `{"point", "interval"}` automatically |
+| `forecaster_tags.requires_exogenous` | Subclass overrides `__sklearn_tags__()` | Set `False` for forecasters that never use `X_actual` |
+
+Override example:
+
+```python
+from yohou.utils.tags import Tags
+
+class MyForecaster(BasePointForecaster):
+    def __sklearn_tags__(self) -> Tags:
+        tags = super().__sklearn_tags__()
+        tags.forecaster_tags.requires_exogenous = False
+        tags.forecaster_tags.stateful = True
+        return tags
+```
+
+For the full explanation of tag resolution, MRO merging, and how dynamic tags
+interact with discovery and testing, see
+[Extending Yohou](../explanation/extending-yohou.md#the-tag-system).
+
+## See Also
+
+- [Extensions](extensions.md): base classes and extension packages for custom components
+- [Data Catalog](data-catalog.md): bundled datasets for testing and examples
+- [Extending Yohou](../explanation/extending-yohou.md): conceptual background on tag resolution, MRO merging, and dynamic tags

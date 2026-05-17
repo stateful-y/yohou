@@ -12,6 +12,8 @@ In this tutorial, we will compare two models' forecasts visually, add prediction
 
 ## 1. Prepare Data and Models
 
+We set up two forecasters: a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) baseline and a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with Ridge regression and a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) containing [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) features.
+
 ```python
 from sklearn.linear_model import Ridge
 from yohou.compose import FeaturePipeline
@@ -149,6 +151,37 @@ fig.show()
 ```
 
 The plot shows the weight assigned to each training observation. Exponential decay concentrates weight on recent observations.
+
+## 8. Categorical Forecast Visualization
+
+[`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) also handles categorical time series. When predictions contain `String` or `Categorical` columns, the plot renders step traces instead of continuous lines. Wrap a classifier with [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) and plot both hard predictions and probability distributions:
+
+```python
+import polars as pl
+from sklearn.ensemble import GradientBoostingClassifier
+from yohou.class_proba import ClassProbaReductionForecaster
+
+# Discretize the target into categories
+y_cat = y.with_columns(
+    pl.when(pl.col("Trips") < 20_000).then(pl.lit("low"))
+    .when(pl.col("Trips") < 40_000).then(pl.lit("medium"))
+    .otherwise(pl.lit("high"))
+    .alias("demand")
+).select("time", "demand")
+
+y_cat_train, y_cat_test = train_test_split(y_cat, test_size=forecasting_horizon)
+
+cls_forecaster = ClassProbaReductionForecaster(
+    estimator=GradientBoostingClassifier(),
+)
+cls_forecaster.fit(y_cat_train, forecasting_horizon=forecasting_horizon)
+
+y_cat_pred = cls_forecaster.predict(forecasting_horizon=forecasting_horizon)
+fig = plot_forecast(y_cat_test, y_cat_pred, y_train=y_cat_train[-24:])
+fig.show()
+```
+
+If you also call `predict_class_proba()`, passing the result to `plot_forecast` renders stacked probability bars alongside the hard labels. See the companion notebook for the full interactive example.
 
 ## What You Built
 

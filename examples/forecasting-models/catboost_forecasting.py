@@ -45,9 +45,45 @@ def _(mo):
     """)
 
 
-@app.cell
-def _(fetch_tourism_monthly, plot_time_series):
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    from catboost import CatBoostRegressor
+    from sklearn.linear_model import Ridge
+    from sklearn.multioutput import MultiOutputRegressor
+
+    from yohou.datasets import fetch_tourism_monthly
+    from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import train_test_split
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_per_step,
+        plot_score_time_series,
+        plot_time_series,
+    )
+    from yohou.point import PointReductionForecaster
+    from yohou.preprocessing import LagTransformer
+
+    return (
+        CatBoostRegressor,
+        LagTransformer,
+        MeanAbsoluteError,
+        MultiOutputRegressor,
+        PointReductionForecaster,
+        Ridge,
+        deepcopy,
+        fetch_tourism_monthly,
+        plot_forecast,
+        plot_score_per_step,
+        plot_score_time_series,
+        plot_time_series,
+        train_test_split,
+    )
+
+
+@app.cell
+def _(fetch_tourism_monthly, plot_time_series, train_test_split):
 
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 
@@ -73,16 +109,19 @@ def _(mo):
 def _(
     CatBoostRegressor,
     LagTransformer,
+    MultiOutputRegressor,
     PointReductionForecaster,
     forecasting_horizon,
     y_train,
 ):
     catboost_fc = PointReductionForecaster(
-        estimator=CatBoostRegressor(
-            iterations=200,
-            depth=4,
-            learning_rate=0.1,
-            verbose=0,
+        estimator=MultiOutputRegressor(
+            CatBoostRegressor(
+                iterations=200,
+                depth=4,
+                learning_rate=0.1,
+                verbose=0,
+            )
         ),
         feature_transformer=LagTransformer(lag=list(range(1, 13))),
     )

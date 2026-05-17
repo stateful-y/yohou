@@ -60,3 +60,14 @@
 *[trend]: A long-term upward or downward movement in the level of a time series.
 *[vintage]: A set of predictions issued at the same point in time, identified by the vintage_time column.
 *[walk-forward evaluation]: Another name for rolling evaluation: stepping through a test set chronologically, observing actual values before issuing each forecast.
+*[seasonality]: A repeating, predictable pattern in a time series that occurs at regular intervals (daily, weekly, yearly).
+*[lag]: An observation from a previous time step used as an input feature for prediction.
+*[STL]: Seasonal and Trend decomposition using Loess, a method that separates a time series into trend, seasonal, and remainder components.
+*[autoregressive features]: Input features derived from past values of the target series itself, such as lags or rolling statistics.
+*[tail errors]: Large forecast errors in the extreme quantiles of the error distribution, indicating poor performance on unusual observations.
+*[structural break]: An abrupt, permanent change in the statistical properties of a time series caused by an external event.
+*[regime change]: A shift in the underlying data-generating process that produces a new statistical pattern.
+*[homoscedasticity]: A condition where the variance of a time series remains constant over time.
+*[MRO]: Method Resolution Order, the sequence Python follows when searching for a method across a class hierarchy.
+*[vintage weight]: A metadata weight applied per vintage in multi-vintage scoring to control the relative importance of each forecast vintage.
+*[step weight]: A metadata weight applied per forecast step to control the relative importance of predictions at different horizons.

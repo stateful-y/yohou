@@ -59,9 +59,9 @@ To extract a single group back out, use
 
 ## 2. Fit a Forecaster
 
-Pass panel DataFrames directly to `fit`. The default
-`panel_strategy="global"` gives each group independent transformers while
-sharing a single model across all groups:
+Pass panel DataFrames directly to `fit`. Use [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/) to create train/test sets.
+The default `panel_strategy="global"` gives each group independent transformers while
+sharing a single [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) model across all groups:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -107,7 +107,8 @@ The `panel_strategy` parameter controls how groups share information:
 
 For completely independent models per group, use
 [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/)
-instead. It clones the forecaster and fits one instance per group, which is
+instead. It clones the forecaster (for example, [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/))
+and fits one instance per group, which is
 best when groups have genuinely different dynamics and enough history each:
 
 ```python

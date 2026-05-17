@@ -158,6 +158,7 @@ For box plots, `distribute_by` controls the variability dimension (`"time"`,
 
 ## See Also
 
+- [How to Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md) for cross-validation setup and metric selection
 - [How to Visualize Forecasts](visualize-forecasts.md) for plotting predictions vs actuals, residual diagnostics, and calibration checks
 - [Visualization](../explanation/visualization.md#evaluating-model-quality) for the conceptual overview
 - [How to Evaluate Forecasts with Multi-vintage Scoring](multi-vintage-scoring.md) for generating and scoring multi-vintage predictions

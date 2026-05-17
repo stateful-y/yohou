@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -43,6 +43,46 @@ def _(mo):
     groups from the `__` separator in column names. The data is split
     85/15 into train and test sets.
     """)
+
+
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    from sklearn.linear_model import Ridge
+    from sklearn.tree import DecisionTreeRegressor
+
+    from yohou.compose import ColumnForecaster
+    from yohou.datasets import fetch_kdd_cup
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
+    from yohou.plotting import (
+        plot_forecast,
+        plot_group_scores,
+        plot_score_time_series,
+        plot_time_series,
+    )
+    from yohou.point import PointReductionForecaster, SeasonalNaive
+    from yohou.preprocessing import LagTransformer
+    from yohou.utils.panel import inspect_panel
+
+    return (
+        ColumnForecaster,
+        DecisionTreeRegressor,
+        LagTransformer,
+        MeanAbsoluteError,
+        PointReductionForecaster,
+        Ridge,
+        SeasonalNaive,
+        deepcopy,
+        fetch_kdd_cup,
+        inspect_panel,
+        plot_forecast,
+        plot_group_scores,
+        plot_score_time_series,
+        plot_time_series,
+        train_test_split,
+    )
 
 
 @app.cell
@@ -203,8 +243,7 @@ def _(mo):
 
 
 @app.cell
-def _(fc_global, groups, mo, plot_forecast, y_test, y_train):
-    from copy import deepcopy
+def _(deepcopy, fc_global, groups, mo, plot_forecast, y_test, y_train):
 
     _fc = deepcopy(fc_global)
     _group_name = sorted(groups.keys())[0]

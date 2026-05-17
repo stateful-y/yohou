@@ -56,3 +56,8 @@ Optional overrides: `_fit()` (default no-op), `_inverse_transform()` (required o
 | [`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/) | `yohou.model_selection.search` | `_run_search()` |
 
 Built-in implementations: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/), [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/). Extend [`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/) only for custom search strategies (e.g., Bayesian optimization).
+
+## See Also
+
+- [Tags](tags.md): tag system for declaring component capabilities
+- [Data Catalog](data-catalog.md): bundled datasets for testing and examples

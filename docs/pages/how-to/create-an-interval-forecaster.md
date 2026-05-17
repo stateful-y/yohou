@@ -210,6 +210,8 @@ If any check fails, its name tells you exactly which contract is violated
 ## See Also
 
 - [Create a Point Forecaster](create-a-point-forecaster.md): simpler single-value forecasters
+- [Create a Class-Probability Forecaster](create-a-class-proba-forecaster.md): categorical outcome forecasters
+- [Create a Transformer](create-a-transformer.md): custom preprocessing and feature engineering
 - [Produce Prediction Intervals](interval-forecasting.md): using the built-in `SplitConformalForecaster`
 - [Create a Custom Scorer](create-a-scorer.md): implementing interval evaluation metrics with `BaseIntervalScorer`
 - [Extending Yohou](../explanation/extending-yohou.md): when to extend vs compose, base class architecture

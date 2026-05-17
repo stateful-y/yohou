@@ -73,9 +73,9 @@ def _(mo):
 @app.cell
 def _(PointReductionForecaster, Ridge, fetch_electricity_demand, train_test_split):
     data = fetch_electricity_demand()
-    y = data.frame
+    y = data.frame.select("time", "qun__demand").drop_nulls().rename({"qun__demand": "demand"})
 
-    y_train, y_test = train_test_split(y, test_size=48)
+    y_train, y_test = train_test_split(y, test_size=24)
 
     forecaster = PointReductionForecaster(estimator=Ridge())
     forecaster.fit(y_train, forecasting_horizon=24)
@@ -152,11 +152,10 @@ def _(
     y_train,
 ):
     cp = SplitConformalForecaster(
-        forecaster=PointReductionForecaster(estimator=Ridge()),
-        coverage_rates=[0.90],
+        point_forecaster=PointReductionForecaster(estimator=Ridge()),
     )
     cp.fit(y_train, forecasting_horizon=24)
-    y_pred_interval = cp.predict_interval()
+    y_pred_interval = cp.predict_interval(coverage_rates=[0.90])
 
     fig_interval = plot_forecast(y_test, y_pred_interval, y_train=y_train)
     fig_interval

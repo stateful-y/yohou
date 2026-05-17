@@ -81,7 +81,7 @@ def _(Ridge, data):
     from yohou.compose import FeaturePipeline
     from yohou.metrics import MeanAbsoluteError
     from yohou.point import PointReductionForecaster
-    from yohou.preprocessing.lags import LagTransformer
+    from yohou.preprocessing import LagTransformer
 
     from yohou.model_selection import train_test_split
 
@@ -102,6 +102,7 @@ def _(Ridge, data):
     pred_limited = fc_limited.predict(forecasting_horizon=24)
 
     scorer = MeanAbsoluteError()
+    scorer.fit(y_train)
     print(f"MAE (full history):    {scorer.score(y_test, pred_full):.2f}")
     print(f"MAE (limited history): {scorer.score(y_test, pred_limited):.2f}")
 

@@ -44,6 +44,34 @@ def _(mo):
     """)
 
 
+@app.cell(hide_code=True)
+def _():
+    import polars as pl
+    from sklearn.linear_model import Ridge
+
+    from yohou.compose import ForecastedFeatureForecaster
+    from yohou.datasets import fetch_hospital
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
+    from yohou.plotting import plot_forecast, plot_score_time_series, plot_time_series
+    from yohou.point import PointReductionForecaster
+    from yohou.preprocessing import LagTransformer
+
+    return (
+        ForecastedFeatureForecaster,
+        LagTransformer,
+        MeanAbsoluteError,
+        PointReductionForecaster,
+        Ridge,
+        fetch_hospital,
+        pl,
+        plot_forecast,
+        plot_score_time_series,
+        plot_time_series,
+        train_test_split,
+    )
+
+
 @app.cell
 def _(fetch_hospital, mo, pl, train_test_split):
     _hosp = fetch_hospital().frame

@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -45,6 +45,37 @@ def _(mo):
     CO, O3, SO2). This structure with **multiple members per group** is key
     to showing the difference between componentwise and groupwise aggregation.
     """)
+
+
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    from sklearn.linear_model import Ridge
+
+    from yohou.datasets import fetch_kdd_cup
+    from yohou.interval import SplitConformalForecaster
+    from yohou.metrics import EmpiricalCoverage, MeanAbsoluteError
+    from yohou.model_selection import train_test_split
+    from yohou.plotting import plot_score_heatmap, plot_time_series
+    from yohou.point import PointReductionForecaster
+    from yohou.preprocessing import LagTransformer
+    from yohou.utils.panel import inspect_panel
+
+    return (
+        LagTransformer,
+        MeanAbsoluteError,
+        PointReductionForecaster,
+        Ridge,
+        SplitConformalForecaster,
+        EmpiricalCoverage,
+        deepcopy,
+        fetch_kdd_cup,
+        inspect_panel,
+        plot_score_heatmap,
+        plot_time_series,
+        train_test_split,
+    )
 
 
 @app.cell

@@ -97,6 +97,8 @@ scorer = MeanAbsolutePercentageError()
 
 ## See Also
 
+- [Handle Long Series](handle-long-series.md) for the opposite problem:
+  when history is so large that computation or stale data becomes an issue.
 - [Model Selection](../explanation/model-selection.md) for the theory of
   temporal cross-validation and why standard k-fold is invalid for time series.
 - [Handle Complex Seasonality](handle-complex-seasonality.md) for

@@ -44,6 +44,52 @@ def _(mo):
     """)
 
 
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    import polars as pl
+    from sklearn.linear_model import Ridge
+
+    from yohou.compose import DecompositionPipeline
+    from yohou.datasets import fetch_sunspot, fetch_tourism_quarterly
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
+    from yohou.plotting import (
+        plot_decomposition,
+        plot_forecast,
+        plot_score_per_step,
+        plot_score_summary,
+        plot_time_series,
+    )
+    from yohou.point import PointReductionForecaster
+    from yohou.preprocessing import LagTransformer
+    from yohou.stationarity import LogTransformer
+    from yohou.stationarity.seasonality import PatternSeasonalityForecaster
+    from yohou.stationarity.trend import PolynomialTrendForecaster
+
+    return (
+        DecompositionPipeline,
+        LagTransformer,
+        LogTransformer,
+        MeanAbsoluteError,
+        PatternSeasonalityForecaster,
+        PointReductionForecaster,
+        PolynomialTrendForecaster,
+        Ridge,
+        deepcopy,
+        fetch_sunspot,
+        fetch_tourism_quarterly,
+        pl,
+        plot_decomposition,
+        plot_forecast,
+        plot_score_per_step,
+        plot_score_summary,
+        plot_time_series,
+        train_test_split,
+    )
+
+
 @app.cell
 def _(fetch_sunspot, mo, pl, train_test_split):
     _raw = fetch_sunspot().frame

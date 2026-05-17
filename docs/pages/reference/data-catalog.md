@@ -405,3 +405,8 @@ clear_data_home()  # deletes all files in ~/yohou_data/
 Deletes all cached data files in the data home directory.
 
 <!-- GALLERY:section:data-catalog -->
+
+## See Also
+
+- [Extensions](extensions.md): base classes and extension packages for custom components
+- [Tags](tags.md): tag system for declaring component capabilities

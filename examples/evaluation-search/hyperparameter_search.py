@@ -101,8 +101,7 @@ def _(mo):
 
 
 @app.cell
-def _(fetch_tourism_monthly):
-    from yohou.model_selection import train_test_split
+def _(fetch_tourism_monthly, train_test_split):
 
     y = fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})
 

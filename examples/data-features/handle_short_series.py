@@ -132,12 +132,23 @@ def _(Ridge, fetch_tourism_monthly):
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
-    # Load the full panel (multiple series)
-    panel = fetch_tourism_monthly().frame.head(200)
+    # Load a subset of panel series (drop rows with nulls)
+    panel = (
+        fetch_tourism_monthly()
+        .frame.select(
+            "time",
+            "T1__tourists",
+            "T2__tourists",
+            "T3__tourists",
+            "T4__tourists",
+            "T5__tourists",
+        )
+        .drop_nulls()
+    )
 
     forecaster_global = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=FeaturePipeline([("lags", LagTransformer(lag=[1, 6, 12]))]),
+        feature_transformer=FeaturePipeline([("lags", LagTransformer(lag=[1, 2, 3]))]),
         panel_strategy="global",
     )
     forecaster_global.fit(panel, forecasting_horizon=6)

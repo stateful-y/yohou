@@ -40,6 +40,50 @@ def _(mo):
     """)
 
 
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    from sklearn.linear_model import Ridge
+
+    from yohou.compose import DecompositionPipeline
+    from yohou.datasets import fetch_tourism_quarterly
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
+    from yohou.plotting import (
+        plot_forecast,
+        plot_score_per_vintage,
+        plot_score_time_series,
+        plot_time_series,
+    )
+    from yohou.point import PointReductionForecaster, SeasonalNaive
+    from yohou.preprocessing import LagTransformer
+    from yohou.stationarity import SeasonalDifferencing
+    from yohou.stationarity.seasonality import PatternSeasonalityForecaster
+    from yohou.stationarity.trend import PolynomialTrendForecaster
+    from yohou.utils.panel import inspect_panel
+
+    return (
+        DecompositionPipeline,
+        LagTransformer,
+        MeanAbsoluteError,
+        PatternSeasonalityForecaster,
+        PointReductionForecaster,
+        PolynomialTrendForecaster,
+        Ridge,
+        SeasonalDifferencing,
+        SeasonalNaive,
+        deepcopy,
+        fetch_tourism_quarterly,
+        inspect_panel,
+        plot_forecast,
+        plot_score_per_vintage,
+        plot_score_time_series,
+        plot_time_series,
+        train_test_split,
+    )
+
+
 @app.cell
 def _(fetch_tourism_quarterly, inspect_panel, mo, train_test_split):
     _bunch = fetch_tourism_quarterly()
@@ -113,10 +157,10 @@ def _(
     LagTransformer,
     PointReductionForecaster,
     PolynomialTrendForecaster,
+    Ridge,
     horizon,
     y_train,
 ):
-    from sklearn.linear_model import Ridge
 
     fc_decomp = DecompositionPipeline(
         forecasters=[

@@ -225,5 +225,7 @@ If any check fails, its name tells you exactly which contract is violated
 
 - [Forecast with Class Probabilities](class-probability-forecasting.md): using the built-in `ClassProbaReductionForecaster`
 - [Create a Point Forecaster](create-a-point-forecaster.md): continuous value forecasters
+- [Create an Interval Forecaster](create-an-interval-forecaster.md): prediction interval forecasters
+- [Create a Transformer](create-a-transformer.md): custom preprocessing and feature engineering
 - [Create a Custom Scorer](create-a-scorer.md): custom evaluation metrics
 - [Extending Yohou](../explanation/extending-yohou.md): when to extend vs compose

@@ -136,6 +136,8 @@ imputer = FunctionTransformer(func=clamp_and_fill)
 
 ## See Also
 
+- [Handle Outliers](handle-outliers.md) for detecting and treating anomalous values
+  before or after imputation.
 - [Preprocessing](../explanation/preprocessing.md) for the conceptual model of
   stateful vs. stateless transformers and how the pipeline contract works.
 - [Compose Feature Pipelines](compose-feature-pipelines.md) for combining

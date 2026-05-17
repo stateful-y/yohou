@@ -42,6 +42,50 @@ def _(mo):
     """)
 
 
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    from sklearn.linear_model import Ridge
+
+    from yohou.datasets import fetch_dominick, fetch_tourism_monthly
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
+    from yohou.plotting import (
+        plot_score_per_vintage,
+        plot_score_time_series,
+        plot_time_series,
+        plot_time_weight,
+    )
+    from yohou.point import PointReductionForecaster
+    from yohou.preprocessing import LagTransformer
+    from yohou.utils.weighting import (
+        compose_weights,
+        exponential_decay_weight,
+        linear_decay_weight,
+        seasonal_emphasis_weight,
+    )
+
+    return (
+        LagTransformer,
+        MeanAbsoluteError,
+        PointReductionForecaster,
+        Ridge,
+        compose_weights,
+        deepcopy,
+        exponential_decay_weight,
+        fetch_dominick,
+        fetch_tourism_monthly,
+        linear_decay_weight,
+        plot_score_per_vintage,
+        plot_score_time_series,
+        plot_time_series,
+        plot_time_weight,
+        seasonal_emphasis_weight,
+        train_test_split,
+    )
+
+
 @app.cell
 def _(
     LagTransformer,

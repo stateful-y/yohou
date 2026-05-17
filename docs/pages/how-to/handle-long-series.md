@@ -153,6 +153,8 @@ score = scorer.score(
 
 ## See Also
 
+- [Handle Short Series](handle-short-series.md) for the opposite problem:
+  when history is too limited for standard training or cross-validation.
 - [Core Concepts](../explanation/core-concepts.md) for the `observation_horizon`
   mechanism and the fit/observe/predict lifecycle.
 - [Use Time Weighting](time-weighting.md) for full recipes on applying decay

@@ -233,7 +233,9 @@ managed in pipelines. [Model Selection](model-selection.md) describes
 cross-validation and hyperparameter search, where metadata routing ensures
 parameters reach the right estimators. The weight types (`time_weight`,
 `vintage_weight`, `step_weight`) that flow through the routing infrastructure
-are discussed in [Weighting](weighting.md).
+are discussed in [Weighting](weighting.md). [Extending Yohou](extending-yohou.md)
+covers how custom components participate in the routing infrastructure through
+tags and base class conventions.
 
 For practical recipes on routing weights through search and composition, see
 [How to Tune Hyperparameters](../how-to/tune-hyperparameters.md) and

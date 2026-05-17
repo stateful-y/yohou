@@ -203,6 +203,10 @@ checks.
 
 ## See Also
 
+- [Create a Point Forecaster](create-a-point-forecaster.md): custom point forecasters
+- [Create an Interval Forecaster](create-an-interval-forecaster.md): custom interval forecasters
+- [Create a Class-Probability Forecaster](create-a-class-proba-forecaster.md): categorical outcome forecasters
+- [Create a Transformer](create-a-transformer.md): custom preprocessing and feature engineering
 - [yohou.metrics API Reference](../api/metrics.md) for the full list of
   built-in scorers and all base class options
 - [yohou.testing API Reference](../api/testing.md) for check generators

@@ -41,9 +41,60 @@ def _(mo):
     """)
 
 
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    import polars as pl
+    from scipy.stats import loguniform
+    from sklearn.linear_model import ElasticNet, Ridge
+
+    from yohou.datasets import fetch_tourism_monthly
+    from yohou.metrics import (
+        MeanAbsoluteError,
+        MeanAbsolutePercentageError,
+        RootMeanSquaredError,
+    )
+    from yohou.model_selection import (
+        ExpandingWindowSplitter,
+        GridSearchCV,
+        RandomizedSearchCV,
+        train_test_split,
+    )
+    from yohou.plotting import (
+        plot_cv_results_scatter,
+        plot_forecast,
+        plot_score_summary,
+        plot_time_series,
+    )
+    from yohou.point import PointReductionForecaster
+    from yohou.preprocessing import LagTransformer
+
+    return (
+        ElasticNet,
+        ExpandingWindowSplitter,
+        GridSearchCV,
+        LagTransformer,
+        MeanAbsoluteError,
+        MeanAbsolutePercentageError,
+        PointReductionForecaster,
+        RandomizedSearchCV,
+        Ridge,
+        RootMeanSquaredError,
+        deepcopy,
+        fetch_tourism_monthly,
+        loguniform,
+        pl,
+        plot_cv_results_scatter,
+        plot_forecast,
+        plot_score_summary,
+        plot_time_series,
+        train_test_split,
+    )
+
+
 @app.cell
-def _(fetch_tourism_monthly, mo):
-    from yohou.model_selection import train_test_split
+def _(fetch_tourism_monthly, mo, train_test_split):
 
     tourism = (
         fetch_tourism_monthly().frame.select("time", "T1__tourists").drop_nulls().rename({"T1__tourists": "tourists"})

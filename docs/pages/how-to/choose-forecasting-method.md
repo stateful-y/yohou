@@ -56,7 +56,7 @@ If this does not improve on the baseline, the data likely has nonlinear patterns
 
 ## 3. Handle Non-stationarity with Target Transformers
 
-If the series has trend or changing variance, add a target transformer:
+If the series has trend or changing variance, add a target transformer such as [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) or [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/):
 
 ```python
 from yohou.stationarity import SeasonalDifferencing, LogTransformer
@@ -78,7 +78,7 @@ See [Apply Stationarity Transforms](apply-stationarity-transforms.md) for the fu
 
 ## 4. Enrich the Feature Set
 
-Add feature transformers one group at a time. Check whether cross-validation scores improve after each addition:
+Add feature transformers one group at a time. Combine [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/), and other transformers using [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/). Check whether cross-validation scores improve after each addition:
 
 ```python
 from yohou.preprocessing import LagTransformer, RollingStatisticsTransformer
@@ -139,7 +139,7 @@ See [Reduction Forecasting](../explanation/reduction-forecasting.md) for backgro
 
 ## 7. Use Decomposition for Complex Seasonality
 
-If the series has multiple seasonal components or strong trend, a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) separates the problem into simpler parts:
+If the series has multiple seasonal components or strong trend, a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) separates the problem into simpler parts. Use [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) for trend and [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/) for cyclical patterns:
 
 ```python
 from yohou.compose import DecompositionPipeline

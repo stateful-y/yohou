@@ -58,14 +58,17 @@ def _():
     import polars as pl
     from sklearn.linear_model import Ridge
 
-    from yohou.datasets import fetch_tourism
+    from yohou.datasets import fetch_tourism_monthly
     from yohou.metrics import MeanAbsoluteError
     from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, train_test_split
     from yohou.point import PointReductionForecaster, SeasonalNaive
 
-    bunch = fetch_tourism()
-    # Use a single series for clarity
-    y = bunch.frame.select("time", "total")
+    y = (
+        fetch_tourism_monthly()
+        .frame.select("time", "T1__tourists")
+        .drop_nulls()
+        .rename({"T1__tourists": "total"})
+    )
 
     forecasting_horizon = 12
     y_train, y_test = train_test_split(y, test_size=forecasting_horizon)
@@ -80,7 +83,6 @@ def _():
         PointReductionForecaster,
         Ridge,
         SeasonalNaive,
-        bunch,
         forecasting_horizon,
         pl,
         scorer,
@@ -196,6 +198,7 @@ def _(PointReductionForecaster, SeasonalDifferencing, feature_transformer, forec
         estimator=HistGradientBoostingRegressor(max_iter=100, random_state=42),
         feature_transformer=feature_transformer,
         target_transformer=SeasonalDifferencing(seasonality=12),
+        reduction_strategy="direct",
     )
     nonlinear.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_nonlinear = nonlinear.predict(forecasting_horizon=forecasting_horizon)
@@ -212,7 +215,7 @@ def _(mo):
 
 
 @app.cell
-def _(PointReductionForecaster, Ridge, forecasting_horizon, scorer, y_test, y_train):
+def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, scorer, y_test, y_train):
     from yohou.compose import DecompositionPipeline
     from yohou.stationarity import FourierSeasonalityForecaster, PolynomialTrendForecaster
 
@@ -220,7 +223,7 @@ def _(PointReductionForecaster, Ridge, forecasting_horizon, scorer, y_test, y_tr
         forecasters=[
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
-            ("residual", PointReductionForecaster(estimator=Ridge())),
+            ("residual", PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2, 3]))),
         ]
     )
     decomp.fit(y_train, forecasting_horizon=forecasting_horizon)

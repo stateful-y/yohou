@@ -138,7 +138,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     n_splits_slider = mo.ui.slider(
-        start=2,
+        start=3,
         stop=6,
         value=3,
         label="n_splits (CV folds)",
@@ -169,7 +169,7 @@ def _(
         scoring=MeanAbsoluteScaledError(seasonality=12),
         cv=cv,
     )
-    search.fit(y, forecasting_horizon=forecasting_horizon)
+    search.fit(y_train, forecasting_horizon=forecasting_horizon)
     print(f"Best params: {search.best_params_}")
     print(f"CV MASE:     {-search.best_score_:.2f}")
     return cv, n_splits, search
@@ -200,7 +200,7 @@ def _(
         print(f"{name:15s}  MAE={mae.score(y_test, y_pred):.2f}  MASE={mase.score(y_test, y_pred):.2f}")
 
     fig_summary = plot_score_summary(
-        mase,
+        mae,
         y_test,
         {"SeasonalNaive": y_pred_baseline, "Ridge": y_pred_ridge},
     )

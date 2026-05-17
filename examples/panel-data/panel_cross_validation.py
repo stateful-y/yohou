@@ -43,9 +43,43 @@ def _(mo):
     """)
 
 
+@app.cell(hide_code=True)
+def _():
+    from copy import deepcopy
+
+    import polars as pl
+    from sklearn.linear_model import Ridge
+
+    from yohou.datasets import fetch_tourism_quarterly
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import (
+        ExpandingWindowSplitter,
+        GridSearchCV,
+        train_test_split,
+    )
+    from yohou.plotting import plot_forecast, plot_score_per_vintage, plot_time_series
+    from yohou.point import PointReductionForecaster
+    from yohou.preprocessing import LagTransformer
+
+    return (
+        ExpandingWindowSplitter,
+        GridSearchCV,
+        LagTransformer,
+        MeanAbsoluteError,
+        PointReductionForecaster,
+        Ridge,
+        deepcopy,
+        fetch_tourism_quarterly,
+        pl,
+        plot_forecast,
+        plot_score_per_vintage,
+        plot_time_series,
+        train_test_split,
+    )
+
+
 @app.cell
-def _(fetch_tourism_quarterly, mo):
-    from yohou.model_selection import train_test_split
+def _(fetch_tourism_quarterly, mo, train_test_split):
 
     tourism = fetch_tourism_quarterly().frame.select("time", *[f"T{i}__tourists" for i in range(3, 11)]).drop_nulls()
     fh = 8

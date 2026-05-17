@@ -112,6 +112,8 @@ predicted levels (multiplicative noise). For purely additive noise, the default
 
 ## See Also
 
+- [Handle Missing Data](handle-missing-data.md) for imputing gaps that outlier
+  removal may create
 - [Interval Forecasting](../explanation/interval-forecasting.md) for the
   conformal coverage guarantee and how calibration set composition affects
   interval validity
