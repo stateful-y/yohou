@@ -59,6 +59,10 @@ build:
 build-fast:
     MKDOCS_SKIP_NOTEBOOKS=1 uv run mkdocs build --clean
 
+# Export all marimo notebooks to HTML (cached, only re-exports changed ones)
+export-notebooks:
+    uv run python -c "import sys; sys.path.insert(0, 'docs'); from hooks import on_pre_build; on_pre_build(None)"
+
 # Serve documentation locally
 serve:
     @echo "###### Starting local server. Press Control+C to stop server ######"

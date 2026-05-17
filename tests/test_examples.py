@@ -22,7 +22,10 @@ _has_statsmodels = importlib.util.find_spec("statsmodels") is not None
 _has_catboost = importlib.util.find_spec("catboost") is not None
 
 # Notebooks that require optional dependencies or have known issues, keyed by filename
-_NOTEBOOK_MARKS: dict[str, list[pytest.MarkDecorator]] = {}
+_NOTEBOOK_MARKS: dict[str, list[pytest.MarkDecorator]] = {
+    "catboost_forecasting.py": [pytest.mark.skipif(not _has_catboost, reason="catboost not installed")],
+    "catboost_multiquantile.py": [pytest.mark.skipif(not _has_catboost, reason="catboost not installed")],
+}
 
 
 def _collect_notebooks(subdir: str | None = None) -> list:
@@ -66,43 +69,32 @@ class TestTopLevelExamples:
 class TestSubdirExamples:
     """Tests for example notebooks in subdirectories."""
 
-    @pytest.mark.parametrize("notebook_file", _collect_notebooks("point"))
-    def test_point_example(self, notebook_file: pathlib.Path) -> None:
-        """Test that a point/ notebook example runs successfully."""
+    @pytest.mark.parametrize("notebook_file", _collect_notebooks("getting-started"))
+    def test_getting_started_example(self, notebook_file: pathlib.Path) -> None:
+        """Test that a getting-started/ notebook example runs successfully."""
         _run_notebook(notebook_file)
 
-    @pytest.mark.parametrize("notebook_file", _collect_notebooks("interval"))
-    def test_interval_example(self, notebook_file: pathlib.Path) -> None:
-        """Test that an interval/ notebook example runs successfully."""
+    @pytest.mark.parametrize("notebook_file", _collect_notebooks("data-features"))
+    def test_data_features_example(self, notebook_file: pathlib.Path) -> None:
+        """Test that a data-features/ notebook example runs successfully."""
         _run_notebook(notebook_file)
 
-    @pytest.mark.parametrize("notebook_file", _collect_notebooks("metrics"))
-    def test_metrics_example(self, notebook_file: pathlib.Path) -> None:
-        """Test that a metrics/ notebook example runs successfully."""
+    @pytest.mark.parametrize("notebook_file", _collect_notebooks("forecasting-models"))
+    def test_forecasting_models_example(self, notebook_file: pathlib.Path) -> None:
+        """Test that a forecasting-models/ notebook example runs successfully."""
         _run_notebook(notebook_file)
 
-    @pytest.mark.parametrize("notebook_file", _collect_notebooks("model_selection"))
-    def test_model_selection_example(self, notebook_file: pathlib.Path) -> None:
-        """Test that a model_selection/ notebook example runs successfully."""
+    @pytest.mark.parametrize("notebook_file", _collect_notebooks("evaluation-search"))
+    def test_evaluation_search_example(self, notebook_file: pathlib.Path) -> None:
+        """Test that an evaluation-search/ notebook example runs successfully."""
         _run_notebook(notebook_file)
 
-    @pytest.mark.parametrize("notebook_file", _collect_notebooks("preprocessing"))
-    def test_preprocessing_example(self, notebook_file: pathlib.Path) -> None:
-        """Test that a preprocessing/ notebook example runs successfully."""
+    @pytest.mark.parametrize("notebook_file", _collect_notebooks("panel-data"))
+    def test_panel_data_example(self, notebook_file: pathlib.Path) -> None:
+        """Test that a panel-data/ notebook example runs successfully."""
         _run_notebook(notebook_file)
 
-    @pytest.mark.parametrize("notebook_file", _collect_notebooks("stationarity"))
-    def test_stationarity_example(self, notebook_file: pathlib.Path) -> None:
-        """Test that a stationarity/ notebook example runs successfully."""
-        _run_notebook(notebook_file)
-
-    @pytest.mark.parametrize("notebook_file", _collect_notebooks("compose"))
-    def test_compose_example(self, notebook_file: pathlib.Path) -> None:
-        """Test that a compose/ notebook example runs successfully."""
-        _run_notebook(notebook_file)
-
-    @pytest.mark.parametrize("notebook_file", _collect_notebooks("plotting"))
-    def test_plotting_example(self, notebook_file: pathlib.Path) -> None:
-        """Test that a plotting/ notebook example runs successfully."""
-        pytest.importorskip("plotly_resampler", reason="plotting extra not installed")
+    @pytest.mark.parametrize("notebook_file", _collect_notebooks("visualization"))
+    def test_visualization_example(self, notebook_file: pathlib.Path) -> None:
+        """Test that a visualization/ notebook example runs successfully."""
         _run_notebook(notebook_file)

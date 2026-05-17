@@ -2,6 +2,7 @@
 
 import ast
 import fnmatch
+import hashlib
 import os
 import re
 import shutil
@@ -1522,6 +1523,23 @@ def on_startup(**kwargs):
     _GIT_REF_CACHE = None
 
 
+def _notebook_content_hash(notebook: Path) -> str:
+    """Compute a SHA-256 hash of a notebook file's contents."""
+    return hashlib.sha256(notebook.read_bytes()).hexdigest()
+
+
+def _is_cached(output_dir: Path, expected_hash: str) -> bool:
+    """Check whether a notebook export is cached and up-to-date."""
+    hash_file = output_dir / ".source_hash"
+    html_file = output_dir / "index.html"
+    if not html_file.exists() or not hash_file.exists():
+        return False
+    try:
+        return hash_file.read_text().strip() == expected_hash
+    except OSError:
+        return False
+
+
 def on_pre_build(config):
     """Export marimo notebooks and generate API pages before building docs."""
     project_root = Path(__file__).parent.parent
@@ -1551,8 +1569,27 @@ def on_pre_build(config):
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
-    def _export_notebook(notebook):
+    # Filter to only notebooks that need re-exporting (content hash changed)
+    to_export: list[tuple[Path, str]] = []
+    cached_count = 0
+    for nb in notebooks:
+        content_hash = _notebook_content_hash(nb)
+        output_dir = docs_examples / nb.stem
+        if _is_cached(output_dir, content_hash):
+            cached_count += 1
+        else:
+            to_export.append((nb, content_hash))
+
+    if cached_count:
+        print(f"[hooks] {cached_count} notebook(s) unchanged, skipping", flush=True)
+
+    if not to_export:
+        print("[hooks] all notebooks cached, nothing to export", flush=True)
+        return
+
+    def _export_notebook(item):
         """Export a single marimo notebook to HTML. Returns (rel_path, error)."""
+        notebook, content_hash = item
         rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
 
@@ -1580,21 +1617,23 @@ def on_pre_build(config):
                 capture_output=True,
                 text=True,
             )
+            # Write content hash so subsequent builds can skip this notebook
+            (output_dir / ".source_hash").write_text(content_hash)
             return str(rel_path), None
         except subprocess.CalledProcessError as e:
             return str(rel_path), e
         except FileNotFoundError:
             return str(rel_path), FileNotFoundError("marimo")
 
-    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min(os.cpu_count() or 2, 4)))
+    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min((os.cpu_count() or 2) * 2, 8)))
 
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     failed: list[str] = []
     done_count = 0
-    total = len(notebooks)
-    print(f"[hooks] exporting {total} notebooks with {max_workers} workers", flush=True)
+    total = len(to_export)
+    print(f"[hooks] exporting {total} notebook(s) with {max_workers} workers", flush=True)
 
     # Heartbeat thread to prevent RTD "inactivity" kills
     heartbeat_stop = threading.Event()
@@ -1607,7 +1646,7 @@ def on_pre_build(config):
     heartbeat.start()
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(_export_notebook, nb): nb for nb in notebooks}
+        futures = {pool.submit(_export_notebook, item): item for item in to_export}
         for future in as_completed(futures):
             rel_path, error = future.result()
             done_count += 1
