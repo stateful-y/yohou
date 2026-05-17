@@ -42,6 +42,7 @@ _YOHOU_BASE_IMPORTS: frozenset[str] = frozenset({
     "scipy",
     "polars",
     "pydantic",
+    "joblib",
 })
 
 # Imports added by each yohou optional extra.
