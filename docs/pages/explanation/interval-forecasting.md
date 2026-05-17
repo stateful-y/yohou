@@ -1,51 +1,50 @@
 # Interval Forecasting
 
-A point forecast tells you "sales will be 150 units tomorrow." An interval forecast
-tells you "sales will be between 120 and 180 units tomorrow, with 90% probability."
-The single number is easier to communicate, but the range is more honest: it
-acknowledges that the future is uncertain and gives decision-makers the information
-they need to plan for risk. How wide should you set inventory buffers? How much
-capacity should you reserve? These questions require knowing not just the expected
-outcome, but how wrong the forecast might be.
+A point forecast produces a single predicted value ("sales will be 150 units
+tomorrow"). An interval forecast produces a range ("sales will be between 120 and
+180 units tomorrow, with 90% probability"). The range is more honest: it
+acknowledges uncertainty and gives decision-makers the information they need to
+plan for risk. How wide should you set inventory buffers? How much capacity should
+you reserve? These questions require knowing not just the expected outcome, but how
+wrong the forecast might be.
 
 Yohou provides two approaches to interval forecasting: conformal prediction
 (distribution-free, wraps any point forecaster) and quantile regression (learns
-intervals directly). Both produce prediction intervals at user-specified coverage
-rates and integrate with yohou's standard `fit`/`predict_interval`/`observe` lifecycle.
-
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+interval bounds directly). Both produce prediction intervals at user-specified
+coverage rates and integrate with yohou's standard `fit`/`predict_interval`/`observe`
+lifecycle.
 
 ## Conformal Prediction
 
 Traditional statistical methods (ARIMA, exponential smoothing) produce prediction
 intervals by assuming the forecast errors follow a known distribution, typically
 Gaussian. Under this assumption, interval width is derived analytically from the
-estimated error variance. The advantage is simplicity; the risk is that the assumption
-is wrong. Heavy-tailed, skewed, or heteroscedastic errors produce intervals that are
-too narrow and undercover in practice.
+estimated error variance. The advantage is simplicity; the risk is that the
+assumption is wrong. Heavy-tailed, skewed, or heteroscedastic errors produce
+intervals that are too narrow and undercover in practice.
 
-Conformal prediction avoids this problem entirely. It is a distribution-free framework
-that constructs prediction intervals from calibration data alone. The core idea is
-simple: if you have a collection of past prediction errors, the quantile of those
-errors tells you how wide the interval needs to be. If the 90th percentile of past
-absolute errors is 15, then adding and subtracting 15 from a point prediction gives
-an interval that would have covered 90% of past observations.
+Conformal prediction avoids this problem entirely. It is a distribution-free
+framework that constructs prediction intervals from calibration data alone. The
+core idea: if you have a collection of past prediction errors, the quantile of
+those errors tells you how wide the interval needs to be. If the 90th percentile
+of past absolute errors is 15, then adding and subtracting 15 from a point
+prediction gives an interval that would have covered 90% of past observations.
 
 The formal guarantee is marginal coverage: over the calibration set, the intervals
-contain the true value at least as often as the stated coverage rate. This guarantee
-holds regardless of the underlying data distribution, the forecasting model, or the
-time series characteristics. The only assumption is exchangeability of the calibration
-residuals, roughly meaning that the calibration errors are representative of future errors.
+contain the true value at least as often as the stated coverage rate. This
+guarantee holds regardless of the underlying data distribution, the forecasting
+model, or the time series characteristics. The only assumption is exchangeability
+of the calibration residuals, roughly meaning that the calibration errors are
+representative of future errors.
 
 In practice, this assumption can be violated when the data distribution shifts over
 time. Yohou's `observe` mechanism helps here: as new data arrives, the calibration
-set can be updated incrementally.
+set is updated incrementally, keeping the conformity scores aligned with recent
+behavior.
 
 Yohou focuses on distribution-free approaches because they pair naturally with the
 reduction framework: any sklearn regressor can serve as the base model, and the
 interval construction does not depend on the regressor's internal assumptions.
-
 
 ## Split Conformal Forecasting
 
@@ -72,14 +71,14 @@ from yohou.point import SeasonalNaive
 from yohou.interval import SplitConformalForecaster
 
 forecaster = SplitConformalForecaster(
-    point_forecaster=SeasonalNaive(seasonal_period=7),
+    point_forecaster=SeasonalNaive(seasonality=7),
     calibration_size=100,
 )
 forecaster.fit(y=train, forecasting_horizon=7, coverage_rates=[0.9])
 intervals = forecaster.predict_interval(coverage_rates=[0.9])
 ```
 
-Because the calibration scores are computed per horizon step, step-1 and step-7
+Because the calibration scores are computed per horizon step, step 1 and step 7
 predictions can have different interval widths. This reflects the natural behavior
 that uncertainty grows with the forecast horizon.
 
@@ -89,25 +88,38 @@ prediction interval will contain the true value. In regions where the model perf
 poorly, the actual coverage can be lower; in regions where the model is accurate, it
 can be higher.
 
+### Updating with New Observations
 
-## Conformity Scores
+After initial fitting, calling `observe()` with new data updates the conformity
+scores *before* updating the underlying point forecaster. This ordering ensures that
+the next `predict_interval()` call reflects both the refreshed calibration set and the
+updated model. As new observations arrive, the conformity score distribution evolves
+to reflect recent forecast accuracy, keeping the intervals well-calibrated even as the
+data changes.
+
+The `rewind()` method reverses post-fit observations, removing their conformity scores
+from the calibration set. It will not remove data that was part of the original fit.
+
+## Conformity Scorers
 
 The choice of conformity scorer controls how the calibration residuals translate into
-interval bounds. Different scorers produce intervals with different properties.
+interval bounds. Different scorers produce intervals with different geometric
+properties.
 
 **Signed residuals**:
 [`Residual`](/pages/api/generated/yohou.metrics.conformity.Residual/)
 computes $s = y - \hat{y}$. Because positive and negative errors are preserved
 separately, the lower and upper quantiles can differ. This produces **asymmetric**
 intervals where the point prediction is not necessarily at the center. Asymmetric
-intervals are useful when the error distribution is skewed. For example, when
-demand forecasts tend to underpredict more than they overpredict.
+intervals are appropriate when the error distribution is skewed (for example, when
+demand forecasts tend to underpredict more than they overpredict). This is the default
+scorer.
 
 **Absolute residuals**:
 [`AbsoluteResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteResidual/)
 computes $s = |y - \hat{y}|$. A single quantile is added and subtracted from the
-point prediction, producing **symmetric** intervals centered on the forecast. This is
-the simpler choice and works well when errors are roughly symmetric around zero.
+point prediction, producing **symmetric** intervals centered on the forecast. This
+works well when errors are roughly symmetric around zero.
 
 **Gamma (relative) residuals**:
 [`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/)
@@ -119,13 +131,12 @@ or heteroscedastic variance that grows proportionally with the signal.
 [`AbsoluteGammaResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteGammaResidual/)
 is the symmetric variant.
 
-The default conformity scorer is `Residual`. Switching scorers requires no changes to
-the forecaster itself; pass a different `conformity_scorer` to the
+Switching scorers requires no changes to the forecaster; pass a different
+`conformity_scorer` to the
 [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
 constructor.
 
-
-## Similarity-Based Adaptive Intervals
+## Adaptive Intervals
 
 Standard conformal prediction uses the same set of calibration scores for every
 prediction, regardless of context. This means the interval width is constant: a
@@ -138,23 +149,21 @@ residuals equally when computing quantiles, it assigns higher weights to calibra
 points that are "similar" to the current prediction context. The weighted quantile
 then produces intervals that adapt to local conditions.
 
+### Distance Similarity
+
 [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/)
-implements this using scipy distance metrics. It computes distances between the
-current prediction context and each calibration point in feature space, then converts
-distances to weights using a softmax of negative distances:
+computes distances between the current prediction context and each calibration point
+in feature space, then converts distances to weights using a softmax of negative
+distances:
 
 $$w_{ji} = \frac{\exp(-d(x_j, x_i))}{\sum_k \exp(-d(x_j, x_k))}$$
 
 Calibration points close to the current prediction get exponentially higher weights
-than distant ones. The distance metric is configurable (euclidean, cityblock, cosine,
+than distant ones. The distance metric is configurable: euclidean, cityblock, cosine,
 or any metric supported by `scipy.spatial.distance.cdist`.
 
-To use similarity weighting with
-[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/):
-
 ```python
-from yohou.interval import SplitConformalForecaster
-from yohou.interval.similarity import DistanceSimilarity
+from yohou.interval import SplitConformalForecaster, DistanceSimilarity
 
 forecaster = SplitConformalForecaster(
     similarity=DistanceSimilarity(metric="euclidean"),
@@ -162,19 +171,78 @@ forecaster = SplitConformalForecaster(
 )
 ```
 
-The tradeoff is effective sample size. Heavily weighting a few nearby calibration
-points reduces variance but can increase bias if the local neighborhood is too small.
-Larger calibration sets help by providing more data points in each local region.
+### Temporal Similarity
 
+[`TemporalSimilarity`](/pages/api/generated/yohou.interval.similarity.TemporalSimilarity/)
+captures seasonal patterns by extracting Fourier features (sine and cosine components)
+from timestamps at specified seasonal periods. Predictions at similar seasonal
+positions (for example, all Mondays, or all January observations) receive higher
+calibration weights.
 
-## Quantile Regression Intervals
+```python
+from yohou.interval import SplitConformalForecaster, TemporalSimilarity
+
+forecaster = SplitConformalForecaster(
+    similarity=TemporalSimilarity(seasonalities=[7.0, 365.25]),
+    calibration_size=100,
+)
+```
+
+The `seasonalities` parameter accepts a list of period lengths. A weekly seasonality
+of 7.0 groups similar days of the week; an annual seasonality of 365.25 groups similar
+times of year. The `harmonics` parameter controls how many sine/cosine pairs are
+generated per seasonality, allowing finer or coarser seasonal grouping.
+
+### Composite Similarity
+
+[`CompositeSimilarity`](/pages/api/generated/yohou.interval.similarity.CompositeSimilarity/)
+combines multiple similarity measures into a single weighting scheme. This is useful
+when both feature-space proximity and temporal proximity matter.
+
+```python
+from yohou.interval import (
+    SplitConformalForecaster,
+    CompositeSimilarity,
+    DistanceSimilarity,
+    TemporalSimilarity,
+)
+
+forecaster = SplitConformalForecaster(
+    similarity=CompositeSimilarity(
+        similarities=[
+            DistanceSimilarity(metric="euclidean"),
+            TemporalSimilarity(seasonalities=[7.0]),
+        ],
+        combination="multiply",
+    ),
+    calibration_size=100,
+)
+```
+
+The `combination` parameter controls how weight matrices are merged: `"multiply"`
+takes the element-wise product (both similarities must agree for a calibration point
+to receive high weight), while `"mean"` takes the weighted average. An optional
+`weights` list assigns relative importance to each sub-similarity.
+
+### Tradeoffs
+
+The tradeoff with all similarity measures is effective sample size. Heavily weighting
+a few nearby calibration points reduces variance but can increase bias if the local
+neighborhood is too small. Larger calibration sets help by providing more data points
+in each local region.
+
+## Quantile Reduction Intervals
 
 [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)
 takes a fundamentally different approach. Instead of wrapping a point forecaster and
 calibrating intervals after the fact, it trains quantile regression models that
-directly predict the interval bounds. For a 90% coverage rate, it fits two models:
-one for the 5th percentile (lower bound) and one for the 95th percentile (upper
-bound).
+directly predict the interval bounds. For a coverage rate $\alpha$, it fits two
+models: one for the lower quantile and one for the upper quantile:
+
+$$\hat{y}^{\text{lower}} = f_{(1-\alpha)/2}(\mathbf{x}_t), \quad \hat{y}^{\text{upper}} = f_{(1+\alpha)/2}(\mathbf{x}_t)$$
+
+For a 90% coverage rate, this means one model at the 5th percentile (lower bound) and
+one at the 95th percentile (upper bound).
 
 ```python
 from yohou.interval import IntervalReductionForecaster
@@ -184,10 +252,43 @@ forecaster.fit(y=train, forecasting_horizon=7, coverage_rates=[0.9])
 intervals = forecaster.predict_interval(coverage_rates=[0.9])
 ```
 
-The default estimator is `MultiOutputRegressor(QuantileRegressor())`, but any sklearn
-estimator with `fit` and `predict` methods works. Multi-quantile estimators like
-CatBoost with `MultiQuantile` loss are detected automatically and trained as a single
-model for all quantiles simultaneously, which can be significantly faster.
+### Reduction Strategies
+
+Like
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/),
+the interval variant supports three `reduction_strategy` options:
+
+- **Multi-output** (`"multi-output"`, the default): a single model predicts all
+  horizon steps simultaneously per quantile.
+- **Direct** (`"direct"`): fits independent models per horizon step per quantile.
+  With `n_jobs`, these can run in parallel.
+- **Dir-rec** (`"dir-rec"`): sequential models where later steps see predictions
+  from earlier steps.
+
+The same tradeoffs apply: multi-output is fastest, direct avoids error accumulation,
+and dir-rec captures inter-step dependencies. See
+[Reduction Strategies](reduction-forecasting.md#reduction-strategies) for the full
+treatment of these approaches.
+
+### Multi-Quantile Estimators
+
+By default, `IntervalReductionForecaster` uses `QuantileRegressor` from sklearn and
+fits separate models for each quantile (two per coverage rate). Some gradient boosting
+libraries support predicting multiple quantiles in a single model, which is
+significantly faster.
+
+The forecaster automatically detects multi-quantile capability in two cases:
+
+- **CatBoost**: when `loss_function` starts with `"MultiQuantile"`, a single model is
+  trained for all requested quantiles simultaneously.
+- **LightGBM**: when `objective="quantile"` with an `alpha` parameter.
+
+When a multi-quantile estimator is detected, all quantiles for all coverage rates are
+combined into a single training pass. For example, coverage rates `[0.9, 0.95]`
+produce quantiles `[0.025, 0.05, 0.5, 0.95, 0.975]` in one model rather than ten
+separate models.
+
+### Comparison with Conformal Prediction
 
 Because the quantile models learn the conditional distribution directly from features,
 their intervals naturally adapt to heteroscedastic data without needing explicit
@@ -195,19 +296,41 @@ similarity weighting. The disadvantage is that quantile regression does not carr
 same finite-sample coverage guarantee as conformal prediction, and its accuracy depends
 entirely on how well the model captures the conditional quantiles.
 
+## Panel Data
 
-## Choosing a Coverage Rate
+Both
+[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
+and
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)
+support panel data through the `panel_strategy` parameter:
+
+- **`"global"`** (default): treats each group (entity) independently, fitting
+  separate calibration sets or quantile models per group.
+- **`"multivariate"`**: pools data across groups, sharing calibration scores or
+  quantile models. This is useful when individual groups have limited data and
+  borrowing strength across entities improves interval quality.
+
+The choice mirrors the panel strategies available in point forecasting. See
+[Panel Data](panel-data.md) for the full treatment.
+
+## Coverage Rates
 
 Coverage rates are specified as floats in the range (0, 1]. Multiple rates can be
-requested in a single `predict_interval` call. Higher coverage rates produce wider
-intervals: a 95% interval must be wider than a 90% interval to capture more of the
-distribution.
+requested in a single call. Higher coverage rates produce wider intervals: a 95%
+interval must be wider than a 90% interval to capture more of the distribution.
+
+Coverage rates are first specified at `fit()` time (defaulting to `[0.95]` if
+omitted). At `predict_interval()` time, you can request different coverage rates
+without re-fitting. For `SplitConformalForecaster`, this works because the conformity
+scores are stored and the quantile computation is applied at prediction time; no
+re-calibration is needed. For `IntervalReductionForecaster`, new coverage rates
+require that the underlying estimator can produce predictions at the corresponding
+quantile levels.
 
 The right coverage rate reflects the cost asymmetry of the decision. Safety-critical
 applications (capacity planning, risk management) warrant high coverage because the
 cost of being caught outside the interval is severe. Low-stakes decisions can tolerate
 narrower intervals that are more actionable even if they miss more often.
-
 
 ## References
 
@@ -224,14 +347,13 @@ narrower intervals that are more actionable even if they miss more often.
   3rd edition, [Chapter 5.5](https://otexts.com/fpp3/prediction-intervals.html)
   (prediction intervals).
 
-
 ## Connections
 
-Interval forecasting builds on yohou's [Point Forecasting](forecasting.md)
-foundation. Every interval method either wraps a point forecaster or extends the
-same reduction machinery. The `observe`/`predict_interval` lifecycle mirrors the
-point forecasting API, so switching between point and interval forecasts requires
-minimal code changes.
+Interval forecasting builds on yohou's
+[Reduction Forecasting](reduction-forecasting.md) foundation. Every interval method
+either wraps a point forecaster or extends the same reduction machinery. The
+`observe`/`predict_interval` lifecycle mirrors the point forecasting API, so
+switching between point and interval forecasts requires minimal code changes.
 
 For evaluating interval forecasts, see the interval metrics in
 [Forecast Accuracy](forecast-accuracy.md). Coverage rate and interval width metrics
@@ -244,8 +366,15 @@ way they work with `predict`.
 
 [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/)
 provides an ensemble approach to combining prediction intervals from multiple models.
-See [Ensemble Forecasting](ensemble-forecasting.md) for details.
+It supports three aggregation methods: averaging bounds, taking medians, or taking the
+envelope (minimum of lower bounds, maximum of upper bounds for the most conservative
+intervals). See [Ensemble Forecasting](ensemble-forecasting.md) for details.
 
-Practical examples: [Conformal Forecasting](/examples/conformal_forecasting/),
+For practical recipes, see
+[How to Forecast with Prediction Intervals](../how-to/interval-forecasting.md).
+For a hands-on introduction, see the [Interval Forecasting Tutorial](../tutorials/interval-forecasting.md).
+
+Interactive examples:
+[Conformal Forecasting](/examples/conformal_forecasting/),
 [Conformity Scorers](/examples/conformity_scorers/), and
 [Distance Similarity](/examples/distance_similarity/).

@@ -1,61 +1,77 @@
 # How to Evaluate Forecast Accuracy
 
-This guide shows how to measure and compare forecast performance using yohou's metrics and cross-validation tools.
+This guide shows you how to measure and compare forecast performance using
+yohou's scorers, cross-validation, and baseline comparisons.
+
+## Prerequisites
+
+- Yohou installed ([Getting Started](../tutorials/getting-started.md))
+- Familiarity with the fit-predict workflow ([Getting Started](../tutorials/getting-started.md))
 
 !!! tip "Try it interactively"
     <!-- COMPANION_NOTEBOOKS -->
 
-## Score a Single Forecast
+## 1. Score a Single Forecast
 
-Fit a scorer on the training data, then call `score` with the test set and predictions:
+Every scorer follows a two-step pattern: `fit` on training data (to set
+internal state such as the training mean for scaled metrics), then `score`
+with the test set and predictions:
 
 ```python
+from sklearn.linear_model import Ridge
+from yohou.point import PointReductionForecaster
 from yohou.metrics import MeanAbsoluteError
+from yohou.datasets import fetch_electricity_demand
+from yohou.model_selection import train_test_split
+
+data = fetch_electricity_demand()
+y = data.frame
+
+y_train, y_test = train_test_split(y, test_size=48)
+
+forecaster = PointReductionForecaster(estimator=Ridge())
+forecaster.fit(y_train, forecasting_horizon=24)
+y_pred = forecaster.predict()
 
 scorer = MeanAbsoluteError()
 scorer.fit(y_train)
 mae = scorer.score(y_test, y_pred)
 ```
 
-Every scorer follows this pattern: `fit` sets internal state (e.g., the training mean for scaled metrics), and `score` returns a single numeric value.
+If you need to compare across series with different scales, use
+[`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/)
+instead. See [Forecast Accuracy](../explanation/forecast-accuracy.md) for
+guidance on choosing the right metric, and the
+[metrics API reference](../api/metrics.md) for the complete list.
 
-## Choose the Right Metric
+## 2. Evaluate with Cross-Validation
 
-Different metrics answer different questions:
-
-| Metric | Best for | Limitation |
-|---|---|---|
-| [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) | General-purpose, interpretable in original units | Depends on series scale |
-| [`RootMeanSquaredError`](/pages/api/generated/yohou.metrics.point.RootMeanSquaredError/) | Penalizing large errors | Sensitive to outliers |
-| [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) | Comparing across different series | Undefined when training data is constant |
-| [`MeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.point.MeanAbsolutePercentageError/) | Relative accuracy, scale-free | Undefined when actual values are zero |
-| [`SymmetricMeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.point.SymmetricMeanAbsolutePercentageError/) | Bounded alternative to MAPE | Treats over- and under-prediction asymmetrically |
-
-For cross-series comparison, prefer scaled metrics like [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/). For single-series evaluation, scale-dependent metrics like [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) are easier to interpret.
-
-## Evaluate with Cross-Validation
-
-Use a temporal splitter with [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) or [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) to get robust estimates across multiple train-test folds:
+Use a temporal splitter with
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
+or [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/)
+to get robust estimates across multiple train-test folds:
 
 ```python
 from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
 from yohou.metrics import MeanAbsoluteError
 
 search = GridSearchCV(
-    forecaster=my_forecaster,
+    forecaster=PointReductionForecaster(estimator=Ridge()),
     param_grid={},  # empty grid evaluates the forecaster as-is
     scoring=MeanAbsoluteError(),
     cv=ExpandingWindowSplitter(n_splits=5, test_size=14),
 )
-search.fit(y, X_actual=X, forecasting_horizon=14)
+search.fit(y, forecasting_horizon=14)
 
 # Per-fold and mean scores
 print(search.cv_results_)
 ```
 
-## Compare Against a Naive Baseline
+## 3. Compare Against a Naive Baseline
 
-A model is only useful if it outperforms simple benchmarks. Evaluate a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) forecaster on the same splits:
+Evaluate a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/)
+forecaster on the same splits to confirm your model outperforms simple
+benchmarks:
 
 ```python
 from yohou.point import SeasonalNaive
@@ -72,7 +88,7 @@ print(f"Model MAE: {search.best_score_:.2f}")
 print(f"Baseline MAE: {baseline_search.best_score_:.2f}")
 ```
 
-## Use Multiple Metrics Simultaneously
+## 4. Use Multiple Metrics Simultaneously
 
 Pass a dictionary of scorers to evaluate on several metrics at once:
 
@@ -80,8 +96,8 @@ Pass a dictionary of scorers to evaluate on several metrics at once:
 from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError, MeanAbsoluteScaledError
 
 search = GridSearchCV(
-    forecaster=my_forecaster,
-    param_grid=param_grid,
+    forecaster=PointReductionForecaster(estimator=Ridge()),
+    param_grid={"estimator__alpha": [0.1, 1.0, 10.0]},
     scoring={
         "mae": MeanAbsoluteError(),
         "rmse": RootMeanSquaredError(),
@@ -90,32 +106,47 @@ search = GridSearchCV(
     refit="mae",
     cv=ExpandingWindowSplitter(n_splits=5, test_size=14),
 )
-search.fit(y, X_actual=X, forecasting_horizon=14)
+search.fit(y, forecasting_horizon=14)
 ```
 
-The `refit` parameter specifies which metric determines the best configuration. All metrics appear in `cv_results_`.
+The `refit` parameter specifies which metric determines the best
+configuration. All metrics appear in `cv_results_`.
 
-## Evaluate Interval Forecasts
+## 5. Evaluate Interval Forecasts
 
-Interval forecasters require interval-specific metrics. [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) checks whether the stated coverage rate is achieved; [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) penalizes both width and miscoverage:
+Use [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/)
+to check whether intervals contain the true values at the claimed rate,
+and [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/)
+to penalize both under-coverage and unnecessarily wide intervals:
 
 ```python
 from yohou.metrics import EmpiricalCoverage, IntervalScore
+from yohou.interval import SplitConformalForecaster
+
+interval_forecaster = SplitConformalForecaster(
+    point_forecaster=PointReductionForecaster(estimator=Ridge()),
+)
+interval_forecaster.fit(y_train, forecasting_horizon=24, coverage_rates=[0.90])
+y_pred_interval = interval_forecaster.predict_interval()
 
 coverage_scorer = EmpiricalCoverage()
 coverage_scorer.fit(y_train)
-coverage = coverage_scorer.score(y_test, y_pred_interval)
+print(coverage_scorer.score(y_test, y_pred_interval))
 
 interval_scorer = IntervalScore()
 interval_scorer.fit(y_train)
-score = interval_scorer.score(y_test, y_pred_interval)
+print(interval_scorer.score(y_test, y_pred_interval))
 ```
 
-A well-calibrated 90% interval should achieve empirical coverage close to 0.9. If coverage is substantially lower, the intervals are too narrow.
+A well-calibrated 90% interval should achieve empirical coverage close
+to 0.9. If coverage is substantially lower, the intervals are too narrow.
+See [Produce Prediction Intervals](interval-forecasting.md) for the full
+interval forecasting workflow.
 
-## Apply Time Weighting
+## 6. Apply Time Weighting
 
-Weight recent errors more heavily using [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/):
+Weight recent errors more heavily using
+[`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/):
 
 ```python
 from yohou.utils.weighting import exponential_decay_weight
@@ -124,60 +155,38 @@ weight_fn = exponential_decay_weight(half_life=365)
 weighted_mae = scorer.score(y_test, y_pred, time_weight=weight_fn)
 ```
 
-See [Time Weighting](time-weighting.md) for the full guide on weight functions.
+See [Time Weighting](time-weighting.md) for the full guide on weight
+functions.
 
-## Visualize Evaluation Results
+## 7. Evaluate Classification Forecasts
 
-Plot per-timestep residuals and cross-validation results:
+For class-probability forecasts, use proper scoring rules such as
+[`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) and
+[`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/).
+See [Forecast with Class Probabilities](class-probability-forecasting.md) for
+the full classification workflow and scoring examples.
 
-```python
-from yohou.plotting import plot_residuals, plot_cv_results_scatter
+## 8. Score Panel Forecasts
 
-# Residual analysis
-plot_residuals(y_pred, y_test)
-
-# Compare hyperparameter configurations from search
-plot_cv_results_scatter(search.cv_results_, param_name="estimator__alpha")
-```
-
-For a model-level comparison, [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) visualizes aggregate scores as a grouped bar chart:
-
-```python
-from yohou.plotting import plot_score_summary
-
-plot_score_summary(
-    {"MAE": mae, "RMSE": rmse},
-    y_test,
-    {"Model A": y_pred_a, "Model B": y_pred_b},
-)
-```
-
-To see how accuracy varies across forecast horizon steps or over successive vintages,
-use [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/)
-and [`plot_score_per_vintage`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_vintage/).
-See [Visualization](../explanation/visualization.md) for the full evaluation plotting
-workflow.
-
-## Classification Metrics
-
-For class-probability forecasts, use classification-specific metrics:
+Scorers handle panel data automatically. Use
+`aggregation_method="groupwise"` to get one score per group so you can
+spot underperforming entities:
 
 ```python
-from yohou.metrics import LogLoss, BrierScore, Accuracy
+from yohou.metrics import MeanAbsoluteError
 
-# Evaluate probability predictions
-log_loss = LogLoss().fit(y_test).score(y_test, y_proba)
-brier = BrierScore().fit(y_test).score(y_test, y_proba)
-accuracy = Accuracy().fit(y_test).score(y_test, y_proba)
+scorer = MeanAbsoluteError(aggregation_method="groupwise")
+scorer.fit(y_train)
+scores = scorer.score(y_test, y_pred)  # one row per group
 ```
 
-Prefer [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) or [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/) over [`Accuracy`](/pages/api/generated/yohou.metrics.class_proba.Accuracy/) for model selection. They
-are proper scoring rules that reward calibrated probabilities.
+See [Work with Panel Data](panel-data.md) for the full panel forecasting
+workflow and [Forecast Accuracy](../explanation/forecast-accuracy.md) for
+aggregation mode details.
 
-Assess calibration visually with [`plot_calibration()`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/):
+## See Also
 
-```python
-from yohou.plotting import plot_calibration
-
-plot_calibration(y_test, y_proba)
-```
+- [Visualize and Compare Model Scores](visualize-scores.md) for per-step accuracy, per-vintage trends, and model comparison plots
+- [Forecast Accuracy](../explanation/forecast-accuracy.md) for conceptual background on metrics and proper scoring rules
+- [Work with Panel Data](panel-data.md) for panel-level scoring and aggregation strategies
+- [API Reference: yohou.metrics](../api/metrics.md) for the full list of available metrics

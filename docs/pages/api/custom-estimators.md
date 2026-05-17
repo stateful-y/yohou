@@ -190,7 +190,7 @@ For interval scorers, extend `BaseIntervalScorer` instead. It adds
 `coverage_rates` and `"coveragewise"` aggregation.
 
 For the full walkthrough, see
-[How to Create a Custom Scorer](/pages/how-to/creating-a-scorer/).
+[How to Create a Custom Scorer](/pages/how-to/create-a-scorer/).
 
 ## Anatomy of an Estimator
 
@@ -270,8 +270,10 @@ from yohou.testing import _yield_yohou_forecaster_checks
 
 
 def test_my_forecaster(y_X_factory):
+    from yohou.model_selection import train_test_split
+
     y, X = y_X_factory(length=100)
-    y_train, y_test = y[:80], y[80:]
+    y_train, y_test = train_test_split(y, test_size=20)
 
     forecaster = MyForecaster()
     forecaster.fit(y_train, forecasting_horizon=len(y_test))
@@ -340,6 +342,6 @@ setup, and panel detection.
 
 ## See Also
 
-- [How to Create a Custom Point Forecaster](/pages/how-to/custom-estimators/) for a focused walkthrough
+- [How to Create a Custom Point Forecaster](/pages/how-to/create-a-point-forecaster/) for a focused walkthrough
 - [Extending Yohou](/pages/explanation/extending-yohou/) for design rationale
 - [Extensions](/pages/reference/extensions/) for official and community extensions

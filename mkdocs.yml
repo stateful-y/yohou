@@ -34,6 +34,7 @@ theme:
   features:
     - content.code.copy
     - content.code.annotate
+    - content.tooltips
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.tracking
@@ -46,6 +47,7 @@ theme:
     - toc.integrate
 
 markdown_extensions:
+  - abbr
   - admonition
   - attr_list
   - def_list
@@ -72,9 +74,10 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
+      auto_append:
+        - includes/glossary.md
       base_path:
         - docs
-        - .
   - pymdownx.superfences:
       custom_fences:
         - class: mermaid
@@ -147,9 +150,18 @@ nav:
   - Tutorials:
     - pages/tutorials/index.md
     - Getting Started: pages/tutorials/getting-started.md
-    - Your First Forecast: pages/tutorials/first-forecast.md
+    - Class-Probability Forecasting: pages/tutorials/class-proba-forecasting.md
+    - Interval Forecasting: pages/tutorials/interval-forecasting.md
     - Forecasting Workflow: pages/tutorials/forecasting-workflow.md
+    - Observe-Predict: pages/tutorials/observe-predict.md
     - Exogenous Features: pages/tutorials/exogenous-features.md
+    - Panel Data: pages/tutorials/panel-data.md
+    - Cross-Validation Splitters: pages/tutorials/cross-validation-splitters.md
+    - Reduction Strategies: pages/tutorials/reduction-strategies.md
+    - Decomposition: pages/tutorials/decomposition.md
+    - Exploratory Visualization: pages/tutorials/exploratory-visualization.md
+    - Forecast Visualization: pages/tutorials/forecast-visualization.md
+    - Seasonal Analysis: pages/tutorials/seasonal-analysis.md
   - How-to Guides:
     - pages/how-to/index.md
     - Installation: pages/how-to/installation.md
@@ -157,15 +169,36 @@ nav:
     - Evaluate Forecast Accuracy: pages/how-to/evaluate-forecast-accuracy.md
     - Evaluate with Multi-vintage Scoring: pages/how-to/multi-vintage-scoring.md
     - Visualize and Compare Model Scores: pages/how-to/visualize-scores.md
+    - Produce Prediction Intervals: pages/how-to/interval-forecasting.md
+    - Tune Forecaster Hyperparameters: pages/how-to/tune-hyperparameters.md
+    - Visualize Forecasts: pages/how-to/visualize-forecasts.md
     - Work with Panel Data: pages/how-to/panel-data.md
     - Use Time Weighting: pages/how-to/time-weighting.md
+    - Use Preprocessing Transformers: pages/how-to/use-preprocessing-transformers.md
+    - Clean and Resample Time Series: pages/how-to/clean-and-resample.md
+    - Compose Feature Pipelines: pages/how-to/compose-feature-pipelines.md
+    - Apply Stationarity Transforms: pages/how-to/apply-stationarity-transforms.md
+    - Apply Signal Processing: pages/how-to/apply-signal-processing.md
     - Combine Forecasters with Ensembles: pages/how-to/ensemble-forecasting.md
-    - Forecast Categorical Time Series: pages/how-to/classification-forecasting.md
+    - Forecast with CatBoost: pages/how-to/forecast-with-catboost.md
+    - Build Reduction Forecasters: pages/how-to/build-reduction-forecasters.md
+    - Forecast with Class Probabilities: pages/how-to/class-probability-forecasting.md
     - Add Calendar and Time Features: pages/how-to/time-features.md
     - Use Exogenous Features: pages/how-to/exogenous-features.md
-    - Create Custom Estimators: pages/how-to/custom-estimators.md
-    - Create Custom Scorers: pages/how-to/creating-a-scorer.md
-    - Troubleshooting: pages/how-to/troubleshooting.md
+    - Work with Forecast Vintages: pages/how-to/forecast-vintages.md
+    - Create a Point Forecaster: pages/how-to/create-a-point-forecaster.md
+    - Create an Interval Forecaster: pages/how-to/create-an-interval-forecaster.md
+    - Create a Class-Probability Forecaster: pages/how-to/create-a-class-proba-forecaster.md
+    - Create a Transformer: pages/how-to/create-a-transformer.md
+    - Create Custom Scorers: pages/how-to/create-a-scorer.md
+    - Contributing: pages/how-to/contributing.md
+    - Production Use:
+      - Handle Missing Data: pages/how-to/handle-missing-data.md
+      - Handle Outliers: pages/how-to/handle-outliers.md
+      - Handle Complex Seasonality: pages/how-to/handle-complex-seasonality.md
+      - Handle Short Series: pages/how-to/handle-short-series.md
+      - Handle Long Series: pages/how-to/handle-long-series.md
+      - Save and Load Forecasters: pages/how-to/save-load-forecasters.md
   - Examples:
     - pages/examples/index.md
     - Quickstart: pages/examples/quickstart.md
@@ -179,10 +212,11 @@ nav:
     - pages/explanation/index.md
     - Core Concepts: pages/explanation/core-concepts.md
     - Time Series Patterns: pages/explanation/time-series-patterns.md
-    - Forecasting: pages/explanation/forecasting.md
+    - Reduction Forecasting: pages/explanation/reduction-forecasting.md
     - Interval Forecasting: pages/explanation/interval-forecasting.md
     - Class-Probability Forecasting: pages/explanation/class-probability-forecasting.md
     - Ensemble Forecasting: pages/explanation/ensemble-forecasting.md
+    - Panel Data: pages/explanation/panel-data.md
     - Exogenous Features: pages/explanation/exogenous-features.md
     - Preprocessing: pages/explanation/preprocessing.md
     - Stationarity: pages/explanation/stationarity.md
@@ -192,12 +226,11 @@ nav:
     - Model Selection: pages/explanation/model-selection.md
     - Weighting: pages/explanation/weighting.md
     - Residual Diagnostics: pages/explanation/residual-diagnostics.md
-    - Practical Issues: pages/explanation/practical-issues.md
     - Visualization: pages/explanation/visualization.md
-    - Advanced Topics: pages/explanation/advanced.md
+    - Metadata Routing: pages/explanation/metadata-routing.md
     - Extending Yohou: pages/explanation/extending-yohou.md
   - Reference:
-    - API Reference: pages/api/index.md
+    - pages/reference/index.md
     - API Reference:
       - pages/api/index.md
       - yohou.base: pages/api/base.md
@@ -214,11 +247,12 @@ nav:
       - yohou.datasets: pages/api/datasets.md
       - yohou.utils: pages/api/utils.md
       - yohou.testing: pages/api/testing.md
-      - Custom Estimators: pages/api/custom-estimators.md
+
     - Changelog: pages/reference/changelog.md
     - Glossary: pages/explanation/glossary.md
     - Data Catalog: pages/reference/data-catalog.md
-  - Extensions: pages/reference/extensions.md
+    - Extensions: pages/reference/extensions.md
+    - Tags: pages/reference/tags.md
 
 extra:
   social:

@@ -1,47 +1,58 @@
 # Extensions
 
-Like Scikit-Learn, Yohou is designed to be extended. Whether it is to develop new models or integrate with other libraries, extensions allow you to enhance Yohou's capabilities. Below are the current official and community extensions.
+Extension packages add forecasters, metrics, and integrations to Yohou. This page lists all official and community extensions, and documents the base classes available for building custom components.
 
-## Official extensions
+## Official Extensions
 
-### Yohou-Optuna
+| Name | Install | Description |
+|------|---------|-------------|
+| yohou-optuna | `uv add yohou-optuna` | Hyperparameter optimization via [Optuna](https://optuna.org/). Provides [`OptunaSearchCV`](https://github.com/stateful-y/yohou/tree/main/packages/yohou-optuna) as a drop-in replacement for [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/). ([source](https://github.com/stateful-y/yohou/tree/main/packages/yohou-optuna)) |
+| yohou-nixtla | `uv add yohou-nixtla` | Integration with [Nixtla](https://nixtla.io/) forecasting libraries (statsforecast, mlforecast, neuralforecast). Wraps Nixtla models as Yohou forecasters. ([source](https://github.com/stateful-y/yohou/tree/main/packages/yohou-nixtla)) |
 
-Hyperparameter optimization via [Optuna](https://optuna.org/).
+## Community Extensions
 
-- **Package**: `Yohou-Optuna`
-- **Install**: `uv add yohou-optuna`
-- **Source**: [`stateful-y/yohou-optuna`](https://github.com/stateful-y/yohou/tree/main/packages/yohou-optuna)
+No community extensions are listed yet. Community extensions can be submitted via a [GitHub issue](https://github.com/stateful-y/yohou/issues/new).
 
-## Yohou-Nixtla
+## Extension Points
 
-Integration with [Nixtla](https://nixtla.io/)'s forecasting libraries.
+All custom components inherit from one of the base classes below. Each base class provides the estimator interface (`fit`, `predict`, `score`, etc.) and requires subclasses to implement specific abstract methods.
 
-- **Package**: `Yohou-Nixtla`
-- **Install**: `uv add yohou-nixtla`
-- **Source**: [`stateful-y/yohou-nixtla`](https://github.com/stateful-y/yohou/tree/main/packages/yohou-nixtla)
+For step-by-step implementation guides, see [Create a Point Forecaster](../how-to/create-a-point-forecaster.md), [Create an Interval Forecaster](../how-to/create-an-interval-forecaster.md), [Create a Transformer](../how-to/create-a-transformer.md), and [Create a Custom Scorer](../how-to/create-a-scorer.md). For an explanation of how tags, MRO merging, and dynamic configuration work, see [Extending Yohou](../explanation/extending-yohou.md).
 
-## Community extensions
+### Forecasters
 
-There are no community extensions at this time. Want to add yours to this list? You can open an [issue](https://github.com/stateful-y/yohou/issues/new).
+| Base Class | Import | Abstract Methods |
+|-----------|--------|-----------------|
+| [`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/) | `yohou.point` | `fit()`, `_predict_one()` |
+| [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/) | `yohou.interval` | `fit()`, `_predict_interval_one()` |
+| [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.base.BaseClassProbaForecaster/) | `yohou.class_proba` | `fit()`, `_predict_class_proba_one()` |
 
-## Built-in Extension Points
+### Scorers
 
-Yohou provides abstract base classes for creating custom components that integrate
-seamlessly with the rest of the framework:
+| Base Class | Import | Abstract Methods |
+|-----------|--------|-----------------|
+| [`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/) | `yohou.metrics` | `score()`, `_compute_raw_errors()` |
+| [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/) | `yohou.metrics` | `score()`, `_compute_raw_scores()` |
+| [`BaseClassProbaScorer`](/pages/api/generated/yohou.metrics.base.BaseClassProbaScorer/) | `yohou.metrics` | `score()`, `_compute_raw_errors()` |
 
-- **Forecasters**: `BasePointForecaster`, `BaseIntervalForecaster`,
-  `BaseClassProbaForecaster` for custom forecasting algorithms
-  (import from `yohou.base`)
-- **Metrics**: `BasePointScorer`, `BaseIntervalScorer`, `BaseClassProbaScorer`
-  for custom evaluation metrics
-  (import from `yohou.metrics`)
-- **Transformers**: `BaseTransformer` for custom preprocessing steps
-  (import from `yohou.preprocessing`)
-- **Splitters**: `BaseSplitter` for custom cross-validation strategies
-  (import from `yohou.model_selection`)
-- **Ensembles**: `VotingPointForecaster`, `VotingIntervalForecaster`,
-  `VotingClassProbaForecaster` for composition patterns
-  (import from `yohou.ensemble`)
+### Transformers
 
-See [How to Create Custom Estimators](../how-to/custom-estimators.md) for
-step-by-step instructions.
+| Base Class | Import | Abstract Methods |
+|-----------|--------|-----------------|
+| [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/) | `yohou.base` | `_transform()`, `get_feature_names_out()` |
+
+Optional overrides: `_fit()` (default no-op), `_inverse_transform()` (required only for invertible transformers).
+
+### Splitters
+
+| Base Class | Import | Abstract Methods |
+|-----------|--------|-----------------|
+| [`BaseSplitter`](/pages/api/generated/yohou.model_selection.split.BaseSplitter/) | `yohou.model_selection` | `split()`, `_iter_test_indices()`, `get_n_splits()` |
+
+### Search Strategies
+
+| Base Class | Import | Abstract Methods |
+|-----------|--------|-----------------|
+| [`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/) | `yohou.model_selection.search` | `_run_search()` |
+
+Built-in implementations: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/), [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/). Extend [`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/) only for custom search strategies (e.g., Bayesian optimization).

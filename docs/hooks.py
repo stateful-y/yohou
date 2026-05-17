@@ -704,6 +704,7 @@ def _get_gallery_items(project_root):
             "open_path": open_path,
             "stem": stem,
             "section": section,
+            "api_references": gallery.get("api_references", []),
         })
 
     _GALLERY_CACHE = items
@@ -753,8 +754,8 @@ def _normalize_companion_path(path: str) -> str:
     """Normalize a companion path for comparison.
 
     Strips leading/trailing slashes and .md suffix so that
-    ``"pages/how-to/creating-a-scorer"`` in __gallery__ matches
-    ``"pages/how-to/creating-a-scorer.md"`` as a src_uri.
+    ``"pages/how-to/create-a-scorer"`` in __gallery__ matches
+    ``"pages/how-to/create-a-scorer.md"`` as a src_uri.
     """
     return path.strip("/").removesuffix(".md")
 
@@ -776,7 +777,7 @@ def _get_companion_index(project_root):
 
 
 def _build_companion_cards_html(project_root, page_src_uri: str) -> str:
-    """Build gallery card grid for notebooks whose companion matches this page."""
+    """Build HTML cards for notebooks whose companion matches this page."""
     key = _normalize_companion_path(page_src_uri)
     items = _get_companion_index(project_root).get(key, [])
 
@@ -787,17 +788,17 @@ def _build_companion_cards_html(project_root, page_src_uri: str) -> str:
     for item in items:
         desc = item["description"] or "No description."
         cards.append(
-            f"-   **{item['title']}**\n"
-            f"\n"
-            f"    ---\n"
-            f"\n"
-            f"    {desc}\n"
-            f"\n"
-            f"    [View]({item['view_path']}) · "
-            f"[Open in marimo]({item['open_path']})"
+            f'<div class="companion-card">'
+            f"<strong>{item['title']}</strong>"
+            f"<p>{desc}</p>"
+            f'<span class="companion-card-links">'
+            f'<a href="{item["view_path"]}">View</a>'
+            f'<a href="{item["open_path"]}">Open in marimo</a>'
+            f"</span>"
+            f"</div>"
         )
 
-    return '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
+    return '<div class="companion-cards">' + "".join(cards) + "</div>\n"
 
 
 _NOTEBOOK_API_USAGE_CACHE = None
@@ -806,68 +807,36 @@ _NOTEBOOK_API_USAGE_CACHE = None
 def _get_notebook_api_usage(project_root):
     """Build reverse map: qualified API name → list of gallery items that use it.
 
-    Scans example notebooks for ``from yohou.* import …``
-    statements and maps each imported name back to its fully-qualified
-    API identifier.
+    Reads the ``api_references`` list from each gallery item's ``__gallery__``
+    metadata and resolves each short name to its fully-qualified identifier via
+    ``_get_discovery_data()``.  Only notebooks that explicitly declare
+    ``api_references`` contribute to the map.
     """
     global _NOTEBOOK_API_USAGE_CACHE  # noqa: PLW0603
     if _NOTEBOOK_API_USAGE_CACHE is not None:
         return _NOTEBOOK_API_USAGE_CACHE
 
-    pkg_dir = project_root / "src" / "yohou"
-    modules = _get_submodules(project_root)
+    data = _get_discovery_data()
 
-    # Build short name → qualified lookup from discovered module members
+    # Build short name → qualified lookup using cls.__module__ (same path that
+    # _generate_api_pages uses for the <!-- EXAMPLES_FOR:... --> placeholder).
     name_to_qualified: dict[str, str] = {}
-    for mod in modules:
-        mod_file = pkg_dir / f"{mod['module_name']}.py"
-        if not mod_file.exists():
-            mod_file = pkg_dir / mod["module_name"] / "__init__.py"
-        if not mod_file.exists():
-            continue
-        members = _get_module_members(mod_file)
-        for cls in members["classes"]:
-            name_to_qualified[cls["name"]] = f"yohou.{mod['module_name']}.{cls['name']}"
-        for func in members["functions"]:
-            name_to_qualified[func["name"]] = f"yohou.{mod['module_name']}.{func['name']}"
-
-    gallery_items = _get_gallery_items(project_root)
-    stem_to_item = {item["stem"]: item for item in gallery_items}
+    for name, cls in data["abstract_base_classes"] + data["estimators"] + data["displays"]:
+        name_to_qualified[name] = f"{cls.__module__}.{name}"
+    for name, func in data["functions"]:
+        name_to_qualified[name] = f"{func.__module__}.{name}"
 
     usage: dict[str, list[dict]] = {}
-    examples_dir = project_root / "examples"
-    if not examples_dir.exists():
-        _NOTEBOOK_API_USAGE_CACHE = {}
-        return _NOTEBOOK_API_USAGE_CACHE
-
-    for notebook in sorted(examples_dir.rglob("*.py")):
-        if "__marimo__" in notebook.parts or "bugs" in notebook.parts:
-            continue
-        if "__init__" in notebook.name:
-            continue
-
-        stem = notebook.stem
-        item = stem_to_item.get(stem)
-        if item is None:
-            continue
-
-        try:
-            source = notebook.read_text(encoding="utf-8")
-            tree = ast.parse(source)
-        except (SyntaxError, UnicodeDecodeError):
-            continue
-
-        # Extract names imported from yohou.*
-        imported_names: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("yohou"):
-                for alias in node.names:
-                    imported_names.add(alias.name)
-
-        for imp_name in imported_names:
-            qualified = name_to_qualified.get(imp_name)
-            if qualified is not None:
-                usage.setdefault(qualified, []).append(item)
+    for item in _get_gallery_items(project_root):
+        for short_name in item.get("api_references", []):
+            qualified = name_to_qualified.get(short_name)
+            if qualified is None:
+                print(
+                    f"[gallery] {item['stem']}: api_references contains unknown name {short_name!r}",
+                    file=sys.stderr,
+                )
+                continue
+            usage.setdefault(qualified, []).append(item)
 
     _NOTEBOOK_API_USAGE_CACHE = usage
     return _NOTEBOOK_API_USAGE_CACHE
@@ -1298,6 +1267,158 @@ def _process_api_page_content(html, page, config):
     return html
 
 
+# ---------------------------------------------------------------------------
+# Glossary auto-linking
+# ---------------------------------------------------------------------------
+
+# Explicit allowlist: display text (lowercase) → glossary anchor slug.
+# Only distinctive, multi-word terms are included to avoid false positives.
+_GLOSSARY_TERMS = {
+    "forecasting horizon": "forecasting-horizon",
+    "observation horizon": "observation-horizon",
+    "memory buffer": "memory-buffer",
+    "composite method": "composite-method",
+    "point forecast": "point-forecast",
+    "interval forecast": "interval-forecast",
+    "class-probability forecast": "class-probability-forecast",
+    "coverage rate": "coverage-rate",
+    "recursive prediction": "recursive-prediction",
+    "error accumulation": "error-accumulation",
+    "rolling evaluation": "rolling-evaluation",
+    "time column contract": "time-column-contract",
+    "panel data": "panel-data",
+    "group prefix": "group-prefix",
+    "panel strategy": "panel-strategy",
+    "exogenous features": "exogenous-features",
+    "known-future features": "known-future-features",
+    "step-indexed columns": "step-indexed-columns",
+    "tabularization": "tabularization",
+    "reduction strategy": "reduction-strategy",
+    "step feature alignment": "step-feature-alignment",
+    "target transformer": "target-transformer",
+    "feature transformer": "feature-transformer",
+    "stateful transformer": "stateful-transformer",
+    "stateless transformer": "stateless-transformer",
+    "forecaster composition": "forecaster-composition",
+    "variance stabilization": "variance-stabilization",
+    "stationarity": "stationarity",
+    "conformal prediction": "conformal-prediction",
+    "conformity score": "conformity-score",
+    "calibration set": "calibration-set",
+    "similarity measure": "similarity-measure",
+    "metadata routing": "metadata-routing",
+    "aggregation method": "aggregation-method",
+    "forecast error": "forecast-error",
+    "scale-dependent metric": "scale-dependent-metric",
+    "scale-independent metric": "scale-independent-metric",
+    "cross-validation": "cross-validation",
+    "temporal split": "temporal-split",
+    "expanding window splitter": "expanding-window-splitter",
+    "sliding window splitter": "sliding-window-splitter",
+    "concept drift": "concept-drift",
+    "time weighting": "time-weighting",
+    "proper scoring rule": "proper-scoring-rule",
+}
+
+# Tags whose text content should never be matched by the glossary linker.
+_GLOSSARY_SKIP_TAGS = frozenset({"code", "pre", "a", "h1", "h2", "h3", "h4", "h5", "h6", "script", "style"})
+
+_GLOSSARY_SRC_PATH = "pages/explanation/glossary.md"
+
+
+def _linkify_glossary_terms(html, page, files):
+    """Wrap the first occurrence of each glossary term in a link.
+
+    Operates on rendered HTML.  Skips text inside code, headings, and
+    existing links.  Only processes pages under ``pages/``.
+    """
+    src = page.file.src_path
+    if src == _GLOSSARY_SRC_PATH:
+        return html
+    if not src.startswith("pages/"):
+        return html
+
+    # Compute relative path from current page to the glossary page.
+    # Both src paths are relative to docs_dir (e.g. "pages/tutorials/foo.md").
+    from posixpath import relpath as posix_relpath
+
+    src_dir = "/".join(src.split("/")[:-1])  # e.g. "pages/tutorials"
+    glossary_dir = "pages/explanation/glossary"  # built output directory
+    rel_glossary = posix_relpath(glossary_dir, src_dir)  # e.g. "../explanation/glossary"
+
+    # Build a single regex alternation sorted longest-first to prefer
+    # longer matches (e.g. "stateful transformer" before "transformer").
+    sorted_terms = sorted(_GLOSSARY_TERMS.keys(), key=len, reverse=True)
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(t) for t in sorted_terms) + r")\b",
+        re.IGNORECASE,
+    )
+
+    linked: set[str] = set()  # terms already linked (lowercase)
+
+    class _GlossaryLinker(HTMLParser):
+        """One-pass HTML rewriter that links glossary terms in text nodes."""
+
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.result: list[str] = []
+            self._skip_depth: int = 0  # >0 means inside a skip tag
+
+        def handle_starttag(self, tag, attrs):
+            tag_lower = tag.lower()
+            if tag_lower in _GLOSSARY_SKIP_TAGS:
+                self._skip_depth += 1
+            self.result.append(self.get_starttag_text())
+
+        def handle_endtag(self, tag):
+            tag_lower = tag.lower()
+            if tag_lower in _GLOSSARY_SKIP_TAGS:
+                self._skip_depth = max(0, self._skip_depth - 1)
+            self.result.append(f"</{tag}>")
+
+        def handle_data(self, data):
+            if self._skip_depth > 0:
+                self.result.append(data)
+                return
+            self.result.append(_replace_terms(data))
+
+        def handle_entityref(self, name):
+            self.result.append(f"&{name};")
+
+        def handle_charref(self, name):
+            self.result.append(f"&#{name};")
+
+        def handle_comment(self, data):
+            self.result.append(f"<!--{data}-->")
+
+        def handle_decl(self, decl):
+            self.result.append(f"<!{decl}>")
+
+        def handle_pi(self, data):
+            self.result.append(f"<?{data}>")
+
+        def unknown_decl(self, data):
+            self.result.append(f"<![{data}]>")
+
+    def _replace_terms(text):
+        """Replace first unlinked occurrence of each term in a text fragment."""
+
+        def _sub(m):
+            term_lower = m.group(0).lower()
+            if term_lower in linked:
+                return m.group(0)
+            linked.add(term_lower)
+            slug = _GLOSSARY_TERMS[term_lower]
+            href = f"{rel_glossary}/#{slug}"
+            return f'<a href="{href}" class="glossary-link">{m.group(0)}</a>'
+
+        return pattern.sub(_sub, text)
+
+    parser = _GlossaryLinker()
+    parser.feed(html)
+    return "".join(parser.result)
+
+
 def on_page_content(html, page, config, files):
     """Post-process HTML: API page TOC and content restructuring."""
     src = page.file.src_path
@@ -1319,6 +1440,9 @@ def on_page_content(html, page, config, files):
     ):
         # Submodule page: module list with active/children expansion
         page.meta["module_toc"] = _build_module_toc(config, current_src_path=src)
+
+    # Glossary auto-linking (first occurrence per page for allowlisted terms)
+    html = _linkify_glossary_terms(html, page, files)
 
     return html
 

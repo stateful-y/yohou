@@ -2,31 +2,29 @@
 
 A forecast is only useful if you can measure how good it is. Choosing the right metric is not a formality: different metrics reward different behaviors, and the "best" model under one metric may be mediocre under another. This page explains the reasoning behind metric families and common pitfalls, helping you make informed choices. For individual metric parameters and usage, see the [API Reference: yohou.metrics](/pages/api/metrics/).
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
-
 ## Forecast Errors vs. Residuals
 
 Two closely related quantities are easy to confuse. Residuals compare fitted (in-sample) values to actuals on the training set. Forecast errors compare genuine out-of-sample predictions to actuals on held-out data. Residuals tell you how well the model explains history. Forecast errors tell you how well it predicts the future. For model selection, forecast errors are what matter. Residuals are useful for [diagnostics](residual-diagnostics.md) but not for assessing predictive skill.
 
-## Metric Families
+## Point Metrics
 
-### Scale-Dependent Metrics (MAE, MSE, RMSE, MdAE)
+Point metrics evaluate single-value predictions against observed actuals. They
+differ in how they weight errors, whether they depend on the target's scale, and
+which pathological behaviors they are susceptible to.
+
+### Scale-Dependent Metrics
 
 Metrics expressed in the same units as the target are the simplest to interpret.
-MAE treats all errors equally. MSE penalizes large errors disproportionately,
-which is useful when large forecast misses carry outsized costs. RMSE restores the
-original units while keeping that sensitivity. The gap between RMSE and MAE is
-informative: wide gaps indicate that error is dominated by occasional large misses.
+The fundamental limitation is that they cannot be compared across series with
+different scales. A MAE of 10 on a series ranging from 0 to 100 is excellent; the
+same MAE on a series from 0 to 10 is terrible. This also affects multivariate
+forecasting: when aggregating across components with different scales (e.g.,
+temperature in °C and energy in MWh), scale-dependent metrics are dominated by the
+component with the largest values. Use scaled metrics like MASE, or exclude
+`"componentwise"` from the aggregation to keep per-component scores (e.g.
+`aggregation_method=["stepwise", "vintagewise"]`).
 
-MdAE reports the median rather than the mean, making it the most robust option: a
-single catastrophic forecast does not affect the metric at all.
-
-The fundamental limitation of scale-dependent metrics is that they cannot be
-compared across series with different scales. A MAE of 10 on a series ranging
-from 0 to 100 is excellent; the same MAE on a series from 0 to 10 is terrible.
-
-### Percentage Metrics (MAPE, sMAPE)
+### Percentage Metrics
 
 Percentage metrics normalize errors by true values, offering an intuitive
 "percent off" interpretation. MAPE is the most commonly requested format for
@@ -37,17 +35,36 @@ and prediction are small.
 
 The asymmetry of MAPE means models optimized by it systematically bias toward under-prediction, making it unreliable as a selection criterion even when its intuitive scale makes it appropriate for stakeholder reporting.
 
-### Scaled Metrics (MASE, RMSSE)
+### Scaled Metrics
 
 Scaled metrics normalize errors against a naive seasonal baseline on the training
 data, enabling cross-series comparison without the problems of percentage metrics.
 A MASE of 0.8 means the model is 20% better than the seasonal naive baseline. A
 MASE above 1.0 means the model is worse than simply repeating the last seasonal
-cycle.
-
-This interpretability makes scaled metrics the recommended choice for model
+cycle. This interpretability makes scaled metrics the recommended choice for model
 selection, especially when comparing forecasters across multiple series with
 different scales.
+
+Both MASE and RMSSE accept a `seasonality` parameter (default 1) that defines the
+seasonal period for the naive baseline. Set it to match the data's natural cycle
+(e.g., 7 for daily data with weekly patterns, 12 for monthly data with yearly
+patterns). A value of 1 uses the simple random walk as the baseline.
+
+### Complete Point Metric Reference
+
+| Metric | What it measures | Direction |
+|---|---|---|
+| [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) | Average absolute difference. Treats all errors equally, robust to outliers. | Lower |
+| [`MeanSquaredError`](/pages/api/generated/yohou.metrics.point.MeanSquaredError/) | Average squared difference. Penalizes large errors disproportionately. | Lower |
+| [`RootMeanSquaredError`](/pages/api/generated/yohou.metrics.point.RootMeanSquaredError/) | Square root of MSE. Penalizes large errors while maintaining original units. The gap between RMSE and MAE indicates how much error is dominated by occasional large misses. | Lower |
+| [`MedianAbsoluteError`](/pages/api/generated/yohou.metrics.point.MedianAbsoluteError/) | Median of absolute differences. A single catastrophic forecast does not affect the metric at all. | Lower |
+| [`MaxAbsoluteError`](/pages/api/generated/yohou.metrics.point.MaxAbsoluteError/) | Largest absolute error. Captures worst-case forecast deviation. | Lower |
+| [`MeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.point.MeanAbsolutePercentageError/) | Average percentage error. Scale-independent but undefined at zero and asymmetric. | Lower |
+| [`SymmetricMeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.point.SymmetricMeanAbsolutePercentageError/) | Symmetric average percentage error. Addresses MAPE's asymmetry but unstable when both truth and prediction are small. | Lower |
+| [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) | MAE scaled by naive seasonal baseline error. Values below 1.0 indicate improvement over naive forecasting. Configurable `seasonality`. | Lower |
+| [`RootMeanSquaredScaledError`](/pages/api/generated/yohou.metrics.point.RootMeanSquaredScaledError/) | RMSE scaled by naive seasonal baseline error. Combines large-error sensitivity with scale independence. Configurable `seasonality`. | Lower |
+| [`R2Score`](/pages/api/generated/yohou.metrics.point.R2Score/) | Proportion of variance explained. 1.0 is perfect, 0.0 equals predicting the mean, negative means worse than the mean. | Higher |
+| [`MeanDirectionalAccuracy`](/pages/api/generated/yohou.metrics.point.MeanDirectionalAccuracy/) | Proportion of steps where predicted direction of change matches actual direction. Evaluates trend capture independently of magnitude. | Higher |
 
 ## Interval Metrics
 
@@ -61,39 +78,109 @@ against each other:
 
 Neither property alone is sufficient. An interval from negative infinity to
 positive infinity has perfect coverage but is useless. The narrowest possible
-interval has great sharpness but terrible coverage. The Interval Score (Winkler
-score) combines both into a single metric: it equals the interval width plus a
-penalty for observations that fall outside the bounds. Lower is better.
+interval has great sharpness but terrible coverage. The metrics below capture
+different aspects of this tradeoff:
 
-Calibration Error aggregates coverage deviations across all requested coverage
-rates, providing a single number for overall interval quality.
+| Metric | What it measures | Direction |
+|---|---|---|
+| [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) | Proportion of true values inside the interval. Target equals the nominal coverage rate. | Match nominal |
+| [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) | Average width of the prediction interval. Only meaningful when compared at equal coverage. | Lower |
+| [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) | Interval width plus a penalty for observations outside the bounds (Winkler score). Combines sharpness and calibration in one number. | Lower |
+| [`PinballLoss`](/pages/api/generated/yohou.metrics.interval.PinballLoss/) | Asymmetric quantile loss for interval bounds. Penalizes under-prediction and over-prediction at different rates depending on the quantile. | Lower |
+| [`CalibrationError`](/pages/api/generated/yohou.metrics.interval.CalibrationError/) | Aggregate discrepancy between nominal and empirical coverage across all requested rates. Scale-independent (always 0 to 1). Requires at least two coverage rates. | Lower |
+| [`ContinuousRankedProbabilityScore`](/pages/api/generated/yohou.metrics.interval.ContinuousRankedProbabilityScore/) | CRPS approximated by averaging pinball losses across coverage rates. Integrates quantile loss as a proxy for the full predictive distribution. Requires at least two rates. | Lower |
 
-## Classification Scoring Rules
+[`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) is the most widely used single metric for interval forecast
+evaluation (used in the M4 and M5 competitions). For richer diagnostics, combine
+[`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) (is the interval well-calibrated?) with [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
+(is it sharp?). [`ContinuousRankedProbabilityScore`](/pages/api/generated/yohou.metrics.interval.ContinuousRankedProbabilityScore/) is the strongest choice when
+you evaluate across many coverage rates, because it captures the quality of the
+entire predictive distribution rather than a single interval.
 
-For categorical forecasts, accuracy alone is misleading when classes are imbalanced.
-Proper scoring rules (Log Loss, Brier Score) are uniquely minimized when predicted
-probabilities match true class frequencies, making them more reliable for model
-selection than accuracy. They penalize confident wrong predictions: a model that
-says "95% probability of class A" when the answer is class B gets punished far
-more than one that says "55% probability." Use proper scoring rules for model
-selection over accuracy. See [Class-Probability Forecasting](class-probability-forecasting.md)
-for the full treatment.
+## Class-Probability Metrics
+
+Class-probability metrics evaluate predicted probability distributions over
+categorical classes. They divide into three groups: proper scoring rules that
+evaluate calibration of the full distribution, hard-label metrics that convert
+probabilities to class assignments via argmax, and ranking metrics that assess
+discrimination ability across thresholds.
+
+### Proper Scoring Rules
+
+Proper scoring rules are uniquely minimized when predicted probabilities match true
+class frequencies, making them more reliable for model selection than accuracy. They
+penalize confident wrong predictions: a model that says "95% probability of class A"
+when the answer is class B gets punished far more than one that says "55%
+probability." Use proper scoring rules for model selection over accuracy.
+
+| Metric | What it measures | Direction |
+|---|---|---|
+| [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) | Negative log-likelihood of the true class under the predicted distribution. Heavily penalizes confident wrong predictions. | Lower |
+| [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/) | Mean squared difference between predicted probabilities and one-hot encoded true labels. Multi-class generalization of the original Brier score. | Lower |
+| [`RankedProbabilityScore`](/pages/api/generated/yohou.metrics.class_proba.RankedProbabilityScore/) | Compares cumulative probability distributions for ordinal classes. Penalizes predictions far from the true class more than nearby misses. | Lower |
+
+### Hard-Label Metrics
+
+Hard-label metrics convert predicted probabilities to class assignments (via
+argmax) before evaluation. They are familiar from standard classification but
+discard calibration information. For multiclass problems, `Precision`, `Recall`,
+`FBetaScore`, and the ranking metrics accept an `average` parameter (default
+`"macro"`) that controls how per-class scores are combined.
+
+| Metric | What it measures | Direction |
+|---|---|---|
+| [`Accuracy`](/pages/api/generated/yohou.metrics.classification.Accuracy/) | Fraction of steps where predicted class matches true class. Misleading when classes are imbalanced. | Higher |
+| [`Precision`](/pages/api/generated/yohou.metrics.classification.Precision/) | Ratio of true positives to predicted positives. Measures how trustworthy positive predictions are. | Higher |
+| [`Recall`](/pages/api/generated/yohou.metrics.classification.Recall/) | Ratio of true positives to actual positives. Measures how many positive cases are captured. | Higher |
+| [`FBetaScore`](/pages/api/generated/yohou.metrics.classification.FBetaScore/) | Weighted harmonic mean of precision and recall. `beta=1.0` (F1) gives equal weight; `beta>1.0` emphasizes recall. | Higher |
+
+### Ranking Metrics
+
+Ranking metrics evaluate how well predicted probabilities separate classes across
+all possible decision thresholds.
+
+| Metric | What it measures | Direction |
+|---|---|---|
+| [`ROCAuC`](/pages/api/generated/yohou.metrics.classification.ROCAuC/) | Area under the ROC curve. Uses one-vs-rest strategy for multiclass problems. | Higher |
+| [`PRAuC`](/pages/api/generated/yohou.metrics.classification.PRAuC/) | Area under the precision-recall curve. More informative than ROC AuC when classes are imbalanced. Uses one-vs-rest strategy. | Higher |
+
+See [Class-Probability Forecasting](class-probability-forecasting.md)
+for the full treatment of categorical prediction.
 
 ## Aggregation
 
-The same scorer can produce different views of the same error distribution via the
-`aggregation_method` parameter:
+A forecast error distribution has structure across multiple dimensions: forecast
+steps within a single prediction (the horizon dimension), forecast origins (the
+vintage dimension), target columns (the component dimension), and, for panel data,
+entities (the group dimension). The `aggregation_method` parameter controls which
+of these dimensions the scorer collapses (averages over).
 
-- **"all"** (default): a single scalar summarizing the full error. This is what
-  most model selection procedures need.
-- **"stepwise"**: per-component scores collapsed across forecast steps, useful
-  for identifying which target columns or panel groups the model struggles with.
-- **"vintagewise"**: per-component scores collapsed across vintages, useful for
-  tracking how accuracy changes as new data arrives.
-- **"componentwise"**: per-timestep scores, useful for seeing whether errors grow
-  with forecast horizon.
-- **"groupwise"**: per-component per-timestep for panel data, analyzing temporal
-  patterns without group noise.
+The parameter accepts a single string or a list of strings. Each string names one
+dimension to collapse. When used alone, it collapses only that dimension while
+preserving all others:
+
+- `"stepwise"`: collapses forecast steps. Returns per-vintage, per-component
+  scores. Reveals whether accuracy changes across forecast origins, which is
+  the key diagnostic for detecting concept drift in deployed forecasters.
+- `"vintagewise"`: collapses vintage origins. Returns per-step, per-component
+  scores. Reveals whether errors grow with forecast horizon, a signature of
+  accumulated uncertainty in recursive forecasting or an insufficient feature
+  set at longer lead times.
+- `"componentwise"`: collapses target columns into a single score. Returns
+  per-step, per-vintage scores. Useful for reducing multivariate forecasts
+  to one aggregate error trajectory.
+- `"groupwise"`: collapses panel entities. Returns per-step, per-vintage,
+  per-component scores. Averages across groups while preserving target
+  columns and time granularity.
+- `"coveragewise"` (interval scorers only): collapses coverage rates. Averages
+  scores across all requested coverage levels (e.g., 50%, 80%, 95%).
+
+The default `"all"` collapses everything into a single scalar. That scalar is
+what model selection procedures consume, but it hides variation that diagnostic
+questions require. Passing a list like `["stepwise", "componentwise"]` collapses
+both steps and components while preserving vintages.
+
+No re-fitting is needed to switch between aggregation views.
 
 ## Vintage-based Evaluation
 
@@ -105,11 +192,12 @@ row can be traced back to the information that was available when the prediction
 was made.
 
 Evaluating across vintages answers a different question than evaluating across
-horizon steps. Stepwise aggregation reveals whether the model is worse at longer
-lead times. Vintagewise aggregation reveals whether the model is degrading (or
-improving) as more data arrives, which is critical for monitoring deployed
-forecasters. Both views are available from the same scorer output by changing the
-`aggregation_method` parameter.
+horizon steps. `"stepwise"` aggregation collapses the forecast-step dimension,
+producing per-vintage scores that reveal whether the model is degrading (or
+improving) as more data arrives. `"vintagewise"` aggregation collapses the
+vintage dimension, producing per-step scores that reveal whether the model is
+worse at longer lead times. Both views are available from the same scorer by
+changing the `aggregation_method` parameter.
 
 ## Scorer Workflow
 
@@ -130,7 +218,7 @@ metric-specific logic), applies time weights if provided, aggregates according t
 `aggregation_method`, and runs any post-aggregation transform (e.g. square root
 for RMSE). Custom scorers override only `_compute_raw_errors`; the rest of the
 pipeline is inherited. See
-[How to Create Custom Scorers](/pages/how-to/creating-a-scorer/) for a walkthrough.
+[How to Create Custom Scorers](/pages/how-to/create-a-scorer/) for a walkthrough.
 
 ## Weighting
 
@@ -166,3 +254,5 @@ understanding what model residuals reveal about predictive gaps, see
 prediction framework that produces the intervals these metrics evaluate.
 [API Reference: yohou.metrics](/pages/api/metrics/) has the full listing with
 parameters and examples for each scorer class.
+
+For practical recipes, see [How to Evaluate Forecast Accuracy](../how-to/evaluate-forecast-accuracy.md) and [How to Create a Custom Scorer](../how-to/create-a-scorer.md).

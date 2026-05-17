@@ -1,11 +1,15 @@
 # How to Combine Forecasters with Ensembles
 
-This guide shows how to combine multiple forecasters using voting ensembles to
-reduce prediction variance. Use ensembles when you have two or more forecasters
-that perform reasonably well individually and you want more stable predictions.
+This guide shows you how to combine multiple forecasters into a voting ensemble
+for more stable predictions.
 
-**Prerequisites**: Familiarity with fitting and predicting with point or interval
-forecasters. See [Your First Forecast](../tutorials/first-forecast.md) if needed.
+## Prerequisites
+
+- yohou installed ([Installation](installation.md))
+- Familiarity with fitting and predicting with point or interval forecasters ([Getting Started](../tutorials/getting-started.md))
+
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Create a Point Ensemble
 
@@ -21,45 +25,40 @@ from yohou.datasets import fetch_electricity_demand
 data = fetch_electricity_demand()
 y = data.frame
 
+ridge = PointReductionForecaster(estimator=Ridge())
+rf = PointReductionForecaster(estimator=RandomForestRegressor(n_estimators=50))
+
 ensemble = VotingPointForecaster(
-    forecasters=[
-        ("ridge", PointReductionForecaster(estimator=Ridge())),
-        ("rf", PointReductionForecaster(estimator=RandomForestRegressor(n_estimators=50))),
-    ],
+    forecasters=[("ridge", ridge), ("rf", rf)],
     method="mean",
 )
 ensemble.fit(y, forecasting_horizon=24)
 y_pred = ensemble.predict()
 ```
 
-## 2. Use Weighted Averaging
-
-Assign higher weight to models you expect to perform better:
+To favor one model over another, pass `weights`:
 
 ```python
-ensemble = VotingPointForecaster(
-    forecasters=[
-        ("ridge", PointReductionForecaster(estimator=Ridge())),
-        ("rf", PointReductionForecaster(estimator=RandomForestRegressor())),
-    ],
+weighted = VotingPointForecaster(
+    forecasters=[("ridge", ridge), ("rf", rf)],
     method="mean",
     weights=[0.3, 0.7],  # favor random forest
 )
 ```
 
-Set `method="median"` instead for robustness against outlier predictions (weights
+Set `method="median"` for robustness against outlier predictions (weights
 are ignored with median aggregation).
 
-## 3. Ensemble Interval Forecasters
+## 2. Ensemble Interval Forecasters
 
-[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/) combines prediction intervals:
+[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/) combines prediction intervals from
+multiple interval forecasters such as [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/):
 
 ```python
 from yohou.ensemble import VotingIntervalForecaster
 from yohou.interval import SplitConformalForecaster
-from yohou.point import PointReductionForecaster
 
-ensemble = VotingIntervalForecaster(
+interval_ensemble = VotingIntervalForecaster(
     forecasters=[
         ("conf_ridge", SplitConformalForecaster(
             point_forecaster=PointReductionForecaster(estimator=Ridge()),
@@ -70,15 +69,15 @@ ensemble = VotingIntervalForecaster(
     ],
     method="envelope",  # most conservative: min of lowers, max of uppers
 )
-ensemble.fit(y, forecasting_horizon=24, coverage_rates=[0.9])
-y_interval = ensemble.predict_interval()
+interval_ensemble.fit(y, forecasting_horizon=24, coverage_rates=[0.9])
+y_interval = interval_ensemble.predict_interval()
 ```
 
-Available methods: `"envelope"` (default, most conservative), `"mean"`, `"median"`.
+Available `method` values: `"envelope"` (default, most conservative), `"mean"`, `"median"`.
 
-## 4. Ensemble Classification Forecasters
+## 3. Ensemble Classification Forecasters
 
-[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/) combines class-probability predictions:
+[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/) combines class probability predictions:
 
 ```python
 from sklearn.linear_model import LogisticRegression
@@ -87,45 +86,65 @@ from yohou.ensemble import VotingClassProbaForecaster
 from yohou.class_proba import ClassProbaReductionForecaster
 from yohou.datasets import fetch_air_quality_classification
 
-data = fetch_air_quality_classification()
-y = data.y
+class_data = fetch_air_quality_classification()
+y_class = class_data.y
 
-ensemble = VotingClassProbaForecaster(
+class_ensemble = VotingClassProbaForecaster(
     forecasters=[
         ("lr", ClassProbaReductionForecaster(estimator=LogisticRegression())),
         ("rf", ClassProbaReductionForecaster(estimator=RandomForestClassifier())),
     ],
     method="soft",  # weighted average of probabilities
 )
-ensemble.fit(y, forecasting_horizon=24)
-y_proba = ensemble.predict_class_proba()
+class_ensemble.fit(y_class, forecasting_horizon=24)
+y_proba = class_ensemble.predict_class_proba()
 ```
 
-Use `method="hard"` for majority voting (argmax of each base model, then mode).
-Soft voting generally performs better because it preserves probability information.
+Use `method="hard"` for majority voting (argmax per base model, then mode).
 
-## 5. Evaluate Ensemble vs. Individual Models
+## 4. Speed Up with Parallel Fitting
 
-Compare the ensemble against its members:
+All voting forecasters accept `n_jobs` to fit base models in parallel:
 
 ```python
-from yohou.metrics import MeanAbsoluteError
-from yohou.model_selection import ExpandingWindowSplitter
-
-scorer = MeanAbsoluteError()
-splitter = ExpandingWindowSplitter(n_splits=3)
-
-# Evaluate each model and the ensemble
-for name, model in [("ridge", ridge), ("rf", rf), ("ensemble", ensemble)]:
-    scores = []
-    for train_idx, test_idx in splitter.split(y):
-        model.fit(y[train_idx], forecasting_horizon=len(test_idx))
-        y_pred = model.predict()
-        scores.append(scorer.fit(y[test_idx]).score(y[test_idx], y_pred))
+ensemble = VotingPointForecaster(
+    forecasters=[("ridge", ridge), ("rf", rf)],
+    n_jobs=-1,  # use all available cores
+)
 ```
 
-### Related pages
+## 5. Use with Panel Data
+
+All voting forecasters support panel data automatically. Pass a DataFrame
+with `__` separated panel columns, and each base forecaster receives the full
+panel. Aggregation happens per group:
+
+```python
+from yohou.datasets import fetch_tourism_monthly
+
+bunch = fetch_tourism_monthly()
+y_panel = bunch.frame.select(
+    ["time", "T187__tourists", "T188__tourists", "T189__tourists"]
+).drop_nulls()
+
+ridge = PointReductionForecaster(estimator=Ridge())
+rf = PointReductionForecaster(estimator=RandomForestRegressor(n_estimators=50))
+
+panel_ensemble = VotingPointForecaster(
+    forecasters=[("ridge", ridge), ("rf", rf)],
+)
+panel_ensemble.fit(y_panel, forecasting_horizon=12)
+y_pred_panel = panel_ensemble.predict()
+```
+
+The output contains one column per group, each with the ensemble's aggregated
+prediction.
+
+See [Working with Panel Data](panel-data.md) for panel data preparation
+and forecasting.
+
+## See Also
 
 - [Ensemble Forecasting](../explanation/ensemble-forecasting.md): theory and aggregation formulas
+- [How to Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md)
 - [API Reference: yohou.ensemble](../api/ensemble.md)
-- [Ensemble Examples](../examples/forecasting-models.md)

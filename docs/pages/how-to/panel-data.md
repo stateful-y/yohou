@@ -1,9 +1,23 @@
 # How to Work with Panel Data
 
-Panel data (multiple related time series) uses a column naming convention with double underscores: `{group}__{column}`. Every group must share the same column suffixes.
+This guide shows you how to forecast multiple related time series (stores,
+sensors, regions) in a single call using Yohou's panel data support. Panel
+DataFrames use the `{group}__{column}` naming convention, and every group
+must share the same column suffixes.
+
+## Prerequisites
+
+- Yohou installed ([Getting Started](../tutorials/getting-started.md))
+- Familiarity with the fit/predict lifecycle ([Getting Started](../tutorials/getting-started.md))
 
 !!! tip "Try it interactively"
     <!-- COMPANION_NOTEBOOKS -->
+
+## 1. Structure Your Data as a Panel
+
+Name columns with `{group}__{variable}` so Yohou detects panel structure
+automatically. Columns without a `__` prefix are treated as global (shared
+across all groups):
 
 ```python
 import polars as pl
@@ -15,9 +29,8 @@ y = pl.DataFrame({
 })
 ```
 
-## Inspect Panel Structure
-
-[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/) separates global (unprefixed) columns from panel groups:
+To verify that Yohou parses your columns correctly, use
+[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/):
 
 ```python
 from yohou.utils.panel import inspect_panel
@@ -27,100 +40,149 @@ print(global_names)    # []
 print(panel_groups)    # {'store_a': ['store_a__sales'], 'store_b': ['store_b__sales']}
 ```
 
-## Extract a Single Group
-
-[`get_group_df`](/pages/api/generated/yohou.utils.panel.get_group_df/) extracts one group's data with unprefixed column names:
-
-```python
-from yohou.utils.panel import get_group_df
-
-schema = {"sales": pl.Float64}
-df_a = get_group_df(y, "store_a", schema)
-print(df_a.columns)  # ['time', 'sales']
-```
-
-## Convert a Dict Back to Panel Format
-
-[`dict_to_panel`](/pages/api/generated/yohou.utils.panel.dict_to_panel/) joins per-group DataFrames back into a single wide DataFrame:
+If you already have per-group DataFrames,
+[`dict_to_panel`](/pages/api/generated/yohou.utils.panel.dict_to_panel/)
+joins them into the expected format:
 
 ```python
 from yohou.utils.panel import dict_to_panel
 
-data = {
-    "store_a": pl.DataFrame({"time": [...], "sales": [100, 110]}),
-    "store_b": pl.DataFrame({"time": [...], "sales": [200, 210]}),
-}
-panel_df = dict_to_panel(data)
-# columns: ["time", "store_a__sales", "store_b__sales"]
+y = dict_to_panel({
+    "store_a": df_store_a,  # DataFrame with "time" and "sales" columns
+    "store_b": df_store_b,
+})
+# Result has columns: "time", "store_a__sales", "store_b__sales"
 ```
 
-## Fit a Forecaster on Panel Data
+To extract a single group back out, use
+[`get_group_df`](/pages/api/generated/yohou.utils.panel.get_group_df/).
 
-Pass panel DataFrames directly to `fit`. With `panel_strategy="global"` (the default), each group gets independent transformers but shares a single model:
+## 2. Fit a Forecaster
+
+Pass panel DataFrames directly to `fit`. The default
+`panel_strategy="global"` gives each group independent transformers while
+sharing a single model across all groups:
 
 ```python
 from sklearn.linear_model import Ridge
 from yohou.point import PointReductionForecaster
+from yohou.model_selection import train_test_split
+
+y_train, y_test = train_test_split(y, test_size=2)
 
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
     panel_strategy="global",
 )
-forecaster.fit(y_train, forecasting_horizon=12)
-y_pred = forecaster.predict(forecasting_horizon=12)
+forecaster.fit(y_train, forecasting_horizon=2)
+y_pred = forecaster.predict()
 ```
 
-## Predict for Specific Groups
+## 3. Predict and Observe for Specific Groups
 
-Use `groups` to observe or predict only a subset of groups:
+Use `groups` to predict or observe only a subset of panel groups. This is
+useful when new data arrives for some entities but not others:
 
 ```python
-y_pred_a = forecaster.predict(
-    forecasting_horizon=12,
-    groups=["store_a"],
+y_pred_a = forecaster.predict(groups=["store_a"])
+```
+
+The same parameter works on `observe` and `rewind`, so you can update one
+group's observation window without touching the others:
+
+```python
+forecaster.observe(y_new, groups=["store_a"])
+```
+
+## 4. Choose a Panel Strategy
+
+The `panel_strategy` parameter controls how groups share information:
+
+- **`"global"`** (default): each group gets independent transformers, but
+  all groups contribute rows to a single model. Best when groups share
+  similar dynamics.
+- **`"multivariate"`**: the entire panel is treated as one wide multivariate
+  series. Use this for small panels (fewer than ~20 groups) where
+  cross-group correlations are strong.
+
+For completely independent models per group, use
+[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/)
+instead. It clones the forecaster and fits one instance per group, which is
+best when groups have genuinely different dynamics and enough history each:
+
+```python
+from yohou.compose import LocalPanelForecaster
+from yohou.point import SeasonalNaive
+
+local = LocalPanelForecaster(
+    forecaster=SeasonalNaive(seasonality=12),
 )
+local.fit(y_train, forecasting_horizon=2)
 ```
 
-To assign different weights to groups during scoring, pass a dict instead of a
-list:
+See [Panel Data](../explanation/panel-data.md) for the full explanation of
+each strategy and when to pick one over another.
+
+## 5. Score Panel Forecasts
+
+Scorers handle panel data automatically. Use `aggregation_method="groupwise"`
+to get one score per group so you can spot underperforming entities:
 
 ```python
-scorer = PointScorer(groups={"store_a": 2.0, "store_b": 1.0})
+from yohou.metrics import MeanAbsoluteError
+
+scorer = MeanAbsoluteError(aggregation_method="groupwise")
+scorer.fit(y_train)
+scores = scorer.score(y_test, y_pred)  # one row per group
 ```
 
-This scores both groups but gives `store_a` twice the influence in the
-aggregated result.
-
-## Global vs Multivariate Strategy
-
-- **`"global"`** (default): Detects panel groups, fits separate transformers per group, pools data for the estimator. Best when groups share similar dynamics.
-- **`"multivariate"`**: Treats `__` prefixed columns as ordinary multivariate features. One transformer and model see the full wide DataFrame. Best for modeling cross-group relationships.
+To weight groups differently in the aggregated score, pass a dict mapping
+group names to weights:
 
 ```python
-# Treat all columns as a single multivariate series
-forecaster = PointReductionForecaster(
-    estimator=Ridge(),
-    panel_strategy="multivariate",
+scorer = MeanAbsoluteError(
+    aggregation_method="all",
+    groups={"store_a": 2.0, "store_b": 1.0},
 )
+scorer.fit(y_train)
+scalar_score = scorer.score(y_test, y_pred)  # store_a has twice the influence
 ```
 
-## Exogenous Features with Panel Data
+See [Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md) for the
+complete scoring workflow and
+[Forecast Accuracy](../explanation/forecast-accuracy.md) for aggregation
+mode details.
 
-Exogenous features (`X_actual`) can include both global columns (shared across groups) and local columns (group-specific). Global columns lack the `__` prefix:
+## 6. Add Exogenous Features
+
+Exogenous features can include both global columns (shared across groups)
+and local columns (group-specific). Global columns lack the `__` prefix:
 
 ```python
 X_actual = pl.DataFrame({
     "time": [...],
-    "holiday": [True, False, ...],              # global - shared
+    "holiday": [True, False, ...],              # global, shared
     "store_a__promotion": [0.1, 0.2, ...],      # local to store_a
     "store_b__promotion": [0.0, 0.1, ...],      # local to store_b
 })
 ```
 
-Pass panel exogenous data to `fit()` as `X_actual=X_actual`. For known-future features (e.g., holidays for all groups), use `X_future`. For external forecast vintages, use `X_forecast`.
+Pass panel exogenous data to `fit()` as `X_actual=X_actual`. For
+known-future features (e.g., holidays), use `X_future`. See
+[Use Exogenous Features](exogenous-features.md) for the full guide.
 
-For common panel data errors and their fixes, see [Troubleshooting](troubleshooting.md#panel-column-naming-errors).
+!!! tip
+    Ensemble forecasters
+    ([`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/),
+    [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/),
+    [`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/))
+    support panel data automatically, with aggregation per group. See
+    [Ensemble Forecasting](ensemble-forecasting.md) for the full workflow.
 
-Ensemble forecasters ([`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/), [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/),
-[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/)) support panel data automatically. Each base
-forecaster receives the full panel, and aggregation happens per-group.
+## See Also
+
+- [Panel Data Tutorial](../tutorials/panel-data.md): hands-on introduction to panel forecasting
+- [Panel Data](../explanation/panel-data.md): the panel data model, naming convention rationale, and strategy trade-offs
+- [Use Exogenous Features](exogenous-features.md): global and local exogenous columns in panel context
+- [Visualize Forecasts](visualize-forecasts.md): automatic panel faceting for forecast and residual plots
+- [API Reference: yohou.utils.panel](../api/utils.md)

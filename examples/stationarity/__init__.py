@@ -1,1 +1,0 @@
-"""Stationarity and decomposition examples."""

@@ -2,21 +2,20 @@
 
 In this tutorial, we will evaluate two forecasters using temporal cross-validation, search for the best hyperparameters, and inspect residuals to diagnose model weaknesses.
 
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
 ## Prerequisites
 
-- Completed [Your First Forecast](first-forecast.md)
+- Completed [Getting Started](getting-started.md)
 
 ## Setup
 
-We use the monthly tourism dataset from the [Monash Time Series Forecasting Archive](https://forecastingdata.org/): 366 monthly regional tourism series. Here we work with a single region (T1), which covers 187 months of visitor arrivals from January 1979 to July 1994. The column name `T1__tourists` follows Yohou's panel format, where the identifier (`T1`) and the variable name (`tourists`) are joined by a double underscore. We rename it to `tourists` for readability.
+We use the monthly tourism dataset: 187 months of visitor arrivals to a single Australian region (T1). First, load the data and define a 12-month forecasting horizon:
 
 ```python
-from sklearn.linear_model import Ridge
-from yohou.compose import FeaturePipeline
 from yohou.datasets import fetch_tourism_monthly
-from yohou.point import PointReductionForecaster, SeasonalNaive
-from yohou.preprocessing import LagTransformer
-from yohou.stationarity import SeasonalDifferencing
+from yohou.model_selection import train_test_split
 
 bunch = fetch_tourism_monthly()
 y = (
@@ -27,12 +26,27 @@ y = (
 )
 
 forecasting_horizon = 12
-y_train = y[:-forecasting_horizon]
-y_test = y[-forecasting_horizon:]
+y_train, y_test = train_test_split(y, test_size=forecasting_horizon)
+```
+
+Next, fit a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) baseline:
+
+```python
+from yohou.point import SeasonalNaive
 
 baseline = SeasonalNaive(seasonality=12)
 baseline.fit(y_train, forecasting_horizon=forecasting_horizon)
 y_pred_baseline = baseline.predict(forecasting_horizon=forecasting_horizon)
+```
+
+Now build a Ridge pipeline with [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) and lag features. If the pipeline looks unfamiliar, see [Getting Started](getting-started.md) for a step-by-step walkthrough:
+
+```python
+from sklearn.linear_model import Ridge
+from yohou.compose import FeaturePipeline
+from yohou.point import PointReductionForecaster
+from yohou.preprocessing import LagTransformer
+from yohou.stationarity import SeasonalDifferencing
 
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
@@ -45,11 +59,9 @@ forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
 y_pred_ridge = forecaster.predict(forecasting_horizon=forecasting_horizon)
 ```
 
-For how this pipeline was built step by step, see [Your First Forecast](first-forecast.md).
-
 ## Score with Multiple Metrics
 
-Start by scoring both models on the single train/test split:
+Now score both models on the single train/test split. Scorers in Yohou are stateful: call `fit(y_train)` first so that scale-dependent metrics like [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) can normalise correctly:
 
 ```python
 from yohou.metrics import MeanAbsoluteError, MeanAbsoluteScaledError
@@ -68,11 +80,11 @@ SeasonalNaive    MAE=302.05  MASE=1.65
 Ridge            MAE=214.35  MASE=1.17
 ```
 
-A MASE below 1.0 means the model outperforms the seasonal naive baseline. Notice that both values exceed 1.0 here: neither model beats the baseline on this particular holdout period. Ridge is the better of the two, but a single split is a single data point. Cross-validation across multiple folds will tell us whether this pattern holds.
+Notice that both MASE values are above 1.0, meaning neither model outperforms the seasonal naive baseline on this single holdout. Cross-validation across multiple folds will tell us whether this pattern holds.
 
 ## Evaluate with Cross-Validation and Hyperparameter Search
 
-[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) creates multiple temporal train/test folds by growing the training window while holding out a fixed test period. [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates each parameter combination across all folds and selects the best. Define a search grid using the nested parameter syntax (`estimator__param` to reach regressor parameters, `feature_transformer__step_name__param` for pipeline steps):
+[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) creates multiple temporal train/test folds by growing the training window. [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates each parameter combination across all folds and selects the best:
 
 ```python
 from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
@@ -96,13 +108,13 @@ Best params:  {'estimator__alpha': 0.1}
 CV MASE:      0.87
 ```
 
-Notice that `best_score_` is negative, following scikit-learn's convention of negating scorer values so that higher is always better. Negate it to recover the actual MASE: `-search.best_score_`. The CV MASE of 0.87 is below 1.0, confirming that Ridge consistently outperforms the seasonal naive baseline across all three folds. The single holdout was harder than average.
+Notice that `best_score_` is negative. Yohou follows scikit-learn's convention of negating scores so that higher is always better. Negate it to recover the actual MASE.
 
-Notice also that all four alpha values achieve the same CV score here. On a short series with few features, Ridge regularization has little effect on the solution. In practice, with more features or larger datasets, the search will show meaningful variation across parameter values.
+The CV MASE of 0.87 is below 1.0, confirming that Ridge consistently outperforms the seasonal naive baseline across all three folds. The single holdout was harder than average.
 
 ## Inspect Residuals
 
-Good residuals resemble white noise: no autocorrelation, no trend, and roughly constant variance. Patterned residuals indicate the model is missing structure in the data. We use the best forecaster from the search, refitted on the training data:
+Let's refit the best forecaster from the search on the training data and inspect what the model gets wrong with [`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/):
 
 ```python
 from yohou.plotting import plot_residuals
@@ -114,11 +126,11 @@ y_pred_tuned = best.predict(forecasting_horizon=forecasting_horizon)
 plot_residuals(y_pred_tuned, y_test, title="Residuals: Ridge (Tuned)")
 ```
 
-If the plot shows spikes at seasonal lags, the model has not fully captured the seasonal pattern. If residuals trend upward or downward, a trend component is missing. See [Residual Diagnostics](/pages/explanation/residual-diagnostics/) for interpretation guidance.
+You should see a scatter of residuals over the test period. If the residuals cluster near zero with no obvious pattern, the model is capturing the main signal. Spikes at seasonal lags or a visible trend suggest missing structure. See [Residual Diagnostics](../explanation/residual-diagnostics.md) for a full interpretation guide.
 
 ## Compare Models Visually
 
-Plot both forecasts against the actual test values to see where each model succeeds and fails:
+Now plot both forecasts against the actual test values:
 
 ```python
 from yohou.plotting import plot_forecast, plot_score_summary
@@ -133,26 +145,28 @@ plot_forecast(
 )
 
 plot_score_summary(
-    mase,
+    {"MAE": mae, "MASE": mase},
     y_test,
     {"SeasonalNaive": y_pred_baseline, "Ridge (Tuned)": y_pred_tuned},
-    title="MASE by Model",
+    title="Score Comparison",
 )
 ```
 
+Notice how `plot_forecast` overlays predicted and actual values so you can spot where each model over- or under-shoots. `plot_score_summary` condenses the comparison into a single bar chart.
+
 ## What You Built
 
-You have run the full evaluation workflow:
+You have completed the full evaluation workflow:
 
-- Scored models with `MeanAbsoluteError` and `MeanAbsoluteScaledError` on a single train/test split
-- Used `ExpandingWindowSplitter` and `GridSearchCV` to evaluate across temporal folds and tune hyperparameters at the same time
-- Refitted the best forecaster and inspected residuals with `plot_residuals` to diagnose model weaknesses
-- Compared forecasts visually with `plot_forecast` and `plot_score_summary`
+- Scored models with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) on a single train/test split
+- Used [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) and [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) to evaluate across temporal folds and tune hyperparameters
+- Refitted the best forecaster and inspected residuals with [`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
+- Compared forecasts visually with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) and [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/)
 
 ## Next Steps
 
 - [Exogenous Features](exogenous-features.md): Add external regressors to your forecasting pipeline
-- [Model Selection](../explanation/model-selection.md): Understand expanding vs. sliding windows, fold design, and when CV estimates are trustworthy
-- [Forecast Accuracy](../explanation/forecast-accuracy.md): Understand when to use MAE, MASE, or percentage metrics
+- [Model Selection](../explanation/model-selection.md): Expanding vs. sliding windows, fold design, and when CV estimates are trustworthy
+- [Forecast Accuracy](../explanation/forecast-accuracy.md): When to use MAE, MASE, or percentage metrics
 - [Choose a Forecasting Method](../how-to/choose-forecasting-method.md): Try nonlinear regressors and compare estimator families
-- [Interval Forecasting](../explanation/interval-forecasting.md): Add prediction intervals with `SplitConformalForecaster`
+- [Interval Forecasting](../explanation/interval-forecasting.md): Add prediction intervals with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)

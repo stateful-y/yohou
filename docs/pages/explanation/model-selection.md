@@ -1,6 +1,6 @@
 # Model Selection
 
-Selecting the right forecasting model and tuning its hyperparameters requires evaluating candidate configurations on held-out data. In tabular machine learning this is straightforward: shuffle the rows, partition into folds, and measure performance. Time series data, however, carries temporal dependencies that make shuffling invalid. Yohou's model selection module provides splitters and search utilities that respect chronological order while fitting naturally into the sklearn-style `fit` / `predict` workflow.
+Selecting the right forecasting model and tuning its hyperparameters requires evaluating candidate configurations on held-out data. In tabular machine learning this is straightforward: shuffle the rows, partition into folds, and measure performance. Time series data, however, carries temporal dependencies that make shuffling invalid. Yohou's model selection module provides splitters, search utilities, and convenience functions that respect chronological order while fitting naturally into the sklearn-style `fit` / `predict` workflow.
 
 ## Standard Cross-Validation Fails for Time Series
 
@@ -8,12 +8,7 @@ Standard k-fold cross-validation randomly shuffles observations into folds. Each
 
 The bias is not subtle. Any feature derived from recent history (lagged values, rolling averages, seasonal differences) becomes contaminated because the "recent history" in the training set includes future observations relative to the test set. Leak-free evaluation requires that every training sample precedes every test sample within each fold. This is the principle that yohou's splitters enforce: folds respect the arrow of time, and evaluation mimics the sequential nature of real forecasting.
 
-The standard term for this procedure is **rolling origin evaluation** (also called
-**time series cross-validation** or **walk-forward validation**). The "origin" is the
-last training observation in each fold; it rolls forward through the series, producing
-a sequence of train-test pairs that simulate how the forecaster would be deployed in
-practice. Yohou's expanding and sliding window splitters are both variants of rolling
-origin evaluation.
+The standard term for this procedure is **rolling origin evaluation** (also called **time series cross-validation** or **walk-forward validation**). The "origin" is the last training observation in each fold; it rolls forward through the series, producing a sequence of train/test pairs that simulate how the forecaster would be deployed in practice. Yohou's expanding and sliding window splitters are both variants of rolling origin evaluation.
 
 ## Expanding Window Splitting
 
@@ -27,7 +22,11 @@ Fold 3:  [========= train =========][test]..
 
 The expanding approach reflects a natural assumption: more historical data generally helps a model. It also mirrors production deployments where you periodically retrain on all available history before generating the next round of forecasts.
 
-Key parameters control the geometry of the folds. `n_splits` sets the number of folds, `test_size` fixes the length of each test window, and `max_train_size` optionally caps the training set if memory or computation becomes a concern. When `max_train_size` is set, the splitter still marches forward in time but trims the oldest training observations to stay within the limit, creating a hybrid between expanding and sliding behavior.
+Three parameters control the geometry of the folds:
+
+- `n_splits` sets the number of folds (minimum 2).
+- `test_size` fixes the length of each test window. When omitted, it defaults to `n_samples // (n_splits + 1)`.
+- `max_train_size` optionally caps the training set if memory or computation becomes a concern. The splitter still marches forward in time but trims the oldest training observations to stay within the limit, creating a hybrid between expanding and sliding behavior.
 
 ## Sliding Window Splitting
 
@@ -41,14 +40,29 @@ Fold 3:  ......[=== train ===][test]........
 
 This strategy suits series where older observations become less relevant over time, such as situations involving concept drift, regime changes, or evolving consumer behavior. Because each fold trains on the same amount of data, it also keeps computation per fold constant, which can matter for large datasets.
 
-The `stride` parameter controls how far the window advances between folds. By default it equals `test_size`, producing non-overlapping test sets. Setting stride smaller than `test_size` creates overlapping test windows for finer-grained evaluation at the cost of correlated fold scores. When `train_size` is omitted, the splitter computes it automatically from `n_splits` and the data length so that the requested number of folds fits exactly.
+The `stride` parameter controls how far the window advances between folds. By default it equals `test_size`, producing non-overlapping test sets. Setting stride smaller than `test_size` creates overlapping test windows for finer-grained evaluation at the cost of correlated fold scores. Setting stride larger than `test_size` leaves gaps between test windows, skipping some observations entirely. When `train_size` is omitted, the splitter computes it automatically from `n_splits` and the data length so that the requested number of folds fits exactly.
+
+## Train/Test Split
+
+For a simple one-time partition without cross-validation, [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/) splits one or more polars DataFrames chronologically. It accepts either an integer (`test_size=30` for 30 rows) or a float (`test_size=0.2` for 20% of the data) and returns alternating train/test pairs:
+
+```python
+from yohou.model_selection import train_test_split
+
+y_train, y_test, X_train, X_test = train_test_split(y, X, test_size=0.2)
+```
+
+This is useful for quick sanity checks and holdout evaluation before committing to a full cross-validation run.
+
+## Panel Data Support
+
+All splitters operate on row indices, so they work identically for univariate, multivariate, and panel datasets. When the target DataFrame contains multiple groups (identified by the `__` column separator convention), the splitter partitions by row position across all groups simultaneously. This ensures that every group shares the same temporal split boundaries, which is essential for panel forecasters that learn across groups.
+
+The search classes inherit panel support from the underlying forecaster. After fitting, `groups_` exposes the panel group names discovered during search.
 
 ## Checking Splitter Alignment
 
-When `test_size` is not an exact multiple of `stride`, some forecast steps may be
-evaluated on more vintages than others, producing unbalanced scores.
-[`check_cv_alignment`](/pages/api/generated/yohou.model_selection.split.check_cv_alignment/)
-inspects this relationship before you run a full search:
+When `test_size` is not an exact multiple of `stride`, some forecast steps may be evaluated on more vintages than others, producing unbalanced scores. [`check_cv_alignment`](/pages/api/generated/yohou.model_selection.split.check_cv_alignment/) inspects this relationship before you run a full search:
 
 ```python
 from yohou.model_selection import SlidingWindowSplitter, check_cv_alignment
@@ -58,29 +72,28 @@ info = check_cv_alignment(cv, forecasting_horizon=4)
 print(info["is_balanced"])  # False
 ```
 
-The returned dictionary includes the number of vintages per fold, how many vintages
-cover each forecast step, and whether the distribution is balanced. Call this early
-to avoid surprises in evaluation results.
+The returned dictionary includes:
 
-## Gap-Based Splitting
+- `n_vintages`: the number of predict calls per fold.
+- `steps_per_vintage`: step counts per vintage (all equal to `forecasting_horizon` except possibly the last).
+- `step_counts`: maps each forecast step (1-based) to how many vintages include it.
+- `is_balanced`: `True` when every step appears in the same number of vintages.
 
-Both splitters accept a `gap` parameter that inserts a buffer of time steps between the end of the training set and the start of the test set:
+Call this early to avoid surprises in evaluation results.
 
-```text
-[=== train ===]---gap---[test]
-```
-
-In many real forecasting scenarios, predictions are needed several steps ahead. A retailer forecasting weekly demand may need the forecast by Wednesday for the following week, so the most recent five days of data are unavailable at prediction time. Setting `gap=5` simulates this lead-time constraint during evaluation.
-
-The gap also guards against a subtler form of leakage. Some transformers (rolling averages, exponential smoothers) blend information across neighboring time steps. Without a gap, the last few training observations may carry information that bleeds into the test period through these smoothed features. A small gap provides an extra margin of safety.
+The helper [`check_cv`](/pages/api/generated/yohou.model_selection.split.check_cv/) normalizes various CV specifications into a splitter instance. Passing `None` produces a default `ExpandingWindowSplitter` with 5 folds; passing an integer produces an expanding window with that many folds. This is the same normalization that the search classes apply internally.
 
 ## Time-Weighted Scoring
 
 Not all test errors deserve equal attention. A forecast that performed well last month but poorly six months ago may still be the right choice for production. Yohou scorers accept a `time_weight` parameter through sklearn's metadata routing that assigns different importance to each test-set time step.
 
-The [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/) utility generates weights that decrease geometrically into the past, giving recent performance the greatest influence on the final score. [`seasonal_emphasis_weight`](/pages/api/generated/yohou.utils.weighting.seasonal_emphasis_weight/) takes a different approach: it upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most. The [`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/) function offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
+Three built-in weight factories produce callables that map a datetime `pl.Series` to a weight `pl.Series`:
 
-These weighting functions return polars DataFrames with a `"time"` column and a weight column, matching the structure that scorers expect. During cross-validation, the weights are routed to the scorer automatically through metadata routing, requiring no manual plumbing.
+- [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/) generates weights that decrease geometrically into the past, controlled by a `half_life` parameter. Recent performance receives the greatest influence on the final score.
+- [`seasonal_emphasis_weight`](/pages/api/generated/yohou.utils.weighting.seasonal_emphasis_weight/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
+- [`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
+
+During cross-validation, the weights are routed to the scorer automatically through metadata routing, requiring no manual plumbing.
 
 ## Hyperparameter Search
 
@@ -99,41 +112,47 @@ search = GridSearchCV(
 search.fit(y, X_actual=X, forecasting_horizon=7)
 ```
 
-For each candidate parameter combination, the search clones the forecaster, fits it on the training fold, and evaluates predictions on the test fold using the provided scorer. Results accumulate into a `cv_results_` dictionary containing per-fold scores, mean scores, standard deviations, rankings, and timing information.
+For each candidate parameter combination, the search clones the forecaster, fits it on the training fold, and evaluates predictions on the test fold using the provided scorer. Results accumulate into `cv_results_`, a dictionary of NumPy arrays containing per-fold scores (`split0_test_score`, `split1_test_score`, ...), mean and standard deviation across folds, rankings, parameter values, and timing information. Scores follow a "higher is better" sign convention: metrics where lower values are better (like MAE) are negated in `cv_results_` so that the best candidate always has the highest mean score.
 
-When `refit=True` (the default), the search refits the best configuration on the entire dataset after evaluation. The resulting `best_forecaster_` supports all standard yohou methods (`predict`, `observe`, `rewind`, `observe_predict`) so the search object can be used directly in place of a bare forecaster.
+`best_params_` holds the winning parameter combination, `best_score_` the corresponding mean score, and `best_index_` points into the `cv_results_` arrays. Setting `return_train_score=True` adds training scores to the results, which is useful for diagnosing overfitting but requires the forecaster to support `rewind()`.
 
-Multi-metric evaluation is supported by passing a dictionary of scorers. In this case, `refit` must name the scorer to optimize or be set to `False`.
+### Refitting and Using the Best Model
 
-`RandomizedSearchCV` works identically but samples a fixed number of parameter combinations from specified distributions rather than exhaustively evaluating every point on the grid. This is more practical when the parameter space is large or continuous.
+When `refit=True` (the default), the search refits the best configuration on the entire dataset after evaluation. The resulting `best_forecaster_` supports all standard yohou methods (`predict`, `predict_interval`, `predict_class_proba`, `observe`, `rewind`, `observe_predict`, and their interval/class-probability variants) so the search object can be used directly in place of a bare forecaster.
 
-Both search classes parallelize fold evaluation via `n_jobs`, and both integrate with sklearn's metadata routing so that `time_weight` and other metadata flow through to scorers without extra configuration.
+The `refit` parameter also accepts a string (to name the scorer for multi-metric optimization) or a callable that receives `cv_results_` and returns the `best_index_`, enabling custom selection strategies like choosing the simplest model within one standard deviation of the best score.
 
+### Multi-Metric Evaluation
+
+Passing a dictionary of scorers enables simultaneous evaluation on multiple metrics. In this case, `refit` must name the scorer to optimize or be set to `False`:
+
+```python
+search = GridSearchCV(
+    forecaster=my_forecaster,
+    param_grid=param_grid,
+    scoring={"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()},
+    cv=cv,
+    refit="mae",
+)
+```
+
+### Randomized Search
+
+[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) samples a fixed number of parameter combinations (`n_iter`, default 10) from specified distributions rather than exhaustively evaluating every point on the grid. This is more practical when the parameter space is large or continuous. A `random_state` parameter ensures reproducibility.
+
+### Parallelization and Error Handling
+
+Both search classes parallelize fold evaluation via `n_jobs` and control dispatch with `pre_dispatch` to limit memory usage. When a candidate fails to fit, `error_score` determines the behavior: set it to `np.nan` (the default) to record the failure and continue, or to `"raise"` to abort immediately. Failed fits produce a `FitFailedWarning` with the traceback.
+
+Both classes integrate with sklearn's metadata routing so that `time_weight` and other metadata flow through to scorers without extra configuration.
 
 ## Choosing a Forecasting Method
 
-With many possible models, the practical question is where to start. The most
-productive approach is incremental: begin with the simplest model and add complexity
-only when cross-validation shows it helps.
+With many possible models, the practical question is where to start. The incremental approach works well because each step isolates one source of improvement. A naive baseline reveals whether there is learnable structure at all. A linear model on a few lags shows whether regression adds value over repetition. Richer transformers and nonlinear regressors add capacity, but only improve scores when the data has patterns that simpler models cannot capture.
 
-A [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) forecaster
-is a natural starting point because it establishes a baseline that any useful model
-must beat. If a
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
-with a linear regressor and a few lags improves on that baseline, there is learnable
-structure beyond seasonal repetition, and further complexity (richer transformers,
-nonlinear regressors) is worth exploring.
+Hyperparameter search is most valuable after model structure is settled. Tuning hyperparameters on an underspecified model wastes computation, while a well-structured model often performs acceptably even with default parameters.
 
-Hyperparameter search should come after model structure is settled. Tuning
-hyperparameters on an underspecified model wastes computation, while a well-structured
-model often performs acceptably even with default parameters. Use `GridSearchCV` for
-small discrete grids and `RandomizedSearchCV` when the parameter space is large or
-continuous.
-
-Finally, a single metric can be misleading. Evaluating candidates on both
-scale-dependent (MAE, RMSE) and scaled (MASE) metrics confirms the ranking is robust.
-See [Forecast Accuracy](forecast-accuracy.md) for metric selection guidance.
-
+Evaluating candidates on multiple metrics (scale-dependent and scaled) confirms that rankings are robust rather than artifacts of a single summary statistic. See [Forecast Accuracy](forecast-accuracy.md) for metric selection guidance and [Choose a Forecasting Method](../how-to/choose-forecasting-method.md) for practical step-by-step guidance.
 
 ## References
 
@@ -145,23 +164,12 @@ See [Forecast Accuracy](forecast-accuracy.md) for metric selection guidance.
   review. *International Journal of Forecasting*, 16(4), 437-450.
   [DOI:10.1016/S0169-2070(00)00065-0](https://doi.org/10.1016/S0169-2070(00)00065-0)
 
-
 ## Connections
 
-The splitters and search utilities tie together several other parts of yohou.
-Scorers from [Forecast Accuracy](forecast-accuracy.md) define the objective.
-Weighting functions shape how errors are aggregated across time. Forecasters
-from the [Point Forecasting](forecasting.md) and
-[Interval Forecasting](interval-forecasting.md) modules provide the candidates.
+The splitters and search utilities tie together several other parts of yohou. Scorers from [Forecast Accuracy](forecast-accuracy.md) define the objective. Weighting functions shape how errors are aggregated across time. Forecasters from the [Reduction Forecasting](reduction-forecasting.md) and [Interval Forecasting](interval-forecasting.md) modules provide the candidates.
 
-[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
-and
-[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/)
-work with all forecaster types: point, interval, and class-probability. For
-classification forecasters, pass a class-proba scorer such as
-[`LogLoss()`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) as the
-`scoring` parameter.
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) work with all forecaster types: point, interval, and class-probability. For classification forecasters, pass a class-proba scorer such as [`LogLoss()`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) as the `scoring` parameter.
 
-Practical examples: [CV Splitters](/examples/cv_splitters/),
-[Hyperparameter Search](/examples/hyperparameter_search/), and
-[Time-Weighted Scoring](/examples/time_weighted_scoring/).
+For practical recipes, see [How to Tune Hyperparameters](../how-to/tune-hyperparameters.md).
+
+Interactive examples: [CV Splitters](/examples/cv_splitters/), [Hyperparameter Search](/examples/hyperparameter_search/), and [Time-Weighted Scoring](/examples/time_weighted_scoring/).

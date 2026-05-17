@@ -1,23 +1,24 @@
 # How to Evaluate Forecasts with Multi-vintage Scoring
 
-This guide shows how to generate forecasts from multiple observation points and
-score them across vintages. Use this when you need to assess whether a model's
-accuracy is stable over time or when you want to break down errors by forecast
-horizon step.
+This guide shows you how to generate forecasts from multiple observation points
+and score them across vintages. Use this when you need to assess whether a
+model's accuracy is stable over time or when you want to break down errors by
+forecast horizon step.
+
+## Prerequisites
+
+- A fitted forecaster ([Getting Started](../tutorials/getting-started.md))
+- Familiarity with basic scorer usage ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
+- `yohou[plotting]` installed for visualization steps (`pip install "yohou[plotting]"`)
 
 !!! tip "Try it interactively"
     <!-- COMPANION_NOTEBOOKS -->
 
-## Prerequisites
+## 1. Generate Multi-vintage Predictions
 
-- A fitted forecaster ([First Forecast](../tutorials/first-forecast.md))
-- Familiarity with basic scorer usage ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
-
-## Generate Multi-vintage Predictions
-
-Call `observe_predict` with a `stride` parameter to produce predictions from
-successive observation points. Each prediction is a *vintage* anchored to a
-`vintage_time` column:
+Call `observe_predict` with a `stride` to produce predictions from successive
+observation points. Each prediction is a *vintage* identified by a
+`vintage_time` column in the output:
 
 ```python
 from copy import deepcopy
@@ -29,19 +30,17 @@ y_pred = deepcopy(forecaster).observe_predict(
 )
 ```
 
-`stride=1` advances the observation window by one time step between predictions,
-creating one vintage per test row. Larger strides produce fewer vintages. When
-`stride` is omitted, it defaults to the forecasting horizon (non-overlapping
-windows).
-
-The output is a single DataFrame where each `vintage_time` value identifies one
-forecast origin. Use `y_pred["vintage_time"].unique()` to see all vintages.
+`stride=1` creates one vintage per test row. Larger strides produce fewer
+vintages. When omitted, `stride` defaults to the forecasting horizon
+(non-overlapping windows).
 
 !!! tip
-    Always `deepcopy` the forecaster before calling `observe_predict`. The method
-    mutates internal state, so a copy preserves the original for further use.
+    Always `deepcopy` the forecaster before calling `observe_predict`. The
+    method mutates internal state, so a copy preserves the original for
+    further use.
 
-If your forecaster uses exogenous features, pass them via `X_actual` (for historical observations) and optionally `X_future` or `X_forecast` (for known-ahead or external forecast data):
+If your forecaster uses exogenous features, pass them via `X_actual` and
+optionally `X_future` or `X_forecast`:
 
 ```python
 y_pred = deepcopy(forecaster).observe_predict(
@@ -49,7 +48,7 @@ y_pred = deepcopy(forecaster).observe_predict(
 )
 ```
 
-## Score Across Vintages
+## 2. Score Across Vintages
 
 Fit a scorer on the training data and call `score` with the multi-vintage
 predictions:
@@ -62,28 +61,29 @@ mae.fit(y_train)
 score = mae.score(y_test, y_pred)  # single aggregate score
 ```
 
-To break scores down by dimension, set `aggregation_method` at construction:
+To get scores along a specific axis, set `aggregation_method` at construction:
 
 ```python
-# Per-vintage scores (one value per forecast origin)
+# One score per forecast origin
 mae_vw = MeanAbsoluteError(aggregation_method="vintagewise")
 mae_vw.fit(y_train)
 scores_per_vintage = mae_vw.score(y_test, y_pred)
 
-# Per-step scores (one value per horizon position)
+# One score per horizon position
 mae_sw = MeanAbsoluteError(aggregation_method="stepwise")
 mae_sw.fit(y_train)
 scores_per_step = mae_sw.score(y_test, y_pred)
 ```
 
-Other aggregation methods include `"componentwise"` (per target column) and
-`"groupwise"` (per panel group). Pass `"all"` (the default) for a single
-aggregate scalar.
+The available methods are `"vintagewise"`, `"stepwise"`, `"componentwise"` (per
+target column), `"groupwise"` (per panel group), and `"all"` (the default single
+scalar). See [Aggregation](../explanation/forecast-accuracy.md#aggregation) for
+guidance on when to use each.
 
-## Visualize Per-step Accuracy
+## 3. Visualize Accuracy by Horizon Step
 
 [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/)
-shows how the scorer value varies across forecast horizon steps. Pass a dict of
+reveals whether accuracy degrades at longer horizon positions. Pass a dict of
 predictions to compare multiple models:
 
 ```python
@@ -99,10 +99,11 @@ plot_score_per_step(
 To add a linear trend overlay, pass `show_trend=True`. To switch from lines to
 bars, pass `kind="bar"`.
 
-## Visualize Per-vintage Accuracy
+## 4. Track Accuracy Over Forecast Origins
 
 [`plot_score_per_vintage`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_vintage/)
-tracks accuracy over successive forecast origins:
+shows whether accuracy is stable across successive vintages or drifting over
+time:
 
 ```python
 from yohou.plotting import plot_score_per_vintage
@@ -110,11 +111,11 @@ from yohou.plotting import plot_score_per_vintage
 plot_score_per_vintage(mae, y_test, y_pred, show_trend=True)
 ```
 
-## Visualize the Step x Vintage Heatmap
+## 5. Inspect the Full Step x Vintage Grid
 
 [`plot_score_heatmap`](/pages/api/generated/yohou.plotting.evaluation.plot_score_heatmap/)
-displays a 2D grid where each cell is the error for a specific step at a specific
-vintage:
+plots a 2D grid where each cell is the error for one step at one vintage,
+useful for spotting localized pockets of poor accuracy:
 
 ```python
 from yohou.plotting import plot_score_heatmap
@@ -122,20 +123,20 @@ from yohou.plotting import plot_score_heatmap
 plot_score_heatmap(mae, y_test, y_pred)
 ```
 
-This function accepts a single scorer and a single prediction DataFrame (not
-dicts). To swap axes, pass `x_dim="vintage", y_dim="step"`.
+Pass `x_dim="vintage", y_dim="step"` to swap axes. This function accepts a
+single scorer and a single prediction DataFrame (not dicts).
 
-## Score Interval Forecast Vintages
+## 6. Score Interval Forecast Vintages
 
-For interval forecasters, use `observe_predict_interval` and interval-specific
-scorers:
+For interval forecasters, use `observe_predict_interval` with an
+interval scorer:
 
 ```python
+from yohou.metrics import IntervalScore
+
 y_pred_interval = deepcopy(interval_forecaster).observe_predict_interval(
     y_test, forecasting_horizon=7, stride=1
 )
-
-from yohou.metrics import IntervalScore
 
 interval_scorer = IntervalScore()
 interval_scorer.fit(y_train)
@@ -143,14 +144,14 @@ score = interval_scorer.score(y_test, y_pred_interval)
 ```
 
 To restrict evaluation to specific coverage rates, pass `coverage_rates` to the
-scorer constructor. All the same aggregation methods and plotting functions work
-with interval predictions.
+scorer constructor. All aggregation methods and plotting functions described
+above work with interval predictions.
 
-## Check Splitter Alignment
+## 7. Verify Splitter Alignment
 
-When using cross-validation, the interaction between `test_size`, `stride`, and
-`forecasting_horizon` determines how many vintages each fold produces and whether
-all forecast steps are represented equally:
+When combining multi-vintage scoring with cross-validation, run
+`check_cv_alignment` to confirm the interaction between `test_size`, `stride`,
+and `forecasting_horizon` produces the evaluation geometry you expect:
 
 ```python
 from yohou.model_selection import SlidingWindowSplitter, check_cv_alignment
@@ -161,11 +162,11 @@ print(info["is_balanced"])  # True if every step has equal vintage coverage
 print(info["n_vintages"])   # vintages per fold
 ```
 
-Run this before starting a search to confirm the evaluation geometry matches
-your expectations.
+See [Checking Splitter Alignment](../explanation/model-selection.md#checking-splitter-alignment)
+for details on interpreting the output.
 
 ## See Also
 
-- [Forecast Accuracy: Vintage-based Evaluation](../explanation/forecast-accuracy.md#vintage-based-evaluation) for the conceptual background
-- [How to Visualize and Compare Model Scores](visualize-scores.md) for the full plotting workflow
-- [Model Selection](../explanation/model-selection.md#checking-splitter-alignment) for splitter alignment details
+- [Vintage-based Evaluation](../explanation/forecast-accuracy.md#vintage-based-evaluation) for the conceptual background
+- [Visualize and Compare Model Scores](visualize-scores.md) for the full plotting workflow
+- [`yohou.plotting.evaluation` API reference](/pages/api/generated/yohou.plotting.evaluation/) for all evaluation plot options

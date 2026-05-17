@@ -6,19 +6,20 @@ Conceptual background for understanding how Yohou works and why it is designed t
 
 - [Core Concepts](core-concepts.md): The fit/observe/predict lifecycle, data formats, and the reduction approach to forecasting.
 - [Time Series Patterns](time-series-patterns.md): Trend, seasonality, cycles, and noise, and how to recognise them before choosing a method.
-- [Forecasting](forecasting.md): How Yohou converts time series into supervised learning problems, and what that means for feature construction and prediction.
+- [Reduction Forecasting](reduction-forecasting.md): How Yohou converts time series into supervised learning problems, and what that means for feature construction and prediction.
 
 ## Data Shaping
 
+- [Panel Data](panel-data.md): The `{entity}__{variable}` naming convention, the three panel strategies, and panel-aware behavior in forecasters and scorers.
 - [Exogenous Features](exogenous-features.md): The three exogenous types (X_actual, X_future, X_forecast), step-indexed columns, and vintage alignment.
-- [Preprocessing](preprocessing.md): Stateful vs. stateless transformers, the `BaseTransformer` contract, and incremental observation in pipelines.
+- [Preprocessing](preprocessing.md): Stateful vs. stateless transformers, the [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/) contract, and incremental observation in pipelines.
 - [Stationarity](stationarity.md): Why non-stationary series are problematic for regression models, and how differencing and decomposition help.
-- [Feature Pipelines](feature-pipelines.md): `FeaturePipeline`, `FeatureUnion`, and `ColumnTransformer`: how to compose transformers and how `observation_horizon` propagates.
+- [Feature Pipelines](feature-pipelines.md): [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/), and [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/): how to compose transformers and how `observation_horizon` propagates.
 
 ## Forecasting
 
-- [Forecaster Composition](forecaster-composition.md): `DecompositionPipeline`, `ColumnForecaster`, `ForecastedFeatureForecaster`, `LocalPanelForecaster`, and state propagation through composite forecasters.
-- [Interval Forecasting](interval-forecasting.md): Prediction intervals, conformal coverage, and when to use `SplitConformalForecaster` vs. quantile regression.
+- [Forecaster Composition](forecaster-composition.md): [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/), [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/), [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/), [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/), and state propagation through composite forecasters.
+- [Interval Forecasting](interval-forecasting.md): Prediction intervals, conformal coverage, and when to use [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) vs. quantile regression.
 - [Class-Probability Forecasting](class-probability-forecasting.md): Categorical time series, calibration, and the class-probability forecaster API.
 - [Ensemble Forecasting](ensemble-forecasting.md): Voting strategies, error diversity, and when ensembles outperform single models.
 
@@ -30,10 +31,9 @@ Conceptual background for understanding how Yohou works and why it is designed t
 - [Residual Diagnostics](residual-diagnostics.md): How to interpret residual plots and what patterns signal unmodelled structure.
 - [Visualization](visualization.md): The plotting module, interactive Plotly figures, and choosing the right plot for your task.
 
-## Production and Practical Use
+## Architecture
 
-- [Practical Issues](practical-issues.md): Complex seasonality, short series, missing data, structural breaks, and other production realities.
-- [Advanced Topics](advanced.md): Metadata routing, the reduction architecture, and the discovery API.
+- [Metadata Routing](metadata-routing.md): How metadata like `time_weight` and `vintage_weight` flows through pipelines, search objects, and composite forecasters.
 - [Extending Yohou](extending-yohou.md): Abstract base classes, parameter constraints, integration packages, and the systematic test suites for custom components.
 
 ## Reference

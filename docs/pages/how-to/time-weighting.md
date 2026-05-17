@@ -1,19 +1,26 @@
 # How to Use Time Weighting
 
-Time weighting lets you emphasize recent or seasonally relevant observations
-during training and scoring. Weight functions are callables that take a polars
-`Series` of datetimes and return a `Series` of weights.
+This guide shows you how to weight observations by recency or seasonal
+relevance so that forecasters and scorers focus on the most informative parts
+of your history.
 
 ## Prerequisites
 
-- A fitted forecaster or scorer ([First Forecast](../tutorials/first-forecast.md))
+- A fitted forecaster or scorer ([Getting Started](../tutorials/getting-started.md))
 - For panel-aware weights: familiarity with panel data ([Work with Panel Data](panel-data.md))
 
-## Exponential Decay
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
-[`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/)
-halves the weight every `half_life` days. The most recent observation always
-gets weight 1.0:
+## 1. Choose a Weighting Strategy
+
+The `time_weight` parameter accepts a callable, a `pl.DataFrame`, or a `dict`.
+Built-in weight functions (callables) cover the most common patterns.
+
+If you want to down-weight old observations smoothly, use
+[`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/).
+It halves the weight every `half_life` days, keeping the most recent
+observation at 1.0:
 
 ```python
 from yohou.utils.weighting import exponential_decay_weight
@@ -24,10 +31,8 @@ weight_fn = exponential_decay_weight(half_life=365)
 `half_life` accepts an `int`, `float` (both interpreted as days), or a
 `timedelta` for explicit units.
 
-## Linear Decay
-
-[`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/)
-scales weights linearly from 0 (oldest) to 1 (newest):
+If you prefer a simple ramp from 0 (oldest) to 1 (newest), use
+[`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/):
 
 ```python
 from yohou.utils.weighting import linear_decay_weight
@@ -41,11 +46,9 @@ To zero out observations older than a fixed window, pass `max_steps`:
 weight_fn = linear_decay_weight(max_steps=100)
 ```
 
-## Seasonal Emphasis
-
+If seasonality matters more than recency, use
 [`seasonal_emphasis_weight`](/pages/api/generated/yohou.utils.weighting.seasonal_emphasis_weight/)
-boosts observations at the same seasonal position as the most recent
-observation:
+to boost observations at the same seasonal position as the most recent one:
 
 ```python
 from yohou.utils.weighting import seasonal_emphasis_weight
@@ -55,16 +58,45 @@ weight_fn = seasonal_emphasis_weight(seasonality=12, emphasis=2.0)
 ```
 
 In-phase observations get the `emphasis` weight (default 2.0), all others get
-1.0. For multiple seasonalities, pass a list (combined with OR logic):
+1.0. For multiple seasonalities, pass a list:
 
 ```python
 weight_fn = seasonal_emphasis_weight(seasonality=[7, 365], emphasis=1.5)
 ```
 
-## Compose Multiple Weights
+If you already have pre-computed weights, pass a `pl.DataFrame` with `"time"`
+and `"weight"` columns:
 
-[`compose_weights`](/pages/api/generated/yohou.utils.weighting.compose_weights/)
-multiplies multiple weight functions element-wise:
+```python
+import polars as pl
+
+time_weight = pl.DataFrame({
+    "time": y_train["time"],
+    "weight": [1.0, 1.0, 0.5, 0.5, 0.0],
+})
+```
+
+For panel data, use group-specific columns (e.g. `"store_a_weight"`,
+`"store_b_weight"`) or a single `"weight"` column applied to all groups.
+
+You can also pass a `dict` mapping timestamps to weights. Timestamps not in
+the dict get a default weight of 1.0 (or use `"*"` to set a different default):
+
+```python
+from datetime import datetime
+
+time_weight = {
+    datetime(2024, 6, 1): 2.0,
+    datetime(2024, 7, 1): 2.0,
+    "*": 0.5,  # all other timestamps
+}
+```
+
+## 2. Compose Multiple Weights
+
+To combine recency and seasonal effects, use
+[`compose_weights`](/pages/api/generated/yohou.utils.weighting.compose_weights/).
+It multiplies the weight functions element-wise:
 
 ```python
 from yohou.utils.weighting import compose_weights
@@ -75,7 +107,7 @@ weight_fn = compose_weights(
 )
 ```
 
-## Pass Weights to a Forecaster
+## 3. Apply Weights During Training
 
 Pass the weight function as `time_weight` when fitting a reduction forecaster:
 
@@ -91,9 +123,10 @@ forecaster.fit(
 )
 ```
 
-The forecaster converts time weights to sklearn `sample_weight` internally. The
-`sample_weight_alignment` parameter on `fit()` controls how multi-step weights
-are reduced to a single weight per sample:
+The forecaster converts time weights to sklearn `sample_weight` internally.
+Because each training sample spans multiple forecast steps, the per-timestamp
+weights must be collapsed into one weight per sample. The
+`sample_weight_alignment` parameter controls how:
 
 ```python
 forecaster.fit(
@@ -104,23 +137,12 @@ forecaster.fit(
 )
 ```
 
-Valid alignment strategies:
+The default is `"first_step"`. See [Weighting](../explanation/weighting.md) for
+a full comparison of alignment strategies.
 
-| Value | Behavior |
-|---|---|
-| `"first_step"` (default) | Weight at the first forecast step |
-| `"mean_step"` | Average weight across forecast horizon |
-| `"weighted_mean_step"` | Exponentially weighted mean (near-term emphasized) |
-| `"max_weight_step"` | Maximum weight across horizon |
-| `"min_weight_step"` | Minimum weight across horizon |
+## 4. Apply Weights During Scoring
 
-You can also pass a pre-computed `pl.DataFrame` instead of a callable. The
-DataFrame must have a `"time"` column and a `"time_weight"` column.
-
-## Pass Weights to a Scorer
-
-Scorers accept `time_weight` in the `score()` method to weight per-timestep
-errors:
+Scorers accept `time_weight` in `score()` to weight per-timestep errors:
 
 ```python
 from yohou.metrics import MeanAbsoluteError
@@ -130,31 +152,16 @@ scorer.fit(y_train)
 weighted_score = scorer.score(y_test, y_pred, time_weight=weight_fn)
 ```
 
-For multi-vintage predictions, scorers also accept `step_weight` and
-`vintage_weight` to weight by horizon position or forecast origin:
+Scorers also support `step_weight` and `vintage_weight` for multi-vintage
+predictions. See [Multi-vintage Scoring](multi-vintage-scoring.md) for details.
+
+## 5. Customize Weights for Panel Data
+
+Weight functions can accept a second parameter with the group name, letting you
+assign different weight profiles per panel:
 
 ```python
-# Weight horizon steps (e.g., prioritize near-term accuracy)
-weighted_score = scorer.score(
-    y_test, y_pred,
-    step_weight={1: 1.0, 2: 0.8, 3: 0.5},
-)
-
-# Weight specific vintages
-from datetime import datetime
-weighted_score = scorer.score(
-    y_test, y_pred,
-    vintage_weight={datetime(2024, 1, 1): 2.0, datetime(2024, 6, 1): 1.0},
-)
-```
-
-## Panel-Aware Weights
-
-Weight functions can accept a second parameter with the group name for
-panel-specific weighting:
-
-```python
-def panel_weight(time: pl.Series, group_name: str) -> pl.Series:
+def panel_weight(time: pl.Series, group_name: str | None) -> pl.Series:
     if group_name == "store_a":
         return exponential_decay_weight(half_life=180)(time)
     return exponential_decay_weight(half_life=365)(time)
@@ -165,11 +172,10 @@ forecaster.fit(y_train, forecasting_horizon=12, time_weight=panel_weight)
 The framework detects whether your callable takes one or two parameters
 automatically. For global (non-panel) data, `group_name` is `None`.
 
-## Visualize Weights
+## 6. Visualize the Weight Profile
 
 [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/)
-shows the weight profile over a time series. Pass a DataFrame with
-pre-computed weights:
+shows weights over time. Build the expected DataFrame and pass it in:
 
 ```python
 from yohou.plotting import plot_time_weight
@@ -185,7 +191,8 @@ disable the filled area under the curve, pass `fill=False`.
 
 ## See Also
 
-- [Weighting](/pages/explanation/weighting/) for the conceptual overview of weight types, formats, and normalization
+- [Weighting](../explanation/weighting.md) for the conceptual overview of weight types, alignment strategies, and normalization
 - [Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md) for using scorers with and without weights
-- [How to Evaluate Forecasts with Multi-vintage Scoring](multi-vintage-scoring.md) for `step_weight` and `vintage_weight` in context
+- [Handle Long Series](handle-long-series.md) for limiting history length as an alternative to down-weighting old data
+- [Multi-vintage Scoring](multi-vintage-scoring.md) for `step_weight` and `vintage_weight` in context
 - [API Reference: yohou.utils.weighting](/pages/api/utils/) for the full parameter listing

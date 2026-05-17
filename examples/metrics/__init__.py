@@ -1,1 +1,0 @@
-"""Metrics and scorers examples."""
