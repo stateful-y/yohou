@@ -21,13 +21,14 @@ set_config(enable_metadata_routing=True)
 # render the HTML repr.  This patch normalizes content lines *before*
 # parsing, leaving the original __doc__ strings (and therefore mkdocs
 # output) untouched.
+_MKDOCS_LINK_RE = re.compile(r"\[`?[^\]]*`?\]\[([A-Za-z_][A-Za-z0-9_.]*)\]")
+_BULLET_PREFIX_RE = re.compile(r"^(\s*)-\s+")
+_BACKTICK_NAME_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
+
 try:
     from sklearn.externals._numpydoc.docscrape import NumpyDocString
 
     _original_parse_see_also = NumpyDocString._parse_see_also
-    _MKDOCS_LINK_RE = re.compile(r"\[`?[^\]]*`?\]\[([A-Za-z_][A-Za-z0-9_.]*)\]")
-    _BULLET_PREFIX_RE = re.compile(r"^(\s*)-\s+")
-    _BACKTICK_NAME_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
 
     def _parse_see_also_strip_backticks(self, content):  # noqa: ANN001, ANN202
         """Normalize MkDocs links and backticks before delegating to the original parser."""
