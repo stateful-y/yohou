@@ -44,12 +44,16 @@ def _collect_notebooks(subdir: str | None = None) -> list:
 
 def _run_notebook(notebook_file: pathlib.Path) -> None:
     """Run a marimo notebook as a script and assert success."""
-    result = subprocess.run(
-        [sys.executable, str(notebook_file)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, str(notebook_file)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"Notebook {notebook_file.name} timed out after 300 seconds")
     assert result.returncode == 0, (
         f"Notebook {notebook_file.name} failed with:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
