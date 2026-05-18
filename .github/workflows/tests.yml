@@ -192,6 +192,7 @@ jobs:
   examples:
     name: Run example notebooks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code

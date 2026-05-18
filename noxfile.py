@@ -222,14 +222,16 @@ def test_examples(session: nox.Session) -> None:
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
 
-    # Run example tests in parallel using pytest with pytest-xdist with no coverage
+    # Run example tests in parallel using pytest with pytest-xdist with no coverage.
+    # Use 4 workers (not 'auto') because tests are subprocess-bound and CI runners
+    # only expose 2 cores, but can handle more concurrent subprocess invocations.
     session.run(
         "pytest",
         "tests",
         "-m",
         "example",
         "-n",
-        "auto",
+        "4",
         "-v",
         "--no-cov",
         *session.posargs,
