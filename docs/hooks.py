@@ -1625,9 +1625,10 @@ def on_pre_build(config):
         except FileNotFoundError:
             return str(rel_path), FileNotFoundError("marimo")
 
-    # RTD has a 7GB memory limit; use 1 worker to avoid OOM when exporting
-    # notebooks (each subprocess loads heavy plotting/ML libraries).
-    _default_workers = 1 if os.environ.get("READTHEDOCS") else min((os.cpu_count() or 2) * 2, 8)
+    # RTD has a 7GB memory limit. Most notebook exports peak at ~350MB,
+    # heaviest (class_proba) at ~1.7GB. Use 2 workers on RTD for a safe
+    # concurrent peak of ~2.1GB while halving sequential export time.
+    _default_workers = 2 if os.environ.get("READTHEDOCS") else min((os.cpu_count() or 2) * 2, 8)
     max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", _default_workers))
 
     import threading
